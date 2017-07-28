@@ -349,6 +349,7 @@ class ScalerThread(ExceptionalThread):
         self.nodeShapeToType = dict(zip(self.nodeShapes, self.nodeTypes))
 
         self.nodeShapes.sort()
+        self.ignoredNodes = set()
 
         assert len(self.nodeShapes) > 0
 
@@ -450,7 +451,8 @@ class ScalerThread(ExceptionalThread):
                         logger.info('Changing the number of %s from %s to %s.', nodeType, self.totalNodes[nodeShape],
                                     estimatedNodes)
                         self.totalNodes[nodeShape] = self.setNodeCount(nodeType=nodeType, numNodes=estimatedNodes, preemptable=nodeShape.preemptable)
-                        
+
+                    self._terminateIgnoredNodes()
 
                     if self.stats:
                         self.stats.checkStats()
@@ -520,19 +522,23 @@ class ScalerThread(ExceptionalThread):
             #Filter down to nodes of the correct node type
             nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo if node.nodeType == nodeType}
 
+            nodesToTerminate = self.chooseNodes(nodeToNodeInfo, force, preemptable=preemptable)
+
+            nodesToTerminate = nodesToTerminate[:numNodes]
+
             # Join nodes and instances on private IP address.
             logger.debug('Nodes considered to terminate: %s', ' '.join(map(str, nodeToNodeInfo)))
-            nodesToTerminate = self.chooseNodes(nodeToNodeInfo, force, preemptable=preemptable)
 
             #Tell the batch system to stop sending jobs to these nodes
             for (node, nodeInfo) in nodesToTerminate:
+                self.ignoredNodes.add(node.privateIP)
                 self.scaler.leader.batchSystem.ignoreNode(node.privateIP)
 
             if not force:
                 # Filter out nodes with jobs still running. These
-                # will be terminated on a future call to _removeNodes, 
-                # since the batch system is no longer sending jobs to 
-                # them.
+                # will be terminated in _removeIgnoredNodes later on
+                # once all jobs have finished, but they will be ignored by
+                # the batch system and cluster scaler from now on
                 nodesToTerminate = [(node,nodeInfo) for (node,nodeInfo) in nodesToTerminate if nodeInfo is not None and nodeInfo.workers < 1]
             #nodesToTerminate = nodesToTerminate[:numNodes]
             nodesToTerminate = {node:nodeInfo for (node, nodeInfo) in nodesToTerminate}
@@ -545,6 +551,27 @@ class ScalerThread(ExceptionalThread):
         if nodeToNodeInfo:
             self.scaler.provisioner.terminateNodes(nodeToNodeInfo)
         return len(nodeToNodeInfo)
+
+    def _terminateIgnoredNodes(self):
+        #Try to terminate any straggling nodes that we designated for
+        #termination, but which still has workers running
+        nodeToNodeInfo = self.getNodes(preemptable=None)
+
+        #Remove any nodes that have already been terminated from the list
+        # of ignored nodes
+        allNodeIPs = [node.privateIP for node in nodeToNodeInfo]
+        self.ignoredNodes = set([ip for ip in self.ignoredNodes if ip in allNodeIPs])
+
+        logger.info("There are %i nodes being ignored by the batch system, checking if they can be terminated" % len(self.ignoredNodes))
+        nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo if node.privateIP in self.ignoredNodes}
+
+        nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo if nodeToNodeInfo[node] is not None and nodeToNodeInfo[node].workers < 1}
+
+        for node in nodeToNodeInfo:
+            self.ignoredNodes.remove(node.privateIP)
+        if len(nodeToNodeInfo) > 0:
+            logger.info("Terminating %i nodes that were being ignored by the batch system" % len(nodeToNodeInfo))
+            self.scaler.provisioner.terminateNodes(nodeToNodeInfo)
 
     def chooseNodes(self, nodeToNodeInfo, force=False, preemptable=False):
         nodesToTerminate = []
@@ -568,10 +595,6 @@ class ScalerThread(ExceptionalThread):
             node_nodeInfo[1].workers if node_nodeInfo[1] else 1,
             self.scaler.provisioner.remainingBillingInterval(node_nodeInfo[0]))
                               )
-        if not force:
-            # don't terminate nodes that still have > 15% left in their allocated (prepaid) time
-            nodesToTerminate = [(node, i) for node, i in nodesToTerminate if
-                                self.scaler.provisioner.remainingBillingInterval(node) <= 0.15]
         return nodesToTerminate
 
     def getNodes(self, preemptable):
@@ -599,9 +622,7 @@ class ScalerThread(ExceptionalThread):
                 #    launched, so we don't even get an executorInfo back indicating 0 workers running
                 # 3) mesos crashed before launching, worker will never come online
                 # In all 3 situations it's safe to fake executor info with 0 workers, since in all
-                # cases there are no workers running. We also won't waste any money in cases 1/2 since
-                # we will still wait for the end of the node's billing cycle for the actual
-                # termination.
+                # cases there are no workers running.
                 info = NodeInfo(coresTotal=1, coresUsed=0, requestedCores=0,
                                 memoryTotal=1, memoryUsed=0, requestedMemory=0,
                                 workers=0)
@@ -623,8 +644,6 @@ class ScalerThread(ExceptionalThread):
         allMesosNodes = self.scaler.leader.batchSystem.getNodes(preemptable, timeout=None)
         recentMesosNodes = self.scaler.leader.batchSystem.getNodes(preemptable)
         provisionerNodes = self.scaler.provisioner.getProvisionedWorkers(nodeType=None, preemptable=preemptable)
-        logger.debug("Provisioner nodes = %s" % provisionerNodes)
-        logger.debug("Mesos nodes = %s" % recentMesosNodes)
 
         if len(recentMesosNodes) != len(provisionerNodes):
             logger.debug("Consolidating state between mesos and provisioner")
