@@ -294,6 +294,9 @@ class Job(JobLikeObject):
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
         self._fileStore = None
+        # This references the parent job wrapper. It is initialised just before
+        # the job is run. It is used to access the start and terminate flags.
+        self.jobGraph = None
 
     def run(self, fileStore):
         """
@@ -1231,7 +1234,10 @@ class Job(JobLikeObject):
     ####################################################
 
     def _run(self, jobGraph, fileStore):
-        return self.run(fileStore)
+        self.jobGraph = jobGraph
+        rv = self.run(fileStore)
+        self.jobGraph = None
+        return rv
 
     @contextmanager
     def _executor(self, jobGraph, stats, fileStore):
@@ -1542,9 +1548,6 @@ class ServiceJob(Job):
         self.service = service
         self.pickledService = None
         self.jobName = service.jobName
-        # This references the parent job wrapper. It is initialised just before
-        # the job is run. It is used to access the start and terminate flags.
-        self.jobGraph = None
 
     @property
     def fileStore(self):

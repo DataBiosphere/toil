@@ -163,6 +163,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
         jobID = next(self.unusedJobID)
         job = ToilJob(jobID=jobID,
+                      jobStoreID=jobNode.jobStoreID,
                       name=str(jobNode),
                       resources=ResourceRequirement(**jobNode._requirements),
                       command=jobNode.command,
@@ -618,7 +619,7 @@ class MesosBatchSystem(BatchSystemSupport,
     @classmethod
     def setOptions(cl, setOption):
         setOption("mesosMasterAddress", None, None, 'localhost:5050')
-        
+
 
 def toMiB(n):
     return n / 1024 / 1024

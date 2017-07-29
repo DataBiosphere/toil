@@ -145,6 +145,11 @@ def _docker(job,
     except IndexError:
         raise RuntimeError("Couldn't parse Docker's `--name=` option, check parameters: " + str(dockerParameters))
 
+    job_id_label = 'job_id={}'.format(job.jobGraph.jobStoreID)
+    workflow_id_label = 'workflow_id={}'.format(job.fileStore.jobStore.config.workflowID)
+    baseDockerCall.extend(['--label', job_id_label])
+    baseDockerCall.extend(['--label', workflow_id_label])
+
     # Defer the container on-exit action
     if '--rm' in baseDockerCall and defer is None:
         defer = RM
