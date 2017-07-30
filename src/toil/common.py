@@ -339,21 +339,32 @@ def _addOptions(addGroupFn, config):
                      "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
 
     addOptionFn('--nodeTypes', default=None,
-                 help="Node type for {non-|}preemptable nodes. The syntax depends on the "
-                      "provisioner used. For the cgcloud and AWS provisioners this is the name "
-                      "of an EC2 instance type{|, followed by a colon and the price in dollar "
-                      "to bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
+                 help="List of node types separated by commas. The syntax for each node type "
+                      "depends on the provisioner used. For the cgcloud and AWS provisioners "
+                      "this is the name of an EC2 instance type, optionally followed by a "
+                      "colon and the price in dollars "
+                      "to bid for a spot instance of that type, for example 'c3.8xlarge:0.42'."
+                      "If no spot bid is specified, nodes of this type will be non-preemptable."
+                      "It is acceptable to specify an instance as both preemptable and "
+                      "non-preemptable, including it twice in the list. In that case,"
+                      "preemptable nodes of that type will be preferred when creating "
+                      "new nodes once the maximum number of preemptable-nodes has been"
+                      "reached.")
+
     addOptionFn('--nodeOptions', default=None,
-                 help="Provisioning options for the {non-|}preemptable node type. The syntax "
+                 help="Options for provisioning the nodes. The syntax "
                       "depends on the provisioner used. Neither the CGCloud nor the AWS "
                       "provisioner support any node options.")
 
     addOptionFn('--minNodes', default=None, 
-                 help="Mininum number of nodes in the cluster, if using "
-                              "auto-scaling.")
+                 help="Mininum number of nodes of each type in the cluster, if using "
+                              "auto-scaling. This should be provided as a comma-separated "
+                              "list of the same length as the list of node types.")
 
     addOptionFn('--maxNodes', default=None,
-                help="Maximum number of nodes in the cluster, if using autoscaling")
+                help="Maximum number of nodes of each type in the cluster, if using "
+                "autoscaling. This should be provided as a comma-separated list of the same "
+                "length as the list of node types.")
 
     # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,

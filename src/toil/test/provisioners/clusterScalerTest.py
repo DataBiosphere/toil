@@ -60,22 +60,25 @@ class ClusterScalerTest(ToilTest):
         Tests the bin-packing method used by the cluster scaler.
         """
         for test in xrange(50):
-            nodeShape = Shape(wallTime=random.choice(range(1, 100)),
+            nodeShapes = [Shape(wallTime=random.choice(range(1, 100)),
                               memory=random.choice(range(1, 10)),
                               cores=random.choice(range(1, 10)),
-                              disk=random.choice(range(1, 10)))
+                              disk=random.choice(range(1, 10)),
+                              preemptable=False) for i in range(5)]
             randomJobShape = lambda x: Shape(wallTime=random.choice(range(1, (3 * x.wallTime) + 1)),
                                              memory=random.choice(range(1, x.memory + 1)),
                                              cores=random.choice(range(1, x.cores + 1)),
-                                             disk=random.choice(range(1, x.disk + 1)))
-            numberOfJobs = random.choice(range(1, 1000))
-            randomJobShapes = map(lambda i: randomJobShape(nodeShape), xrange(numberOfJobs))
+                                             disk=random.choice(range(1, x.disk + 1)),
+                                             preemptable=False)
+            randomJobShapes = []
+            for nodeShape in nodeShapes:
+                numberOfJobs = random.choice(range(1, 1000))
+                randomJobShapes.extend(map(lambda i: randomJobShape(nodeShape), xrange(numberOfJobs)))
             startTime = time.time()
-            numberOfBins = binPacking(randomJobShapes, nodeShape)
-            logger.info("For node shape %s and %s job-shapes got %s bins in %s seconds, %s jobs/bin" % 
-                        (nodeShape, numberOfJobs, numberOfBins, time.time() - startTime, float(numberOfJobs)/numberOfBins))
+            numberOfBins = binPacking(jobShapes=randomJobShapes, nodeShapes=nodeShapes)
+            logger.info("Made the following node reservations: %s" % numberOfBins)
 
-    def _testClusterScaling(self, config, numJobs, numPreemptableJobs, nodeType):
+    def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):
         """
         Test the ClusterScaler class with different patterns of job creation. Tests ascertain
         that autoscaling occurs and that all the jobs are run.
@@ -93,15 +96,15 @@ class ClusterScalerTest(ToilTest):
         try:
             # Add 100 jobs to complete 
             logger.info("Creating test jobs")
-            map(lambda x: mock.addJob(jobShape=nodeType), range(numJobs))
-            map(lambda x: mock.addJob(jobShape=nodeType, preemptable=True), range(numPreemptableJobs))
+            map(lambda x: mock.addJob(jobShape=jobShape), range(numJobs))
+            map(lambda x: mock.addJob(jobShape=jobShape, preemptable=True), range(numPreemptableJobs))
     
             # Add some completed jobs
             for preemptable in (True, False):
                 if preemptable and numPreemptableJobs > 0 or not preemptable and numJobs > 0:
                     # Add a 1000 random jobs
                     for i in xrange(1000):
-                        x = mock.getNodeShape(nodeType=nodeType)
+                        x = mock.getNodeShape(nodeType=jobShape)
                         iJ = JobNode(jobStoreID=1,
                                      requirements=dict(memory=random.choice(range(1, x.memory)),
                                                        cores=random.choice(range(1, x.cores)),
@@ -238,13 +241,16 @@ class ClusterScalerTest(ToilTest):
         """
         config = Config()
 
+        jobShape = Shape(20, 10, 10, 10, False)
+        preemptableJobShape = Shape(20, 10, 10, 10, True)
+
         # Make defaults dummy values
         config.defaultMemory = 1
         config.defaultCores = 1
         config.defaultDisk = 1
 
         # non-preemptable node parameters
-        config.nodeTypes = [Shape(20, 10, 10, 10, False), Shape(20, 10, 10, 10, True)]
+        config.nodeTypes = [jobShape, preemptableJobShape]
         config.minNodes = [0,0]
         config.maxNodes = [10,10]
 
@@ -253,7 +259,7 @@ class ClusterScalerTest(ToilTest):
         config.betaInertia = 1.2
         config.scaleInterval = 3
 
-        self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100)
+        self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100, jobShape=jobShape)
 
 
 # noinspection PyAbstractClass
@@ -434,7 +440,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                 self.worker.join()
                 return time.time() - self.startTime
         for i in xrange(numNodes):
-            node = Node('127.0.0.1', '127.0.0.1', 'testNode', time.time(), nodeType=nodeType,
+            node = Node('127.0.0.1', uuid.uuid4(), 'testNode', time.time(), nodeType=nodeType,
                     preemptable=preemptable)
             self.nodesToWorker[node] = Worker(self.jobQueue, self.updatedJobsQueue, self.secondsPerJob)
             self.workers[nodeShape].append(self.nodesToWorker[node])
