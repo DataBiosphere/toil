@@ -83,6 +83,7 @@ class Config(object):
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 30
+        self.preemptableCompensation = 0.0
         self.nodeStorage = 50
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
@@ -210,6 +211,10 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
+	setOption("preemptableCompensation", float)
+        require(0.0 <= self.preemptableCompensation <= 1.0,
+                '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
+                self.preemptableCompensation)
         setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks
@@ -380,6 +385,15 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))
+    addOptionFn("--preemptableCompensation", dest="preemptableCompensation",
+                default=None,
+                help=("The preference of the autoscaler to replace preemptable nodes with "
+                      "non-preemptable nodes, when preemptable nodes cannot be started for some "
+                      "reason. Defaults to %s. This value must be between 0.0 and 1.0, inclusive. "
+                      "A value of 0.0 disables such compensation, a value of 0.5 compensates two "
+                      "missing preemptable nodes with a non-preemptable one. A value of 1.0 "
+                      "replaces every missing pre-emptable node with a non-preemptable one." %
+                      config.preemptableCompensation))
     addOptionFn("--nodeStorage", dest="nodeStorage", default=50,
                 help=("Specify the size of the root volume of worker nodes when they are launched "
                       "in gigabytes. You may want to set this if your jobs require a lot of disk "

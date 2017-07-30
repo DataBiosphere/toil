@@ -42,17 +42,6 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 logging.getLogger().addHandler(ch)
 
-# A *deficit* exists when we have more jobs that can run on preemptable nodes than we have
-# preemptable nodes. In order to not block these jobs, we want to increase the number of non-
-# preemptable nodes that we have and need for just non-preemptable jobs. However, we may still
-# prefer waiting for preemptable instances to come available.
-#
-# To accommodate this, we set the delta to the difference between the number of provisioned
-# preemptable nodes and the number of nodes that were requested. when the non-preemptable thread
-# wants to provision nodes, it will multiply this delta times a preference for preemptable vs.
-# non-preemptable nodes.
-
-_preemptableNodeDeficit = 0
 
 class RecentJobShapes(object):
     """
@@ -351,6 +340,17 @@ class ScalerThread(ExceptionalThread):
         self.nodeShapes.sort()
         self.ignoredNodes = set()
 
+        # A *deficit* exists when we have more jobs that can run on preemptable 
+        # nodes than we have preemptable nodes. In order to not block these jobs, 
+        # we want to increase the number of non-preemptable nodes that we have and 
+        # need for just non-preemptable jobs. However, we may still
+        # prefer waiting for preemptable instances to come available.
+        # To accommodate this, we set the delta to the difference between the number 
+        # of provisioned preemptable nodes and the number of nodes that were requested. 
+        # Then, when provisioning non-preemptable nodes of the same type, we attempt to 
+        # make up the deficit.
+        self.preemptableNodeDeficit = {nodeType:0 for nodeType in self.nodeTypes}
+
         assert len(self.nodeShapes) > 0
 
         # Monitors the requirements of the N most recently completed jobs
@@ -393,8 +393,6 @@ class ScalerThread(ExceptionalThread):
         self.jobShapes.add(shape)
         
     def tryRun(self):
-        global _preemptableNodeDeficit
-
         while not self.scaler.stop:
             with throttle(self.scaler.config.scaleInterval):
                 # Estimate of number of nodes needed to run recent jobs
@@ -418,6 +416,19 @@ class ScalerThread(ExceptionalThread):
                     logger.info("Estimating %i nodes of shape %s" % (estimatedNodes, nodeShape))
 
 
+                    # If we're scaling a non-preemptable node type, we need to see if we have a 
+                    # deficit of preemptable nodes of this type that we should compensate for.
+                    if not nodeShape.preemptable:
+                        compensation = self.scaler.config.preemptableCompensation
+                        assert 0.0 <= compensation <= 1.0
+                        # The number of nodes we provision as compensation for missing preemptable
+                        # nodes is the product of the deficit (the number of preemptable nodes we did
+                        # _not_ allocate) and configuration preference.
+                        compensationNodes = int(round(self.preemptableNodeDeficit[nodeType] * compensation))
+                        if compensationNodes > 0:
+                            logger.info('Adding %d preemptable nodes of type %s to compensate for a deficit of %d '
+                                        'non-preemptable ones.', compensationNodes, nodeType, self.preemptableNodeDeficit[nodeType])
+                        estimatedNodes += compensationNodes 
                     jobsPerNode = (0 if nodesToRunRecentJobs[nodeShape] <= 0
                                    else len(recentJobShapes) / float(nodesToRunRecentJobs[nodeShape]))
                     if estimatedNodes > 0 and self.totalNodes[nodeShape] < self.maxNodes[nodeShape]:
@@ -452,10 +463,25 @@ class ScalerThread(ExceptionalThread):
                                     estimatedNodes)
                         self.totalNodes[nodeShape] = self.setNodeCount(nodeType=nodeType, numNodes=estimatedNodes, preemptable=nodeShape.preemptable)
 
-                    self._terminateIgnoredNodes()
 
-                    if self.stats:
-                        self.stats.checkStats()
+                    # If we were scaling up a preemptable node type and failed to meet
+                    # our target, we need to update the slack so that non-preemptable nodes will
+                    # be allocated instead and we won't block. If we _did_ meet our target,
+                    # we need to reset the slack to 0.
+                    if nodeShape.preemptable:
+                        if self.totalNodes[nodeShape] < estimatedNodes:
+                            deficit = estimatedNodes - self.totalNodes
+                            logger.info('Preemptable scaler detected deficit of %d nodes of type %s.' % (deficit, nodeType))
+                            self.preemptableNodeDeficit[nodeType] = deficit
+                        else:
+                            self.preemptableNodeDeficit[nodeType] = 0 
+
+                #Attempt to terminate any nodes that we previously designated for 
+                #termination, but which still had workers running.
+                self._terminateIgnoredNodes()
+
+                if self.stats:
+                    self.stats.checkStats()
                     
         self.shutDown()
         logger.info('Scaler exited normally.')
