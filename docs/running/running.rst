@@ -126,7 +126,6 @@ Real-World Example
 For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file.
 
-
 Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
 
 First let's just run it and see what happens.

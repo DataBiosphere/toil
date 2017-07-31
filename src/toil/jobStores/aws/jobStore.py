@@ -344,6 +344,9 @@ class AWSJobStore(AbstractJobStore):
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         info = self.FileInfo.create(jobStoreID)
+        with info.uploadStream() as _:
+            # Empty
+            pass
         info.save()
         log.debug("Created %r.", info)
         return info.fileID

@@ -151,7 +151,7 @@ class ToilTest(unittest.TestCase):
         prefix = ['toil', 'test', strclass(cls)]
         prefix.extend(filter(None, names))
         prefix.append('')
-        temp_dir_path = tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix))
+        temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
 

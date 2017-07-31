@@ -30,15 +30,32 @@ from six.moves.queue import Empty, Queue
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.batchSystems.lsfHelper import parse_memory, per_core_reservation
 
 logger = logging.getLogger( __name__ )
 
 
 
 def prepareBsub(cpu, mem):
-    mem = '' if mem is None else '-R "select[type==X86_64 && mem > ' + str(int(mem/ 1000000)) + '] rusage[mem=' + str(int(mem/ 1000000)) + ']" -M' + str(int(mem/ 1000000)) + '000'
-    cpu = '' if cpu is None else '-n ' + str(int(cpu))
-    bsubline = ["bsub", mem, cpu,"-cwd", ".", "-o", "/dev/null", "-e", "/dev/null"]
+    """
+    Make a bsub commandline to execute.
+
+    params:
+      cpu: number of cores needed
+      mem: number of bytes of memory needed
+    """
+    if mem:
+        if per_core_reservation():
+            mem = parse_memory(float(mem)/1024**3/int(cpu))
+        else:
+            mem = parse_memory(float(mem)/1024**3)
+        bsubMem = '-R "select[type==X86_64 && mem > ' + str(mem) + '] '\
+            'rusage[mem=' + str(mem) + '] -M' +str(mem)
+    else:
+        bsubMem = ''
+    cpuStr = '' if cpu is None else '-n ' + str(int(cpu))
+    bsubline = ["bsub", bsubMem, cpuStr,"-cwd", ".", "-o", "/dev/null", "-e",
+        "/dev/null"]
     lsfArgs = os.getenv('TOIL_LSF_ARGS')
     if lsfArgs:
         bsubline.extend(lsfArgs.split())
