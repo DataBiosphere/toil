@@ -833,6 +833,8 @@ This allows complex networks of services to be created, e.g. Apache Spark
 clusters, within a workflow.
 
 
+.. _checkpoints:
+
 Checkpoints
 -----------
 

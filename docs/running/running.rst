@@ -137,6 +137,11 @@ First let's just run it and see what happens.
    The workflow created a file called ``fileToSort.txt`` in your current directory.
    Have a look at it and notice that it contains a whole lot of sorted lines!
 
+   This workflow does a smart merge sort on a file it generates a file called ``fileToSort.txt``. The sort is *smart*
+   because each step of the process---splitting the file into separate chunks, sorting these chunks, and merging them
+   back together---is compartmentalized into a **job**. Each job can specify it's own resource requirements and will
+   only be run after the jobs it depends upon have run. Jobs without dependencies will be run in parallel.
+
 #. Run with custom options::
 
       $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/
@@ -146,27 +151,76 @@ First let's just run it and see what happens.
    The last option is a built-in Toil option where temporary files unique to a
    job are kept.
 
-To understand what's going on, let's break it down piece by piece.
+To understand the details of what's going on inside, let's break it down piece by piece.
 
-First we have the ``main()`` function.
+Let's start with the ``main()`` function. It looks like a lot of code, but don't worry, we'll break it down piece by
+piece.
 
 .. literalinclude:: ../../src/toil/test/sort/sort.py
     :pyobject: main
 
-First we make a parser to process command line arguments using the `argparse`_ module.
-Next, we can launch the script starting with the job ``setup``
+First we make a parser to process command line arguments using the `argparse`_ module. It's important that we add the
+call to :func:`Job.Runner.addToilOptions` to initialize our parser with all of Toil's default options. Then we add
+the command line arguments unique to this workflow, and parse the input. The help message listed with the arguments
+should give you a pretty good idea of what they can do.
+
+Next we do a little bit of verification of the input arguments. The option ``--fileToSort`` allows you to specify a file
+that needs to be sorted. If this option isn't given, it's here that we make our own file with the call to
+:func:`makeFileToSort`.
+
+Finally we come to the context manager that initializes the workflow. We create a path to the input file prepended with
+``'file://'`` as per the documentation for :func:`toil.common.Toil` when staging a file that is stored locally. Notice
+that we have to check whether or not the workflow is restarting so that we don't import the file more than once. Now
+Finally we can kick off the workflow by calling :func:`toil.common.Toil.start` on the job ``setup``. When the workflow
+ends we capture its output (the sorted file's fileID) and use that in :func:`toil.common.Toil.exportFile` to move the
+sorted file from the job store back into "userland".
+
+Next let's look at the job that begins the actual workflow, ``setup``.
 
 .. literalinclude:: ../../src/toil/test/sort/sort.py
     :pyobject: setup
 
+``setup`` really only does two things. First it writes to the logs using :func:`Job.FileStore.logToMaster` and then
+calls :func:`addChildJobFn`. Child jobs run directly after the current job. This function turns the 'job function'
+``down`` into an actual job and passes in the inputs including an optional resource requirement, ``memory``. The job
+doesn't actually get run until the call to :func:`Job.rv`. Once the job ``down`` finishes, it's output is returned here.
+
+Now we can look at what ``down`` does.
+
+.. literalinclude:: ../../src/toil/test/sort/sort.py
+    :pyobject: down
+
+Down is the recursive part of the workflow. First we read the file into the local filestore by calling
+:func:`Job.FileStore.readGlobalFile`. This puts a copy of the file in the temp directory for this particular job. This
+storage will disappear once this job ends. For a detail explanation of the filestore, job store, and their interfaces
+have a look at :ref:`managingFiles`.
+
+Next ``down`` checks the base case of the recursion: is the length of the input file less than ``N`` (remember ``N``
+was an option we added to the workflow in ``main``). In the base case, we just sort the file, and return the file ID
+of this new sorted file.
+
+If the base case fails, then the file is split into two new tempFiles using :func:`Job.FileStore.getLocalTempFile` and
+the helper function ``copySubRangeOfFile``. Finally we add a follow on Job ``up`` with :func:`Job.addFollowOnJobFn`.
+We've already seen child jobs. A follow-on Job is a job that runs after the current job and *all* of its children have
+completed. Using a follow-on makes sense because ``up`` is responsible for merging the files together and we don't want
+to merge the files together until we *know* they are sorted. Again, the return value of the follow-on job is requested
+using :func:`Job.rv`.
+
+Looking at ``up``
+
+.. literalinclude:: ../../src/toil/test/sort/sort.py
+    :pyobject: up
+
+we see that the two input files are merged together and the output is written to a new file using
+:func:`job.FileStore.writeGlobalFileStream`. After a little cleanup, the output files is returned.
+
+Once the final up finishes and all of the ``rv()`` promises are fulfilled, ``main`` receives the sorted file's ID
+which it uses in ``exportFile`` to send it to the user.
+
+There are other things in this example that we did't go over such as :ref:`checkpoints` and the details of much of the
+the :ref:`api`.
+
 .. _argparse: https://docs.python.org/2.7/library/argparse.html
-
-``setup`` begins by importing the file into the job store where it can be read by this and all following jobs.
-This is done by calling ``job.fileStore.writeGlobalFile``. For more information check out :ref:`managingFiles`.
-
-.. todo:: WIP. I (jesse) will continue this once we can integrate the sort example #1746
-
-..
 
 The ``if __name__ == '__main__'`` boilerplate is required to enable Toil to
 import the job functions defined in the script into the context of a Toil

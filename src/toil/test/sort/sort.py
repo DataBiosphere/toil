@@ -167,6 +167,7 @@ def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
 
 def main(options=None):
     if not options:
+        # deal with command line arguments
         parser = ArgumentParser()
         Job.Runner.addToilOptions(parser)
         parser.add_argument('--numLines', default=defaultLines, help='Number of lines in file to sort.', type=int)
@@ -183,6 +184,7 @@ def main(options=None):
 
     fileName = options.fileToSort
 
+    # do some input verification
     if options.fileToSort is None:
         # make the file ourselves
         fileName = 'fileToSort.txt'
@@ -196,15 +198,15 @@ def main(options=None):
         raise RuntimeError("Invalid value of N: %s" % options.N)
 
     # Now we are ready to run
-    with Toil(options) as toil:
+    with Toil(options) as workflow:
         sortFileURL = 'file://' + os.path.abspath(fileName)
-        if not toil.options.restart:
+        if not workflow.options.restart:
             sortFileURL = 'file://' + os.path.abspath(fileName)
-            sortFileID = toil.importFile(sortFileURL)
-            sortedFileID = toil.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints,
-                                                    memory=sortMemory))
+            sortFileID = workflow.importFile(sortFileURL)
+            sortedFileID = workflow.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints,
+                                                        memory=sortMemory))
         else:
-            sortedFileID = toil.restart()
-        toil.exportFile(sortedFileID, sortFileURL)
+            sortedFileID = workflow.restart()
+        workflow.exportFile(sortedFileID, sortFileURL)
 if __name__ == '__main__':
     main()
