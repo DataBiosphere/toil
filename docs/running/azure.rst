@@ -11,18 +11,7 @@ Running in Azure
    :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
    :alt: Microsoft Azure deploy button
 
-Prepare your Azure environment
-------------------------------
-Follow the steps below to prepare your Azure environment for running a Toil workflow.
-
-#. Create an `Azure account`_.
-
-
-#. Make sure you have an SSH RSA public key, usually stored in
-   ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
-   one.
-
-.. _Azure account: https://azure.microsoft.com/en-us/free/
+To setup Azure, see :ref:`prepare_azure-ref`.
 
 Launch a Toil workflow in Azure
 -------------------------------

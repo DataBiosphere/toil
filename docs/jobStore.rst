@@ -1,6 +1,6 @@
 .. _jobStoreInterface:
 
-Job Store Interface
+Job Store API
 =======================
 
 The job store interface is an abstraction layer that that hides the specific details of file storage,

@@ -37,10 +37,10 @@ A Toil workflow can be run with just three steps.
 
 .. note::
 
-   don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
+   Don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
    they should have their :ref:`virtual environment <venvPrep>` running.
 
-Congradulations! You've run your first Toil workflow on the ``singleMachine`` batch system (the default) using the
+Congratulations! You've run your first Toil workflow on the ``singleMachine`` batch system (the default) using the
 ``file`` job store.
 
 The batch system is what schedules the jobs Toil creates. Toil supports many different kinds of batch systems
@@ -48,13 +48,13 @@ The batch system is what schedules the jobs Toil creates. Toil supports many dif
 The ``singleMachine`` batch system is primarily used to prepare and debug workflows on the
 local machine. Once ready, they can be run on a full-fledged batch system (see :ref:`batchsysteminterface`).
 
-Often during a Toil workflow files are generated and Toil
+Usually, a workflow will generate files, and Toil
 needs a place to keep track of things. The job store is where Toil keeps all of the intermediate files shared
 between jobs. The argument you passed in to your script ``file:my-job-store`` indicated where. The ``file:``
 part just tells Toil you are using the ``file`` job store, which means everything is kept in a temporary directory
 called ``my-job-store``. (Read more about :ref:`jobStoreInterface`.)
 
-Toil is totally customizable! run ``python helloWorld.py --help`` to see a complete list of available options.
+Toil is totally customizable! Run ``python helloWorld.py --help`` to see a complete list of available options.
 
 For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
 
@@ -126,7 +126,6 @@ Real-World Example
 For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file.
 
-.. todo:: What is the point of this example? It could be used as in introduction to developing a workflow. In that case, the structure of the script should be explained.
 
 Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
 
@@ -136,7 +135,7 @@ First let's just run it and see what happens.
 
       $ python sort.py file:jobStore
 
-   It's created a file called ``fileToSort.txt`` in your current directory.
+   The workflow created a file called ``fileToSort.txt`` in your current directory.
    Have a look at it and notice that it contains a whole lot of sorted lines!
 
 #. Run with custom options::
@@ -202,7 +201,7 @@ we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
 output. For more information, see :ref:`loggingRef`.
 
 
-Error handling and resuming pipelines
+Error Handling and Resuming Pipelines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 With Toil, you can recover gracefully from a bug in your pipeline without losing
@@ -262,7 +261,7 @@ The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
 
 
-Collecting statistics
+Collecting Statistics
 ~~~~~~~~~~~~~~~~~~~~~
 
 A Toil pipeline can be run with the ``--stats`` flag to allows collection of
@@ -284,3 +283,83 @@ Once we're done, we can clean up the job store by running
 ::
 
    $ toil clean file:jobStore
+
+
+Launch a Toil Workflow in AWS
+-----------------------------
+After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`),
+the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a distributed cluster just by modifying the run command.
+
+
+#. Launch a cluster in AWS. ::
+
+       (venv) $ toil launch-cluster <cluster-name> \
+	--keyPairName <AWS-key-pair-name> \
+       --nodeType t2.medium \
+	--zone us-west-2a
+
+
+#. Copy ``helloWorld.py`` to the leader node. ::
+
+      	(venv) $ toil rsync-cluster <cluster-name> helloWorld.py :/tmp
+
+#. Login to the cluster leader node. ::
+
+      	(venv) $ toil ssh-cluster <cluster-name>
+
+#. Run the Toil script in the cluster ::
+
+      	$ python /tmp/helloWorld.py
+
+   Along with some other ``INFO`` log messages, you should get the following output in your
+   terminal window: ``Hello, world!, here's a message: You did it!``
+
+
+#. Exit from the SSH connection. ::
+
+      	$ exit
+
+#. Destroy the cluster. ::
+
+      	(venv) $ toil destroy-cluster <cluster-name>
+
+.. _awscwl:
+
+Run a CWL Workflow on AWS
+-------------------------
+After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`),
+the user can run a CWL workflow with Toil on AWS.
+
+#. First launch a node in AWS using the :ref:`launchCluster` command. ::
+
+    	(venv) $ toil launch-cluster <cluster-name> \
+    	--keyPairName <AWS-key-pair-name> \
+    	--nodeType t2.micro \
+    	--zone us-west-2a
+
+#. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the :ref:`rsyncCluster` command. ::
+
+     	(venv) $ toil rsync-cluster <cluster-name> \
+	example.cwl example-job.cwl :/tmp
+
+#. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
+
+      	(venv) $ toil ssh-cluster <cluster-name> \
+      	cwltoil \
+      	/tmp/example.cwl \
+      	/tmp/example-job.yml
+
+   ..  tip::
+
+      When running a CWL workflow on AWS, input files can be provided either on the
+      local file system or in S3 buckets using ``s3://`` URI references. Final output
+      files will be copied to the local file system of the leader node.
+
+#. Destroy the cluster. ::
+
+      	(venv) $ toil destroy-cluster <cluster-name>
+
+
+.. todo:: Autoscaling example
+
+.. todo:: Spark example

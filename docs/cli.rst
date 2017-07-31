@@ -1,17 +1,10 @@
 .. _commandRef:
 
-Command Line Interface
-======================
-
-The Toil command line interface has two parts. The first consists of the options that can
-be specified when running a Toil workflow. These are described directly below.
-
-The second command line interface is the :ref:`clusterRef`.
 
 .. _workflowOptions:
 
 Toil Workflow Options
----------------------
+=====================
 
 Toil provides many command line options when running a toil script (see :ref:`running`),
 or using Toil to run a CWL script. Many of these are described below.
@@ -35,7 +28,7 @@ Toil workflow from within Python using :func:`toil.job.Job.Runner.getDefaultOpti
 .. _loggingRef:
 
 Logging
-^^^^^^^
+-------
 Toil hides stdout and stderr by default except in case of job failure.
 For more robust logging options (default is INFO), use ``--logDebug`` or more generally, use
 ``--logLevel=``, which may be set to either ``OFF`` (or ``CRITICAL``), ``ERROR``, ``WARN`` (or ``WARNING``),
@@ -45,7 +38,7 @@ If large logfiles are a problem, ``--maxLogFileSize`` (in bytes) can be set as w
 prevents logfiles from getting too large.
 
 Stats
-^^^^^
+-----
 The ``--stats`` argument records statistics about the Toil workflow in the job store. After a Toil run has finished,
 the entrypoint ``toil stats <jobStore>`` can be used to return statistics about cpu, memory, job duration, and more.
 The job store will never be deleted with ``--stats``, as it overrides ``--clean``.
@@ -53,12 +46,12 @@ The job store will never be deleted with ``--stats``, as it overrides ``--clean`
 
 
 Restart
-^^^^^^^
+-------
 In the event of failure, Toil can resume the pipeline by adding the argument ``--restart`` and rerunning the
 python script. Toil pipelines can even be edited and resumed which is useful for development or troubleshooting.
 
 Clean
-^^^^^
+-----
 If a Toil pipeline didn't finish successfully, or is using a variation of ``--clean``, the job store will exist
 until it is deleted. ``toil clean <jobStore>`` ensures that all artifacts associated with a job store are removed.
 This is particularly useful for deleting AWS job stores, which reserves an SDB domain as well as an S3 bucket.
@@ -72,14 +65,14 @@ disk space.
 
 
 Batch system
-^^^^^^^^^^^^
+------------
 
 Toil supports several different batch systems using the ``--batchSystem`` argument.
 More information in the :ref:`batchsysteminterface`.
 
 
 Default cores, disk, and memory
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-------------------------------
 
 Toil uses resource requirements to intelligently schedule jobs. The defaults for cores (1), disk (2G), and memory (2G),
 can all be changed using ``--defaultCores``, ``--defaultDisk``, and ``--defaultMemory``. Standard suffixes
@@ -87,7 +80,7 @@ like K, Ki, M, Mi, G or Gi are supported.
 
 
 Job store
-^^^^^^^^^
+---------
 
 Running toil scripts has one required positional argument: the job store.  The default job store is just a path
 to where the user would like the job store to be created. To use the :ref:`quick start <quickstart>` example,
@@ -101,7 +94,7 @@ at :ref:`CloudRunning`. Different types of job store options can be
 looked up in :ref:`jobStoreInterface`.
 
 Miscellaneous
-^^^^^^^^^^^^^
+-------------
 Here are some additional useful arguments that don't fit into another category.
 
 * ``--workDir`` sets the location where temporary directories are created for running jobs.
@@ -118,7 +111,7 @@ defined before launching the Job, i.e:
     export TOIL_SLURM_ARGS="-t 1:00:00 -q fatq"
 
 Running Workflows with Services
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-------------------------------
 
 Toil supports jobs, or clusters of jobs, that run as *services* (see :ref:`service-dev-ref` ) to other
 *accessor* jobs. Example services include server databases or Apache Spark
@@ -146,92 +139,3 @@ and these limits will resolve the issue.
 
 .. _clusterRef:
 
-Cluster Utilities
------------------
-There are several utilities used for starting and managing a Toil cluster using
-the AWS provisioner. They are installed via the ``[aws]`` extra. For installation
-details see :ref:`installProvisioner`. The cluster utilities are used for :ref:`runningAWS` and are comprised of
-``toil launch-cluster``, ``toil rsync-cluster``, ``toil ssh-cluster``, and
-``toil destroy-cluster`` entry points. For a detailed explanation of the cluster
-utilities run::
-
-    toil --help
-
-For information on a specific utility run::
-
-    toil launch-cluster --help
-
-for a full list of its options and functionality.
-
-.. note::
-
-   Boto must be `configured`_ with AWS credentials before using cluster utilities.
-
-.. _configured: http://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration
-
-.. _launchCluster:
-
-launch-cluster
-^^^^^^^^^^^^^^
-
-Running ``toil launch-cluster`` starts up a leader for a cluster. Workers can be
-added to the initial cluster by specifying the ``-w`` option. For an example usage see
-:ref:`launchCluster`. More information can be found using the ``--help`` option.
-
-.. _sshCluster:
-
-ssh-cluster
-^^^^^^^^^^^
-
-Toil provides the ability to ssh into the leader of the cluster. This
-can be done as follows::
-
-    $ toil ssh-cluster CLUSTER-NAME-HERE
-
-This will open a shell on the Toil leader and is used to start an
-:ref:`Autoscaling` run. Issues with docker prevent using ``screen`` and ``tmux``
-when sshing the cluster (The shell doesn't know that it is a TTY which prevents
-it from allocating a new screen session). This can be worked around via::
-
-    $ script
-    $ screen
-
-Simply running ``screen`` within ``script`` will get things working properly again.
-
-Finally, you can execute remote commands with the following syntax::
-
-    $ toil ssh-cluster CLUSTER-NAME-HERE remoteCommand
-
-It is not advised that you run your Toil workflow using remote execution like this
-unless a tool like `nohup <https://linux.die.net/man/1/nohup>`_ is used to insure the
-process does not die if the SSH connection is interrupted.
-
-For an example usage, see :ref:`Autoscaling`.
-
-.. _rsyncCluster:
-
-rsync-cluster
-^^^^^^^^^^^^^
-
-The most frequent use case for the ``rsync-cluster`` utility is deploying your
-Toil script to the Toil leader. Note that the syntax is the same as traditional
-`rsync <https://linux.die.net/man/1/rsync>`_ with the exception of the hostname before
-the colon. This is not needed in ``toil rsync-cluster`` since the hostname is automatically
-determined by Toil.
-
-Here is an example of its usage::
-
-    $ toil rsync-cluster CLUSTER-NAME-HERE \
-       ~/localFile :/remoteDestination
-
-.. _destroyCluster:
-
-destroy-cluster
-^^^^^^^^^^^^^^^
-
-The ``destroy-cluster`` command is the advised way to get rid of any Toil cluster
-launched using the :ref:`launchCluster` command. It ensures that all attached node, volumes, and
-security groups etc. are deleted. If a node or cluster in shut down using Amazon's online portal
-residual resources may still be in use in the background. To delete a cluster run ::
-
-    $ toil destroy-cluster CLUSTER-NAME-HERE

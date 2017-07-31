@@ -1,98 +1,71 @@
+
+.. todo:: Clean up this page
+
 .. _runningAWS:
 
 Running in AWS
 ==============
 
-Prepare your AWS environment
-----------------------------
-#. If necessary, create and activate an `AWS account`_
+Toil jobs can be run on a variety of cloud platforms. Of these, Amazon Web
+Services (AWS) is currently the best-supported solution. Toil provides the
+:ref:`clusterRef` to conveniently create AWS clusters, connect to the leader
+of the cluster, and then launch a workflow that runs distributedly on the
+entire cluster.
 
-#. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
-
-#. Follow `Amazon's instructions`_ to create an SSH key and import it into EC2.
-
-#. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
-
-.. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
-.. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
-.. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
-.. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
-.. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
+The :ref:`StaticProvisioning` section explains how a static cluster (one that
+won't automatically change in size) can be created and provisioned (grown, shrunk, destroyed, etc.).
 
 
-Launch a Toil workflow in AWS
------------------------------
-After having installed the ``aws`` extra for Toil during the :ref:`installation-ref`, the user can run the same ``helloWorld.py`` script from the :ref:`quickstart` on a distributed cluster just by modifying the run command.
+The fastest way to get started with Toil in a cloud environment is by using
+Toil's autoscaling capabilities to handle node provisioning. Autoscaling is a
+powerful and efficient tool for running your cluster in the cloud. It manages
+your cluster for you and scales up or down depending on the workflow's demands.
+
+The :ref:`Autoscaling` section details how to create a cluster and run a workflow
+that will dynamically scale depending on the workflows needs (AWS only, currently).
 
 
-#. Launch a cluster in AWS. ::
-
-       (venv) $ toil launch-cluster <cluster-name> \
-	--keyPairName <AWS-key-pair-name> \
-       --nodeType t2.medium \
-	--zone us-west-2a 
+.. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 
 
-#. Copy ``helloWorld.py`` to the leader node. ::
-
-      	(venv) $ toil rsync-cluster <cluster-name> helloWorld.py :/tmp
-	
-#. Login to the cluster leader node. ::
-
-      	(venv) $ toil ssh-cluster <cluster-name>
-
-#. Run the Toil script in the cluster ::
-
-      	$ python /tmp/helloWorld.py 
-
-.. note::
-
-	Along with some other ``INFO`` log messages, you should get the following output in your 
-	terminal window: ``Hello, world!, here's a message: You did it!``
+To setup AWS, see :ref:`prepare_aws-ref`.
 
 
-#. Exit from the SSH connection. ::
+.. _installProvisioner:
 
-      	$ exit
+Toil Provisioner
+----------------
 
-#. Destroy the cluster. ::
+.. todo:: This section doesn't really make a lot of sense to me (jesse) In fact this whole page needs to be
+   redone or deleted, but I can't quite figure out how...
 
-      	(venv) $ toil destroy-cluster <cluster-name>
+The native Toil provisioner is included in Toil alongside the ``[aws]`` extra and
+allows us to spin up a cluster without any external dependencies.
 
-.. _awscwl:
+Getting started with the native provisioner is simple:
 
-Run a CWL workflow on AWS
--------------------------
-In this section, we describe how to run a CWL workflow with Toil on AWS.
+#. Make sure you have Toil installed with the AWS extras. For detailed instructions see :ref:`extras`.
 
-#. First launch a node in AWS using the :ref:`launchCluster` command. ::
+#. You will need an AWS account and you will need to save your AWS credentials on your local
+   machine. For help setting up an AWS account see
+   `here <http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-set-up.html>`__. For
+   setting up your aws credentials follow instructions
+   `here <http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html#cli-config-files>`__.
 
-    	(venv) $ toil launch-cluster <cluster-name> \
-    	--keyPairName <AWS-key-pair-name> \
-    	--nodeType t2.micro \
-    	--zone us-west-2a
+The Toil provisioner is built around the Toil Appliance, a Docker image that bundles
+Toil and all its requirements (e.g. Mesos). This makes deployment simple across
+platforms, and you can even simulate a cluster locally (see :ref:`appliance_dev` for details).
 
-#. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the :ref:`rsyncCluster` command. ::
+.. admonition:: Choosing Toil Appliance Image
 
-     	(venv) $ toil rsync-cluster <cluster-name> \
-	example.cwl example-job.cwl :/tmp
+    When using the Toil provisioner, the appliance image will be automatically chosen
+    based on the pip installed version of Toil on your system. That choice can be
+    overriden by setting the environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
+    ``TOIL_APPLIANCE_SELF``. See :ref:`envars` for more information on these variables. If
+    you are developing with autoscaling and want to test and build your own
+    appliance have a look at :ref:`appliance_dev`.
 
-#. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
-
-      	(venv) $ toil ssh-cluster <cluster-name> \
-      	cwltoil \
-      	/tmp/example.cwl \
-      	/tmp/example-job.yml
-
-   ..  tip::
-
-      When running a CWL workflow on AWS, input files can be provided either on the
-      local file system or in S3 buckets using ``s3://`` URI references. Final output
-      files will be copied to the local file system of the leader node.
-
-#. Destroy the cluster. ::
-
-      	(venv) $ toil destroy-cluster <cluster-name>
+For information on using the Toil Provisioner have a look at :ref:`Autoscaling`.
 
 Details about Launching a Cluster in AWS
 ----------------------------------------
@@ -122,6 +95,37 @@ For more information on options try::
 
     	(venv) $ toil launch-cluster --help
 
+
+.. _StaticProvisioning:
+
+Static Provisioning
+^^^^^^^^^^^^^^^^^^^
+Toil can be used to manage a cluster in the cloud by using the :ref:`clusterRef`.
+The cluster utilities also make it easy to run a toil workflow directly on this
+cluster. We call this static provisioning because the size of the cluster does not
+change. This is in contrast with :ref:`Autoscaling`.
+
+To launch a cluster with a specific number of worker nodes we use the ``-w`` option.::
+
+    	(venv) $ toil launch-cluster my-cluster --nodeType t2.micro \
+       	-z us-west-2a --keyPairName your-AWS-key-pair-name -w 3
+
+This will spin up a leader node with three additional workers all with the same type.
+
+Now we can follow the instructions under :ref:`runningAWS` to start the workflow
+on the cluster.
+
+Currently static provisioning is only possible during the cluster's creation.
+The ability to add new nodes and remove existing nodes via the native provisioner is
+in development, but can also be achieved through CGCloud_. Of course the cluster can
+always be deleted with the :ref:`destroyCluster` utility.
+
+.. note::
+
+    CGCloud_ also can do static provisioning for an AWS cluster, however it is being phased out in favor on the native provisioner.
+
+.. _CGCloud: https://github.com/BD2KGenomics/cgcloud
+
 Uploading Workflows
 ^^^^^^^^^^^^^^^^^^^
 
@@ -136,12 +140,19 @@ look like::
     If your toil workflow has dependencies have a look at the :ref:`hotDeploying`
     section for a detailed explanation on how to include them.
 
-.. _runningAutoscaling:
+
+.. _Autoscaling:
 
 Running a Workflow with Autoscaling
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The only remaining step is to kick off our Toil run with special autoscaling options.
+
+If you haven't already, take a look at :ref:`installProvisioner` for information
+on getting autoscaling set up before continuing on.
+
+Autoscaling uses the cluster utilities. For more information see :ref:`clusterRef`.
+
 
 First we use the :ref:`sshCluster` utility to log on to the leader. ::
 
@@ -189,32 +200,95 @@ Finally, the ``--preemptableCompensation`` flag can be used to handle cases wher
    ``--mesosMaster``. Using the public IP will prevent the nodes from properly
    discovering each other.
 
-.. _StaticProvisioning:
 
-Static Provisioning
-^^^^^^^^^^^^^^^^^^^
-Toil can be used to manage a cluster in the cloud by using the :ref:`clusterRef`.
-The cluster utilities also make it easy to run a toil workflow directly on this
-cluster. We call this static provisioning because the size of the cluster does not
-change. This is in contrast with :ref:`Autoscaling`.
+.. _clusterRef:
 
-To launch a cluster with a specific number of worker nodes we use the ``-w`` option.::
+Cluster Utilities
+-----------------
+There are several utilities used for starting and managing a Toil cluster using
+the AWS provisioner. They are installed via the ``[aws]`` extra. For installation
+details see :ref:`installProvisioner`. The cluster utilities are used for :ref:`runningAWS` and are comprised of
+``toil launch-cluster``, ``toil rsync-cluster``, ``toil ssh-cluster``, and
+``toil destroy-cluster`` entry points. For a detailed explanation of the cluster
+utilities run::
 
-    	(venv) $ toil launch-cluster my-cluster --nodeType t2.micro \
-       	-z us-west-2a --keyPairName your-AWS-key-pair-name -w 3
+    toil --help
 
-This will spin up a leader node with three additional workers all with the same type.
+For information on a specific utility run::
 
-Now we can follow the instructions under :ref:`runningAWS` to start the workflow
-on the cluster.
+    toil launch-cluster --help
 
-Currently static provisioning is only possible during the cluster's creation.
-The ability to add new nodes and remove existing nodes via the native provisioner is
-in development, but can also be achieved through CGCloud_. Of course the cluster can
-always be deleted with the :ref:`destroyCluster` utility.
+for a full list of its options and functionality.
 
 .. note::
 
-    CGCloud_ also can do static provisioning for an AWS cluster, however it is being phased out in favor on the native provisioner.
+   Boto must be `configured`_ with AWS credentials before using cluster utilities.
 
-.. _CGCloud: https://github.com/BD2KGenomics/cgcloud
+.. _configured: http://boto3.readthedocs.io/en/latest/guide/quickstart.html#configuration
+
+.. _launchCluster:
+
+launch-cluster
+^^^^^^^^^^^^^^
+
+Running ``toil launch-cluster`` starts up a leader for a cluster. Workers can be
+added to the initial cluster by specifying the ``-w`` option. For an example usage see
+:ref:`launchCluster`. More information can be found using the ``--help`` option.
+
+.. _sshCluster:
+
+ssh-cluster
+^^^^^^^^^^^
+
+Toil provides the ability to ssh into the leader of the cluster. This
+can be done as follows::
+
+    $ toil ssh-cluster CLUSTER-NAME-HERE
+
+This will open a shell on the Toil leader and is used to start an
+:ref:`Autoscaling` run. Issues with docker prevent using ``screen`` and ``tmux``
+when sshing the cluster (The shell doesn't know that it is a TTY which prevents
+it from allocating a new screen session). This can be worked around via::
+
+    $ script
+    $ screen
+
+Simply running ``screen`` within ``script`` will get things working properly again.
+
+Finally, you can execute remote commands with the following syntax::
+
+    $ toil ssh-cluster CLUSTER-NAME-HERE remoteCommand
+
+It is not advised that you run your Toil workflow using remote execution like this
+unless a tool like `nohup <https://linux.die.net/man/1/nohup>`_ is used to insure the
+process does not die if the SSH connection is interrupted.
+
+For an example usage, see :ref:`Autoscaling`.
+
+.. _rsyncCluster:
+
+rsync-cluster
+^^^^^^^^^^^^^
+
+The most frequent use case for the ``rsync-cluster`` utility is deploying your
+Toil script to the Toil leader. Note that the syntax is the same as traditional
+`rsync <https://linux.die.net/man/1/rsync>`_ with the exception of the hostname before
+the colon. This is not needed in ``toil rsync-cluster`` since the hostname is automatically
+determined by Toil.
+
+Here is an example of its usage::
+
+    $ toil rsync-cluster CLUSTER-NAME-HERE \
+       ~/localFile :/remoteDestination
+
+.. _destroyCluster:
+
+destroy-cluster
+^^^^^^^^^^^^^^^
+
+The ``destroy-cluster`` command is the advised way to get rid of any Toil cluster
+launched using the :ref:`launchCluster` command. It ensures that all attached node, volumes, and
+security groups etc. are deleted. If a node or cluster in shut down using Amazon's online portal
+residual resources may still be in use in the background. To delete a cluster run ::
+
+    $ toil destroy-cluster CLUSTER-NAME-HERE

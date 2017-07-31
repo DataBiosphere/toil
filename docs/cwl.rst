@@ -1,6 +1,6 @@
 .. _cwl:
 
-CWL In Toil
+CWL in Toil
 ===========
 
 The Common Workflow Language (CWL) is an emerging standard for writing workflows

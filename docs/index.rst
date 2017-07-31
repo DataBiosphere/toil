@@ -28,38 +28,35 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    running/running
 
 .. toctree::
-   :caption: Toil in the Cloud
+   :caption: Running Toil
    :maxdepth: 2
 
-   running/cloud 
-   running/amazon 
-   running/azure 
+   cli
+   cwl
+   running/cloud
+   deploying
+   running/amazon
+   running/azure
    running/openstack
    running/gce
 
+
 .. toctree::
-   :caption: User Guide
+   :caption: Developing Toil Workflows
    :maxdepth: 2
 
-   cwl
-   cli
    developing
-   deploying
-
-.. toctree::
-   :caption: API and Architecture
-   :maxdepth: 2
-
    toilAPI
-   architecture
    batchSystem
    jobStore
 
 .. toctree::
-   :caption: Contributor's Guide
+   :caption: Developer's Guide
    :maxdepth: 2
 
    contributing/contributing
+   architecture
+
 
 .. toctree::
    :caption: Appendices
@@ -69,3 +66,5 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
 
 * :ref:`genindex`
 * :ref:`search`
+
+

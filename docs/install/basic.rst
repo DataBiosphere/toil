@@ -41,7 +41,7 @@ Activate your virtual environment.
     $ source ~/venv/bin/activate
    
 
-Basic installation
+Basic Installation
 ------------------
 
 Toil can be easily installed using pip::
@@ -57,8 +57,7 @@ Extras
 
 Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first
-install any necessary headers and libraries if using the mesos or encryption
-extras (`python-dev`_, `libffi-dev`_). Then run
+install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run
 
 ::
 
@@ -151,3 +150,84 @@ Here's what each extra provides:
 .. _Cryptography: https://cryptography.io/en/latest/installation/
 
 .. _Homebrew: http://brew.sh/
+
+
+.. _building_from_source-ref:
+
+Building from Source
+--------------------
+
+First, clone the source::
+
+   $ git clone https://github.com/BD2KGenomics/toil
+   $ cd toil
+
+Then, create and activate a virtualenv::
+
+   $ virtualenv venv
+   $ . venv/bin/activate
+
+From there, you can list all available Make targets by running ``make``.
+First and foremost, we want to install Toil's build requirements. (These are
+additional packages that Toil needs to be tested and built but not to be run.)
+
+::
+
+    $ make prepare
+
+Now, we can install Toil in `development mode`_ (such that changes to the
+source code will immediately affect the virtualenv)::
+
+    $ make develop
+
+Or, to install with support for all optional :ref:`extras`::
+
+    $ make develop extras=[aws,mesos,azure,google,encryption,cwl]
+
+To build the docs, run ``make develop`` with all extras followed by
+
+::
+
+    $ make docs
+
+.. _development mode: https://pythonhosted.org/setuptools/setuptools.html#development-mode
+
+
+.. _prepare_aws-ref:
+
+Prepare Your AWS Environment
+----------------------------
+
+To use Amazon Web Services (AWS) to run Toil or to just use AWS as a jobstore, first set up and configure
+an account with AWS.
+
+#. If necessary, create and activate an `AWS account`_
+
+#. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
+
+#. Follow `Amazon's instructions`_ to create an SSH key and import it into EC2.
+
+#. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
+
+
+.. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
+.. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
+.. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
+.. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
+.. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
+
+
+.. _prepare_azure-ref:
+
+Prepare your Azure environment
+------------------------------
+Follow the steps below to prepare your Azure environment for running a Toil workflow.
+
+#. Create an `Azure account`_.
+
+
+#. Make sure you have an SSH RSA public key, usually stored in
+   ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
+   one.
+
+.. _Azure account: https://azure.microsoft.com/en-us/free/

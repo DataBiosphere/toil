@@ -2,7 +2,7 @@
 
 .. _batchsysteminterface:
 
-Batch System Interface
+Batch System API
 ==========================
 
 The batch system interface is used by Toil to abstract over different ways of running

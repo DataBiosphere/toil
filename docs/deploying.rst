@@ -51,6 +51,8 @@ as a setuptools distribution.
 Hot-deploying Toil
 ------------------
 
+.. todo:: "Hot-deploying" is a confusing name. What is better?
+
 Toil can be easily deployed to a remote host, given that both Python and Toil
 are present. The first order of business after copying your workflow to each
 host is to create and activate a virtualenv::
