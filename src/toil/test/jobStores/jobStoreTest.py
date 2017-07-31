@@ -980,7 +980,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             # latter to bail out immediatly and failing the assertion that ensure the number of
             # failing tasks.
             time.sleep(.25)
-            if i.next() % 2 == 0:
+            if next(i) % 2 == 0:
                 raise RuntimeError()
 
         with patch('boto.s3.multipart.MultiPartUpload.copy_part_from_key',

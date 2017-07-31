@@ -547,9 +547,9 @@ class ScalerThread(ExceptionalThread):
             else:
                 logger.debug('Not terminating instances %s. Node info: %s', node, nodeInfo)
         # Sort nodes by number of workers and time left in billing cycle
-        nodesToTerminate.sort(key=lambda ((node, nodeInfo)): (
-            nodeInfo.workers if nodeInfo else 1,
-            self.scaler.provisioner.remainingBillingInterval(node))
+        nodesToTerminate.sort(key=lambda node_nodeInfo: (
+            node_nodeInfo[1].workers if node_nodeInfo[1] else 1,
+            self.scaler.provisioner.remainingBillingInterval(node_nodeInfo[0]))
                               )
         if not force:
             # don't terminate nodes that still have > 15% left in their allocated (prepaid) time

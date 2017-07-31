@@ -46,6 +46,7 @@ from bd2k.util.threading import ExceptionalThread
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
 
+logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 
@@ -585,27 +586,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
     >>> hasattr(f, 'test_has__num_one__letter_a')  # should be false because Foo has no test methods
     False
 
-    >>> make_tests(Foo.has, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
-
-    >>> hasattr(f, 'test_has__num_one__letter_a')
-    True
-
-    >>> assert f.test_has__num_one__letter_a() == f.has(1, 'a')
-
-    >>> assert f.test_has__num_one__letter_b() == f.has(1, 'b')
-
-    >>> assert f.test_has__num_two__letter_a() == f.has(2, 'a')
-
-    >>> assert f.test_has__num_two__letter_b() == f.has(2, 'b')
-
-    >>> make_tests(Foo.hasOne, num={'one':1, 'two':2})
-
-    >>> assert f.test_hasOne__num_one() == f.hasOne(1)
-
-    >>> assert f.test_hasOne__num_two() == f.hasOne(2)
-
     """
-
     def pop(d):
         """
         Pops an arbitrary key value pair from a given dict.
@@ -679,7 +660,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
             permuteIntoLeft(left, *pop(kwargs))
 
         # set class attributes
-        targetClass = targetClass or generalMethod.im_class
+        targetClass = targetClass or generalMethod.__class__
         for prmNames, prms in left.items():
             insertMethodToClass()
     else:

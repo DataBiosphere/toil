@@ -445,7 +445,7 @@ class AbstractJobStore(object):
 
         def haveJob(jobId):
             if jobCache is not None:
-                if jobCache.has_key(jobId):
+                if jobId in jobCache:
                     return True
                 else:
                     return self.exists(jobId)

@@ -595,7 +595,7 @@ class MesosBatchSystem(BatchSystemSupport,
         return executor
 
     def getNodes(self, preemptable=None, timeout=600):
-        timeout = timeout or sys.maxint
+        timeout = timeout or sys.maxsize
         return {nodeAddress: executor.nodeInfo
                 for nodeAddress, executor in iteritems(self.executors)
                 if time.time() - executor.lastSeen < timeout
