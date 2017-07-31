@@ -883,10 +883,22 @@ class Toil(object):
             self._batchSystem.setUserScript(userScriptResource)
 
     def importFile(self, srcUrl, sharedFileName=None):
+        """
+        Imports the file at the given URL into job store.
+
+        See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile` for a
+        full description
+        """
         self._assertContextManagerUsed()
         return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
 
     def exportFile(self, jobStoreFileID, dstUrl):
+        """
+        Exports file to destination pointed at by the destination URL.
+
+        See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.exportFile` for a
+        full description
+        """
         self._assertContextManagerUsed()
         self._jobStore.exportFile(jobStoreFileID, dstUrl)
 
