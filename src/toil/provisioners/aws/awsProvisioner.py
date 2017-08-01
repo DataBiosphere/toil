@@ -90,7 +90,7 @@ class AWSProvisioner(AbstractProvisioner):
                 if len(nodeBidTuple) == 2:
                     #This is a preemptable node type, with a spot bid
                     self.preemptableNodeTypes.append(nodeBidTuple[0])
-                    self.spotBids.append(nodeBidTuple[1])
+                    spotBids.append(nodeBidTuple[1])
                 else:
                     self.nonPreemptableNodeTypes.append(nodeTypeStr)
             self.preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True) for nodeType in self.preemptableNodeTypes]
@@ -289,7 +289,7 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.info('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = getSpotZone(self.spotBid, instanceType.name, self.ctx)
+                    kwargs['placement'] = getSpotZone(self.spotBids[nodeType], instanceType.name, self.ctx)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
                                                                    price=self.spotBids[nodeType],

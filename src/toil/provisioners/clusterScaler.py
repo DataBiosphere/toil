@@ -470,7 +470,7 @@ class ScalerThread(ExceptionalThread):
                     # we need to reset the slack to 0.
                     if nodeShape.preemptable:
                         if self.totalNodes[nodeShape] < estimatedNodes:
-                            deficit = estimatedNodes - self.totalNodes
+                            deficit = estimatedNodes - self.totalNodes[nodeType]
                             logger.info('Preemptable scaler detected deficit of %d nodes of type %s.' % (deficit, nodeType))
                             self.preemptableNodeDeficit[nodeType] = deficit
                         else:

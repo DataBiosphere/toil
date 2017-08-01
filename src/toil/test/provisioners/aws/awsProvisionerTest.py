@@ -70,11 +70,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
         self.keyName = os.getenv('TOIL_AWS_KEYNAME')
         self.leaderInstanceType = 't2.medium'
-        self.instanceTypes = ['t2.medium']
+        self.instanceTypes = ["m3.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
-        self.numWorkers = ["2"]
+        self.numWorkers = [2]
         self.numSamples = 2
-        self.spotBid = '0.15'
+        self.spotBid = 0.15
 
     def setUp(self):
         super(AbstractAWSAutoscaleTest, self).setUp()
@@ -117,16 +117,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         raise NotImplementedError()
 
-    def _test(self, spotInstances=False, fulfillableBid=True):
+    def _test(self):
         """
         Does the work of the testing. Many features' test are thrown in here is no particular
         order
-
-        :param spotInstances: Specify if you want to use spotInstances
-        :param fulfillableBid: If false, the bid will never succeed. Used to test bid failure
         """
-        if not fulfillableBid:
-            self.spotBids = ['0.01']
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
@@ -158,10 +153,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--logFile=/home/sort.log',
                        '--provisioner=aws']
 
-        if spotInstances:
-            self.instanceTypes = ["%s:%f" % (instanceType, spotBid) for (instanceType, spotBid) in zip(self.instanceTypes, self.spotBids)]
+        numWorkers = [str(workerNum) for workerNum in self.numWorkers]
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
-                            '--maxNodes=%s' % ",".join(self.numWorkers)])
+                            '--maxNodes=%s' % ",".join(numWorkers)])
 
         self._runScript(toilOptions)
 
@@ -242,12 +236,16 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     @integrative
     @needs_aws
     def testAutoScale(self):
-        self._test(spotInstances=False)
+        self.instanceTypes = ["t2.small"]
+        self.numWorkers = [2]
+        self._test()
 
     @integrative
     @needs_aws
     def testSpotAutoScale(self):
-        self._test(spotInstances=True)
+        self.instanceTypes = ["t2.small:%f" % self.spotBid]
+        self.numWorkers = [2]
+        self._test()
 
 
 @pytest.mark.timeout(1200)
@@ -289,8 +287,6 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     def __init__(self, name):
         super(AWSAutoscaleTestMultipleNodeTypes, self).__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
-        self.instanceTypes = ['t2.small', 'm3.large']
-        self.numWorkers = ["2", "1"]
 
     def setUp(self):
         super(AWSAutoscaleTestMultipleNodeTypes, self).setUp()
@@ -316,12 +312,16 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     @integrative
     @needs_aws
     def testAutoScale(self):
-        self._test(spotInstances=False)
+        self.instanceTypes = ["t2.small", "m3.large"]
+        self.numWorkers = [2,1]
+        self._test()
 
     @integrative
     @needs_aws
     def testSpotAutoScale(self):
-        self._test(spotInstances=True)
+        self.instanceTypes = ["t2.small:0.15", "m3.large:0.15"]
+        self.numWorkers = [2,1]
+        self._test()
 
 @pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
@@ -336,6 +336,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
     def setUp(self):
         super(AWSRestartTest, self).setUp()
         self.instanceTypes = ['t2.micro']
+        self.numWorkers = [1]
         self.scriptName = "/home/restartScript.py"
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
@@ -383,19 +384,20 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         self._test()
 
 @pytest.mark.timeout(1200)
-class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
+class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
-        super(PremptableDeficitCompensationTest, self).__init__(name)
+        super(PreemptableDeficitCompensationTest, self).__init__(name)
         self.clusterName = 'deficit-test-' + str(uuid4())
 
     def setUp(self):
-        super(PremptableDeficitCompensationTest, self).setUp()
-        self.instanceTypes = ['m3.large'] # instance needs to be available on the spot market
+        super(PreemptableDeficitCompensationTest, self).setUp()
+        self.instanceTypes = ['m3.large:0.01', "m3.large"] # instance needs to be available on the spot market
+        self.numWorkers = [1,1]
         self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
     def test(self):
-        self._test(spotInstances=True, fulfillableBid=False)
+        self._test()
 
     def _getScript(self):
         def userScript():
@@ -425,6 +427,8 @@ class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         AWSProvisioner._sshAppliance(self.leader.ip_address, 'tee', '/home/userScript.py', input=script)
 
     def _runScript(self, toilOptions):
+        toilOptions.extend([
+            '--preemptableCompensation=1.0'])
         command = ['/home/venv/bin/python', '/home/userScript.py']
         command.extend(toilOptions)
         self.sshUtil(command)
