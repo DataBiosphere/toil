@@ -175,7 +175,7 @@ additional packages that Toil needs to be tested and built but not to be run.)
 
     $ make prepare
 
-Now, we can install Toil in `development mode`_ (such that changes to the
+Now, we can install Toil in development mode (such that changes to the
 source code will immediately affect the virtualenv)::
 
     $ make develop

@@ -134,10 +134,10 @@ First let's just run it and see what happens.
 
       $ python sort.py file:jobStore
 
-   The workflow created a file called ``fileToSort.txt`` in your current directory.
+   The workflow created a file called ``sortedFile.txt`` in your current directory.
    Have a look at it and notice that it contains a whole lot of sorted lines!
 
-   This workflow does a smart merge sort on a file it generates a file called ``fileToSort.txt``. The sort is *smart*
+   This workflow does a smart merge sort on a file it generates. A file called ``fileToSort.txt``. The sort is *smart*
    because each step of the process---splitting the file into separate chunks, sorting these chunks, and merging them
    back together---is compartmentalized into a **job**. Each job can specify it's own resource requirements and will
    only be run after the jobs it depends upon have run. Jobs without dependencies will be run in parallel.
@@ -151,8 +151,7 @@ First let's just run it and see what happens.
    The last option is a built-in Toil option where temporary files unique to a
    job are kept.
 
-To understand the details of what's going on inside, let's break it down piece by piece.
-
+To understand the details of what's going on inside.
 Let's start with the ``main()`` function. It looks like a lot of code, but don't worry, we'll break it down piece by
 piece.
 
@@ -170,7 +169,7 @@ that needs to be sorted. If this option isn't given, it's here that we make our 
 
 Finally we come to the context manager that initializes the workflow. We create a path to the input file prepended with
 ``'file://'`` as per the documentation for :func:`toil.common.Toil` when staging a file that is stored locally. Notice
-that we have to check whether or not the workflow is restarting so that we don't import the file more than once. Now
+that we have to check whether or not the workflow is restarting so that we don't import the file more than once.
 Finally we can kick off the workflow by calling :func:`toil.common.Toil.start` on the job ``setup``. When the workflow
 ends we capture its output (the sorted file's fileID) and use that in :func:`toil.common.Toil.exportFile` to move the
 sorted file from the job store back into "userland".
@@ -212,7 +211,7 @@ Looking at ``up``
     :pyobject: up
 
 we see that the two input files are merged together and the output is written to a new file using
-:func:`job.FileStore.writeGlobalFileStream`. After a little cleanup, the output files is returned.
+:func:`job.FileStore.writeGlobalFileStream`. After a little cleanup, the output file is returned.
 
 Once the final up finishes and all of the ``rv()`` promises are fulfilled, ``main`` receives the sorted file's ID
 which it uses in ``exportFile`` to send it to the user.
@@ -233,9 +232,9 @@ Mesos the worker processes will typically be started on separate machines. The
 boilerplate ensures that the pipeline is only started once–on the leader–but
 not when its job functions are imported and executed on the individual workers.
 
-Typing ``python toil-sort-example.py --help`` will show the complete list of
+Typing ``python sort.py --help`` will show the complete list of
 arguments for the workflow which includes both Toil's and ones defined inside
-``toil-sort-example.py``. A complete explanation of Toil's arguments can be
+``sort.py``. A complete explanation of Toil's arguments can be
 found in :ref:`commandRef`.
 
 
@@ -247,7 +246,7 @@ in addition to messages from the batch system and jobs. This can be configured
 with the ``--logLevel`` flag. For example, to only log ``CRITICAL`` level
 messages to the screen::
 
-   $ python toil-sort-example.py file:jobStore --logLevel=critical
+   $ python sort.py file:jobStore --logLevel=critical
 
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
@@ -260,18 +259,18 @@ Error Handling and Resuming Pipelines
 With Toil, you can recover gracefully from a bug in your pipeline without losing
 any progress from successfully-completed jobs. To demonstrate this, let's add
 a bug to our example code to see how Toil handles a failure and how we can
-resume a pipeline after that happens. Add a bad assertion to line 30 of the
+resume a pipeline after that happens. Add a bad assertion at line 52 of the
 example (the first line of ``down()``):
 
 .. code-block:: python
 
-   def down(job, input_file_store_id, n, down_checkpoints):
+   def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
        ...
        assert 1 == 2, "Test error!"
 
 When we run the pipeline, Toil will show a detailed failure log with a traceback::
 
-   $ python toil-sort-example.py file:jobStore
+   $ python sort.py file:jobStore
    ...
    ---TOIL WORKER OUTPUT LOG---
    ...
@@ -293,11 +292,11 @@ that a job store of the same name already exists. By default, in the event of a
 failure, the job store is preserved so that it can be restarted from its last
 successful job. We can restart the pipeline by running::
 
-   $ python toil-sort-example.py file:jobStore --restart
+   $ python sort.py file:jobStore --restart
 
 We can also change the number of times Toil will attempt to retry a failed job::
 
-   $ python toil-sort-example.py --retryCount 2 --restart
+   $ python sort.py --retryCount 2 --restart
 
 You'll now see Toil attempt to rerun the failed job until it runs out of tries.
 ``--retryCount`` is useful for non-systemic errors, like downloading a file that
@@ -308,7 +307,7 @@ line 30, or remove it, and then run
 
 ::
 
-   $ python toil-sort-example.py --restart
+   $ python sort.py --restart
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
@@ -320,7 +319,7 @@ Collecting Statistics
 A Toil pipeline can be run with the ``--stats`` flag to allows collection of
 statistics::
 
-   $ python toil-sort-example.py --stats
+   $ python sort.py --stats
 
 Once the pipeline finishes, the job store will be left behind, allowing us to
 get information on the total runtime and stats pertaining to each job function::
