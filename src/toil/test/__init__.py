@@ -537,7 +537,7 @@ def timeLimit(seconds):
 # FIXME: move to bd2k-python-lib
 
 
-def make_tests(generalMethod, targetClass=None, **kwargs):
+def make_tests(generalMethod, targetClass, **kwargs):
     """
     This method dynamically generates test methods using the generalMethod as a template. Each
     generated function is the result of a unique combination of parameters applied to the
@@ -569,7 +569,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
     >>> class Bar(Foo):
     ...     pass
 
-    >>> make_tests(Foo.has, targetClass=Bar, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
+    >>> make_tests(Foo.has, Bar, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
 
     >>> b = Bar()
 

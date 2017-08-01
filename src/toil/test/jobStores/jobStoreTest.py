@@ -453,7 +453,7 @@ class AbstractJobStoreTest:
                 self.assertEqual(fileMD5, other._hashTestFile(dstUrl))
 
             make_tests(testImportExportFile,
-                       targetClass=cls,
+                       cls,
                        otherCls=activeTestClassesByName,
                        size=dict(zero=0,
                                  one=1,
@@ -482,7 +482,7 @@ class AbstractJobStoreTest:
                 self.assertEqual(fileMD5, srcMd5)
 
             make_tests(testImportSharedFile,
-                       targetClass=cls,
+                       cls,
                        otherCls=activeTestClassesByName)
 
         def testImportHttpFile(self):
