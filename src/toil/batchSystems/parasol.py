@@ -50,7 +50,7 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(ParasolBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
-        if maxMemory != sys.maxint:
+        if maxMemory != sys.maxsize:
             logger.warn('The Parasol batch system does not support maxMemory.')
         # Keep the name of the results file for the pstat2 command..
         command = config.parasolCommand

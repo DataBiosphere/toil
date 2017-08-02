@@ -675,7 +675,7 @@ class Leader:
         jobsToKill = []
         for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(runningJobs)):
             jobStoreID = self.getJobStoreID(jobBatchSystemID)
-            if self.reissueMissingJobs_missingHash.has_key(jobBatchSystemID):
+            if jobBatchSystemID in self.reissueMissingJobs_missingHash:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] += 1
             else:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] = 1
