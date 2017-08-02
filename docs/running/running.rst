@@ -361,7 +361,7 @@ the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a dis
 
 #. Run the Toil script in the cluster ::
 
-      	$ python /tmp/helloWorld.py
+      	$ python /tmp/helloWorld.py file:my-job-store
 
    Along with some other ``INFO`` log messages, you should get the following output in your
    terminal window: ``Hello, world!, here's a message: You did it!``
