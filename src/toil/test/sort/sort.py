@@ -183,11 +183,18 @@ def main(options=None):
         options = parser.parse_args()
 
     fileName = options.fileToSort
+    sortedFileName = "sortedFile.txt"
+    if os.path.exists(sortedFileName):
+            print sortedFileName, "already exists, delete it to run the sort example again"
+            exit()
 
     # do some input verification
     if options.fileToSort is None:
         # make the file ourselves
         fileName = 'fileToSort.txt'
+        if os.path.exists(fileName):
+            print fileName, "already exists, use the --fileToSort option to sort it"
+            exit()
         print 'No sort file specified. Generating one automatically called %s.' % fileName
         makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
     else:
@@ -199,7 +206,7 @@ def main(options=None):
 
     # Now we are ready to run
     with Toil(options) as workflow:
-        sortFileURL = 'file://' + os.path.abspath(fileName)
+        sortedFileURL = 'file://' + os.path.abspath(sortedFileName)
         if not workflow.options.restart:
             sortFileURL = 'file://' + os.path.abspath(fileName)
             sortFileID = workflow.importFile(sortFileURL)
@@ -207,6 +214,6 @@ def main(options=None):
                                                         memory=sortMemory))
         else:
             sortedFileID = workflow.restart()
-        workflow.exportFile(sortedFileID, sortFileURL)
+        workflow.exportFile(sortedFileID, sortedFileURL)
 if __name__ == '__main__':
     main()
