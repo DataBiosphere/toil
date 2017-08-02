@@ -117,7 +117,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         raise NotImplementedError()
 
-    def _test(self):
+    def _test(self, preemptableJobs=False):
         """
         Does the work of the testing. Many features' test are thrown in here is no particular
         order
@@ -156,6 +156,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
         numWorkers = [str(workerNum) for workerNum in self.numWorkers]
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
                             '--maxNodes=%s' % ",".join(numWorkers)])
+        if preemptableJobs:
+            toilOptions.extend(['--defaultPreemptable'])
 
         self._runScript(toilOptions)
 
@@ -236,16 +238,16 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     @integrative
     @needs_aws
     def testAutoScale(self):
-        self.instanceTypes = ["t2.small"]
+        self.instanceTypes = ["m3.large"]
         self.numWorkers = [2]
         self._test()
 
     @integrative
     @needs_aws
     def testSpotAutoScale(self):
-        self.instanceTypes = ["t2.small:%f" % self.spotBid]
+        self.instanceTypes = ["m3.large:%f" % self.spotBid]
         self.numWorkers = [2]
-        self._test()
+        self._test(preemptableJobs=True)
 
 
 @pytest.mark.timeout(1200)
@@ -259,7 +261,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
 
     def launchCluster(self):
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
-                                     '-w', '2', '--nodeStorage', str(self.requestedLeaderStorage)])
+                                     '--nodeTypes', 't2.small', '-w', '2', '--nodeStorage', str(self.requestedLeaderStorage)])
         ctx = AWSProvisioner._buildContext(self.clusterName)
         nodes = AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)
         nodes.sort(key=lambda x: x.launch_time)
@@ -321,7 +323,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     def testSpotAutoScale(self):
         self.instanceTypes = ["t2.small:0.15", "m3.large:0.15"]
         self.numWorkers = [2,1]
-        self._test()
+        self._test(preemptableJobs=True)
 
 @pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
@@ -397,7 +399,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
     def test(self):
-        self._test()
+        self._test(preemptableJobs=True)
 
     def _getScript(self):
         def userScript():

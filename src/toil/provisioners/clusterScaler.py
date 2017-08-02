@@ -57,7 +57,7 @@ class RecentJobShapes(object):
                                                     memory=config.defaultMemory,
                                                     cores=config.defaultCores,
                                                     disk=config.defaultDisk,
-                                                    preemptable=False)])
+                                                    preemptable=True)])
         # Calls to add and getLastNJobShapes may be concurrent
         self.lock = Lock()
         # Number of jobs to average over
@@ -201,7 +201,7 @@ def binPacking(jobShapes, nodeShapes):
             if not reservedSuccessfully:
                 consideredNodes = [nodeShape for nodeShape in nodeShapes if nodeShape.cores >= jS.cores and nodeShape.memory >= jS.memory and nodeShape.disk >= jS.disk and (jS.preemptable or not nodeShape.preemptable)]
                 if len(consideredNodes) == 0:
-                    logger.warn("Provisioner unable to create nodes capable of running job with shape %s" % jS)
+                    logger.warn("Provisioner unable to create nodes capable of running job with shape %s" % str(jS))
                     return
                 nodeShape = consideredNodes[0]
                 x = NodeReservation(subtract(nodeShape, jS))
