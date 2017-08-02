@@ -1,5 +1,6 @@
 import logging
 import os
+import errno
 from abc import ABCMeta
 from abc import abstractmethod
 
@@ -105,10 +106,14 @@ class WritablePipe(object):
             self.writable.close()
             # Closeing the writable end will send EOF to the readable and cause the reader thread
             # to finish.
+            if self.thread is not None:
+                # reraises any exception that was raised in the thread
+                self.thread.join()
+        except:
             if exc_type is None:
-                if self.thread is not None:
-                    # reraises any exception that was raised in the thread
-                    self.thread.join()
+                # Only raise the child exception if there wasn't
+                # already an exception in the main thread
+                raise
         finally:
             # The responsibility for closing the readable end is generally that of the reader
             # thread. To cover the small window before the reader takes over we also close it here.
@@ -200,7 +205,7 @@ class ReadablePipe(object):
         except IOError as e:
             # The other side of the pipe may have been closed by the
             # reading thread, which is OK.
-            if e.strerror != 'Broken pipe':
+            if e.errno != errno.EPIPE:
                 raise
 
     def __init__(self):
@@ -221,7 +226,12 @@ class ReadablePipe(object):
         # still be writing to the other end, but this will wake it up
         # if that's the case.
         self.readable.close()
-        if exc_type is None:
+        try:
             if self.thread is not None:
                 # reraises any exception that was raised in the thread
                 self.thread.join()
+        except:
+            if exc_type is None:
+                # Only raise the child exception if there wasn't
+                # already an exception in the main thread
+                raise
