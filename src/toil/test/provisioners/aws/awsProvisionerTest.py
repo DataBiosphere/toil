@@ -318,13 +318,6 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         self.numWorkers = [2,1]
         self._test()
 
-    @integrative
-    @needs_aws
-    def testSpotAutoScale(self):
-        self.instanceTypes = ["t2.small:0.15", "m3.large:0.15"]
-        self.numWorkers = [2,1]
-        self._test(preemptableJobs=True)
-
 @pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """
