@@ -162,8 +162,9 @@ def getFile(fileStore, dir, fileTuple, index=None, export=False, primary=None, r
         srcPath = fileStore.readGlobalFile(fileStoreID)
         if srcPath != dstPath:
             if os.path.exists(dstPath):
-                if index.get(dstPath, None) != fileStoreID:
-                    raise Exception("Conflicting filesStoreID %s and %s both trying to link to %s" % (index.get(dstPath, None), fileStoreID, dstPath))
+                if (index.get(dstPath, None) != fileStoreID):
+                    raise Exception("Conflicting filesStoreID %s and %s both trying to link to %s" %
+                                    (index.get(dstPath, None), fileStoreID, dstPath))
             else:
                 os.symlink(srcPath, dstPath)
                 existing[srcPath] = dstPath
@@ -184,8 +185,8 @@ def writeFile(writeFunc, index, existing, x):
     elif x.startswith("_:"):
         return None
     else:
+        x = existing.get(x, x)
         if x not in index:
-            x = existing.get(x, x)
             if not urlparse.urlparse(x).scheme:
                 rp = os.path.realpath(x)
             else:
