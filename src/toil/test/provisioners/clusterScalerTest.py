@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 
 # FIXME: Temporary log stuff - needs to be move to test setup
 
-if True:
+if False:
     logger.setLevel(logging.DEBUG)
     import sys
 

@@ -112,7 +112,8 @@ class Leader:
         # Map of batch system IDs to IsseudJob tuples
         self.jobBatchSystemIDToIssuedJob = {}
 
-
+        # Number of preempetable jobs currently being run by batch system
+        self.preemptableJobsIssued = 0
 
         # Tracking the number service jobs issued,
         # this is used limit the number of services issued to the batch system
@@ -129,11 +130,7 @@ class Leader:
         # Class used to create/destroy nodes in the cluster, may be None if
         # using a statically defined cluster
         self.provisioner = provisioner
-
-        # Number of preempetable jobs currently being run by batch system
-        
-        self.preemptableJobsIssued = 0
-
+ 
         # Create cluster scaling thread if the provisioner is not None
         self.clusterScaler = None if self.provisioner is None else ClusterScaler(self.provisioner, self, self.config)
 

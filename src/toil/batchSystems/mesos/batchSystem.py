@@ -110,7 +110,7 @@ class MesosBatchSystem(BatchSystemSupport,
         self.hostToJobIDs = {}
 
         # see self.setNodeFilter
-        self.nodeFilter = set()
+        self.nodeFilter = []
 
         # Dict of launched jobIDs to TaskData objects
         self.runningJobMap = {}

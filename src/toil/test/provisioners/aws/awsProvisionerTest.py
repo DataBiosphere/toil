@@ -207,7 +207,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def _getScript(self):
         fileToSort = os.path.join(os.getcwd(), str(uuid4()))
         with open(fileToSort, 'w') as f:
-            # uixme: making this file larger causes the test to hang
+            # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
         self.rsyncUtil(fileToSort, ':/home/sortFile')
