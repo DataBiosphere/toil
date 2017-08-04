@@ -165,7 +165,7 @@ class ClusterScalerTest(ToilTest):
         config.betaInertia = 1.2
         config.scaleInterval = 3
 
-        self._testClusterScaling(config, numJobs=100, numPreemptableJobs=0, nodeType=config.nodeTypes[0])
+        self._testClusterScaling(config, numJobs=100, numPreemptableJobs=0, jobShape=config.nodeTypes[0])
         
     def testClusterScalingMultipleNodeTypes(self):
 
