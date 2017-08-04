@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 
+from builtins import range
 from contextlib import contextmanager
 import logging
 import pickle as pickler
@@ -404,7 +405,7 @@ class FileJobStore(AbstractJobStore):
         :rtype : string, path to temporary directory in which to place files/directories.
         """
         tempDir = self.tempFilesDir
-        for i in xrange(self.levels):
+        for i in range(self.levels):
             tempDir = os.path.join(tempDir, random.choice(self.validDirs))
             if not os.path.exists(tempDir):
                 try:

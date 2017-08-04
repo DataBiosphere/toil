@@ -13,6 +13,9 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from past.builtins import cmp
+from builtins import str
+from builtins import object
 import sys
 
 if sys.version_info >= (3, 0):
@@ -21,7 +24,7 @@ if sys.version_info >= (3, 0):
     def cmp(a, b):
         return (a > b) - (a < b)
 
-class MemoryString:
+class MemoryString(object):
     def __init__(self, string):
         if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G' or string[-1] == 'T': #10K
             self.unit = string[-1]

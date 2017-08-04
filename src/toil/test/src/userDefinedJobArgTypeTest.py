@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from builtins import object
 import sys
 from subprocess import check_call
 from toil.job import Job

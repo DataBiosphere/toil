@@ -15,6 +15,9 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+from builtins import str
+from builtins import range
+from builtins import object
 import filecmp
 from abc import abstractmethod, ABCMeta
 from struct import pack, unpack
@@ -37,25 +40,25 @@ import unittest
 
 # Python 3 compatibility imports
 from six.moves import xrange
+from future.utils import with_metaclass
 
 # Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
 testingIsAutomatic = True
 
 
-class hidden:
+class hidden(object):
     """
     Hiding the abstract test classes from the Unittest loader so it can be inherited in different
     test suites for the different job stores.
     """
-    class AbstractFileStoreTest(ToilTest):
+    class AbstractFileStoreTest(with_metaclass(ABCMeta, ToilTest)):
         """
         An abstract base class for testing the various general functions described in
         :class:toil.fileStore.FileStore
         """
         # This is overwritten in the inheriting classs
         jobStoreType = None
-        __metaclass__ = ABCMeta
 
         def _getTestJobStore(self):
             if self.jobStoreType == 'file':
@@ -128,7 +131,7 @@ class hidden:
             fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
                                                fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
-            localFileIDs.add(writtenFiles.keys()[0])
+            localFileIDs.add(list(writtenFiles.keys())[0])
             i = 0
             while i <= numIters:
                 randVal = random.random()
@@ -144,7 +147,7 @@ class hidden:
                     if len(writtenFiles) == 0:
                         continue
                     else:
-                        fsID, rdelFileSize = random.choice(writtenFiles.items())
+                        fsID, rdelFileSize = random.choice(list(writtenFiles.items()))
                         rdelRandVal = random.random()
                     if randVal < 0.66:  # Read
                         mutable = True if random.random() <= 0.5 else False
@@ -437,24 +440,22 @@ class hidden:
 
             return job.fileStore.writeGlobalFile(testFile.name), testFile
 
-    class AbstractNonCachingFileStoreTest(AbstractFileStoreTest):
+    class AbstractNonCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
         """
         Abstract tests for the the various functions in :class:toil.fileStore.NonCachingFileStore.
         These tests are general enough that they can also be used for
         :class:toil.fileStore.CachingFileStore.
         """
-        __metaclass__ = ABCMeta
 
         def setUp(self):
             super(hidden.AbstractNonCachingFileStoreTest, self).setUp()
             self.options.disableCaching = True
 
-    class AbstractCachingFileStoreTest(AbstractFileStoreTest):
+    class AbstractCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
         """
         Abstract tests for the the various cache-related functions in
         :class:toil.fileStore.CachingFileStore.
         """
-        __metaclass__ = ABCMeta
 
         def setUp(self):
             super(hidden.AbstractCachingFileStoreTest, self).setUp()
@@ -471,11 +472,11 @@ class hidden:
             self.options.retryCount = 20
             self.options.badWorker = 0.5
             self.options.badWorkerFailInterval = 0.1
-            for test in xrange(0, 20):
+            for test in range(0, 20):
                 E = Job.wrapJobFn(self._uselessFunc)
                 F = Job.wrapJobFn(self._uselessFunc)
                 jobs = {}
-                for i in xrange(0, 10):
+                for i in range(0, 10):
                     jobs[i] = Job.wrapJobFn(self._uselessFunc)
                     E.addChild(jobs[i])
                     jobs[i].addChild(F)
@@ -516,7 +517,7 @@ class hidden:
             Try to acquire a lock on the lock file.  If 2 threads have the lock concurrently, then
             abort.
             """
-            for i in xrange(0, 1000):
+            for i in range(0, 1000):
                 with job.fileStore.cacheLock():
                     cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
                     cacheInfo.nlink += 1
@@ -900,7 +901,7 @@ class hidden:
                               fileMB=256)
             B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
             jobs = {}
-            for i in xrange(0, 10):
+            for i in range(0, 10):
                 jobs[i] = Job.wrapJobFn(self._multipleFileReader, diskMB=1024, fsID=A.rv(),
                                         maxWriteFile=os.path.abspath(x.name), disk='1G',
                                         memory='10M', cores=1)
@@ -1015,9 +1016,9 @@ class hidden:
             cls = hidden.AbstractCachingFileStoreTest
             fsId = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True, fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
-            if job.fileStore._fileIsCached(writtenFiles.keys()[0]):
+            if job.fileStore._fileIsCached(list(writtenFiles.keys())[0]):
                 cached += writeFileSize * 1024 * 1024
-            localFileIDs[writtenFiles.keys()[0]].append('local')
+            localFileIDs[list(writtenFiles.keys())[0]].append('local')
             cls._requirementsConcur(job, jobDisk, cached)
             i = 0
             while i <= numIters:
@@ -1044,7 +1045,7 @@ class hidden:
                     if len(writtenFiles) == 0:
                         continue
                     else:
-                        fsID, rdelFileSize = random.choice(writtenFiles.items())
+                        fsID, rdelFileSize = random.choice(list(writtenFiles.items()))
                         rdelRandVal = random.random()
                         fileWasCached = job.fileStore._fileIsCached(fsID)
                     if randVal < 0.66:  # Read
@@ -1064,14 +1065,14 @@ class hidden:
                         cls._requirementsConcur(job, jobDisk, cached)
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
-                            if fsID not in localFileIDs.keys():
+                            if fsID not in list(localFileIDs.keys()):
                                 continue
                             job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
                             job.fileStore.deleteGlobalFile(fsID)
                             assert not os.path.exists(job.fileStore.encodedFileID(fsID))
                             writtenFiles.pop(fsID)
-                        if fsID in localFileIDs.keys():
+                        if fsID in list(localFileIDs.keys()):
                             for lFID in localFileIDs[fsID]:
                                 if lFID not in ('non-local', 'mutable'):
                                     jobDisk += rdelFileSize * 1024 * 1024

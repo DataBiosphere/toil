@@ -14,6 +14,9 @@
 
 from __future__ import absolute_import
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import map
 import errno
 import hashlib
 import importlib
@@ -27,7 +30,7 @@ from contextlib import closing
 from io import BytesIO
 from pydoc import locate
 from tempfile import mkdtemp
-from urllib2 import HTTPError
+from urllib.error import HTTPError
 from zipfile import ZipFile
 
 # Python 3 compatibility imports
@@ -122,7 +125,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         resourceRootDirPath = os.environ[cls.rootDirPathEnvName]
         os.environ.pop(cls.rootDirPathEnvName)
         shutil.rmtree(resourceRootDirPath)
-        for k, v in os.environ.items():
+        for k, v in list(os.environ.items()):
             if k.startswith(cls.resourceEnvNamePrefix):
                 os.environ.pop(k)
 

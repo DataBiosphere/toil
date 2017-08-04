@@ -18,6 +18,10 @@
 #OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 #THE SOFTWARE.
 from __future__ import absolute_import
+from __future__ import division
+from builtins import str
+from builtins import range
+from past.utils import old_div
 import logging
 import subprocess
 import time
@@ -48,7 +52,7 @@ def prepareBsub(cpu, mem):
         if per_core_reservation():
             mem = parse_memory(float(mem)/1024**3/int(cpu))
         else:
-            mem = parse_memory(float(mem)/1024**3)
+            mem = parse_memory(old_div(float(mem),1024**3))
         bsubMem = '-R "select[type==X86_64 && mem > ' + str(mem) + '] '\
             'rusage[mem=' + str(mem) + ']" -M' + str(mem)
     else:

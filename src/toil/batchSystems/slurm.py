@@ -13,6 +13,9 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from builtins import str
+from past.utils import old_div
 import logging
 import os
 from pipes import quote
@@ -168,7 +171,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if self.boss.environment:
                 argList = []
                 
-                for k, v in self.boss.environment.iteritems():
+                for k, v in self.boss.environment.items():
                     quoted_value = quote(os.environ[k] if v is None else v)
                     argList.append('{}={}'.format(k, quoted_value))
                     
@@ -176,7 +179,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             
             if mem is not None:
                 # memory passed in is in bytes, but slurm expects megabytes
-                sbatch_line.append('--mem={}'.format(int(mem) / 2 ** 20))
+                sbatch_line.append('--mem={}'.format(old_div(int(mem), 2 ** 20)))
             if cpu is not None:
                 sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
 

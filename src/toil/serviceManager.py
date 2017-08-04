@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import
 
+from builtins import map
+from builtins import object
 import logging
 import time
 
@@ -156,7 +158,7 @@ class ServiceManager( object ):
         self._terminate.set()
         self._serviceStarter.join()
         # Kill any services still running to avoid deadlock
-        for services in self.toilState.servicesIssued.values():
+        for services in list(self.toilState.servicesIssued.values()):
             self.killServices(services, error=True)
         logger.info('... finished shutting down the service manager. Took %s seconds', time.time() - startTime)
 

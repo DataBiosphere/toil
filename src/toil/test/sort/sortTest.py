@@ -13,6 +13,8 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+from builtins import str
+from builtins import range
 import unittest
 import os
 import random
@@ -79,7 +81,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
         :param lineLen: the length of each random line in the file
         """
-        for test in xrange(testNo):
+        for test in range(testNo):
             try:
                 # Specify options
                 options = Job.Runner.getDefaultOptions(jobStoreLocator)
@@ -236,7 +238,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     testNo = 5
 
     def testSort(self):
-        for test in xrange(self.testNo):
+        for test in range(self.testNo):
             tempFile1 = os.path.join(self.tempDir, "fileToSort.txt")
             makeFileToSort(tempFile1)
             lines1 = self._loadFile(tempFile1)
@@ -247,7 +249,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self.assertEquals(lines1, lines2)
 
     def testMerge(self):
-        for test in xrange(self.testNo):
+        for test in range(self.testNo):
             tempFile1 = os.path.join(self.tempDir, "fileToSort1.txt")
             tempFile2 = os.path.join(self.tempDir, "fileToSort2.txt")
             tempFile3 = os.path.join(self.tempDir, "mergedFile.txt")
@@ -266,14 +268,14 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self.assertEquals(lines1, lines2)
 
     def testCopySubRangeOfFile(self):
-        for test in xrange(self.testNo):
+        for test in range(self.testNo):
             tempFile = os.path.join(self.tempDir, "fileToSort1.txt")
             outputFile = os.path.join(self.tempDir, "outputFileToSort1.txt")
             makeFileToSort(tempFile, lines=10, lineLen=defaultLineLen)
             fileSize = os.path.getsize(tempFile)
             assert fileSize > 0
-            fileStart = random.choice(xrange(0, fileSize))
-            fileEnd = random.choice(xrange(fileStart, fileSize))
+            fileStart = random.choice(range(0, fileSize))
+            fileEnd = random.choice(range(fileStart, fileSize))
             fileHandle = open(outputFile, 'w')
             copySubRangeOfFile(tempFile, fileStart, fileEnd, fileHandle)
             fileHandle.close()
@@ -282,7 +284,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self.assertEquals(l, l2)
 
     def testGetMidPoint(self):
-        for test in xrange(self.testNo):
+        for test in range(self.testNo):
             tempFile = os.path.join(self.tempDir, "fileToSort.txt")
             makeFileToSort(tempFile)
             l = open(tempFile, 'r').read()

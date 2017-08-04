@@ -18,6 +18,11 @@
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from builtins import object
 from toil.job import Job
 from toil.common import Toil
 from toil.version import baseVersion
@@ -125,7 +130,7 @@ def _resolve_indirect_inner(d):
 
     if isinstance(d, IndirectDict):
         r = {}
-        for k, v in d.items():
+        for k, v in list(d.items()):
             if isinstance(v, MergeInputs):
                 r[k] = v.resolve()
             else:
@@ -493,7 +498,7 @@ class CWLScatter(Job):
     def flat_crossproduct_scatter(self, joborder, scatter_keys, outputs, postScatterEval):
         scatter_key = shortname(scatter_keys[0])
         l = len(joborder[scatter_key])
-        for n in xrange(0, l):
+        for n in range(0, l):
             jo = copy.copy(joborder)
             jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
@@ -508,7 +513,7 @@ class CWLScatter(Job):
         scatter_key = shortname(scatter_keys[0])
         l = len(joborder[scatter_key])
         outputs = []
-        for n in xrange(0, l):
+        for n in range(0, l):
             jo = copy.copy(joborder)
             jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
@@ -545,10 +550,10 @@ class CWLScatter(Job):
                             None, None, {}, context=v)
                 else:
                     return v
-            return {k: valueFromFunc(k, v) for k,v in io.items()}
+            return {k: valueFromFunc(k, v) for k,v in list(io.items())}
 
         if scatterMethod == "dotproduct":
-            for i in xrange(0, len(cwljob[shortname(scatter[0])])):
+            for i in range(0, len(cwljob[shortname(scatter[0])])):
                 copyjob = copy.copy(cwljob)
                 for sc in [shortname(x) for x in scatter]:
                     copyjob[sc] = cwljob[sc][i]
@@ -584,7 +589,7 @@ class CWLGather(Job):
 
     def allkeys(self, obj, keys):
         if isinstance(obj, dict):
-            for k in obj.keys():
+            for k in list(obj.keys()):
                 keys.add(k)
         elif isinstance(obj, list):
             for l in obj:

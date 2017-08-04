@@ -13,6 +13,12 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from builtins import str
+from builtins import next
+from builtins import range
+from past.utils import old_div
+from builtins import object
 import base64
 import bz2
 import os
@@ -92,7 +98,9 @@ class SDBHelper(object):
 
     maxAttributesPerItem = 256
     maxValueSize = 1024
-    maxRawValueSize = maxValueSize * 3 / 4
+    # in python2 1 / 2 == 0, in python 3 1 / 2 == 0.5
+    # old_div implents the python2 behavior in both 2 & 3
+    maxRawValueSize = old_div(maxValueSize * 3, 4)
     # Just make sure we don't have a problem with padding or integer truncation:
     assert len(base64.b64encode(' ' * maxRawValueSize)) == 1024
     assert len(base64.b64encode(' ' * (1 + maxRawValueSize))) > 1024
@@ -295,7 +303,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
             return part
 
     totalSize = srcKey.size
-    totalParts = (totalSize + partSize - 1) / partSize
+    totalParts = old_div((totalSize + partSize - 1), partSize)
     exceptions = []
     # We need a location-agnostic connection to S3 so we can't use the one that we
     # normally use for interacting with the job store bucket.
@@ -311,10 +319,10 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
             # blocks, waiting on the server. Limit # of threads to 128, since threads aren't
             # exactly free either. Lastly, we don't need more threads than we have parts.
             with ThreadPoolExecutor(max_workers=min(cpu_count() * 16, totalParts, 128)) as executor:
-                parts = list(executor.map(copyPart, xrange(0, totalParts)))
+                parts = list(executor.map(copyPart, range(0, totalParts)))
                 if exceptions:
                     raise RuntimeError('Failed to copy at least %d part(s)' % len(exceptions))
-                assert len(filter(None, parts)) == totalParts
+                assert len([_f for _f in parts if _f]) == totalParts
         except:
             with panic(log=log):
                 upload.cancel_upload()

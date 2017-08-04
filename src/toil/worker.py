@@ -13,6 +13,12 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import map
+from builtins import filter
+from builtins import object
 import os
 import sys
 import copy
@@ -48,7 +54,7 @@ def nextOpenDescriptor():
     os.close(descriptor)
     return descriptor
 
-class AsyncJobStoreWrite:
+class AsyncJobStoreWrite(object):
     def __init__(self, jobStore):
         pass
     
@@ -231,8 +237,7 @@ def main():
         
         if jobGraph.command == None:
             # Cleanup jobs already finished
-            f = lambda jobs : filter(lambda x : len(x) > 0, map(lambda x :
-                                    filter(lambda y : jobStore.exists(y.jobStoreID), x), jobs))
+            f = lambda jobs : [x for x in [[y for y in x if jobStore.exists(y.jobStoreID)] for x in jobs] if len(x) > 0]
             jobGraph.stack = f(jobGraph.stack)
             jobGraph.services = f(jobGraph.services)
             logger.debug("Cleaned up any references to completed successor jobs")
@@ -267,7 +272,7 @@ def main():
             else:
                 logger.debug("The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete.")
                 #Delete any remnant files
-                map(jobStore.deleteFile, filter(jobStore.fileExists, jobGraph.checkpointFilesToDelete))
+                list(map(jobStore.deleteFile, list(filter(jobStore.fileExists, jobGraph.checkpointFilesToDelete))))
 
         ##########################################
         #Setup the stats, if requested

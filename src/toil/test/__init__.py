@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import
 
+from builtins import next
+from builtins import str
 import logging
 import multiprocessing
 import os
@@ -45,6 +47,7 @@ from bd2k.util.threading import ExceptionalThread
 
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
+from future.utils import with_metaclass
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
@@ -150,7 +153,7 @@ class ToilTest(unittest.TestCase):
     @classmethod
     def _createTempDirEx(cls, *names):
         prefix = ['toil', 'test', strclass(cls)]
-        prefix.extend(filter(None, names))
+        prefix.extend([_f for _f in names if _f])
         prefix.append('')
         temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
         cls._tempDirs.append(temp_dir_path)
@@ -625,8 +628,8 @@ def make_tests(generalMethod, targetClass, **kwargs):
         :param right: A dict that pairs 1 or more valueNames and values for the rParamName
                parameter.
         """
-        for prmValName, lDict in left.items():
-            for rValName, rVal in right.items():
+        for prmValName, lDict in list(left.items()):
+            for rValName, rVal in list(right.items()):
                 nextPrmVal = ('__%s_%s' % (rParamName, rValName.lower()))
                 if methodNamePartRegex.match(nextPrmVal) is None:
                     raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
@@ -652,7 +655,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
         # create first left dict
         left = {}
         prmName, vals = pop(kwargs)
-        for valName, val in vals.items():
+        for valName, val in list(vals.items()):
             pvName = '__%s_%s' % (prmName, valName.lower())
             if methodNamePartRegex.match(pvName) is None:
                 raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
@@ -664,7 +667,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
 
         # set class attributes
         targetClass = targetClass or generalMethod.__class__
-        for prmNames, prms in left.items():
+        for prmNames, prms in list(left.items()):
             insertMethodToClass()
     else:
         prms = None
@@ -720,9 +723,7 @@ class ApplianceTestSupport(ToilTest):
             with self.WorkerThread(self, mounts, numCores) as worker:
                 yield leader, worker
 
-    class Appliance(ExceptionalThread):
-        __metaclass__ = ABCMeta
-
+    class Appliance(with_metaclass(ABCMeta, ExceptionalThread)):
         @abstractmethod
         def _getRole(self):
             return 'leader'

@@ -13,7 +13,14 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import map
+from past.utils import old_div
+from builtins import object
 import json
 import logging
 import os
@@ -365,10 +372,10 @@ class ScalerThread(ExceptionalThread):
                 numberOfRunningJobs, currentAvgRuntime  = self.scaler.leader.getNumberAndAvgRuntimeOfCurrentlyRunningJobs()
                 
                 # Average runtime of recently completed jobs
-                historicalAvgRuntime = sum(map(lambda jS : jS.wallTime, recentJobShapes))/len(recentJobShapes)
+                historicalAvgRuntime = old_div(sum([jS.wallTime for jS in recentJobShapes]),len(recentJobShapes))
 
                 # Ratio of avg. runtime of currently running and completed jobs
-                runtimeCorrection = float(currentAvgRuntime)/historicalAvgRuntime if currentAvgRuntime > historicalAvgRuntime and numberOfRunningJobs >= estimatedNodes else 1.0
+                runtimeCorrection = old_div(float(currentAvgRuntime),historicalAvgRuntime) if currentAvgRuntime > historicalAvgRuntime and numberOfRunningJobs >= estimatedNodes else 1.0
                 
                 # Make correction, if necessary (only do so if cluster is busy and average runtime is higher than historical
                 # average)
@@ -394,7 +401,7 @@ class ScalerThread(ExceptionalThread):
                     estimatedNodes += compensationNodes
 
                 jobsPerNode = (0 if nodesToRunRecentJobs <= 0
-                               else len(recentJobShapes) / float(nodesToRunRecentJobs))
+                               else old_div(len(recentJobShapes), float(nodesToRunRecentJobs)))
                 if estimatedNodes > 0 and self.totalNodes < self.maxNodes:
                     logger.info('Estimating that cluster needs %s %s of shape %s, from current '
                                 'size of %s, given a queue size of %s, the number of jobs per node '
@@ -492,7 +499,7 @@ class ScalerThread(ExceptionalThread):
         # each node as the primary criterion to select which nodes to terminate.
         if isinstance(self.scaler.leader.batchSystem, AbstractScalableBatchSystem):
             # iMap = ip : instance
-            ipMap = {node.privateIP: node for node in nodeToNodeInfo.keys()}
+            ipMap = {node.privateIP: node for node in list(nodeToNodeInfo.keys())}
             def filterRemovableNodes(executorInfo):
                 return not bool(self.chooseNodes({ipMap.get(executorInfo.nodeAddress): executorInfo.nodeInfo},
                                                  preemptable=preemptable))
@@ -526,7 +533,7 @@ class ScalerThread(ExceptionalThread):
         # terminated already. There can also be instances that the batch system doesn't have
         # nodes for yet. We'll ignore those, too, unless forced.
         nodesToTerminate = []
-        for node, nodeInfo in nodeToNodeInfo.items():
+        for node, nodeInfo in list(nodeToNodeInfo.items()):
             if node is None:
                 logger.info("Node with info %s was not found in our node list", nodeInfo)
                 continue
@@ -700,7 +707,7 @@ class ClusterStats(object):
             try:
                 while not self.stop:
                     nodeInfo = self.batchSystem.getNodes(preemptable)
-                    for nodeIP in nodeInfo.keys():
+                    for nodeIP in list(nodeInfo.keys()):
                         nodeStats = nodeInfo[nodeIP]
                         if nodeStats is not None:
                             nodeStats = toDict(nodeStats)

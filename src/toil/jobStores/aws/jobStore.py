@@ -14,6 +14,10 @@
 
 from __future__ import absolute_import
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
 from contextlib import contextmanager, closing
 import logging
 
@@ -22,8 +26,8 @@ import uuid
 import base64
 import hashlib
 import itertools
-import urlparse
-import urllib
+import urllib.parse
+import urllib.request, urllib.parse, urllib.error
 
 # Python 3 compatibility imports
 from six.moves import xrange, cPickle, StringIO, reprlib
@@ -598,12 +602,12 @@ class AWSJobStore(AbstractJobStore):
                 # query_auth is False when using an IAM role (see issue #2043). Including the
                 # x-amz-security-token parameter without the access key results in a 403,
                 # even if the resource is public, so we need to remove it.
-                scheme, netloc, path, query, fragment = urlparse.urlsplit(url)
-                params = urlparse.parse_qs(query)
+                scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
+                params = urllib.parse.parse_qs(query)
                 if 'x-amz-security-token' in params:
                     del params['x-amz-security-token']
-                query = urllib.urlencode(params, doseq=True)
-                url = urlparse.urlunsplit((scheme, netloc, path, query, fragment))
+                query = urllib.parse.urlencode(params, doseq=True)
+                url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
                 return url
 
     def getSharedPublicUrl(self, sharedFileName):
@@ -973,7 +977,7 @@ class AWSJobStore(AbstractJobStore):
                                                               version_id=self.previousVersion)
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:
-                    residualChunks = xrange(numNewContentChunks, self._numContentChunks)
+                    residualChunks = range(numNewContentChunks, self._numContentChunks)
                     attributes = [self._chunkName(i) for i in residualChunks]
                     for attempt in retry_sdb():
                         with attempt:

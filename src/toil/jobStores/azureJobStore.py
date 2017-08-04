@@ -14,6 +14,11 @@
 
 from __future__ import absolute_import
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from builtins import object
 import bz2
 import inspect
 import logging
@@ -525,7 +530,7 @@ class AzureJobStore(AbstractJobStore):
         This will never cause a collision if uuids are used, but
         otherwise may not be safe.
         """
-        return 'a' + filter(lambda x: x.isalnum(), tableName)
+        return 'a' + [x for x in tableName if x.isalnum()]
 
     # Maximum bytes that can be in any block of an Azure block blob
     # https://github.com/Azure/azure-storage-python/blob/4c7666e05a9556c10154508335738ee44d7cb104/azure/storage/blob/blobservice.py#L106
@@ -777,7 +782,7 @@ class AzureJob(JobGraph):
         :type item: dict
         :rtype: AzureJob
         """
-        chunkedJob = item.items()
+        chunkedJob = list(item.items())
         chunkedJob.sort()
         if len(chunkedJob) == 1:
             # First element of list = tuple, second element of tuple = serialized job

@@ -14,6 +14,10 @@
 
 from __future__ import absolute_import
 
+from builtins import next
+from builtins import filter
+from builtins import str
+from builtins import object
 import ast
 import logging
 import os
@@ -205,12 +209,12 @@ class MesosBatchSystem(BatchSystemSupport,
 
     def getIssuedBatchJobIDs(self):
         jobIds = set(self.jobQueues.jobIDs())
-        jobIds.update(self.runningJobMap.keys())
+        jobIds.update(list(self.runningJobMap.keys()))
         return list(jobIds)
 
     def getRunningBatchJobIDs(self):
         currentTime = dict()
-        for jobID, data in self.runningJobMap.items():
+        for jobID, data in list(self.runningJobMap.items()):
             currentTime[jobID] = time.time() - data.startTime
         return currentTime
 
@@ -465,8 +469,8 @@ class MesosBatchSystem(BatchSystemSupport,
         if not self.nodeFilter:
             return offers
         executorInfoOrNone = [self.executors.get(socket.gethostbyname(offer.hostname)) for offer in offers]
-        executorInfos = filter(None, executorInfoOrNone)
-        executorsToConsider = filter(self.nodeFilter[0], executorInfos)
+        executorInfos = [_f for _f in executorInfoOrNone if _f]
+        executorsToConsider = list(filter(self.nodeFilter[0], executorInfos))
         ipsToConsider = {ex.nodeAddress for ex in executorsToConsider}
         return [offer for offer in offers if socket.gethostbyname(offer.hostname) in ipsToConsider]
 

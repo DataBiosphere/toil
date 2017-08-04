@@ -13,6 +13,9 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
 import os
 import random
 import socket
@@ -92,7 +95,7 @@ class MesosExecutor(mesos.interface.Executor):
 
     def shutdown(self, driver):
         log.critical('Shutting down executor ...')
-        for taskId in self.runningTasks.keys():
+        for taskId in list(self.runningTasks.keys()):
             self.killTask(driver, taskId)
         Resource.cleanSystem()
         BatchSystemSupport.workerCleanup(self.workerCleanupInfo)

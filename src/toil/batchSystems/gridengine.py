@@ -13,6 +13,11 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from builtins import map
+from builtins import str
+from builtins import range
+from past.utils import old_div
 import logging
 import os
 from pipes import quote
@@ -94,11 +99,11 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             if self.boss.environment:
                 qsubline.append('-v')
                 qsubline.append(','.join(k + '=' + quote(os.environ[k] if v is None else v)
-                                         for k, v in self.boss.environment.iteritems()))
+                                         for k, v in self.boss.environment.items()))
 
             reqline = list()
             if mem is not None:
-                memStr = str(mem / 1024) + 'K'
+                memStr = str(old_div(mem, 1024)) + 'K'
                 reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
             if len(reqline) > 0:
                 qsubline.extend(['-hard', '-l', ','.join(reqline)])
@@ -124,7 +129,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def obtainSystemConstants(cls):
-        lines = filter(None, map(str.strip, subprocess.check_output(["qhost"]).split('\n')))
+        lines = [_f for _f in map(str.strip, subprocess.check_output(["qhost"]).split('\n')) if _f]
         line = lines[0]
         items = line.strip().split()
         num_columns = len(items)

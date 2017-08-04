@@ -13,6 +13,10 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+from __future__ import division
+from builtins import range
+from builtins import object
+from past.utils import old_div
 import os
 import logging
 import time
@@ -26,7 +30,7 @@ from toil.batchSystems.mesos.test import MesosTestSupport
 log = logging.getLogger(__name__)
 
 
-class hidden:
+class hidden(object):
     """
     Hide abstract base class from unittest's test case loader.
 
@@ -50,7 +54,7 @@ class hidden:
                                      cores=1, memory='1M', disk='1M')
                 values = Job.Runner.startToil(root, self.getOptions(tempDir))
                 maxValue = max(values)
-                self.assertEqual(maxValue, self.cpuCount / coresPerJob)
+                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
 
         def testConcurrencyStatic(self):
             """
@@ -72,7 +76,7 @@ class hidden:
                                                 disk='1M'))
                 Job.Runner.startToil(root, self.getOptions(tempDir))
                 _, maxValue = batchSystemTest.getCounters(counterPath)
-                self.assertEqual(maxValue, self.cpuCount / coresPerJob)
+                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
 
         def getOptions(self, tempDir, caching=True):
             """
