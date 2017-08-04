@@ -71,7 +71,7 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, downCheckpoints,
                                                       checkpoint=downCheckpoints, options=options, memory=options.sortMemory).rv(),
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, options=options, memory=options.mergeMemory).rv()).rv()
+                                                      checkpoint=downCheckpoints, options=options, memory=options.mergeMemory).rv(), options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
         job.fileStore.logToMaster("Sorting file: %s of size: %s"
