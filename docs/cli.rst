@@ -89,8 +89,7 @@ executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
 ``python HelloWorld.py file:/scratch/my-job-store``. Toil uses the colon as way to explicitly name what type of
 job store the user would like. The other job store types are AWS (``aws:region-here:job-store-name``),
 Azure (``azure:account-name-here:job-store-name``), and the experimental Google
-job store (``google:projectID-here:job-store-name``). More information on these job store can be found
-at :ref:`CloudRunning`. Different types of job store options can be
+job store (``google:projectID-here:job-store-name``). Different types of job store options can be
 looked up in :ref:`jobStoreInterface`.
 
 Miscellaneous

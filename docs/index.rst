@@ -33,7 +33,6 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
 
    cli
    cwl
-   running/cloud
    deploying
    running/amazon
    running/azure

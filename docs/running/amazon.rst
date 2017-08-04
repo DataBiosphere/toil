@@ -9,12 +9,8 @@ Running in AWS
 Toil jobs can be run on a variety of cloud platforms. Of these, Amazon Web
 Services (AWS) is currently the best-supported solution. Toil provides the
 :ref:`clusterRef` to conveniently create AWS clusters, connect to the leader
-of the cluster, and then launch a workflow that runs distributedly on the
-entire cluster.
-
-The :ref:`StaticProvisioning` section explains how a static cluster (one that
-won't automatically change in size) can be created and provisioned (grown, shrunk, destroyed, etc.).
-
+of the cluster, and then launch a workflow. The leader handles distributing
+the jobs over the worker nodes and autoscaling to optimize costs.
 
 The fastest way to get started with Toil in a cloud environment is by using
 Toil's autoscaling capabilities to handle node provisioning. Autoscaling is a
@@ -23,6 +19,9 @@ your cluster for you and scales up or down depending on the workflow's demands.
 
 The :ref:`Autoscaling` section details how to create a cluster and run a workflow
 that will dynamically scale depending on the workflows needs (AWS only, currently).
+
+The :ref:`StaticProvisioning` section explains how a static cluster (one that
+won't automatically change in size) can be created and provisioned (grown, shrunk, destroyed, etc.).
 
 
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
@@ -39,10 +38,10 @@ Toil Provisioner
 .. todo:: This section doesn't really make a lot of sense to me (jesse) In fact this whole page needs to be
    redone or deleted, but I can't quite figure out how...
 
-The native Toil provisioner is included in Toil alongside the ``[aws]`` extra and
-allows us to spin up a cluster without any external dependencies.
+The Toil provisioner is included in Toil alongside the ``[aws]`` extra and
+allows us to spin up a cluster.
 
-Getting started with the native provisioner is simple:
+Getting started with the provisioner is simple:
 
 #. Make sure you have Toil installed with the AWS extras. For detailed instructions see :ref:`extras`.
 
@@ -70,7 +69,7 @@ For information on using the Toil Provisioner have a look at :ref:`Autoscaling`.
 Details about Launching a Cluster in AWS
 ----------------------------------------
 
-Using the provisioner to launch a Toil leader instance is simple using the launch-cluster command.
+Using the provisioner to launch a Toil leader instance is simple using the launch-cluster command. For example, to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run:
 ::
 
     	(venv) $ toil launch-cluster my-cluster \
@@ -87,9 +86,9 @@ The nodeType is an `EC2 instance type`_. This only affects any nodes launched no
 
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 
-The ``-z`` parameter specifies which EC2 availability
+The ``--zone`` parameter specifies which EC2 availability
 zone to launch the cluster in. Alternatively, you can specify this option
-via the ``TOIL_AWS_ZONE`` environment variable. We will assume this environment variable is set for the rest of the tutorial. Note: the zone is different from an EC2 region. A region corresponds to a geographical area like ``us-west-2 (Oregon)``, and availability zones are partitions of this area like ``us-west-2a``.
+via the ``TOIL_AWS_ZONE`` environment variable. Note: the zone is different from an EC2 region. A region corresponds to a geographical area like ``us-west-2 (Oregon)``, and availability zones are partitions of this area like ``us-west-2a``.
 
 For more information on options try::
 
@@ -110,7 +109,7 @@ To launch a cluster with a specific number of worker nodes we use the ``-w`` opt
     	(venv) $ toil launch-cluster my-cluster --nodeType t2.micro \
        	-z us-west-2a --keyPairName your-AWS-key-pair-name -w 3
 
-This will spin up a leader node with three additional workers all with the same type.
+This will spin up a leader node with three additional workers, all using t2.micro VMs.
 
 Now we can follow the instructions under :ref:`runningAWS` to start the workflow
 on the cluster.
@@ -122,7 +121,7 @@ always be deleted with the :ref:`destroyCluster` utility.
 
 .. note::
 
-    CGCloud_ also can do static provisioning for an AWS cluster, however it is being phased out in favor on the native provisioner.
+    CGCloud_ also can do static provisioning for an AWS cluster, however it is being phased out in favor of the Toil provisioner.
 
 .. _CGCloud: https://github.com/BD2KGenomics/cgcloud
 
@@ -133,7 +132,7 @@ Now that our cluster is launched we use the :ref:`rsyncCluster` utility to copy
 the workflow to the leader. For a simple workflow in a single file this might
 look like::
 
-    	(venv) $ toil rysnc-cluster my-cluster ~/toil-workflow.py :/
+    	(venv) $ toil rsync-cluster -z us-west-2a my-cluster toil-workflow.py :/
 
 .. note::
 
@@ -156,7 +155,7 @@ Autoscaling uses the cluster utilities. For more information see :ref:`clusterRe
 
 First we use the :ref:`sshCluster` utility to log on to the leader. ::
 
-    	(venv) $ toil ssh-cluster my-cluster
+    	(venv) $ toil ssh-cluster -z us-west-2a my-cluster
 
 In order for your script to make use of autoscaling you will need to specify the options
 ``--provisioner aws`` and ``--nodeType <>`` where nodeType is the name of an `EC2 instance type`_.
