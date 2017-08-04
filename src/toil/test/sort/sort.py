@@ -185,13 +185,17 @@ def main(options=None):
                                  'the recursive "down" part of the sort')
         parser.add_argument("--sortMemory", dest="sortMemory",
                         help="Memory for jobs that sort chunks of the file.",
-                        default="100M")
+                        default=None)
     
         parser.add_argument("--mergeMemory", dest="mergeMemory",
-                        help="Memor for jobs that collate results.",
-                        default="100M")
+                        help="Memory for jobs that collate results.",
+                        default=None)
 
         options = parser.parse_args()
+    if not hasattr(options, "sortMemory") or not options.sortMemory:
+        options.sortMemory = sortMemory
+    if not hasattr(options, "mergeMemory") or not options.mergeMemory:
+        options.mergeMemory = sortMemory
 
     # do some input verification
     sortedFileName = options.outputFile or "sortedFile.txt"

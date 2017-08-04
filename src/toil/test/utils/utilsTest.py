@@ -93,7 +93,7 @@ class UtilsTest(ToilTest):
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
-            system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro',
+            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro',
                     '--keyPairName=' + keyName, clusterName])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
@@ -106,7 +106,7 @@ class UtilsTest(ToilTest):
 
             # launch preemptable master with same name
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
-                    '--nodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
+                    '--leaderNodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--logLevel=DEBUG'])
 
             # test leader tags
