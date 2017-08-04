@@ -167,7 +167,7 @@ class JobLikeObject(object):
         >>> Job._parseResource('memory', object())
         Traceback (most recent call last):
         ...
-        TypeError: The 'memory' requirement does not accept values that are of <type 'object'>
+        TypeError: The 'memory' requirement does not accept values that are of ...
         """
         assert name in ('memory', 'disk', 'cores')
         if value is None:

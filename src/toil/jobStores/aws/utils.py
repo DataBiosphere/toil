@@ -57,13 +57,13 @@ class SDBHelper(object):
     >>> import os
     >>> H=SDBHelper
     >>> H.presenceIndicator()
-    '000'
+    u'000'
     >>> H.binaryToAttributes(None)
     {}
     >>> H.attributesToBinary({})
     (None, 0)
     >>> H.binaryToAttributes('')
-    {'000': 'VQ=='}
+    {u'000': 'VQ=='}
     >>> H.attributesToBinary({'000': 'VQ=='})
     ('', 1)
 
