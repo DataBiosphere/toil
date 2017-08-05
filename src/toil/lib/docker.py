@@ -122,7 +122,9 @@ def _docker(job,
     if dockerParameters:
         baseDockerCall += dockerParameters
     else:
-        baseDockerCall += ['--rm', '--log-driver', 'none', '-v',
+        if defer is RM:
+            baseDockerCall += ['--rm']
+        baseDockerCall += ['--log-driver', 'none', '-v',
                            os.path.abspath(workDir) + ':/data']
 
     # Ensure the user has passed a valid value for defer
