@@ -237,5 +237,5 @@ Deploying Toil
 Toil comes with the Toil Appliance, a Docker image with Mesos and Toil baked in.
 It's easily deployed, only needs Docker, and allows for workflows to be run in
 single-machine mode and for clusters of VMs to be provisioned. For more
-information, see the :ref:`CloudRunning` section.
+information, see the :ref:`runningAWS` section.
 

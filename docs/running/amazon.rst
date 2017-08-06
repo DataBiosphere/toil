@@ -18,7 +18,7 @@ powerful and efficient tool for running your cluster in the cloud. It manages
 your cluster for you and scales up or down depending on the workflow's demands.
 
 The :ref:`Autoscaling` section details how to create a cluster and run a workflow
-that will dynamically scale depending on the workflows needs (AWS only, currently).
+that will dynamically scale depending on the workflow's needs.
 
 The :ref:`StaticProvisioning` section explains how a static cluster (one that
 won't automatically change in size) can be created and provisioned (grown, shrunk, destroyed, etc.).
@@ -128,7 +128,7 @@ always be deleted with the :ref:`destroyCluster` utility.
 Uploading Workflows
 ^^^^^^^^^^^^^^^^^^^
 
-Now that our cluster is launched we use the :ref:`rsyncCluster` utility to copy
+Now that our cluster is launched, we use the :ref:`rsyncCluster` utility to copy
 the workflow to the leader. For a simple workflow in a single file this might
 look like::
 
@@ -153,11 +153,11 @@ on getting autoscaling set up before continuing on.
 Autoscaling uses the cluster utilities. For more information see :ref:`clusterRef`.
 
 
-First we use the :ref:`sshCluster` utility to log on to the leader. ::
+First, we use the :ref:`sshCluster` utility to log on to the leader. ::
 
     	(venv) $ toil ssh-cluster -z us-west-2a my-cluster
 
-In order for your script to make use of autoscaling you will need to specify the options
+Next, we run the script. In order for your script to make use of autoscaling you will need to specify the options
 ``--provisioner aws`` and ``--nodeType <>`` where nodeType is the name of an `EC2 instance type`_.
 These options, respectively, tell Toil that we are running on AWS (currently the
 only supported autoscaling environment) and which instance type to use for the

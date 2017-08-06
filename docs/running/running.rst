@@ -182,7 +182,7 @@ Next let's look at the job that begins the actual workflow, ``setup``.
 ``setup`` really only does two things. First it writes to the logs using :func:`Job.FileStore.logToMaster` and then
 calls :func:`addChildJobFn`. Child jobs run directly after the current job. This function turns the 'job function'
 ``down`` into an actual job and passes in the inputs including an optional resource requirement, ``memory``. The job
-doesn't actually get run until the call to :func:`Job.rv`. Once the job ``down`` finishes, it's output is returned here.
+doesn't actually get run until the call to :func:`Job.rv`. Once the job ``down`` finishes, its output is returned here.
 
 Now we can look at what ``down`` does.
 
@@ -191,7 +191,7 @@ Now we can look at what ``down`` does.
 
 Down is the recursive part of the workflow. First we read the file into the local filestore by calling
 :func:`Job.FileStore.readGlobalFile`. This puts a copy of the file in the temp directory for this particular job. This
-storage will disappear once this job ends. For a detail explanation of the filestore, job store, and their interfaces
+storage will disappear once this job ends. For a detailed explanation of the filestore, job store, and their interfaces
 have a look at :ref:`managingFiles`.
 
 Next ``down`` checks the base case of the recursion: is the length of the input file less than ``N`` (remember ``N``
@@ -200,7 +200,7 @@ of this new sorted file.
 
 If the base case fails, then the file is split into two new tempFiles using :func:`Job.FileStore.getLocalTempFile` and
 the helper function ``copySubRangeOfFile``. Finally we add a follow on Job ``up`` with :func:`Job.addFollowOnJobFn`.
-We've already seen child jobs. A follow-on Job is a job that runs after the current job and *all* of its children have
+We've already seen child jobs. A follow-on Job is a job that runs after the current job and *all* of its children (and their children and follow-ons) have
 completed. Using a follow-on makes sense because ``up`` is responsible for merging the files together and we don't want
 to merge the files together until we *know* they are sorted. Again, the return value of the follow-on job is requested
 using :func:`Job.rv`.
@@ -213,10 +213,10 @@ Looking at ``up``
 we see that the two input files are merged together and the output is written to a new file using
 :func:`job.FileStore.writeGlobalFileStream`. After a little cleanup, the output file is returned.
 
-Once the final up finishes and all of the ``rv()`` promises are fulfilled, ``main`` receives the sorted file's ID
+Once the final ``up`` finishes and all of the ``rv()`` promises are fulfilled, ``main`` receives the sorted file's ID
 which it uses in ``exportFile`` to send it to the user.
 
-There are other things in this example that we did't go over such as :ref:`checkpoints` and the details of much of the
+There are other things in this example that we didn't go over such as :ref:`checkpoints` and the details of much of the
 the :ref:`api`.
 
 .. _argparse: https://docs.python.org/2.7/library/argparse.html
@@ -289,8 +289,8 @@ When we run the pipeline, Toil will show a detailed failure log with a traceback
 
 If we try and run the pipeline again, Toil will give us an error message saying
 that a job store of the same name already exists. By default, in the event of a
-failure, the job store is preserved so that it can be restarted from its last
-successful job. We can restart the pipeline by running::
+failure, the job store is preserved so that the workflow can be restarted,
+starting from the previously failed jobs. We can restart the pipeline by running::
 
    $ python sort.py file:jobStore --restart
 
@@ -340,7 +340,7 @@ Once we're done, we can clean up the job store by running
 Launch a Toil Workflow in AWS
 -----------------------------
 After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`),
-the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a distributed cluster just by modifying the run command.
+the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.
 
 
 #. Launch a cluster in AWS. ::
@@ -353,11 +353,11 @@ the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a dis
 
 #. Copy ``helloWorld.py`` to the leader node. ::
 
-      	(venv) $ toil rsync-cluster <cluster-name> helloWorld.py :/tmp
+      	(venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> helloWorld.py :/tmp
 
 #. Login to the cluster leader node. ::
 
-      	(venv) $ toil ssh-cluster <cluster-name>
+      	(venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
 #. Run the Toil script in the cluster ::
 
@@ -373,7 +373,7 @@ the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a dis
 
 #. Destroy the cluster. ::
 
-      	(venv) $ toil destroy-cluster <cluster-name>
+      	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
 .. _awscwl:
 
@@ -391,12 +391,12 @@ the user can run a CWL workflow with Toil on AWS.
 
 #. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the :ref:`rsyncCluster` command. ::
 
-     	(venv) $ toil rsync-cluster <cluster-name> \
+     	(venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> \
 	example.cwl example-job.cwl :/tmp
 
 #. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
 
-      	(venv) $ toil ssh-cluster <cluster-name> \
+      	(venv) $ toil ssh-cluster --zone us-west-2a <cluster-name> \
       	cwltoil \
       	/tmp/example.cwl \
       	/tmp/example-job.yml
@@ -409,7 +409,7 @@ the user can run a CWL workflow with Toil on AWS.
 
 #. Destroy the cluster. ::
 
-      	(venv) $ toil destroy-cluster <cluster-name>
+      	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
 
 .. todo:: Autoscaling example
