@@ -1097,7 +1097,7 @@ class CachingFileStore(FileStore):
         :return: A boolean indicating whether the file is hidden or not.
         :rtype: bool
         """
-        assert isinstance(filePath, str)
+        assert isinstance(filePath, (str, bytes))
         # I can safely assume i will never see an empty string because this is always called on
         # the results of an os.listdir()
         return filePath[0] in ('.', '_')

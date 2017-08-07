@@ -496,7 +496,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _toNameSpace(cls, clusterName):
-        assert isinstance(clusterName, str)
+        assert isinstance(clusterName, (str, bytes))
         if any((char.isupper() for char in clusterName)) or '_' in clusterName:
             raise RuntimeError("The cluster name must be lowercase and cannot contain the '_' "
                                "character.")
