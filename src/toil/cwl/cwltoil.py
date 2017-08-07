@@ -29,7 +29,7 @@ import cwltool.expression
 import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
-from cwltool.pathmapper import PathMapper, adjustDirObjs, adjustFileObjs, get_listing, MapperEnt, visit_class
+from cwltool.pathmapper import PathMapper, adjustDirObjs, adjustFileObjs, get_listing, MapperEnt, visit_class, normalizeFilesDirs
 from cwltool.process import shortname, fillInDefaults, compute_checksums, collectFilesAndDirs, stageFiles
 from cwltool.utils import aslist
 import schema_salad.validate as validate
@@ -223,7 +223,6 @@ def writeFile(writeFunc, index, existing, x):
         return index[x]
 
 def uploadFile(uploadfunc, fileindex, existing, uf):
-    cwllogger.info("Upload file %s, index is %s, existing is %s", uf, fileindex, existing)
     if not uf["location"] and uf["path"]:
         uf["location"] = schema_salad.ref_resolver.file_uri(uf["path"])
     uf["location"] = writeFile(uploadfunc,
@@ -301,11 +300,12 @@ class CWLJob(Job):
         except KeyError:
             # fall back to the Toil defined class name if the tool doesn't have an identifier
             pass
+        self.step_inputs = kwargs.get("step_inputs", self.cwltool.tool["inputs"])
         self.executor_options = kwargs
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
-        fillInDefaults(self.cwltool.tool["inputs"], cwljob)
+        fillInDefaults(self.step_inputs, cwljob)
 
         inpdir = os.path.join(fileStore.getLocalTempDir(), "inp")
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
@@ -335,8 +335,6 @@ class CWLJob(Job):
                                                             **opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
-
-        cwllogger.warning("blah3 %s", output)
 
         adjustDirObjs(output, functools.partial(get_listing,
                                                 cwltool.stdfsaccess.StdFsAccess(outdir),
@@ -467,13 +465,13 @@ class CWLGather(Job):
             for l in obj:
                 cp.append(self.extract(l, k))
             return cp
+        else:
+            return []
 
     def run(self, fileStore):
         outobj = {}
-        keys = set()
-        self.allkeys(self.outputs, keys)
 
-        for k in keys:
+        for k in [shortname(i) for i in self.step.tool["out"]]:
             outobj[k] = self.extract(self.outputs, k)
 
         return outobj
@@ -514,6 +512,8 @@ class CWLWorkflow(Job):
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.executor_options = kwargs
+        if "step_inputs" in self.executor_options:
+            del self.executor_options["step_inputs"]
         self.cwlwf = remove_pickle_problems(self.cwlwf)
 
     def run(self, fileStore):
@@ -591,6 +591,7 @@ class CWLWorkflow(Job):
                             wfjob.addFollowOn(followOn)
                         else:
                             (wfjob, followOn) = makeJob(step.embedded_tool, IndirectDict(jobobj),
+                                                        step_inputs=step.tool["inputs"],
                                                         **self.executor_options)
 
                         jobs[step.tool["id"]] = followOn
@@ -650,6 +651,12 @@ def unsupportedRequirementsCheck(requirements):
                 if isinstance(l, dict) and l.get("writable"):
                     raise cwltool.process.UnsupportedRequirement("CWL writable InitialWorkDirRequirement not yet supported in Toil")
 
+def visitSteps(t, op):
+    if isinstance(t, cwltool.workflow.Workflow):
+        for s in t.steps:
+            op(s.tool)
+            visitSteps(s.embedded_tool, op)
+
 def main(args=None, stdout=sys.stdout):
     parser = argparse.ArgumentParser()
     Job.Runner.addToilOptions(parser)
@@ -689,43 +696,49 @@ def main(args=None, stdout=sys.stdout):
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
-    useStrict = not options.not_strict
-    try:
-        t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool,
-                                        resolver=cwltool.resolver.tool_resolver, strict=useStrict)
-        unsupportedRequirementsCheck(t.requirements)
-    except cwltool.process.UnsupportedRequirement as e:
-        logging.error(e)
-        return 33
-
-    if type(t) == int:
-        return t
-
-    options.workflow = options.cwltool
-    options.job_order = options.cwljob
-    job = cwltool.main.load_job_order(options, t, sys.stdin)
-
-    if type(job) == int:
-        return job
-
-    job, options.basedir = job
-
-    fillInDefaults(t.tool["inputs"], job)
-
-    outdir = options.outdir
-
     with Toil(options) as toil:
         if options.restart:
             outobj = toil.restart()
         else:
+            useStrict = not options.not_strict
+            try:
+                t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool,
+                                                resolver=cwltool.resolver.tool_resolver, strict=useStrict)
+                unsupportedRequirementsCheck(t.requirements)
+            except cwltool.process.UnsupportedRequirement as e:
+                logging.error(e)
+                return 33
+
+            if type(t) == int:
+                return t
+
+            options.workflow = options.cwltool
+            options.job_order = options.cwljob
+            job = cwltool.main.load_job_order(options, t, sys.stdin)
+
+            if type(job) == int:
+                return job
+
+            job, options.basedir = job
+
+            fillInDefaults(t.tool["inputs"], job)
+
+            outdir = options.outdir
+
             fileindex = {}
             existing = {}
             def importFiles(tool):
-                adjustDirObjs(tool, functools.partial(get_listing, cwltool.stdfsaccess.StdFsAccess(""), recursive=True))
-                adjustFileObjs(tool, functools.partial(uploadFile, toil.importFile, fileindex, existing))
+                normalizeFilesDirs(tool)
+                adjustDirObjs(tool, functools.partial(get_listing,
+                                                      cwltool.stdfsaccess.StdFsAccess(""),
+                                                      recursive=True))
+                adjustFileObjs(tool, functools.partial(uploadFile,
+                                                       toil.importFile,
+                                                       fileindex, existing))
 
             t.visit(importFiles)
             importFiles(job)
+            visitSteps(t, importFiles)
 
             make_fs_access = functools.partial(ToilFsAccess, existing=existing)
             try:
