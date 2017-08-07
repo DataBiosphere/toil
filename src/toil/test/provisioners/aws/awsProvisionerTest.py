@@ -72,7 +72,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.leaderInstanceType = 't2.medium'
         self.instanceTypes = ["m3.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
-        self.numWorkers = [2]
+        self.numWorkers = ['2']
         self.numSamples = 2
         self.spotBid = 0.15
 
@@ -153,9 +153,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--logFile=/home/sort.log',
                        '--provisioner=aws']
 
-        numWorkers = [str(workerNum) for workerNum in self.numWorkers]
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
-                            '--maxNodes=%s' % ",".join(numWorkers)])
+                            '--maxNodes=%s' % ",".join(self.numWorkers)])
         if preemptableJobs:
             toilOptions.extend(['--defaultPreemptable'])
 
@@ -239,14 +238,14 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     @needs_aws
     def testAutoScale(self):
         self.instanceTypes = ["m3.large"]
-        self.numWorkers = [2]
+        self.numWorkers = ['2']
         self._test()
 
     @integrative
     @needs_aws
     def testSpotAutoScale(self):
         self.instanceTypes = ["m3.large:%f" % self.spotBid]
-        self.numWorkers = [2]
+        self.numWorkers = ['2']
         self._test(preemptableJobs=True)
 
 
@@ -261,7 +260,8 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
 
     def launchCluster(self):
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
-                                     '--nodeTypes', 't2.small', '-w', '2', '--nodeStorage', str(self.requestedLeaderStorage)])
+                                     '--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers), '--nodeStorage', str(self.requestedLeaderStorage)])
+
         ctx = AWSProvisioner._buildContext(self.clusterName)
         nodes = AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)
         nodes.sort(key=lambda x: x.launch_time)
@@ -315,7 +315,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     @needs_aws
     def testAutoScale(self):
         self.instanceTypes = ["t2.small", "m3.large"]
-        self.numWorkers = [2,1]
+        self.numWorkers = ['2','1']
         self._test()
 
 @pytest.mark.timeout(1200)
@@ -331,7 +331,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
     def setUp(self):
         super(AWSRestartTest, self).setUp()
         self.instanceTypes = ['t2.micro']
-        self.numWorkers = [1]
+        self.numWorkers = ['1']
         self.scriptName = "/home/restartScript.py"
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
@@ -388,7 +388,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def setUp(self):
         super(PreemptableDeficitCompensationTest, self).setUp()
         self.instanceTypes = ['m3.large:0.01', "m3.large"] # instance needs to be available on the spot market
-        self.numWorkers = [1,1]
+        self.numWorkers = ['1','1']
         self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
     def test(self):
