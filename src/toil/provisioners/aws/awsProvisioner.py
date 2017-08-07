@@ -172,7 +172,7 @@ class AWSProvisioner(AbstractProvisioner):
         for nodeType, workers in zip(nodeTypes, numWorkers):
             workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
         for nodeType, workers in zip(preemptableNodeTypes, numPreemptableWorkers):
-            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True, spotBids=self.spotBids)
+            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True)
         logger.info('Added %d workers', workersCreated)
 
         return leader
