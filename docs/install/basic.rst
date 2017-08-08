@@ -14,7 +14,7 @@ This document describes how to prepare for and install the Toil software. Note t
 Preparation
 -----------
 
-Toil supports only Python 2.7.  If you don't satisfy this requirement, consider using anaconda_ to create an alternate Python 2.7 installation.
+Toil currently  supports only Python 2.7.  If you don't satisfy this requirement, consider using anaconda_ to create an alternate Python 2.7 installation.
 
 .. _anaconda: https://conda.io/docs/py2or3.html 
 
@@ -198,8 +198,8 @@ To build the docs, run ``make develop`` with all extras followed by
 Prepare Your AWS Environment
 ----------------------------
 
-To use Amazon Web Services (AWS) to run Toil or to just use AWS as a jobstore, first set up and configure
-an account with AWS.
+To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files 
+during the computation of a workflow, first set up and configure an account with AWS.
 
 #. If necessary, create and activate an `AWS account`_
 

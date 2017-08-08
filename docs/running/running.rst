@@ -22,13 +22,11 @@ A Toil workflow can be run with just three steps.
       def helloWorld(message, memory="1G", cores=1, disk="1G"):
           return "Hello, world!, here's a message: %s" % message
 
-      j = Job.wrapFn(helloWorld, "You did it!")
-
       if __name__ == "__main__":
           parser = Job.Runner.getDefaultArgumentParser()
           options = parser.parse_args()
           with Toil(options) as toil:
-              output = toil.start(j)
+              output = toil.start(Job.wrapFn(helloWorld, "You did it!"))
           print output
 
 3. Specify a job store and run the workflow like so::
@@ -120,11 +118,12 @@ For information on using CWL with Toil see the section :ref:`cwl`
 
 .. _runningDetail:
 
-Real-World Example
-------------------
+A (More) Real-World Example
+---------------------------
 
 For a more detailed example and explanation, we've developed a sample pipeline
-that merge-sorts a temporary file.
+that merge-sorts a temporary file. This is not supposed to be an efficient 
+sorting program, rather a more fully worked example of what Toil is capable of.
 
 Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
 
@@ -221,12 +220,22 @@ the :ref:`api`.
 
 .. _argparse: https://docs.python.org/2.7/library/argparse.html
 
-The ``if __name__ == '__main__'`` boilerplate is required to enable Toil to
-import the job functions defined in the script into the context of a Toil
-*worker* process. By invoking the script you created the *leader process*. A
-worker process is a separate process whose sole purpose is to host the
-execution of one or more jobs defined in that script. When using the
-single-machine batch system (the default), the worker processes will be running
+At the end of the script the lines: 
+
+.. code-block:: python
+
+    if __name__ == '__main__'
+        main()
+
+are included to ensure that the main function is only run once in the '__main__' process
+invoked by you, the user.
+In Toil terms, by invoking the script you created the *leader process* 
+in which the ``main()`` 
+function is run. A *worker process* is a separate process whose sole purpose 
+is to host the execution of one or more jobs defined in that script. In any Toil
+workflow there is always one leader process, and potentially many worker processes.
+
+When using the single-machine batch system (the default), the worker processes will be running
 on the same machine as the leader process. With full-fledged batch systems like
 Mesos the worker processes will typically be started on separate machines. The
 boilerplate ensures that the pipeline is only started once–on the leader–but
@@ -335,6 +344,10 @@ Once we're done, we can clean up the job store by running
 ::
 
    $ toil clean file:jobStore
+   
+Note, by default if ``--stats`` is not included and the pipeline finishes
+successfully then toil clean is run automatically and the job store is cleaned up.
+This was the case with the above examples. See options to prevent this behavior. 
 
 
 Launch a Toil Workflow in AWS
