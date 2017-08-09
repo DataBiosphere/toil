@@ -164,51 +164,10 @@ class ToilPathMapper(PathMapper):
                 self.visitlisting(obj.get("secondaryFiles", []), stagedir, basedir, copy=copy, staged=staged)
 
 
-def setup_override(cls, self):
-    gf = self.generatefiles.get("listing")
-    self.generatefiles["listing"] = None
-    super(cls, self)._setup()
-    if gf:
-        self.generatemapper = ToilPathMapper(gf, self.outdir, self.outdir, separateDirs=False, get_file=self.pathmapper.get_file)
-        cwllogger.warn(u"[job %s] initial work dir %s", self.name,
-                      json.dumps({p: self.generatemapper.mapper(p) for p in self.generatemapper.files()}, indent=4))
-
-
-class ToilDockerCommandLineJob(cwltool.job.DockerCommandLineJob):
-    def _setup(self):  # type: () -> None
-        setup_override(ToilDockerCommandLineJob, self)
-
-class ToilCommandLineJob(cwltool.job.CommandLineJob):
-    def _setup(self):  # type: () -> None
-        setup_override(ToilCommandLineJob, self)
-
 class ToilCommandLineTool(cwltool.draft2tool.CommandLineTool):
-    def makeJobRunner(self, use_container=True):  # type: (Optional[bool]) -> JobBase
-        dockerReq, _ = self.get_requirement("DockerRequirement")
-        if not dockerReq and use_container:
-            if self.find_default_container:
-                default_container = self.find_default_container(self)
-                if default_container:
-                    self.requirements.insert(0, {
-                        "class": "DockerRequirement",
-                        "dockerPull": default_container
-                    })
-                    dockerReq = self.requirements[0]
-                    if default_container == windows_default_container_id and use_container and onWindows():
-                        _logger.warning(DEFAULT_CONTAINER_MSG%(windows_default_container_id, windows_default_container_id))
-
-        if dockerReq and use_container:
-            return ToilDockerCommandLineJob()
-        else:
-            for t in reversed(self.requirements):
-                if t["class"] == "DockerRequirement":
-                    raise UnsupportedRequirement(
-                        "--no-container, but this CommandLineTool has "
-                        "DockerRequirement under 'requirements'.")
-            return ToilCommandLineJob()
-
     def makePathMapper(self, reffiles, stagedir, **kwargs):
         return ToilPathMapper(reffiles, kwargs["basedir"], stagedir,
+                              separateDirs=kwargs.get("separateDirs", True),
                               get_file=kwargs["toil_get_file"])
 
 def toilMakeTool(toolpath_object, **kwargs):
