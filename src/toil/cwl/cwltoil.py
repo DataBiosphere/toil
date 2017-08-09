@@ -29,6 +29,7 @@ import cwltool.expression
 import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
+import cwltool.draft2tool
 from cwltool.pathmapper import PathMapper, adjustDirObjs, adjustFileObjs, get_listing, MapperEnt, visit_class, normalizeFilesDirs
 from cwltool.process import shortname, fillInDefaults, compute_checksums, collectFilesAndDirs, stageFiles
 from cwltool.utils import aslist
@@ -127,6 +128,15 @@ def resolve_indirect(d):
         return res
 
 class ToilPathMapper(PathMapper):
+    def __init__(self, referenced_files, basedir, stagedir,
+                 separateDirs=True,
+                 get_file=None,
+                 stage_listing=False):
+        self.get_file = get_file
+        self.stage_listing = stage_listing
+        super(ToilPathMapper, self).__init__(referenced_files, basedir,
+                                             stagedir, separateDirs=separateDirs)
+
     def visit(self, obj, stagedir, basedir, copy=False, staged=False):
         # type: (Dict[Text, Any], Text, Text, bool, bool) -> None
         tgt = os.path.join(stagedir, obj["basename"])
@@ -138,61 +148,93 @@ class ToilPathMapper(PathMapper):
             else:
                 resolved = obj["location"]
             self._pathmap[obj["location"]] = MapperEnt(resolved, tgt, "WritableDirectory" if copy else "Directory", staged)
-            if obj["location"].startswith("file://"):
+            if obj["location"].startswith("file://") and not self.stage_listing:
                 staged = False
             self.visitlisting(obj.get("listing", []), tgt, basedir, copy=copy, staged=staged)
         elif obj["class"] == "File":
-            path = obj["location"]
+            loc = obj["location"]
             if "contents" in obj and obj["location"].startswith("_:"):
                 self._pathmap[obj["location"]] = MapperEnt(obj["contents"], tgt, "CreateFile", staged)
             else:
-                self._pathmap[path] = MapperEnt(path, tgt, "WritableFile" if copy else "File", staged)
+                resolved = self.get_file(loc) if self.get_file else loc
+                cwllogger.warn("zip %s %s %s", loc, resolved, self.get_file)
+                if resolved.startswith("file:"):
+                    resolved = schema_salad.ref_resolver.uri_file_path(resolved)
+                self._pathmap[loc] = MapperEnt(resolved, tgt, "WritableFile" if copy else "File", staged)
                 self.visitlisting(obj.get("secondaryFiles", []), stagedir, basedir, copy=copy, staged=staged)
 
-class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
-    def __init__(self, basedir, existing=None):
-        super(ToilFsAccess, self).__init__(basedir)
-        if existing is None:
-            self.existing = {}
-        else:
-            self.existing = existing
 
-    def _abs(self, p):  # type: (Text) -> Text
-        if p in self.existing:
-            return schema_salad.ref_resolver.uri_file_path(self.existing[p])
+def setup_override(cls, self):
+    gf = self.generatefiles.get("listing")
+    self.generatefiles["listing"] = None
+    super(cls, self)._setup()
+    if gf:
+        self.generatemapper = ToilPathMapper(gf, self.outdir, self.outdir, separateDirs=False, get_file=self.pathmapper.get_file)
+        cwllogger.warn(u"[job %s] initial work dir %s", self.name,
+                      json.dumps({p: self.generatemapper.mapper(p) for p in self.generatemapper.files()}, indent=4))
+
+
+class ToilDockerCommandLineJob(cwltool.job.DockerCommandLineJob):
+    def _setup(self):  # type: () -> None
+        setup_override(ToilDockerCommandLineJob, self)
+
+class ToilCommandLineJob(cwltool.job.CommandLineJob):
+    def _setup(self):  # type: () -> None
+        setup_override(ToilCommandLineJob, self)
+
+class ToilCommandLineTool(cwltool.draft2tool.CommandLineTool):
+    def makeJobRunner(self, use_container=True):  # type: (Optional[bool]) -> JobBase
+        dockerReq, _ = self.get_requirement("DockerRequirement")
+        if not dockerReq and use_container:
+            if self.find_default_container:
+                default_container = self.find_default_container(self)
+                if default_container:
+                    self.requirements.insert(0, {
+                        "class": "DockerRequirement",
+                        "dockerPull": default_container
+                    })
+                    dockerReq = self.requirements[0]
+                    if default_container == windows_default_container_id and use_container and onWindows():
+                        _logger.warning(DEFAULT_CONTAINER_MSG%(windows_default_container_id, windows_default_container_id))
+
+        if dockerReq and use_container:
+            return ToilDockerCommandLineJob()
+        else:
+            for t in reversed(self.requirements):
+                if t["class"] == "DockerRequirement":
+                    raise UnsupportedRequirement(
+                        "--no-container, but this CommandLineTool has "
+                        "DockerRequirement under 'requirements'.")
+            return ToilCommandLineJob()
+
+    def makePathMapper(self, reffiles, stagedir, **kwargs):
+        return ToilPathMapper(reffiles, kwargs["basedir"], stagedir,
+                              get_file=kwargs["toil_get_file"])
+
+def toilMakeTool(toolpath_object, **kwargs):
+    if isinstance(toolpath_object, dict) and toolpath_object.get("class") == "CommandLineTool":
+        return ToilCommandLineTool(toolpath_object, **kwargs)
+    return cwltool.workflow.defaultMakeTool(toolpath_object, **kwargs)
+
+class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
+    def __init__(self, basedir, fileStore=None):
+        self.fileStore = fileStore
+        super(ToilFsAccess, self).__init__(basedir)
+
+    def _abs(self, p):
+        if p.startswith("toilfs:"):
+            return self.fileStore.readGlobalFile(p[7:])
         else:
             return super(ToilFsAccess, self)._abs(p)
 
-
-def getFile(fileStore, fileStoreID, dstPath,
-            index=None,
-            export=False,
-            primary=None,
-            existing=None):
-    """Extract input file from Toil jobstore.
-
-    Uses standard filestore to retrieve file, then provides a symlink to it
-    for running. If export is True (for final outputs), it gets copied to
-    the final location.
-
-    Keeps track of files being used locally with 'existing'
-    """
-
-    if export:
-        fileStore.exportFile(fileStoreID, "file://" + dstPath)
-    else:
-        srcPath = fileStore.readGlobalFile(fileStoreID)
-        if srcPath != dstPath:
-            if os.path.exists(dstPath):
-                if (index.get(dstPath, None) != fileStoreID):
-                    raise Exception("Conflicting filesStoreID %s and %s both trying to link to %s" %
-                                    (index.get(dstPath, None), fileStoreID, dstPath))
-            else:
-                os.symlink(srcPath, dstPath)
-                if existing is not None:
-                    existing[srcPath] = dstPath
-            index[dstPath] = fileStoreID
-    return dstPath
+def toilGetFile(fileStore, index, existing, fileStoreID):
+    """Get path to input file from Toil jobstore. """
+    if not fileStoreID.startswith("toilfs:"):
+        return schema_salad.ref_resolver.file_uri(fileStoreID)
+    srcPath = fileStore.readGlobalFile(fileStoreID[7:])
+    index[srcPath] = fileStoreID
+    existing[fileStoreID] = srcPath
+    return schema_salad.ref_resolver.file_uri(srcPath)
 
 def writeFile(writeFunc, index, existing, x):
     """Write output files back into Toil jobstore.
@@ -201,12 +243,12 @@ def writeFile(writeFunc, index, existing, x):
     they are mapped back as the same name if passed through.
     """
     # Toil fileStore reference
-    if x in existing:
+    if x.startswith("toilfs:"):
         return x
     # File literal outputs with no path, we don't write these and will fail
     # with unsupportedRequirement when retrieving later with getFile
     elif x.startswith("_:"):
-        return None
+        return x
     else:
         x = existing.get(x, x)
         if x not in index:
@@ -215,20 +257,31 @@ def writeFile(writeFunc, index, existing, x):
             else:
                 rp = x
             try:
-                index[x] = writeFunc(rp)
+                index[x] = "toilfs:" + writeFunc(rp)
                 existing[index[x]] = x
             except Exception as e:
                 cwllogger.error("Got exception '%s' while copying '%s'", e, x)
                 raise
         return index[x]
 
-def uploadFile(uploadfunc, fileindex, existing, uf):
+def uploadFile(uploadfunc, fileindex, existing, uf, skip_broken=False):
+
+    cwllogger.warn("upload %s", uf)
+    if uf["location"] in fileindex:
+        cwllogger.warn("ZZZZZZ found in index %s", fileindex[uf["location"]])
+        uf["location"] = fileindex[uf["location"]]
+        return
     if not uf["location"] and uf["path"]:
         uf["location"] = schema_salad.ref_resolver.file_uri(uf["path"])
+    if not os.path.isfile(uf["location"][7:]):
+        if skip_broken:
+            return
+        else:
+            raise cwltool.errors.WorkflowException("File is missing: %s" % uf["location"])
     uf["location"] = writeFile(uploadfunc,
-                              fileindex,
-                              existing,
-                              uf["location"])
+                               fileindex,
+                               existing,
+                               uf["location"])
 
 def writeGlobalFileWrapper(fileStore, fileuri):
     return fileStore.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
@@ -241,22 +294,22 @@ class ResolveIndirect(Job):
     def run(self, fileStore):
         return resolve_indirect(self.cwljob)
 
-def toilStageFiles(fileStore, cwljob, inpdir, index, existing, export):
+def toilStageFiles(fileStore, cwljob, outdir, index, existing, export):
         # Copy input files out of the global file store, ensure path/location synchronized
         jobfiles = []  # type: List[Dict[Text, Any]]
         collectFilesAndDirs(cwljob, jobfiles)
-        pm = ToilPathMapper(jobfiles, "", inpdir, separateDirs=True)
+        pm = ToilPathMapper(jobfiles, "", outdir, separateDirs=False, stage_listing=True)
+        cwllogger.warn("ITEMS %s", pm.items())
         for f, p in pm.items():
             if not p.staged:
                 continue
             if not os.path.exists(os.path.dirname(p.target)):
                 os.makedirs(os.path.dirname(p.target), 0o0755)
             if p.type == "File":
-                getFile(fileStore, p.resolved, p.target, index=index,
-                        existing=existing, export=export)
+                fileStore.exportFile(p.resolved[7:], "file://" + p.target)
             elif p.type == "Directory" and not os.path.exists(p.target):
                 os.makedirs(p.target, 0o0755)
-            elif p.type == "CreateFile" and not ignoreWritable:
+            elif p.type == "CreateFile":
                 with open(p.target, "wb") as n:
                     n.write(p.resolved.encode("utf-8"))
 
@@ -314,13 +367,10 @@ class CWLJob(Job):
         os.mkdir(outdir)
         os.mkdir(tmpdir)
 
-        cwllogger.warning("blah1 %s", cwljob)
-
         index = {}
         existing = {}
-        toilStageFiles(fileStore, cwljob, inpdir, index, existing, False)
 
-        cwllogger.warning("blah2 %s", cwljob)
+        cwllogger.warn("INPUT1 IS %s", cwljob)
 
         # Run the tool
         opts = copy.deepcopy(self.executor_options)
@@ -331,7 +381,8 @@ class CWLJob(Job):
                                                             outdir=outdir,
                                                             tmpdir=tmpdir,
                                                             tmpdir_prefix="tmp",
-                                                            make_fs_access=functools.partial(ToilFsAccess, existing=existing),
+                                                            make_fs_access=functools.partial(ToilFsAccess, fileStore=fileStore),
+                                                            toil_get_file=functools.partial(toilGetFile, fileStore, index, existing),
                                                             **opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
@@ -339,9 +390,16 @@ class CWLJob(Job):
         adjustDirObjs(output, functools.partial(get_listing,
                                                 cwltool.stdfsaccess.StdFsAccess(outdir),
                                                 recursive=True))
+
+        cwllogger.warn("OUTPUT1 IS %s", output)
+        cwllogger.warn("index IS %s", index)
+        cwllogger.warn("existing IS %s", existing)
+
         adjustFileObjs(output, functools.partial(uploadFile,
                                                  functools.partial(writeGlobalFileWrapper, fileStore),
                                                  index, existing))
+
+        cwllogger.warn("OUTPUT2 IS %s", output)
 
         return output
 
@@ -645,11 +703,7 @@ cwltool.process.supportedProcessRequirements = ("DockerRequirement",
 def unsupportedRequirementsCheck(requirements):
     """Check for specific requirement cases we don't support.
     """
-    for r in requirements:
-        if r["class"] == "InitialWorkDirRequirement":
-            for l in r.get("listing", []):
-                if isinstance(l, dict) and l.get("writable"):
-                    raise cwltool.process.UnsupportedRequirement("CWL writable InitialWorkDirRequirement not yet supported in Toil")
+    pass
 
 def visitSteps(t, op):
     if isinstance(t, cwltool.workflow.Workflow):
@@ -702,8 +756,9 @@ def main(args=None, stdout=sys.stdout):
         else:
             useStrict = not options.not_strict
             try:
-                t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool,
-                                                resolver=cwltool.resolver.tool_resolver, strict=useStrict)
+                t = cwltool.load_tool.load_tool(options.cwltool, toilMakeTool,
+                                                resolver=cwltool.resolver.tool_resolver,
+                                                strict=useStrict)
                 unsupportedRequirementsCheck(t.requirements)
             except cwltool.process.UnsupportedRequirement as e:
                 logging.error(e)
@@ -727,20 +782,42 @@ def main(args=None, stdout=sys.stdout):
 
             fileindex = {}
             existing = {}
+            def pathToLoc(p):
+                if "location" not in p and "path" in p:
+                    p["location"] = p["path"]
+                    del p["path"]
+
             def importFiles(tool):
+                visit_class(tool, ("File", "Directory"), pathToLoc)
                 normalizeFilesDirs(tool)
                 adjustDirObjs(tool, functools.partial(get_listing,
                                                       cwltool.stdfsaccess.StdFsAccess(""),
                                                       recursive=True))
                 adjustFileObjs(tool, functools.partial(uploadFile,
                                                        toil.importFile,
-                                                       fileindex, existing))
+                                                       fileindex, existing, skip_broken=True))
 
             t.visit(importFiles)
+
+            for inp in t.tool["inputs"]:
+                def setSecondary(fileobj):
+                    if isinstance(fileobj, dict) and fileobj.get("class") == "File":
+                        if "secondaryFiles" not in fileobj:
+                            fileobj["secondaryFiles"] = [{
+                                "location": cwltool.builder.substitute(fileobj["location"], sf), "class": "File"}
+                                                         for sf in inp["secondaryFiles"]]
+
+                    if isinstance(fileobj, list):
+                        for e in fileobj:
+                            setSecondary(e)
+
+                if shortname(inp["id"]) in job and inp.get("secondaryFiles"):
+                    setSecondary(job[shortname(inp["id"])])
+
             importFiles(job)
             visitSteps(t, importFiles)
 
-            make_fs_access = functools.partial(ToilFsAccess, existing=existing)
+            make_fs_access = functools.partial(ToilFsAccess, fileStore=toil)
             try:
                 (wf1, wf2) = makeJob(t, {}, use_container=use_container,
                         preserve_environment=options.preserve_environment,
@@ -754,7 +831,12 @@ def main(args=None, stdout=sys.stdout):
 
         outobj = resolve_indirect(outobj)
 
+        cwllogger.warn("FINAL OUTPUT %s", outobj)
+
         toilStageFiles(toil, outobj, outdir, fileindex, existing, True)
+
+        cwllogger.warn("FINAL OUTPUT %s %s", outdir, outobj)
+
         visit_class(outobj, ("File",), functools.partial(compute_checksums, cwltool.stdfsaccess.StdFsAccess("")))
 
         stdout.write(json.dumps(outobj, indent=4))
