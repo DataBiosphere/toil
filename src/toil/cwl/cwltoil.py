@@ -267,6 +267,8 @@ def writeFile(writeFunc, index, existing, x):
 def uploadFile(uploadfunc, fileindex, existing, uf, skip_broken=False):
 
     cwllogger.warn("upload %s", uf)
+    if uf["location"].startswith("toilfs:") or uf["location"].startswith("_:"):
+        return
     if uf["location"] in fileindex:
         cwllogger.warn("ZZZZZZ found in index %s", fileindex[uf["location"]])
         uf["location"] = fileindex[uf["location"]]
