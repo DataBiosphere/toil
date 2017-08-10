@@ -1,7 +1,7 @@
 .. _running:
 
-Example Toil Workflows
-======================
+Quickstart Examples
+===================
 
 .. _quickstart:
 
@@ -125,13 +125,15 @@ For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file. This is not supposed to be an efficient 
 sorting program, rather a more fully worked example of what Toil is capable of.
 
-Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
+Running the example
+~~~~~~~~~~~~~~~~~~~
 
-First let's just run it and see what happens.
+#. Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
+
 
 #. Run it with the default settings::
 
-      $ python sort.py file:jobStore
+      (venv) $ python sort.py file:jobStore
 
    The workflow created a file called ``sortedFile.txt`` in your current directory.
    Have a look at it and notice that it contains a whole lot of sorted lines!
@@ -143,12 +145,15 @@ First let's just run it and see what happens.
 
 #. Run with custom options::
 
-      $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/
+      (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/
 
    Here we see that we can add our own options to a Toil script. The first two
    options determine the number of lines and how many characters are in each line.
    The last option is a built-in Toil option where temporary files unique to a
    job are kept.
+
+Describing the source code
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To understand the details of what's going on inside.
 Let's start with the ``main()`` function. It looks like a lot of code, but don't worry, we'll break it down piece by
@@ -279,7 +284,7 @@ example (the first line of ``down()``):
 
 When we run the pipeline, Toil will show a detailed failure log with a traceback::
 
-   $ python sort.py file:jobStore
+   (venv) $ python sort.py file:jobStore
    ...
    ---TOIL WORKER OUTPUT LOG---
    ...
@@ -301,11 +306,11 @@ that a job store of the same name already exists. By default, in the event of a
 failure, the job store is preserved so that the workflow can be restarted,
 starting from the previously failed jobs. We can restart the pipeline by running::
 
-   $ python sort.py file:jobStore --restart
+   (venv) $ python sort.py file:jobStore --restart
 
 We can also change the number of times Toil will attempt to retry a failed job::
 
-   $ python sort.py --retryCount 2 --restart
+   (venv) $ python sort.py --retryCount 2 --restart
 
 You'll now see Toil attempt to rerun the failed job until it runs out of tries.
 ``--retryCount`` is useful for non-systemic errors, like downloading a file that
@@ -316,7 +321,7 @@ line 30, or remove it, and then run
 
 ::
 
-   $ python sort.py --restart
+   (venv) $ python sort.py --restart
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
@@ -328,12 +333,12 @@ Collecting Statistics
 A Toil pipeline can be run with the ``--stats`` flag to allows collection of
 statistics::
 
-   $ python sort.py --stats
+   (venv) $ python sort.py --stats
 
 Once the pipeline finishes, the job store will be left behind, allowing us to
 get information on the total runtime and stats pertaining to each job function::
 
-   $ toil stats file:jobStore
+   (venv) $ toil stats file:jobStore
    ...
    Batch System: singleMachine
    Default Cores: 1  Default Memory: 2097152K
@@ -343,7 +348,7 @@ Once we're done, we can clean up the job store by running
 
 ::
 
-   $ toil clean file:jobStore
+   (venv) $ toil clean file:jobStore
    
 Note, by default if ``--stats`` is not included and the pipeline finishes
 successfully then toil clean is run automatically and the job store is cleaned up.
@@ -425,6 +430,48 @@ the user can run a CWL workflow with Toil on AWS.
       	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
 
-.. todo:: Autoscaling example
+Run an Autoscaling Workflow on AWS
+----------------------------------
+Autoscaling is a feature of running Toil in a cloud whereby additional cloud instances are launched to run the workflow.  Autoscaling leverages Mesos containers to provide an execution environment for these workflows.  For more information on autoscaling, refer to :ref:`Autoscaling`. 
+
+
+
+#. Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
+
+#. Launch the leader node in AWS using the :ref:`launchCluster` command. ::
+
+        (venv) $ toil launch-cluster <cluster-name> \
+        --keyPairName <AWS-key-pair-name> \
+        --nodeType t2.micro \
+        --zone us-west-2a
+
+#. Copy the `sort.py` script up to the leader node. ::
+
+	(venv) $ toil rsync-cluster <cluster-name> sort.py :/tmp
+
+#. Login to the leader node. ::
+
+	(venv) $ toil ssh-cluster <cluster-name>
+
+#. Run the script as an autoscaling workflow. ::
+
+	$ python /tmp/sort.py  \
+	aws:us-west-2:autoscaling-sort-jobstore \
+	--provisioner aws --nodeType c3.large \
+	--batchSystem mesos --mesosMaster <private-IP>:5050 
+	--logLevel DEBUG
+
+   .. note::
+
+    In this example, the autoscaling Toil code creates an instance of flavor `c3.large` and launches a Mesos slave container inside it.  The container then runs the `sort.py` script which first generates a file to sort, then sorts that file, and finally creates a sorted file.  Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job results.
+
+#. View the generated file to sort. ::
+
+	$ head fileToSort.txt
+
+#. View the sorted file. ::
+
+	$ head sortedFile.txt
+ 
 
 .. todo:: Spark example
