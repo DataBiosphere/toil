@@ -157,7 +157,6 @@ class ToilPathMapper(PathMapper):
                 self._pathmap[obj["location"]] = MapperEnt(obj["contents"], tgt, "CreateFile", staged)
             else:
                 resolved = self.get_file(loc) if self.get_file else loc
-                cwllogger.warn("zip %s %s %s", loc, resolved, self.get_file)
                 if resolved.startswith("file:"):
                     resolved = schema_salad.ref_resolver.uri_file_path(resolved)
                 self._pathmap[loc] = MapperEnt(resolved, tgt, "WritableFile" if copy else "File", staged)
@@ -225,11 +224,9 @@ def writeFile(writeFunc, index, existing, x):
 
 def uploadFile(uploadfunc, fileindex, existing, uf, skip_broken=False):
 
-    cwllogger.warn("upload %s", uf)
     if uf["location"].startswith("toilfs:") or uf["location"].startswith("_:"):
         return
     if uf["location"] in fileindex:
-        cwllogger.warn("ZZZZZZ found in index %s", fileindex[uf["location"]])
         uf["location"] = fileindex[uf["location"]]
         return
     if not uf["location"] and uf["path"]:
@@ -260,7 +257,6 @@ def toilStageFiles(fileStore, cwljob, outdir, index, existing, export):
         jobfiles = []  # type: List[Dict[Text, Any]]
         collectFilesAndDirs(cwljob, jobfiles)
         pm = ToilPathMapper(jobfiles, "", outdir, separateDirs=False, stage_listing=True)
-        cwllogger.warn("ITEMS %s", pm.items())
         for f, p in pm.items():
             if not p.staged:
                 continue
@@ -358,8 +354,6 @@ class CWLJob(Job):
         index = {}
         existing = {}
 
-        cwllogger.warn("INPUT1 IS %s", cwljob)
-
         # Run the tool
         opts = copy.deepcopy(self.executor_options)
         # Exports temporary directory for batch systems that reset TMPDIR
@@ -379,15 +373,9 @@ class CWLJob(Job):
                                                 cwltool.stdfsaccess.StdFsAccess(outdir),
                                                 recursive=True))
 
-        cwllogger.warn("OUTPUT1 IS %s", output)
-        cwllogger.warn("index IS %s", index)
-        cwllogger.warn("existing IS %s", existing)
-
         adjustFileObjs(output, functools.partial(uploadFile,
                                                  functools.partial(writeGlobalFileWrapper, fileStore),
                                                  index, existing))
-
-        cwllogger.warn("OUTPUT2 IS %s", output)
 
         return output
 
@@ -829,11 +817,7 @@ def main(args=None, stdout=sys.stdout):
 
         outobj = resolve_indirect(outobj)
 
-        cwllogger.warn("FINAL OUTPUT %s", outobj)
-
         toilStageFiles(toil, outobj, outdir, fileindex, existing, True)
-
-        cwllogger.warn("FINAL OUTPUT %s %s", outdir, outobj)
 
         visit_class(outobj, ("File",), functools.partial(compute_checksums, cwltool.stdfsaccess.StdFsAccess("")))
 
