@@ -283,6 +283,33 @@ def toilStageFiles(fileStore, cwljob, outdir, index, existing, export):
         visit_class(cwljob, ("File", "Directory"), _check_adjust)
 
 
+class CWLJobWrapper(Job):
+    def __init__(self, tool, cwljob, **kwargs):
+        super(CWLJobWrapper, self).__init__(cores=.1,
+                                            memory=1024*1024,
+                                            disk=1)
+        self.cwltool = remove_pickle_problems(tool)
+        self.cwljob = cwljob
+        self.kwargs = kwargs
+
+    def run(self, fileStore):
+        cwljob = resolve_indirect(self.cwljob)
+
+        if 'builder' in self.kwargs:
+            builder = self.kwargs["builder"]
+        else:
+            builder = cwltool.builder.Builder()
+            builder.job = cwljob
+            builder.requirements = []
+            builder.outdir = None
+            builder.tmpdir = None
+            builder.timeout = 0
+            builder.resources = {}
+        realjob = CWLJob(self.cwltool, self.cwljob, builder=builder, **self.kwargs)
+        self.addChild(realjob)
+        return realjob.rv()
+
+
 class CWLJob(Job):
     """Execute a CWL tool wrapper."""
 
@@ -372,6 +399,16 @@ def makeJob(tool, jobobj, **kwargs):
         wfjob.addFollowOn(followOn)
         return (wfjob, followOn)
     else:
+        # get_requirement
+        resourceReq, _ = tool.get_requirement("ResourceRequirement")
+        for req in ("coresMin", "coresMax", "ramMin", "ramMax",
+                     "tmpdirMin", "tmpdirMax", "outdirMin", "outdirMax"):
+            r = resourceReq.get(req)
+            if isinstance(r, string_types) and "$(" in r or "${" in r:
+                # Found a dynamic resource requirement so use a job wrapper.
+                job = CWLJobWrapper(tool, jobobj, **kwargs)
+                return (job, job)
+
         job = CWLJob(tool, jobobj, **kwargs)
         return (job, job)
 
