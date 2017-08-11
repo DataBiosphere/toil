@@ -389,13 +389,14 @@ def makeJob(tool, jobobj, **kwargs):
     else:
         # get_requirement
         resourceReq, _ = tool.get_requirement("ResourceRequirement")
-        for req in ("coresMin", "coresMax", "ramMin", "ramMax",
-                     "tmpdirMin", "tmpdirMax", "outdirMin", "outdirMax"):
-            r = resourceReq.get(req)
-            if isinstance(r, string_types) and "$(" in r or "${" in r:
-                # Found a dynamic resource requirement so use a job wrapper.
-                job = CWLJobWrapper(tool, jobobj, **kwargs)
-                return (job, job)
+        if resourceReq:
+            for req in ("coresMin", "coresMax", "ramMin", "ramMax",
+                         "tmpdirMin", "tmpdirMax", "outdirMin", "outdirMax"):
+                r = resourceReq.get(req)
+                if isinstance(r, string_types) and ("$(" in r or "${" in r):
+                    # Found a dynamic resource requirement so use a job wrapper.
+                    job = CWLJobWrapper(tool, jobobj, **kwargs)
+                    return (job, job)
 
         job = CWLJob(tool, jobobj, **kwargs)
         return (job, job)
