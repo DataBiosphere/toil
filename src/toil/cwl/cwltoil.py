@@ -737,6 +737,10 @@ def main(args=None, stdout=sys.stdout):
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
+    outdir = options.outdir
+    fileindex = {}
+    existing = {}
+
     with Toil(options) as toil:
         if options.restart:
             outobj = toil.restart()
@@ -756,6 +760,7 @@ def main(args=None, stdout=sys.stdout):
 
             options.workflow = options.cwltool
             options.job_order = options.cwljob
+            options.tool_help = None
             job = cwltool.main.load_job_order(options, t, sys.stdin)
 
             if type(job) == int:
@@ -765,10 +770,6 @@ def main(args=None, stdout=sys.stdout):
 
             fillInDefaults(t.tool["inputs"], job)
 
-            outdir = options.outdir
-
-            fileindex = {}
-            existing = {}
             def pathToLoc(p):
                 if "location" not in p and "path" in p:
                     p["location"] = p["path"]

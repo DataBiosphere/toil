@@ -39,8 +39,9 @@ class CWLTest(ToilTest):
                             os.path.join(rootDir, jobfile)],
                      stdout=st)
         out = json.loads(st.getvalue())
-        # locations are internal objects in output for CWL
-        out["output"].pop("location", None)
+        out["output"].pop("http://commonwl.org/cwltool#generation", None)
+        out["output"].pop("nameext", None)
+        out["output"].pop("nameroot", None)
         self.assertEquals(out, expect)
 
     def test_run_revsort(self):
@@ -51,7 +52,7 @@ class CWLTest(ToilTest):
             # Having unicode string literals isn't necessary for the assertion but makes for a
             # less noisy diff in case the assertion fails.
             u'output': {
-                u'path': unicode(os.path.join(outDir, 'output.txt')),
+                u'location': "file://" + unicode(os.path.join(outDir, 'output.txt')),
                 u'basename': unicode("output.txt"),
                 u'size': 1111,
                 u'class': u'File',
@@ -80,10 +81,10 @@ class CWLTest(ToilTest):
             pass
         # Finish the job with a correct PATH
         os.environ["PATH"] = orig_path
-        cwltoil.main(cmd + ["--restart"])
+        cwltoil.main(["--restart"] + cmd)
         # Should fail because previous job completed successfully
         try:
-            cwltoil.main(cmd + ["--restart"])
+            cwltoil.main(["--restart"] + cmd)
             self.fail("Restart with missing directory did not fail")
         except NoSuchJobStoreException:
             pass
