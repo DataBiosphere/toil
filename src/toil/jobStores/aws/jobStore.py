@@ -758,7 +758,7 @@ class AWSJobStore(AbstractJobStore):
     readStatsFileOwnerID = uuid.UUID('e77fc3aa-d232-4255-ae04-f64ee8eb0bfa')
 
     def _sharedFileID(self, sharedFileName):
-        return str(uuid.uuid5(self.sharedFileOwnerID, str(sharedFileName)))
+        return str(uuid.uuid5(self.sharedFileOwnerID, sharedFileName))
 
     @InnerClass
     class FileInfo(SDBHelper):
