@@ -20,7 +20,7 @@ from toil.jobStores.abstractJobStore import NoSuchFileException
 
 class CheckpointTest(ToilTest):
     def testCheckpointNotRetried(self):
-        """A checkpoint job with a retryCount of 0 should not be retried."""
+        """A checkpoint job should not be retried if the workflow has a retryCount of 0."""
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.retryCount = 0
         # We set the workflow to *succeed* if the checkpointed job is
@@ -33,7 +33,7 @@ class CheckpointTest(ToilTest):
             Job.Runner.startToil(CheckRetryCount(numFailuresBeforeSuccess=1), options)
 
     def testCheckpointRetriedOnce(self):
-        """A checkpoint job with a retryCount of 1 should be retried exactly once."""
+        """A checkpoint job should be retried exactly once if the workflow has a retryCount of 1."""
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.retryCount = 1
 
