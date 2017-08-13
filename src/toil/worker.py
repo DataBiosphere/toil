@@ -252,46 +252,14 @@ def main():
         # The job is a checkpoint, and is being restarted after previously completing
         if jobGraph.checkpoint != None:
             logger.debug("Job is a checkpoint")
-            if len(jobGraph.stack) > 0 or len(jobGraph.services) > 0 or jobGraph.command != None:
-                if jobGraph.command != None:
-                    assert jobGraph.command == jobGraph.checkpoint
-                    logger.debug("Checkpoint job already has command set to run")
-                else:
-                    jobGraph.command = jobGraph.checkpoint
-
-                jobStore.update(jobGraph) # Update immediately to ensure that checkpoint
-                # is made before deleting any remaining successors
-
-                if len(jobGraph.stack) > 0 or len(jobGraph.services) > 0:
-                    # If the subtree of successors is not complete restart everything
-                    logger.debug("Checkpoint job has unfinished successor jobs, deleting the jobs on the stack: %s, services: %s " %
-                                 (jobGraph.stack, jobGraph.services))
-
-                    # Delete everything on the stack, as these represent successors to clean
-                    # up as we restart the queue
-                    def recursiveDelete(jobGraph2):
-                        # Recursive walk the stack to delete all remaining jobs
-                        for jobs in jobGraph2.stack + jobGraph2.services:
-                            for jobNode in jobs:
-                                if jobStore.exists(jobNode.jobStoreID):
-                                    recursiveDelete(jobStore.load(jobNode.jobStoreID))
-                                else:
-                                    logger.debug("Job %s has already been deleted", jobNode)
-                        if jobGraph2 != jobGraph:
-                            logger.debug("Checkpoint is deleting old successor job: %s", jobGraph2.jobStoreID)
-                            jobStore.delete(jobGraph2.jobStoreID)
-                    recursiveDelete(jobGraph)
-
-                    jobGraph.stack = [ [], [] ] # Initialise the job to mimic the state of a job
-                    # that has been previously serialised but which as yet has no successors
-
-                    jobGraph.services = [] # Empty the services
-
-                    # Update the jobStore to avoid doing this twice on failure and make this clean.
-                    jobStore.update(jobGraph)
-
-            # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
-            # because of the job being a checkpoint
+            if len([i for l in jobGraph.stack for i in l]) > 0 or len(jobGraph.services) > 0:
+                logger.debug("Checkpoint has failed.")
+                # Reduce the retry count
+                assert jobGraph.remainingRetryCount >= 0
+                jobGraph.remainingRetryCount = max(0, jobGraph.remainingRetryCount - 1)
+                jobGraph.restartCheckpoint(jobStore)
+                # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
+                # because of the job being a checkpoint
             else:
                 logger.debug("The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete.")
                 #Delete any remnant files

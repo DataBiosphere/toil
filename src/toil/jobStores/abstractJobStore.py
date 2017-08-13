@@ -495,8 +495,26 @@ class AbstractJobStore(object):
             # Delete the job
             self.delete(jobGraph.jobStoreID)
 
+        jobGraphsReachableFromRoot = {id: getJob(id) for id in reachableFromRoot}
+
+        # Clean up any checkpoint jobs -- delete any successors it
+        # may have launched, and restore the job to a pristine
+        # state
+        jobsDeletedByCheckpoints = set()
+        for jobGraph in [jG for jG in jobGraphsReachableFromRoot.values() if jG.checkpoint is not None]:
+            if jobGraph.jobStoreID in jobsDeletedByCheckpoints:
+                # This is a checkpoint that was nested within an
+                # earlier checkpoint, so it and all its successors are
+                # already gone.
+                continue
+            logger.info("Restarting checkpointed job %s" % jobGraph)
+            deletedThisRound = jobGraph.restartCheckpoint(self)
+            jobsDeletedByCheckpoints |= set(deletedThisRound)
+        for jobID in jobsDeletedByCheckpoints:
+            del jobGraphsReachableFromRoot[jobID]
+
         # Clean up jobs that are in reachable from the root
-        for jobGraph in (getJob(x) for x in reachableFromRoot):
+        for jobGraph in jobGraphsReachableFromRoot.values():
             # jobGraphs here are necessarily in reachable from root.
 
             changed = [False]  # This is a flag to indicate the jobGraph state has
