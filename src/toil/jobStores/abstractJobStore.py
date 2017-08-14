@@ -619,30 +619,26 @@ class AbstractJobStore(object):
     # existence of jobs
     ##########################################
 
+    @contextmanager
+    def batch(self):
+        """
+        All calls to create() with this context manager active will be performed in a batch
+        after the context manager is released.
+
+        :rtype: None
+        """
+        self._batchedJobGraphs = []
+        yield
+        for jobGraph in self._batchedJobGraphs:
+            self.update(jobGraph)
+        self._batchedJobGraphs = None
+
     @abstractmethod
     def create(self, jobNode):
         """
         Creates a job graph from the given job node & writes it to the job store.
 
         :rtype: toil.jobGraph.JobGraph
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def getJobGraph(self, jobNode):
-        """
-        Creates a job graph from the given job node without writing it to the job store.
-
-        :rtype: toil.jobGraph.JobGraph
-        """
-        raise NotImplementedError()
-    
-    @abstractmethod
-    def batchCreate(self, jobGraphs):
-        """
-        Writes several job graphs to the jobstore with one query.
-
-        :rtype: None
         """
         raise NotImplementedError()
 

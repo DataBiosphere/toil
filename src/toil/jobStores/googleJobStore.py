@@ -112,22 +112,14 @@ class GoogleJobStore(AbstractJobStore):
                 except boto.exception.GSResponseError:
                     pass
 
-    def getJobGraph(self, jobNode):
-        jobStoreID = self._newID()
-        job = JobGraph(jobStoreID=jobStoreID, unitName=jobNode.name, jobName=jobNode.job,
-                       command=jobNode.command, remainingRetryCount=self._defaultTryCount(),
-                       logJobStoreFileID=None, predecessorNumber=jobNode.predecessorNumber,
-                       **jobNode._requirements)
-        return job
-
     def create(self, jobNode):
         job = self.getJobGraph(jobNode)
         self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
-        return job
-
-    def batchCreate(self, jobGraphs):
-        for job in jobGraphs:
+        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+            self._batchedJobGraphs.append(job)
+        else:
             self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
+        return job
 
     def exists(self, jobStoreID):
         # used on job files, which will be encrypted if avaliable

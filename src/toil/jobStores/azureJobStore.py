@@ -225,24 +225,27 @@ class AzureJobStore(AbstractJobStore):
 
         logger.debug("Processed %d total jobs" % total_processed)
 
-    def getJobGraph(self, jobNode):
+    def create(self, jobNode):
         jobStoreID = self._newJobID()
         job = AzureJob.fromJobNode(jobNode, jobStoreID, self._defaultTryCount())
+        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+            self._batchedJobGraphs.append(job)
+        else:
+            entity = job.toItem(chunkSize=self.jobChunkSize)
+            entity['RowKey'] = jobStoreID
+            self.jobItems.insert_entity(entity=entity)
         return job
 
-    def create(self, jobNode):
-        job = self.getJobGraph(jobNode)
-        entity = job.toItem(chunkSize=self.jobChunkSize)
-        entity['RowKey'] = job.jobStoreID
-        self.jobItems.insert_entity(entity=entity)
-        return job
-
-    def batchCreate(self, jobGraphs):
-        with self.jobItems.batch() as batch:
-            for job in jobGraphs:
+    @contextmanager
+    def batch(self):
+        self._batchedJobGraphs = []
+        yield
+        with self.tableService.batch('jobItems') as batch:
+            for job in self._batchedJobGraphs:
                 entity = job.toItem(chunkSize=self.jobChunkSize)
-                entity['RowKey'] = job.jobStoreID
+                entity["RowKey"] = job.jobStoreID
                 batch.insert_entity(entity)
+        self._batchedJobGraphs = None
 
     def exists(self, jobStoreID):
         if self.jobItems.get_entity(row_key=jobStoreID) is None:

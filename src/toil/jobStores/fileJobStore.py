@@ -89,7 +89,7 @@ class FileJobStore(AbstractJobStore):
     # existence of jobs
     ##########################################
 
-    def getJobGraph(self, jobNode):
+    def create(self, jobNode):
         # The absolute path to the job directory.
         absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
         # Sub directory to put temporary files associated with the job in
@@ -97,17 +97,11 @@ class FileJobStore(AbstractJobStore):
         # Make the job
         job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getRelativePath(absJobDir),
                                    tryCount=self._defaultTryCount())
+        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+            self._batchedJobGraphs.append(job)
+        else:
+            self.update(job)
         return job
-        
-    def create(self, jobNode):
-        jobGraph = self.getJobGraph(jobNode)
-        # Write job file to disk
-        self.update(jobGraph)
-        return jobGraph
-
-    def batchCreate(self, jobGraphs):
-        for jobGraph in jobGraphs:
-            self.update(jobGraph)
 
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
