@@ -221,7 +221,7 @@ obliterate_docker: clean_docker
 	-docker images -qf dangling=true | xargs docker rmi
 
 push_docker: docker check_docker_registry
-	docker push $(docker_image):$(docker_tag)
+	for i in $$(seq 1 5); do docker push $(docker_image):$(docker_tag) && break || sleep 60; done
 
 else
 
