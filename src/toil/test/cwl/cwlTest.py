@@ -58,19 +58,19 @@ class CWLDirTest(ToilTest):
         self._write_to_json(input, jobfile)
         expected = {
             u'dirout': {
-                u'path': unicode('//' + os.path.join(outdir, 'foobaz')),
-                u'basename': u'foobaz',
-                u'listing': [
+                unicode('location'): unicode('file://' + os.path.join(outdir, 'foobaz')),
+                unicode('basename'): unicode('foobaz'),
+                unicode('class'): unicode('Directory'),
+                unicode('nameext'): unicode(""),
+                unicode('nameroot'): unicode("foobaz"),
+                unicode('listing'): [
                     {
-                        u'path': unicode('//' + os.path.join(outdir, 'foobaz/bar')),
-                        u'basename': u'bar',
-                        u'listing': [],
-                        u'class': u'Directory',
-                        u'location': unicode('file://' + os.path.join(outdir, 'foobaz/bar'))
+                        unicode('basename'): unicode('bar'),
+                        unicode('listing'): [],
+                        unicode('class'): unicode('Directory'),
+                        unicode('location'): unicode('file://' + os.path.join(outdir, 'foobaz/bar'))
                     }
                 ],
-                u'location': unicode('file://' + os.path.join(outdir, '/foobaz')),
-                u'class': u'Directory'
             }
         }
 
@@ -83,11 +83,13 @@ class CWLDirTest(ToilTest):
             out = json.loads(st.getvalue())
         except:
             out = st.getvalue()
-        # check expected output matches observed
-        for root, subFolder, files in os.walk(outdir):
-            print root
-
-        self.assertEquals(out, expected)
+        # for future backward compatibility, do not check that expected is exactly the
+        # same as observed, but that specific elements match
+        for key in ['location', 'basename', 'class', 'nameext', 'nameroot']:
+            self.assertEquals(out['dirout'][key], expected['dirout'][key])
+        for key in ['basename', 'listing', 'class', 'location']:
+            self.assertEquals(out['dirout']['listing'][0][key],
+                expected['dirout']['listing'][0][key])
     
     def test_run_ls(self):
         """Test that we can run a cwl step that lists content of a Directory"""
@@ -113,13 +115,15 @@ class CWLDirTest(ToilTest):
 
         # set expected output
         expected = {
-            u'lsout': {
-                u'location': unicode(os.path.join(outdir, 'output.txt')),
-                u'path': unicode(os.path.join(outdir, 'output.txt')),
-                u'basename': unicode("output.txt"),
-                u'size': 11,
-                u'class': u'File',
-                u'checksum': u'sha1$7459c36f90c843dfb3201bfa6299d8921dbbeb08',
+            unicode('lsout'): {
+                unicode('location'): unicode('file://' + os.path.join(outdir, 'output.txt')),
+                unicode('basename'): unicode("output.txt"),
+                unicode('nameext'): unicode(".txt"),
+                unicode('nameroot'): unicode("output"),
+                unicode('http://commonwl.org/cwltool#generation'): 0,
+                unicode('size'): 11,
+                unicode('class'): unicode('File'),
+                unicode('checksum'): unicode('sha1$7459c36f90c843dfb3201bfa6299d8921dbbeb08'),
             }
         }
 
@@ -132,8 +136,12 @@ class CWLDirTest(ToilTest):
             out = json.loads(st.getvalue())
         except:
             out = st.getvalue()
-        # check expected output matches observed
-        self.assertEquals(out, expected)
+        # # check expected output matches observed
+        # self.assertEquals(out, expected)
+        # for backward compatibility, do not check that expected is exactly the
+        # same as observed, but specific elements match
+        for key in ['location', 'basename', 'class', 'nameext', 'nameroot']:
+            self.assertEquals(out['lsout'][key], expected['lsout'][key])
 
 
 @needs_cwl
@@ -223,5 +231,4 @@ class CWLTest(ToilTest):
                         only_unsupported = True
                         break
             if not only_unsupported:
-                print(e.output)
                 raise e
