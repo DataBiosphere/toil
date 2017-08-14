@@ -504,7 +504,15 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             log.warning('Cannot determine main program module.')
             return False
         else:
-            mainModuleFile = os.path.basename(mainModule.__file__)
+            # If __file__ is not a valid attribute, it's because
+            # toil is being run interactively, in which case
+            # we can reasonably assume that we are not running
+            # on a worker node.
+            try:
+                mainModuleFile = os.path.basename(mainModule.__file__)
+            except AttributeError:
+                return False
+
             workerModuleFiles = concat(('worker' + ext for ext in self.moduleExtensions),
                                        '_toil_worker')  # the setuptools entry point
             return mainModuleFile in workerModuleFiles

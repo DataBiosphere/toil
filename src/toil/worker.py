@@ -259,10 +259,6 @@ def main():
                 else:
                     jobGraph.command = jobGraph.checkpoint
 
-                # Reduce the retry count
-                assert jobGraph.remainingRetryCount >= 0
-                jobGraph.remainingRetryCount = max(0, jobGraph.remainingRetryCount - 1)
-
                 jobStore.update(jobGraph) # Update immediately to ensure that checkpoint
                 # is made before deleting any remaining successors
 

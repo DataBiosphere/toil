@@ -1395,6 +1395,15 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     To enable the job function to get access to the :class:`toil.fileStore.FileStore` \
     instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job \
     called fileStore.
+
+    To specify a job's resource requirements the following default keyword arguments
+    can be specified:
+        - memory
+        - disk
+        - cores
+    For example to wrap a function into a job we would call:
+
+        ``Job.wrapJobFn(myJob, memory='100k', disk='1M', cores=0.1)``
     """
 
     @property

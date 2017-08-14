@@ -93,7 +93,7 @@ A real-world example
 For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file.
 
-1. Download :download:`the example code <toil-sort-example.py>`.
+1. Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
 
 2. Run it with the default settings::
 

@@ -35,8 +35,12 @@ def _mesosBatchSystemFactory():
 def _slurmBatchSystemFactory():
     from toil.batchSystems.slurm import SlurmBatchSystem
     return SlurmBatchSystem
-    
-    
+
+def _torqueBatchSystemFactory():
+    from toil.batchSystems.torque import TorqueBatchSystem
+    return TorqueBatchSystem
+
+
 _DEFAULT_REGISTRY = {
     'parasol'        : _parasolBatchSystemFactory,
     'singleMachine'  : _singleMachineBatchSystemFactory,
@@ -48,7 +52,9 @@ _DEFAULT_REGISTRY = {
     'mesos'          : _mesosBatchSystemFactory,
     'Mesos'          : _mesosBatchSystemFactory,
     'slurm'          : _slurmBatchSystemFactory,
-    'Slurm'          : _slurmBatchSystemFactory
+    'Slurm'          : _slurmBatchSystemFactory,
+    'torque'         : _torqueBatchSystemFactory,
+    'Torque'         : _torqueBatchSystemFactory
     }
 
 _UNIQUE_NAME = {
@@ -57,7 +63,8 @@ _UNIQUE_NAME = {
     'gridEngine',
     'LSF',
     'Mesos',
-    'Slurm'
+    'Slurm',
+    'Torque'
         }
 
 _batchSystemRegistry = _DEFAULT_REGISTRY.copy()
