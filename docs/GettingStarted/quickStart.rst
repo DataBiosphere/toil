@@ -252,6 +252,7 @@ arguments for the workflow which includes both Toil's and ones defined inside
 found in :ref:`commandRef`.
 
 
+
 Logging
 ~~~~~~~
 
@@ -357,11 +358,10 @@ This was the case with the above examples. See options to prevent this behavior.
 
 Launch a Toil Workflow in AWS
 -----------------------------
-After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`),
-the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.
+After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.  
 
 
-#. Launch a cluster in AWS. ::
+#. Launch a cluster in AWS using the ``launch-cluster`` command. The arguments ``keyPairName``, ``nodeType``, and ``zone`` are required to launch a cluster. ::
 
        (venv) $ toil launch-cluster <cluster-name> \
 	--keyPairName <AWS-key-pair-name> \
@@ -369,20 +369,19 @@ the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM 
 	--zone us-west-2a
 
 
-#. Copy ``helloWorld.py`` to the leader node. ::
+#. Copy ``helloWorld.py`` to the ``/tmp`` directory on the leader node using the ``rsync-cluster`` command. Note that the command requires defining the file to copy as well as the target location on the cluster leader node.::
 
       	(venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> helloWorld.py :/tmp
 
-#. Login to the cluster leader node. ::
+#. Login to the cluster leader node using the ``ssh-cluster`` command. This command will log you in as the ``root`` user ::
 
       	(venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
-#. Run the Toil script in the cluster ::
+#. Run the Toil script in the cluster.  In this particular case, we create an S3 bucket called ``my-S3-bucket`` in the ``us-west-2`` availability zone to store intermediate job results. ::
 
-      	$ python /tmp/helloWorld.py file:my-job-store
+      	$ python /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
 
-   Along with some other ``INFO`` log messages, you should get the following output in your
-   terminal window: ``Hello, world!, here's a message: You did it!``
+   Along with some other ``INFO`` log messages, you should get the following output in your terminal window: ``Hello, world!, here's a message: You did it!``
 
 
 #. Exit from the SSH connection. ::
@@ -429,49 +428,5 @@ the user can run a CWL workflow with Toil on AWS.
 
       	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
-
-Run an Autoscaling Workflow on AWS
-----------------------------------
-Autoscaling is a feature of running Toil in a cloud whereby additional cloud instances are launched to run the workflow.  Autoscaling leverages Mesos containers to provide an execution environment for these workflows.  For more information on autoscaling, refer to :ref:`Autoscaling`. 
-
-
-
-#. Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
-
-#. Launch the leader node in AWS using the :ref:`launchCluster` command. ::
-
-        (venv) $ toil launch-cluster <cluster-name> \
-        --keyPairName <AWS-key-pair-name> \
-        --nodeType t2.micro \
-        --zone us-west-2a
-
-#. Copy the `sort.py` script up to the leader node. ::
-
-	(venv) $ toil rsync-cluster <cluster-name> sort.py :/tmp
-
-#. Login to the leader node. ::
-
-	(venv) $ toil ssh-cluster <cluster-name>
-
-#. Run the script as an autoscaling workflow. ::
-
-	$ python /tmp/sort.py  \
-	aws:us-west-2:autoscaling-sort-jobstore \
-	--provisioner aws --nodeType c3.large \
-	--batchSystem mesos --mesosMaster <private-IP>:5050 
-	--logLevel DEBUG
-
-   .. note::
-
-    In this example, the autoscaling Toil code creates an instance of flavor `c3.large` and launches a Mesos slave container inside it.  The container then runs the `sort.py` script which first generates a file to sort, then sorts that file, and finally creates a sorted file.  Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job results.
-
-#. View the generated file to sort. ::
-
-	$ head fileToSort.txt
-
-#. View the sorted file. ::
-
-	$ head sortedFile.txt
- 
 
 .. todo:: Spark example

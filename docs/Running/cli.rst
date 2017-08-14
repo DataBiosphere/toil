@@ -1,12 +1,29 @@
 .. _commandRef:
 
-
 .. _workflowOptions:
 
 Toil Workflow Options
 =====================
+The ``toil`` CLI supports the following commands as arguments:
 
-Toil provides many command line options when running a toil script (see :ref:`running`),
+	``status`` - Reports the state of a Toil workflow
+
+	``rsync-cluster`` - Rsyncs into the toil appliance container running on the leader of the cluster
+
+	``stats`` - Reports statistical data about a given Toil workflow.
+
+	``launch-cluster`` - Launches a toil leader instance with the specified provisioner
+
+	``destroy-cluster`` - Terminates the specified cluster and associated resources
+
+	``kill`` - Kills any running jobs trees in a rogue toil.
+
+	``clean`` - Delete the job store used by a previous Toil workflow invocation
+
+	``ssh-cluster`` - SSHs into the toil appliance container running on the leader of the cluster
+
+
+Toil also provides several command line options when running a toil script (see :ref:`running`),
 or using Toil to run a CWL script. Many of these are described below.
 For most Toil scripts, executing::
 
@@ -24,6 +41,7 @@ Toil workflow from within Python using :func:`toil.job.Job.Runner.getDefaultOpti
 
     with Toil(options) as toil:
         toil.start(Job())  # Run the script
+
 
 .. _loggingRef:
 
