@@ -80,18 +80,16 @@ class ToilWDL:
         :return: tsv_array
         '''
         tsv_array = []
-        with open(tsv_filepath) as data_file:
-            samples = data_file.readlines()
-            for s in samples:
-                s = s.replace('\n', '')
-                data = s.split('\t')
-                tsv_array.append(data)
+        with open(tsv_filepath, "r") as data_file:
+            for line in data_file:
+                line = line.replace('\n', '')
+                array_variables = line.split('\t')
+                tsv_array.append(array_variables)
         return(tsv_array)
 
     def dict_from_YML(self, YML_filepath):
         # write this
-        print('.yml/.yaml support is currently underwhelming.')
-        raise RuntimeError
+        raise NotImplementedError('.yml/.yaml support is currently underwhelming.')
 
     def dict_from_JSON(self, JSON_file):
         '''
@@ -105,18 +103,6 @@ class ToilWDL:
         for d in data:
             d_list = d.split('.')
             self.vars_from_2nd_file_dict[d_list[-1]] = data[d]
-
-    def format_WDL_code(self, wdl_file):
-        '''
-        Returns a WDL file concatenated into a giant string.
-
-        :param wdl_file:
-        :return: processed_WDLcode
-        '''
-        processed_WDLcode = ''
-        for line in open(wdl_file):
-            processed_WDLcode = processed_WDLcode + line
-        return processed_WDLcode
 
     def write_modules(self, module_list):
         '''
@@ -133,7 +119,7 @@ class ToilWDL:
         module_portion = module_portion + '\n\n'
         return module_portion
 
-    def create_WDL_task_definitions(self, formatted_WDL):
+    def create_task_definitions(self):
         '''
         Iterator to go over WDL's "task" objects and create
         a python dict containing necessary information for
@@ -141,7 +127,9 @@ class ToilWDL:
 
         :param formatted_WDL:
         '''
-        ast = wdl_parser.parse(formatted_WDL).ast()
+        wdl = open(self.wdl_file, 'r')
+        wdl_string = wdl.read()
+        ast = wdl_parser.parse(wdl_string).ast()
         tasks = self.find_asts(ast, 'Task')
         for task in tasks:
             self.parse_task(task)
@@ -156,9 +144,10 @@ class ToilWDL:
                       '\n    options = Job.Runner.getDefaultOptions("./toilWorkflowRun")' + \
                       '\n    options.logLevel = "DEBUG"' + \
                       '\n    with Toil(options) as toil:'
+
         return main_string
 
-    def create_workflow_jobs(self, formatted_WDL):
+    def create_workflow_jobs(self):
         '''
         Iterator to go over WDL's "workflow" objects and create
         a python dict containing necessary information for
@@ -166,7 +155,9 @@ class ToilWDL:
 
         :param formatted_WDL:
         '''
-        ast = wdl_parser.parse(formatted_WDL).ast()
+        wdl = open(self.wdl_file, 'r')
+        wdl_string = wdl.read()
+        ast = wdl_parser.parse(wdl_string).ast()
         workflows = self.find_asts(ast, 'Workflow')
         for workflow in workflows:
             self.parse_workflow(workflow)
@@ -229,8 +220,7 @@ class ToilWDL:
         elif var_type == 'Array':
             pass
         else:
-            print('Variable in workflow declarations not found in secondary file.')
-            raise RuntimeError
+            raise RuntimeError('Variable in workflow declarations not found in secondary file.')
 
         if tsv:
             var_map['type'] = var_type
@@ -274,8 +264,7 @@ class ToilWDL:
                                 value_name = task + ' ' + output_variable
                                 value_type = 'output'
                             else:
-                                print('Unsupported rhs type.')
-                                raise RuntimeError
+                                raise RuntimeError('Unsupported rhs type.')
                                 output_variable = k.attributes['value'].attributes['rhs'].source_string
                                 task = k.attributes['value'].attributes['lhs'].source_string
                                 value_name = task + ' ' + output_variable
@@ -330,11 +319,9 @@ class ToilWDL:
                                 self.jobs_dictionary.setdefault((self.task_priority, self.task_number, task_being_called, task_alias), {})['job_declarations'] = job
                                 self.saved_scatter_input_vars.setdefault((self.task_priority, self.task_number, task_being_called, task_alias), {})[scatter_counter] = set_of_vars
                     else:
-                        print('Scatter failed.  Scatter collection is not an array.')
-                        raise RuntimeError
+                        raise RuntimeError('Scatter failed.  Scatter collection is not an array.')
                 else:
-                    print('Scatter failed.  Scatter collection not found in jobs_dictionary.')
-                    raise RuntimeError
+                    raise RuntimeError('Scatter failed.  Scatter collection not found in jobs_dictionary.')
 
             if i.name == "Call":
                 self.task_priority = self.task_priority + 1
@@ -419,17 +406,18 @@ class ToilWDL:
     def return_one_job_per_priority(self):
         '''
         Definitions only need to be declared once, even if they are run multiple times,
-        this functions returns a list of jobs reduced to a set for this purpose.
+        this functions returns a list of jobs with these redundant jobs removed for
+        this purpose.
 
-        :return: job_set
+        :return: job_list_with_redundant_jobs_removed
         '''
-        job_set = []
+        job_list_with_redundant_jobs_removed = []
         for i in range(len(self.jobs_dictionary)):
             for job in self.jobs_dictionary:
                 if i == job[0]:
-                    job_set.append(job)
+                    job_list_with_redundant_jobs_removed.append(job)
                     break
-        return(job_set)
+        return(job_list_with_redundant_jobs_removed)
 
     def write_jobs(self):
         '''
@@ -457,7 +445,7 @@ class ToilWDL:
                         filename = v.split('/')
                         filename = filename[-1]
                         job_section = job_section + '        ' + sample_var + ' = toil.importFile("file://' + v + '")\n'
-                        job_section = job_section + '        ' + sample_var + '_og = "' + filename + '"\n'
+                        job_section = job_section + '        ' + sample_var + '_preserveThisFilename = "' + filename + '"\n'
                     elif isinstance(v, (str, unicode)):
                         job_section = job_section + '        ' + sample_var + ' = "' + v + '"\n'
                     else:
@@ -471,7 +459,7 @@ class ToilWDL:
                 filename = v.split('/')
                 filename = filename[-1]
                 job_section = job_section + '        ' + vars + ' = toil.importFile("file://' + v + '")\n'
-                job_section = job_section + '        ' + vars + '_og = "' + filename + '"\n'
+                job_section = job_section + '        ' + vars + '_preserveThisFilename = "' + filename + '"\n'
             elif isinstance(v, (str, unicode)):
                 job_section = job_section + '        ' + vars + ' = "' + v + '"\n'
             else:
@@ -485,7 +473,7 @@ class ToilWDL:
                     split_filename = self.output_var_map[outputs][1].split('}')
                     filename = split_filename[-1]
                     filename = str(file[0]) + filename
-                    job_section = job_section + '        ' + file[0] + '_og = "' + filename + '"\n'
+                    job_section = job_section + '        ' + file[0] + '_preserveThisFilename = "' + filename + '"\n'
                 else:
                     pass
 
@@ -524,37 +512,44 @@ class ToilWDL:
         for job_declaration in self.jobs_dictionary:
             job_array = []
             if isinstance(job_declaration, (list, tuple)):
+                job_priority_number = job_declaration[0]
+                job_unique_ID_number = job_declaration[1]
+                job_name = job_declaration[2]
                 for job_map in self.variable_map:
-                    if job_declaration[0] == job_map[0][0]:
-                        # job_array.append(job_declaration[3])
-                        for variable_input in job_map[2]:
-                            if variable_input[1] == 'File':
-                                if variable_input[2] == 'index_value':
-                                    write_var = variable_input[3] + '_' + str(job_declaration[1])
-                                    job_array.append(write_var)
-                                    write_var = variable_input[3] + '_' + str(job_declaration[1]) + '_og'
-                                    job_array.append(write_var)
-                                elif variable_input[2] == 'output':
-                                    write_var = variable_input[3]
-                                    job_array.append(write_var)
-                                    write_var = variable_input[0] + '_og'
-                                    job_array.append(write_var)
+                    mapped_priority_number = job_map[0][0]
+                    mapped_tuple_value = job_map[2]
+                    if job_priority_number == mapped_priority_number:
+                        for variable_input in mapped_tuple_value:
+                            variable_name = variable_input[0]
+                            variable_type = variable_input[1]
+                            variable_value = variable_input[3]
+                            if variable_type == 'File':
+                                if variable_type == 'index_value':
+                                    assigned_job_wrapper_input = variable_value + '_' + str(job_unique_ID_number)
+                                    job_array.append(assigned_job_wrapper_input)
+                                    assigned_job_wrapper_input = variable_value + '_' + str(job_unique_ID_number) + '_preserveThisFilename'
+                                    job_array.append(assigned_job_wrapper_input)
+                                elif variable_type == 'output':
+                                    assigned_job_wrapper_input = variable_value
+                                    job_array.append(assigned_job_wrapper_input)
+                                    assigned_job_wrapper_input = variable_name + '_preserveThisFilename'
+                                    job_array.append(assigned_job_wrapper_input)
                                 else:
-                                    write_var = variable_input[3]
-                                    job_array.append(write_var)
-                                    write_var = variable_input[3] + '_og'
-                                    job_array.append(write_var)
+                                    assigned_job_wrapper_input = variable_value
+                                    job_array.append(assigned_job_wrapper_input)
+                                    assigned_job_wrapper_input = variable_value + '_preserveThisFilename'
+                                    job_array.append(assigned_job_wrapper_input)
                             else:
-                                if variable_input[2] == 'index_value':
-                                    write_var = variable_input[3] + '_' + str(job_declaration[1])
-                                    job_array.append(write_var)
+                                if variable_type == 'index_value':
+                                    assigned_job_wrapper_input = variable_value + '_' + str(job_unique_ID_number)
+                                    job_array.append(assigned_job_wrapper_input)
                                 else:
-                                    write_var = variable_input[3]
-                                    job_array.append(write_var)
+                                    assigned_job_wrapper_input = variable_value
+                                    job_array.append(assigned_job_wrapper_input)
                     fresh_job_array = []
-                    fresh_job_array.append(job_declaration[3])
+                    fresh_job_array.append(job_name)
                     fresh_job_array.extend(job_array)
-                    job_dict['job' + str(job_declaration[1])] = fresh_job_array
+                    job_dict['job' + str(job_unique_ID_number)] = fresh_job_array
 
         ordered_job_dict = collections.OrderedDict(sorted(job_dict.items(), key=lambda t: t[0]))
 
@@ -592,7 +587,7 @@ class ToilWDL:
                 job_declaration_name = job_declaration[0]
                 job_declaration_type = job_declaration[1]
                 if job_declaration_type == 'File':
-                    fn_section = fn_section + job_declaration_name + ', ' + job_declaration_name + '_og, '
+                    fn_section = fn_section + job_declaration_name + ', ' + job_declaration_name + '_preserveThisFilename, '
                 else:
                     fn_section = fn_section + job_declaration_name + ', '
             fn_section = fn_section[:-2]
@@ -606,7 +601,7 @@ class ToilWDL:
                 job_declaration_name = job_declaration[0]
                 job_declaration_type = job_declaration[1]
                 if job_declaration_type == 'File':
-                    fn_section = fn_section + '    ' + job_declaration_name + '_filepath = os.path.join(tempDir, ' + job_declaration_name + '_og)\n'
+                    fn_section = fn_section + '    ' + job_declaration_name + '_filepath = os.path.join(tempDir, ' + job_declaration_name + '_preserveThisFilename)\n'
                     fn_section = fn_section + '    ' + job_declaration_name + ' = job.fileStore.readGlobalFile(' + job_declaration_name + ', userPath=' + job_declaration_name + '_filepath)\n'
 
             fn_section = fn_section + '\n'
@@ -697,8 +692,8 @@ class ToilWDL:
                 if term == mapped_terms[1][0]:
                     found_terms = mapped_terms[2]
         if found_terms == '':
-            print('Mapped term not found.')
-            raise RuntimeError
+            raise RuntimeError('Mapped term not found.')
+
         return found_terms
 
     def get_commandline_array(self, job):
@@ -715,8 +710,6 @@ class ToilWDL:
         master_cmd_array = []
         super_array = []
         sub_array = []
-        previous_left_separator = True
-        previous_right_separator = True
         for var in self.variable_map:
             if job == var[0]:
                 self.save_mapped_vars.append(var)
@@ -739,8 +732,7 @@ class ToilWDL:
                                 master_cmd_array.append("'" + option[1].strip() + "'")
                         master_cmd_array = master_cmd_array[:-1]
                     else:
-                        print('Unsupported and unknown cmd_option.')
-                        raise RuntimeError
+                        raise RuntimeError('Unsupported and unknown cmd_option.')
             else:
                 if cmd_type == 'normal_string':
                     left_separator = False
@@ -753,8 +745,7 @@ class ToilWDL:
                     left_separator = False
                     right_separator = False
                 else:
-                    print('Unknown type found in commandline.')
-                    raise RuntimeError
+                    raise RuntimeError('Unknown type found in commandline.')
 
                 if left_separator and right_separator:
                     super_array.append(current_var)
@@ -779,8 +770,7 @@ class ToilWDL:
                             else:
                                 current_var = current_var + cmd_name
                         else:
-                            print('Unknown type found in commandline.')
-                            raise RuntimeError
+                            raise RuntimeError('Unknown type found in commandline.')
                     else:
                         if cmd_type == 'normal_string':
                             current_var = current_var + " + '" + cmd_name.strip() + "'"
@@ -790,8 +780,7 @@ class ToilWDL:
                             else:
                                 current_var = current_var + cmd_name
                         else:
-                            print('Unknown type found in commandline.')
-                            raise RuntimeError
+                            raise RuntimeError('Unknown type found in commandline.')
         if current_var != '':
             master_cmd_array.append(current_var)
         return master_cmd_array
@@ -810,6 +799,7 @@ class ToilWDL:
                          'b.json',
                          '--someCrazyThing',
                          '42 >= the answer to life']
+
         :param cmd_name: a command string
         :return: an array of parsed string commands
         '''
@@ -874,8 +864,7 @@ class ToilWDL:
                     new_type = self.tasks_dictionary[task_called]['outputs'][output_filename]['type']
                     new_value = self.tasks_dictionary[task_called]['outputs'][output_filename]['value']
                 else:
-                    print("Error, could not find output filename in tasks dictionary.")
-                    raise RuntimeError
+                    raise RuntimeError("Error, could not find output filename in tasks dictionary.")
                 num_of_output_vars = self.get_job_IDs_giving_outputs(job, alias_called)
                 list_of_output_vars = []
                 for job_number in num_of_output_vars:
@@ -962,13 +951,10 @@ def main():
     elif args.secondary_file.endswith('.yaml'):
         w.dict_from_YML(args.secondary_file)
     else:
-        print('Unsupported Secondary File Type.  Please specify json or yml.')
-        raise RuntimeError
+        raise RuntimeError('Unsupported Secondary File Type.  Please specify json or yml.')
 
-    formatted_WDL = w.format_WDL_code(wdl_file_path)
-
-    w.create_WDL_task_definitions(formatted_WDL)
-    w.create_workflow_jobs(formatted_WDL)
+    w.create_task_definitions()
+    w.create_workflow_jobs()
 
     module_section = w.write_modules(w.module_list)
     fn_section = w.write_functions()
