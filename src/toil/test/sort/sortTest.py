@@ -42,6 +42,7 @@ from toil.test import (ToilTest,
                        needs_gridengine,
                        needs_torque,
                        needs_google,
+                       slow,
                        experimental)
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException, JobStoreExistsException
 from toil.leader import FailedJobsException
@@ -69,6 +70,7 @@ def runMain(options):
             raise
 
 
+@slow
 class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     """
     Tests Toil by sorting a file in parallel on various combinations of job stores and batch

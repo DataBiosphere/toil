@@ -28,7 +28,7 @@ import zipfile
 from six.moves import StringIO
 from six import u as str
 
-from toil.test import ToilTest, needs_cwl
+from toil.test import ToilTest, needs_cwl, slow
 
 @needs_cwl
 class CWLTest(ToilTest):
@@ -92,6 +92,7 @@ class CWLTest(ToilTest):
         except NoSuchJobStoreException:
             pass
 
+    @slow
     def test_run_conformance(self):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')

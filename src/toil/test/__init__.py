@@ -506,6 +506,17 @@ def integrative(test_item):
             'Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
             'or run `make integration_test_local` to run all integration tests.')(test_item)
 
+def slow(test_item):
+    """
+    Use this decorator to identify tests that are slow and not critical.
+    Skip them if TOIL_TEST_QUICK is true.
+    """
+    test_item = _mark_test('slow', test_item)
+    if not less_strict_bool(os.getenv('TOIL_TEST_QUICK')):
+        return test_item
+    else:
+        return unittest.skip(
+            'Skipped because TOIL_TEST_QUICK is "True"')(test_item)
 
 methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
 

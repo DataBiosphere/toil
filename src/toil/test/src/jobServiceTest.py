@@ -24,7 +24,7 @@ from six.moves import xrange
 
 from toil.lib.bioio import getTempFile
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 import time
 import sys
 from threading import Thread, Event
@@ -53,7 +53,8 @@ class JobServiceTest(ToilTest):
         # serialization on services is working correctly.
         
         self.runToil(job)
-        
+
+    @slow
     def testService(self, checkpoint=False):
         """
         Tests the creation of a Job.Service with random failures of the worker.
@@ -72,7 +73,8 @@ class JobServiceTest(ToilTest):
                 self.assertEquals(int(open(outFile, 'r').readline()), messageInt)
             finally:
                 os.remove(outFile)
-                
+
+    @slow
     def testServiceDeadlock(self):
         """
         Creates a job with more services than maxServices, checks that deadlock is detected.
@@ -109,6 +111,7 @@ class JobServiceTest(ToilTest):
         """
         self.testService(checkpoint=True)
 
+    @slow
     @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
     def testServiceRecursive(self, checkpoint=True):
         """
@@ -131,6 +134,7 @@ class JobServiceTest(ToilTest):
             finally:
                 os.remove(outFile)
 
+    @slow
     @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
     def testServiceParallelRecursive(self, checkpoint=True):
         """
@@ -331,7 +335,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
             return
 
     assert 0 # Job failed to get info from the service
-    
+
 class TestServiceSerialization(Job.Service):
     def __init__(self, messageInt, *args, **kwargs):
         """

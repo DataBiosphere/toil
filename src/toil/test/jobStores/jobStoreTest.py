@@ -64,6 +64,7 @@ from toil.test import (ToilTest,
                        needs_encryption,
                        make_tests,
                        needs_google,
+                       slow,
                        experimental)
 from future.utils import with_metaclass
 
@@ -534,6 +535,7 @@ class AbstractJobStoreTest(object):
             finally:
                 ftp.stop()
 
+        @slow
         def testFileDeletion(self):
             """
             Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt
@@ -549,6 +551,7 @@ class AbstractJobStoreTest(object):
                     # NB: the fooStream() methods return context managers
                     self.assertRaises(NoSuchFileException, master.readFileStream(fileID).__enter__)
 
+        @slow
         def testMultipartUploads(self):
             """
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
@@ -645,6 +648,7 @@ class AbstractJobStoreTest(object):
                 self.assertEquals(f.read(), "")
             self.master.delete(job.jobStoreID)
 
+        @slow
         def testLargeFile(self):
             dirPath = self._createTempDir()
             filePath = os.path.join(dirPath, 'large')
@@ -677,6 +681,7 @@ class AbstractJobStoreTest(object):
                 except:
                     self.fail()
 
+        @slow
         def testCleanCache(self):
             # Make a bunch of jobs
             master = self.master
@@ -759,6 +764,7 @@ class AbstractJobStoreTest(object):
             """
             raise NotImplementedError()
 
+        @slow
         def testDestructionOfCorruptedJobStore(self):
             self._corruptJobStore()
             worker = self._createJobStore()
@@ -990,6 +996,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     with attempt:
                         s3.delete_bucket(bucket=bucket)
 
+    @slow
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         master = self.master
@@ -1011,6 +1018,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             args, kwargs = mock_log.warn.call_args
             self.assertTrue('Could not determine location' in args[0])
 
+    @slow
     def testMultiPartImportFailures(self):
         # This should be less than the number of threads in the pool used by the MP copy.
         num_parts = 10
@@ -1213,6 +1221,7 @@ class EncryptedFileJobStoreTest(FileJobStoreTest, AbstractEncryptedJobStoreTest.
 
 @needs_aws
 @needs_encryption
+@slow
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 

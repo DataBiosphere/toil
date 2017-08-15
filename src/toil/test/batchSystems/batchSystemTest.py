@@ -49,6 +49,7 @@ from toil.test import (ToilTest,
                        needs_gridengine,
                        needs_slurm,
                        needs_torque,
+                       slow,
                        tempFileContaining)
 from future.utils import with_metaclass
 
@@ -280,6 +281,7 @@ class hidden(object):
         def tearDown(self):
             super(hidden.AbstractBatchSystemJobTest, self).tearDown()
 
+        @slow
         def testJobConcurrency(self):
             """
             Tests that the batch system is allocating core resources properly for concurrent tasks.
@@ -365,7 +367,8 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-        
+
+@slow
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
     This test ensures that single machine batch system doesn't exceed the configured number of
@@ -712,6 +715,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         self.assertEqual(maxValue, 1)
 
     @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
+    @slow
     def testNestedResourcesDoNotBlock(self):
         """
         Resources are requested in the order Memory > Cpu > Disk.

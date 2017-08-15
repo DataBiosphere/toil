@@ -30,7 +30,7 @@ from toil.common import Toil
 from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
 
@@ -385,6 +385,7 @@ class JobTest(ToilTest):
             except expectedException as ex:
                 logger.info("The expected exception was thrown: %s", repr(ex))
 
+    @slow
     def testEvaluatingRandomDAG(self):
         """
         Randomly generate test input then check that the job graph can be 

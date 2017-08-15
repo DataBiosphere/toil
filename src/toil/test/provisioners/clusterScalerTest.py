@@ -33,7 +33,7 @@ from bd2k.util.objects import InnerClass
 
 from toil.job import JobNode
 from toil.provisioners import Node
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    NodeInfo,
                                                    AbstractBatchSystem)
@@ -140,6 +140,7 @@ class ClusterScalerTest(ToilTest):
                          bs.totalWorkerTime,
                          old_div(bs.totalWorkerTime, bs.totalJobs) if bs.totalJobs > 0 else 0.0))
 
+    @slow
     def testClusterScaling(self):
         """
         Test scaling for a batch of non-preemptable jobs and no preemptable jobs (makes debugging
@@ -167,6 +168,7 @@ class ClusterScalerTest(ToilTest):
 
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=0)
 
+    @slow
     def testClusterScalingWithPreemptableJobs(self):
         """
         Test scaling simultaneously for a batch of preemptable and non-preemptable jobs.

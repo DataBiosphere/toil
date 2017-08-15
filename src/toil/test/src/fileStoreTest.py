@@ -25,7 +25,7 @@ from uuid import uuid4
 
 from toil.job import Job
 from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental, slow
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.fileStore import CacheUnbalancedError
@@ -106,6 +106,7 @@ class hidden(object):
 
         # Test filestore operations.  This is a slightly less intense version of the cache specific
         # test `testReturnFileSizes`
+        @slow
         def testFileStoreOperations(self):
             """
             Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
@@ -461,6 +462,7 @@ class hidden(object):
             super(hidden.AbstractCachingFileStoreTest, self).setUp()
             self.options.disableCaching = False
 
+        @slow
         def testExtremeCacheSetup(self):
             """
             Try to create the cache with bad worker active and then have 10 child jobs try to run in
@@ -540,6 +542,7 @@ class hidden(object):
                 assert cacheInfo.nlink == 0
                 assert cacheInfo.cached > 1
 
+        @slow
         def testCacheEvictionPartialEvict(self):
             """
             Ensure the cache eviction happens as expected.  Two files (20MB and 30MB) are written
@@ -555,6 +558,7 @@ class hidden(object):
 
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=10)
 
+        @slow
         def testCacheEvictionTotalEvict(self):
             """
             Ensure the cache eviction happens as expected.  Two files (20MB and 30MB) are written
@@ -570,6 +574,7 @@ class hidden(object):
 
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=30)
 
+        @slow
         def testCacheEvictionFailCase(self):
             """
             Ensure the cache eviction happens as expected.  Two files (20MB and 30MB) are written
@@ -707,6 +712,7 @@ class hidden(object):
                     assert cacheInfoMB == expectedMB, 'Testing %s: Expected ' % value + \
                                                       '%s but got %s.' % (expectedMB, cacheInfoMB)
 
+        @slow
         def testAsyncWriteWithCaching(self):
             """
             Ensure the Async Writing of files happens as expected.  The first Job forcefully
@@ -866,6 +872,7 @@ class hidden(object):
             A.addChild(B)
             Job.Runner.startToil(A, self.options)
 
+        @slow
         def testMultipleJobsReadSameCacheHitGlobalFile(self):
             """
             Write a local file to the job store (hence adding a copy to cache), then have 10 jobs
@@ -876,6 +883,7 @@ class hidden(object):
             """
             self._testMultipleJobsReadGlobalFileFunction(cacheHit=True)
 
+        @slow
         def testMultipleJobsReadSameCacheMissGlobalFile(self):
             """
             Write a non-local file to the job store(hence no cached copy), then have 10 jobs read
@@ -958,6 +966,7 @@ class hidden(object):
             job.fileStore.exportFile(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
             assert filecmp.cmp(fileName, outputFile)
 
+        @slow
         def testFileStoreExportFile(self):
             # Tests that files written to job store can be immediately exported
             # motivated by https://github.com/BD2KGenomics/toil/issues/1469
@@ -965,6 +974,7 @@ class hidden(object):
             Job.Runner.startToil(root, self.options)
 
         # Testing for the return of file sizes to the sigma job pool.
+        @slow
         def testReturnFileSizes(self):
             """
             Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
@@ -979,6 +989,7 @@ class hidden(object):
                               disk='2G')
             Job.Runner.startToil(F, self.options)
 
+        @slow
         def testReturnFileSizesWithBadWorker(self):
             """
             Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
@@ -1101,6 +1112,7 @@ class hidden(object):
             assert jobState['jobReqs'] == jobDisk
 
         # Testing the resumability of a failed worker
+        @slow
         def testControlledFailedWorkerRetry(self):
             """
             Conduct a couple of job store operations.  Then die.  Ensure that the restarted job is
@@ -1283,6 +1295,7 @@ class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreT
     jobStoreType = 'aws'
 
 
+@slow
 @needs_aws
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
