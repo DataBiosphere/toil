@@ -29,8 +29,6 @@ from bd2k.util.objects import abstractclassmethod
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger(__name__)
-defaultSleepTime = 2*60 # sleeping time in seconds for state-querying functions
-
 
 class AbstractGridEngineBatchSystem(BatchSystemSupport):
     """
@@ -273,7 +271,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(AbstractGridEngineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
-        # AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+
         self.resultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.resultsFileHandle = open(self.resultsFile, 'w')
@@ -380,10 +378,10 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         return 30 * 60 # Half an hour
 
     @classmethod
-    def sleepSeconds(cls, sleeptime=defaultSleepTime):
+    def sleepSeconds(cls, sleeptime=self.config.statePollingWait):
         """ Helper function to drop on all state-querying functions to avoid over-querying.
         """
-        logger.debug('Querying job state, waiting for %s beforehand', sleep)
+        logger.debug('Querying job state, waiting for %s seconds', sleeptime)
         time.sleep(sleeptime)
         
         return sleeptime
