@@ -124,12 +124,15 @@ def _addLoggingOptions(addOptionFn):
     # BEFORE YOU ADD OR REMOVE OPTIONS TO THIS FUNCTION, KNOW THAT YOU MAY ONLY USE VARIABLES ACCEPTED BY BOTH
     # optparse AND argparse FOR EXAMPLE, YOU MAY NOT USE default=%default OR default=%(default)s
     defaultLogLevelName = logging.getLevelName( defaultLogLevel )
-    addOptionFn("--logOff", dest="logCritical", action="store_true", default=False,
+    addOptionFn("--logOff", dest="logLevel",
+                default=defaultLogLevelName,
+                action="store_const", const="CRITICAL",
                 help="Same as --logCritical")
     for level in supportedLogLevels:
         levelName = logging.getLevelName(level)
         levelNameCapitalized = levelName.capitalize()
         addOptionFn("--log" + levelNameCapitalized, dest="logLevel",
+                    default=defaultLogLevelName,
                     action="store_const", const=levelName,
                     help="Turn on logging at level %s and above. (default is %s)" % (levelName, defaultLogLevelName))
     addOptionFn("--logLevel", dest="logLevel", default=defaultLogLevelName,
