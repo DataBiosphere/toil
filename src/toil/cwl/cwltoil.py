@@ -743,7 +743,7 @@ def main(args=None, stdout=sys.stdout):
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
-    outdir = options.outdir
+    outdir = os.path.abspath(options.outdir)
     fileindex = {}
     existing = {}
 
