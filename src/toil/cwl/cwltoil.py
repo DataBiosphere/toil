@@ -516,7 +516,13 @@ class CWLGather(Job):
     def run(self, fileStore):
         outobj = {}
 
-        for k in [shortname(i) for i in self.step.tool["out"]]:
+        def sn(n):
+            if isinstance(n, dict):
+                return shortname(n["id"])
+            if isinstance(n, string_types):
+                return shortname(n)
+
+        for k in [sn(i) for i in self.step.tool["out"]]:
             outobj[k] = self.extract(self.outputs, k)
 
         return outobj
