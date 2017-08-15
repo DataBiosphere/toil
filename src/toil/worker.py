@@ -252,14 +252,18 @@ def main():
         # The job is a checkpoint, and is being restarted after previously completing
         if jobGraph.checkpoint != None:
             logger.debug("Job is a checkpoint")
+            # If the checkpoint still has extant jobs in its
+            # (flattened) stack and services, its subtree didn't
+            # complete properly. We handle the restart of the
+            # checkpoint here, removing its previous subtree.
             if len([i for l in jobGraph.stack for i in l]) > 0 or len(jobGraph.services) > 0:
                 logger.debug("Checkpoint has failed.")
                 # Reduce the retry count
                 assert jobGraph.remainingRetryCount >= 0
                 jobGraph.remainingRetryCount = max(0, jobGraph.remainingRetryCount - 1)
                 jobGraph.restartCheckpoint(jobStore)
-                # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
-                # because of the job being a checkpoint
+            # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
+            # because of the job being a checkpoint
             else:
                 logger.debug("The checkpoint jobs seems to have completed okay, removing any checkpoint files to delete.")
                 #Delete any remnant files
