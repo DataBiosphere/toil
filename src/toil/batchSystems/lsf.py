@@ -50,7 +50,7 @@ def prepareBsub(cpu, mem):
         else:
             mem = parse_memory(float(mem)/1024**3)
         bsubMem = '-R "select[type==X86_64 && mem > ' + str(mem) + '] '\
-            'rusage[mem=' + str(mem) + '] -M' +str(mem)
+            'rusage[mem=' + str(mem) + ']" -M' + str(mem)
     else:
         bsubMem = ''
     cpuStr = '' if cpu is None else '-n ' + str(int(cpu))
