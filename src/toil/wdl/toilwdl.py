@@ -506,50 +506,49 @@ class ToilWDL:
         :return: an ordered dictionary of {job1: [declared variables,x,y,z... etc.],
                                            job2: [declared variables,x,y,z... etc.], etc.}
         '''
-
         job_dict = {}
 
         for job_declaration in self.jobs_dictionary:
             job_array = []
             if isinstance(job_declaration, (list, tuple)):
-                job_priority_number = job_declaration[0]
-                job_unique_ID_number = job_declaration[1]
-                job_name = job_declaration[2]
+                job_priority = job_declaration[0]
+                job_ID = job_declaration[1]
+                job_alias = job_declaration[3]
                 for job_map in self.variable_map:
-                    mapped_priority_number = job_map[0][0]
-                    mapped_tuple_value = job_map[2]
-                    if job_priority_number == mapped_priority_number:
-                        for variable_input in mapped_tuple_value:
+                    mapped_priorities = job_map[0][0]
+                    if job_priority == mapped_priorities:
+                        for variable_input in job_map[2]:
                             variable_name = variable_input[0]
                             variable_type = variable_input[1]
+                            variable_context = variable_input[2]
                             variable_value = variable_input[3]
                             if variable_type == 'File':
-                                if variable_type == 'index_value':
-                                    assigned_job_wrapper_input = variable_value + '_' + str(job_unique_ID_number)
-                                    job_array.append(assigned_job_wrapper_input)
-                                    assigned_job_wrapper_input = variable_value + '_' + str(job_unique_ID_number) + '_preserveThisFilename'
-                                    job_array.append(assigned_job_wrapper_input)
-                                elif variable_type == 'output':
-                                    assigned_job_wrapper_input = variable_value
-                                    job_array.append(assigned_job_wrapper_input)
-                                    assigned_job_wrapper_input = variable_name + '_preserveThisFilename'
-                                    job_array.append(assigned_job_wrapper_input)
+                                if variable_context == 'index_value':
+                                    mapped_job_declaration = variable_value + '_' + str(job_ID)
+                                    job_array.append(mapped_job_declaration)
+                                    mapped_job_declaration = variable_value + '_' + str(job_ID) + '_preserveThisFilename'
+                                    job_array.append(mapped_job_declaration)
+                                elif variable_context == 'output':
+                                    mapped_job_declaration = variable_value
+                                    job_array.append(mapped_job_declaration)
+                                    mapped_job_declaration = variable_name + '_preserveThisFilename'
+                                    job_array.append(mapped_job_declaration)
                                 else:
-                                    assigned_job_wrapper_input = variable_value
-                                    job_array.append(assigned_job_wrapper_input)
-                                    assigned_job_wrapper_input = variable_value + '_preserveThisFilename'
-                                    job_array.append(assigned_job_wrapper_input)
+                                    mapped_job_declaration = variable_value
+                                    job_array.append(mapped_job_declaration)
+                                    mapped_job_declaration = variable_value + '_preserveThisFilename'
+                                    job_array.append(mapped_job_declaration)
                             else:
-                                if variable_type == 'index_value':
-                                    assigned_job_wrapper_input = variable_value + '_' + str(job_unique_ID_number)
-                                    job_array.append(assigned_job_wrapper_input)
+                                if variable_context == 'index_value':
+                                    mapped_job_declaration = variable_value + '_' + str(job_ID)
+                                    job_array.append(mapped_job_declaration)
                                 else:
-                                    assigned_job_wrapper_input = variable_value
-                                    job_array.append(assigned_job_wrapper_input)
+                                    mapped_job_declaration = variable_value
+                                    job_array.append(mapped_job_declaration)
                     fresh_job_array = []
-                    fresh_job_array.append(job_name)
+                    fresh_job_array.append(job_alias)
                     fresh_job_array.extend(job_array)
-                    job_dict['job' + str(job_unique_ID_number)] = fresh_job_array
+                    job_dict['job' + str(job_ID)] = fresh_job_array
 
         ordered_job_dict = collections.OrderedDict(sorted(job_dict.items(), key=lambda t: t[0]))
 
