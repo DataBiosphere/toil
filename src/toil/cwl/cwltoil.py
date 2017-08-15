@@ -257,6 +257,7 @@ class CWLJob(Job):
             builder.timeout = 0
             builder.resources = {}
         req = tool.evalResources(builder, {})
+        cwllogger.debug("Evaluated requirements are: %s", req)
         self.cwltool = remove_pickle_problems(tool)
         # pass the default of None if basecommand is empty
         unitName = self.cwltool.tool.get("baseCommand", None)
