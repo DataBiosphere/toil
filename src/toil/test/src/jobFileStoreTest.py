@@ -43,6 +43,21 @@ class JobFileStoreTest(ToilTest):
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
 
+    def testImportLinking(self):
+        """
+        importFile will link instead of copying to jobStore in ``--linkImports`` option is specified.
+        we want to test this behavior
+        """
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        options.linkImports = True
+        fileName = 'dummyFile.txt'
+        with open(fileName, 'w') as fh:
+            fh.write('Subtle literature reference.')
+        with Toil(options) as workflow:
+            fileID = workflow.importFile('file://' + os.path.abspath(fileName))
+            workflow.start(Job.wrapJobFn(compareiNodes, fileID, os.path.abspath(fileName)))
+        os.remove(fileName)
+
     def _testJobFileStore(self, retryCount=0, badWorker=0.0, stringNo=1, stringLength=1000000,
                           testNo=2):
         """
@@ -180,3 +195,11 @@ def fileStoreChild(job, testID1, testID2):
 
     for fileID in (testID1, testID2):
         job.fileStore.deleteGlobalFile(fileID)
+
+
+def compareiNodes(job, importedFileID, importedFilePath):
+    localFilePath = os.path.join(job.fileStore.getLocalTempDir(), "childTemp.txt")
+    job.fileStore.readGlobalFile(importedFileID, localFilePath)
+    localiNodeNo = os.stat(localFilePath).st_ino
+    importediNodeNo = os.stat(importedFilePath).st_ino
+    assert localiNodeNo == importediNodeNo

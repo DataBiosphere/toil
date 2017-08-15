@@ -312,7 +312,7 @@ class AbstractJobStore(object):
         """
         Exports file to destination pointed at by the destination URL.
 
-        Refer to :meth:`.importFile` documentation for currently supported URL schemes.
+        Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         Note that the helper method _exportFile is used to read from the source and write to
         destination. To implement any optimizations that circumvent this, the _exportFile method
@@ -324,7 +324,7 @@ class AbstractJobStore(object):
         """
         dstUrl = urlparse.urlparse(dstUrl)
         otherCls = self._findJobStoreForUrl(dstUrl, export=True)
-        return self._exportFile(otherCls, jobStoreFileID, dstUrl)
+        self._exportFile(otherCls, jobStoreFileID, dstUrl)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         """
@@ -445,7 +445,7 @@ class AbstractJobStore(object):
 
         def haveJob(jobId):
             if jobCache is not None:
-                if jobCache.has_key(jobId):
+                if jobId in jobCache:
                     return True
                 else:
                     return self.exists(jobId)

@@ -260,7 +260,13 @@ class Leader:
                             continue
 
                         # If the job is a checkpoint and has remaining retries then reissue it.
-                        elif jobGraph.checkpoint is not None and jobGraph.remainingRetryCount > 0:
+                        # The logic behind using > 1 rather than > 0 here: Since this job has
+                        # been tried once (without decreasing its retry count as the job
+                        # itself was successful), and its subtree failed, it shouldn't be retried
+                        # unless it has more than 1 try.
+                        elif jobGraph.checkpoint is not None and jobGraph.remainingRetryCount > 1:
+                            jobGraph.setupJobAfterFailure(self.config)
+                            self.jobStore.update(jobGraph)
                             logger.warn('Job: %s is being restarted as a checkpoint after the total '
                                         'failure of jobs in its subtree.', jobGraph.jobStoreID)
                             self.issueJob(JobNode.fromJobGraph(jobGraph))
@@ -675,7 +681,7 @@ class Leader:
         jobsToKill = []
         for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(runningJobs)):
             jobStoreID = self.getJobStoreID(jobBatchSystemID)
-            if self.reissueMissingJobs_missingHash.has_key(jobBatchSystemID):
+            if jobBatchSystemID in self.reissueMissingJobs_missingHash:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] += 1
             else:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] = 1
@@ -905,8 +911,9 @@ class Leader:
                     # Remove it from the set of jobs with active successors
                     self.toilState.successorCounts.pop(predecessorJob.jobStoreID)
 
-                    # Pop stack at this point, as we can get rid of its successors
-                    predecessorJob.stack.pop()
+                    if predecessorJob.jobStoreID not in self.toilState.hasFailedSuccessors:
+                        # Pop stack at this point, as we can get rid of its successors
+                        predecessorJob.stack.pop()
 
                     # Now we know the job is done we can add it to the list of updated job files
                     assert predecessorJob not in self.toilState.updatedJobs

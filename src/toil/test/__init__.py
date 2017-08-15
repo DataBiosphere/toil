@@ -46,6 +46,7 @@ from bd2k.util.threading import ExceptionalThread
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
 
+logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 
@@ -151,7 +152,7 @@ class ToilTest(unittest.TestCase):
         prefix = ['toil', 'test', strclass(cls)]
         prefix.extend(filter(None, names))
         prefix.append('')
-        temp_dir_path = tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix))
+        temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
 
@@ -448,6 +449,8 @@ def needs_cwl(test_item):
 def needs_appliance(test_item):
     import json
     test_item = _mark_test('appliance', test_item)
+    if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
+        return unittest.skip('Skipping docker test.')(test_item)
     if next(which('docker'), None):
         image = applianceSelf()
         try:
@@ -457,7 +460,8 @@ def needs_appliance(test_item):
         else:
             images = {i['Id'] for i in json.loads(images) if image in i['RepoTags']}
         if len(images) == 0:
-            return unittest.skip("Cannot find appliance image %s. Be sure to run 'make docker' "
+            return unittest.skip("Cannot find appliance image %s. Use 'make test' target to "
+                                 "automatically build appliance, or just run 'make docker' "
                                  "prior to running this test." % image)(test_item)
         elif len(images) == 1:
             return test_item
@@ -536,7 +540,7 @@ def timeLimit(seconds):
 # FIXME: move to bd2k-python-lib
 
 
-def make_tests(generalMethod, targetClass=None, **kwargs):
+def make_tests(generalMethod, targetClass, **kwargs):
     """
     This method dynamically generates test methods using the generalMethod as a template. Each
     generated function is the result of a unique combination of parameters applied to the
@@ -568,7 +572,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
     >>> class Bar(Foo):
     ...     pass
 
-    >>> make_tests(Foo.has, targetClass=Bar, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
+    >>> make_tests(Foo.has, Bar, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
 
     >>> b = Bar()
 
@@ -585,27 +589,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
     >>> hasattr(f, 'test_has__num_one__letter_a')  # should be false because Foo has no test methods
     False
 
-    >>> make_tests(Foo.has, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
-
-    >>> hasattr(f, 'test_has__num_one__letter_a')
-    True
-
-    >>> assert f.test_has__num_one__letter_a() == f.has(1, 'a')
-
-    >>> assert f.test_has__num_one__letter_b() == f.has(1, 'b')
-
-    >>> assert f.test_has__num_two__letter_a() == f.has(2, 'a')
-
-    >>> assert f.test_has__num_two__letter_b() == f.has(2, 'b')
-
-    >>> make_tests(Foo.hasOne, num={'one':1, 'two':2})
-
-    >>> assert f.test_hasOne__num_one() == f.hasOne(1)
-
-    >>> assert f.test_hasOne__num_two() == f.hasOne(2)
-
     """
-
     def pop(d):
         """
         Pops an arbitrary key value pair from a given dict.
@@ -679,7 +663,7 @@ def make_tests(generalMethod, targetClass=None, **kwargs):
             permuteIntoLeft(left, *pop(kwargs))
 
         # set class attributes
-        targetClass = targetClass or generalMethod.im_class
+        targetClass = targetClass or generalMethod.__class__
         for prmNames, prms in left.items():
             insertMethodToClass()
     else:
