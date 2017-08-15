@@ -383,7 +383,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
     def sleepSeconds(cls, sleeptime=defaultSleepTime):
         """ Helper function to drop on all state-querying functions to avoid over-querying.
         """
-        logger.debug('Querying job state, waiting for %s beforehand', sleep)
+        logger.debug('Querying job state, waiting for %s beforehand', sleeptime)
         time.sleep(sleeptime)
         
         return sleeptime
