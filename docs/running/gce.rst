@@ -6,6 +6,10 @@ After setting up Toil on :ref:`installation-ref`, Toil scripts
 can be run just by designating a job store location as shown in
 :ref:`quickstart`.
 
+.. note::
+
+   Google Cloud Storage is available in Toil for experimental purposes.  Only AWS is currently supported in Toil.
+
 If you wish to use the Google Storage job store, install Toil with the
 ``google`` extra (:ref:`extras`). Then, create a file named ``.boto`` with your
 credentials and some configuration:

@@ -2,18 +2,14 @@
 
 Running in Azure
 ================
-:orphan:
+This section describes how to deploy a leader node in Azure and launch a Toil cluster from the leader node to run workflows.  You'll need an account in Azure prior to executing the steps in the document.  To setup Azure, see :ref:`prepare_azure-ref`.
 
-.. orphan tag prevents warning while file is included in install/clout.rst
-   see http://www.sphinx-doc.org/en/stable/markup/misc.html
+.. note::
 
-.. image:: azuredeploy.png
-   :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
-   :alt: Microsoft Azure deploy button
+   Azure is available in Toil for experimental purposes.  Only AWS is currently supported in Toil. 
 
-To setup Azure, see :ref:`prepare_azure-ref`.
 
-Launch a Toil workflow in Azure
+Launch a leader node in Azure
 -------------------------------
 Toil comes with a `cluster template`_ to facilitate easy deployment of clusters
 running Toil on Microsoft Azure. The template allows these clusters to be
@@ -23,8 +19,13 @@ created and managed through the Azure portal.
 To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
 
 
+.. image:: azuredeploy.png
+   :target: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
+   :alt: Microsoft Azure deploy button
+
 #. Click on the blue deploy button above, or open the `deploy link`_ in your
    browser. If necessary, sign into the Microsoft account that you use for Azure.
+
 
 #. You should be presented with a screen resembling the following:
 
@@ -188,6 +189,11 @@ To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
    you should be able to connect to it; however, note that it will not be ready
    to run any Toil jobs until it is finished setting itself up.
 
+
+Launch a Toil Mesos Cluster
+---------------------------
+
+
 #. SSH into the first (and by default only) leader node. For this, you need to
    know the values *AdminUsername* and *DnsNameForMastersPublicIp* were set to
    above, and the name of the region you placed your cluster in. If you named
@@ -204,19 +210,19 @@ To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
    kill ``tail`` with a ``ctrl-c``. Your leader node is now ready.
 
 #. At this point, you can start running Toil jobs, using the Mesos batch system
-    (by passing ``--batchSystem mesos --mesosMaster 10.0.0.5:5050``) and the
-    Azure job store (for which you will need a separate Azure Storage account set
-    up, ideally in the same region as your cluster but in a different Resource
-    Group). The nodes of the cluster may take a few more minutes to finish
-    installing, but when they do they will report in to Mesos and begin running
-    any scheduled jobs.
+   (by passing ``--batchSystem mesos --mesosMaster 10.0.0.5:5050``) and the
+   Azure job store (for which you will need a separate Azure Storage account set
+   up, ideally in the same region as your cluster but in a different Resource
+   Group). The nodes of the cluster may take a few more minutes to finish
+   installing, but when they do they will report in to Mesos and begin running
+   any scheduled jobs.
 
-#. Whan you are done running your jobs, go back to the Azure portal, find the
-    Resource Group you created for your cluster, and delete it. This will destroy
-    all the VMs and any data stored on them, and stop Microsoft charging you money
-    for keeping the cluster around. As long as you used a separate Asure Storage
-    account in a different Resource Group, any information kept in the job stores
-    and file stores you were using will be retained.
+#. Whan you are done running your jobs, go back to the Azure portal, find the 
+   Resource Group you created for your cluster, and delete it. This will destroy
+   all the VMs and any data stored on them, and stop Microsoft charging you 
+   money for keeping the cluster around. As long as you used a separate Asure 
+   Storage account in a different Resource Group, any information kept in the 
+   job stores and file stores you were using will be retained.
 
 For more information about how your new cluster is organized, for information on how to access the Mesos Web UI, or for troubleshooting advice, please see `the template documentation <https://github.com/BD2KGenomics/toil/blob/master/contrib/azure/README.md>`_.
 
