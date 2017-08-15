@@ -33,7 +33,7 @@ from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from uuid import uuid4
 
 
-from toil.test import needs_aws, integrative, ToilTest, needs_appliance, timeLimit
+from toil.test import needs_aws, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ log = logging.getLogger(__name__)
 @needs_aws
 @integrative
 @needs_appliance
+@slow
 class AbstractAWSAutoscaleTest(ToilTest):
 
     def sshUtil(self, command):
