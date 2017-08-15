@@ -19,6 +19,7 @@ import logging
 import time
 
 import sys
+import string
 
 # Python 3 compatibility imports
 from _ssl import SSLError
@@ -703,7 +704,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
         # determine number of ephemeral drives via cgcloud-lib
-        bdtKeys = ['', '/dev/xvdb', '/dev/xvdc', '/dev/xvdd']
+        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.lowercase[1:]]
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = BlockDeviceType(delete_on_termination=True)
