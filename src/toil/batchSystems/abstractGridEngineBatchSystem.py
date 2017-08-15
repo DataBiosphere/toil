@@ -377,10 +377,10 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
     def getRescueBatchJobFrequency(cls):
         return 30 * 60 # Half an hour
 
-    @classmethod
-    def sleepSeconds(cls, sleeptime=self.config.statePollingWait):
+    def sleepSeconds(cls, sleeptime=None):
         """ Helper function to drop on all state-querying functions to avoid over-querying.
         """
+        sleeptime = sleeptime or self.config.statePollingWait
         logger.debug('Querying job state, waiting for %s seconds', sleeptime)
         time.sleep(sleeptime)
         
