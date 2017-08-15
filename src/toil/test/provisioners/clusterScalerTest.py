@@ -229,7 +229,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     for name, value in iteritems(AbstractBatchSystem.__dict__):
         if getattr(value, '__isabstractmethod__', False):
-            exec 'def %s(): pass' % name
+            exec('def %s(): pass' % name)
         # Without this, the class would end up with .name and .value attributes
         del name, value
 

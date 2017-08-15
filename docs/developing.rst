@@ -599,12 +599,12 @@ example::
             fH.write("Out brief candle")
 
         # Now read the first file; scratchFile2 is a local copy of the file
-        # that is read only by default.
+        # that is read-only by default.
         scratchFile2 = job.fileStore.readGlobalFile(fileID)
 
         # Read the second file to a desired location: scratchFile3.
         scratchFile3 = os.path.join(job.fileStore.getLocalTempDir(), "foo.txt")
-        job.fileStore.readGlobalFile(fileID, userPath=scratchFile3)
+        job.fileStore.readGlobalFile(fileID2, userPath=scratchFile3)
 
         # Read the second file again using a stream.
         with job.fileStore.readGlobalFileStream(fileID2) as fH:

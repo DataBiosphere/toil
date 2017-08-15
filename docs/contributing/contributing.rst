@@ -65,6 +65,21 @@ To invoke all integration tests, including AWS tests, use
 
     $ export TOIL_AWS_KEYNAME=<aws_keyname>; make integration_test
 
+To skip building the Docker appliance and run tests that have no docker dependency use
+
+::
+
+    $ make test_offline
+
+To make integration tests easier to debug locally one can use
+
+::
+
+    $ make integration_test_local
+
+which runs the integration tests in serial and doesn't redirect output. This makes it appears on the terminal as
+expected.
+
 
 .. topic:: Installing Docker with Quay
 
