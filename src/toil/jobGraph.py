@@ -112,6 +112,56 @@ class JobGraph(JobNode):
             logger.warn("We have increased the default memory of the failed job %s to %s bytes",
                         self, self.memory)
 
+    def restartCheckpoint(self, jobStore):
+        """Restart a checkpoint after the total failure of jobs in its subtree.
+
+        Writes the changes to the jobStore immediately. All the
+        checkpoint's successors will be deleted, but its retry count
+        will *not* be decreased.
+
+        Returns a list with the IDs of any successors deleted.
+        """
+        assert self.checkpoint is not None
+        successorsDeleted = []
+        if len(self.stack) > 0 or len(self.services) > 0 or self.command != None:
+            if self.command != None:
+                assert self.command == self.checkpoint
+                logger.debug("Checkpoint job already has command set to run")
+            else:
+                self.command = self.checkpoint
+
+            jobStore.update(self) # Update immediately to ensure that checkpoint
+            # is made before deleting any remaining successors
+
+            if len(self.stack) > 0 or len(self.services) > 0:
+                # If the subtree of successors is not complete restart everything
+                logger.debug("Checkpoint job has unfinished successor jobs, deleting the jobs on the stack: %s, services: %s " %
+                             (self.stack, self.services))
+                # Delete everything on the stack, as these represent successors to clean
+                # up as we restart the queue
+                def recursiveDelete(jobGraph2):
+                    # Recursive walk the stack to delete all remaining jobs
+                    for jobs in jobGraph2.stack + jobGraph2.services:
+                        for jobNode in jobs:
+                            if jobStore.exists(jobNode.jobStoreID):
+                                recursiveDelete(jobStore.load(jobNode.jobStoreID))
+                            else:
+                                logger.debug("Job %s has already been deleted", jobNode)
+                    if jobGraph2 != self:
+                        logger.debug("Checkpoint is deleting old successor job: %s", jobGraph2.jobStoreID)
+                        jobStore.delete(jobGraph2.jobStoreID)
+                        successorsDeleted.append(jobGraph2.jobStoreID)
+                recursiveDelete(self)
+
+                self.stack = [ [], [] ] # Initialise the job to mimic the state of a job
+                # that has been previously serialised but which as yet has no successors
+
+                self.services = [] # Empty the services
+
+                # Update the jobStore to avoid doing this twice on failure and make this clean.
+                jobStore.update(self)
+        return successorsDeleted
+
     def getLogFileHandle( self, jobStore ):
         """
         Returns a context manager that yields a file handle to the log file

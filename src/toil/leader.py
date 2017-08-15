@@ -265,8 +265,6 @@ class Leader:
                         # itself was successful), and its subtree failed, it shouldn't be retried
                         # unless it has more than 1 try.
                         elif jobGraph.checkpoint is not None and jobGraph.remainingRetryCount > 1:
-                            jobGraph.setupJobAfterFailure(self.config)
-                            self.jobStore.update(jobGraph)
                             logger.warn('Job: %s is being restarted as a checkpoint after the total '
                                         'failure of jobs in its subtree.', jobGraph.jobStoreID)
                             self.issueJob(JobNode.fromJobGraph(jobGraph))
