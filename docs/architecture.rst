@@ -136,3 +136,63 @@ disk-based storage systems as compared to the SSD systems we tested this on.
     in all cases, the uncached run uses almost 300-400GB more that the cached run in the resource
     heavy mutation calling step. We also see a benefit in terms of wall time for each stage since we
     eliminate the time taken for file transfers.
+
+Toil support for Common Workflow Language
+-----------------------------------------
+
+The CWL document and input document are loaded, normalized, validated and
+checked using the 'cwltool.load_tool' module.
+
+Input files referenced by the CWL document and input document are imported into
+the Toil file store.  Supports any URL supported by Toil file store, including
+local files and object storage.
+
+The 'location' field of File references are updated to reflect the import token
+returned by the Toil file store.
+
+For directory inputs, the directory listing is stored in Directory object.
+Each individual files is imported into Toil file store.
+
+The initial workflow Job is created from the toplevel CWL document, and
+
+When the toplevel workflow job runs, it traverses the CWL workflow and creates
+a toil job for each step.  The dependency graph is expressed by making
+downstream jobs children of upstream jobs, and initializing the child jobs with
+an input object containing the promises of output from upstream jobs.
+
+Because Toil jobs have a single output, but CWL permits steps to have multiple
+output parameters that may feed into multiple other steps, the input to a
+CWLJob is expressed with an "indirect dictionary".  This is a dictionary of
+input parameters, where each entry value is a tuple of a promise and a promise
+key.  When the job runs, the indirect dictionary is turned into a concrete
+input object by resolving each promise into its actual value (which is always a
+dict), and then looking up the promise key to get the actual value for the the
+input parameter.
+
+If a workflow step specifies a scatter, then a scatter job is created and
+connected into the workflow graph as described above.  When the scatter step
+runs, it creates child jobs for each parameterizations of the scatter.  A
+gather job is added as a follow-on to gather the outputs into arrays.
+
+When running a command line tool, it first creates output and temporary
+directories under the Toil local temp dir.  It runs the command line tool using
+the single_job_executor from CWLTool, providing a Toil-specific constructor for
+filesystem access, and overriding the default PathMapper to use ToilPathMapper.
+
+The ToilPathMapper keeps track of a file's symbolic identifier (the Toil
+FileStore token), its local path on the host (the value returned by
+readGlobalFile) and the the location of the file inside the Docker container.
+
+After executing single_job_executor from CWLTool, it gets back the output
+object and status.  If the underlying job failed, raise an exception.  Files
+from the output object are added to the file store using writeGlobalFile and
+the 'location' field of File references are updated to reflect the token
+returned by the Toil file store.
+
+When the workflow completes, it returns an indirect dictionary linking to the
+outputs of the job steps that contribute to the final output.  This is the
+value returned by toil.start() or toil.restart().  This is resolved to get the
+final output object.  The files in this object are exported from the file store
+to 'outdir' on the host file system, and the 'location' field of File
+references are updated to reflect the final exported location of the output
+files.
