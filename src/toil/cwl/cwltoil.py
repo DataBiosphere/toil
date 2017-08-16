@@ -536,6 +536,8 @@ class CWLScatter(Job):
         valueFrom = {shortname(i["id"]): i["valueFrom"] for i in self.step.tool["inputs"] if "valueFrom" in i}
         def postScatterEval(io):
             shortio = {shortname(k): v for k, v in iteritems(io)}
+            for k in valueFrom:
+                io.setdefault(k, None)
             def valueFromFunc(k, v):
                 if k in valueFrom:
                     return cwltool.expression.do_eval(
@@ -864,6 +866,7 @@ def main(args=None, stdout=sys.stdout):
             options.workflow = options.cwltool
             options.job_order = options.cwljob
             options.tool_help = None
+            options.debug = options.logLevel == "DEBUG"
             job = cwltool.main.load_job_order(options, t, sys.stdin)
 
             if type(job) == int:
