@@ -83,7 +83,7 @@ def setDefaultOptions(config):
     config.batchSystem = "singleMachine"
     config.disableHotDeployment = False
     config.environment = {}
-    config.statePollingWait = 2*60 # seconds
+    config.statePollingWait = 10 # seconds
 
     # single machine
     config.scale = 1
