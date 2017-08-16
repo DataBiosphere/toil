@@ -400,8 +400,8 @@ class CWLJob(Job):
         if isinstance(unitName, (list, tuple)):
             unitName = ' '.join(unitName)
         super(CWLJob, self).__init__(cores=req["cores"],
-                                     memory=(req["ram"]*1024*1024),
-                                     disk=((req["tmpdirSize"]*1024*1024) + (req["outdirSize"]*1024*1024)),
+                                     memory=(req["ram"]*(2**20)),
+                                     disk=((req["tmpdirSize"]*(2**20)) + (req["outdirSize"]*(2**20))),
                                      unitName=unitName)
 
         self.cwljob = cwljob
@@ -843,6 +843,14 @@ def main(args=None, stdout=sys.stdout):
             useStrict = not options.not_strict
             try:
                 t = cwltool.load_tool.load_tool(options.cwltool, toilMakeTool,
+                                                kwargs={
+                                                    "hints": [{
+                                                        "class": "ResourceRequirement",
+                                                        "coresMin": toil.config.defaultCores,
+                                                        "ramMin": toil.config.defaultMemory / (2**20),
+                                                        "outdirMin": toil.config.defaultDisk / (2**20),
+                                                        "tmpdirMin": 0
+                                                    }]},
                                                 resolver=cwltool.resolver.tool_resolver,
                                                 strict=useStrict)
                 unsupportedRequirementsCheck(t.requirements)
