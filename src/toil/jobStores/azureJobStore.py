@@ -530,7 +530,7 @@ class AzureJobStore(AbstractJobStore):
         This will never cause a collision if uuids are used, but
         otherwise may not be safe.
         """
-        return 'a' + [x for x in tableName if x.isalnum()]
+        return 'a' + ''.join([x for x in tableName if x.isalnum()])
 
     # Maximum bytes that can be in any block of an Azure block blob
     # https://github.com/Azure/azure-storage-python/blob/4c7666e05a9556c10154508335738ee44d7cb104/azure/storage/blob/blobservice.py#L106
