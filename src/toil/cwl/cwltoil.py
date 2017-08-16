@@ -281,7 +281,7 @@ def toilStageFiles(fileStore, cwljob, outdir, index, existing, export):
 
 class CWLJobWrapper(Job):
     def __init__(self, tool, cwljob, **kwargs):
-        super(CWLJobWrapper, self).__init__(cores=.1,
+        super(CWLJobWrapper, self).__init__(cores=1,
                                             memory=1024*1024,
                                             disk=1)
         self.cwltool = remove_pickle_problems(tool)
