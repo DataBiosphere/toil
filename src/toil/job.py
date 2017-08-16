@@ -67,9 +67,6 @@ class JobLikeObject(object):
         preemptable = requirements.get('preemptable')
         if unitName is not None:
             assert isinstance(unitName, (str, bytes))
-        print("XXX")
-        print("jobname: %s str: %s" % (jobName, str))
-        print("type: %s" %type(jobName).__name__)
         if jobName is not None:
             assert isinstance(jobName, (str, bytes))
         self.unitName = unitName
