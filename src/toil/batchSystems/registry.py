@@ -13,8 +13,8 @@
 #
 
 def _gridengineBatchSystemFactory():
-    from toil.batchSystems.gridengine import GridengineBatchSystem
-    return GridengineBatchSystem
+    from toil.batchSystems.gridengine import GridEngineBatchSystem
+    return GridEngineBatchSystem
 
 def _parasolBatchSystemFactory():
     from toil.batchSystems.parasol import ParasolBatchSystem
