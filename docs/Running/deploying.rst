@@ -2,7 +2,12 @@
 
 Deploying a Workflow
 ====================
+You can deploy a workflow locally (on a single machine) or remotely (i.e. distributed on a cluster), as described below.
 
+.. _localDeploying:
+
+Deploying a Local Workflow
+----------------------------
 If a Toil workflow is run on a single machine (that is, single machine mode),
 there is nothing special you need to do. You change into the directory
 containing your user script and invoke it like any Python script::
@@ -33,6 +38,10 @@ The script can have dependencies, as long as those are installed on the machine,
 either globally, in a user-specific location or in a virtualenv. In the latter
 case, the virtualenv must of course be active when you run the user script.
 
+.. _remoteDeploying:
+
+Deploying a Remote Workflow
+---------------------------
 If, however, you want to run your workflow in a distributed environment, on
 multiple worker machines, either in the cloud or on a bare-metal cluster, your
 script needs to be made available to those other machines. If your script
@@ -46,10 +55,6 @@ cannot be remotely deployed. Lastly we'll deal with the issue of declaring
 :ref:`Toil as a dependency <depending_on_toil>` of a workflow that is packaged
 as a setuptools distribution.
 
-.. _remoteDeploying:
-
-Remote-deploying Toil
----------------------
 
 Toil can be easily deployed to a remote host, given that both Python and Toil
 are present. The first order of business after copying your workflow to each
@@ -132,7 +137,7 @@ We can now run our workflow::
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
 Remote deployment with sibling modules
---------------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This scenario applies if the user script imports modules that are its siblings::
 
@@ -153,8 +158,7 @@ reasonably complicated workflows.
 
 
 Remotely deploying a package hierarchy
---------------------------------------
-
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Recall that in Python, a `package`_ is a directory containing one or more
 ``.py`` files—one of which must be called ``__init__.py``—and optionally other
 packages. For more involved workflows that contain a significant amount of
@@ -213,7 +217,7 @@ Also note that the root directory itself must not be package, i.e. must not
 contain an ``__init__.py``.
 
 Relying on shared filesystems
------------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bare-metal clusters typically mount a shared file system like NFS on each node.
 If every node has that file system mounted at the same path, you can place your
@@ -229,8 +233,8 @@ replicates ``PYTHONPATH`` from the leader to every worker.
 
 .. _deploying_toil:
 
-Deploying Toil
---------------
+Using Docker with Toil
+----------------------
 
 Toil comes with the Toil Appliance, a Docker image with Mesos and Toil baked in.
 It's easily deployed, only needs Docker, and allows for workflows to be run in
