@@ -783,15 +783,15 @@ class AWSProvisioner(AbstractProvisioner):
             return e.status == 404
 
         def throttleError(e):
-            return e.status == 400 and e.error_code == 'Throttling'
+            return isinstance(e, BotoServerError) and e.status == 400 and e.error_code == 'Throttling'
 
         def truncExpBackoff():
-            # as recommended here https://tinyurl.com/ycf6srh6
+            # as recommended here https://forums.aws.amazon.com/thread.jspa?messageID=406788#406788
             yield 0
             t = 1
             while t < 1024:
-                t *= 2
                 yield t
+                t *= 2
             while True:
                 yield t
 
