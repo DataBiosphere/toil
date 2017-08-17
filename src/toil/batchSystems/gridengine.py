@@ -60,7 +60,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
         def submitJob(self, subLine):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
-            result = int(process.stdout.readline().strip().split('.')[0])
+            result = int(process.stdout.readline().strip())
             return result
 
         def getJobExitCode(self, sgeJobID):
