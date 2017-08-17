@@ -361,7 +361,7 @@ Launch a Toil Workflow in AWS
 After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.  
 
 
-#. Launch a cluster in AWS using the ``launch-cluster`` command. The arguments ``keyPairName``, ``nodeType``, and ``zone`` are required to launch a cluster. ::
+#. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``, ``nodeType``, and ``zone`` are required to launch a cluster. ::
 
        (venv) $ toil launch-cluster <cluster-name> \
 	--keyPairName <AWS-key-pair-name> \
@@ -369,11 +369,11 @@ After having installed the ``aws`` extra for Toil during the :ref:`installation-
 	--zone us-west-2a
 
 
-#. Copy ``helloWorld.py`` to the ``/tmp`` directory on the leader node using the ``rsync-cluster`` command. Note that the command requires defining the file to copy as well as the target location on the cluster leader node.::
+#. Copy ``helloWorld.py`` to the ``/tmp`` directory on the leader node using the :ref:`rsyncCluster` command. Note that the command requires defining the file to copy as well as the target location on the cluster leader node.::
 
       	(venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> helloWorld.py :/tmp
 
-#. Login to the cluster leader node using the ``ssh-cluster`` command. This command will log you in as the ``root`` user ::
+#. Login to the cluster leader node using the :ref:`sshCluster` command. Note this command will log you in as the ``root`` user ::
 
       	(venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
@@ -388,9 +388,11 @@ After having installed the ``aws`` extra for Toil during the :ref:`installation-
 
       	$ exit
 
-#. Destroy the cluster. ::
+#. Use the :ref:`destroyCluster` command to destroy the cluster. Note this command will destroy the cluster leader node and any resources created to run the job, including the S3 bucket. ::
 
       	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
+
+
 
 .. _awscwl:
 

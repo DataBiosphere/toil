@@ -69,7 +69,7 @@ For information on using the Toil Provisioner have a look at :ref:`Autoscaling`.
 Details about Launching a Cluster in AWS
 ----------------------------------------
 
-Using the provisioner to launch a Toil leader instance is simple using the launch-cluster command. For example, to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run:
+Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example, to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run:
 ::
 
     	(venv) $ toil launch-cluster my-cluster \
@@ -145,29 +145,50 @@ look like::
 Running a Workflow with Autoscaling
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The only remaining step is to kick off our Toil run with special autoscaling options.
-
-If you haven't already, take a look at :ref:`installProvisioner` for information
-on getting autoscaling set up before continuing on.
-
-Autoscaling uses the cluster utilities. For more information see :ref:`clusterRef`.
+Autoscaling is a feature of running Toil in a cloud whereby additional cloud instances are launched to run the workflow.  Autoscaling leverages Mesos containers to provide an execution environment for these workflows.  
 
 
-First, we use the :ref:`sshCluster` utility to log on to the leader. ::
 
-    	(venv) $ toil ssh-cluster -z us-west-2a my-cluster
+#. Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
 
-Next, we run the script. In order for your script to make use of autoscaling you will need to specify the options
-``--provisioner aws`` and ``--nodeType <>`` where nodeType is the name of an `EC2 instance type`_.
-These options, respectively, tell Toil that we are running on AWS (currently the
-only supported autoscaling environment) and which instance type to use for the
-Toil worker instances. Here is an example: ::
+#. Launch the leader node in AWS using the :ref:`launchCluster` command. ::
 
-    	(venv) $ python my-toil-script.py --provisioner aws --nodeType m3.large
+        (venv) $ toil launch-cluster <cluster-name> \
+        --keyPairName <AWS-key-pair-name> \
+        --nodeType t2.micro \
+        --zone us-west-2a
+
+#. Copy the `sort.py` script up to the leader node. ::
+
+	(venv) $ toil rsync-cluster <cluster-name> sort.py :/tmp
+
+#. Login to the leader node. ::
+
+	(venv) $ toil ssh-cluster <cluster-name>
+
+#. Run the script as an autoscaling workflow. ::
+
+	$ python /tmp/sort.py  \
+	aws:us-west-2:autoscaling-sort-jobstore \
+	--provisioner aws --nodeType c3.large \
+	--batchSystem mesos --mesosMaster <private-IP>:5050 
+	--logLevel DEBUG
+
+   .. note::
+
+    In this example, the autoscaling Toil code creates an instance of flavor `c3.large` and launches a Mesos slave container inside it.  The container then runs the `sort.py` script which first generates a file to sort, then sorts that file, and finally creates a sorted file.  Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job results.
+
+#. View the generated file to sort. ::
+
+	$ head fileToSort.txt
+
+#. View the sorted file. ::
+
+	$ head sortedFile.txt
 
 For more information on other autoscaling (and other) options have a look at :ref:`workflowOptions` and/or run::
 
-    	(venv) $ python my-toil-script.py --help
+    	$ python my-toil-script.py --help
 
 .. important::
 
