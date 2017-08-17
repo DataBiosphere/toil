@@ -37,6 +37,7 @@ from toil.statsAndLogging import StatsAndLogging
 from toil.jobGraph import JobNode
 from toil.job import ServiceJobNode
 from toil.toilState import ToilState
+from toil.common import ToilMetrics
 
 logger = logging.getLogger( __name__ )
 
@@ -160,12 +161,10 @@ class Leader:
         """
         # Start the stats/logging aggregation thread
         self.statsAndLogging.start()
-        if self.config.monitorCluster:
-            from toil.provisioners.aws import ToilMtailServer
-            mtailServer = ToilMtailServer(logger)
-
+        if self.config.metrics:
+            self.toilMetrics = ToilMetrics(provisioner=self.provisioner)
         else:
-            mtailServer = None
+            self.toilMetrics = None
 
         try:
 
@@ -194,8 +193,8 @@ class Leader:
         finally:
             # Ensure the stats and logging thread is properly shutdown
             self.statsAndLogging.shutdown()
-            if mtailServer:
-                mtailServer.shutdown()
+            if self.toilMetrics:
+                self.toilMetrics.shutdown()
 
 
         # Filter the failed jobs
@@ -445,6 +444,8 @@ class Leader:
                         cur_logger = (logger.debug if str(updatedJob.jobName).startswith(self.debugJobNames)
                                       else logger.info)
                         cur_logger('Job ended successfully: %s', updatedJob)
+                        if self.toilMetrics:
+                            self.toilMetrics.logCompletedJob(updatedJob)
                     else:
                         logger.warn('Job failed with exit value %i: %s',
                                     result, updatedJob)
@@ -547,6 +548,9 @@ class Leader:
                    "%s and cores: %s, disk: %s, and memory: %s",
                    jobNode, str(jobBatchSystemID), int(jobNode.cores),
                    bytes2human(jobNode.disk), bytes2human(jobNode.memory))
+        if self.toilMetrics:
+            self.toilMetrics.logIssuedJob(jobNode)
+            self.toilMetrics.logQueueSize(self.getNumberOfJobsIssued())
 
     def issueJobs(self, jobs):
         """
@@ -691,6 +695,8 @@ class Leader:
             timesMissing = self.reissueMissingJobs_missingHash[jobBatchSystemID]
             logger.warn("Job store ID %s with batch system id %s is missing for the %i time",
                         jobStoreID, str(jobBatchSystemID), timesMissing)
+            if self.toilMetrics:
+                self.toilMetrics.logMissingJob()
             if timesMissing == killAfterNTimesMissing:
                 self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
                 jobsToKill.append(jobBatchSystemID)
@@ -797,6 +803,8 @@ class Leader:
         """
         # Mark job as a totally failed job
         self.toilState.totalFailedJobs.add(JobNode.fromJobGraph(jobGraph))
+        if self.toilMetrics:
+            self.toilMetrics.logFailedJob(jobGraph)
 
         if jobGraph.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob: # Is
             # a service job

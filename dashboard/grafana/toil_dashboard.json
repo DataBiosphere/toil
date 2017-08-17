@@ -233,14 +233,14 @@
             {
               "expr": "autoscaler_cur_size",
               "intervalFactor": 2,
-              "legendFormat": "Current cluster size",
+              "legendFormat": "{{node_type}}",
               "refId": "A",
               "step": 2
             },
             {
               "expr": "autoscaler_desired_size",
               "intervalFactor": 2,
-              "legendFormat": "Autoscaler goal",
+              "legendFormat": "{{node_type}}",
               "refId": "B",
               "step": 2
             }

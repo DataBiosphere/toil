@@ -439,6 +439,9 @@ class ScalerThread(ExceptionalThread):
 
                     # Use inertia parameter to stop small fluctuations
                     logger.info("Currently %i nodes of type %s in cluster" % (self.totalNodes[nodeShape], nodeType))
+                    if self.scaler.leader.toilMetrics:
+                        self.scaler.leader.toilMetrics.logClusterSize(nodeType=nodeType, currentSize=self.totalNodes[nodeShape],
+                                                                      desiredSize=estimatedNodes)
                     delta = self.totalNodes[nodeShape] * max(0.0, self.scaler.config.betaInertia - 1.0)
                     if self.totalNodes[nodeShape] - delta <= estimatedNodes <= self.totalNodes[nodeShape] + delta:
                         logger.debug('Difference in new (%s) and previous estimates in number of '

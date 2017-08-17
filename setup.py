@@ -41,8 +41,7 @@ def runSetup():
             'aws': [
                 botoRequirement,
                 'cgcloud-lib==' + version.cgcloudVersion,
-                'futures==3.0.5',
-                'requests'],
+                'futures==3.0.5'],
             'azure': [
                 'azure==1.0.3'],
             'encryption': [

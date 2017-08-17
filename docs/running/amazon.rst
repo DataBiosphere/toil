@@ -217,6 +217,16 @@ non-preemptable nodes of that type were specified in ``--nodeTypes``.
    ``--mesosMaster``. Using the public IP will prevent the nodes from properly
    discovering each other.
 
+Dashboard
+---------
+Toil provides a dashboard for viewing the RAM and CPU usage of each node, the number of
+issued jobs of each type, the number of failed jobs, and the size of the jobs queue. To launch this dashboard
+for a toil workflow, include the ``--metrics`` flag in the toil script command. The dashboard can then be viewed
+in your browser at localhost:3000 while connected to the leader node through ``toil ssh-cluster``.
+On AWS, the dashboard keeps track of every node in the cluster to monitor CPU and RAM usage, but it
+can also be used while running a workflow on a single machine. The dashboard uses Grafana as the
+front end for displaying real-time plots, and Prometheus for tracking metrics exported by toil.
+
 
 .. _clusterRef:
 

@@ -13,8 +13,6 @@
 # limitations under the License.
 import logging
 import os
-import tempfile
-import subprocess
 from collections import namedtuple
 from operator import attrgetter
 import datetime
@@ -193,26 +191,11 @@ ec2FullPolicy = dict(Version="2012-10-17", Statement=[
 s3FullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="s3:*")])
 
-
 sdbFullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="sdb:*")])
 
 iamFullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="iam:*")])
-
-
-class ToilMtailServer:
-    def __init__(self, logger):
-        self.logger = logger
-        self.mtailProc = subprocess.Popen(["docker", "attach",
-                                        "toil_mtail"],
-                                        stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        self.mtailHandler = logging.StreamHandler(stream=self.mtailProc.stdin)
-        self.logger.addHandler(self.mtailHandler)
-
-    def shutdown(self):
-        self.logger.removeHandler(self.mtailHandler)
-        self.mtailProc.kill()
 
 
 logDir = '--log_dir=/var/lib/mesos'
@@ -331,7 +314,6 @@ coreos:
             -collector.procfs /host/proc \
             -collector.sysfs /host/sys \
             -collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
-        
 
 ssh_authorized_keys:
     - "ssh-rsa {sshKey}"
