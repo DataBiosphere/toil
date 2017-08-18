@@ -136,7 +136,7 @@ look like::
 
 .. note::
 
-    If your toil workflow has dependencies have a look at the :ref:`hotDeploying`
+    If your toil workflow has dependencies have a look at the :ref:`remoteDeploying`
     section for a detailed explanation on how to include them.
 
 
@@ -149,7 +149,7 @@ Autoscaling is a feature of running Toil in a cloud whereby additional cloud ins
 
 
 
-#. Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
+#. Download :download:`sort.py <../../src/toil/test/sort/sort.py>`.
 
 #. Launch the leader node in AWS using the :ref:`launchCluster` command. ::
 

@@ -24,13 +24,15 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    :caption: Getting Started
    :maxdepth: 2
 
-   GettingStarted/install.rst 
-   GettingStarted/quickStart.rst 
+   GettingStarted/overview
+   GettingStarted/install
+   GettingStarted/quickStart
 
 .. toctree::
    :caption: Running Toil
    :maxdepth: 2
 
+   Running/overview
    Running/cli
    Running/cwl
    Running/deploying
@@ -43,7 +45,8 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
 .. toctree::
    :caption: Developing Toil Workflows
    :maxdepth: 2
-
+ 
+   DevelopingWorkflows/overview
    DevelopingWorkflows/developing
    DevelopingWorkflows/toilAPI
    DevelopingWorkflows/batchSystem
@@ -53,6 +56,7 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    :caption: Contributing to Toil 
    :maxdepth: 2
 
+   Contributing/overview
    Contributing/contributing
 
 

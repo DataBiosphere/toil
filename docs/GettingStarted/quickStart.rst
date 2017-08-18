@@ -360,6 +360,8 @@ Launch a Toil Workflow in AWS
 -----------------------------
 After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.  
 
+Note that when running in AWS, users can either run the workflow on a single instance or run it on a cluster (which is running across multiple containers on multliple AWS instances).  For more information on running Toil workflows on a cluster, see :ref:`runningAWS`.
+
 
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``, ``nodeType``, and ``zone`` are required to launch a cluster. ::
 
