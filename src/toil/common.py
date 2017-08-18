@@ -20,7 +20,6 @@ import re
 import sys
 import tempfile
 import time
-import socket
 import uuid
 from argparse import ArgumentParser
 from threading import Thread
@@ -35,7 +34,6 @@ from bd2k.util.humanize import bytes2human
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
-from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 
