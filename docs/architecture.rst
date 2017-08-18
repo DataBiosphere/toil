@@ -140,12 +140,16 @@ disk-based storage systems as compared to the SSD systems we tested this on.
 Toil support for Common Workflow Language
 -----------------------------------------
 
-The CWL document and input document are loaded, normalized, validated and
-checked using the 'cwltool.load_tool' module.
+The CWL document and input document are loaded using the 'cwltool.load_tool'
+module.  This performs normalization and URI expansion (for example, relative
+file references are turned into absolute file URIs), validates the document
+againsted the CWL schema, initializes Python objects corresponding to major
+document elements (command line tools, workflows, workflow steps), and performs
+static type checking that sources and sinks have compatible types.
 
 Input files referenced by the CWL document and input document are imported into
-the Toil file store.  Supports any URL supported by Toil file store, including
-local files and object storage.
+the Toil file store.  CWL documents may use any URI scheme supported by Toil
+file store, including local files and object storage.
 
 The 'location' field of File references are updated to reflect the import token
 returned by the Toil file store.
@@ -153,7 +157,9 @@ returned by the Toil file store.
 For directory inputs, the directory listing is stored in Directory object.
 Each individual files is imported into Toil file store.
 
-The initial workflow Job is created from the toplevel CWL document, and
+An initial workflow Job is created from the toplevel CWL document. Then,
+control passes to the Toil engine which schedules the initial workflow job to
+run.
 
 When the toplevel workflow job runs, it traverses the CWL workflow and creates
 a toil job for each step.  The dependency graph is expressed by making
