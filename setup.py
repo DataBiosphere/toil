@@ -50,9 +50,10 @@ def runSetup():
                 'gcs_oauth2_boto_plugin==1.9',
                 botoRequirement],
             'cwl': [
-                'cwltool==1.0.20170413194156',
-                'schema-salad==2.5.20170328195758',
-                'cwltest>=1.0.20170214185319']},
+                'cwltool==1.0.20170721221557',
+                'schema-salad==2.6.20170712194300',
+                'cwltest>=1.0.20170721135308',
+                ]},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for

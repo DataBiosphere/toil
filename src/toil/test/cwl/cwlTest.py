@@ -41,6 +41,7 @@ class CWLTest(ToilTest):
         out = json.loads(st.getvalue())
         # locations are internal objects in output for CWL
         out["output"].pop("location", None)
+        out["output"].pop("http://commonwl.org/cwltool#generation", None)
         self.assertEquals(out, expect)
 
     def test_run_revsort(self):
@@ -53,6 +54,8 @@ class CWLTest(ToilTest):
             u'output': {
                 u'path': unicode(os.path.join(outDir, 'output.txt')),
                 u'basename': unicode("output.txt"),
+                u'nameext': u'.txt',
+                u'nameroot': u'output',
                 u'size': 1111,
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
@@ -65,7 +68,8 @@ class CWLTest(ToilTest):
         from toil.leader import FailedJobsException
         outDir = self._createTempDir()
         cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
-        cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
+        cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir,
+            'jobStore'), '--preserve-environment=PATH',
                os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
         def path_without_rev():
             return ":".join([d for d in os.environ["PATH"].split(":")

@@ -32,6 +32,7 @@ import cwltool.stdfsaccess
 from cwltool.pathmapper import adjustFiles
 from cwltool.process import shortname, adjustFilesWithSecondary, fillInDefaults, compute_checksums
 from cwltool.utils import aslist
+from cwltool.main import find_default_container
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
 import os
@@ -678,6 +679,10 @@ def main(args=None, stdout=sys.stdout):
         cwllogger.setLevel(options.logLevel)
 
     useStrict = not options.not_strict
+    make_tool_kwds = {}
+    options.default_container = None
+    make_tool_kwds["find_default_container"] = functools.partial(
+            find_default_container, options)
     try:
         t = cwltool.load_tool.load_tool(options.cwltool, cwltool.workflow.defaultMakeTool,
                                         resolver=cwltool.resolver.tool_resolver, strict=useStrict)
