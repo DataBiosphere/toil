@@ -769,8 +769,12 @@ class AWSProvisioner(AbstractProvisioner):
                     web.authorize(ip_protocol='tcp', from_port=22, to_port=22, cidr_ip='0.0.0.0/0')
             for attempt in retry(predicate=groupNotFound, timeout=300):
                 with attempt:
-                    # the following authorizes all port access within the web security group
+                    # the following authorizes all TCP access within the web security group
                     web.authorize(ip_protocol='tcp', from_port=0, to_port=65535, src_group=web)
+            for attempt in retry(predicate=groupNotFound, timeout=300):
+                with attempt:
+                    # We also want to open up UDP, both for user code and for the RealtimeLogger
+                    web.authorize(ip_protocol='udp', from_port=0, to_port=65535, src_group=web)
         out = []
         for sg in ctx.ec2.get_all_security_groups():
             if sg.name == name and vpcId is None or sg.vpc_id == vpcId:
