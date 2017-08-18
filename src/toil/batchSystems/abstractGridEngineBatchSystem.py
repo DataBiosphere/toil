@@ -30,9 +30,6 @@ from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 
 logger = logging.getLogger(__name__)
 
-# TODO: should this be an attribute?  Used in the worker and the batch system
-sleepSeconds = 10
-
 class AbstractGridEngineBatchSystem(BatchSystemSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
@@ -174,7 +171,6 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
                         self.forgetJob(jobID)
                 if len(killList) > 0:
                     logger.warn("Some jobs weren't killed, trying again in %is.", self.boss.sleepSeconds())
-                    time.sleep(self.boss.sleepSeconds())
 
             return True
 
@@ -183,6 +179,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
             Check and update status of all running jobs.
             """
             activity = False
+            self.boss.sleepSeconds()
+
             for jobID in list(self.runningJobs):
                 batchJobID = self.getBatchSystemID(jobID)
                 status = self.getJobExitCode(batchJobID)
@@ -211,7 +209,6 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
                 activity |= self.checkOnJobs()
                 if not activity:
                     logger.debug('No activity, sleeping for %is', self.boss.sleepSeconds())
-                    time.sleep(self.boss.sleepSeconds())
 
         @abstractmethod
         def prepareSubmission(self, cpu, memory, jobID, command):
@@ -274,7 +271,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(AbstractGridEngineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
-        # AbstractBatchSystem.__init__(self, config, maxCores, maxMemory, maxDisk)
+
         self.resultsFile = self._getResultsFileName(config.jobStore)
         # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.resultsFileHandle = open(self.resultsFile, 'w')
@@ -335,10 +332,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
             if killedJobId in self.currentJobs:
                 self.currentJobs.remove(killedJobId)
             if jobIDs:
-                sleep = self.sleepSeconds()
                 logger.debug('Some kills (%s) still pending, sleeping %is', len(jobIDs),
-                             sleep)
-                time.sleep(sleep)
+                             self.sleepSeconds())
 
     def getIssuedBatchJobIDs(self):
         """
@@ -382,9 +377,14 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
     def getRescueBatchJobFrequency(cls):
         return 30 * 60 # Half an hour
 
-    @classmethod
-    def sleepSeconds(cls):
-        return 1
+    def sleepSeconds(self, sleeptime=None):
+        """ Helper function to drop on all state-querying functions to avoid over-querying.
+        """
+        sleeptime = sleeptime or self.config.statePollingWait
+        logger.debug('Querying job state, waiting for %s seconds', sleeptime)
+        time.sleep(sleeptime)
+        
+        return sleeptime
 
     @abstractclassmethod
     def obtainSystemConstants(cls):
