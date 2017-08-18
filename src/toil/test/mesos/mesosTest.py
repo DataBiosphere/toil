@@ -61,7 +61,8 @@ class MesosTest(ToilTest, MesosTestSupport):
         system([sys.executable,
                 '-m', helloWorld.__name__,
                 'file:./toilTest',
-                '--batchSystem=mesos',
+                '--batchSystem', 'mesos',
+                '--mesosMaster', 'localhost:5050',
                 '--logLevel', getLogLevelString()])
 
     def test_stress_good(self):
