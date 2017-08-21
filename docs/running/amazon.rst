@@ -68,7 +68,7 @@ Using the provisioner to launch a Toil leader instance is simple using the ``lau
 ::
 
     	(venv) $ toil launch-cluster my-cluster \
-	--nodeType t2.medium \
+	--leaderNodeType t2.medium \
        	--zone us-west-2a \
 	--keyPairName <your-AWS-key-pair-name>
 
@@ -77,7 +77,7 @@ populate the instance's ``Name`` tag. In addition, the Toil provisioner will
 automatically tag your cluster with an ``Owner`` tag that corresponds to your
 keypair name to facilitate cost tracking.
 
-The nodeType is an `EC2 instance type`_. This only affects any nodes launched now.
+The leaderNodeType is an `EC2 instance type`_. This only affects the leader node.
 
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 
@@ -99,12 +99,12 @@ The cluster utilities also make it easy to run a toil workflow directly on this
 cluster. We call this static provisioning because the size of the cluster does not
 change. This is in contrast with :ref:`Autoscaling`.
 
-To launch a cluster with a specific number of worker nodes we use the ``-w`` option.::
+To worker nodes alongside the leader we use the ``-w`` option.::
 
-    	(venv) $ toil launch-cluster my-cluster --nodeType t2.micro \
-       	-z us-west-2a --keyPairName your-AWS-key-pair-name -w 3
+	(venv) $ toil launch-cluster my-cluster --leaderNodeType t2.small \
+	-z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4
 
-This will spin up a leader node with three additional workers, all using t2.micro VMs.
+This will spin up a leader node of type t2.small with five additional workers - one m3.large instance and four t2.micro.
 
 Now we can follow the instructions under :ref:`runningAWS` to start the workflow
 on the cluster.
@@ -150,7 +150,7 @@ Autoscaling is a feature of running Toil in a cloud whereby additional cloud ins
 
         (venv) $ toil launch-cluster <cluster-name> \
         --keyPairName <AWS-key-pair-name> \
-        --nodeType t2.micro \
+        --leaderNodeType t2.micro \
         --zone us-west-2a
 
 #. Copy the `sort.py` script up to the leader node. ::
@@ -165,13 +165,13 @@ Autoscaling is a feature of running Toil in a cloud whereby additional cloud ins
 
 	$ python /tmp/sort.py  \
 	aws:us-west-2:autoscaling-sort-jobstore \
-	--provisioner aws --nodeType c3.large \
+	--provisioner aws --nodeTypes c3.large --maxNodes 2\
 	--batchSystem mesos --mesosMaster <private-IP>:5050 
 	--logLevel DEBUG
 
    .. note::
 
-    In this example, the autoscaling Toil code creates an instance of flavor `c3.large` and launches a Mesos slave container inside it.  The container then runs the `sort.py` script which first generates a file to sort, then sorts that file, and finally creates a sorted file.  Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job results.
+    In this example, the autoscaling Toil code creates up to two instances of type `c3.large` and launches Mesos slave containers inside them. The containers are then available to run jobs defined by the `sort.py` script.  Toil also creates a bucket in S3 called `aws:us-west-2:autoscaling-sort-jobstore` to store intermediate job results. The Toil autoscaler can also provision multiple different node types, which is useful for workflows that have jobs with varying resource requirements. For example, one could execute the script with ``--nodeTypes c3.large,r3.xlarge --maxNodes 5,1``, which would allow the provisioner to create up to five c3.large nodes and one r3.xlarge node for memory-intensive jobs. In this situation, the autoscaler would avoid creating the more expensive r3.xlarge node until needed, running most jobs on the c3.large nodes.
 
 #. View the generated file to sort. ::
 
@@ -194,19 +194,21 @@ Preemptability
 ^^^^^^^^^^^^^^
 
 Toil can run on a heterogeneous cluster of both preemptable and non-preemptable nodes.
-Our preemptable node type can be set by using the ``--preemptableNodeType <>`` flag. While individual jobs can each explicitly specify whether or not they should be run on preemptable nodes
+A node type can be specified as preemptable by adding a spot bid to its entry in the list of node types provided with the ``--nodeTypes`` flag. While individual jobs can each explicitly specify whether or not they should be run on preemptable nodes
 via the boolean ``preemptable`` resource requirement, the ``--defaultPreemptable`` flag will allow jobs without a ``preemptable`` requirement to run on preemptable machines.
 
-We can set the maximum number of preemptable and non-preemptable nodes via the flags ``--maxNodes <>`` and ``--maxPreemptableNodes <>``.
 
 .. admonition:: Specify Preemptability Carefully
 
-    	Ensure that your choices for ``--maxNodes <>`` and ``--maxPreemptableNodes <>`` make
-    	sense for your workflow and won't cause it to hang - if the workflow requires preemptable 
-	nodes set ``--maxPreemptableNodes`` to some non-zero value and if any job requires
-    	non-preemptable nodes set ``--maxNodes`` to some non-zero value.
+	Ensure that your choices for ``--nodeTypes`` and ``--maxNodes <>`` make
+	sense for your workflow and won't cause it to hang. You should make sure the
+	provisioner is able to create nodes large enough to run the largest job
+	in the workflow, and that non-preemptable node types are allowed if there are
+	non-preemptable jobs in the workflow.
 
-Finally, the ``--preemptableCompensation`` flag can be used to handle cases where preemptable nodes may not be available but are required for your workflow.
+Finally, the ``--preemptableCompensation`` flag can be used to handle cases where preemptable nodes may not be available but are required for your workflow. With this flag enabled, the autoscaler will attempt to compensate
+for a shortage of preemptable nodes of a certain type by creating non-preemptable nodes of that type, if
+non-preemptable nodes of that type were specified in ``--nodeTypes``.
 
 .. admonition:: Using Mesos with Toil on AWS
 

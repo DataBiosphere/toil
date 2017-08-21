@@ -159,6 +159,9 @@ class MesosBatchSystem(BatchSystemSupport,
     def ignoreNode(self, nodeAddress):
         self.ignoredNodes.add(nodeAddress)
 
+    def unignoreNode(self, nodeAddress):
+        self.ignoredNodes.remove(nodeAddress)
+
     def issueBatchJob(self, jobNode):
         """
         Issues the following command returning a unique jobID. Command is the string to run, memory

@@ -302,11 +302,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.running = False
         self.leaderThread.join()
 
-    # Leader methods
     
-    def getNumberAndAvgRuntimeOfCurrentlyRunningJobs(self):
-        return self.getNumberOfJobsIssued(), 50
-
     # Stub out all AbstractBatchSystem methods since they are never called
 
     for name, value in iteritems(AbstractBatchSystem.__dict__):
@@ -321,6 +317,9 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return False
 
     def ignoreNode(self, nodeAddress):
+        pass
+
+    def unignoreNode(self, nodeAddress):
         pass
 
     @contextmanager

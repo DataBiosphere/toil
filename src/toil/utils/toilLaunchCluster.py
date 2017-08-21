@@ -50,12 +50,15 @@ def main():
                         help="VPC subnet ID to launch cluster in. Uses default subnet if not specified. "
                         "This subnet needs to have auto assign IPs turned on.")
     parser.add_argument("--nodeTypes", dest='nodeTypes', default=None, type=str,
-                        help="Node type for {non-|}preemptable nodes. The syntax depends on the "
+                        help="Comma-separated list of node types to create while launching the leader. The "
+                             "syntax for each node type depends on the "
                              "provisioner used. For the aws provisioner this is the name of an "
                              "EC2 instance type followed by a colon and the price in dollar to "
-                             "bid for a spot instance, for example 'c3.8xlarge:0.42'.")
+                             "bid for a spot instance, for example 'c3.8xlarge:0.42'. Must also provide "
+                             "the --workers argument to specify how many workers of each node type to create")
     parser.add_argument("-w", "--workers", dest='workers', default=None, type=str,
-                        help="Specify a number of non-preemptable workers to launch alongside the leader when the "
+                        help="Comma-separated list of the number of workers of each node type to launch "
+                             "alongside the leader when the "
                              "cluster is created. This can be useful if running toil without "
                              "auto-scaling but with need of more hardware support")
     parser.add_argument("--leaderStorage", dest='leaderStorage', type=int, default=50,
@@ -86,9 +89,15 @@ def main():
         if len(config.leaderNodeType) != len(parsedBid[0]):
             leaderSpotBid = float(parsedBid[1])
             config.leaderNodeType = parsedBid[0]
+
+        if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
+            raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
         if config.nodeTypes:
-            assert config.workers
-            for nodeTypeStr, num in zip(config.nodeTypes.split(","), config.workers.split(",")):
+            nodeTypesList = config.nodeTypes.split(",")
+            numWorkersList = config.workers.split(",")
+            if not len(nodeTypesList) == len(numWorkersList):
+                raise RuntimeError("List of node types must be same length as list of numbers of workers.")
+            for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
                 parsedBid = nodeTypeStr.split(':', 1)
                 if len(nodeTypeStr) != len(parsedBid[0]):
                     #Is a preemptable node

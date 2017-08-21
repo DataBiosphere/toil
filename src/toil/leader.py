@@ -567,7 +567,7 @@ class Leader:
             self.issueJob(self.preemptableServiceJobsToBeIssued.pop())
             self.preemptableServiceJobsIssued += 1
 
-    def getNumberOfJobsIssued(self, preemptable=None, jobShape=None):
+    def getNumberOfJobsIssued(self, preemptable=None):
         """
         Gets number of jobs that have been added by issueJob(s) and not
         removed by removeJob
@@ -583,18 +583,6 @@ class Leader:
         else:
             assert len(self.jobBatchSystemIDToIssuedJob) >= self.preemptableJobsIssued
             return len(self.jobBatchSystemIDToIssuedJob) - self.preemptableJobsIssued
-                                    
-
-    def getNumberAndAvgRuntimeOfCurrentlyRunningJobs(self, nodeShape=None):
-        """
-        Returns a tuple (x, y) where x is number of currently running jobs and y
-        is the average number of seconds (as a float)
-        the jobs have been running for.
-        """
-        runningJobs = self.batchSystem.getRunningBatchJobIDs()
-        runningJobs = {jobID:runningJobs[jobID] for jobID in runningJobs if getNodeShapeForJob(jobShape=self.jobBatchSystemIDToJobNode[jobID], nodeShapes=self.provisioner.nodeShapes) == nodeShape}
-        
-        return len(runningJobs), 0 if len(runningJobs) == 0 else float(sum(runningJobs.values()))/len(runningJobs)
 
     def getJobStoreID(self, jobBatchSystemID):
         """

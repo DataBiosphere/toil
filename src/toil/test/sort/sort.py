@@ -229,7 +229,7 @@ def main(options=None):
                                                     memory=sortMemory))
         else:
             sortedFileID = workflow.restart()
-        workflow.exportFile(sortedFileID, sortFileURL)
+        workflow.exportFile(sortedFileID, sortedFileURL)
 
 if __name__ == '__main__':
     main()

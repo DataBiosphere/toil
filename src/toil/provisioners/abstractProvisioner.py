@@ -27,7 +27,7 @@ log = logging.getLogger(__name__)
 Shape = namedtuple("_Shape", "wallTime memory cores disk preemptable")
 """
 Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
-wall-time allocation. All attributes are integers.
+wall-time allocation.
 
 The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
 or 60 for Azure. FIXME: and for jobs?

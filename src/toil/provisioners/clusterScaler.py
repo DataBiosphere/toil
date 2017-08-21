@@ -131,24 +131,24 @@ def binPacking(jobShapes, nodeShapes):
             is the bin-packing aspect)
             """
 
-            def fits(x, y):
+            def fits(nodeShape, jobShape):
                 """
                 Check if a job shape's resource requirements will fit within a given node allocation
                 """
-                return y.memory <= x.memory and y.cores <= x.cores and y.disk <= x.disk and (y.preemptable or not x.preemptable)
+                return jobShape.memory <= nodeShape.memory and jobShape.cores <= nodeShape.cores and jobShape.disk <= nodeShape.disk and (jobShape.preemptable or not nodeShape.preemptable)
 
-            def subtract(x, y):
+            def subtract(nodeShape, jobShape):
                 """
                 Adjust available resources of a node allocation as a job is scheduled within it.
                 """
-                return Shape(x.wallTime, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk, y.preemptable)
+                return Shape(nodeShape.wallTime, nodeShape.memory - jobShape.memory, nodeShape.cores - jobShape.cores, nodeShape.disk - jobShape.disk, nodeShape.preemptable)
 
-            def split(x, y, t):
+            def split(nodeShape, jobShape, t):
                 """
                 Partition a node allocation into two
                 """
-                return (Shape(t, x.memory - y.memory, x.cores - y.cores, x.disk - y.disk, y.preemptable),
-                        NodeReservation(Shape(x.wallTime - t, x.memory, x.cores, x.disk, x.preemptable)))
+                return (Shape(t, nodeShape.memory - jobShape.memory, nodeShape.cores - jobShape.cores, nodeShape.disk - jobShape.disk, nodeShape.preemptable),
+                        NodeReservation(Shape(nodeShape.wallTime - t, nodeShape.memory, nodeShape.cores, nodeShape.disk, nodeShape.preemptable)))
 
             reservedSuccessfully = False
             for nodeShape in nodeShapes:
@@ -215,8 +215,6 @@ def binPacking(jobShapes, nodeShapes):
                 return
 
         addToReservation()
-    #logger.debug("Done running bin packing for node shape %s and %s job(s) resulting in %s node "
-    #             "reservations.", nodeShape, len(jobShapes), len(nodeReservations))
     return {nodeShape:len(nodeReservations[nodeShape]) for nodeShape in nodeShapes}
 
 
@@ -239,6 +237,7 @@ class ClusterScaler(object):
         self.jobNameToAvgRuntime = {}
         self.jobNameToNumCompleted = {}
         self.totalAvgRuntime = 0.0
+        self.totalJobsCompleted = 0
         
 
         require(sum(config.maxNodes) > 0, 'Not configured to create nodes of any type.')
@@ -261,8 +260,6 @@ class ClusterScaler(object):
             self.scaler.join(timeout=0)
         except Exception as e:
             logger.exception(e)
-            exception = True
-        if exception:
             raise RuntimeError('The cluster scaler has exited due to an exception')
 
     def shutdown(self):
@@ -302,9 +299,10 @@ class ClusterScaler(object):
         else:
             self.jobNameToAvgRuntime[job.jobName] = wallTime
             self.jobNameToNumCompleted[job.jobName] = 1
-        self.totalAvgRuntime = float(self.totalAvgRuntime*(sum(self.jobNameToNumCompleted.values()) - 1) + wallTime)/sum(self.jobNameToNumCompleted.values())
 
-        
+        self.totalJobsCompleted += 1
+        self.totalAvgRuntime = float(self.totalAvgRuntime*(self.totalJobsCompleted - 1) + wallTime)/self.totalJobsCompleted
+
         s = Shape(wallTime=wallTime, memory=job.memory, cores=job.cores, disk=job.disk,
                 preemptable=job.preemptable)
         self.scaler.addRecentJobShape(s)
@@ -566,7 +564,6 @@ class ScalerThread(ExceptionalThread):
                 # once all jobs have finished, but they will be ignored by
                 # the batch system and cluster scaler from now on
                 nodesToTerminate = [(node,nodeInfo) for (node,nodeInfo) in nodesToTerminate if nodeInfo is not None and nodeInfo.workers < 1]
-            #nodesToTerminate = nodesToTerminate[:numNodes]
             nodesToTerminate = {node:nodeInfo for (node, nodeInfo) in nodesToTerminate}
             nodeToNodeInfo = nodesToTerminate
         else:
@@ -595,6 +592,7 @@ class ScalerThread(ExceptionalThread):
 
         for node in nodeToNodeInfo:
             self.ignoredNodes.remove(node.privateIP)
+            self.scaler.leader.batchSystem.unignoreNode(node.privateIP)
         if len(nodeToNodeInfo) > 0:
             logger.info("Terminating %i nodes that were being ignored by the batch system" % len(nodeToNodeInfo))
             self.scaler.provisioner.terminateNodes(nodeToNodeInfo)
@@ -698,7 +696,7 @@ class ScalerThread(ExceptionalThread):
         for nodeShape in self.nodeShapes:
             preemptable = nodeShape.preemptable
             nodeType = self.nodeShapeToType[nodeShape]
-            totalNodes = self.setNodeCount(nodeType=nodeType, numNodes=0, preemptable=preemptable, force=True)
+            self.setNodeCount(nodeType=nodeType, numNodes=0, preemptable=preemptable, force=True)
 
 class ClusterStats(object):
 
