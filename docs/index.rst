@@ -24,48 +24,49 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    :caption: Getting Started
    :maxdepth: 2
 
-   GettingStarted/overview
-   GettingStarted/install
-   GettingStarted/quickStart
+   gettingStarted/overview
+   gettingStarted/install
+   gettingStarted/quickStart
 
 .. toctree::
    :caption: Running Toil
    :maxdepth: 2
 
-   Running/overview
-   Running/cli
-   Running/cwl
-   Running/deploying
-   Running/amazon
-   Running/azure
-   Running/openstack
-   Running/gce
+   running/overview
+   running/cli
+   running/cwl
+   running/deploying
+   running/amazon
+   running/azure
+   running/openstack
+   running/gce
+   running/hpcEnvironments
 
 
 .. toctree::
    :caption: Developing Toil Workflows
    :maxdepth: 2
  
-   DevelopingWorkflows/overview
-   DevelopingWorkflows/developing
-   DevelopingWorkflows/toilAPI
-   DevelopingWorkflows/batchSystem
-   DevelopingWorkflows/jobStore
+   developingWorkflows/overview
+   developingWorkflows/developing
+   developingWorkflows/toilAPI
+   developingWorkflows/batchSystem
+   developingWorkflows/jobStore
 
 .. toctree::
    :caption: Contributing to Toil 
    :maxdepth: 2
 
-   Contributing/overview
-   Contributing/contributing
+   contributing/overview
+   contributing/contributing
 
 
 .. toctree::
    :caption: Appendices
    :maxdepth: 2
 
-   Appendices/architecture
-   Appendices/environment_vars
+   appendices/architecture
+   appendices/environment_vars
 
 * :ref:`genindex`
 * :ref:`search`

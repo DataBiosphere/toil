@@ -433,4 +433,3 @@ the user can run a CWL workflow with Toil on AWS.
       	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
 
-.. todo:: Spark example
