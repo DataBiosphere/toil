@@ -45,6 +45,7 @@ import sys
 import logging
 import copy
 import functools
+import uuid
 
 # Python 3 compatibility imports
 from six.moves import xrange
@@ -418,9 +419,7 @@ class CWLJob(Job):
         fillInDefaults(self.step_inputs, cwljob)
 
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
-        tmpdir = os.path.join(fileStore.getLocalTempDir(), "tmp")
         os.mkdir(outdir)
-        os.mkdir(tmpdir)
 
         index = {}
         existing = {}
@@ -432,10 +431,11 @@ class CWLJob(Job):
         (output, status) = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                             basedir=os.getcwd(),
                                                             outdir=outdir,
-                                                            tmpdir=tmpdir,
-                                                            tmpdir_prefix="tmp",
+                                                            tmp_outdir_prefix=fileStore.getLocalTempDir(),
+                                                            tmpdir_prefix=fileStore.getLocalTempDir(),
                                                             make_fs_access=functools.partial(ToilFsAccess, fileStore=fileStore),
                                                             toil_get_file=functools.partial(toilGetFile, fileStore, index, existing),
+                                                            no_match_user=False,
                                                             **opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
@@ -443,6 +443,12 @@ class CWLJob(Job):
         adjustDirObjs(output, functools.partial(get_listing,
                                                 cwltool.stdfsaccess.StdFsAccess(outdir),
                                                 recursive=True))
+
+        def make_dir_literal(obj):
+            if "location" in obj and obj["location"].startswith("file:"):
+                obj["location"] = "_:" + str(uuid.uuid4())
+
+        adjustDirObjs(output, make_dir_literal)
 
         adjustFileObjs(output, functools.partial(uploadFile,
                                                  functools.partial(writeGlobalFileWrapper, fileStore),
