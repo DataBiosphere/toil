@@ -24,8 +24,8 @@ To invoke all integration tests, including AWS tests, use
     $ export TOIL_AWS_KEYNAME=<aws_keyname>; make integration_test
 
 
-.. topic:: Installing Docker with Quay
-
+Installing Docker with Quay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
    `Docker`_ is needed for some of the tests. Follow the appopriate
    installation instructions for your system on their website to get started.
 
@@ -103,6 +103,9 @@ should build and push their own appliance image to a personal Docker registry.
 See :ref:`Autoscaling` and :func:`toil.applianceSelf` for information on how to
 configure Toil to pull the Toil Appliance image from your personal repo instead
 of the our official Quay account.
+
+General workflow for using Quay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Here is a general workflow: (similar instructions apply when using
 Docker Hub)
@@ -204,11 +207,11 @@ with ``worker`` to get shell access in your worker.
 
 .. _Docker Hub: https://hub.docker.com/
 
-Contributing
-============
 
 Maintainer's Guidelines
 -----------------------
+
+In general, as developers and maintainers of the code, we adhere to the following guidelines:
 
 * We strive to never break the build on master.
 
@@ -219,7 +222,7 @@ Maintainer's Guidelines
   followed by the issue number followed by ``)``.
 
 Naming conventions
-------------------
+~~~~~~~~~~~~~~~~~~
 
 * The **branch name** for a pull request starts with ``issues/`` followed by the
   issue number (or numbers, separated by a dash), followed by a short
@@ -251,8 +254,7 @@ case of bar (resolves #123).`
 .. _Waffle: https://waffle.io/BD2KGenomics/toil
 
 Pull requests
--------------
-
+~~~~~~~~~~~~~
 * All pull requests must be reviewed by a person other than the request's
   author.
 
@@ -271,7 +273,7 @@ Pull requests
 .. _multi-author:
 
 Multi-author pull requests
---------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * A pull request starts off as single-author and can be changed to multi-author
   upon request via comment (typically by the reviewer) in the PR. The author of
