@@ -1,0 +1,15 @@
+{
+  "jointCallingGenotypes.inputSamplesFile": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/t04/inputsTSV.txt",
+  "jointCallingGenotypes.refFasta": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/data/ref/human_g1k_b37_20.fasta",
+  "jointCallingGenotypes.gatk": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/GenomeAnalysisTK.jar",
+  "jointCallingGenotypes.refDict": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/data/ref/human_g1k_b37_20.dict",
+  "jointCallingGenotypes.refIndex": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/data/ref/human_g1k_b37_20.fasta.fai"
+}
+
+
+
+
+
+
+
+

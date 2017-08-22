@@ -1,0 +1,5 @@
+  "outputs": {
+    "SimpleVariantSelection.selectSNPs.rawSubset": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantSelection/4f17eef6-d6e3-4aa3-ae11-bf3229788a65/call-selectSNPs/execution/WDL_tut2_output_raw.SNP.vcf",
+    "SimpleVariantSelection.selectIndels.rawSubset": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantSelection/4f17eef6-d6e3-4aa3-ae11-bf3229788a65/call-selectIndels/execution/WDL_tut2_output_raw.INDEL.vcf",
+    "SimpleVariantSelection.haplotypeCaller.rawVCF": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantSelection/4f17eef6-d6e3-4aa3-ae11-bf3229788a65/call-haplotypeCaller/execution/WDL_tut2_output.raw.indels.snps.vcf"
+  }

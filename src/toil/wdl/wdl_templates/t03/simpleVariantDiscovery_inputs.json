@@ -1,0 +1,9 @@
+{
+  "SimpleVariantDiscovery.refIndex": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/data/ref/human_g1k_b37_20.fasta.fai",
+  "SimpleVariantDiscovery.haplotypeCaller.bamIndex": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/data/inputs/NA12878_wgs_20.bai",
+  "SimpleVariantDiscovery.haplotypeCaller.inputBAM": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/data/inputs/NA12878_wgs_20.bam",
+  "SimpleVariantDiscovery.refFasta": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/data/ref/human_g1k_b37_20.fasta",
+  "SimpleVariantDiscovery.gatk": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/GenomeAnalysisTK.jar",
+  "SimpleVariantDiscovery.refDict": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/data/ref/human_g1k_b37_20.dict",
+  "SimpleVariantDiscovery.name": "WDL_tut3_output"
+}
