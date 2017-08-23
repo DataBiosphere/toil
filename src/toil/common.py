@@ -93,9 +93,10 @@ class Config(object):
         self.nodeStorage = 50
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
-        self.maxPreemptableServiceJobs = sys.maxint
-        self.maxServiceJobs = sys.maxint
+        self.maxPreemptableServiceJobs = sys.maxsize
+        self.maxServiceJobs = sys.maxsize
         self.deadlockWait = 60 # Wait one minute before declaring a deadlock
+        self.statePollingWait = 1 # Wait 1 seconds before querying job state
 
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -103,13 +104,13 @@ class Config(object):
         self.defaultDisk = 2147483648
         self.readGlobalFileMutableByDefault = False
         self.defaultPreemptable = False
-        self.maxCores = sys.maxint
-        self.maxMemory = sys.maxint
-        self.maxDisk = sys.maxint
+        self.maxCores = sys.maxsize
+        self.maxMemory = sys.maxsize
+        self.maxDisk = sys.maxsize
 
         #Retrying/rescuing jobs
         self.retryCount = 0
-        self.maxJobDuration = sys.maxint
+        self.maxJobDuration = sys.maxsize
         self.rescueJobsFrequency = 3600
 
         #Misc
@@ -222,6 +223,7 @@ class Config(object):
         setOption("maxServiceJobs", int)
         setOption("maxPreemptableServiceJobs", int)
         setOption("deadlockWait", int)
+        setOption("statePollingWait", int)
 
         # Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -411,6 +413,8 @@ def _addOptions(addGroupFn, config):
                 help=("The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
     addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
                 help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
+    addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
+                help=("The minimum number of seconds to wait before retrieving the current job state, in seconds"))
 
     #
     #Resource requirements
@@ -1055,7 +1059,7 @@ def parseSetEnv(l):
     return d
 
 
-def iC(minValue, maxValue=sys.maxint):
+def iC(minValue, maxValue=sys.maxsize):
     # Returns function that checks if a given int is in the given half-open interval
     assert isinstance(minValue, int) and isinstance(maxValue, int)
     return lambda x: minValue <= x < maxValue

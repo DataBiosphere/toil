@@ -31,9 +31,6 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
-
-        
-
 class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
 
@@ -62,13 +59,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             return self._version
         
-
         """
         Torque-specific AbstractGridEngineWorker methods
         """
         def getRunningJobIDs(self):
             times = {}
-            
+
+            self.boss.sleepSeconds() 
             currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
             logger.debug("getRunningJobIDs current jobs are: " + str(currentjobs))
             # Limit qstat to current username to avoid clogging the batch system on heavily loaded clusters
@@ -107,6 +104,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
         def getUpdatedBatchJob(self, maxWait):
             try:
+                self.boss.sleepSeconds()
                 logger.debug("getUpdatedBatchJob: Job updates")
                 pbsJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
                 self.updatedJobsQueue.task_done()
