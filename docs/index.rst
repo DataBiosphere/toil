@@ -42,7 +42,6 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    running/gce
    running/hpcEnvironments
 
-
 .. toctree::
    :caption: Developing Toil Workflows
    :maxdepth: 2
@@ -54,7 +53,7 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    developingWorkflows/jobStore
 
 .. toctree::
-   :caption: Contributing to Toil 
+   :caption: Contributing to Toil
    :maxdepth: 2
 
    contributing/overview

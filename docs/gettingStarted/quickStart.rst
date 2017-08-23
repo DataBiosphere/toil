@@ -5,8 +5,8 @@ Quickstart Examples
 
 .. _quickstart:
 
-Toil Quickstart
----------------
+Running a basic workflow
+------------------------
 
 A Toil workflow can be run with just three steps.
  
@@ -60,8 +60,8 @@ For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
 
 .. _cwlquickstart:
 
-CWL Quickstart
---------------
+Running a basic CWL workflow
+----------------------------
 
 The `Common Workflow Language`_ (CWL) is an emerging standard for writing
 workflows that are portable across multiple workflow engines and platforms.
@@ -118,7 +118,7 @@ For information on using CWL with Toil see the section :ref:`cwl`
 
 .. _runningDetail:
 
-A (More) Real-World Example
+A (more) real-world example
 ---------------------------
 
 For a more detailed example and explanation, we've developed a sample pipeline
@@ -356,8 +356,8 @@ successfully then toil clean is run automatically and the job store is cleaned u
 This was the case with the above examples. See options to prevent this behavior. 
 
 
-Launch a Toil Workflow in AWS
------------------------------
+Launching a Toil Workflow in AWS
+--------------------------------
 After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.  
 
 Note that when running in AWS, users can either run the workflow on a single instance or run it on a cluster (which is running across multiple containers on multliple AWS instances).  For more information on running Toil workflows on a cluster, see :ref:`runningAWS`.
@@ -398,8 +398,8 @@ Note that when running in AWS, users can either run the workflow on a single ins
 
 .. _awscwl:
 
-Run a CWL Workflow on AWS
--------------------------
+Running a CWL Workflow on AWS
+-----------------------------
 After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`),
 the user can run a CWL workflow with Toil on AWS.
 
@@ -431,5 +431,3 @@ the user can run a CWL workflow with Toil on AWS.
 #. Destroy the cluster. ::
 
       	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
-
-

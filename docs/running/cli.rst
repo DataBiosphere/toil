@@ -2,8 +2,9 @@
 
 .. _workflowOptions:
 
-Toil Workflow Options
-=====================
+Toil Workflow Options and Command Line Interface
+================================================
+
 The ``toil`` CLI supports the following commands as arguments:
 
 	``status`` - Reports the state of a Toil workflow

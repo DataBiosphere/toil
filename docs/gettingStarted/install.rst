@@ -5,16 +5,19 @@
 Installation
 ============
 
-This document describes how to prepare for and install the Toil software. Note that we recommend running all the Toil commands inside a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided below.
+This document describes how to prepare for and install the Toil software. Note that we recommend running all the Toil
+commands inside a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are
+provided below.
 
 .. _virtualenv: https://virtualenv.pypa.io/en/stable/
 
 .. _venvPrep:
 
-Preparation
------------
+Preparing your Python runtime environment
+-----------------------------------------
 
-Toil currently  supports only Python 2.7.  If you don't satisfy this requirement, consider using anaconda_ to create an alternate Python 2.7 installation.
+Toil currently  supports only Python 2.7.  If you don't satisfy this requirement, consider using anaconda_ to create
+an alternate Python 2.7 installation.
 
 .. _anaconda: https://conda.io/docs/py2or3.html 
 
@@ -52,8 +55,8 @@ Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 
 .. _extras:
 
-Extras
-------
+Installing extra features
+-------------------------
 
 Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first
@@ -152,10 +155,54 @@ Here's what each extra provides:
 .. _Homebrew: http://brew.sh/
 
 
+.. _prepare_aws-ref:
+
+Preparing your AWS environment
+------------------------------
+
+To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files 
+during the computation of a workflow, first set up and configure an account with AWS.
+
+#. If necessary, create and activate an `AWS account`_
+
+#. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
+
+#. Follow `Amazon's instructions`_ to create an SSH key and import it into EC2.
+
+#. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
+
+
+.. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
+.. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
+.. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
+.. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
+.. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
+
+
+.. _prepare_azure-ref:
+
+Preparing your Azure environment
+--------------------------------
+
+Follow the steps below to prepare your Azure environment for running a Toil workflow.
+
+#. Create an `Azure account`_.
+
+
+#. Make sure you have an SSH RSA public key, usually stored in
+   ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
+   one.
+
+.. _Azure account: https://azure.microsoft.com/en-us/free/
+
+
 .. _building_from_source-ref:
 
-Building from Source
+Building from source
 --------------------
+
+If developing with Toil, you will need to build from source. This allows changes you
+make to Toil to be reflected immediately in your runtime environment.
 
 First, clone the source::
 
@@ -189,45 +236,3 @@ To build the docs, run ``make develop`` with all extras followed by
 ::
 
     $ make docs
-
-.. _development mode: https://pythonhosted.org/setuptools/setuptools.html#development-mode
-
-
-.. _prepare_aws-ref:
-
-Prepare Your AWS Environment
-----------------------------
-
-To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files 
-during the computation of a workflow, first set up and configure an account with AWS.
-
-#. If necessary, create and activate an `AWS account`_
-
-#. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
-
-#. Follow `Amazon's instructions`_ to create an SSH key and import it into EC2.
-
-#. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
-
-
-.. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
-.. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
-.. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
-.. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
-.. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
-
-
-.. _prepare_azure-ref:
-
-Prepare your Azure environment
-------------------------------
-Follow the steps below to prepare your Azure environment for running a Toil workflow.
-
-#. Create an `Azure account`_.
-
-
-#. Make sure you have an SSH RSA public key, usually stored in
-   ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
-   one.
-
-.. _Azure account: https://azure.microsoft.com/en-us/free/
