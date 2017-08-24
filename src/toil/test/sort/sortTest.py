@@ -16,11 +16,13 @@ from __future__ import absolute_import, print_function
 import unittest
 import os
 import random
+from contextlib import contextmanager
 from uuid import uuid4
 import logging
 import subprocess
 
 # Python 3 compatibility imports
+import errno
 from six.moves import xrange
 
 from toil import resolveEntryPoint
@@ -47,6 +49,22 @@ log = logging.getLogger(__name__)
 defaultLineLen = int(os.environ.get('TOIL_TEST_SORT_LINE_LEN', '10'))
 defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', '10'))
 defaultN = int(os.environ.get('TOIL_TEST_SORT_N', str(defaultLineLen * defaultLines / 5)))
+
+
+@contextmanager
+def runMain(options):
+    """
+    make sure the output file is deleted every time main is run
+    """
+    main(options)
+    yield
+    try:
+        os.remove('sortedFile.txt')
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            pass
+        else:
+            raise
 
 
 class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
@@ -106,20 +124,23 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # Check we get an exception if we try to restart a workflow that doesn't exist
                 options.restart = True
                 with self.assertRaises(NoSuchJobStoreException):
-                    main(options)
+                    with runMain(options):
+                        pass
 
                 options.restart = False
 
                 # Now actually run the workflow
                 try:
-                    main(options)
+                    with runMain(options):
+                        pass
                     i = 0
                 except FailedJobsException as e:
                     i = e.numberOfFailedJobs
 
                 # Check we get an exception if we try to run without restart on an existing store
                 with self.assertRaises(JobStoreExistsException):
-                    main(options)
+                    with runMain(options):
+                        pass
 
                 options.restart = True
 
@@ -128,7 +149,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 while i != 0:
                     options.useExistingOptions = random.random() > 0.5
                     try:
-                        main(options)
+                        with runMain(options):
+                            pass
                         i = 0
                     except FailedJobsException as e:
                         i = e.numberOfFailedJobs
@@ -139,12 +161,11 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 # Now check that if you try to restart from here it will raise an exception
                 # indicating that there are no jobs remaining in the workflow.
                 with self.assertRaises(JobException):
-                    main(options)
-
-                # Now check the file is properly sorted..
-                with open(tempSortFile, 'r') as fileHandle:
-                    l2 = fileHandle.readlines()
-                    self.assertEquals(l, l2)
+                    with runMain(options):
+                        # Now check the file is properly sorted..
+                        with open(tempSortFile, 'r') as fileHandle:
+                            l2 = fileHandle.readlines()
+                            self.assertEquals(l, l2)
             finally:
                 subprocess.check_call([resolveEntryPoint('toil'), 'clean', jobStoreLocator])
 
