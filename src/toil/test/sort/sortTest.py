@@ -89,7 +89,11 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.clean = "never"
                 options.badWorker = badWorker
                 options.badWorkerFailInterval = 0.05
-                options.disableCaching = disableCaching  # FIXME maybe this line should be deleted
+                options.disableCaching = disableCaching
+                # This is required because mesosMasterAddress now defaults to the IP of the machine
+                # that is starting the workflow while the mesos *tests* run locally.
+                if batchSystem == 'mesos':
+                    options.mesosMasterAddress = 'localhost:5050'
                 options.downCheckpoints = downCheckpoints
                 options.N = N
 
