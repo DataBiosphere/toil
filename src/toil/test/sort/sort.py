@@ -183,20 +183,20 @@ def main(options=None):
         options = parser.parse_args()
 
     fileName = options.fileToSort
-    sortedFileName = "sortedFile.txt"
+    sortedFileName = "toilExample-sortedFile.txt"
     if os.path.exists(sortedFileName):
             print sortedFileName, "already exists, delete it to run the sort example again"
-            exit()
+            #exit()
 
     # do some input verification
     if options.fileToSort is None:
         # make the file ourselves
-        fileName = 'fileToSort.txt'
+        fileName = 'toilExample-fileToSort.txt'
         if os.path.exists(fileName):
-            print fileName, "already exists, use the --fileToSort option to sort it"
-            exit()
-        print 'No sort file specified. Generating one automatically called %s.' % fileName
-        makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
+            print "Sorting existing file", fileName
+        else:
+            print 'No sort file specified. Generating one automatically called %s.' % fileName
+            makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
     else:
         if not os.path.exists(options.fileToSort):
             raise RuntimeError("File to sort does not exist: %s" % options.fileToSort)

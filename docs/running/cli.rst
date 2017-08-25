@@ -59,7 +59,7 @@ prevents logfiles from getting too large.
 Stats
 -----
 The ``--stats`` argument records statistics about the Toil workflow in the job store. After a Toil run has finished,
-the entrypoint ``toil stats <jobStore>`` can be used to return statistics about cpu, memory, job duration, and more.
+the command ``toil stats <jobStore>`` can be used to return statistics about cpu, memory, job duration, and more.
 The job store will never be deleted with ``--stats``, as it overrides ``--clean``.
 
 

@@ -6,15 +6,9 @@ CWL in Toil
 The Common Workflow Language (CWL) is an emerging standard for writing workflows
 that are portable across multiple workflow engines and platforms.
 
-Toil has nearly full support for the stable v1.0 specification, only lacking the
-following features:
+Toil has nearly full support for the v1.0.1 specification, only lacking the
+following feature:
 
-- `Directory`_ inputs and outputs in pipelines. Currently, directory inputs must
-  be enumerated as Files.
-- `File literals`_ that specify only ``contents`` to a File without an explicit
-  file name.
-- Writable `InitialWorkDirRequirement`_
-  objects. Standard readable inputs do work.
 - Complex file inputs – from ExpressionTool or a default value, both of which do
   not yet get cleanly staged into Toil file management.
 
