@@ -1,0 +1,8 @@
+language: python
+python:
+  - "2.7"
+install:
+  - make prepare
+  - make develop  # NOTE: no extras yet. Let's keep this simple
+script:
+  - python -m pytest src
