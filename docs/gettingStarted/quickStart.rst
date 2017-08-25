@@ -145,7 +145,7 @@ Running the example
 
 #. Run with custom options::
 
-      (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/
+      (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/ --overwriteOutput=True
 
    Here we see that we can add our own options to a Toil script. The first two
    options determine the number of lines and how many characters are in each line.
@@ -261,7 +261,7 @@ in addition to messages from the batch system and jobs. This can be configured
 with the ``--logLevel`` flag. For example, to only log ``CRITICAL`` level
 messages to the screen::
 
-   $ python sort.py file:jobStore --logLevel=critical
+   (venv) $ python sort.py file:jobStore --logLevel=critical --overwriteOutput=True
 
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
@@ -307,11 +307,11 @@ that a job store of the same name already exists. By default, in the event of a
 failure, the job store is preserved so that the workflow can be restarted,
 starting from the previously failed jobs. We can restart the pipeline by running::
 
-   (venv) $ python sort.py file:jobStore --restart
+   (venv) $ python sort.py file:jobStore --restart --overwriteOutput=True
 
 We can also change the number of times Toil will attempt to retry a failed job::
 
-   (venv) $ python sort.py --retryCount 2 --restart
+   (venv) $ python sort.py --retryCount 2 --restart --overwriteOutput=True
 
 You'll now see Toil attempt to rerun the failed job until it runs out of tries.
 ``--retryCount`` is useful for non-systemic errors, like downloading a file that
@@ -322,7 +322,7 @@ line 30, or remove it, and then run
 
 ::
 
-   (venv) $ python sort.py --restart
+   (venv) $ python sort.py --restart --overwriteOutput=True
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
@@ -334,7 +334,7 @@ Collecting Statistics
 A Toil pipeline can be run with the ``--stats`` flag to allows collection of
 statistics::
 
-   (venv) $ python sort.py --stats
+   (venv) $ python sort.py --stats --overwriteOutput=True
 
 Once the pipeline finishes, the job store will be left behind, allowing us to
 get information on the total runtime and stats pertaining to each job function::

@@ -174,6 +174,7 @@ def main(options=None):
         parser.add_argument('--lineLength', default=defaultLineLen, help='Length of lines in file to sort.', type=int)
         parser.add_argument("--fileToSort", help="The file you wish to sort")
         parser.add_argument("--outputFile", help="Where the sorted output will go")
+        parser.add_argument("--overwriteOutput", help="Write over the output file if it already exists.", default=True)
         parser.add_argument("--N", dest="N",
                             help="The threshold below which a serial sort function is used to sort file. "
                                  "All lines must of length less than or equal to N or program will fail",
@@ -184,15 +185,15 @@ def main(options=None):
         options = parser.parse_args()
 
     # do some input verification
-    sortedFileName = options.outputFile or "toilExample-sortedFile.txt"
-    if os.path.exists(sortedFileName):
-        print("the output file {} already exists. Delete it to run the sort example again".format(sortedFileName))
+    sortedFileName = options.outputFile or "sortedFile.txt"
+    if not options.overwriteOutput and os.path.exists(sortedFileName):
+        print("the output file {} already exists. Delete it to run the sort example again or use --overwriteOutput=True".format(sortedFileName))
         exit()
 
     fileName = options.fileToSort
     if options.fileToSort is None:
         # make the file ourselves
-        fileName = 'toilExample-fileToSort.txt'
+        fileName = 'fileToSort.txt'
         if os.path.exists(fileName):
             print "Sorting existing file", fileName
         else:
