@@ -111,6 +111,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.downCheckpoints = downCheckpoints
                 options.N = N
                 options.outputFile = 'sortedFile.txt'
+                options.overwriteOutput = True
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
