@@ -255,7 +255,7 @@ class AzureJobStore(AbstractJobStore):
 
     def delete(self, jobStoreID):
         try:
-            self.jobItems.delete_entity(row_key=jobStoreID)
+            self.jobItems.delete_entity(row_key=bytes(jobStoreID))
         except AzureMissingResourceHttpError:
             # Job deletion is idempotent, and this job has been deleted already
             return
