@@ -234,23 +234,23 @@ class AzureJobStore(AbstractJobStore):
         jobStoreID = self._newJobID()
         job = AzureJob.fromJobNode(jobNode, jobStoreID, self._defaultTryCount())
         entity = job.toItem(chunkSize=self.jobChunkSize)
-        entity['RowKey'] = jobStoreID
+        entity['RowKey'] = EntityProperty('Edm.String', jobStoreID)
         self.jobItems.insert_entity(entity=entity)
         return job
 
     def exists(self, jobStoreID):
-        if self.jobItems.get_entity(row_key=jobStoreID) is None:
+        if self.jobItems.get_entity(row_key=bytes(jobStoreID)) is None:
             return False
         return True
 
     def load(self, jobStoreID):
-        jobEntity = self.jobItems.get_entity(row_key=jobStoreID)
+        jobEntity = self.jobItems.get_entity(row_key=bytes(jobStoreID))
         if jobEntity is None:
             raise NoSuchJobException(jobStoreID)
         return AzureJob.fromEntity(jobEntity)
 
     def update(self, job):
-        self.jobItems.update_entity(row_key=job.jobStoreID,
+        self.jobItems.update_entity(row_key=bytes(job.jobStoreID),
                                     entity=job.toItem(chunkSize=self.jobChunkSize))
 
     def delete(self, jobStoreID):
@@ -480,8 +480,8 @@ class AzureJobStore(AbstractJobStore):
 
     def _associateFileWithJob(self, jobStoreFileID, jobStoreID=None):
         if jobStoreID is not None:
-            self.jobFileIDs.insert_entity(entity={'PartitionKey': jobStoreID,
-                                                  'RowKey': jobStoreFileID})
+            self.jobFileIDs.insert_entity(entity={'PartitionKey': EntityProperty('Edm.String', jobStoreID),
+                                                  'RowKey': EntityProperty('Edm.String', jobStoreFileID)})
 
     def _dissociateFileFromJob(self, jobStoreFileID):
         entities = self.jobFileIDs.query_entities(filter="RowKey eq '%s'" % jobStoreFileID)
