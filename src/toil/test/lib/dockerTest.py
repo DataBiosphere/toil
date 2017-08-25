@@ -11,11 +11,12 @@ from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.lib.docker import dockerCall, dockerCheckOutput, _containerIsRunning, _dockerKill, STOP, FORGO, RM
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_appliance
 
 _log = logging.getLogger(__name__)
 
 
+@needs_appliance
 class DockerTest(ToilTest):
     """
     Tests dockerCall and ensures no containers are left around.
