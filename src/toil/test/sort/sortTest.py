@@ -110,6 +110,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.disableCaching = disableCaching  # FIXME maybe this line should be deleted
                 options.downCheckpoints = downCheckpoints
                 options.N = N
+                options.outputFile = 'sortedFile.txt'
 
                 # Make the file to sort
                 tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
