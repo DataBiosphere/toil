@@ -194,18 +194,19 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                         '{} cores this batch system was configured with. Scale is '
                                         'set to {}.'.format(cores, self.maxCores, self.scale))
         assert cores >= self.minCores
-        assert jobNode.memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
+        memory = math.floor(jobNode.memory * self.scale)
+        assert memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
                                           'the maximum of {} this batch system was configured '
-                                          'with.'.format(jobNode.memory, self.maxMemory))
+                                          'with. Scale is set to {}'.format(memory, self.maxMemory, scale))
 
-        self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
+        self.checkResourceRequest(memory, cores, jobNode.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
-            jobNode.command, jobNode.memory, cores, jobNode.disk))
+            jobNode.command, memory, cores, jobNode.disk))
         with self.jobIndexLock:
             jobID = self.jobIndex
             self.jobIndex += 1
         self.jobs[jobID] = jobNode.command
-        self.inputQueue.put((jobNode.command, jobID, cores, jobNode.memory,
+        self.inputQueue.put((jobNode.command, jobID, cores, memory,
                              jobNode.disk, self.environment.copy()))
         return jobID
 
