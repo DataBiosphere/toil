@@ -24,7 +24,7 @@ def down(job, input_file_id, n, down_checkpoints):
     """Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
     If the range is larger than a threshold N the range is divided recursively and
-    a follow on job is then created which merges back the results else
+    a follow on job is then created which merges back the results. Otherwise,
     the file is sorted and placed in the output.
     """
     # Read the file
@@ -42,7 +42,8 @@ def down(job, input_file_id, n, down_checkpoints):
         t2 = job.fileStore.getLocalTempFile()
         with open(t2, 'w') as fH:
             copy_subrange_of_file(input_file, mid_point + 1, length, fH)
-        # Call down recursively
+
+        # Call the down function recursively
         return job.addFollowOnJobFn(up, job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), n,
                                     down_checkpoints=down_checkpoints, memory='1000M').rv(),
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), n,
@@ -64,9 +65,10 @@ def up(job, input_file_id_1, input_file_id_2):
     with job.fileStore.writeGlobalFileStream() as (fileHandle, output_id):
         with job.fileStore.readGlobalFileStream(input_file_id_1) as inputFileHandle1:
             with job.fileStore.readGlobalFileStream(input_file_id_2) as inputFileHandle2:
-                merge(inputFileHandle1, inputFileHandle2, fileHandle)
                 job.fileStore.logToMaster("Merging %s and %s to %s"
                                           % (input_file_id_1, input_file_id_2, output_id))
+                merge(inputFileHandle1, inputFileHandle2, fileHandle)
+
         # Cleanup up the input files - these deletes will occur after the completion is successful.
         job.fileStore.deleteGlobalFile(input_file_id_1)
         job.fileStore.deleteGlobalFile(input_file_id_2)
@@ -158,13 +160,13 @@ def main():
     make_file_to_sort(file_name=file_name, lines=options.num_lines, line_length=options.line_length)
 
     with Toil(options) as toil:
+        sort_file_url = 'file://' + os.path.abspath('file_to_sort.txt')
         if not toil.options.restart:
-            sort_file_url = 'file://' + os.path.abspath('file_to_sort.txt')
             sort_file_id = toil.importFile(sort_file_url)
             sorted_file_id = toil.start(Job.wrapJobFn(setup, sort_file_id, int(options.N), False, memory='1000M'))
-            toil.exportFile(sorted_file_id, sort_file_url)
         else:
-            toil.restart()
+            sorted_file_id = toil.restart()
+        toil.exportFile(sorted_file_id, sort_file_url)
 
 if __name__ == '__main__':
     main()

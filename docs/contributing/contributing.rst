@@ -1,48 +1,6 @@
 .. highlight:: console
 
-Building from Source
-====================
 
-For developers, tinkerers, and people otherwise interested in Toil's internals,
-this section explains how to build Toil from source and run its test suite.
-
-Building from master
---------------------
-
-First, clone the source::
-
-   $ git clone https://github.com/BD2KGenomics/toil
-   $ cd toil
-
-Then, create and activate a virtualenv::
-
-   $ virtualenv venv
-   $ . venv/bin/activate
-
-From there, you can list all available Make targets by running ``make``.
-First and foremost, we want to install Toil's build requirements. (These are
-additional packages that Toil needs to be tested and built but not to be run.)
-
-::
-
-    $ make prepare
-
-Now, we can install Toil in `development mode`_ (such that changes to the
-source code will immediately affect the virtualenv)::
-
-    $ make develop
-
-Or, to install with support for all optional :ref:`extras`::
-
-    $ make develop extras=[aws,mesos,azure,google,encryption,cwl]
-
-To build the docs, run ``make develop`` with all extras followed by
-
-::
-
-    $ make docs
-
-.. _development mode: https://pythonhosted.org/setuptools/setuptools.html#development-mode
 
 Running tests
 -------------
@@ -81,28 +39,27 @@ which runs the integration tests in serial and doesn't redirect output. This mak
 expected.
 
 
-.. topic:: Installing Docker with Quay
+Installing Docker with Quay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+`Docker`_ is needed for some of the tests. Follow the appopriate
+installation instructions for your system on their website to get started.
 
-   `Docker`_ is needed for some of the tests. Follow the appopriate
-   installation instructions for your system on their website to get started.
+When running ``make test`` you might still get the following error::
 
-   When running ``make test`` you might still get the following error::
+   $ make test
+   Please set TOIL_DOCKER_REGISTRY, e.g. to quay.io/USER.
 
-      $ make test
-      Please set TOIL_DOCKER_REGISTRY, e.g. to quay.io/USER.
+To solve, make an account with `Quay`_ and specify it like so::
 
-   To solve, make an account with `Quay`_ and specify it like so::
+   $ TOIL_DOCKER_REGISTRY=quay.io/USER make test
 
-      $ TOIL_DOCKER_REGISTRY=quay.io/USER make test
+where ``USER`` is your Quay username.
 
-   where ``USER`` is your Quay username.
+For convenience you may want to add this variable to your bashrc by running
 
-   For convenience you may want to add this variable to your bashrc by running
+::
 
-   ::
-
-      $ echo 'export TOIL_DOCKER_REGISTRY=quay.io/USER' >> $HOME/.bashrc
-
+   $ echo 'export TOIL_DOCKER_REGISTRY=quay.io/USER' >> $HOME/.bashrc
 
 Run an individual test with
 
@@ -161,6 +118,9 @@ See :ref:`Autoscaling` and :func:`toil.applianceSelf` for information on how to
 configure Toil to pull the Toil Appliance image from your personal repo instead
 of the our official Quay account.
 
+General workflow for using Quay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Here is a general workflow: (similar instructions apply when using
 Docker Hub)
 
@@ -172,7 +132,7 @@ Docker Hub)
 
    to automatically build a docker image that can now be uploaded to
    your personal `Quay`_ account. If you have not installed Toil source
-   code yet check out `Building from Source`_.
+   code yet check out :ref:`building_from_source-ref`.
 
 3. If it's not already you will need Docker installed and need
    to `log into Quay`_. Also you will want to make sure that your Quay
@@ -261,11 +221,11 @@ with ``worker`` to get shell access in your worker.
 
 .. _Docker Hub: https://hub.docker.com/
 
-Contributing
-============
 
 Maintainer's Guidelines
 -----------------------
+
+In general, as developers and maintainers of the code, we adhere to the following guidelines:
 
 * We strive to never break the build on master.
 
@@ -276,7 +236,7 @@ Maintainer's Guidelines
   followed by the issue number followed by ``)``.
 
 Naming conventions
-------------------
+~~~~~~~~~~~~~~~~~~
 
 * The **branch name** for a pull request starts with ``issues/`` followed by the
   issue number (or numbers, separated by a dash), followed by a short
@@ -308,8 +268,7 @@ case of bar (resolves #123).`
 .. _Waffle: https://waffle.io/BD2KGenomics/toil
 
 Pull requests
--------------
-
+~~~~~~~~~~~~~
 * All pull requests must be reviewed by a person other than the request's
   author.
 
@@ -328,7 +287,7 @@ Pull requests
 .. _multi-author:
 
 Multi-author pull requests
---------------------------
+~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * A pull request starts off as single-author and can be changed to multi-author
   upon request via comment (typically by the reviewer) in the PR. The author of
