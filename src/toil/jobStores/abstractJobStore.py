@@ -312,7 +312,7 @@ class AbstractJobStore(object):
         """
         Exports file to destination pointed at by the destination URL.
 
-        Refer to :meth:`.importFile` documentation for currently supported URL schemes.
+        Refer to :meth:`.AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         Note that the helper method _exportFile is used to read from the source and write to
         destination. To implement any optimizations that circumvent this, the _exportFile method
@@ -324,7 +324,7 @@ class AbstractJobStore(object):
         """
         dstUrl = urlparse.urlparse(dstUrl)
         otherCls = self._findJobStoreForUrl(dstUrl, export=True)
-        return self._exportFile(otherCls, jobStoreFileID, dstUrl)
+        self._exportFile(otherCls, jobStoreFileID, dstUrl)
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         """
@@ -445,7 +445,7 @@ class AbstractJobStore(object):
 
         def haveJob(jobId):
             if jobCache is not None:
-                if jobCache.has_key(jobId):
+                if jobId in jobCache:
                     return True
                 else:
                     return self.exists(jobId)
@@ -495,8 +495,26 @@ class AbstractJobStore(object):
             # Delete the job
             self.delete(jobGraph.jobStoreID)
 
+        jobGraphsReachableFromRoot = {id: getJob(id) for id in reachableFromRoot}
+
+        # Clean up any checkpoint jobs -- delete any successors it
+        # may have launched, and restore the job to a pristine
+        # state
+        jobsDeletedByCheckpoints = set()
+        for jobGraph in [jG for jG in jobGraphsReachableFromRoot.values() if jG.checkpoint is not None]:
+            if jobGraph.jobStoreID in jobsDeletedByCheckpoints:
+                # This is a checkpoint that was nested within an
+                # earlier checkpoint, so it and all its successors are
+                # already gone.
+                continue
+            logger.info("Restarting checkpointed job %s" % jobGraph)
+            deletedThisRound = jobGraph.restartCheckpoint(self)
+            jobsDeletedByCheckpoints |= set(deletedThisRound)
+        for jobID in jobsDeletedByCheckpoints:
+            del jobGraphsReachableFromRoot[jobID]
+
         # Clean up jobs that are in reachable from the root
-        for jobGraph in (getJob(x) for x in reachableFromRoot):
+        for jobGraph in jobGraphsReachableFromRoot.values():
             # jobGraphs here are necessarily in reachable from root.
 
             changed = [False]  # This is a flag to indicate the jobGraph state has

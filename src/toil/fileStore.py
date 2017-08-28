@@ -206,8 +206,8 @@ class FileStore(object):
         :param toil.fileStore.FileID fileStoreID: job store id for the file
         :param string userPath: a path to the name of file to which the global file will be copied
                or hard-linked (see below).
-        :param bool cache: Described in :func:`~toil.fileStore.FileStore.readGlobalFile`
-        :param bool mutable: Described in :func:`~toil.fileStore.FileStore.readGlobalFile`
+        :param bool cache: Described in :func:`toil.fileStore.CachingFileStore.readGlobalFile`
+        :param bool mutable: Described in :func:`toil.fileStore.CachingFileStore.readGlobalFile`
         :return: An absolute path to a local, temporary copy of the file keyed by fileStoreID.
         :rtype: str
         """

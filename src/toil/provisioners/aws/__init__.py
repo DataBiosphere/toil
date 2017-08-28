@@ -212,10 +212,9 @@ write_files:
         #!/bin/bash
         set -x
         ephemeral_count=0
-        possible_drives="/dev/xvdb /dev/xvdc /dev/xvdd /dev/xvde"
         drives=""
         directories="toil mesos docker"
-        for drive in $possible_drives; do
+        for drive in /dev/xvd{{b..z}}; do
             echo checking for $drive
             if [ -b $drive ]; then
                 echo found it

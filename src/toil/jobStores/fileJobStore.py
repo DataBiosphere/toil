@@ -60,6 +60,7 @@ class FileJobStore(AbstractJobStore):
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
         # Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
+        self.linkImports = None
 
     def initialize(self, config):
         try:
@@ -70,6 +71,7 @@ class FileJobStore(AbstractJobStore):
             else:
                 raise
         os.mkdir(self.tempFilesDir)
+        self.linkImports = config.linkImports
         super(FileJobStore, self).initialize(config)
 
     def resume(self):
@@ -162,24 +164,32 @@ class FileJobStore(AbstractJobStore):
     # Functions that deal with temporary files associated with jobs
     ##########################################
 
+    def _copyOrLink(self, srcURL, destPath):
+        # linking is not done be default because of issue #1755
+        srcPath = self._extractPathFromUrl(srcURL)
+        if self.linkImports:
+            try:
+                os.link(os.path.realpath(srcPath), destPath)
+            except OSError:
+                shutil.copyfile(srcPath, destPath)
+            else:
+                # make imported files read-only if they're linked for protection
+                os.chmod(destPath, 0o444)
+        else:
+            shutil.copyfile(srcPath, destPath)
+
     def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
                 fd, absPath = self._getTempFile()  # use this to get a valid path to write to in job store
                 os.close(fd)
                 os.unlink(absPath)
-                try:
-                    os.link(os.path.realpath(self._extractPathFromUrl(url)), absPath)
-                except OSError:
-                    shutil.copyfile(self._extractPathFromUrl(url), absPath)
+                self._copyOrLink(url, absPath)
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
-                try:
-                    os.link(os.path.realpath(self._extractPathFromUrl(url)), path)
-                except:
-                    shutil.copyfile(self._extractPathFromUrl(url), path)
+                self._copyOrLink(url, path)
                 return None
         else:
             return super(FileJobStore, self)._importFile(otherCls, url,

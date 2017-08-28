@@ -45,13 +45,13 @@ def runSetup():
             'azure': [
                 'azure==1.0.3'],
             'encryption': [
-                'pynacl==0.3.0'],
+                'pynacl==1.1.2'],
             'google': [
                 'gcs_oauth2_boto_plugin==1.9',
                 botoRequirement],
             'cwl': [
-                'cwltool==1.0.20170713144155',
-                'schema-salad==2.6.20170630075932',
+                'cwltool==1.0.20170822192924',
+                'schema-salad >= 2.6, < 3',
                 'galaxy-lib==17.9.3',
                 'cwltest>=1.0.20170214185319']},
         package_dir={'': 'src'},

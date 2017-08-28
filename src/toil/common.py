@@ -20,7 +20,6 @@ import re
 import sys
 import tempfile
 import time
-import socket
 import uuid
 from argparse import ArgumentParser
 from threading import Thread
@@ -35,7 +34,6 @@ from bd2k.util.humanize import bytes2human
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
-from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 
@@ -93,9 +91,10 @@ class Config(object):
         self.nodeStorage = 50
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
-        self.maxPreemptableServiceJobs = sys.maxint
-        self.maxServiceJobs = sys.maxint
+        self.maxPreemptableServiceJobs = sys.maxsize
+        self.maxServiceJobs = sys.maxsize
         self.deadlockWait = 60 # Wait one minute before declaring a deadlock
+        self.statePollingWait = 1 # Wait 1 seconds before querying job state
 
         #Resource requirements
         self.defaultMemory = 2147483648
@@ -103,13 +102,13 @@ class Config(object):
         self.defaultDisk = 2147483648
         self.readGlobalFileMutableByDefault = False
         self.defaultPreemptable = False
-        self.maxCores = sys.maxint
-        self.maxMemory = sys.maxint
-        self.maxDisk = sys.maxint
+        self.maxCores = sys.maxsize
+        self.maxMemory = sys.maxsize
+        self.maxDisk = sys.maxsize
 
         #Retrying/rescuing jobs
         self.retryCount = 0
-        self.maxJobDuration = sys.maxint
+        self.maxJobDuration = sys.maxsize
         self.rescueJobsFrequency = 3600
 
         #Misc
@@ -195,6 +194,7 @@ class Config(object):
         setOption("mesosMasterAddress")
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
+        setOption("linkImports")
 
         setOption("environment", parseSetEnv)
 
@@ -221,6 +221,7 @@ class Config(object):
         setOption("maxServiceJobs", int)
         setOption("maxPreemptableServiceJobs", int)
         setOption("deadlockWait", int)
+        setOption("statePollingWait", int)
 
         # Resource requirements
         setOption("defaultMemory", h2b, iC(1))
@@ -318,14 +319,16 @@ def _addOptions(addGroupFn, config):
                              "Allows the restart of an existing workflow")
     addOptionFn("--restart", dest="restart", default=None, action="store_true",
                 help="If --restart is specified then will attempt to restart existing workflow "
-                "at the location pointed to by the --jobStore option. Will raise an exception if the workflow does not exist")
+                     "at the location pointed to by the --jobStore option. Will raise an exception "
+                     "if the workflow does not exist")
 
     #
     #Batch system options
     #
 
     addOptionFn = addGroupFn("toil options for specifying the batch system",
-                             "Allows the specification of the batch system, and arguments to the batch system/big batch system (see below).")
+                             "Allows the specification of the batch system, and arguments to the "
+                             "batch system/big batch system (see below).")
     addBatchOptions(addOptionFn)
 
     #
@@ -408,6 +411,8 @@ def _addOptions(addGroupFn, config):
                 help=("The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
     addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
                 help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
+    addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
+                help=("The minimum number of seconds to wait before retrieving the current job state, in seconds"))
 
     #
     #Resource requirements
@@ -435,11 +440,10 @@ def _addOptions(addGroupFn, config):
     addOptionFn('--defaultPreemptable', dest='defaultPreemptable', action='store_true')
     addOptionFn("--readGlobalFileMutableByDefault", dest="readGlobalFileMutableByDefault",
                 action='store_true', default=None, help='Toil disallows modification of read '
-                                                        'global files by default. This flag makes '
-                                                        'it makes read file mutable by default, '
-                                                        'however it also defeats the purpose of '
-                                                        'shared caching via hard links to save '
-                                                        'space. Default is False')
+                                                        'global files. Setting this flag causes '
+                                                        'them to be mutable. Unfortunately, this '
+                                                        'prevents saving space by caching files '
+                                                        'with hardlinks.')
     addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
                 help='The maximum number of CPU cores to request from the batch system at any one '
                      'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
@@ -468,7 +472,8 @@ def _addOptions(addGroupFn, config):
                             "the job may be longer). default=%s" % config.maxJobDuration))
     addOptionFn("--rescueJobsFrequency", dest="rescueJobsFrequency", default=None,
                       help=("Period of time to wait (in seconds) between checking for "
-                            "missing/overlong jobs, that is jobs which get lost by the batch system. Expert parameter. default=%s" % config.rescueJobsFrequency))
+                            "missing/overlong jobs, that is jobs which get lost by the batch "
+                            "system. Expert parameter. default=%s" % config.rescueJobsFrequency))
 
     #
     #Misc options
@@ -880,10 +885,22 @@ class Toil(object):
             self._batchSystem.setUserScript(userScriptResource)
 
     def importFile(self, srcUrl, sharedFileName=None):
+        """
+        Imports the file at the given URL into job store.
+
+        See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.importFile` for a
+        full description
+        """
         self._assertContextManagerUsed()
         return self._jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
 
     def exportFile(self, jobStoreFileID, dstUrl):
+        """
+        Exports file to destination pointed at by the destination URL.
+
+        See :func:`toil.jobStores.abstractJobStore.AbstractJobStore.exportFile` for a
+        full description
+        """
         self._assertContextManagerUsed()
         self._jobStore.exportFile(jobStoreFileID, dstUrl)
 
@@ -1040,7 +1057,7 @@ def parseSetEnv(l):
     return d
 
 
-def iC(minValue, maxValue=sys.maxint):
+def iC(minValue, maxValue=sys.maxsize):
     # Returns function that checks if a given int is in the given half-open interval
     assert isinstance(minValue, int) and isinstance(maxValue, int)
     return lambda x: minValue <= x < maxValue

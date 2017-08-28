@@ -453,7 +453,7 @@ class AbstractJobStoreTest:
                 self.assertEqual(fileMD5, other._hashTestFile(dstUrl))
 
             make_tests(testImportExportFile,
-                       targetClass=cls,
+                       cls,
                        otherCls=activeTestClassesByName,
                        size=dict(zero=0,
                                  one=1,
@@ -482,7 +482,7 @@ class AbstractJobStoreTest:
                 self.assertEqual(fileMD5, srcMd5)
 
             make_tests(testImportSharedFile,
-                       targetClass=cls,
+                       cls,
                        otherCls=activeTestClassesByName)
 
         def testImportHttpFile(self):
@@ -738,6 +738,16 @@ class AbstractJobStoreTest:
             cleaner = self._createJobStore()
             cleaner.destroy()
 
+        def testEmptyFileStoreIDIsReadable(self):
+            """Simply creates an empty fileStoreID and attempts to read from it."""
+            id = self.master.getEmptyFileStoreID()
+            fh, path = tempfile.mkstemp()
+            try:
+                self.master.readFile(id, path)
+                self.assertTrue(os.path.isfile(path))
+            finally:
+                os.unlink(path)
+
         def _largeLogEntrySize(self):
             """
             Sub-classes may want to override these in order to maximize test coverage
@@ -970,7 +980,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             # latter to bail out immediatly and failing the assertion that ensure the number of
             # failing tasks.
             time.sleep(.25)
-            if i.next() % 2 == 0:
+            if next(i) % 2 == 0:
                 raise RuntimeError()
 
         with patch('boto.s3.multipart.MultiPartUpload.copy_part_from_key',

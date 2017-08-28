@@ -31,8 +31,6 @@ from toil.fileStore import shutdownFileStore
 
 logger = logging.getLogger(__name__)
 
-# TODO: should this be an attribute?  Used in the worker and the batch system
-sleepSeconds = 10
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
@@ -96,15 +94,7 @@ class AbstractBatchSystem(object):
         """
         Issues a job with the specified command to the batch system and returns a unique jobID.
 
-        :param str command: the string to run as a command,
-
-        :param int memory: int giving the number of bytes of memory the job needs to run
-
-        :param float cores: the number of cores needed for the job
-
-        :param int disk: int giving the number of bytes of disk space the job needs to run
-
-        :param bool preemptable: True if the job can be run on a preemptable node
+        :param jobNode a toil.job.JobNode
 
         :return: a unique jobID that can be used to reference the newly issued job
         :rtype: int

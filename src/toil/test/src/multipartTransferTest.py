@@ -74,7 +74,7 @@ class AWSMultipartCopyTest(ToilTest):
                                      dstBucket.get_key('test').get_contents_as_string())
 
         make_tests(multipartCopy,
-                   targetClass=AWSMultipartCopyTest,
+                   AWSMultipartCopyTest,
                    threadPoolSize={str(x): x for x in (1, 2, 16)})
 
 

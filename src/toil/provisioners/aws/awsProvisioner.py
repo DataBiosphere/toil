@@ -19,6 +19,7 @@ import logging
 import time
 
 import sys
+import string
 
 # Python 3 compatibility imports
 from _ssl import SSLError
@@ -703,7 +704,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
         # determine number of ephemeral drives via cgcloud-lib
-        bdtKeys = ['', '/dev/xvdb', '/dev/xvdc', '/dev/xvdd']
+        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.lowercase[1:]]
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = BlockDeviceType(delete_on_termination=True)
@@ -768,8 +769,12 @@ class AWSProvisioner(AbstractProvisioner):
                     web.authorize(ip_protocol='tcp', from_port=22, to_port=22, cidr_ip='0.0.0.0/0')
             for attempt in retry(predicate=groupNotFound, timeout=300):
                 with attempt:
-                    # the following authorizes all port access within the web security group
+                    # the following authorizes all TCP access within the web security group
                     web.authorize(ip_protocol='tcp', from_port=0, to_port=65535, src_group=web)
+            for attempt in retry(predicate=groupNotFound, timeout=300):
+                with attempt:
+                    # We also want to open up UDP, both for user code and for the RealtimeLogger
+                    web.authorize(ip_protocol='udp', from_port=0, to_port=65535, src_group=web)
         out = []
         for sg in ctx.ec2.get_all_security_groups():
             if sg.name == name and vpcId is None or sg.vpc_id == vpcId:
@@ -780,34 +785,50 @@ class AWSProvisioner(AbstractProvisioner):
     def _getProfileARN(cls, ctx):
         def addRoleErrors(e):
             return e.status == 404
-        roleName = 'toil'
-        policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
-                      s3_full=s3FullPolicy, sbd_full=sdbFullPolicy)
-        iamRoleName = ctx.setup_iam_ec2_role(role_name=roleName, policies=policy)
 
-        try:
-            profile = ctx.iam.get_instance_profile(iamRoleName)
-        except BotoServerError as e:
-            if e.status == 404:
-                profile = ctx.iam.create_instance_profile(iamRoleName)
-                profile = profile.create_instance_profile_response.create_instance_profile_result
-            else:
-                raise
-        else:
-            profile = profile.get_instance_profile_response.get_instance_profile_result
-        profile = profile.instance_profile
-        profile_arn = profile.arn
+        def throttleError(e):
+            return isinstance(e, BotoServerError) and e.status == 400 and e.error_code == 'Throttling'
 
-        if len(profile.roles) > 1:
-                raise RuntimeError('Did not expect profile to contain more than one role')
-        elif len(profile.roles) == 1:
-            # this should be profile.roles[0].role_name
-            if profile.roles.member.role_name == iamRoleName:
-                return profile_arn
-            else:
-                ctx.iam.remove_role_from_instance_profile(iamRoleName,
-                                                          profile.roles.member.role_name)
-        for attempt in retry(predicate=addRoleErrors):
+        def truncExpBackoff():
+            # as recommended here https://forums.aws.amazon.com/thread.jspa?messageID=406788#406788
+            yield 0
+            t = 1
+            while t < 1024:
+                yield t
+                t *= 2
+            while True:
+                yield t
+
+        for attempt in retry(delays=truncExpBackoff(), predicate=throttleError):
             with attempt:
-                ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
+                roleName = 'toil'
+                policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
+                              s3_full=s3FullPolicy, sbd_full=sdbFullPolicy)
+                iamRoleName = ctx.setup_iam_ec2_role(role_name=roleName, policies=policy)
+
+                try:
+                    profile = ctx.iam.get_instance_profile(iamRoleName)
+                except BotoServerError as e:
+                    if e.status == 404:
+                        profile = ctx.iam.create_instance_profile(iamRoleName)
+                        profile = profile.create_instance_profile_response.create_instance_profile_result
+                    else:
+                        raise
+                else:
+                    profile = profile.get_instance_profile_response.get_instance_profile_result
+                profile = profile.instance_profile
+                profile_arn = profile.arn
+
+                if len(profile.roles) > 1:
+                        raise RuntimeError('Did not expect profile to contain more than one role')
+                elif len(profile.roles) == 1:
+                    # this should be profile.roles[0].role_name
+                    if profile.roles.member.role_name == iamRoleName:
+                        return profile_arn
+                    else:
+                        ctx.iam.remove_role_from_instance_profile(iamRoleName,
+                                                                  profile.roles.member.role_name)
+                for attempt in retry(predicate=addRoleErrors):
+                    with attempt:
+                        ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn

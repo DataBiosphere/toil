@@ -38,6 +38,18 @@ class JobTest(ToilTest):
         super(JobTest, cls).setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
+
+    def testResourceRequirements(self):
+        """
+        Runs a trivial job that ensures that default and user specified resource
+        requirements are actually used.
+        """
+        options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
+        options.clean = 'always'
+        options.logLevel = 'debug'
+        with Toil(options) as toil:
+            toil.start(Job.wrapJobFn(checkRequirements, memory='1000M'))
+
     def testStatic(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -664,12 +676,23 @@ def diamond(job):
     childJob.addChild(strandedJob)
     failingJob.addChild(strandedJob)
 
+
 def child(job):
     pass
 
 
+def checkRequirements(job):
+    # insure default resource requirements are being set correctly
+    assert job.cores is not None
+    assert job.disk is not None
+    assert job.preemptable is not None
+    # insure user specified resource requirements are being set correctly
+    assert job.memory is not None
+
+
 def errorChild(job):
     raise RuntimeError('Child failure')
+
 
 class TrivialService(Job.Service):
     def __init__(self, message, *args, **kwargs):
