@@ -72,7 +72,7 @@ Running CWL workflows using Toil is easy.
 
        (venv) $ pip install toil[cwl]
 
-   This installs the ``cwltoil`` and ``cwl-runner`` executables. These are identical -
+   This installs the ``toil-cwl-runner`` and ``cwl-runner`` executables. These are identical -
    ``cwl-runner`` is the portable name for the default system CWL runner.
 
 #. Copy and paste the following code block into ``example.cwl``:
@@ -100,7 +100,7 @@ Running CWL workflows using Toil is easy.
 
 #. To run the workflow simply enter ::
 
-        (venv) $ cwltoil example.cwl example-job.yaml
+        (venv) $ toil-cwl-runner example.cwl example-job.yaml
 
    Your output will be in ``output.txt`` ::
 
@@ -418,7 +418,7 @@ the user can run a CWL workflow with Toil on AWS.
 #. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
 
       	(venv) $ toil ssh-cluster --zone us-west-2a <cluster-name> \
-      	cwltoil \
+      	toil-cwl-runner \
       	/tmp/example.cwl \
       	/tmp/example-job.yml
 

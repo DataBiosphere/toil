@@ -5,19 +5,14 @@ CWL in Toil
 
 The Common Workflow Language (CWL) is an emerging standard for writing workflows
 that are portable across multiple workflow engines and platforms.
-
-Toil has nearly full support for the v1.0.1 specification, only lacking the
-following feature:
-
-- Complex file inputs – from ExpressionTool or a default value, both of which do
-  not yet get cleanly staged into Toil file management.
+Toil has full support for the CWL v1.0.1 specification.
 
 Running CWL Locally
 -------------------
 
 To run in local batch mode, provide the CWL file and the input object file::
 
-    $ cwltoil example.cwl example-job.yml
+    $ toil-cwl-runner example.cwl example-job.yml
 
 For a simple example of CWL with Toil see :ref:`cwlquickstart`.
 

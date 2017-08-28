@@ -101,7 +101,7 @@ class CWLTest(ToilTest):
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
         try:
-            subprocess.check_output(["bash", "run_test.sh", "RUNNER=cwltoil", "DRAFT=v1.0"], cwd=cwlSpec,
+            subprocess.check_output(["bash", "run_test.sh", "RUNNER=toil-cwl-runner", "DRAFT=v1.0"], cwd=cwlSpec,
                                     stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
