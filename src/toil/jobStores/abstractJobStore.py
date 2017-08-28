@@ -627,11 +627,7 @@ class AbstractJobStore(object):
 
         :rtype: None
         """
-        self._batchedJobGraphs = []
         yield
-        for jobGraph in self._batchedJobGraphs:
-            self.update(jobGraph)
-        self._batchedJobGraphs = None
 
     @abstractmethod
     def create(self, jobNode):

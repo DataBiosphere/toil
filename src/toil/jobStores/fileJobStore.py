@@ -103,6 +103,14 @@ class FileJobStore(AbstractJobStore):
             self.update(job)
         return job
 
+    @contextmanager
+    def batch(self):
+        self._batchedJobGraphs = []
+        yield
+        for jobGraph in self._batchedJobGraphs:
+            self.update(jobGraph)
+        self._batchedJobGraphs = None
+
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
 
