@@ -114,9 +114,7 @@ as soon as a developer makes a commit or dirties the working copy they will no
 longer be able to rely on Toil to automatically detect the proper Toil Appliance
 image. Instead, developers wishing to test any appliance changes in autoscaling
 should build and push their own appliance image to a personal Docker registry.
-See :ref:`Autoscaling` and :func:`toil.applianceSelf` for information on how to
-configure Toil to pull the Toil Appliance image from your personal repo instead
-of the our official Quay account.
+This is described in the next section.
 
 General workflow for using Quay
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
