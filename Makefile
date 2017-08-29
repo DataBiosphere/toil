@@ -151,7 +151,7 @@ test_offline: check_venv check_build_reqs
 # The hot deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
 	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) -m pytest $(pytest_args_local) $(tests)
+	    $(python) -m pytest $(pytest_args_local) --html=report.html $(tests)
 
 # For running integration tests locally in series (uses the -s argument for pyTest)
 integration_test_local: check_venv check_build_reqs sdist push_docker
@@ -247,7 +247,8 @@ check_build_reqs:
 
 
 prepare: check_venv
-	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 pytest-timeout==1.2.0
+	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 \
+		pytest-timeout==1.2.0 pytest-html==1.15.2
 
 
 check_venv:
