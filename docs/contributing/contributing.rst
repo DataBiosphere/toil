@@ -38,29 +38,6 @@ To make integration tests easier to debug locally one can use
 which runs the integration tests in serial and doesn't redirect output. This makes it appears on the terminal as
 expected.
 
-
-Installing Docker with Quay
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-`Docker`_ is needed for some of the tests. Follow the appopriate
-installation instructions for your system on their website to get started.
-
-When running ``make test`` you might still get the following error::
-
-   $ make test
-   Please set TOIL_DOCKER_REGISTRY, e.g. to quay.io/USER.
-
-To solve, make an account with `Quay`_ and specify it like so::
-
-   $ TOIL_DOCKER_REGISTRY=quay.io/USER make test
-
-where ``USER`` is your Quay username.
-
-For convenience you may want to add this variable to your bashrc by running
-
-::
-
-   $ echo 'export TOIL_DOCKER_REGISTRY=quay.io/USER' >> $HOME/.bashrc
-
 Run an individual test with
 
 ::
@@ -83,6 +60,28 @@ not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
 involving both the Parasol feature and the Azure extra, use the following::
 
     $ make test tests="-m 'not azure and not parasol' src"
+
+Installing Docker with Quay
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+`Docker`_ is needed for some of the tests. Follow the appropriate
+installation instructions for your system on their website to get started.
+
+When running ``make test`` you might still get the following error::
+
+   $ make test
+   Please set TOIL_DOCKER_REGISTRY, e.g. to quay.io/USER.
+
+To solve, make an account with `Quay`_ and specify it like so::
+
+   $ TOIL_DOCKER_REGISTRY=quay.io/USER make test
+
+where ``USER`` is your Quay username.
+
+For convenience you may want to add this variable to your bashrc by running
+
+::
+
+   $ echo 'export TOIL_DOCKER_REGISTRY=quay.io/USER' >> $HOME/.bashrc
 
 Running Mesos tests
 ~~~~~~~~~~~~~~~~~~~
