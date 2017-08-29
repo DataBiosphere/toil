@@ -158,6 +158,11 @@ integration_test_local: check_venv check_build_reqs sdist push_docker
 	TOIL_TEST_INTEGRATIVE=True \
 		$(python) run_tests.py --local integration-test $(tests)
 
+test_travis: check_venv check_build_reqs
+	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
+	TOIL_SKIP_DOCKER=True \
+		$(python) -m pytest --html report.html $(pytest_args_local) $(tests)
+
 # These two targets are for backwards compatibility but will be removed shortly
 # FIXME when they are removed add check_running_on_jenkins to the jenkins targets
 test_parallel: jenkins_test_parallel

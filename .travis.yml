@@ -5,8 +5,9 @@ install:
   - make prepare
   - make develop  # NOTE: no extras yet. Let's keep this simple
 script:
-  - make test_offline
+  - make test_travis
 addons:
   artifacts:
     paths:
     - ./report.html
+    - assets/*
