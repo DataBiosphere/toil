@@ -5,6 +5,8 @@ install:
   - make prepare
   - make develop  # NOTE: no extras yet. Let's keep this simple
 script:
-  - make test_parallel
+  - make test_offline
 addons:
   artifacts: true
+    paths:
+    - report.html
