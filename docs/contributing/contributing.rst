@@ -61,6 +61,32 @@ involving both the Parasol feature and the Azure extra, use the following::
 
     $ make test tests="-m 'not azure and not parasol' src"
 
+Running tests with pytest
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Often it is simpler to use pytest directly, instead of calling the ``make`` wrapper.
+This usually works as expected, but some tests need some manual preparation.
+
+ - Running tests that make use of Docker (e.g. autoscaling tests and Docker tests)
+   require an appliance image to be hosted. This process first requires :ref:`quaySetup`.
+   Then to build and host the appliance image run the ``make`` targets ``docker``
+   and ``push_docker`` respectively.
+
+ - Running integration tests require setting the environment variable ::
+
+       export TOIL_TEST_INTEGRATIVE=True
+
+To run a specific test with pytest ::
+
+    python -m pytest src/toil/test/sort/sortTest.py::SortTest::testSort
+
+For more information, see the `pytest documentation`_.
+
+.. _pytest documentation: https://docs.pytest.org/en/latest/
+
+
+.. _quaySetup:
+
 Installing Docker with Quay
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 `Docker`_ is needed for some of the tests. Follow the appropriate
