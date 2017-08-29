@@ -7,6 +7,6 @@ install:
 script:
   - make test_offline
 addons:
-  artifacts: true
+  artifacts:
     paths:
-    - report.html
+    - ./report.html
