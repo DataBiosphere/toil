@@ -88,7 +88,8 @@ SHELL=bash
 python=python2.7
 pip=pip2.7
 tests=src
-pytest_args_local=-vv --timeout=600
+# do slightly less than travis timeout of 10 min.
+pytest_args_local=-vv --timeout=530
 extras=
 
 dist_version:=$(shell $(python) version_template.py distVersion)
@@ -252,8 +253,8 @@ check_build_reqs:
 
 
 prepare: check_venv
-	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.9 stubserver==1.0.1 \
-		pytest-timeout==1.2.0 # pytest-html==1.15.2
+	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==3.2.1 stubserver==1.0.1 \
+		pytest-timeout==1.2.0 pytest-html==1.15.2
 
 
 check_venv:
