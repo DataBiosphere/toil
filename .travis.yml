@@ -1,8 +1,11 @@
+sudo: required
 language: python
+services:
+ - docker
 python:
   - "2.7"
 install:
   - make prepare
   - make develop  # NOTE: no extras yet. Let's keep this simple
 script:
-  - make test_travis
+  - make test
