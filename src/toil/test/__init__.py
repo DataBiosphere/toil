@@ -235,12 +235,16 @@ class ToilTest(unittest.TestCase):
         return dedent('\n'.join(getsource(callable_).split('\n')[1:]))
 
 
-def _mark_test(name, test_item):
-    """
-    This used to call pytest.mark.MarkDecorator on the item if possible.
-    With new versions of pytest (3.0?) this doesn't work so we just pass it as is
-    """
-    return test_item
+try:
+    # noinspection PyUnresolvedReferences
+    from _pytest.mark import MarkDecorator
+except ImportError:
+    # noinspection PyUnusedLocal
+    def _mark_test(name, test_item):
+        return test_item
+else:
+    def _mark_test(name, test_item):
+        return MarkDecorator(name)(test_item)
 
 
 def needs_rsync3(test_item):
