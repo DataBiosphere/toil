@@ -130,7 +130,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
     @classmethod
     def obtainSystemConstants(cls):
         #lines = [_f for _f in map(str.strip, subprocess.check_output(["qhost"]).split('\n')) if _f]
-        lines = subprocess.check_output(["qhost"]).split('\n'))
+        lines = list(subprocess.check_output(["qhost"]).split('\n')))
         line = lines[0]
         items = line.strip().split()
         num_columns = len(items)
