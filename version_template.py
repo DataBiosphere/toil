@@ -26,7 +26,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
 
-baseVersion = '3.10.1a1'
+baseVersion = '3.10.1'
 
 
 
