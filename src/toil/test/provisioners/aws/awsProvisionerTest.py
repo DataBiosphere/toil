@@ -149,7 +149,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
         toilOptions = [self.jobStore,
                        '--batchSystem=mesos',
                        '--workDir=/var/lib/toil',
-                       '--mesosMaster=%s:5050' % self.leader.private_ip_address,
                        '--clean=always',
                        '--retryCount=2',
                        '--clusterStats=/home/',

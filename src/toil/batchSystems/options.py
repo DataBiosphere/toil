@@ -15,6 +15,12 @@ from __future__ import absolute_import
 
 from .registry import batchSystemFactoryFor, defaultBatchSystem, uniqueNames
 
+import socket
+
+
+def getLocalIP():
+    # may return localhost on some systems (not osx and coreos) https://stackoverflow.com/a/166520
+    return socket.gethostbyname(socket.gethostname())
 
 def _parasolOptions(addOptionFn):
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
@@ -90,7 +96,7 @@ def setDefaultOptions(config):
     config.linkImports = False
 
     # mesos
-    config.mesosMasterAddress = 'localhost:5050'
+    config.mesosMasterAddress = '%s:5050' % getLocalIP()
 
     # parasol
     config.parasolCommand = 'parasol'

@@ -66,6 +66,7 @@ def main(numJobs):
     Job.Runner.addToilOptions(parser)
     options = parser.parse_args( args=['./toilTest'] )
     options.batchSystem="mesos"
+    options.mesosMasterAddress="localhost:5050"
     # Launch first toil Job
     i = LongTestJob( numJobs )
     Job.Runner.startToil(i,  options )

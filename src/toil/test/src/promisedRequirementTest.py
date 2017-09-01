@@ -75,16 +75,7 @@ class hidden:
                 self.assertEqual(maxValue, self.cpuCount / coresPerJob)
 
         def getOptions(self, tempDir, caching=True):
-            """
-            Configures options for Toil workflow and makes job store.
-            :param str tempDir: path to test directory
-            :return: Toil options object
-            """
-            options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "DEBUG"
-            options.batchSystem = self.batchSystemName
-            options.workDir = tempDir
-            options.maxCores = self.cpuCount
+            options = super(hidden.AbstractPromisedRequirementsTest, self).getOptions(tempDir)
             # defaultCores defaults to 1 - this is coincidentally the core requirement relied upon by this
             # test, so we change defaultCores to 2 to make the test more strict
             options.defaultCores = 2
@@ -227,6 +218,11 @@ class MesosPromisedRequirementsTest(hidden.AbstractPromisedRequirementsTest, Mes
     """
     Tests against the Mesos batch system
     """
+
+    def getOptions(self, tempDir, caching=True):
+        options = super(MesosPromisedRequirementsTest, self).getOptions(tempDir, caching=caching)
+        options.mesosMasterAddress = 'localhost:5050'
+        return options
 
     def getBatchSystemName(self):
         self._startMesos(self.cpuCount)
