@@ -287,6 +287,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.totalJobs = 0 # Count of total jobs processed
         self.totalWorkerTime = 0.0  # Total time spent in worker threads
 
+        self.toilMetrics = None
+
         self.nodesToWorker = {}  # Map from Node to instances of the Worker class
 
         self.workers = {nodeShape:[] for nodeShape in self.nodeShapes} # Instances of the Worker class

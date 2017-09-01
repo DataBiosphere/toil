@@ -145,6 +145,10 @@ class Leader:
         self.potentialDeadlockedJobs = set()
         self.potentialDeadlockTime = 0
 
+        # A dashboard that runs on the leader node in AWS clusters to track the state
+        # of the cluster
+        self.toilMetrics = None
+
         # internal jobs we should not expose at top level debugging
         self.debugJobNames = ("CWLJob", "CWLWorkflow", "CWLScatter", "CWLGather",
                               "ResolveIndirect")
@@ -163,8 +167,6 @@ class Leader:
         self.statsAndLogging.start()
         if self.config.metrics:
             self.toilMetrics = ToilMetrics(provisioner=self.provisioner)
-        else:
-            self.toilMetrics = None
 
         try:
 
