@@ -40,7 +40,6 @@ def runSetup():
                 'psutil==3.0.1'],
             'aws': [
                 botoRequirement,
-                'cgcloud-lib==' + version.cgcloudVersion,
                 'futures==3.0.5'],
             'azure': [
                 'azure==1.0.3'],

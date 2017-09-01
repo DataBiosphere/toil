@@ -23,7 +23,7 @@ import time
 import pytest
 from boto.ec2.blockdevicemapping import BlockDeviceType
 from boto.exception import EC2ResponseError
-from cgcloud.lib.ec2 import wait_instances_running
+from toil.lib.ec2 import wait_instances_running
 
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
