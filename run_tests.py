@@ -33,7 +33,7 @@ test_suites = {
         None],
     'integration-test': [
         'AWSRestartTest',
-        'PremptableDeficitCompensationTest',
+        'PreemptableDeficitCompensationTest',
         'UtilsTest and testAWSProvisionerUtils',
         'AWSAutoscaleTest',
         'AWSStaticAutoscaleTest'
