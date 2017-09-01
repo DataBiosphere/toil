@@ -39,6 +39,7 @@ from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 
+from toil.version import dockerRegistry, dockerTag
 
 logger = logging.getLogger(__name__)
 
@@ -1028,15 +1029,20 @@ class ToilMetrics:
         else:
             self.clusterName = "none"
 
+        self.mtailImage = "%s/toil-mtail:%s" % (dockerRegistry, dockerTag)
+        self.grafanaImage = "%s/toil-grafana:%s" % (dockerRegistry, dockerTag)
+        self.prometheusImage = "%s/toil-prometheus:%s" % (dockerRegistry, dockerTag)
+
         self.startDashboard(clusterName = self.clusterName)
 
         # Always restart the mtail container, because metrics should start from scratch
         # for each workflow
         try:
+            subprocess.Popen(["docker", "pull", self.mtailImage])
             self.mtailProc = subprocess.Popen(["docker", "run", "--rm", "--interactive",
                                                "--net=host",
                                                "-p", "3903:3903",
-                                               "quay.io/adderan/toil-mtail"],
+                                               self.mtailImage],
                                               stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
         except subprocess.CalledProcessError:
@@ -1072,25 +1078,24 @@ class ToilMetrics:
             result = False
         return result
 
-    @classmethod
-    def startDashboard(cls, clusterName):
+    def startDashboard(self, clusterName):
         try:
-            if not cls._containerRunning("toil_prometheus"):
-                subprocess.call(["docker", "pull", "quay.io/adderan/toil-prometheus"])
+            if not self._containerRunning("toil_prometheus"):
+                subprocess.call(["docker", "pull", self.prometheusImage])
                 subprocess.call(["docker", "run",
                                  "--name", "toil_prometheus",
                                  "--net=host",
                                  "-d",
                                  "-p", "9090:9090",
-                                 "quay.io/adderan/toil-prometheus",
+                                 self.prometheusImage,
                                  clusterName])
 
-            if not cls._containerRunning("toil_grafana"):
-                subprocess.call(["docker", "pull", "quay.io/adderan/toil-grafana"])
+            if not self._containerRunning("toil_grafana"):
+                subprocess.call(["docker", "pull", self.grafanaImage])
                 subprocess.call(["docker", "run",
                                  "--name", "toil_grafana",
                                  "-d", "-p=3000:3000",
-                                 "quay.io/adderan/toil-grafana"])
+                                 self.grafanaImage])
 
 
             def requestPredicate(e):
