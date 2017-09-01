@@ -144,7 +144,7 @@ class ClusterScalerTest(ToilTest):
 
         # Make defaults dummy values
         config.defaultMemory = 1
-        config.defaultCores = 1
+        config.defaultCores = .5
         config.defaultDisk = 1
 
         # No preemptable nodes/jobs
@@ -170,7 +170,7 @@ class ClusterScalerTest(ToilTest):
 
         # Make defaults dummy values
         config.defaultMemory = 1
-        config.defaultCores = 1
+        config.defaultCores = .5
         config.defaultDisk = 1
 
         # Preemptable node parameters
@@ -309,7 +309,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         def getNodes(self):
             nodes = dict()
             for i, worker in enumerate(self.nodesToWorker.values()):
-                nodes[(i, self.preemptable)] = NodeInfo(coresTotal=0, coresUsed=0, requestedCores=1,
+                nodes[(i, self.preemptable)] = NodeInfo(coresTotal=0, coresUsed=0, requestedCores=.5,
                                                         memoryTotal=0, memoryUsed=0, requestedMemory=1,
                                                         workers=1 if worker.busyEvent.is_set() else 0)
             return nodes
