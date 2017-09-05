@@ -44,7 +44,7 @@ particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
-The 'test_local' target is similar to 'test' but it skips the docker dependent tests and their
+The 'test_offline' target is similar to 'test' but it skips the docker dependent tests and their
 setup.
 
 The 'integration_test_local' target runs toil's integration tests. These are more thorough but also
