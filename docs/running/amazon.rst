@@ -99,7 +99,7 @@ The cluster utilities also make it easy to run a toil workflow directly on this
 cluster. We call this static provisioning because the size of the cluster does not
 change. This is in contrast with :ref:`Autoscaling`.
 
-To worker nodes alongside the leader we use the ``-w`` option.::
+To launch worker nodes alongside the leader we use the ``-w`` option.::
 
 	(venv) $ toil launch-cluster my-cluster --leaderNodeType t2.small \
 	-z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4

@@ -463,9 +463,8 @@ class ScalerThread(ExceptionalThread):
 
 
                     # If we were scaling up a preemptable node type and failed to meet
-                    # our target, we need to update the slack so that non-preemptable nodes will
-                    # be allocated instead and we won't block. If we _did_ meet our target,
-                    # we need to reset the slack to 0.
+                    # our target, we will attempt to compensate for the deficit while scaling
+                    # non-preemptable nodes of this type.
                     if nodeShape.preemptable:
                         if self.totalNodes[nodeShape] < estimatedNodes:
                             deficit = estimatedNodes - self.totalNodes[nodeType]
