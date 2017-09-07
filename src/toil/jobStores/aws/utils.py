@@ -205,7 +205,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
     """
     file_size, file_time = fileSizeAndTime(localFilePath)
     if file_size <= partSize:
-        key = bucket.new_key(key_name=fileID)
+        key = bucket.new_key(key_name=bytes(fileID))
         key.name = fileID
         for attempt in retry_s3():
             with attempt:
@@ -216,7 +216,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
             version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
     for attempt in retry_s3():
         with attempt:
-            key = bucket.get_key(fileID,
+            key = bucket.get_key(bytes(fileID),
                                  headers=headers,
                                  version_id=version)
     assert key.size == file_size
@@ -229,7 +229,7 @@ def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSiz
     for attempt in retry_s3():
         with attempt:
             upload = bucket.initiate_multipart_upload(
-                key_name=fileID,
+                key_name=bytes(fileID),
                 headers=headers)
     try:
         start = 0
@@ -283,7 +283,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
                     start = partIndex * partSize
                     end = min(start + partSize, totalSize)
                     part = upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
-                                                     src_key_name=srcKey.name,
+                                                     src_key_name=bytes(srcKey.name),
                                                      src_version_id=srcKey.version_id,
                                                      # S3 part numbers are 1-based
                                                      part_num=partIndex + 1,
@@ -311,7 +311,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
         for attempt in retry_s3():
             with attempt:
                 dstBucket = s3.get_bucket(dstBucketName)
-                upload = dstBucket.initiate_multipart_upload(dstKeyName, headers=headers)
+                upload = dstBucket.initiate_multipart_upload(bytes(dstKeyName), headers=headers)
         log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
                  srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
         try:
