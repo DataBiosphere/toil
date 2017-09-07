@@ -912,6 +912,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from boto.sdb import connect_to_region
         from boto.s3.connection import Location, S3Connection
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
+        from toil.jobStores.aws.utils import retry_s3
         externalAWSLocation = Location.USWest
         for testRegion in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region
@@ -921,8 +922,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             testJobStoreUUID = str(uuid.uuid4())
             # Create the nucket at the external region
             s3 = S3Connection()
-            bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
-                                      location=externalAWSLocation)
+            for attempt in retry_s3():
+                with attempt:
+                    bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
+                                              location=externalAWSLocation)
             options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' +
                                                    testJobStoreUUID)
             options.logLevel = 'DEBUG'
@@ -945,7 +948,9 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail()
             finally:
-                s3.delete_bucket(bucket=bucket)
+                for attempt in retry_s3():
+                    with attempt:
+                        s3.delete_bucket(bucket=bucket)
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
