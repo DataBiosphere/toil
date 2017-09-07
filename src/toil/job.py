@@ -1485,6 +1485,12 @@ class EncapsulatedJob(Job):
         #  B will run after A and all its successors have completed, A and its subgraph of
         # successors in effect appear to be just one job.
 
+    If the job being encapsulated has predecessors (e.g. is not the root job), then the encapsulated
+    job will inherit these predecessors. If predecessors are added to the job being encapsulated
+    after the encapsulated job is created then the encapsulating job will NOT inherit these
+    predecessors automatically. Care should be exercised to ensure the encapsulated job has the
+    proper set of predecessors.
+
     The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function)
     is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
     the same value after A or A.encapsulate() has been run.
@@ -1495,6 +1501,11 @@ class EncapsulatedJob(Job):
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
         Job.__init__(self, **job._requirements)
+        # Ensure that the encapsulated job has the same direct predecessors as the job
+        # being encapsulated.
+        if job._directPredecessors:
+            for job_ in job._directPredecessors:
+                job_.addChild(self)
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.
