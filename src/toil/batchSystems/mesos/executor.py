@@ -22,11 +22,15 @@ import socket
 import signal
 import sys
 import threading
-import pickle
 import logging
 import subprocess
 import traceback
 from time import sleep, time
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 import psutil
 import mesos.interface
