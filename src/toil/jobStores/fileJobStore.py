@@ -17,13 +17,17 @@ from __future__ import absolute_import
 from builtins import range
 from contextlib import contextmanager
 import logging
-import pickle as pickler
 import random
 import shutil
 import os
 import tempfile
 import stat
 import errno
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 # Python 3 compatibility imports
 from six.moves import xrange
@@ -125,7 +129,7 @@ class FileJobStore(AbstractJobStore):
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'r') as fileHandle:
-            job = pickler.load(fileHandle)
+            job = pickle.load(fileHandle)
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -140,7 +144,7 @@ class FileJobStore(AbstractJobStore):
         # Atomicity guarantees use the fact the underlying file systems "move"
         # function is atomic.
         with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
-            pickler.dump(job, f)
+            pickle.dump(job, f)
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
 
