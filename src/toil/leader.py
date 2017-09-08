@@ -38,6 +38,7 @@ from bd2k.util.expando import Expando
 from bd2k.util.humanize import bytes2human
 
 from toil import resolveEntryPoint
+from toil.cwl import cwltoil
 from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.provisioners.clusterScaler import ClusterScaler
 from toil.serviceManager import ServiceManager
@@ -151,10 +152,6 @@ class Leader(object):
         # Set used to monitor deadlocked jobs
         self.potentialDeadlockedJobs = set()
         self.potentialDeadlockTime = 0
-
-        # internal jobs we should not expose at top level debugging
-        self.debugJobNames = ("CWLJob", "CWLWorkflow", "CWLScatter", "CWLGather",
-                              "ResolveIndirect")
 
     def run(self):
         """
@@ -440,7 +437,7 @@ class Leader(object):
                                 "for job %s", jobID)
                 else:
                     if result == 0:
-                        cur_logger = (logger.debug if str(updatedJob.jobName).startswith(self.debugJobNames)
+                        cur_logger = (logger.debug if str(updatedJob.jobName).startswith(cwltoil.CWL_INTERNAL_JOBS)
                                       else logger.info)
                         cur_logger('Job ended successfully: %s', updatedJob)
                     else:
@@ -539,7 +536,7 @@ class Leader(object):
             # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
             self.preemptableJobsIssued += 1
-        cur_logger = (logger.debug if jobNode.jobName.startswith(self.debugJobNames)
+        cur_logger = (logger.debug if jobNode.jobName.startswith(cwltoil.CWL_INTERNAL_JOBS)
                       else logger.info)
         cur_logger("Issued job %s with job batch system ID: "
                    "%s and cores: %s, disk: %s, and memory: %s",
