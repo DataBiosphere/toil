@@ -418,20 +418,21 @@ class CWLJob(Job):
         cwljob = resolve_indirect(self.cwljob)
         fillInDefaults(self.step_inputs, cwljob)
 
+        opts = copy.deepcopy(self.executor_options)
+        # Exports temporary directory for batch systems that reset TMPDIR
+        os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or fileStore.getLocalTempDir())
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
         os.mkdir(outdir)
+        tmp_outdir_prefix = os.path.join(os.environ["TMPDIR"], "out_tmpdir")
 
         index = {}
         existing = {}
 
         # Run the tool
-        opts = copy.deepcopy(self.executor_options)
-        # Exports temporary directory for batch systems that reset TMPDIR
-        os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or tmpdir)
         (output, status) = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                             basedir=os.getcwd(),
                                                             outdir=outdir,
-                                                            tmp_outdir_prefix=fileStore.getLocalTempDir(),
+                                                            tmp_outdir_prefix=tmp_outdir_prefix,
                                                             tmpdir_prefix=fileStore.getLocalTempDir(),
                                                             make_fs_access=functools.partial(ToilFsAccess, fileStore=fileStore),
                                                             toil_get_file=functools.partial(toilGetFile, fileStore, index, existing),
