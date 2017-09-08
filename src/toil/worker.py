@@ -33,8 +33,10 @@ import logging
 import shutil
 from threading import Thread
 
-# Python 3 compatibility imports
-from six.moves import cPickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 from bd2k.util.expando import Expando, MagicExpando
 from toil.common import Toil
@@ -138,7 +140,7 @@ def main():
     
     #First load the environment for the jobGraph.
     with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
-        environment = cPickle.load(fileHandle)
+        environment = pickle.load(fileHandle)
     for i in environment:
         if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
             os.environ[i] = environment[i]
