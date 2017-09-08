@@ -39,7 +39,10 @@ from bd2k.util import memoize
 from bd2k.util.objects import abstractclassmethod
 from future.utils import with_metaclass
 
-import pickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 import logging
 
