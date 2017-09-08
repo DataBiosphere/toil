@@ -29,8 +29,10 @@ import os
 import time
 from collections import namedtuple
 
-# Python 3 compatibility imports
-from six.moves import cPickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import bytes2human
@@ -209,7 +211,7 @@ class Leader(object):
         # Parse out the return value from the root job
         with self.jobStore.readSharedFileStream('rootJobReturnValue') as fH:
             try:
-                return cPickle.load(fH)
+                return pickle.load(fH)
             except EOFError:
                 logger.exception('Failed to unpickle root job return value')
                 raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
