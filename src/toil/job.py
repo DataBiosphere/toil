@@ -30,13 +30,17 @@ import time
 import uuid
 import dill
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
 
 # Python 3 compatibility imports
-from six.moves import cPickle
 from six import iteritems, string_types
 
 from bd2k.util.exceptions import require
@@ -533,7 +537,7 @@ class Job(JobLikeObject):
                                'predecessor of the job receiving the promise')
         with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
             promise = UnfulfilledPromiseSentinel(str(self), False)
-            cPickle.dump(promise, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            pickle.dump(promise, fileHandle, pickle.HIGHEST_PROTOCOL)
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
 
@@ -889,7 +893,7 @@ class Job(JobLikeObject):
         :param fileHandle:
         :returns:
         """
-        unpickler = cPickle.Unpickler(fileHandle)
+        unpickler = pickle.Unpickler(fileHandle)
 
         def filter_main(module_name, class_name):
             if module_name == '__main__':
@@ -934,7 +938,7 @@ class Job(JobLikeObject):
                 # already complete.
                 if jobStore.fileExists(promiseFileStoreID):
                     with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
-                        cPickle.dump(promisedValue, fileHandle, cPickle.HIGHEST_PROTOCOL)
+                        pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
 
     # Functions associated with Job.checkJobGraphAcyclic to establish that the job graph does not
     # contain any cycles of dependencies:
@@ -1065,7 +1069,7 @@ class Job(JobLikeObject):
         # for the mechanism which unpickles the job and executes the Job.run
         # method.
         with jobStore.writeFileStream(rootJobGraph.jobStoreID) as (fileHandle, fileStoreID):
-            cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
         # Note that getUserScript() may have been overridden. This is intended. If we used
         # self.userModule directly, we'd be getting a reference to job.py if the job was
         # specified as a function (as opposed to a class) since that is where FunctionWrappingJob
@@ -1122,7 +1126,7 @@ class Job(JobLikeObject):
             #service = serviceJob.service
 
             # Pickle the job
-            serviceJob.pickledService = cPickle.dumps(serviceJob.service, protocol=cPickle.HIGHEST_PROTOCOL)
+            serviceJob.pickledService = pickle.dumps(serviceJob.service, protocol=pickle.HIGHEST_PROTOCOL)
             serviceJob.service = None
 
             # Serialise the service job and job wrapper
@@ -1700,7 +1704,7 @@ class Promise(object):
         with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
             # If this doesn't work then the file containing the promise may not exist or be
             # corrupted
-            value = cPickle.load(fileHandle)
+            value = pickle.load(fileHandle)
             return value
 
 
