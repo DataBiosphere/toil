@@ -21,13 +21,17 @@ from builtins import object
 import ast
 import logging
 import os
-import pickle
 import pwd
 import socket
 import time
 import sys
 from contextlib import contextmanager
 from struct import unpack
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 import itertools
 
