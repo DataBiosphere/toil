@@ -21,6 +21,11 @@ from builtins import range
 from contextlib import contextmanager, closing
 import logging
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 import re
 import uuid
 import base64
@@ -30,7 +35,7 @@ import urllib.parse
 import urllib.request, urllib.parse, urllib.error
 
 # Python 3 compatibility imports
-from six.moves import xrange, cPickle, StringIO, reprlib
+from six.moves import xrange, StringIO, reprlib
 from six import iteritems
 
 from bd2k.util import strict_bool
@@ -237,11 +242,11 @@ class AWSJobStore(AbstractJobStore):
         else:
             binary,_ = SDBHelper.attributesToBinary(item)
             assert binary is not None
-        job = cPickle.loads(binary)
+        job = Pickle.loads(binary)
         return job
 
     def _awsJobToItem(self, job):
-        binary = cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL)
+        binary = pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)
         if len(binary) > SDBHelper.maxBinarySize():
             #Store as an overlarge job in S3
             with self.writeFileStream() as (writable, fileID):
