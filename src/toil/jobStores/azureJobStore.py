@@ -30,8 +30,12 @@ from collections import namedtuple
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 # Python 3 compatibility imports
-from six.moves import cPickle
 from six.moves.http_client import HTTPException
 from six.moves.configparser import RawConfigParser, NoOptionError
 
@@ -789,7 +793,7 @@ class AzureJob(JobGraph):
             wholeJobString = chunkedJob[0][1].value
         else:
             wholeJobString = ''.join(item[1].value for item in chunkedJob)
-        return cPickle.loads(bz2.decompress(wholeJobString))
+        return pickle.loads(bz2.decompress(wholeJobString))
 
     def toItem(self, chunkSize=maxAzureTablePropertySize):
         """
@@ -799,7 +803,7 @@ class AzureJob(JobGraph):
         """
         assert chunkSize <= maxAzureTablePropertySize
         item = {}
-        serializedAndEncodedJob = bz2.compress(cPickle.dumps(self, protocol=cPickle.HIGHEST_PROTOCOL))
+        serializedAndEncodedJob = bz2.compress(pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL))
         jobChunks = [serializedAndEncodedJob[i:i + chunkSize]
                      for i in range(0, len(serializedAndEncodedJob), chunkSize)]
         for attributeOrder, chunk in enumerate(jobChunks):
