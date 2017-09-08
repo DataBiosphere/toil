@@ -242,7 +242,7 @@ class AWSJobStore(AbstractJobStore):
         else:
             binary,_ = SDBHelper.attributesToBinary(item)
             assert binary is not None
-        job = Pickle.loads(binary)
+        job = pickle.loads(binary)
         return job
 
     def _awsJobToItem(self, job):
