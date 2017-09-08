@@ -11,8 +11,13 @@ import boto
 import logging
 import time
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 # Python 3 compatibility imports
-from six.moves import cPickle, StringIO
+from six.moves import StringIO
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException,
@@ -121,7 +126,7 @@ class GoogleJobStore(AbstractJobStore):
                        command=jobNode.command, remainingRetryCount=self._defaultTryCount(),
                        logJobStoreFileID=None, predecessorNumber=jobNode.predecessorNumber,
                        **jobNode._requirements)
-        self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
+        self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))
         return job
 
     def exists(self, jobStoreID):
@@ -148,10 +153,10 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        return cPickle.loads(jobString)
+        return pickle.loads(jobString)
 
     def update(self, job):
-        self._writeString(job.jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL), update=True)
+        self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
     def delete(self, jobStoreID):
         # jobs will always be encrypted when avaliable
