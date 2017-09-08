@@ -30,8 +30,12 @@ import uuid
 from argparse import ArgumentParser
 from threading import Thread
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 # Python 3 compatibility imports
-from six.moves import cPickle
 from six import iteritems
 
 from bd2k.util.exceptions import require
@@ -713,7 +717,7 @@ class Toil(object):
             with self._jobStore.writeSharedFileStream('rootJobReturnValue') as fH:
                 rootJob.prepareForPromiseRegistration(self._jobStore)
                 promise = rootJob.rv()
-                cPickle.dump(promise, fH, protocol=cPickle.HIGHEST_PROTOCOL)
+                pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
 
             # Setup the first wrapper and cache it
             rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
@@ -866,7 +870,7 @@ class Toil(object):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
                     with self._jobStore.writeSharedFileStream('userScript') as f:
-                        cPickle.dump(userScript, f, protocol=cPickle.HIGHEST_PROTOCOL)
+                        pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
                     from toil.batchSystems.singleMachine import SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
@@ -879,7 +883,7 @@ class Toil(object):
             from toil.jobStores.abstractJobStore import NoSuchFileException
             try:
                 with self._jobStore.readSharedFileStream('userScript') as f:
-                    userScript = cPickle.load(f)
+                    userScript = pickle.load(f)
             except NoSuchFileException:
                 logger.info('User script neither set explicitly nor present in the job store.')
                 userScript = None
@@ -925,7 +929,7 @@ class Toil(object):
         """
         # Dump out the environment of this process in the environment pickle file.
         with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
-            cPickle.dump(os.environ, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            pickle.dump(os.environ, fileHandle, pickle.HIGHEST_PROTOCOL)
         logger.info("Written the environment for the jobs to the environment file")
 
     def _cacheAllJobs(self):
@@ -1130,5 +1134,3 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
-
-
