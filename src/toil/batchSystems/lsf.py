@@ -21,12 +21,8 @@ from __future__ import absolute_import
 import logging
 import subprocess
 import time
-from threading import Thread
 from datetime import date
 import os
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
@@ -65,10 +61,10 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             subprocess.check_call(["bkill", self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command):
-            return self.prepareBsub(cpu, memory, jobID) + command
+            return self.prepareBsub(cpu, memory, jobID) + [command]
 
         def submitJob(self, subLine):
-            process = subprocess.Popen(" ".join(bsubline), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+            process = subprocess.Popen(" ".join(subLine), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
             result = int(process.stdout.readline().strip())
             liney = process.stdout.readline()
             logger.debug("BSUB: " + liney)
