@@ -65,7 +65,6 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         def submitJob(self, subLine):
             process = subprocess.Popen(" ".join(subLine), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
-            result = int(process.stdout.readline().strip())
             liney = process.stdout.readline()
             logger.debug("BSUB: " + liney)
             result = int(liney.strip().split()[1].strip('<>'))
