@@ -230,7 +230,9 @@ class AzureJobStore(AbstractJobStore):
         job = AzureJob.fromJobNode(jobNode, jobStoreID, self._defaultTryCount())
         entity = job.toItem(chunkSize=self.jobChunkSize)
         entity['RowKey'] = jobStoreID
-        self.jobItems.insert_entity(entity=entity)
+        # See https://github.com/BD2KGenomics/toil/issues/579 on why we use
+        # insert_or_replace_entity instead of insert_entity
+        self.jobItems.insert_or_replace_entity(entity=entity)
         return job
 
     def exists(self, jobStoreID):
@@ -413,7 +415,9 @@ class AzureJobStore(AbstractJobStore):
                                                  text=statsAndLoggingString,
                                                  x_ms_meta_name_values=dict(
                                                      encrypted=str(encrypted)))
-        self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID})
+        # See https://github.com/BD2KGenomics/toil/issues/579 on why we use
+        # insert_or_replace_entity instead of insert_entity
+        self.statsFileIDs.insert_or_replace_entity(entity={'RowKey': jobStoreFileID})
 
     def readStatsAndLogging(self, callback, readAll=False):
         suffix = '_old'
@@ -475,8 +479,10 @@ class AzureJobStore(AbstractJobStore):
 
     def _associateFileWithJob(self, jobStoreFileID, jobStoreID=None):
         if jobStoreID is not None:
-            self.jobFileIDs.insert_entity(entity={'PartitionKey': jobStoreID,
-                                                  'RowKey': jobStoreFileID})
+            # See https://github.com/BD2KGenomics/toil/issues/579 on why we use
+            # insert_or_replace_entity instead of insert_entity
+            self.jobFileIDs.insert_or_replace_entity(entity={'PartitionKey': jobStoreID,
+                                                             'RowKey': jobStoreFileID})
 
     def _dissociateFileFromJob(self, jobStoreFileID):
         entities = self.jobFileIDs.query_entities(filter="RowKey eq '%s'" % jobStoreFileID)
