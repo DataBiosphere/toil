@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 
+import pytest
 import SocketServer
 import hashlib
 import logging
@@ -724,6 +725,25 @@ class AbstractJobStoreTest:
             # Make sure we have the right number of jobs. Cannot be precise because of limitations
             # on the jobs iterator for certain cloud providers
             self.assertTrue(len(allJobs) <= 3001)
+
+        # NB: the 'thread' method seems to be needed here to actually
+        # ensure the timeout is raised, probably because the only
+        # "live" thread doesn't hold the GIL.
+        @pytest.mark.timeout(45, method='thread')
+        def testPartialReadFromStream(self):
+            """Test whether readFileStream will deadlock on a partial read."""
+            job = self.master.create(self.arbitraryJob)
+            with self.master.writeFileStream(job.jobStoreID) as (f, fileID):
+                # Write enough data to make sure the writer thread
+                # will get blocked on the write. Technically anything
+                # greater than the pipe buffer size plus the libc
+                # buffer size (64K + 4K(?))  should trigger this bug,
+                # but this gives us a lot of extra room just to be
+                # sure.
+                f.write('a' * 300000)
+            with self.master.readFileStream(fileID) as f:
+                self.assertEquals(f.read(1), "a")
+            # If it times out here, there's a deadlock
 
         @abstractmethod
         def _corruptJobStore(self):
