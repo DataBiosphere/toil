@@ -423,7 +423,7 @@ class CWLJob(Job):
         os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or fileStore.getLocalTempDir())
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
         os.mkdir(outdir)
-        tmp_outdir_prefix = os.path.join(os.environ["TMPDIR"], "out_tmpdir")
+        tmp_outdir_prefix = os.path.join(opts.pop("workdir", None) or os.environ["TMPDIR"], "out_tmpdir")
 
         index = {}
         existing = {}
@@ -921,8 +921,8 @@ def main(args=None, stdout=sys.stdout):
             make_fs_access = functools.partial(ToilFsAccess, fileStore=toil)
             try:
                 (wf1, wf2) = makeJob(t, {}, use_container=use_container,
-                        preserve_environment=options.preserve_environment,
-                        tmpdir=os.path.realpath(outdir))
+                                     preserve_environment=options.preserve_environment,
+                                     tmpdir=os.path.realpath(outdir), workdir=options.workDir)
             except cwltool.process.UnsupportedRequirement as e:
                 logging.error(e)
                 return 33
