@@ -195,7 +195,7 @@ def main(options=None):
     if not hasattr(options, "sortMemory") or not options.sortMemory:
         options.sortMemory = sortMemory
     if not hasattr(options, "mergeMemory") or not options.mergeMemory:
-        options.mergeMemory = mergeMemory
+        options.mergeMemory = sortMemory
 
     # do some input verification
     sortedFileName = options.outputFile or "sortedFile.txt"
