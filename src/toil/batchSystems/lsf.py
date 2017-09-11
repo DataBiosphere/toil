@@ -76,7 +76,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             logger.debug("Got the job id: %s" % (str(result)))
             return result
 
-        def getjobexitcode(lsfJobID):
+        def getJobExitCode(self, lsfJobID):
             job, task = lsfJobID
 
             #first try bjobs to find out job state
