@@ -72,7 +72,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             return result
 
         def getJobExitCode(self, lsfJobID):
-            job, task = lsfJobID
+            job = lsfJobID
 
             #first try bjobs to find out job state
             args = ["bjobs", "-l", str(job)]
