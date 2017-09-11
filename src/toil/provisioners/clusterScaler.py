@@ -28,8 +28,7 @@ from bd2k.util.throttle import throttle
 from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
-from toil.common import Config
-from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
+from toil.provisioners.abstractProvisioner import Shape
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +254,6 @@ class ClusterScaler(object):
         Attempt to join any existing scaler threads that may have died or finished. This insures
         any exceptions raised in the threads are propagated in a timely fashion.
         """
-        exception = False
         try:
             self.scaler.join(timeout=0)
         except Exception as e:
