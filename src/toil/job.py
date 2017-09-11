@@ -1144,44 +1144,46 @@ class Job(JobLikeObject):
         self.checkJobGraphForDeadlocks()
 
         #Create the jobGraphs for followOns/children
-        jobsToJobGraphs = self._makeJobGraphs(jobGraph, jobStore)
+        with jobStore.batch():
+            jobsToJobGraphs = self._makeJobGraphs(jobGraph, jobStore)
         #Get an ordering on the jobs which we use for pickling the jobs in the
         #correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
         assert len(ordering) == len(jobsToJobGraphs)
 
-        # Temporarily set the jobStore locators for the promise call back functions
-        for job in ordering:
-            job.prepareForPromiseRegistration(jobStore)
-            def setForServices(serviceJob):
-                serviceJob.prepareForPromiseRegistration(jobStore)
-                for childServiceJob in serviceJob.service._childServices:
-                    setForServices(childServiceJob)
-            for serviceJob in job._services:
-                setForServices(serviceJob)
-
-        ordering.reverse()
-        assert self == ordering[-1]
-        if firstJob:
-            #If the first job we serialise all the jobs, including the root job
+        with jobStore.batch():
+            # Temporarily set the jobStore locators for the promise call back functions
             for job in ordering:
-                # Pickle the services for the job
-                job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
-                # Now pickle the job
-                job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
-        else:
-            #We store the return values at this point, because if a return value
-            #is a promise from another job, we need to register the promise
-            #before we serialise the other jobs
-            self._fulfillPromises(returnValues, jobStore)
-            #Pickle the non-root jobs
-            for job in ordering[:-1]:
-                # Pickle the services for the job
-                job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
-                # Pickle the job itself
-                job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
-            # Pickle any services for the job
-            self._serialiseServices(jobStore, jobGraph, jobGraph)
+                job.prepareForPromiseRegistration(jobStore)
+                def setForServices(serviceJob):
+                    serviceJob.prepareForPromiseRegistration(jobStore)
+                    for childServiceJob in serviceJob.service._childServices:
+                        setForServices(childServiceJob)
+                for serviceJob in job._services:
+                    setForServices(serviceJob)
+
+            ordering.reverse()
+            assert self == ordering[-1]
+            if firstJob:
+                #If the first job we serialise all the jobs, including the root job
+                for job in ordering:
+                    # Pickle the services for the job
+                    job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
+                    # Now pickle the job
+                    job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
+            else:
+                #We store the return values at this point, because if a return value
+                #is a promise from another job, we need to register the promise
+                #before we serialise the other jobs
+                self._fulfillPromises(returnValues, jobStore)
+                #Pickle the non-root jobs
+                for job in ordering[:-1]:
+                    # Pickle the services for the job
+                    job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
+                    # Pickle the job itself
+                    job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
+                # Pickle any services for the job
+                self._serialiseServices(jobStore, jobGraph, jobGraph)
 
     def _serialiseFirstJob(self, jobStore):
         """

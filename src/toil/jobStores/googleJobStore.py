@@ -113,12 +113,12 @@ class GoogleJobStore(AbstractJobStore):
                     pass
 
     def create(self, jobNode):
-        jobStoreID = self._newID()
-        job = JobGraph(jobStoreID=jobStoreID, unitName=jobNode.name, jobName=jobNode.job,
-                       command=jobNode.command, remainingRetryCount=self._defaultTryCount(),
-                       logJobStoreFileID=None, predecessorNumber=jobNode.predecessorNumber,
-                       **jobNode._requirements)
+        job = self.getJobGraph(jobNode)
         self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
+        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+            self._batchedJobGraphs.append(job)
+        else:
+            self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
         return job
 
     def exists(self, jobStoreID):
