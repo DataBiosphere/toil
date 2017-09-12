@@ -82,7 +82,11 @@ class FileJobStore(AbstractJobStore):
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
-            shutil.rmtree(self.jobStoreDir)
+            try:
+                shutil.rmtree(self.jobStoreDir)
+            except OSError as ex:
+                logger.warning("Got exception while removing job store: " +
+                        repr(ex))
 
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the
