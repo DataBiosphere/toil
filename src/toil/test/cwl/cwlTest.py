@@ -14,15 +14,14 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from future import standard_library
-from future.standard_library import hooks
-
 import json
 import os
 import subprocess
 import re
 import shutil
-with hooks():
-    import urllib.request, urllib.parse, urllib.error
+from future.moves.urllib.parse import urlparse, urlencode
+from future.moves.urllib.request import urlopen, Request, urlretrieve
+from future.moves.urllib.error import HTTPError
 import zipfile
 
 # Python 3 compatibility imports
