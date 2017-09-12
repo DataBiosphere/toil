@@ -98,7 +98,7 @@ class CWLTest(ToilTest):
         testhash = "7f510ec768b424601beb8c86700343afe722ac76"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(cwlSpec):
-            urllib.request.urlretrieve(url, "spec.zip")
+            urlretrieve(url, "spec.zip")
             with zipfile.ZipFile('spec.zip', "r") as z:
                 z.extractall()
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
