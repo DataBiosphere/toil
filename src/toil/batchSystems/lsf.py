@@ -52,9 +52,13 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 if (len(items) > 9 and (items[0]) in currentjobs) and items[2] == 'RUN':
                     jobstart = "/".join(items[7:9]) + '/' + str(date.today().year)
                     jobstart = jobstart + ' ' + items[9]
-                    jobstart = time.mktime(time.strptime(jobstart,"%b/%d/%Y %H:%M"))
-                    jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
-                    times[currentjobs[items[0]]] = time.time() - jobstart
+                    try:
+                        jobstart = time.mktime(time.strptime(jobstart,"%b/%d/%Y %H:%M"))
+                        jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
+                        times[currentjobs[items[0]]] = time.time() - jobstart
+                    except TypeError err:
+                        logging.error("Got error parsing bjobs output %s: %s",
+                                process.stdout, repr(err))
             return times
 
         def killJob(self, jobID):
