@@ -17,6 +17,9 @@ Implements a real-time UDP-based logging system that user scripts can use for de
 """
 
 from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+from builtins import object
 import os
 import os.path
 import json
@@ -29,6 +32,7 @@ import threading
 from six.moves import socketserver as SocketServer
 
 import toil.lib.bioio
+from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
@@ -90,7 +94,7 @@ class RealtimeLoggerMetaclass(type):
         return getattr(self.getLogger(), name)
 
 
-class RealtimeLogger(object):
+class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
     """
     Provides a logger that logs over UDP to the leader. To use in a Toil job, do:
 
@@ -100,8 +104,6 @@ class RealtimeLogger(object):
     That's all a user of Toil would need to do. On the leader, Job.Runner.startToil()
     automatically starts the UDP server by using an instance of this class as a context manager.
     """
-    # Enable RealtimeLogger.info() syntactic sugar
-    __metaclass__ = RealtimeLoggerMetaclass
 
     # The names of all environment variables used by this class are prefixed with this string
     envPrefix = "TOIL_RT_LOGGING_"
@@ -185,7 +187,7 @@ class RealtimeLogger(object):
                     log.info('Joining real-time logging server thread.')
                     cls.serverThread.join()
                     cls.serverThread = None
-                for k in os.environ.keys():
+                for k in list(os.environ.keys()):
                     if k.startswith(cls.envPrefix):
                         os.environ.pop(k)
 

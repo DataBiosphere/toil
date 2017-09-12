@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import
 
+from builtins import range
+from builtins import object
 import socket
 import sys
 import os
@@ -208,7 +210,7 @@ def absSymPath(path):
 #########################################################
 #########################################################
 
-class TestStatus:
+class TestStatus(object):
     ###Global variables used by testing framework to run tests.
     TEST_SHORT = 0
     TEST_MEDIUM = 1
@@ -290,7 +292,7 @@ def parseBasicOptions(parser):
 def getRandomAlphaNumericString(length=10):
     """Returns a random alpha numeric string of the given length.
     """
-    return "".join([ random.choice('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') for i in xrange(0, length) ])
+    return "".join([ random.choice('0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz') for i in range(0, length) ])
 
 def makePublicDir(dirName):
     """Makes a given subdirectory if it doesn't already exist, making sure it is public.

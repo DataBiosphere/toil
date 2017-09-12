@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+from builtins import range
 from toil.test import ToilTest
 from uuid import uuid4
 
@@ -58,7 +59,7 @@ class MiscTests(ToilTest):
         # A dict of {FILENAME: FILESIZE} for all files used in the test
         files = {}
         # Create a random directory structure
-        for i in xrange(0,10):
+        for i in range(0,10):
             directories.append(tempfile.mkdtemp(dir=random.choice(directories), prefix='test'))
         # Create 50 random file entries in different locations in the directories. 75% of the time
         # these are fresh files of sixe [1, 10] MB and 25% of the time they are hard links to old
@@ -75,12 +76,12 @@ class MiscTests(ToilTest):
                 # Link to one of the previous files
                 if len(files) == 0:
                     continue
-                linkSrc = random.choice(files.keys())
+                linkSrc = random.choice(list(files.keys()))
                 os.link(linkSrc, fileName)
                 files[fileName] = 'Link to %s' % linkSrc
 
         computedDirectorySize = getDirSizeRecursively(self.testDir)
-        totalExpectedSize = sum([x for x in files.values() if isinstance(x, int)])
+        totalExpectedSize = sum([x for x in list(files.values()) if isinstance(x, int)])
         self.assertEqual(computedDirectorySize, totalExpectedSize)
 
     @staticmethod

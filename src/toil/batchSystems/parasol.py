@@ -13,6 +13,10 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from builtins import next
+from builtins import str
+from past.utils import old_div
 import logging
 import os
 import re
@@ -128,7 +132,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
 
         MiB = 1 << 20
-        truncatedMemory = (jobNode.memory / MiB) * MiB
+        truncatedMemory = (old_div(jobNode.memory, MiB)) * MiB
         # Look for a batch for jobs with these resource requirements, with
         # the memory rounded down to the nearest megabyte. Rounding down
         # meams the new job can't ever decrease the memory requirements
@@ -156,12 +160,12 @@ class ParasolBatchSystem(BatchSystemSupport):
                 jobID = self.cpuUsageQueue.get_nowait()
             except Empty:
                 break
-            if jobID in self.jobIDsToCpu.keys():
+            if jobID in list(self.jobIDsToCpu.keys()):
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
             assert self.usedCpus >= 0
         while self.usedCpus > self.maxCores:  # If we are still waiting
             jobID = self.cpuUsageQueue.get()
-            if jobID in self.jobIDsToCpu.keys():
+            if jobID in list(self.jobIDsToCpu.keys()):
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
             assert self.usedCpus >= 0
         # Now keep going
@@ -186,7 +190,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return super(ParasolBatchSystem, self).setEnv(name, value)
 
     def __environment(self):
-        return (k + '=' + (os.environ[k] if v is None else v) for k, v in self.environment.items())
+        return (k + '=' + (os.environ[k] if v is None else v) for k, v in list(self.environment.items()))
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -207,7 +211,7 @@ class ParasolBatchSystem(BatchSystemSupport):
             time.sleep(5)
         # Update the CPU usage, because killed jobs aren't written to the results file.
         for jobID in jobIDs:
-            if jobID in self.jobIDsToCpu.keys():
+            if jobID in list(self.jobIDsToCpu.keys()):
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
 
     queuePattern = re.compile(r'q\s+([0-9]+)')
@@ -367,7 +371,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         logger.debug('Joining worker thread...')
         self.worker.join()
         logger.debug('... joined worker thread.')
-        for results in self.resultsFiles.values():
+        for results in list(self.resultsFiles.values()):
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
 
