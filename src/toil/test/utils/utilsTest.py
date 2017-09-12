@@ -49,7 +49,7 @@ class UtilsTest(ToilTest):
         super(UtilsTest, self).setUp()
         self.tempDir = self._createTempDir()
         self.tempFile = getTempFile(rootDir=self.tempDir)
-        self.outputFile = getTempFile(rootDir=self.tempDir)
+        self.outputFile = 'someSortedStuff.txt'
         self.toilDir = os.path.join(self.tempDir, "jobstore")
         self.assertFalse(os.path.exists(self.toilDir))
         self.lines = 1000
@@ -197,6 +197,7 @@ class UtilsTest(ToilTest):
                        self.toilDir,
                        '--logLevel=DEBUG',
                        '--fileToSort', self.tempFile,
+                       '--outputFile', self.outputFile,
                        '--N', str(self.N),
                        '--stats',
                        '--retryCount=2',
@@ -237,16 +238,19 @@ class UtilsTest(ToilTest):
                 # Check the toil status command does not issue an exception
         system(self.statusCommand())
 
-        # Check if we try to launch after its finished that we get a JobException
-        self.assertRaises(CalledProcessError, system, toilCommand + ['--restart'])
-
         # Check we can run 'toil stats'
         system(self.statsCommand)
 
         # Check the file is properly sorted
-        with open(self.tempFile, 'r') as fileHandle:
+        with open(self.outputFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
             self.assertEquals(self.correctSort, l2)
+
+        # Delete output file before next step
+        os.remove(self.outputFile)
+
+        # Check if we try to launch after its finished that we get a JobException
+        self.assertRaises(CalledProcessError, system, toilCommand + ['--restart'])
 
         # Check we can run 'toil clean'
         system(self.cleanCommand)
@@ -261,6 +265,7 @@ class UtilsTest(ToilTest):
                        self.toilDir,
                        '--logLevel=DEBUG',
                        '--fileToSort', self.tempFile,
+                       '--outputFile', self.outputFile,
                        '--N', str(self.N),
                        '--stats',
                        '--retryCount=99',
@@ -275,9 +280,12 @@ class UtilsTest(ToilTest):
         system(self.statsCommand)
 
         # Check the file is properly sorted
-        with open(self.tempFile, 'r') as fileHandle:
+        with open(self.outputFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
             self.assertEquals(self.correctSort, l2)
+
+        # Delete output file
+        os.remove(self.outputFile)
 
     def testUnicodeSupport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())

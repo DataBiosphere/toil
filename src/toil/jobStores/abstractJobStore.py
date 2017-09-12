@@ -641,6 +641,16 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     # existence of jobs
     ##########################################
 
+    @contextmanager
+    def batch(self):
+        """
+        All calls to create() with this context manager active will be performed in a batch
+        after the context manager is released.
+
+        :rtype: None
+        """
+        yield
+
     @abstractmethod
     def create(self, jobNode):
         """

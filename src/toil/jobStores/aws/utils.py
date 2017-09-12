@@ -400,12 +400,14 @@ def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryabl
 
 
 def retryable_s3_errors(e):
-    return (isinstance(e, (S3CreateError, S3ResponseError))
-            and e.status == 409
-            and 'try again' in e.message
+    return ((isinstance(e, (S3CreateError, S3ResponseError))
+             and e.status == 409
+             and 'try again' in e.message)
             or connection_reset(e)
-            or isinstance(e, BotoServerError) and e.status == 500
-            or isinstance(e, S3CopyError) and 'try again' in e.message)
+            or (isinstance(e, BotoServerError) and e.status == 500)
+            # Throttling response sometimes received on bucket creation
+            or (isinstance(e, BotoServerError) and e.status == 503 and e.code == 'SlowDown')
+            or (isinstance(e, S3CopyError) and 'try again' in e.message))
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):

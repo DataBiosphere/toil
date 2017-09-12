@@ -23,6 +23,7 @@ from builtins import range
 from past.utils import old_div
 from builtins import object
 import socketserver
+import pytest
 import hashlib
 import logging
 import threading
@@ -368,7 +369,19 @@ class AbstractJobStoreTest(object):
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # TODO: Who deletes the shared files?
 
-
+        def testBatchCreate(self):
+            master = self.master
+            masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+            jobGraphs = []
+            with master.batch():
+                for i in range(100):
+                    overlargeJobNodeOnMaster = JobNode(command='master-overlarge',
+                                        requirements=masterRequirements,
+                                        jobName='test-overlarge', unitName='onMaster',
+                                        jobStoreID=None, predecessorNumber=0)
+                    jobGraphs.append(master.create(overlargeJobNodeOnMaster))
+            for jobGraph in jobGraphs:
+                self.assertTrue(master.exists(jobGraph.jobStoreID))
 
         def _prepareTestFile(self, store, size=None):
             """
@@ -720,6 +733,25 @@ class AbstractJobStoreTest(object):
             # on the jobs iterator for certain cloud providers
             self.assertTrue(len(allJobs) <= 3001)
 
+        # NB: the 'thread' method seems to be needed here to actually
+        # ensure the timeout is raised, probably because the only
+        # "live" thread doesn't hold the GIL.
+        @pytest.mark.timeout(45, method='thread')
+        def testPartialReadFromStream(self):
+            """Test whether readFileStream will deadlock on a partial read."""
+            job = self.master.create(self.arbitraryJob)
+            with self.master.writeFileStream(job.jobStoreID) as (f, fileID):
+                # Write enough data to make sure the writer thread
+                # will get blocked on the write. Technically anything
+                # greater than the pipe buffer size plus the libc
+                # buffer size (64K + 4K(?))  should trigger this bug,
+                # but this gives us a lot of extra room just to be
+                # sure.
+                f.write('a' * 300000)
+            with self.master.readFileStream(fileID) as f:
+                self.assertEquals(f.read(1), "a")
+            # If it times out here, there's a deadlock
+
         @abstractmethod
         def _corruptJobStore(self):
             """
@@ -918,6 +950,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from boto.sdb import connect_to_region
         from boto.s3.connection import Location, S3Connection
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
+        from toil.jobStores.aws.utils import retry_s3
         externalAWSLocation = Location.USWest
         for testRegion in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region
@@ -927,8 +960,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             testJobStoreUUID = str(uuid.uuid4())
             # Create the nucket at the external region
             s3 = S3Connection()
-            bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
-                                      location=externalAWSLocation)
+            for attempt in retry_s3():
+                with attempt:
+                    bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
+                                              location=externalAWSLocation)
             options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' +
                                                    testJobStoreUUID)
             options.logLevel = 'DEBUG'
@@ -951,7 +986,9 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail()
             finally:
-                s3.delete_bucket(bucket=bucket)
+                for attempt in retry_s3():
+                    with attempt:
+                        s3.delete_bucket(bucket=bucket)
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

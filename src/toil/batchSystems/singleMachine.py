@@ -197,13 +197,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         # Round cores to minCores and apply scale
         cores = math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores
-        assert cores <= self.maxCores, ('The job is requesting {} cores, more than the maximum of '
+        assert cores <= self.maxCores, ('The job {} is requesting {} cores, more than the maximum of '
                                         '{} cores this batch system was configured with. Scale is '
-                                        'set to {}.'.format(cores, self.maxCores, self.scale))
+                                        'set to {}.'.format(jobNode.jobName, cores, self.maxCores, self.scale))
         assert cores >= self.minCores
-        assert jobNode.memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
+        assert jobNode.memory <= self.maxMemory, ('The job {} is requesting {} bytes of memory, more than '
                                           'the maximum of {} this batch system was configured '
-                                          'with.'.format(jobNode.memory, self.maxMemory))
+                                          'with.'.format(jobNode.jobName, jobNode.memory, self.maxMemory))
 
         self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (

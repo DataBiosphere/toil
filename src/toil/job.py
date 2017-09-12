@@ -1152,44 +1152,46 @@ class Job(JobLikeObject):
         self.checkJobGraphForDeadlocks()
 
         #Create the jobGraphs for followOns/children
-        jobsToJobGraphs = self._makeJobGraphs(jobGraph, jobStore)
+        with jobStore.batch():
+            jobsToJobGraphs = self._makeJobGraphs(jobGraph, jobStore)
         #Get an ordering on the jobs which we use for pickling the jobs in the
         #correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
         assert len(ordering) == len(jobsToJobGraphs)
 
-        # Temporarily set the jobStore locators for the promise call back functions
-        for job in ordering:
-            job.prepareForPromiseRegistration(jobStore)
-            def setForServices(serviceJob):
-                serviceJob.prepareForPromiseRegistration(jobStore)
-                for childServiceJob in serviceJob.service._childServices:
-                    setForServices(childServiceJob)
-            for serviceJob in job._services:
-                setForServices(serviceJob)
-
-        ordering.reverse()
-        assert self == ordering[-1]
-        if firstJob:
-            #If the first job we serialise all the jobs, including the root job
+        with jobStore.batch():
+            # Temporarily set the jobStore locators for the promise call back functions
             for job in ordering:
-                # Pickle the services for the job
-                job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
-                # Now pickle the job
-                job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
-        else:
-            #We store the return values at this point, because if a return value
-            #is a promise from another job, we need to register the promise
-            #before we serialise the other jobs
-            self._fulfillPromises(returnValues, jobStore)
-            #Pickle the non-root jobs
-            for job in ordering[:-1]:
-                # Pickle the services for the job
-                job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
-                # Pickle the job itself
-                job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
-            # Pickle any services for the job
-            self._serialiseServices(jobStore, jobGraph, jobGraph)
+                job.prepareForPromiseRegistration(jobStore)
+                def setForServices(serviceJob):
+                    serviceJob.prepareForPromiseRegistration(jobStore)
+                    for childServiceJob in serviceJob.service._childServices:
+                        setForServices(childServiceJob)
+                for serviceJob in job._services:
+                    setForServices(serviceJob)
+
+            ordering.reverse()
+            assert self == ordering[-1]
+            if firstJob:
+                #If the first job we serialise all the jobs, including the root job
+                for job in ordering:
+                    # Pickle the services for the job
+                    job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
+                    # Now pickle the job
+                    job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
+            else:
+                #We store the return values at this point, because if a return value
+                #is a promise from another job, we need to register the promise
+                #before we serialise the other jobs
+                self._fulfillPromises(returnValues, jobStore)
+                #Pickle the non-root jobs
+                for job in ordering[:-1]:
+                    # Pickle the services for the job
+                    job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
+                    # Pickle the job itself
+                    job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
+                # Pickle any services for the job
+                self._serialiseServices(jobStore, jobGraph, jobGraph)
 
     def _serialiseFirstJob(self, jobStore):
         """
@@ -1395,23 +1397,26 @@ class FunctionWrappingJob(Job):
 
 class JobFunctionWrappingJob(FunctionWrappingJob):
     """
-    A job function is a function whose first argument is a :class:`.Job` \
-    instance that is the wrapping job for the function. This can be used to \
-    add successor jobs for the function and perform all the functions the \
+    A job function is a function whose first argument is a :class:`.Job`
+    instance that is the wrapping job for the function. This can be used to
+    add successor jobs for the function and perform all the functions the
     :class:`.Job` class provides.
 
-    To enable the job function to get access to the :class:`toil.fileStore.FileStore` \
-    instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job \
+    To enable the job function to get access to the :class:`toil.fileStore.FileStore`
+    instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job
     called fileStore.
 
     To specify a job's resource requirements the following default keyword arguments
     can be specified:
+
         - memory
         - disk
         - cores
-    For example to wrap a function into a job we would call:
 
-        ``Job.wrapJobFn(myJob, memory='100k', disk='1M', cores=0.1)``
+    For example to wrap a function into a job we would call::
+
+        Job.wrapJobFn(myJob, memory='100k', disk='1M', cores=0.1)
+
     """
 
     @property
@@ -1490,6 +1495,12 @@ class EncapsulatedJob(Job):
         #  B will run after A and all its successors have completed, A and its subgraph of
         # successors in effect appear to be just one job.
 
+    If the job being encapsulated has predecessors (e.g. is not the root job), then the encapsulated
+    job will inherit these predecessors. If predecessors are added to the job being encapsulated
+    after the encapsulated job is created then the encapsulating job will NOT inherit these
+    predecessors automatically. Care should be exercised to ensure the encapsulated job has the
+    proper set of predecessors.
+
     The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function)
     is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
     the same value after A or A.encapsulate() has been run.
@@ -1500,6 +1511,11 @@ class EncapsulatedJob(Job):
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
         Job.__init__(self, **job._requirements)
+        # Ensure that the encapsulated job has the same direct predecessors as the job
+        # being encapsulated.
+        if job._directPredecessors:
+            for job_ in job._directPredecessors:
+                job_.addChild(self)
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.

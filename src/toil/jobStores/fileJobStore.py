@@ -102,9 +102,19 @@ class FileJobStore(AbstractJobStore):
         # Make the job
         job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getRelativePath(absJobDir),
                                    tryCount=self._defaultTryCount())
-        # Write job file to disk
-        self.update(job)
+        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+            self._batchedJobGraphs.append(job)
+        else:
+            self.update(job)
         return job
+
+    @contextmanager
+    def batch(self):
+        self._batchedJobGraphs = []
+        yield
+        for jobGraph in self._batchedJobGraphs:
+            self.update(jobGraph)
+        self._batchedJobGraphs = None
 
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))

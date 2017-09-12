@@ -36,7 +36,7 @@ import os
 import random
 import signal
 import time
-import unittest
+import pytest
 
 # Python 3 compatibility imports
 from six.moves import xrange
@@ -1273,7 +1273,7 @@ class _deleteMethods(object):
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'file'
 
-
+@pytest.mark.timeout(1000)
 class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
@@ -1284,6 +1284,7 @@ class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreT
 
 
 @needs_aws
+@pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
 
@@ -1294,6 +1295,7 @@ class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStor
 
 
 @needs_azure
+@pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'azure'
 
@@ -1306,6 +1308,7 @@ class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileSto
 
 @experimental
 @needs_google
+@pytest.mark.timeout(1000)
 class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'google'
 

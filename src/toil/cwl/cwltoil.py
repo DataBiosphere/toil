@@ -50,6 +50,7 @@ import sys
 import logging
 import copy
 import functools
+import uuid
 
 # Python 3 compatibility imports
 from six.moves import xrange
@@ -422,25 +423,25 @@ class CWLJob(Job):
         cwljob = resolve_indirect(self.cwljob)
         fillInDefaults(self.step_inputs, cwljob)
 
+        opts = copy.deepcopy(self.executor_options)
+        # Exports temporary directory for batch systems that reset TMPDIR
+        os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or fileStore.getLocalTempDir())
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
-        tmpdir = os.path.join(fileStore.getLocalTempDir(), "tmp")
         os.mkdir(outdir)
-        os.mkdir(tmpdir)
+        tmp_outdir_prefix = os.path.join(opts.pop("workdir", None) or os.environ["TMPDIR"], "out_tmpdir")
 
         index = {}
         existing = {}
 
         # Run the tool
-        opts = copy.deepcopy(self.executor_options)
-        # Exports temporary directory for batch systems that reset TMPDIR
-        os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or tmpdir)
         (output, status) = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                             basedir=os.getcwd(),
                                                             outdir=outdir,
-                                                            tmpdir=tmpdir,
-                                                            tmpdir_prefix="tmp",
+                                                            tmp_outdir_prefix=tmp_outdir_prefix,
+                                                            tmpdir_prefix=fileStore.getLocalTempDir(),
                                                             make_fs_access=functools.partial(ToilFsAccess, fileStore=fileStore),
                                                             toil_get_file=functools.partial(toilGetFile, fileStore, index, existing),
+                                                            no_match_user=False,
                                                             **opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
@@ -448,6 +449,12 @@ class CWLJob(Job):
         adjustDirObjs(output, functools.partial(get_listing,
                                                 cwltool.stdfsaccess.StdFsAccess(outdir),
                                                 recursive=True))
+
+        def make_dir_literal(obj):
+            if "location" in obj and obj["location"].startswith("file:"):
+                obj["location"] = "_:" + str(uuid.uuid4())
+
+        adjustDirObjs(output, make_dir_literal)
 
         adjustFileObjs(output, functools.partial(uploadFile,
                                                  functools.partial(writeGlobalFileWrapper, fileStore),
@@ -919,8 +926,8 @@ def main(args=None, stdout=sys.stdout):
             make_fs_access = functools.partial(ToilFsAccess, fileStore=toil)
             try:
                 (wf1, wf2) = makeJob(t, {}, use_container=use_container,
-                        preserve_environment=options.preserve_environment,
-                        tmpdir=os.path.realpath(outdir))
+                                     preserve_environment=options.preserve_environment,
+                                     tmpdir=os.path.realpath(outdir), workdir=options.workDir)
             except cwltool.process.UnsupportedRequirement as e:
                 logging.error(e)
                 return 33

@@ -170,11 +170,14 @@ def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
 
 def main(options=None):
     if not options:
+        # deal with command line arguments
         parser = ArgumentParser()
         Job.Runner.addToilOptions(parser)
         parser.add_argument('--numLines', default=defaultLines, help='Number of lines in file to sort.', type=int)
         parser.add_argument('--lineLength', default=defaultLineLen, help='Length of lines in file to sort.', type=int)
-        parser.add_argument("--fileToSort", dest="fileToSort", help="The file you wish to sort")
+        parser.add_argument("--fileToSort", help="The file you wish to sort")
+        parser.add_argument("--outputFile", help="Where the sorted output will go")
+        parser.add_argument("--overwriteOutput", help="Write over the output file if it already exists.", default=True)
         parser.add_argument("--N", dest="N",
                             help="The threshold below which a serial sort function is used to sort file. "
                                  "All lines must of length less than or equal to N or program will fail",
@@ -184,13 +187,21 @@ def main(options=None):
                                  'the recursive "down" part of the sort')
         options = parser.parse_args()
 
-    fileName = options.fileToSort
+    # do some input verification
+    sortedFileName = options.outputFile or "sortedFile.txt"
+    if not options.overwriteOutput and os.path.exists(sortedFileName):
+        print("the output file {} already exists. Delete it to run the sort example again or use --overwriteOutput=True".format(sortedFileName))
+        exit()
 
+    fileName = options.fileToSort
     if options.fileToSort is None:
         # make the file ourselves
         fileName = 'fileToSort.txt'
-        print 'No sort file specified. Generating one automatically called %s.' % fileName
-        makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
+        if os.path.exists(fileName):
+            print "Sorting existing file", fileName
+        else:
+            print 'No sort file specified. Generating one automatically called %s.' % fileName
+            makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
     else:
         if not os.path.exists(options.fileToSort):
             raise RuntimeError("File to sort does not exist: %s" % options.fileToSort)
@@ -199,15 +210,15 @@ def main(options=None):
         raise RuntimeError("Invalid value of N: %s" % options.N)
 
     # Now we are ready to run
-    with Toil(options) as toil:
-        sortFileURL = 'file://' + os.path.abspath(fileName)
-        if not toil.options.restart:
+    with Toil(options) as workflow:
+        sortedFileURL = 'file://' + os.path.abspath(sortedFileName)
+        if not workflow.options.restart:
             sortFileURL = 'file://' + os.path.abspath(fileName)
-            sortFileID = toil.importFile(sortFileURL)
-            sortedFileID = toil.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints,
-                                                    memory=sortMemory))
+            sortFileID = workflow.importFile(sortFileURL)
+            sortedFileID = workflow.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints,
+                                                        memory=sortMemory))
         else:
-            sortedFileID = toil.restart()
-        toil.exportFile(sortedFileID, sortFileURL)
+            sortedFileID = workflow.restart()
+        workflow.exportFile(sortedFileID, sortedFileURL)
 if __name__ == '__main__':
     main()

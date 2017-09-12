@@ -51,7 +51,7 @@ def runSetup():
                 'gcs_oauth2_boto_plugin==1.9',
                 botoRequirement],
             'cwl': [
-                'cwltool==1.0.20170817131858',
+                'cwltool==1.0.20170822192924',
                 'schema-salad >= 2.6, < 3',
                 'cwltest>=1.0.20170214185319']},
         package_dir={'': 'src'},
@@ -67,6 +67,7 @@ def runSetup():
                 'toil = toil.utils.toilMain:main',
                 '_toil_worker = toil.worker:main',
                 'cwltoil = toil.cwl.cwltoil:main [cwl]',
+                'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]']})
 
