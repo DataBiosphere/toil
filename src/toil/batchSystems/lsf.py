@@ -24,6 +24,9 @@ import time
 from datetime import date
 import os
 
+# Python 3 compatibility imports
+from six.moves.queue import Empty, Queue
+
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 from toil.batchSystems.lsfHelper import parse_memory, per_core_reservation
@@ -129,9 +132,9 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             """
             if mem:
                 if per_core_reservation():
-                    mem = parse_memory(float(mem)/1024**3/int(cpu))
+                    mem = parse_memory(old_div(float(mem),old_div(1024**3,int(cpu))))
                 else:
-                    mem = parse_memory(float(mem)/1024**3)
+                    mem = parse_memory(old_div(float(mem),1024**3))
                 bsubMem = '-R "select[type==X86_64 && mem > ' + str(mem) + '] '\
                     'rusage[mem=' + str(mem) + ']" -M' + str(mem)
             else:
@@ -149,7 +152,6 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         """We give LSF a second to catch its breath (in seconds)
         """
         return 15
-
 
     @classmethod
     def obtainSystemConstants(self):

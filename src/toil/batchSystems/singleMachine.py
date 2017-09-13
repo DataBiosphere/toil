@@ -13,6 +13,13 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from builtins import object
+from past.utils import old_div
 from contextlib import contextmanager
 import logging
 import multiprocessing
@@ -78,7 +85,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # (scale > 1).
         self.scale = config.scale
         # Number of worker threads that will be started
-        self.numWorkers = int(self.maxCores / self.minCores)
+        self.numWorkers = int(old_div(self.maxCores, self.minCores))
         # A counter to generate job IDs and a lock to guard it
         self.jobIndex = 0
         self.jobIndexLock = Lock()
@@ -118,7 +125,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         log.debug('Setting up the thread pool with %i workers, '
                  'given a minimum CPU fraction of %f '
                  'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
-        for i in xrange(self.numWorkers):
+        for i in range(self.numWorkers):
             worker = Thread(target=self.worker, args=(self.inputQueue,))
             self.workerThreads.append(worker)
             worker.start()
@@ -135,7 +142,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
             while True:
                 try:
-                    coreFractions = int(jobCores / self.minCores)
+                    coreFractions = int(old_div(jobCores, self.minCores))
                     log.debug('Acquiring %i bytes of memory from a pool of %s.', jobMemory,
                               self.memory)
                     with self.memory.acquisitionOf(jobMemory):
@@ -226,11 +233,11 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         Just returns all the jobs that have been run, but not yet returned as updated.
         """
-        return self.jobs.keys()
+        return list(self.jobs.keys())
 
     def getRunningBatchJobIDs(self):
         now = time.time()
-        return {jobID: now - info.time for jobID, info in self.runningJobs.items()}
+        return {jobID: now - info.time for jobID, info in list(self.runningJobs.items())}
 
     def shutdown(self):
         """
@@ -240,7 +247,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Remove reference to inputQueue (raises exception if inputQueue is used after method call)
         inputQueue = self.inputQueue
         self.inputQueue = None
-        for i in xrange(self.numWorkers):
+        for i in range(self.numWorkers):
             inputQueue.put(None)
         for thread in self.workerThreads:
             thread.join()

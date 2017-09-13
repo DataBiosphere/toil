@@ -14,6 +14,11 @@
 
 from __future__ import absolute_import
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from builtins import object
 import bz2
 import inspect
 import logging
@@ -25,8 +30,12 @@ from collections import namedtuple
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 # Python 3 compatibility imports
-from six.moves import cPickle
 from six.moves.http_client import HTTPException
 from six.moves.configparser import RawConfigParser, NoOptionError
 
@@ -229,28 +238,28 @@ class AzureJobStore(AbstractJobStore):
         jobStoreID = self._newJobID()
         job = AzureJob.fromJobNode(jobNode, jobStoreID, self._defaultTryCount())
         entity = job.toItem(chunkSize=self.jobChunkSize)
-        entity['RowKey'] = jobStoreID
+        entity['RowKey'] = EntityProperty('Edm.String', jobStoreID)
         self.jobItems.insert_entity(entity=entity)
         return job
 
     def exists(self, jobStoreID):
-        if self.jobItems.get_entity(row_key=jobStoreID) is None:
+        if self.jobItems.get_entity(row_key=bytes(jobStoreID)) is None:
             return False
         return True
 
     def load(self, jobStoreID):
-        jobEntity = self.jobItems.get_entity(row_key=jobStoreID)
+        jobEntity = self.jobItems.get_entity(row_key=bytes(jobStoreID))
         if jobEntity is None:
             raise NoSuchJobException(jobStoreID)
         return AzureJob.fromEntity(jobEntity)
 
     def update(self, job):
-        self.jobItems.update_entity(row_key=job.jobStoreID,
+        self.jobItems.update_entity(row_key=bytes(job.jobStoreID),
                                     entity=job.toItem(chunkSize=self.jobChunkSize))
 
     def delete(self, jobStoreID):
         try:
-            self.jobItems.delete_entity(row_key=jobStoreID)
+            self.jobItems.delete_entity(row_key=bytes(jobStoreID))
         except AzureMissingResourceHttpError:
             # Job deletion is idempotent, and this job has been deleted already
             return
@@ -343,7 +352,7 @@ class AzureJobStore(AbstractJobStore):
 
     def deleteFile(self, jobStoreFileID):
         try:
-            self.files.delete_blob(blob_name=jobStoreFileID)
+            self.files.delete_blob(blob_name=bytes(jobStoreFileID))
             self._dissociateFileFromJob(jobStoreFileID)
         except AzureMissingResourceHttpError:
             pass
@@ -353,7 +362,7 @@ class AzureJobStore(AbstractJobStore):
         # python API) we just try to download the metadata, and hope
         # the metadata is small so the call will be fast.
         try:
-            self.files.get_blob_metadata(blob_name=jobStoreFileID)
+            self.files.get_blob_metadata(blob_name=bytes(jobStoreFileID))
             return True
         except AzureMissingResourceHttpError:
             return False
@@ -409,7 +418,7 @@ class AzureJobStore(AbstractJobStore):
         encrypted = self.keyPath is not None
         if encrypted:
             statsAndLoggingString = encryption.encrypt(statsAndLoggingString, self.keyPath)
-        self.statsFiles.put_block_blob_from_text(blob_name=jobStoreFileID,
+        self.statsFiles.put_block_blob_from_text(blob_name=bytes(jobStoreFileID),
                                                  text=statsAndLoggingString,
                                                  x_ms_meta_name_values=dict(
                                                      encrypted=str(encrypted)))
@@ -428,7 +437,7 @@ class AzureJobStore(AbstractJobStore):
                             callback(fd)
                         # Mark this entity as read by appending the suffix
                         self.statsFileIDs.insert_entity(entity={'RowKey': jobStoreFileID + suffix})
-                        self.statsFileIDs.delete_entity(row_key=jobStoreFileID)
+                        self.statsFileIDs.delete_entity(row_key=bytes(jobStoreFileID))
                         numStatsFiles += 1
                     elif readAll:
                         # Strip the suffix to get the original ID
@@ -442,7 +451,7 @@ class AzureJobStore(AbstractJobStore):
 
     def getPublicUrl(self, jobStoreFileID):
         try:
-            self.files.get_blob_properties(blob_name=jobStoreFileID)
+            self.files.get_blob_properties(blob_name=bytes(jobStoreFileID))
         except AzureMissingResourceHttpError:
             raise NoSuchFileException(jobStoreFileID)
         # Compensate of a little bit of clock skew
@@ -451,9 +460,9 @@ class AzureJobStore(AbstractJobStore):
         endTimeStr = endTime.strftime(self._azureTimeFormat)
         sap = SharedAccessPolicy(AccessPolicy(startTimeStr, endTimeStr,
                                               BlobSharedAccessPermissions.READ))
-        sas_token = self.files.generate_shared_access_signature(blob_name=jobStoreFileID,
+        sas_token = self.files.generate_shared_access_signature(blob_name=bytes(jobStoreFileID),
                                                                 shared_access_policy=sap)
-        return self.files.make_blob_url(blob_name=jobStoreFileID) + '?' + sas_token
+        return self.files.make_blob_url(blob_name=bytes(jobStoreFileID)) + '?' + sas_token
 
     def getSharedPublicUrl(self, sharedFileName):
         jobStoreFileID = self._newFileID(sharedFileName)
@@ -468,22 +477,22 @@ class AzureJobStore(AbstractJobStore):
 
     def _newFileID(self, sharedFileName=None):
         if sharedFileName is None:
-            ret = str(uuid.uuid4())
+            ret = bytes(uuid.uuid4())
         else:
-            ret = str(uuid.uuid5(self.sharedFileJobID, str(sharedFileName)))
+            ret = bytes(uuid.uuid5(self.sharedFileJobID, bytes(sharedFileName)))
         return ret.replace('-', '_')
 
     def _associateFileWithJob(self, jobStoreFileID, jobStoreID=None):
         if jobStoreID is not None:
-            self.jobFileIDs.insert_entity(entity={'PartitionKey': jobStoreID,
-                                                  'RowKey': jobStoreFileID})
+            self.jobFileIDs.insert_entity(entity={'PartitionKey': EntityProperty('Edm.String', jobStoreID),
+                                                  'RowKey': EntityProperty('Edm.String', jobStoreFileID)})
 
     def _dissociateFileFromJob(self, jobStoreFileID):
         entities = self.jobFileIDs.query_entities(filter="RowKey eq '%s'" % jobStoreFileID)
         if entities:
             assert len(entities) == 1
             jobStoreID = entities[0].PartitionKey
-            self.jobFileIDs.delete_entity(partition_key=jobStoreID, row_key=jobStoreFileID)
+            self.jobFileIDs.delete_entity(partition_key=bytes(jobStoreID), row_key=bytes(jobStoreFileID))
 
     def _bindTable(self, tableName, create=False):
         for attempt in retry_azure():
@@ -525,7 +534,7 @@ class AzureJobStore(AbstractJobStore):
         This will never cause a collision if uuids are used, but
         otherwise may not be safe.
         """
-        return 'a' + filter(lambda x: x.isalnum(), tableName)
+        return 'a' + ''.join([x for x in tableName if x.isalnum()])
 
     # Maximum bytes that can be in any block of an Azure block blob
     # https://github.com/Azure/azure-storage-python/blob/4c7666e05a9556c10154508335738ee44d7cb104/azure/storage/blob/blobservice.py#L106
@@ -539,7 +548,7 @@ class AzureJobStore(AbstractJobStore):
         """
         if checkForModification:
             try:
-                expectedVersion = container.get_blob_properties(blob_name=jobStoreFileID)['etag']
+                expectedVersion = container.get_blob_properties(blob_name=bytes(jobStoreFileID))['etag']
             except AzureMissingResourceHttpError:
                 expectedVersion = None
 
@@ -570,40 +579,40 @@ class AzureJobStore(AbstractJobStore):
                         if encrypted:
                             buf = encryption.encrypt(buf, store.keyPath)
                         blockID = store._newFileID()
-                        container.put_block(blob_name=jobStoreFileID,
+                        container.put_block(blob_name=bytes(jobStoreFileID),
                                             block=buf,
                                             blockid=blockID)
                         blockIDs.append(blockID)
                 except:
                     with panic(log=logger):
                         # This is guaranteed to delete any uncommitted blocks.
-                        container.delete_blob(blob_name=jobStoreFileID)
+                        container.delete_blob(blob_name=bytes(jobStoreFileID))
 
                 if checkForModification and expectedVersion is not None:
                     # Acquire a (60-second) write lock,
-                    leaseID = container.lease_blob(blob_name=jobStoreFileID,
+                    leaseID = container.lease_blob(blob_name=bytes(jobStoreFileID),
                                                    x_ms_lease_action='acquire')['x-ms-lease-id']
                     # check for modification,
-                    blobProperties = container.get_blob_properties(blob_name=jobStoreFileID)
+                    blobProperties = container.get_blob_properties(blob_name=bytes(jobStoreFileID))
                     if blobProperties['etag'] != expectedVersion:
-                        container.lease_blob(blob_name=jobStoreFileID,
+                        container.lease_blob(blob_name=bytes(jobStoreFileID),
                                              x_ms_lease_action='release',
                                              x_ms_lease_id=leaseID)
                         raise ConcurrentFileModificationException(jobStoreFileID)
                     # commit the file,
-                    container.put_block_list(blob_name=jobStoreFileID,
+                    container.put_block_list(blob_name=bytes(jobStoreFileID),
                                              block_list=blockIDs,
                                              x_ms_lease_id=leaseID,
                                              x_ms_meta_name_values=dict(
                                                  encrypted=str(encrypted)))
                     # then release the lock.
-                    container.lease_blob(blob_name=jobStoreFileID,
+                    container.lease_blob(blob_name=bytes(jobStoreFileID),
                                          x_ms_lease_action='release',
                                          x_ms_lease_id=leaseID)
                 else:
                     # No need to check for modification, just blindly write over whatever
                     # was there.
-                    container.put_block_list(blob_name=jobStoreFileID,
+                    container.put_block_list(blob_name=bytes(jobStoreFileID),
                                              block_list=blockIDs,
                                              x_ms_meta_name_values=dict(encrypted=str(encrypted)))
 
@@ -614,7 +623,7 @@ class AzureJobStore(AbstractJobStore):
     def _downloadStream(self, jobStoreFileID, container):
         # The reason this is not in the writer is so we catch non-existant blobs early
 
-        blobProps = container.get_blob_properties(blob_name=jobStoreFileID)
+        blobProps = container.get_blob_properties(blob_name=bytes(jobStoreFileID))
 
         encrypted = strict_bool(blobProps['x-ms-meta-encrypted'])
         if encrypted and self.keyPath is None:
@@ -628,7 +637,7 @@ class AzureJobStore(AbstractJobStore):
                 fileSize = int(blobProps['Content-Length'])
                 while chunkStart < fileSize:
                     chunkEnd = chunkStart + outer_self._maxAzureBlockBytes - 1
-                    buf = container.get_blob(blob_name=jobStoreFileID,
+                    buf = container.get_blob(blob_name=bytes(jobStoreFileID),
                                              x_ms_range="bytes=%d-%d" % (chunkStart, chunkEnd))
                     if encrypted:
                         buf = encryption.decrypt(buf, outer_self.keyPath)
@@ -777,14 +786,14 @@ class AzureJob(JobGraph):
         :type item: dict
         :rtype: AzureJob
         """
-        chunkedJob = item.items()
+        chunkedJob = list(item.items())
         chunkedJob.sort()
         if len(chunkedJob) == 1:
             # First element of list = tuple, second element of tuple = serialized job
             wholeJobString = chunkedJob[0][1].value
         else:
             wholeJobString = ''.join(item[1].value for item in chunkedJob)
-        return cPickle.loads(bz2.decompress(wholeJobString))
+        return pickle.loads(bz2.decompress(wholeJobString))
 
     def toItem(self, chunkSize=maxAzureTablePropertySize):
         """
@@ -794,7 +803,7 @@ class AzureJob(JobGraph):
         """
         assert chunkSize <= maxAzureTablePropertySize
         item = {}
-        serializedAndEncodedJob = bz2.compress(cPickle.dumps(self, protocol=cPickle.HIGHEST_PROTOCOL))
+        serializedAndEncodedJob = bz2.compress(pickle.dumps(self, protocol=pickle.HIGHEST_PROTOCOL))
         jobChunks = [serializedAndEncodedJob[i:i + chunkSize]
                      for i in range(0, len(serializedAndEncodedJob), chunkSize)]
         for attributeOrder, chunk in enumerate(jobChunks):

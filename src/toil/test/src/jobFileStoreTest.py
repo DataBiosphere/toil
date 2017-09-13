@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import
+from builtins import range
 import random
 import os
 import errno
@@ -65,15 +66,15 @@ class JobFileStoreTest(ToilTest):
         toil.fileStore.FileStore interface. Verifies the files written are always what we
         expect.
         """
-        for test in xrange(testNo):
+        for test in range(testNo):
             #Make a list of random strings, each of 100k chars and hash the first 200 
             #base prefix to the string
             def randomString():
                 chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-                s = "".join(map(lambda i : random.choice(chars), xrange(stringLength)))
+                s = "".join([random.choice(chars) for i in range(stringLength)])
                 return s[:PREFIX_LENGTH], s
             #Total length is 2 million characters (20 strings of length 100K each) 
-            testStrings = dict(map(lambda i : randomString(), xrange(stringNo)))
+            testStrings = dict([randomString() for i in range(stringNo)])
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
             options.logLevel = "INFO"
             options.retryCount=retryCount
@@ -135,7 +136,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
     #exercising different ways of writing files to the file store
     while len(outputFileStoreIds) < len(testStrings):
         #Pick a string and write it into a file
-        testString = random.choice(testStrings.values())
+        testString = random.choice(list(testStrings.values()))
         if random.random() > 0.5:
             #Make a local copy of the file
             tempFile = job.fileStore.getLocalTempFile() if random.random() > 0.5 \

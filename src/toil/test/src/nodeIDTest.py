@@ -12,6 +12,8 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from builtins import str
+from builtins import range
 from toil.common import getNodeID
 from toil.test import ToilTest
 

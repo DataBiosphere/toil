@@ -1,4 +1,6 @@
 # coding=utf-8
+from builtins import str
+from builtins import object
 import logging
 from contextlib import contextmanager
 from subprocess import CalledProcessError

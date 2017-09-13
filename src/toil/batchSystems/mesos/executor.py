@@ -13,17 +13,24 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
 import os
 import random
 import socket
 import signal
 import sys
 import threading
-import pickle
 import logging
 import subprocess
 import traceback
 from time import sleep, time
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 import psutil
 import mesos.interface
@@ -92,7 +99,7 @@ class MesosExecutor(mesos.interface.Executor):
 
     def shutdown(self, driver):
         log.critical('Shutting down executor ...')
-        for taskId in self.runningTasks.keys():
+        for taskId in list(self.runningTasks.keys()):
             self.killTask(driver, taskId)
         Resource.cleanSystem()
         BatchSystemSupport.workerCleanup(self.workerCleanupInfo)

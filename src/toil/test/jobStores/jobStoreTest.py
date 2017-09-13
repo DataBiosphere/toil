@@ -13,9 +13,17 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import next
+from builtins import str
+from builtins import range
+from past.utils import old_div
+from builtins import object
+import socketserver
 import pytest
-import SocketServer
 import hashlib
 import logging
 import threading
@@ -57,6 +65,7 @@ from toil.test import (ToilTest,
                        make_tests,
                        needs_google,
                        experimental)
+from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
 
@@ -65,16 +74,14 @@ def tearDownModule():
     AbstractJobStoreTest.Test.cleanUpExternalStores()
 
 
-class AbstractJobStoreTest:
+class AbstractJobStoreTest(object):
     """
     Hide abstract base class from unittest's test case loader
 
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class Test(ToilTest):
-        __metaclass__ = ABCMeta
-
+    class Test(with_metaclass(ABCMeta, ToilTest)):
         @classmethod
         def setUpClass(cls):
             super(AbstractJobStoreTest.Test, cls).setUpClass()
@@ -499,7 +506,7 @@ class AbstractJobStoreTest:
                        otherCls=activeTestClassesByName)
 
         def testImportHttpFile(self):
-            http = SocketServer.TCPServer(('', 0), StubHttpRequestHandler)
+            http = socketserver.TCPServer(('', 0), StubHttpRequestHandler)
             try:
                 httpThread = threading.Thread(target=http.serve_forever)
                 httpThread.start()
@@ -536,7 +543,7 @@ class AbstractJobStoreTest:
             n = self._batchDeletionSize()
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
                 job = master.create(self.arbitraryJob)
-                fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in xrange(0, numFiles)]
+                fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in range(0, numFiles)]
                 master.delete(job.jobStoreID)
                 for fileID in fileIDs:
                     # NB: the fooStream() methods return context managers
@@ -643,7 +650,7 @@ class AbstractJobStoreTest:
             filePath = os.path.join(dirPath, 'large')
             hashIn = hashlib.md5()
             with open(filePath, 'w') as f:
-                for i in xrange(0, 10):
+                for i in range(0, 10):
                     buf = os.urandom(self._partSize())
                     f.write(buf)
                     hashIn.update(buf)
@@ -793,13 +800,12 @@ class AbstractJobStoreTest:
             return 5 * 1024 * 1024
 
 
-class AbstractEncryptedJobStoreTest:
+class AbstractEncryptedJobStoreTest(object):
     # noinspection PyAbstractClass
-    class Test(AbstractJobStoreTest.Test):
+    class Test(with_metaclass(ABCMeta, AbstractJobStoreTest.Test)):
         """
         A test of job stores that use encryption
         """
-        __metaclass__ = ABCMeta
 
         def setUp(self):
             # noinspection PyAttributeOutsideInit
@@ -989,7 +995,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         master = self.master
         for encrypted in (True, False):
             n = AWSJobStore.FileInfo.maxInlinedSize(encrypted)
-            sizes = (1, n / 2, n - 1, n, n + 1, 2 * n)
+            sizes = (1, old_div(n, 2), n - 1, n, n + 1, 2 * n)
             for size in chain(sizes, islice(reversed(sizes), 1)):
                 s = os.urandom(size)
                 with master.writeSharedFileStream('foo') as f:
@@ -1028,7 +1034,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             try:
                 self.master.importFile(url)
             except RuntimeError as e:
-                self.assertEquals(e.message, 'Failed to copy at least %d part(s)' % (num_parts / 2))
+                self.assertEquals(e.message, 'Failed to copy at least %d part(s)' % (old_div(num_parts, 2)))
             else:
                 self.fail('Expected a RuntimeError to be raised')
     def testOverlargeJob(self):

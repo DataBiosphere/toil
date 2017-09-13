@@ -1,3 +1,4 @@
+from builtins import object
 import logging
 import os
 import errno
@@ -5,10 +6,11 @@ from abc import ABCMeta
 from abc import abstractmethod
 
 from bd2k.util.threading import ExceptionalThread
+from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
-class WritablePipe(object):
+class WritablePipe(with_metaclass(ABCMeta, object)):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.readFrom` to consume the readable end of the pipe, then instantiate the class as a
@@ -70,8 +72,6 @@ class WritablePipe(object):
     True
     """
 
-    __metaclass__ = ABCMeta
-
     @abstractmethod
     def readFrom(self, readable):
         """
@@ -124,7 +124,7 @@ class WritablePipe(object):
                 os.close(readable_fh)
 
 
-class ReadablePipe(object):
+class ReadablePipe(with_metaclass(ABCMeta, object)):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.writeTo` to place data into the writable end of the pipe, then instantiate the class
@@ -185,8 +185,6 @@ class ReadablePipe(object):
     >>> y = os.dup(0); os.close(y); x == y
     True
     """
-
-    __metaclass__ = ABCMeta
 
     @abstractmethod
     def writeTo(self, writable):

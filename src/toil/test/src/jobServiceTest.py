@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import, print_function
+from builtins import zip
+from builtins import map
+from builtins import range
 import os
 import random
 import unittest
@@ -55,7 +58,7 @@ class JobServiceTest(ToilTest):
         """
         Tests the creation of a Job.Service with random failures of the worker.
         """
-        for test in xrange(2):
+        for test in range(2):
             outFile = getTempFile(rootDir=self._createTempDir()) # Temporary file
             messageInt = random.randint(1, sys.maxsize)
             try:
@@ -112,10 +115,10 @@ class JobServiceTest(ToilTest):
         Tests the creation of a Job.Service, creating a chain of services and accessing jobs.
         Randomly fails the worker.
         """
-        for test in xrange(1):
+        for test in range(1):
             # Temporary file
             outFile = getTempFile(rootDir=self._createTempDir())
-            messages = [ random.randint(1, sys.maxsize) for i in xrange(3) ]
+            messages = [ random.randint(1, sys.maxsize) for i in range(3) ]
             try:
                 # Wire up the services/jobs
                 t = Job.wrapJobFn(serviceTestRecursive, outFile, messages, checkpoint=checkpoint)
@@ -124,7 +127,7 @@ class JobServiceTest(ToilTest):
                 self.runToil(t)
 
                 # Check output
-                self.assertEquals(map(int, open(outFile, 'r').readlines()), messages)
+                self.assertEquals(list(map(int, open(outFile, 'r').readlines())), messages)
             finally:
                 os.remove(outFile)
 
@@ -134,10 +137,10 @@ class JobServiceTest(ToilTest):
         Tests the creation of a Job.Service, creating parallel chains of services and accessing jobs.
         Randomly fails the worker.
         """
-        for test in xrange(1):
+        for test in range(1):
             # Temporary file
-            outFiles = [ getTempFile(rootDir=self._createTempDir()) for j in xrange(2) ]
-            messageBundles = [ [ random.randint(1, sys.maxsize) for i in xrange(3) ] for j in xrange(2) ]
+            outFiles = [ getTempFile(rootDir=self._createTempDir()) for j in range(2) ]
+            messageBundles = [ [ random.randint(1, sys.maxsize) for i in range(3) ] for j in range(2) ]
             try:
                 # Wire up the services/jobs
                 t = Job.wrapJobFn(serviceTestParallelRecursive, outFiles, messageBundles, checkpoint=True)
@@ -147,9 +150,9 @@ class JobServiceTest(ToilTest):
 
                 # Check output
                 for (messages, outFile) in zip(messageBundles, outFiles):
-                    self.assertEquals(map(int, open(outFile, 'r').readlines()), messages)
+                    self.assertEquals(list(map(int, open(outFile, 'r').readlines())), messages)
             finally:
-                map(os.remove, outFiles)
+                list(map(os.remove, outFiles))
 
     def runToil(self, rootJob, retryCount=1, badWorker=0.5, badWorkedFailInterval=0.05, maxServiceJobs=sys.maxsize, deadlockWait=60):
         # Create the runner for the workflow.
@@ -198,7 +201,7 @@ def serviceTestRecursive(job, outFile, messages):
         service = TestService(messages[0] + randInt)
         child = job.addChildJobFn(serviceAccessor, job.addService(service), outFile, randInt)
 
-        for i in xrange(1, len(messages)):
+        for i in range(1, len(messages)):
             randInt = random.randint(1, sys.maxsize)
             service2 = TestService(messages[i] + randInt, cores=0.1)
             child = child.addChildJobFn(serviceAccessor,
@@ -218,7 +221,7 @@ def serviceTestParallelRecursive(job, outFiles, messageBundles):
             service = TestService(messages[0] + randInt)
             child = job.addChildJobFn(serviceAccessor, job.addService(service), outFile, randInt)
 
-            for i in xrange(1, len(messages)):
+            for i in range(1, len(messages)):
                 randInt = random.randint(1, sys.maxsize)
                 service2 = TestService(messages[i] + randInt, cores=0.1)
                 child = child.addChildJobFn(serviceAccessor,
@@ -308,7 +311,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
         fH.write("%s\n" % key)
 
     logger.debug("Trying to read key and message from outJobStoreFileID")
-    for i in xrange(10): # Try 10 times over
+    for i in range(10): # Try 10 times over
         time.sleep(0.2) #Avoid thrashing
 
         # Try reading an integer from the input file and writing out the message

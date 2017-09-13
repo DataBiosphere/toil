@@ -13,17 +13,20 @@
 # limitations under the License.
 from __future__ import absolute_import
 from __future__ import print_function
+from future import standard_library
 import json
 import os
 import subprocess
 import re
 import shutil
-import urllib
+from future.moves.urllib.parse import urlparse, urlencode
+from future.moves.urllib.request import urlopen, Request, urlretrieve
+from future.moves.urllib.error import HTTPError
 import zipfile
 
 # Python 3 compatibility imports
 from six.moves import StringIO
-from six import u as unicode
+from six import u as str
 
 from toil.test import ToilTest, needs_cwl
 
@@ -52,8 +55,8 @@ class CWLTest(ToilTest):
             # Having unicode string literals isn't necessary for the assertion but makes for a
             # less noisy diff in case the assertion fails.
             u'output': {
-                u'location': "file://" + unicode(os.path.join(outDir, 'output.txt')),
-                u'basename': unicode("output.txt"),
+                u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
+                u'basename': str("output.txt"),
                 u'size': 1111,
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
@@ -95,7 +98,7 @@ class CWLTest(ToilTest):
         testhash = "7f510ec768b424601beb8c86700343afe722ac76"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(cwlSpec):
-            urllib.urlretrieve(url, "spec.zip")
+            urlretrieve(url, "spec.zip")
             with zipfile.ZipFile('spec.zip', "r") as z:
                 z.extractall()
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)

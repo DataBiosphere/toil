@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 
+from builtins import str
 import os
 import shutil
 import logging
@@ -27,6 +28,7 @@ from six.moves.queue import Empty, Queue
 from bd2k.util.objects import abstractclassmethod
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +39,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
     implemented.
     """
 
-    class Worker(Thread):
-
-        __metaclass__ = ABCMeta
+    class Worker(with_metaclass(ABCMeta, Thread)):
 
         def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
             """
