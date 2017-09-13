@@ -12,24 +12,24 @@
             parameters = ['faidx', path]
             dockerCall(job, tool='quay.io/ucgc_cgl/samtools:latest', work_dir=work_dir, parameters=parameters)
 """
-from builtins import str
-from builtins import map
-import base64
 import logging
 import os
 import pipes
-import uuid
+import subprocess
+import docker
+from docker.utils.types import LogConfig
 
-from bd2k.util.exceptions import require
 from bd2k.util.retry import retry
 
-from toil.lib import *
+from toil.lib import dockerPredicate
+from toil.lib import FORGO
+from toil.lib import STOP
+from toil.lib import RM
 
 _logger = logging.getLogger(__name__)
 
 
-def dockerCall(job,
-               tool,
+def dockerCall(tool,
                parameters=None,
                workDir=None,
                dockerParameters=None,
@@ -54,12 +54,10 @@ def dockerCall(job,
            RM (2) will stop the container and then forcefully remove it from the system
            using `docker rm -f`. This is the default behavior if defer is set to None.
     """
-    _docker(job, tool=tool, parameters=parameters, workDir=workDir, dockerParameters=dockerParameters,
-            outfile=outfile, checkOutput=False, defer=defer)
+    _docker(tool=tool, parameters=parameters, workDir=workDir,
+            dockerParameters=dockerParameters, outfile=outfile, checkOutput=False, defer=defer)
 
-
-def dockerCheckOutput(job,
-                      tool,
+def dockerCheckOutput(tool,
                       parameters=None,
                       workDir=None,
                       dockerParameters=None,
@@ -68,7 +66,6 @@ def dockerCheckOutput(job,
     Returns the stdout from the Docker invocation (via subprocess.check_output)
     Throws CalledProcessorError if the Docker invocation returns a non-zero exit code
     This function blocks until the subprocess call to Docker returns
-
     :param toil.Job.job job: The Job instance for the calling function.
     :param str tool: Name of the Docker image to be used (e.g. quay.io/ucsc_cgl/samtools:latest).
     :param list[str] parameters: Command line arguments to be passed to the tool.
@@ -85,12 +82,10 @@ def dockerCheckOutput(job,
     :returns: Stdout from the docker call
     :rtype: str
     """
-    return _docker(job, tool=tool, parameters=parameters, workDir=workDir,
+    return _docker(tool=tool, parameters=parameters, workDir=workDir,
                    dockerParameters=dockerParameters, checkOutput=True, defer=defer)
 
-
-def _docker(job,
-            tool,
+def _docker(tool,
             parameters=None,
             workDir=None,
             dockerParameters=None,
@@ -114,146 +109,67 @@ def _docker(job,
            RM (2) will stop the container and then forcefully remove it from the system
            using `docker rm -f`. This is the default behavior if defer is set to None.
     """
+
+    # default is 1000, which are standard user permissions
+    # set this to 0 to become root
+    # however all output files will have only root permissions
+    defaultUser = 1000
+
     if parameters is None:
         parameters = []
     if workDir is None:
         workDir = os.getcwd()
 
-    # Setup the outgoing subprocess call for docker
-    baseDockerCall = ['docker', 'run']
-    if dockerParameters:
-        baseDockerCall += dockerParameters
-    else:
-        baseDockerCall += ['--rm', '--log-driver', 'none', '-v',
-                           os.path.abspath(workDir) + ':/data']
+    client = docker.from_env()
 
     # Ensure the user has passed a valid value for defer
-    require(defer in (None, FORGO, STOP, RM),
-            'Please provide a valid value for defer.')
+    assert defer in (None, FORGO, STOP, RM), 'Please provide a valid value for defer.'
 
-    # Get container name which is needed for _dockerKill
-    try:
-        if any('--name' in x for x in baseDockerCall):
-            if any('--name=' in x for x in baseDockerCall):
-                containerName = [x.split('=')[1] for x in baseDockerCall if '--name' in x][0]
-            else:
-                containerName = baseDockerCall[baseDockerCall.index('--name') + 1]
-        else:
-            containerName = _getContainerName(job)
-            baseDockerCall.extend(['--name', containerName])
-    except ValueError:
-        containerName = _getContainerName(job)
-        baseDockerCall.extend(['--name', containerName])
-    except IndexError:
-        raise RuntimeError("Couldn't parse Docker's `--name=` option, check parameters: " + str(dockerParameters))
+    if defer == FORGO:
+        removeUponExit = False
+    elif defer == STOP:
+        removeUponExit = False
+    else:
+        removeUponExit = True
 
-    # Defer the container on-exit action
-    if '--rm' in baseDockerCall and defer is None:
-        defer = RM
-    if '--rm' in baseDockerCall and defer is not RM:
-        _logger.warn('--rm being passed to docker call but defer not set to dockerCall.RM, defer set to: ' + str(defer))
-    job.defer(_dockerKill, containerName, action=defer)
-    # Defer the permission fixing function which will run after this job concludes.
-    # We call this explicitly later on in this function, but we defer it as well to handle unexpected job failure.
-    job.defer(_fixPermissions, tool, workDir)
-
-    # Make subprocess call
+    if checkOutput:
+        logDriver = {'type': LogConfig.types.SYSLOG, 'config': {}}
+    else:
+        logDriver = None
 
     # If parameters is list of lists, treat each list as separate command and chain with pipes
     if len(parameters) > 0 and type(parameters[0]) is list:
-        # When piping, all arguments now get merged into a single string to bash -c.
-        # We try to support spaces in paths by wrapping them all in quotes first.
-        chain_params = [' '.join(p) for p in [list(map(pipes.quote, q)) for q in parameters]]
-        # Use bash's set -eo pipefail to detect and abort on a failure in any command in the chain
-        call = baseDockerCall + ['--entrypoint', '/bin/bash',  tool, '-c',
-                                 'set -eo pipefail && {}'.format(' | '.join(chain_params))]
+        chain_params = [' '.join(p) for p in [map(pipes.quote, q) for q in parameters]]
+        command = ' | '.join(chain_params)
+        _logger.info("Calling docker with: " + repr(command))
     else:
-        call = baseDockerCall + [tool] + parameters
-    _logger.info("Calling docker with " + repr(call))
-
-    params = {}
-    if outfile:
-        params['stdout'] = outfile
-    if checkOutput:
-        callMethod = subprocess.check_output
-    else:
-        callMethod = subprocess.check_call
+        command = [' '.join(p) for p in [map(pipes.quote, parameters)]]
+        command = command[0]
+        _logger.info("Calling docker with: " + repr(command))
 
     for attempt in retry(predicate=dockerPredicate):
         with attempt:
-            out = callMethod(call, **params)
-
-    _fixPermissions(tool=tool, workDir=workDir)
-    return out
-
-
-def _dockerKill(containerName, action):
-    """
-    Kills the specified container.
-    :param str containerName: The name of the container created by docker_call
-    :param int action: What action should be taken on the container?  See `defer=` in
-           :func:`docker_call`
-    """
-    running = _containerIsRunning(containerName)
-    if running is None:
-        # This means that the container doesn't exist.  We will see this if the container was run
-        # with --rm and has already exited before this call.
-        _logger.info('The container with name "%s" appears to have already been removed.  Nothing to '
-                  'do.', containerName)
-    else:
-        if action in (None, FORGO):
-            _logger.info('The container with name %s continues to exist as we were asked to forgo a '
-                      'post-job action on it.', containerName)
-        else:
-            _logger.info('The container with name %s exists. Running user-specified defer functions.',
-                         containerName)
-            if running and action >= STOP:
-                _logger.info('Stopping container "%s".', containerName)
-                for attempt in retry(predicate=dockerPredicate):
-                    with attempt:
-                        subprocess.check_call(['docker', 'stop', containerName])
-            else:
-                _logger.info('The container "%s" was not found to be running.', containerName)
-            if action >= RM:
-                # If the container was run with --rm, then stop will most likely remove the
-                # container.  We first check if it is running then remove it.
-                running = _containerIsRunning(containerName)
-                if running is not None:
-                    _logger.info('Removing container "%s".', containerName)
-                    for attempt in retry(predicate=dockerPredicate):
-                        with attempt:
-                            subprocess.check_call(['docker', 'rm', '-f', containerName])
-                else:
-                    _logger.info('The container "%s" was not found on the system.  Nothing to remove.',
-                                 containerName)
-
-def _fixPermissions(tool, workDir):
-    """
-    Fix permission of a mounted Docker directory by reusing the tool to change ownership.
-    Docker natively runs as a root inside the container, and files written to the
-    mounted directory are implicitly owned by root.
-
-    :param list baseDockerCall: Docker run parameters
-    :param str tool: Name of tool
-    :param str workDir: Path of work directory to recursively chown
-    """
-    if os.geteuid() == 0:
-        # we're running as root so this chown is redundant
-        return
-
-    baseDockerCall = ['docker', 'run', '--log-driver=none',
-                      '-v', os.path.abspath(workDir) + ':/data', '--rm', '--entrypoint=chown']
-    stat = os.stat(workDir)
-    command = baseDockerCall + [tool] + ['-R', '{}:{}'.format(stat.st_uid, stat.st_gid), '/data']
-    for attempt in retry(predicate=dockerPredicate):
-        with attempt:
-            subprocess.check_call(command)
-
-
-def _getContainerName(job):
-    return '--'.join([str(job),
-                      base64.b64encode(os.urandom(9), '-_')]).replace("'", '').replace('_', '')
-
+            try:
+                client.containers.run(tool,
+                                      command,
+                                      os.path.abspath(workDir),
+                                      volumes={os.path.abspath(workDir): {'bind': '/data/', 'mode': 'rw'}},
+                                      remove=removeUponExit,
+                                      log_config=logDriver,
+                                      user=defaultUser)
+                if defer == STOP:
+                    client.containers.pause()
+            # If the container exits with a non-zero exit code and detach is False.
+            except docker.errors.ContainerError:
+                _logger.error("Docker had non-zero exit.  Check your command: " + repr(command))
+                return 1
+            except docker.errors.ImageNotFound:
+                _logger.error("Docker image not found.")
+                return 2
+            except docker.errors.APIError:
+                _logger.error("The server returned an error.")
+                return 3
+    return 0
 
 def _containerIsRunning(container_name):
     """
