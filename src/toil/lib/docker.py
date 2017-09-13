@@ -31,7 +31,8 @@ from toil.lib import RM
 _logger = logging.getLogger(__name__)
 
 
-def dockerCall(tool,
+def dockerCall(job,
+               tool,
                parameters=None,
                workDir=None,
                dockerParameters=None,
@@ -56,10 +57,11 @@ def dockerCall(tool,
            RM (2) will stop the container and then forcefully remove it from the system
            using `docker rm -f`. This is the default behavior if defer is set to None.
     """
-    _docker(tool=tool, parameters=parameters, workDir=workDir,
+    _docker(job=job, tool=tool, parameters=parameters, workDir=workDir,
             dockerParameters=dockerParameters, outfile=outfile, checkOutput=False, defer=defer)
 
-def dockerCheckOutput(tool,
+def dockerCheckOutput(job,
+                      tool,
                       parameters=None,
                       workDir=None,
                       dockerParameters=None,
@@ -84,10 +86,11 @@ def dockerCheckOutput(tool,
     :returns: Stdout from the docker call
     :rtype: str
     """
-    return _docker(tool=tool, parameters=parameters, workDir=workDir,
+    return _docker(job=job, tool=tool, parameters=parameters, workDir=workDir,
                    dockerParameters=dockerParameters, checkOutput=True, defer=defer)
 
-def _docker(tool,
+def _docker(job,
+            tool,
             parameters=None,
             workDir=None,
             dockerParameters=None,
