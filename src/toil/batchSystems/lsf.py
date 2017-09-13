@@ -56,7 +56,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         jobstart = time.mktime(time.strptime(jobstart,"%b/%d/%Y %H:%M"))
                         jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
                         times[currentjobs[items[0]]] = time.time() - jobstart
-                    except TypeError err:
+                    except TypeError, err:
                         logging.error("Got error parsing bjobs output %s: %s",
                                 process.stdout, repr(err))
             return times
