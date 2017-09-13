@@ -1307,6 +1307,7 @@ class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStor
     jobStoreType = 'azure'
 
 
+@slow
 @needs_azure
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest):
@@ -1319,6 +1320,7 @@ class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileSto
     jobStoreType = 'google'
 
 
+@slow
 @experimental
 @needs_google
 @pytest.mark.timeout(1000)

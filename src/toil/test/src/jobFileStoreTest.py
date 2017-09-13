@@ -51,7 +51,8 @@ class JobFileStoreTest(ToilTest):
         """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.linkImports = True
-        fileName = 'dummyFile.txt'
+        tempDir = self._createTempDir('testImportLinking')
+        fileName = os.path.join(tempDir, 'dummyFile.txt')
         with open(fileName, 'w') as fh:
             fh.write('Subtle literature reference.')
         with Toil(options) as workflow:

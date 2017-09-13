@@ -326,7 +326,7 @@ class hidden(object):
             self.assertTrue(locator.startswith('file:'))
             self.assertEqual(locator[len('file:'):], filePath)
 
-
+@slow
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     """
@@ -541,7 +541,7 @@ class Service(Job.Service):
     def stop(self, fileStore):
         subprocess.check_call(self.cmd + ' -1', shell=True)
 
-
+@slow
 @needs_parasol
 class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
     """
@@ -618,6 +618,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         return [self._parseBatchString(line) for line in batchLines[1:] if line]
 
 
+@slow
 @needs_gridengine
 class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
@@ -636,6 +637,7 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         for f in glob('toil_job*.o*'):
             os.unlink(f)
 
+@slow
 @needs_slurm
 class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
@@ -654,6 +656,7 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         for f in glob('slurm-*.out'):
             os.unlink(f)
 
+@slow
 @needs_torque
 class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
@@ -802,6 +805,7 @@ def _resourceBlockTestAuxFn(outFile, sleepTime, writeVal):
     time.sleep(sleepTime)
 
 
+@slow
 @needs_mesos
 class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSupport):
     """

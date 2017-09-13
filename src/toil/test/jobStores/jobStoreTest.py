@@ -1228,6 +1228,7 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Te
 
 @needs_azure
 @needs_encryption
+@slow
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 

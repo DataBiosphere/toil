@@ -277,10 +277,8 @@ def needs_aws(test_item):
     """
     test_item = _mark_test('aws', test_item)
     keyName = os.getenv('TOIL_AWS_KEYNAME')
-    log.info('Checking keyname: %s', keyName)
     if not keyName or keyName is None:
         return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
-    log.info("NOPE %s" % keyName)
 
     try:
         # noinspection PyUnresolvedReferences
@@ -337,6 +335,10 @@ def needs_azure(test_item):
     Use as a decorator before test classes or methods to only run them if Azure is usable.
     """
     test_item = _mark_test('azure', test_item)
+    keyName = os.getenv('TOIL_AWS_KEYNAME')
+    if not keyName or keyName is None:
+        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+
     try:
         # noinspection PyUnresolvedReferences
         import azure.storage
@@ -383,6 +385,7 @@ def needs_mesos(test_item):
     try:
         # noinspection PyUnresolvedReferences
         import mesos.native
+        import psutil
     except ImportError:
         return unittest.skip(
             "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
