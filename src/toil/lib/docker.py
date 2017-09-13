@@ -12,6 +12,8 @@
             parameters = ['faidx', path]
             dockerCall(job, tool='quay.io/ucgc_cgl/samtools:latest', work_dir=work_dir, parameters=parameters)
 """
+from builtins import str
+from builtins import map
 import logging
 import os
 import pipes
