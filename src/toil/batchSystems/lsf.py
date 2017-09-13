@@ -56,12 +56,10 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     jobstart = "/".join(items[7:9]) + '/' + str(date.today().year)
                     jobstart = jobstart + ' ' + items[9]
                     try:
-                        jobstart = time.mktime(time.strptime(jobstart,"%b/%d/%Y %H:%M"))
-                        jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
-                        times[currentjobs[items[0]]] = time.time() - jobstart
+                        jobstart_time = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
                     except TypeError, err:
-                        logging.error("Got error parsing bjobs output %s: %s",
-                                process.stdout, repr(err))
+                        jobstart_time = time.mktime(time.strptime(jobstart,"%b/%d/%Y %H:%M"))
+                    times[currentjobs[items[0]]] = time.time() - jobstart_time
             return times
 
         def killJob(self, jobID):
