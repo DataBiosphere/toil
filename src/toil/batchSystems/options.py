@@ -59,7 +59,7 @@ def _singleMachineOptions(addOptionFn):
 
 
 def _mesosOptions(addOptionFn):
-    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP(),
+    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP() + ':5050',
                 help=("The host and port of the Mesos master separated by colon. (default: %(default)s)"))
 
 # Built in batch systems that have options
