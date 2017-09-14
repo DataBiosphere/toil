@@ -960,7 +960,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             testJobStoreUUID = str(uuid.uuid4())
             # Create the nucket at the external region
             s3 = S3Connection()
-            for attempt in retry_s3():
+            for attempt in retry_s3(delays=(2,5,10,30,60), timeout=600):
                 with attempt:
                     bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
                                               location=externalAWSLocation)
