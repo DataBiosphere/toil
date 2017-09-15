@@ -25,13 +25,14 @@ import os.path
 import json
 import logging
 import logging.handlers
-import socket
 import threading
 
 # Python 3 compatibility imports
 from six.moves import socketserver as SocketServer
 
 import toil.lib.bioio
+from toil.batchSystems.options import getPublicIP
+
 from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
@@ -145,16 +146,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
                     cls.serverThread.start()
 
                     # Set options for logging in the environment so they get sent out to jobs
-                    fqdn = socket.getfqdn()
-                    try:
-                        ip = socket.gethostbyname(fqdn)
-                    except socket.gaierror:
-                        # FIXME: Does this only happen for me? Should we librarize the work-around?
-                        import platform
-                        if platform.system() == 'Darwin' and '.' not in fqdn:
-                            ip = socket.gethostbyname(fqdn + '.local')
-                        else:
-                            raise
+                    ip = getPublicIP()
                     port = cls.loggingServer.server_address[1]
 
                     def _setEnv(name, value):
