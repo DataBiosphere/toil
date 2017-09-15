@@ -335,9 +335,9 @@ def needs_azure(test_item):
     Use as a decorator before test classes or methods to only run them if Azure is usable.
     """
     test_item = _mark_test('azure', test_item)
-    keyName = os.getenv('TOIL_AWS_KEYNAME')
+    keyName = os.getenv('TOIL_AZURE_KEYNAME')
     if not keyName or keyName is None:
-        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+        return unittest.skip("Set TOIL_AZURE_KEYNAME to include this test.")(test_item)
 
     try:
         # noinspection PyUnresolvedReferences

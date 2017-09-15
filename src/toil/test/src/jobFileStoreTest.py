@@ -22,7 +22,7 @@ from six.moves import xrange
 
 from toil.common import Toil
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 
 PREFIX_LENGTH=200
 
@@ -92,7 +92,8 @@ class JobFileStoreTest(ToilTest):
         Tests case that about half the files are cached
         """
         self._testJobFileStore(retryCount=0, badWorker=0.0,  stringNo=5, stringLength=1000000)
-    
+
+    @slow
     def testJobFileStoreWithBadWorker(self):
         """
         Tests case that about half the files are cached and the worker is randomly

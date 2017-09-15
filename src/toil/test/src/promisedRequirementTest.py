@@ -128,6 +128,7 @@ class hidden(object):
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
 
+        @slow
         def testPromiseRequirementRaceStatic(self):
             """
             Checks for a race condition when using promised requirements and child job functions.

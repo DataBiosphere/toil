@@ -61,6 +61,7 @@ class CWLTest(ToilTest):
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
 
+    @slow
     def test_restart(self):
         """Enable restarts with CWLtoil -- run failing test, re-run correct test.
         """

@@ -16,21 +16,6 @@ There are several environment variables that affect the way Toil runs.
 |                        | cases, the system's `standard temporary directory`_|
 |                        | is used.                                           |
 +------------------------+----------------------------------------------------+
-| TOIL_TEST_TEMP         | An absolute path to a directory where Toil tests   |
-|                        | will write their temporary files. Defaults to the  |
-|                        | system's `standard temporary directory`_.          |
-+------------------------+----------------------------------------------------+
-| TOIL_TEST_INTEGRATIVE  | If ``True``, this allows the integration tests to  |
-|                        | run. Only valid when running the tests from the    |
-|                        | source directory via ``make test`` or              |
-|                        | ``make test_parallel``.                            |
-+------------------------+----------------------------------------------------+
-| TOIL_TEST_EXPERIMENTAL | If ``True``, this allows tests on experimental     |
-|                        | features to run (such as the Google and Azure) job |
-|                        | stores. Only valid when running tests from the     |
-|                        | source directory via ``make test`` or              |
-|                        | ``make test_parallel``.                            |
-+------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF    | The fully qualified reference for the Toil         |
 |                        | Appliance you wish to use, in the form             |
 |                        | ``REPO/IMAGE:TAG``.                                |

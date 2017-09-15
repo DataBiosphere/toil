@@ -38,7 +38,8 @@ class JobServiceTest(ToilTest):
     """
     Tests testing the Job.Service class
     """
-    
+
+    @slow
     def testServiceSerialization(self):
         """
         Tests that a service can receive a promise without producing a serialization

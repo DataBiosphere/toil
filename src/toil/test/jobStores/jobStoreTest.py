@@ -1126,7 +1126,7 @@ class InvalidAWSJobStoreTest(ToilTest):
 
 @needs_azure
 class AzureJobStoreTest(AbstractJobStoreTest.Test):
-    accountName = 'toiltest'
+    accountName = os.getenv('TOIL_AZURE_KEYNAME')
 
     def _createJobStore(self):
         from toil.jobStores.azureJobStore import AzureJobStore

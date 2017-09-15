@@ -5,38 +5,24 @@
 Running tests
 -------------
 
-To invoke all unit tests use
+Test make targets, invoked as ``$ make <target>``, subject to which
+environment variables are set (see :ref:`test_env_vars`).
 
-::
-
-    $ make test
-
-To invoke all non-AWS integration tests use
-
-::
-
-    $ make integration_test
-
-To invoke all integration tests, including AWS tests, use
-
-::
-
-    $ export TOIL_AWS_KEYNAME=<aws_keyname>; make integration_test
-
-To skip building the Docker appliance and run tests that have no docker dependency use
-
-::
-
-    $ make test_offline
-
-To make integration tests easier to debug locally one can use
-
-::
-
-    $ make integration_test_local
-
-which runs the integration tests in serial and doesn't redirect output. This makes it appears on the terminal as
-expected.
++-------------------------+---------------------------------------------------+
+|     TARGET              |        DESCRIPTION                                |
++-------------------------+---------------------------------------------------+
+|  test                   | Invokes all tests.                                |
++-------------------------+---------------------------------------------------+
+| integration_test        | Invokes only the integration tests.               |
++-------------------------+---------------------------------------------------+
+| test_offline            | Skips building the Docker appliance and only      |
+|                         | invokes tests that have no docker dependencies.   |
++-------------------------+---------------------------------------------------+
+| integration_test_local  | Makes integration tests easier to debug locally   |
+|                         | by running the integration tests serially and     |
+|                         | doesn't redirect output. This makes it appears on |
+|                         | the terminal as expected.                         |
++-------------------------+---------------------------------------------------+
 
 Run an individual test with
 
@@ -84,6 +70,39 @@ For more information, see the `pytest documentation`_.
 
 .. _pytest documentation: https://docs.pytest.org/en/latest/
 
+
+
+.. _test_env_vars:
+
+Test environment variables
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++------------------------+----------------------------------------------------+
+| TOIL_TEST_TEMP         | An absolute path to a directory where Toil tests   |
+|                        | will write their temporary files. Defaults to the  |
+|                        | system's `standard temporary directory`_.          |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_INTEGRATIVE  | If ``True``, this allows the integration tests to  |
+|                        | run. Only valid when running the tests from the    |
+|                        | source directory via ``make test`` or              |
+|                        | ``make test_parallel``.                            |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_EXPERIMENTAL | If ``True``, this allows tests on experimental     |
+|                        | features to run (such as the Google and Azure) job |
+|                        | stores. Only valid when running tests from the     |
+|                        | source directory via ``make test`` or              |
+|                        | ``make test_parallel``.                            |
++------------------------+----------------------------------------------------+
+| TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepare_aws-ref`), which |
+|                        | is required to run the AWS tests.                  |
++------------------------+----------------------------------------------------+
+| TOIL_AZURE_KEYNAME     | An Azure keyname (see :ref:`prepare_azure-ref`),   |
+|                        | which is required to run the AWS tests.            |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_QUICK        | If ``True``, long running tests are skipped.       |
++------------------------+----------------------------------------------------+
+
+.. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir
 
 .. _quaySetup:
 

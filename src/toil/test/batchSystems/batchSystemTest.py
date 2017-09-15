@@ -689,6 +689,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     def getBatchSystemName(self):
         return "singleMachine"
 
+    @slow
     def testConcurrencyWithDisk(self):
         """
         Tests that the batch system is allocating disk resources properly

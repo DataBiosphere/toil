@@ -330,7 +330,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         return 'aws:%s:sort-test-%s' % (self.awsRegion(), uuid4())
 
     def _azureJobStore(self):
-        return "azure:toiltest:sort-test-%s" % uuid4()
+        accountName = os.getenv('TOIL_AZURE_KEYNAME')
+        return "azure:%s:sort-test-%s" % (accountName, uuid4())
 
     def _googleJobStore(self):
         return "google:cgc-05-0006:sort-test-%s" % uuid4()

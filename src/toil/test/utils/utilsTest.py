@@ -257,6 +257,7 @@ class UtilsTest(ToilTest):
         # Check we can run 'toil clean'
         system(self.cleanCommand)
 
+    @slow
     def testUtilsStatsSort(self):
         """
         Tests the stats commands on a complete run of the stats test.
@@ -295,6 +296,7 @@ class UtilsTest(ToilTest):
         options.logLevel = 'debug'
         Job.Runner.startToil(Job.wrapFn(printUnicodeCharacter), options)
 
+    @slow
     def testMultipleJobsPerWorkerStats(self):
         """
         Tests case where multiple jobs are run on 1 worker to insure that all jobs report back their data

@@ -66,7 +66,8 @@ class hidden(object):
             elif self.jobStoreType == 'aws':
                 return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
             elif self.jobStoreType == 'azure':
-                return 'azure:toiltest:cache-tests-' + str(uuid4())
+                accountName = os.getenv('TOIL_AZURE_KEYNAME')
+                return 'azure:%s:cache-tests-%s' % (accountName, str(uuid4()))
             elif self.jobStoreType == 'google':
                 projectID = 'cgc-05-0006'
                 return 'google:' + projectID + ':cache-tests-' + str(uuid4())
@@ -254,6 +255,7 @@ class hidden(object):
             job.defer(lmd, files[0], nlf=files[1])
             return None
 
+        @slow
         def testDeferredFunctionRunsWithFailures(self):
             """
             Create 2 non local filesto use as flags.  Create a job that registers a function that
@@ -312,6 +314,7 @@ class hidden(object):
             if nlf is not None:
                 os.remove(nlf)
 
+        @slow
         def testNewJobsCanHandleOtherJobDeaths(self):
             """
             Create 2 non-local files and then create 2 jobs. The first job registers a deferred job
@@ -484,6 +487,7 @@ class hidden(object):
                     jobs[i].addChild(F)
                 Job.Runner.startToil(E, self.options)
 
+        @slow
         def testCacheLockRace(self):
             """
             Make 3 jobs compete for the same cache lock file.  If they have the lock at the same
@@ -1149,12 +1153,14 @@ class hidden(object):
                     fH.write(pack('d', cached))
                 os.kill(os.getpid(), signal.SIGKILL)
 
+        @slow
         def testRemoveLocalMutablyReadFile(self):
             """
             If a mutably read file is deleted by the user, it is ok.
             """
             self._deleteLocallyReadFilesFn(readAsMutable=True)
 
+        @slow
         def testRemoveLocalImmutablyReadFile(self):
             """
             If an immutably read file is deleted by the user, it is not ok.
