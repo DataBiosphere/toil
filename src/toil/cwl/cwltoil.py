@@ -59,6 +59,10 @@ import six.moves.urllib.parse as urlparse
 
 cwllogger = logging.getLogger("cwltool")
 
+# Define internal jobs we should avoid submitting to batch systems and logging
+CWL_INTERNAL_JOBS = ("CWLJob", "CWLJobWrapper", "CWLWorkflow", "CWLScatter", "CWLGather",
+                     "ResolveIndirect")
+
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
 # the final dict is derived by evaluating each
