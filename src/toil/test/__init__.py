@@ -315,6 +315,9 @@ def needs_google(test_item):
     Use as a decorator before test classes or methods to only run them if Google Storage usable.
     """
     test_item = _mark_test('google', test_item)
+    projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
+    if not projectID or projectID is None:
+        return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
     try:
         # noinspection PyUnresolvedReferences
         from boto import config

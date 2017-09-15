@@ -96,13 +96,24 @@ Test environment variables
 | TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepare_aws-ref`), which |
 |                        | is required to run the AWS tests.                  |
 +------------------------+----------------------------------------------------+
-| TOIL_AZURE_KEYNAME     | An Azure keyname (see :ref:`prepare_azure-ref`),   |
+| TOIL_AZURE_KEYNAME     | An Azure account keyname (see                      |
+|                        | :ref:`prepare_azure-ref`),                         |
 |                        | which is required to run the AWS tests.            |
++------------------------+----------------------------------------------------+
+| TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |
+|                        | (see :ref:`runningGCE`), which is required to      |
+|                        | to run the Google Cloud tests.                     |
 +------------------------+----------------------------------------------------+
 | TOIL_TEST_QUICK        | If ``True``, long running tests are skipped.       |
 +------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir
+
+.. admonition:: Partial install and failing tests.
+
+    Some tests may fail with an ImportError if the required extras are not installed
+    (:ref:`building_from_source-ref`). Install Toil with all of the extras
+    do prevent such errors.
 
 .. _quaySetup:
 

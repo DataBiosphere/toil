@@ -876,7 +876,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
 @experimental
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
-    projectID = 'cgc-05-0006'
+    projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
     headers = {"x-goog-project-id": projectID}
 
     def _createJobStore(self):

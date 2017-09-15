@@ -1,13 +1,28 @@
+# Copyright (C) 2015-2016 Regents of the University of California
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+from __future__ import absolute_import
+
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 import base64
 from contextlib import contextmanager
 import hashlib
-import os
 import uuid
-from bd2k.util.threading import ExceptionalThread
 import boto
+from boto.exception import GSResponseError, GSDataError
 import logging
 import time
 
@@ -69,7 +84,12 @@ class GoogleJobStore(AbstractJobStore):
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
         self.gsBucketURL = "gs://"+self.bucketName
 
-        self._headerValues = {"x-goog-project-id": projectID} if projectID else {}
+        self._headerValues = {"x-goog-project-id": bytes(projectID)} if projectID else {}
+
+        # Not reading .boto correctly, this works to create bucket after 'pip install gsutils', which updates osauth2
+        #import gcs_oauth2_boto_plugin
+        #gcs_oauth2_boto_plugin.SetFallbackClientIdAndSecret(gs_access_key_id, gs_secret_access_key)
+
         self._encryptedHeaders = self.headerValues
 
         self.uri = boto.storage_uri(self.gsBucketURL, GOOGLE_STORAGE)
@@ -78,11 +98,8 @@ class GoogleJobStore(AbstractJobStore):
         exists = True
         try:
             self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
-        except boto.exception.GSResponseError:
+        except GSResponseError:
             exists = False
-
-        create = config is not None
-        self._checkJobStoreCreation(create, exists, projectID+':'+namePrefix)
 
         if not exists:
             self.files = self._retryCreateBucket(self.uri, self.headerValues)
@@ -103,7 +120,7 @@ class GoogleJobStore(AbstractJobStore):
         while True:
             try:
                 self.uri.delete_bucket()
-            except boto.exception.GSResponseError as e:
+            except GSResponseError as e:
                 if e.status == 404:
                     return  # the bucket doesn't exist so we are done
                 else:
@@ -117,7 +134,7 @@ class GoogleJobStore(AbstractJobStore):
             for obj in self.files.list():
                 try:
                     obj.delete()
-                except boto.exception.GSResponseError:
+                except GSResponseError:
                     pass
 
     def create(self, jobNode):
@@ -204,7 +221,7 @@ class GoogleJobStore(AbstractJobStore):
         headers = self.encryptedHeaders
         try:
             self._getKey(jobStoreFileID, headers).delete(headers)
-        except boto.exception.GSDataError as e:
+        except GSDataError as e:
             # we tried to delete unencrypted file with encryption headers. unfortunately,
             # we can't determine whether the file passed in is encrypted or not beforehand.
             if e.status == 400:
@@ -217,7 +234,7 @@ class GoogleJobStore(AbstractJobStore):
         try:
             self._getKey(jobStoreFileID)
             return True
-        except (NoSuchFileException, boto.exception.GSResponseError) as e:
+        except (NoSuchFileException, GSResponseError) as e:
             if isinstance(e, NoSuchFileException):
                 return False
             elif e.status == 400:
@@ -337,8 +354,9 @@ class GoogleJobStore(AbstractJobStore):
         while True:
             try:
                 # FIMXE: this leaks a connection on exceptions
+                print "====HEADERS", headers
                 return uri.create_bucket(headers=headers)
-            except boto.exception.GSResponseError as e:
+            except GSResponseError as e:
                 if e.status == 429:
                     time.sleep(10)
                 else:
@@ -377,7 +395,7 @@ class GoogleJobStore(AbstractJobStore):
         else:
             try:
                 key.delete()
-            except boto.exception.GSResponseError as e:
+            except GSResponseError as e:
                 if e.status == 404:
                     pass
         # best effort delete associated files
@@ -392,7 +410,7 @@ class GoogleJobStore(AbstractJobStore):
         key = None
         try:
             key = self.files.get_key(jobStoreID, headers=headers)
-        except boto.exception.GSDataError:
+        except GSDataError:
             if headers == self.encryptedHeaders:
                 # https://github.com/boto/boto/issues/3518
                 # see self._writeFile for more
@@ -422,7 +440,7 @@ class GoogleJobStore(AbstractJobStore):
         headers = self.encryptedHeaders if encrypt else self.headerValues
         try:
             key.set_contents_from_file(fileObj, headers=headers)
-        except boto.exception.GSDataError:
+        except GSDataError:
             if encrypt:
                 # Per https://cloud.google.com/storage/docs/encryption#customer-supplied_encryption_keys
                 # the etag and md5 will not match with customer supplied
@@ -445,7 +463,7 @@ class GoogleJobStore(AbstractJobStore):
                 if update:
                     try:
                         key.set_contents_from_stream(readable, headers=headers)
-                    except boto.exception.GSDataError:
+                    except GSDataError:
                         if encrypt:
                             # https://github.com/boto/boto/issues/3518
                             # see self._writeFile for more
@@ -458,8 +476,8 @@ class GoogleJobStore(AbstractJobStore):
                         # given generation, i.e. version, before modifying anything. Passing a
                         # generation of 0 insures that the key does not exist remotely.
                         key.set_contents_from_stream(readable, headers=headers, if_generation=0)
-                    except (boto.exception.GSResponseError, boto.exception.GSDataError) as e:
-                        if isinstance(e, boto.exception.GSResponseError):
+                    except (GSResponseError, GSDataError) as e:
+                        if isinstance(e, GSResponseError):
                             if e.status == 412:
                                 raise ConcurrentFileModificationException(key.name)
                             else:
