@@ -38,7 +38,11 @@ from bd2k.util.expando import Expando
 from bd2k.util.humanize import bytes2human
 
 from toil import resolveEntryPoint
-from toil.cwl import cwltoil
+try:
+    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+except ImportError:
+    # CWL extra not installed
+    CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.provisioners.clusterScaler import ClusterScaler
 from toil.serviceManager import ServiceManager
@@ -437,7 +441,7 @@ class Leader(object):
                                 "for job %s", jobID)
                 else:
                     if result == 0:
-                        cur_logger = (logger.debug if str(updatedJob.jobName).startswith(cwltoil.CWL_INTERNAL_JOBS)
+                        cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
                                       else logger.info)
                         cur_logger('Job ended successfully: %s', updatedJob)
                     else:
@@ -536,7 +540,7 @@ class Leader(object):
             # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
             self.preemptableJobsIssued += 1
-        cur_logger = (logger.debug if jobNode.jobName.startswith(cwltoil.CWL_INTERNAL_JOBS)
+        cur_logger = (logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS)
                       else logger.info)
         cur_logger("Issued job %s with job batch system ID: "
                    "%s and cores: %s, disk: %s, and memory: %s",
