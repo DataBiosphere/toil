@@ -24,7 +24,19 @@ environment variables are set (see :ref:`test_env_vars`).
 |                         | the terminal as expected.                         |
 +-------------------------+---------------------------------------------------+
 
-Run an individual test with
+Run all tests (including slow tests):
+
+::
+
+    $ make test
+
+Run only quick tests (as of Sep 18, 2017, this was < 30 minutes):
+
+::
+
+    $ export TOIL_TEST_QUICK=True; make test
+
+Run an individual test with:
 
 ::
 
@@ -33,7 +45,7 @@ Run an individual test with
 The default value for ``tests`` is ``"src"`` which includes all tests in the
 ``src/`` subdirectory of the project root. Tests that require a particular
 feature will be skipped implicitly. If you want to explicitly skip tests that
-depend on a currently installed *feature*, use
+depend on a currently installed *feature*, use:
 
 ::
 
@@ -43,7 +55,9 @@ This will run only the tests that don't depend on the ``azure`` extra, even if
 that extra is currently installed. Note the distinction between the terms
 *feature* and *extra*. Every extra is a feature but there are features that are
 not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
-involving both the Parasol feature and the Azure extra, use the following::
+involving both the Parasol feature and the Azure extra, use the following
+
+::
 
     $ make test tests="-m 'not azure and not parasol' src"
 
