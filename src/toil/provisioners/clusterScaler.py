@@ -149,69 +149,74 @@ def binPacking(jobShapes, nodeShapes):
                 return (Shape(t, nodeShape.memory - jobShape.memory, nodeShape.cores - jobShape.cores, nodeShape.disk - jobShape.disk, nodeShape.preemptable),
                         NodeReservation(Shape(nodeShape.wallTime - t, nodeShape.memory, nodeShape.cores, nodeShape.disk, nodeShape.preemptable)))
 
-            reservedSuccessfully = False
             for nodeShape in nodeShapes:
                 for nodeReservation in nodeReservations[nodeShape]:
-                    # Attempt to add the job to node reservation i
-                    x = nodeReservation
-                    y = x
+                    # Attempt to add the job to node reservation
+
+                    # We work with "reservations": just slices
+                    # of time and the amount of memory, cpu,
+                    # etc. still unreserved during that time slice.
+
+                    # starting slice of time that we can fit in so far
+                    startingReservation = nodeReservation
+                    # current end of the slices we can fit in so far
+                    endingReservation = startingReservation
                     t = 0
 
                     while True:
-                        if fits(y.shape, jS):
-                            t += y.shape.wallTime
+                        if fits(endingReservation.shape, jS):
+                            t += endingReservation.shape.wallTime
 
-                            # If the jS fits in the node allocation from x to y
                             if t >= jS.wallTime:
+                                # The job fits into all the slices between startingReservation and endingReservation.
                                 t = 0
-                                while x != y:
-                                    x.shape = subtract(x.shape, jS)
-                                    t += x.shape.wallTime
-                                    x = x.nReservation
-                                assert x == y
-                                assert jS.wallTime - t <= x.shape.wallTime
-                                if jS.wallTime - t < x.shape.wallTime:
-                                    x.shape, nS = split(x.shape, jS, jS.wallTime - t)
-                                    nS.nReservation = x.nReservation
-                                    x.nReservation = nS
+                                # Update all the slices, reserving the amount of resources that this job needs.
+                                while startingReservation != endingReservation:
+                                    startingReservation.shape = subtract(startingReservation.shape, jS)
+                                    t += startingReservation.shape.wallTime
+                                    startingReservation = startingReservation.nReservation
+                                assert startingReservation == endingReservation
+                                assert jS.wallTime - t <= startingReservation.shape.wallTime
+
+                                if jS.wallTime - t < startingReservation.shape.wallTime:
+                                    # This job only partially fills one of the slices. Create a new slice.
+                                    startingReservation.shape, nS = split(startingReservation.shape, jS, jS.wallTime - t)
+                                    nS.nReservation = startingReservation.nReservation
+                                    startingReservation.nReservation = nS
                                 else:
-                                    assert jS.wallTime - t == x.shape.wallTime
-                                    x.shape = subtract(x.shape, jS)
-                                return 
+                                    # This job perfectly fits within the boundaries of the slices.
+                                    assert jS.wallTime - t == startingReservation.shape.wallTime
+                                    startingReservation.shape = subtract(startingReservation.shape, jS)
+                                return
 
                             # If the job would fit, but is longer than the total node allocation
                             # extend the node allocation
-                            elif y.nReservation == None and x == nodeReservation:
+                            elif endingReservation.nReservation == None and startingReservation == nodeReservation:
                                 # Extend the node reservation to accommodate jS
-                                y.nReservation = NodeReservation(nodeShape)
-                            reservedSuccessfully = True
-
+                                endingReservation.nReservation = NodeReservation(nodeShape)
                         else: # Does not fit, reset
-                            x = y.nReservation
+                            startingReservation = endingReservation.nReservation
                             t = 0
 
-                        y = y.nReservation
-                        if y is None:
+                        endingReservation = endingReservation.nReservation
+                        if endingReservation is None:
                             # Reached the end of the reservation without success so stop trying to
-                            # add to reservation i
+                            # add to reservation
                             break
             # Case a new node reservation is required. Assign to the smallest node shape
             # that will fit this job, prioritizing preemptable nodes
-            if not reservedSuccessfully:
-                consideredNodes = [nodeShape for nodeShape in nodeShapes if nodeShape.cores >= jS.cores and nodeShape.memory >= jS.memory and nodeShape.disk >= jS.disk and (jS.preemptable or not nodeShape.preemptable)]
-                if len(consideredNodes) == 0:
-                    logger.warn("Provisioner unable to create nodes capable of running job with shape %s" % str(jS))
-                    return
-                nodeShape = consideredNodes[0]
-                x = NodeReservation(subtract(nodeShape, jS))
-                nodeReservations[nodeShape].append(x)
-                t = nodeShape.wallTime
-                while t < jS.wallTime:
-                    y = NodeReservation(x.shape)
-                    t += nodeShape.wallTime
-                    x.nReservation = y
-                    x = y
+            consideredNodes = [nodeShape for nodeShape in nodeShapes if nodeShape.cores >= jS.cores and nodeShape.memory >= jS.memory and nodeShape.disk >= jS.disk and (jS.preemptable or not nodeShape.preemptable)]
+            if len(consideredNodes) == 0:
                 return
+            nodeShape = consideredNodes[0]
+            x = NodeReservation(subtract(nodeShape, jS))
+            nodeReservations[nodeShape].append(x)
+            t = nodeShape.wallTime
+            while t < jS.wallTime:
+                y = NodeReservation(x.shape)
+                t += nodeShape.wallTime
+                x.nReservation = y
+                x = y
 
         addToReservation()
     return {nodeShape:len(nodeReservations[nodeShape]) for nodeShape in nodeShapes}
