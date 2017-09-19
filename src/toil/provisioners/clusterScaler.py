@@ -148,16 +148,7 @@ class BinPackedFit(object):
                                 startingReservation = startingReservation.nReservation
                             assert startingReservation == endingReservation
                             assert jobShape.wallTime - t <= startingReservation.shape.wallTime
-
-                            if jobShape.wallTime - t < startingReservation.shape.wallTime:
-                                # This job only partially fills one of the slices. Create a new slice.
-                                startingReservation.shape, nS = split(startingReservation.shape, jobShape, jobShape.wallTime - t)
-                                nS.nReservation = startingReservation.nReservation
-                                startingReservation.nReservation = nS
-                            else:
-                                # This job perfectly fits within the boundaries of the slices.
-                                assert jobShape.wallTime - t == startingReservation.shape.wallTime
-                                startingReservation.shape = subtract(startingReservation.shape, jobShape)
+                            adjustReservationForJob(startingReservation, jobShape, t)
                             return
 
                         # If the job would fit, but is longer than the total node allocation
@@ -180,9 +171,11 @@ class BinPackedFit(object):
         if len(consideredNodes) == 0:
             return
         nodeShape = consideredNodes[0]
-        x = NodeReservation(subtract(nodeShape, jobShape))
-        self.nodeReservations[nodeShape].append(x)
+        x = NodeReservation(nodeShape)
         t = nodeShape.wallTime
+        adjustReservationForJob(x, jobShape, 0)
+        self.nodeReservations[nodeShape].append(x)
+
         while t < jobShape.wallTime:
             y = NodeReservation(x.shape)
             t += nodeShape.wallTime
@@ -219,6 +212,16 @@ class NodeReservation(object):
             shapes.append(curRes.shape)
             curRes = curRes.nReservation
         return shapes
+
+def adjustReservationForJob(reservation, jobShape, t):
+    if jobShape.wallTime - t < reservation.shape.wallTime:
+        # This job only partially fills one of the slices. Create a new slice.
+        reservation.shape, nS = split(reservation.shape, jobShape, jobShape.wallTime - t)
+        nS.nReservation = reservation.nReservation
+        reservation.nReservation = nS
+    else:
+        # This job perfectly fits within the boundaries of the slices.
+        reservation.shape = subtract(reservation.shape, jobShape)
 
 def subtract(nodeShape, jobShape):
     """
