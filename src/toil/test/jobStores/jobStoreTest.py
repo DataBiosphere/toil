@@ -13,8 +13,17 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
 
-import SocketServer
+from future import standard_library
+standard_library.install_aliases()
+from builtins import next
+from builtins import str
+from builtins import range
+from past.utils import old_div
+from builtins import object
+import socketserver
+import pytest
 import hashlib
 import logging
 import threading
@@ -56,6 +65,7 @@ from toil.test import (ToilTest,
                        make_tests,
                        needs_google,
                        experimental)
+from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
 
@@ -64,16 +74,14 @@ def tearDownModule():
     AbstractJobStoreTest.Test.cleanUpExternalStores()
 
 
-class AbstractJobStoreTest:
+class AbstractJobStoreTest(object):
     """
     Hide abstract base class from unittest's test case loader
 
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
 
-    class Test(ToilTest):
-        __metaclass__ = ABCMeta
-
+    class Test(with_metaclass(ABCMeta, ToilTest)):
         @classmethod
         def setUpClass(cls):
             super(AbstractJobStoreTest.Test, cls).setUpClass()
@@ -361,7 +369,19 @@ class AbstractJobStoreTest:
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # TODO: Who deletes the shared files?
 
-
+        def testBatchCreate(self):
+            master = self.master
+            masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+            jobGraphs = []
+            with master.batch():
+                for i in range(100):
+                    overlargeJobNodeOnMaster = JobNode(command='master-overlarge',
+                                        requirements=masterRequirements,
+                                        jobName='test-overlarge', unitName='onMaster',
+                                        jobStoreID=None, predecessorNumber=0)
+                    jobGraphs.append(master.create(overlargeJobNodeOnMaster))
+            for jobGraph in jobGraphs:
+                self.assertTrue(master.exists(jobGraph.jobStoreID))
 
         def _prepareTestFile(self, store, size=None):
             """
@@ -486,7 +506,7 @@ class AbstractJobStoreTest:
                        otherCls=activeTestClassesByName)
 
         def testImportHttpFile(self):
-            http = SocketServer.TCPServer(('', 0), StubHttpRequestHandler)
+            http = socketserver.TCPServer(('', 0), StubHttpRequestHandler)
             try:
                 httpThread = threading.Thread(target=http.serve_forever)
                 httpThread.start()
@@ -523,7 +543,7 @@ class AbstractJobStoreTest:
             n = self._batchDeletionSize()
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
                 job = master.create(self.arbitraryJob)
-                fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in xrange(0, numFiles)]
+                fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in range(0, numFiles)]
                 master.delete(job.jobStoreID)
                 for fileID in fileIDs:
                     # NB: the fooStream() methods return context managers
@@ -630,7 +650,7 @@ class AbstractJobStoreTest:
             filePath = os.path.join(dirPath, 'large')
             hashIn = hashlib.md5()
             with open(filePath, 'w') as f:
-                for i in xrange(0, 10):
+                for i in range(0, 10):
                     buf = os.urandom(self._partSize())
                     f.write(buf)
                     hashIn.update(buf)
@@ -713,6 +733,25 @@ class AbstractJobStoreTest:
             # on the jobs iterator for certain cloud providers
             self.assertTrue(len(allJobs) <= 3001)
 
+        # NB: the 'thread' method seems to be needed here to actually
+        # ensure the timeout is raised, probably because the only
+        # "live" thread doesn't hold the GIL.
+        @pytest.mark.timeout(45, method='thread')
+        def testPartialReadFromStream(self):
+            """Test whether readFileStream will deadlock on a partial read."""
+            job = self.master.create(self.arbitraryJob)
+            with self.master.writeFileStream(job.jobStoreID) as (f, fileID):
+                # Write enough data to make sure the writer thread
+                # will get blocked on the write. Technically anything
+                # greater than the pipe buffer size plus the libc
+                # buffer size (64K + 4K(?))  should trigger this bug,
+                # but this gives us a lot of extra room just to be
+                # sure.
+                f.write('a' * 300000)
+            with self.master.readFileStream(fileID) as f:
+                self.assertEquals(f.read(1), "a")
+            # If it times out here, there's a deadlock
+
         @abstractmethod
         def _corruptJobStore(self):
             """
@@ -761,13 +800,12 @@ class AbstractJobStoreTest:
             return 5 * 1024 * 1024
 
 
-class AbstractEncryptedJobStoreTest:
+class AbstractEncryptedJobStoreTest(object):
     # noinspection PyAbstractClass
-    class Test(AbstractJobStoreTest.Test):
+    class Test(with_metaclass(ABCMeta, AbstractJobStoreTest.Test)):
         """
         A test of job stores that use encryption
         """
-        __metaclass__ = ABCMeta
 
         def setUp(self):
             # noinspection PyAttributeOutsideInit
@@ -912,6 +950,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from boto.sdb import connect_to_region
         from boto.s3.connection import Location, S3Connection
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
+        from toil.jobStores.aws.utils import retry_s3
         externalAWSLocation = Location.USWest
         for testRegion in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region
@@ -921,8 +960,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             testJobStoreUUID = str(uuid.uuid4())
             # Create the nucket at the external region
             s3 = S3Connection()
-            bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
-                                      location=externalAWSLocation)
+            for attempt in retry_s3(delays=(2,5,10,30,60), timeout=600):
+                with attempt:
+                    bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
+                                              location=externalAWSLocation)
             options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' +
                                                    testJobStoreUUID)
             options.logLevel = 'DEBUG'
@@ -945,14 +986,16 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail()
             finally:
-                s3.delete_bucket(bucket=bucket)
+                for attempt in retry_s3():
+                    with attempt:
+                        s3.delete_bucket(bucket=bucket)
 
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         master = self.master
         for encrypted in (True, False):
             n = AWSJobStore.FileInfo.maxInlinedSize(encrypted)
-            sizes = (1, n / 2, n - 1, n, n + 1, 2 * n)
+            sizes = (1, old_div(n, 2), n - 1, n, n + 1, 2 * n)
             for size in chain(sizes, islice(reversed(sizes), 1)):
                 s = os.urandom(size)
                 with master.writeSharedFileStream('foo') as f:
@@ -991,7 +1034,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             try:
                 self.master.importFile(url)
             except RuntimeError as e:
-                self.assertEquals(e.message, 'Failed to copy at least %d part(s)' % (num_parts / 2))
+                self.assertEquals(e.message, 'Failed to copy at least %d part(s)' % (old_div(num_parts, 2)))
             else:
                 self.fail('Expected a RuntimeError to be raised')
     def testOverlargeJob(self):

@@ -14,6 +14,12 @@
 
 from __future__ import absolute_import, print_function
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import zip
+from builtins import map
+from builtins import str
+from builtins import object
 import collections
 import importlib
 import inspect
@@ -24,13 +30,17 @@ import time
 import uuid
 import dill
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser
 from contextlib import contextmanager
 from io import BytesIO
 
 # Python 3 compatibility imports
-from six.moves import cPickle
 from six import iteritems, string_types
 
 from bd2k.util.exceptions import require
@@ -43,6 +53,7 @@ from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
                             getTotalCpuTime)
 from toil.resource import ModuleDescriptor
+from future.utils import with_metaclass
 
 logger = logging.getLogger( __name__ )
 
@@ -59,9 +70,9 @@ class JobLikeObject(object):
         disk = requirements.get('disk')
         preemptable = requirements.get('preemptable')
         if unitName is not None:
-            assert isinstance(unitName, str)
+            assert isinstance(unitName, (str, bytes))
         if jobName is not None:
-            assert isinstance(jobName, str)
+            assert isinstance(jobName, (str, bytes))
         self.unitName = unitName
         self.jobName = jobName if jobName is not None else self.__class__.__name__
         self._cores = self._parseResource('cores', cores)
@@ -157,12 +168,12 @@ class JobLikeObject(object):
         >>> Job._parseResource('memory', object())
         Traceback (most recent call last):
         ...
-        TypeError: The 'memory' requirement does not accept values that are of <type 'object'>
+        TypeError: The 'memory' requirement does not accept values that are of ...
         """
         assert name in ('memory', 'disk', 'cores')
         if value is None:
             return value
-        elif isinstance(value, str):
+        elif isinstance(value, (str, bytes)):
             value = human2bytes(value)
         if isinstance(value, int):
             return value
@@ -526,7 +537,7 @@ class Job(JobLikeObject):
                                'predecessor of the job receiving the promise')
         with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
             promise = UnfulfilledPromiseSentinel(str(self), False)
-            cPickle.dump(promise, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            pickle.dump(promise, fileHandle, pickle.HIGHEST_PROTOCOL)
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
 
@@ -574,12 +585,12 @@ class Job(JobLikeObject):
             if job not in visited:
                 visited.add(job)
                 if len(job._directPredecessors) > 0:
-                    map(lambda p : getRoots(p), job._directPredecessors)
+                    list(map(lambda p : getRoots(p), job._directPredecessors))
                 else:
                     roots.add(job)
                 #The following call ensures we explore all successor edges.
-                map(lambda c : getRoots(c), job._children +
-                    job._followOns)
+                list(map(lambda c : getRoots(c), job._children +
+                    job._followOns))
         getRoots(self)
         return roots
 
@@ -643,10 +654,10 @@ class Job(JobLikeObject):
 
         # All jobs in the component of the job graph containing self
         jobs = set()
-        map(lambda x : x._dfs(jobs), roots)
+        list(map(lambda x : x._dfs(jobs), roots))
 
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
-        for y in filter(lambda x : x.checkpoint, jobs):
+        for y in [x for x in jobs if x.checkpoint]:
             if y not in roots: # The roots are the prexisting jobs
                 if not Job._isLeafVertex(y):
                     raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
@@ -743,11 +754,10 @@ class Job(JobLikeObject):
                 else:
                     return toil.restart()
 
-    class Service(JobLikeObject):
+    class Service(with_metaclass(ABCMeta, JobLikeObject)):
         """
         Abstract class used to define the interface to a service.
         """
-        __metaclass__ = ABCMeta
         def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None):
             """
             Memory, core and disk requirements are specified identically to as in \
@@ -883,7 +893,7 @@ class Job(JobLikeObject):
         :param fileHandle:
         :returns:
         """
-        unpickler = cPickle.Unpickler(fileHandle)
+        unpickler = pickle.Unpickler(fileHandle)
 
         def filter_main(module_name, class_name):
             if module_name == '__main__':
@@ -928,7 +938,7 @@ class Job(JobLikeObject):
                 # already complete.
                 if jobStore.fileExists(promiseFileStoreID):
                     with jobStore.updateFileStream(promiseFileStoreID) as fileHandle:
-                        cPickle.dump(promisedValue, fileHandle, cPickle.HIGHEST_PROTOCOL)
+                        pickle.dump(promisedValue, fileHandle, pickle.HIGHEST_PROTOCOL)
 
     # Functions associated with Job.checkJobGraphAcyclic to establish that the job graph does not
     # contain any cycles of dependencies:
@@ -969,7 +979,7 @@ class Job(JobLikeObject):
         ##For each follow-on edge calculate the extra implied edges
         #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
         #connected by an implied edge
-        extraEdges = dict(map(lambda n : (n, []), nodes))
+        extraEdges = dict([(n, []) for n in nodes])
         for job in nodes:
             if len(job._followOns) > 0:
                 #Get set of jobs connected by a directed path to job, starting
@@ -1002,8 +1012,7 @@ class Job(JobLikeObject):
         """
         jobsToJobGraphs = {self:jobGraph}
         for successors in (self._followOns, self._children):
-            jobs = map(lambda successor:
-                successor._makeJobGraphs2(jobStore, jobsToJobGraphs), successors)
+            jobs = [successor._makeJobGraphs2(jobStore, jobsToJobGraphs) for successor in successors]
             jobGraph.stack.append(jobs)
         return jobsToJobGraphs
 
@@ -1014,8 +1023,7 @@ class Job(JobLikeObject):
             jobsToJobGraphs[self] = jobGraph
             #Add followOns/children to be run after the current job.
             for successors in (self._followOns, self._children):
-                jobs = map(lambda successor:
-                    successor._makeJobGraphs2(jobStore, jobsToJobGraphs), successors)
+                jobs = [successor._makeJobGraphs2(jobStore, jobsToJobGraphs) for successor in successors]
                 jobGraph.stack.append(jobs)
         else:
             jobGraph = jobsToJobGraphs[self]
@@ -1043,7 +1051,7 @@ class Job(JobLikeObject):
             if job not in visited:
                 visited.add(job)
                 ordering.append(job)
-                map(getRunOrder, job._children + job._followOns)
+                list(map(getRunOrder, job._children + job._followOns))
         getRunOrder(self)
         return ordering
 
@@ -1061,7 +1069,7 @@ class Job(JobLikeObject):
         # for the mechanism which unpickles the job and executes the Job.run
         # method.
         with jobStore.writeFileStream(rootJobGraph.jobStoreID) as (fileHandle, fileStoreID):
-            cPickle.dump(self, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
         # Note that getUserScript() may have been overridden. This is intended. If we used
         # self.userModule directly, we'd be getting a reference to job.py if the job was
         # specified as a function (as opposed to a class) since that is where FunctionWrappingJob
@@ -1118,7 +1126,7 @@ class Job(JobLikeObject):
             #service = serviceJob.service
 
             # Pickle the job
-            serviceJob.pickledService = cPickle.dumps(serviceJob.service, protocol=cPickle.HIGHEST_PROTOCOL)
+            serviceJob.pickledService = pickle.dumps(serviceJob.service, protocol=pickle.HIGHEST_PROTOCOL)
             serviceJob.service = None
 
             # Serialise the service job and job wrapper
@@ -1144,44 +1152,46 @@ class Job(JobLikeObject):
         self.checkJobGraphForDeadlocks()
 
         #Create the jobGraphs for followOns/children
-        jobsToJobGraphs = self._makeJobGraphs(jobGraph, jobStore)
+        with jobStore.batch():
+            jobsToJobGraphs = self._makeJobGraphs(jobGraph, jobStore)
         #Get an ordering on the jobs which we use for pickling the jobs in the
         #correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
         assert len(ordering) == len(jobsToJobGraphs)
 
-        # Temporarily set the jobStore locators for the promise call back functions
-        for job in ordering:
-            job.prepareForPromiseRegistration(jobStore)
-            def setForServices(serviceJob):
-                serviceJob.prepareForPromiseRegistration(jobStore)
-                for childServiceJob in serviceJob.service._childServices:
-                    setForServices(childServiceJob)
-            for serviceJob in job._services:
-                setForServices(serviceJob)
-
-        ordering.reverse()
-        assert self == ordering[-1]
-        if firstJob:
-            #If the first job we serialise all the jobs, including the root job
+        with jobStore.batch():
+            # Temporarily set the jobStore locators for the promise call back functions
             for job in ordering:
-                # Pickle the services for the job
-                job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
-                # Now pickle the job
-                job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
-        else:
-            #We store the return values at this point, because if a return value
-            #is a promise from another job, we need to register the promise
-            #before we serialise the other jobs
-            self._fulfillPromises(returnValues, jobStore)
-            #Pickle the non-root jobs
-            for job in ordering[:-1]:
-                # Pickle the services for the job
-                job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
-                # Pickle the job itself
-                job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
-            # Pickle any services for the job
-            self._serialiseServices(jobStore, jobGraph, jobGraph)
+                job.prepareForPromiseRegistration(jobStore)
+                def setForServices(serviceJob):
+                    serviceJob.prepareForPromiseRegistration(jobStore)
+                    for childServiceJob in serviceJob.service._childServices:
+                        setForServices(childServiceJob)
+                for serviceJob in job._services:
+                    setForServices(serviceJob)
+
+            ordering.reverse()
+            assert self == ordering[-1]
+            if firstJob:
+                #If the first job we serialise all the jobs, including the root job
+                for job in ordering:
+                    # Pickle the services for the job
+                    job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
+                    # Now pickle the job
+                    job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
+            else:
+                #We store the return values at this point, because if a return value
+                #is a promise from another job, we need to register the promise
+                #before we serialise the other jobs
+                self._fulfillPromises(returnValues, jobStore)
+                #Pickle the non-root jobs
+                for job in ordering[:-1]:
+                    # Pickle the services for the job
+                    job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
+                    # Pickle the job itself
+                    job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
+                # Pickle any services for the job
+                self._serialiseServices(jobStore, jobGraph, jobGraph)
 
     def _serialiseFirstJob(self, jobStore):
         """
@@ -1335,7 +1345,7 @@ class FunctionWrappingJob(Job):
         if argSpec.defaults is None:
             argDict = {}
         else:
-            argDict = dict(zip(argSpec.args[-len(argSpec.defaults):], argSpec.defaults))
+            argDict = dict(list(zip(argSpec.args[-len(argSpec.defaults):], argSpec.defaults)))
 
         def resolve(key, default=None, dehumanize=False):
             try:
@@ -1485,6 +1495,12 @@ class EncapsulatedJob(Job):
         #  B will run after A and all its successors have completed, A and its subgraph of
         # successors in effect appear to be just one job.
 
+    If the job being encapsulated has predecessors (e.g. is not the root job), then the encapsulated
+    job will inherit these predecessors. If predecessors are added to the job being encapsulated
+    after the encapsulated job is created then the encapsulating job will NOT inherit these
+    predecessors automatically. Care should be exercised to ensure the encapsulated job has the
+    proper set of predecessors.
+
     The return value of an encapsulatd job (as accessed by the :func:`toil.job.Job.rv` function)
     is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
     the same value after A or A.encapsulate() has been run.
@@ -1495,6 +1511,11 @@ class EncapsulatedJob(Job):
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
         Job.__init__(self, **job._requirements)
+        # Ensure that the encapsulated job has the same direct predecessors as the job
+        # being encapsulated.
+        if job._directPredecessors:
+            for job_ in job._directPredecessors:
+                job_.addChild(self)
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.
@@ -1699,7 +1720,7 @@ class Promise(object):
         with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
             # If this doesn't work then the file containing the promise may not exist or be
             # corrupted
-            value = cPickle.load(fileHandle)
+            value = pickle.load(fileHandle)
             return value
 
 

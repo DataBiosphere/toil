@@ -13,7 +13,14 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import map
+from past.utils import old_div
+from builtins import object
 import json
 import logging
 import os
@@ -431,7 +438,7 @@ class ScalerThread(ExceptionalThread):
                                         'non-preemptable ones.', compensationNodes, nodeType, self.preemptableNodeDeficit[nodeType])
                         estimatedNodes += compensationNodes 
                     jobsPerNode = (0 if nodesToRunRecentJobs[nodeShape] <= 0
-                                   else len(recentJobShapes) / float(nodesToRunRecentJobs[nodeShape]))
+                                   else old_div(len(recentJobShapes), float(nodesToRunRecentJobs[nodeShape])))
                     if estimatedNodes > 0 and self.totalNodes[nodeShape] < self.maxNodes[nodeShape]:
                         logger.info('Estimating that cluster needs %s of shape %s, from current '
                                     'size of %s, given a queue size of %s, the number of jobs per node '
@@ -601,7 +608,7 @@ class ScalerThread(ExceptionalThread):
 
     def chooseNodes(self, nodeToNodeInfo, force=False, preemptable=False):
         nodesToTerminate = []
-        for node, nodeInfo in nodeToNodeInfo.items():
+        for node, nodeInfo in list(nodeToNodeInfo.items()):
             if node is None:
                 logger.info("Node with info %s was not found in our node list", nodeInfo)
                 continue
@@ -761,7 +768,7 @@ class ClusterStats(object):
             try:
                 while not self.stop:
                     nodeInfo = self.batchSystem.getNodes(preemptable)
-                    for nodeIP in nodeInfo.keys():
+                    for nodeIP in list(nodeInfo.keys()):
                         nodeStats = nodeInfo[nodeIP]
                         if nodeStats is not None:
                             nodeStats = toDict(nodeStats)

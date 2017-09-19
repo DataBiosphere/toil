@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 
+from builtins import str
 import os
 import shutil
 import logging
@@ -23,10 +24,13 @@ from abc import ABCMeta, abstractmethod
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
+from future.utils import with_metaclass
 
 from bd2k.util.objects import abstractclassmethod
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.batchSystems import registry
+from toil.cwl import cwltoil
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +41,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
     implemented.
     """
 
-    class Worker(Thread):
-
-        __metaclass__ = ABCMeta
+    class Worker(with_metaclass(ABCMeta, Thread)):
 
         def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
             """
@@ -284,7 +286,6 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         # much smaller
         self.maxCPU, self.maxMEM = self.obtainSystemConstants()
 
-        self.nextJobID = 0
         self.newJobsQueue = Queue()
         self.updatedJobsQueue = Queue()
         self.killQueue = Queue()
@@ -293,6 +294,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         self.worker = self.Worker(self.newJobsQueue, self.updatedJobsQueue, self.killQueue,
                               self.killedJobsQueue, self)
         self.worker.start()
+        self.localBatch = registry.batchSystemFactoryFor(registry.defaultBatchSystem())()(config, maxCores,
+                                                                                          maxMemory, maxDisk)
 
     def __des__(self):
         # Closes the file handle associated with the results file.
@@ -307,12 +310,17 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         return False
 
     def issueBatchJob(self, jobNode):
-        self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
-        jobID = self.nextJobID
-        self.nextJobID += 1
-        self.currentJobs.add(jobID)
-        self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command))
-        logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
+        # Avoid submitting internal jobs to the batch queue, handle locally
+        if jobNode.jobName.startswith(cwltoil.CWL_INTERNAL_JOBS):
+            jobID = self.localBatch.issueBatchJob(jobNode)
+        else:
+            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+            with self.localBatch.jobIndexLock:
+                jobID = self.localBatch.jobIndex
+                self.localBatch.jobIndex += 1
+            self.currentJobs.add(jobID)
+            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command))
+            logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
         return jobID
 
     def killBatchJobs(self, jobIDs):
@@ -320,6 +328,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         Kills the given jobs, represented as Job ids, then checks they are dead by checking
         they are not in the list of issued jobs.
         """
+        self.localBatch.killBatchJobs(jobIDs)
         jobIDs = set(jobIDs)
         logger.debug('Jobs to be killed: %r', jobIDs)
         for jobID in jobIDs:
@@ -339,25 +348,33 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         """
         Gets the list of issued jobs
         """
-        return list(self.currentJobs)
+        return list(self.localBatch.getIssuedBatchJobIDs()) + list(self.currentJobs)
 
     def getRunningBatchJobIDs(self):
-        return self.worker.getRunningJobIDs()
+        localIds = self.localBatch.getRunningBatchJobIDs()
+        batchIds = self.worker.getRunningJobIDs()
+        batchIds.update(localIds)
+        return batchIds
 
     def getUpdatedBatchJob(self, maxWait):
-        try:
-            item = self.updatedJobsQueue.get(timeout=maxWait)
-        except Empty:
-            return None
-        logger.debug('UpdatedJobsQueue Item: %s', item)
-        jobID, retcode = item
-        self.currentJobs.remove(jobID)
-        return jobID, retcode, None
+        local_tuple = self.localBatch.getUpdatedBatchJob(0)
+        if local_tuple:
+            return local_tuple
+        else:
+            try:
+                item = self.updatedJobsQueue.get(timeout=maxWait)
+            except Empty:
+                return None
+            logger.debug('UpdatedJobsQueue Item: %s', item)
+            jobID, retcode = item
+            self.currentJobs.remove(jobID)
+            return jobID, retcode, None
 
     def shutdown(self):
         """
         Signals worker to shutdown (via sentinel) then cleanly joins the thread
         """
+        self.localBatch.shutdown()
         newJobsQueue = self.newJobsQueue
         self.newJobsQueue = None
 

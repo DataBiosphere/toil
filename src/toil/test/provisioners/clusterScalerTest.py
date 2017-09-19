@@ -13,6 +13,11 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from builtins import map
+from builtins import range
+from builtins import object
+from past.utils import old_div
 import time
 from contextlib import contextmanager
 from threading import Thread, Event
@@ -59,24 +64,25 @@ class ClusterScalerTest(ToilTest):
         """
         Tests the bin-packing method used by the cluster scaler.
         """
-        for test in xrange(50):
-            nodeShapes = [Shape(wallTime=random.choice(range(1, 100)),
-                              memory=random.choice(range(1, 10)),
-                              cores=random.choice(range(1, 10)),
-                              disk=random.choice(range(1, 10)),
+        for test in range(50):
+            nodeShapes = [Shape(wallTime=random.choice(list(range(1, 100))),
+                              memory=random.choice(list(range(1, 10))),
+                              cores=random.choice(list(range(1, 10))),
+                              disk=random.choice(list(range(1, 10))),
                               preemptable=False) for i in range(5)]
-            randomJobShape = lambda x: Shape(wallTime=random.choice(range(1, (3 * x.wallTime) + 1)),
-                                             memory=random.choice(range(1, x.memory + 1)),
-                                             cores=random.choice(range(1, x.cores + 1)),
-                                             disk=random.choice(range(1, x.disk + 1)),
+            randomJobShape = lambda x: Shape(wallTime=random.choice(list(range(1, (3 * x.wallTime) + 1))),
+                                             memory=random.choice(list(range(1, x.memory + 1))),
+                                             cores=random.choice(list(range(1, x.cores + 1))),
+                                             disk=random.choice(list(range(1, x.disk + 1))),
                                              preemptable=False)
             randomJobShapes = []
             for nodeShape in nodeShapes:
-                numberOfJobs = random.choice(range(1, 1000))
-                randomJobShapes.extend(map(lambda i: randomJobShape(nodeShape), xrange(numberOfJobs)))
+                numberOfJobs = random.choice(list(range(1, 1000)))
+                randomJobShapes.extend([randomJobShape(nodeShape) for i in range(numberOfJobs)])
             startTime = time.time()
             numberOfBins = binPacking(jobShapes=randomJobShapes, nodeShapes=nodeShapes)
             logger.info("Made the following node reservations: %s" % numberOfBins)
+
 
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):
         """
@@ -96,23 +102,23 @@ class ClusterScalerTest(ToilTest):
         try:
             # Add 100 jobs to complete 
             logger.info("Creating test jobs")
-            map(lambda x: mock.addJob(jobShape=jobShape), range(numJobs))
-            map(lambda x: mock.addJob(jobShape=jobShape, preemptable=True), range(numPreemptableJobs))
+            list(map(lambda x: mock.addJob(jobShape=jobShape), list(range(numJobs))))
+            list(map(lambda x: mock.addJob(jobShape=jobShape, preemptable=True), list(range(numPreemptableJobs))))
     
             # Add some completed jobs
             for preemptable in (True, False):
                 if preemptable and numPreemptableJobs > 0 or not preemptable and numJobs > 0:
                     # Add a 1000 random jobs
-                    for i in xrange(1000):
+                    for i in range(1000):
                         x = mock.getNodeShape(nodeType=jobShape)
                         iJ = JobNode(jobStoreID=1,
-                                     requirements=dict(memory=random.choice(range(1, x.memory)),
-                                                       cores=random.choice(range(1, x.cores)),
-                                                       disk=random.choice(range(1, x.disk)),
+                                     requirements=dict(memory=random.choice(list(range(1, x.memory))),
+                                                       cores=random.choice(list(range(1, x.cores))),
+                                                       disk=random.choice(list(range(1, x.disk))),
                                                        preemptable=preemptable),
                                      command=None,
                                      jobName='testClusterScaling', unitName='')
-                        clusterScaler.addCompletedJob(iJ, random.choice(range(1, x.wallTime)))
+                        clusterScaler.addCompletedJob(iJ, random.choice(list(range(1, x.wallTime))))
     
             logger.info("Waiting for jobs to be processed")
             startTime = time.time()
@@ -138,7 +144,7 @@ class ClusterScalerTest(ToilTest):
                     " Total-worker-time: %s, Worker-time-per-job: %s" %
                     (mock.totalJobs, sum(mock.maxWorkers.values()),
                      mock.totalWorkerTime,
-                     mock.totalWorkerTime / mock.totalJobs if mock.totalJobs > 0 else 0.0))
+                     old_div(mock.totalWorkerTime, mock.totalJobs) if mock.totalJobs > 0 else 0.0))
 
     def testClusterScaling(self):
         """
@@ -340,7 +346,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         if nodeType:
             return [node for node in nodesToWorker if node.nodeType == nodeType]
         else:
-            return nodesToWorker.keys()
+            return list(nodesToWorker.keys())
+
 
     def terminateNodes(self, nodes):
         self._removeNodes(nodes)
@@ -438,7 +445,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                 self.stopEvent.set()
                 self.worker.join()
                 return time.time() - self.startTime
-        for i in xrange(numNodes):
+        for i in range(numNodes):
             node = Node('127.0.0.1', uuid.uuid4(), 'testNode', time.time(), nodeType=nodeType,
                     preemptable=preemptable)
             self.nodesToWorker[node] = Worker(self.jobQueue, self.updatedJobsQueue, self.secondsPerJob)

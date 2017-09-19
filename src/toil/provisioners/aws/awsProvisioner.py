@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from builtins import str
+from builtins import map
+from builtins import range
 import pipes
 import socket
 import subprocess
@@ -78,7 +81,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
             self.ctx = self._buildContext(clusterName=self.clusterName)
             self.leaderIP = self.instanceMetaData['local-ipv4']  # this is PRIVATE IP
-            self.keyName = self.instanceMetaData['public-keys'].keys()[0]
+            self.keyName = list(self.instanceMetaData['public-keys'].keys())[0]
             self.tags = self._getLeader(self.clusterName).tags
             self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
@@ -466,7 +469,7 @@ class AWSProvisioner(AbstractProvisioner):
         if collectStdout:
             kwargs['stdout'] = subprocess.PIPE
         logger.debug('Node %s: %s', nodeIP, ' '.join(args))
-        args = map(pipes.quote, args)
+        args = list(map(pipes.quote, args))
         commandTokens += args
         logger.debug('Full command %s', ' '.join(commandTokens))
         popen = subprocess.Popen(commandTokens, **kwargs)
@@ -505,7 +508,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _toNameSpace(cls, clusterName):
-        assert isinstance(clusterName, str)
+        assert isinstance(clusterName, (str, bytes))
         if any((char.isupper() for char in clusterName)) or '_' in clusterName:
             raise RuntimeError("The cluster name must be lowercase and cannot contain the '_' "
                                "character.")
@@ -723,7 +726,7 @@ class AWSProvisioner(AbstractProvisioner):
         root_vol.size = rootVolSize
         bdm["/dev/xvda"] = root_vol
         # the first disk is already attached for us so start with 2nd.
-        for disk in xrange(1, instanceType.disks + 1):
+        for disk in range(1, instanceType.disks + 1):
             bdm[bdtKeys[disk]] = BlockDeviceType(
                 ephemeral_name='ephemeral{}'.format(disk - 1))  # ephemeral counts start at 0
 

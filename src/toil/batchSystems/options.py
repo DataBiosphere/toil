@@ -16,11 +16,27 @@ from __future__ import absolute_import
 from .registry import batchSystemFactoryFor, defaultBatchSystem, uniqueNames
 
 import socket
+from contextlib import closing
 
+def getPublicIP():
+    """Get the IP that this machine uses to contact the internet.
 
-def getLocalIP():
-    # may return localhost on some systems (not osx and coreos) https://stackoverflow.com/a/166520
-    return socket.gethostbyname(socket.gethostname())
+    If behind a NAT, this will still be this computer's IP, and not the router's."""
+    try:
+        # Try to get the internet-facing IP by attempting a connection
+        # to a non-existent server and reading what IP was used.
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_DGRAM)) as sock:
+            # 203.0.113.0/24 is reserved as TEST-NET-3 by RFC 5737, so
+            # there is guaranteed to be no one listening on the other
+            # end (and we won't accidentally DOS anyone).
+            sock.connect(('203.0.113.1', 1))
+            ip = sock.getsockname()[0]
+        return ip
+    except:
+        # Something went terribly wrong. Just give loopback rather
+        # than killing everything, because this is often called just
+        # to provide a default argument
+        return '127.0.0.1'
 
 def _parasolOptions(addOptionFn):
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
@@ -43,8 +59,8 @@ def _singleMachineOptions(addOptionFn):
 
 
 def _mesosOptions(addOptionFn):
-    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=None,
-                help=("The host and port of the Mesos master separated by colon. default=%s" % 'localhost:5050'))
+    addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP() + ':5050',
+                help=("The host and port of the Mesos master separated by colon. (default: %(default)s)"))
 
 # Built in batch systems that have options
 _OPTIONS = [
@@ -96,7 +112,7 @@ def setDefaultOptions(config):
     config.linkImports = False
 
     # mesos
-    config.mesosMasterAddress = '%s:5050' % getLocalIP()
+    config.mesosMasterAddress = '%s:5050' % getPublicIP()
 
     # parasol
     config.parasolCommand = 'parasol'

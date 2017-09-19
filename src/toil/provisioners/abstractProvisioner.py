@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from builtins import object
 import logging
 from abc import ABCMeta, abstractmethod
 
@@ -19,6 +20,7 @@ from collections import namedtuple
 
 
 from bd2k.util.retry import never
+from future.utils import with_metaclass
 
 
 log = logging.getLogger(__name__)
@@ -36,13 +38,12 @@ The memory and disk attributes store the number of bytes required by a job (or p
 node) in RAM or on disk (SSD or HDD), respectively.
 """
 
-class AbstractProvisioner(object):
+
+class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
     An abstract base class to represent the interface for provisioning worker nodes to use in a
     Toil cluster.
     """
-
-    __metaclass__ = ABCMeta
 
 
     def __init__(self, config=None):

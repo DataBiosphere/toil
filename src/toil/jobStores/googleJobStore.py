@@ -1,3 +1,6 @@
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
 import base64
 from contextlib import contextmanager
 import hashlib
@@ -8,8 +11,13 @@ import boto
 import logging
 import time
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 # Python 3 compatibility imports
-from six.moves import cPickle, StringIO
+from six.moves import StringIO
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException,
@@ -113,12 +121,12 @@ class GoogleJobStore(AbstractJobStore):
                     pass
 
     def create(self, jobNode):
-        jobStoreID = self._newID()
-        job = JobGraph(jobStoreID=jobStoreID, unitName=jobNode.name, jobName=jobNode.job,
-                       command=jobNode.command, remainingRetryCount=self._defaultTryCount(),
-                       logJobStoreFileID=None, predecessorNumber=jobNode.predecessorNumber,
-                       **jobNode._requirements)
+        job = self.getJobGraph(jobNode)
         self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
+        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+            self._batchedJobGraphs.append(job)
+        else:
+            self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
         return job
 
     def exists(self, jobStoreID):
@@ -145,10 +153,10 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        return cPickle.loads(jobString)
+        return pickle.loads(jobString)
 
     def update(self, job):
-        self._writeString(job.jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL), update=True)
+        self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
     def delete(self, jobStoreID):
         # jobs will always be encrypted when avaliable
