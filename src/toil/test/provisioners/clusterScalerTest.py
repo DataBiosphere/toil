@@ -210,8 +210,8 @@ class ClusterScalerTest(ToilTest):
 
         try:
             #Add small jobs
-            map(lambda x: mock.addJob(jobShape=smallNode), range(numJobs))
-            map(lambda x: mock.addJob(jobShape=mediumNode), range(numJobs))
+            list(map(lambda x: mock.addJob(jobShape=smallNode), list(range(numJobs))))
+            list(map(lambda x: mock.addJob(jobShape=mediumNode), list(range(numJobs))))
             
             #Add medium completed jobs
             for i in range(1000):
