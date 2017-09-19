@@ -22,7 +22,7 @@ import sys
 
 from toil.lib.bioio import getLogLevelString, system
 from toil.test.mesos.stress import main as stressMain
-from toil.test import ToilTest, needs_mesos
+from toil.test import ToilTest, needs_mesos, slow
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.mesos import helloWorld
 
@@ -32,6 +32,7 @@ numCores = 2
 log = logging.getLogger(__name__)
 
 
+@slow
 @needs_mesos
 class MesosTest(ToilTest, MesosTestSupport):
     """

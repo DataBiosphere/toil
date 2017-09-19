@@ -21,7 +21,7 @@ import os
 from toil.common import Toil
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 from toil.fileStore import FileID
 
 
@@ -72,6 +72,7 @@ class ImportExportFileTest(ToilTest):
 
         self._importExportFile(options, fail=False)
 
+    @slow
     def testImportExportRestartTrue(self):
         self._importExport(restart=True)
 

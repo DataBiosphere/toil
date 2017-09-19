@@ -22,7 +22,7 @@ from six.moves import xrange
 
 from toil.common import Toil
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 
 PREFIX_LENGTH=200
 
@@ -51,7 +51,8 @@ class JobFileStoreTest(ToilTest):
         """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.linkImports = True
-        fileName = 'dummyFile.txt'
+        tempDir = self._createTempDir('testImportLinking')
+        fileName = os.path.join(tempDir, 'dummyFile.txt')
         with open(fileName, 'w') as fh:
             fh.write('Subtle literature reference.')
         with Toil(options) as workflow:
@@ -91,7 +92,8 @@ class JobFileStoreTest(ToilTest):
         Tests case that about half the files are cached
         """
         self._testJobFileStore(retryCount=0, badWorker=0.0,  stringNo=5, stringLength=1000000)
-    
+
+    @slow
     def testJobFileStoreWithBadWorker(self):
         """
         Tests case that about half the files are cached and the worker is randomly

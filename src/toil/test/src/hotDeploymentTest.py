@@ -7,13 +7,14 @@ from subprocess import CalledProcessError
 
 from bd2k.util.iterables import concat
 
-from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance
+from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow
 
 log = logging.getLogger(__name__)
 
 
 @needs_mesos
 @needs_appliance
+@slow
 class HotDeploymentTest(ApplianceTestSupport):
     """
     Tests various hot-deployment scenarios. Using the appliance, i.e. a docker container,

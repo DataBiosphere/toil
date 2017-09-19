@@ -5,40 +5,38 @@
 Running tests
 -------------
 
-To invoke all unit tests use
+Test make targets, invoked as ``$ make <target>``, subject to which
+environment variables are set (see :ref:`test_env_vars`).
+
++-------------------------+---------------------------------------------------+
+|     TARGET              |        DESCRIPTION                                |
++-------------------------+---------------------------------------------------+
+|  test                   | Invokes all tests.                                |
++-------------------------+---------------------------------------------------+
+| integration_test        | Invokes only the integration tests.               |
++-------------------------+---------------------------------------------------+
+| test_offline            | Skips building the Docker appliance and only      |
+|                         | invokes tests that have no docker dependencies.   |
++-------------------------+---------------------------------------------------+
+| integration_test_local  | Makes integration tests easier to debug locally   |
+|                         | by running the integration tests serially and     |
+|                         | doesn't redirect output. This makes it appears on |
+|                         | the terminal as expected.                         |
++-------------------------+---------------------------------------------------+
+
+Run all tests (including slow tests):
 
 ::
 
     $ make test
 
-To invoke all non-AWS integration tests use
+Run only quick tests (as of Sep 18, 2017, this was < 30 minutes):
 
 ::
 
-    $ make integration_test
+    $ export TOIL_TEST_QUICK=True; make test
 
-To invoke all integration tests, including AWS tests, use
-
-::
-
-    $ export TOIL_AWS_KEYNAME=<aws_keyname>; make integration_test
-
-To skip building the Docker appliance and run tests that have no docker dependency use
-
-::
-
-    $ make test_offline
-
-To make integration tests easier to debug locally one can use
-
-::
-
-    $ make integration_test_local
-
-which runs the integration tests in serial and doesn't redirect output. This makes it appears on the terminal as
-expected.
-
-Run an individual test with
+Run an individual test with:
 
 ::
 
@@ -47,7 +45,7 @@ Run an individual test with
 The default value for ``tests`` is ``"src"`` which includes all tests in the
 ``src/`` subdirectory of the project root. Tests that require a particular
 feature will be skipped implicitly. If you want to explicitly skip tests that
-depend on a currently installed *feature*, use
+depend on a currently installed *feature*, use:
 
 ::
 
@@ -57,7 +55,9 @@ This will run only the tests that don't depend on the ``azure`` extra, even if
 that extra is currently installed. Note the distinction between the terms
 *feature* and *extra*. Every extra is a feature but there are features that are
 not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
-involving both the Parasol feature and the Azure extra, use the following::
+involving both the Parasol feature and the Azure extra, use the following
+
+::
 
     $ make test tests="-m 'not azure and not parasol' src"
 
@@ -84,6 +84,50 @@ For more information, see the `pytest documentation`_.
 
 .. _pytest documentation: https://docs.pytest.org/en/latest/
 
+
+
+.. _test_env_vars:
+
+Test environment variables
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++------------------------+----------------------------------------------------+
+| TOIL_TEST_TEMP         | An absolute path to a directory where Toil tests   |
+|                        | will write their temporary files. Defaults to the  |
+|                        | system's `standard temporary directory`_.          |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_INTEGRATIVE  | If ``True``, this allows the integration tests to  |
+|                        | run. Only valid when running the tests from the    |
+|                        | source directory via ``make test`` or              |
+|                        | ``make test_parallel``.                            |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_EXPERIMENTAL | If ``True``, this allows tests on experimental     |
+|                        | features to run (such as the Google and Azure) job |
+|                        | stores. Only valid when running tests from the     |
+|                        | source directory via ``make test`` or              |
+|                        | ``make test_parallel``.                            |
++------------------------+----------------------------------------------------+
+| TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepare_aws-ref`), which |
+|                        | is required to run the AWS tests.                  |
++------------------------+----------------------------------------------------+
+| TOIL_AZURE_KEYNAME     | An Azure account keyname (see                      |
+|                        | :ref:`prepare_azure-ref`),                         |
+|                        | which is required to run the AWS tests.            |
++------------------------+----------------------------------------------------+
+| TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |
+|                        | (see :ref:`runningGCE`), which is required to      |
+|                        | to run the Google Cloud tests.                     |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_QUICK        | If ``True``, long running tests are skipped.       |
++------------------------+----------------------------------------------------+
+
+.. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir
+
+.. admonition:: Partial install and failing tests.
+
+    Some tests may fail with an ImportError if the required extras are not installed
+    (:ref:`building_from_source-ref`). Install Toil with all of the extras
+    do prevent such errors.
 
 .. _quaySetup:
 

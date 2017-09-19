@@ -277,10 +277,8 @@ def needs_aws(test_item):
     """
     test_item = _mark_test('aws', test_item)
     keyName = os.getenv('TOIL_AWS_KEYNAME')
-    log.info('Checking keyname: %s', keyName)
     if not keyName or keyName is None:
         return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
-    log.info("NOPE %s" % keyName)
 
     try:
         # noinspection PyUnresolvedReferences
@@ -317,6 +315,9 @@ def needs_google(test_item):
     Use as a decorator before test classes or methods to only run them if Google Storage usable.
     """
     test_item = _mark_test('google', test_item)
+    projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
+    if not projectID or projectID is None:
+        return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
     try:
         # noinspection PyUnresolvedReferences
         from boto import config
@@ -337,6 +338,10 @@ def needs_azure(test_item):
     Use as a decorator before test classes or methods to only run them if Azure is usable.
     """
     test_item = _mark_test('azure', test_item)
+    keyName = os.getenv('TOIL_AZURE_KEYNAME')
+    if not keyName or keyName is None:
+        return unittest.skip("Set TOIL_AZURE_KEYNAME to include this test.")(test_item)
+
     try:
         # noinspection PyUnresolvedReferences
         import azure.storage
@@ -383,6 +388,7 @@ def needs_mesos(test_item):
     try:
         # noinspection PyUnresolvedReferences
         import mesos.native
+        import psutil
     except ImportError:
         return unittest.skip(
             "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
@@ -506,6 +512,17 @@ def integrative(test_item):
             'Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
             'or run `make integration_test_local` to run all integration tests.')(test_item)
 
+def slow(test_item):
+    """
+    Use this decorator to identify tests that are slow and not critical.
+    Skip them if TOIL_TEST_QUICK is true.
+    """
+    test_item = _mark_test('slow', test_item)
+    if not less_strict_bool(os.getenv('TOIL_TEST_QUICK')):
+        return test_item
+    else:
+        return unittest.skip(
+            'Skipped because TOIL_TEST_QUICK is "True"')(test_item)
 
 methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
 

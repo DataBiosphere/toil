@@ -14,7 +14,7 @@
 
 from __future__ import absolute_import, print_function
 from builtins import range
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 from uuid import uuid4
 
 import math
@@ -34,6 +34,7 @@ class MiscTests(ToilTest):
         super(MiscTests, self).setUp()
         self.testDir = self._createTempDir()
 
+    @slow
     def testGetSizeOfDirectoryWorks(self):
         from toil.common import getDirSizeRecursively
         # os.stat lists the number of 512-byte blocks used, but really, the file system is using

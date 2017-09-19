@@ -24,7 +24,7 @@ import toil.test.batchSystems.batchSystemTest as batchSystemTest
 
 from toil.job import Job
 from toil.job import PromisedRequirement
-from toil.test import needs_mesos
+from toil.test import needs_mesos, slow
 from toil.batchSystems.mesos.test import MesosTestSupport
 
 log = logging.getLogger(__name__)
@@ -42,6 +42,7 @@ class hidden(object):
         An abstract base class for testing Toil workflows with promised requirements.
         """
 
+        @slow
         def testConcurrencyDynamic(self):
             """
             Asserts that promised core resources are allocated properly using a dynamic Toil workflow
@@ -56,6 +57,7 @@ class hidden(object):
                 maxValue = max(values)
                 self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
 
+        @slow
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
@@ -126,6 +128,7 @@ class hidden(object):
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
 
+        @slow
         def testPromiseRequirementRaceStatic(self):
             """
             Checks for a race condition when using promised requirements and child job functions.
