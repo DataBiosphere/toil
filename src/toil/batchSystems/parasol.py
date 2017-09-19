@@ -17,6 +17,7 @@ from __future__ import division
 from builtins import next
 from builtins import str
 from past.utils import old_div
+from future.utils import listitems
 import logging
 import os
 import re
@@ -196,7 +197,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return super(ParasolBatchSystem, self).setEnv(name, value)
 
     def __environment(self):
-        return (k + '=' + (os.environ[k] if v is None else v) for k, v in self.environment.items())
+        return (k + '=' + (os.environ[k] if v is None else v) for k, v in listitems(self.environment))
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -220,7 +221,6 @@ class ParasolBatchSystem(BatchSystemSupport):
             if jobID in list(self.jobIDsToCpu.keys()):
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
 
-    queuePattern = re.compile(r'q\s+([0-9]+)')
     runningPattern = re.compile(r'r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+')
 
     def getJobIDsForResultsFile(self, resultsFile):
