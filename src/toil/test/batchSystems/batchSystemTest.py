@@ -49,6 +49,7 @@ from toil.test import (ToilTest,
                        needs_gridengine,
                        needs_slurm,
                        needs_torque,
+                       slow,
                        tempFileContaining)
 from future.utils import with_metaclass
 
@@ -280,6 +281,7 @@ class hidden(object):
         def tearDown(self):
             super(hidden.AbstractBatchSystemJobTest, self).tearDown()
 
+        @slow
         def testJobConcurrency(self):
             """
             Tests that the batch system is allocating core resources properly for concurrent tasks.
@@ -324,7 +326,7 @@ class hidden(object):
             self.assertTrue(locator.startswith('file:'))
             self.assertEqual(locator[len('file:'):], filePath)
 
-
+@slow
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
     """
@@ -379,7 +381,8 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     def createBatchSystem(self):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
-        
+
+@slow
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
     This test ensures that single machine batch system doesn't exceed the configured number of
@@ -552,7 +555,7 @@ class Service(Job.Service):
     def stop(self, fileStore):
         subprocess.check_call(self.cmd + ' -1', shell=True)
 
-
+@slow
 @needs_parasol
 class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
     """
@@ -629,6 +632,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         return [self._parseBatchString(line) for line in batchLines[1:] if line]
 
 
+@slow
 @needs_gridengine
 class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
@@ -647,6 +651,7 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         for f in glob('toil_job*.o*'):
             os.unlink(f)
 
+@slow
 @needs_slurm
 class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
@@ -665,6 +670,7 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         for f in glob('slurm-*.out'):
             os.unlink(f)
 
+@slow
 @needs_torque
 class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     """
@@ -697,6 +703,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     def getBatchSystemName(self):
         return "singleMachine"
 
+    @slow
     def testConcurrencyWithDisk(self):
         """
         Tests that the batch system is allocating disk resources properly
@@ -726,6 +733,7 @@ class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
         self.assertEqual(maxValue, 1)
 
     @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
+    @slow
     def testNestedResourcesDoNotBlock(self):
         """
         Resources are requested in the order Memory > Cpu > Disk.
@@ -812,6 +820,7 @@ def _resourceBlockTestAuxFn(outFile, sleepTime, writeVal):
     time.sleep(sleepTime)
 
 
+@slow
 @needs_mesos
 class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSupport):
     """

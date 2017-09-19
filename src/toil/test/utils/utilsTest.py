@@ -30,7 +30,7 @@ import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -87,6 +87,7 @@ class UtilsTest(ToilTest):
     @pytest.mark.timeout(1200)
     @needs_aws
     @integrative
+    @slow
     def testAWSProvisionerUtils(self):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         keyName = os.getenv('TOIL_AWS_KEYNAME')
@@ -185,6 +186,7 @@ class UtilsTest(ToilTest):
             except NameError:
                 pass
 
+    @slow
     def testUtilsSort(self):
         """
         Tests the status and stats commands of the toil command line utility using the
@@ -255,6 +257,7 @@ class UtilsTest(ToilTest):
         # Check we can run 'toil clean'
         system(self.cleanCommand)
 
+    @slow
     def testUtilsStatsSort(self):
         """
         Tests the stats commands on a complete run of the stats test.
@@ -293,6 +296,7 @@ class UtilsTest(ToilTest):
         options.logLevel = 'debug'
         Job.Runner.startToil(Job.wrapFn(printUnicodeCharacter), options)
 
+    @slow
     def testMultipleJobsPerWorkerStats(self):
         """
         Tests case where multiple jobs are run on 1 worker to insure that all jobs report back their data

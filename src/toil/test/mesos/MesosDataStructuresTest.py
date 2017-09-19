@@ -17,9 +17,10 @@ from builtins import range
 import uuid
 import random
 
-from toil.test import ToilTest, needs_mesos
+from toil.test import ToilTest, needs_mesos, slow
 
 
+@slow
 @needs_mesos
 class DataStructuresTest(ToilTest):
 

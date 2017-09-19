@@ -15,9 +15,10 @@
 from __future__ import absolute_import
 from toil.common import Toil, ToilContextManagerException
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 
 
+@slow
 class ToilContextManagerTest(ToilTest):
     def testContextManger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())

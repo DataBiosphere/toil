@@ -30,7 +30,7 @@ from toil.common import Toil
 from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +56,7 @@ class JobTest(ToilTest):
         with Toil(options) as toil:
             toil.start(Job.wrapJobFn(checkRequirements, memory='1000M'))
 
+    @slow
     def testStatic(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -139,7 +140,8 @@ class JobTest(ToilTest):
             self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
-            
+
+    @slow
     def testTrivialDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'
@@ -167,6 +169,7 @@ class JobTest(ToilTest):
             else:
                 self.fail()
 
+    @slow
     def testSiblingDAGConsistency(self):
         """
         Slightly more complex case. The stranded job's predecessors are siblings instead of
@@ -279,6 +282,7 @@ class JobTest(ToilTest):
                 and (fNode, tNode) not in childEdges and (fNode, tNode) not in followOnEdges):
                 checkFollowOnEdgeCycleDetection(fNode, tNode)
 
+    @slow
     def testNewCheckpointIsLeafVertexNonRootCase(self):
         """
         Test for issue #1465: Detection of checkpoint jobs that are not leaf vertices
@@ -300,6 +304,7 @@ class JobTest(ToilTest):
 
         self.runNewCheckpointIsLeafVertexTest(createWorkflow)
 
+    @slow
     def testNewCheckpointIsLeafVertexRootCase(self):
         """
         Test for issue #1466: Detection of checkpoint jobs that are not leaf vertices
@@ -385,6 +390,7 @@ class JobTest(ToilTest):
             except expectedException as ex:
                 logger.info("The expected exception was thrown: %s", repr(ex))
 
+    @slow
     def testEvaluatingRandomDAG(self):
         """
         Randomly generate test input then check that the job graph can be 

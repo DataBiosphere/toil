@@ -20,10 +20,11 @@ import os
 from six.moves import xrange
 
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.leader import FailedJobsException
 
+@slow
 class ResumabilityTest(ToilTest):
     """
     https://github.com/BD2KGenomics/toil/issues/808
