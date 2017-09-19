@@ -214,7 +214,7 @@ class ClusterScalerTest(ToilTest):
             map(lambda x: mock.addJob(jobShape=mediumNode), range(numJobs))
             
             #Add medium completed jobs
-            for i in xrange(1000):
+            for i in range(1000):
                 iJ = JobNode(jobStoreID=1,
                              requirements=dict(memory=random.choice(range(smallNode.memory, mediumNode.memory)),
                                                cores=mediumNode.cores,
