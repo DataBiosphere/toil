@@ -38,8 +38,9 @@ import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.draft2tool
-from cwltool.pathmapper import PathMapper, adjustDirObjs, adjustFileObjs, get_listing, MapperEnt, visit_class, normalizeFilesDirs
-from cwltool.process import shortname, fillInDefaults, compute_checksums, collectFilesAndDirs, stageFiles
+from cwltool.pathmapper import PathMapper, adjustDirObjs, adjustFileObjs, get_listing, MapperEnt, visit_class, normalizeFilesDirs, adjustFiles
+from cwltool.process import shortname, adjustFilesWithSecondary, fillInDefaults, compute_checksums, collectFilesAndDirs, stageFiles
+from cwltool.software_requirements import DependenciesConfiguration, get_container_from_software_requirements
 from cwltool.utils import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
@@ -831,6 +832,14 @@ def main(args=None, stdout=sys.stdout):
                     metavar=("VAR1 VAR2"),
                     default=("PATH",),
                     dest="preserve_environment")
+    # help="Dependency resolver configuration file describing how to adapt 'SoftwareRequirement' packages to current system."
+    parser.add_argument("--beta-dependency-resolvers-configuration", default=None)
+    # help="Defaut root directory used by dependency resolvers configuration."
+    parser.add_argument("--beta-dependencies-directory", default=None)
+    # help="Use biocontainers for tools without an explicitly annotated Docker container."
+    parser.add_argument("--beta-use-biocontainers", default=None, action="store_true")
+    # help="Short cut to use Conda to resolve 'SoftwareRequirement' packages."
+    parser.add_argument("--beta-conda-dependencies", default=None, action="store_true")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -853,22 +862,33 @@ def main(args=None, stdout=sys.stdout):
     outdir = os.path.abspath(options.outdir)
     fileindex = {}
     existing = {}
+    conf_file = getattr(options, "beta_dependency_resolvers_configuration", None)  # Text
+    use_conda_dependencies = getattr(options, "beta_conda_dependencies", None)  # Text
+
+    make_tool_kwds = {}
+
+    if conf_file or use_conda_dependencies:
+        dependencies_configuration = DependenciesConfiguration(options)  # type: DependenciesConfiguration
+        make_tool_kwds["job_script_provider"] = dependencies_configuration
+
+    options.default_container = None
+    make_tool_kwds["find_default_container"] = functools.partial(find_default_container, options)
 
     with Toil(options) as toil:
         if options.restart:
             outobj = toil.restart()
         else:
             useStrict = not options.not_strict
+            make_tool_kwds["hints"]= [{
+                                           "class": "ResourceRequirement",
+                                           "coresMin": toil.config.defaultCores,
+                                           "ramMin": toil.config.defaultMemory / (2**20),
+                                           "outdirMin": toil.config.defaultDisk / (2**20),
+                                           "tmpdirMin": 0
+                                      }]
             try:
                 t = cwltool.load_tool.load_tool(options.cwltool, toilMakeTool,
-                                                kwargs={
-                                                    "hints": [{
-                                                        "class": "ResourceRequirement",
-                                                        "coresMin": toil.config.defaultCores,
-                                                        "ramMin": toil.config.defaultMemory / (2**20),
-                                                        "outdirMin": toil.config.defaultDisk / (2**20),
-                                                        "tmpdirMin": 0
-                                                    }]},
+                                                kwargs=make_tool_kwds,
                                                 resolver=cwltool.resolver.tool_resolver,
                                                 strict=useStrict)
                 unsupportedRequirementsCheck(t.requirements)
@@ -948,3 +968,13 @@ def main(args=None, stdout=sys.stdout):
         stdout.write(json.dumps(outobj, indent=4))
 
     return 0
+
+
+def find_default_container(args, builder):
+    default_container = None
+    if args.default_container:
+        default_container = args.default_container
+    elif args.beta_use_biocontainers:
+        default_container = get_container_from_software_requirements(args, builder)
+
+    return default_container
