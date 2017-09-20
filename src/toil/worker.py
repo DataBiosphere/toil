@@ -98,11 +98,9 @@ def main():
     #Input args
     ##########################################
     
-    jobStoreLocator = sys.argv[1]
-    jobStoreID = sys.argv[2]
-    # we really want a list of job names but the ID will suffice if the job graph can't
-    # be loaded. If we can discover the name, we will replace this initial entry
-    listOfJobs = [jobStoreID]
+    listOfJobs = [sys.argv[1]]
+    jobStoreLocator = sys.argv[2]
+    jobStoreID = sys.argv[3]
     
     ##########################################
     #Load the jobStore/config file
