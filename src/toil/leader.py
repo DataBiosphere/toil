@@ -47,8 +47,7 @@ from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.provisioners.clusterScaler import ClusterScaler
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
-from toil.jobGraph import JobNode
-from toil.job import ServiceJobNode
+from toil.job import JobNode, ServiceJobNode
 from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
@@ -533,7 +532,7 @@ class Leader(object):
         Add a job to the queue of jobs
         """
         jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
-                                    self.jobStoreLocator, jobNode.jobStoreID))
+                                    jobNode.jobName, self.jobStoreLocator, jobNode.jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
         if jobNode.preemptable:
