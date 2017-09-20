@@ -81,6 +81,23 @@ class BinPackingTest(ToilTest):
                          [[Shape(wallTime=1000, memory=59000000000, cores=34, disk=98000000000, preemptable=True),
                            Shape(wallTime=2600, memory=60000000000, cores=36, disk=100000000000, preemptable=True)]])
 
+    def testPathologicalCase(self):
+        """Test a pathological case where only one node can be requested to fit months' worth of jobs.
+
+        If the reservation is extended to fit a long job, and the
+        bin-packer naively searches through all the reservation slices
+        to find the first slice that fits, it will happily assign the
+        first slot that fits the job, even if that slot occurs days in
+        the future.
+        """
+        # Add one job that partially fills an r3.8xlarge for 1000 hours
+        self.bpf.addJobShape(Shape(wallTime=3600000, memory=10000000000, cores=0, disk=10000000000, preemptable=False))
+        for _ in xrange(500):
+            # Add 500 CPU-hours worth of jobs that fill an r3.8xlarge
+            self.bpf.addJobShape(Shape(wallTime=3600, memory=26000000000, cores=32, disk=60000000000, preemptable=False))
+        # Hopefully we didn't assign just one node to cover all those jobs.
+        self.assertNotEqual(self.bpf.getRequiredNodes(), {self.r3_8xlarge: 1, self.c4_8xlarge: 0})
+
 class ClusterScalerTest(ToilTest):
     def testBinPacking(self):
         """
