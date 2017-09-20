@@ -143,7 +143,7 @@ class Leader(object):
         # Class used to create/destroy nodes in the cluster, may be None if
         # using a statically defined cluster
         self.provisioner = provisioner
-
+ 
         # Create cluster scaling thread if the provisioner is not None
         self.clusterScaler = None if self.provisioner is None else ClusterScaler(self.provisioner, self, self.config)
 
@@ -585,7 +585,6 @@ class Leader(object):
           If true, return just the number of preemptable jobs. If false, return
           just the number of non-preemptable jobs.
         """
-        #assert self.jobsIssued >= 0 and self._preemptableJobsIssued >= 0
         if preemptable is None:
             return len(self.jobBatchSystemIDToIssuedJob)
         elif preemptable:
@@ -594,14 +593,6 @@ class Leader(object):
             assert len(self.jobBatchSystemIDToIssuedJob) >= self.preemptableJobsIssued
             return len(self.jobBatchSystemIDToIssuedJob) - self.preemptableJobsIssued
 
-    def getNumberAndAvgRuntimeOfCurrentlyRunningJobs(self):
-        """
-        Returns a tuple (x, y) where x is number of currently running jobs and y
-        is the average number of seconds (as a float)
-        the jobs have been running for.
-        """
-        runningJobs = self.batchSystem.getRunningBatchJobIDs()
-        return len(runningJobs), 0 if len(runningJobs) == 0 else old_div(float(sum(runningJobs.values())),len(runningJobs))
 
     def getJobStoreID(self, jobBatchSystemID):
         """
@@ -630,6 +621,11 @@ class Leader(object):
                 self.serviceJobsIssued -= 1
 
         return jobNode
+    def getJobs(self, preemptable=None):
+        jobs = self.jobBatchSystemIDToIssuedJob.values()
+        if preemptable is not None:
+            jobs = [job for job in jobs if job.preemptable == preemptable]
+        return jobs
 
     def getJobIDs(self):
         """

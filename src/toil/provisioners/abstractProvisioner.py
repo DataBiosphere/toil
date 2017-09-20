@@ -26,10 +26,10 @@ from future.utils import with_metaclass
 log = logging.getLogger(__name__)
 
 
-Shape = namedtuple("_Shape", "wallTime memory cores disk")
+Shape = namedtuple("_Shape", "wallTime memory cores disk preemptable")
 """
 Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
-wall-time allocation. All attributes are integers.
+wall-time allocation.
 
 The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
 or 60 for Azure. FIXME: and for jobs?
@@ -88,7 +88,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             self.static[preemptable] = {node.privateIP : node for node in nodes}
 
     @abstractmethod
-    def addNodes(self, numNodes, preemptable):
+    def addNodes(self, nodeType, numNodes, preemptable):
         """
         Used to add worker nodes to the cluster
 
@@ -108,7 +108,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         raise NotImplementedError
 
     @abstractmethod
-    def getProvisionedWorkers(self, preemptable):
+    def getProvisionedWorkers(self, nodeType, preemptable):
         """
         Gets all nodes of the given preemptability from the provisioner.
         Includes both static and autoscaled nodes.
@@ -131,14 +131,13 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         raise NotImplementedError
 
     @abstractmethod
-    def getNodeShape(self, preemptable=False):
+    def getNodeShape(self, nodeType=None, preemptable=False):
         """
         The shape of a preemptable or non-preemptable node managed by this provisioner. The node
         shape defines key properties of a machine, such as its number of cores or the time
         between billing intervals.
 
-        :param preemptable: Whether to return the shape of preemptable nodes or that of
-               non-preemptable ones.
+        :param str nodeType: Node type name to return the shape of.
 
         :rtype: Shape
         """

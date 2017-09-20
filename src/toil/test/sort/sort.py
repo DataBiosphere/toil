@@ -32,7 +32,7 @@ defaultLineLen = 50
 sortMemory = '1000M'
 
 
-def setup(job, inputFile, N, downCheckpoints):
+def setup(job, inputFile, N, downCheckpoints, options):
     """
     Sets up the sort.
     Returns the FileID of the sorted file
@@ -41,10 +41,11 @@ def setup(job, inputFile, N, downCheckpoints):
     return job.addChildJobFn(down,
                              inputFile, N,
                              downCheckpoints,
+                             options = options,
                              memory='1000M').rv()
 
 
-def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
+def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
     """
     Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
@@ -71,9 +72,9 @@ def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
         # we communicate the dependency without hindering concurrency.
         return job.addFollowOnJobFn(up,
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, memory=sortMemory).rv(),
+                                                      checkpoint=downCheckpoints, options=options, memory=options.sortMemory).rv(),
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, memory=sortMemory).rv()).rv()
+                                                      checkpoint=downCheckpoints, options=options, memory=options.mergeMemory).rv(), options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
         job.fileStore.logToMaster("Sorting file: %s of size: %s"
@@ -84,7 +85,7 @@ def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
         return job.fileStore.writeGlobalFile(inputFile + '.sort')
 
 
-def up(job, inputFileID1, inputFileID2, memory=sortMemory):
+def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
     """
     Merges the two files and places them in the output.
     """
@@ -185,7 +186,19 @@ def main(options=None):
         parser.add_argument('--downCheckpoints', action='store_true',
                             help='If this option is set, the workflow will make checkpoints on its way through'
                                  'the recursive "down" part of the sort')
+        parser.add_argument("--sortMemory", dest="sortMemory",
+                        help="Memory for jobs that sort chunks of the file.",
+                        default=None)
+    
+        parser.add_argument("--mergeMemory", dest="mergeMemory",
+                        help="Memory for jobs that collate results.",
+                        default=None)
+
         options = parser.parse_args()
+    if not hasattr(options, "sortMemory") or not options.sortMemory:
+        options.sortMemory = sortMemory
+    if not hasattr(options, "mergeMemory") or not options.mergeMemory:
+        options.mergeMemory = sortMemory
 
     # do some input verification
     sortedFileName = options.outputFile or "sortedFile.txt"
@@ -215,10 +228,11 @@ def main(options=None):
         if not workflow.options.restart:
             sortFileURL = 'file://' + os.path.abspath(fileName)
             sortFileID = workflow.importFile(sortFileURL)
-            sortedFileID = workflow.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints,
-                                                        memory=sortMemory))
+            sortedFileID = workflow.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints, options=options,
+                                                    memory=sortMemory))
         else:
             sortedFileID = workflow.restart()
         workflow.exportFile(sortedFileID, sortedFileURL)
+
 if __name__ == '__main__':
     main()

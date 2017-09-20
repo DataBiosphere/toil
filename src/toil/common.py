@@ -85,14 +85,10 @@ class Config(object):
 
         #Autoscaling options
         self.provisioner = None
-        self.nodeType = None
+        self.nodeTypes = []
         self.nodeOptions = None
-        self.minNodes = 0
-        self.maxNodes = 10
-        self.preemptableNodeType = None
-        self.preemptableNodeOptions = None
-        self.minPreemptableNodes = 0
-        self.maxPreemptableNodes = 0
+        self.minNodes = None
+        self.maxNodes = []
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 30
@@ -169,6 +165,14 @@ class Config(object):
                 return Toil.buildLocator(name, os.path.abspath(rest))
             else:
                 return s
+        def parseStrList(s):
+            s = s.split(",")
+            s = [str(x) for x in s]
+            return s
+        def parseIntList(s):
+            s = s.split(",")
+            s = [int(x) for x in s]
+            return s
 
         #Core options
         setOption("jobStore", parsingFn=parseJobStore)
@@ -209,18 +213,14 @@ class Config(object):
 
         #Autoscaling options
         setOption("provisioner")
-        setOption("nodeType")
+        setOption("nodeTypes", parseStrList)
         setOption("nodeOptions")
-        setOption("minNodes", int)
-        setOption("maxNodes", int)
-        setOption("preemptableNodeType")
-        setOption("preemptableNodeOptions")
-        setOption("minPreemptableNodes", int)
-        setOption("maxPreemptableNodes", int)
+        setOption("minNodes", parseIntList)
+        setOption("maxNodes", parseIntList)
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-        setOption("preemptableCompensation", float)
+	setOption("preemptableCompensation", float)
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
@@ -352,32 +352,33 @@ def _addOptions(addGroupFn, config):
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
                      "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
 
-    for preemptable in (False, True):
-        def _addOptionFn(*name, **kwargs):
-            name = list(name)
-            if preemptable:
-                name.insert(-1, 'preemptable' )
-            name = ''.join((s[0].upper() + s[1:]) if i else s for i, s in enumerate(name))
-            terms = re.compile(r'\{([^{}]+)\}')
-            _help = kwargs.pop('help')
-            _help = ''.join((term.split('|') * 2)[int(preemptable)] for term in terms.split(_help))
-            addOptionFn('--' + name, dest=name,
-                        help=_help + ' The default is %s.' % getattr(config, name),
-                        **kwargs)
+    addOptionFn('--nodeTypes', default=None,
+                 help="List of node types separated by commas. The syntax for each node type "
+                      "depends on the provisioner used. For the cgcloud and AWS provisioners "
+                      "this is the name of an EC2 instance type, optionally followed by a "
+                      "colon and the price in dollars "
+                      "to bid for a spot instance of that type, for example 'c3.8xlarge:0.42'."
+                      "If no spot bid is specified, nodes of this type will be non-preemptable."
+                      "It is acceptable to specify an instance as both preemptable and "
+                      "non-preemptable, including it twice in the list. In that case,"
+                      "preemptable nodes of that type will be preferred when creating "
+                      "new nodes once the maximum number of preemptable-nodes has been"
+                      "reached.")
 
-        _addOptionFn('nodeType', metavar='TYPE',
-                     help="Node type for {non-|}preemptable nodes. The syntax depends on the "
-                          "provisioner used. For the cgcloud and AWS provisioners this is the name "
-                          "of an EC2 instance type{|, followed by a colon and the price in dollar "
-                          "to bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
-        _addOptionFn('nodeOptions', metavar='OPTIONS',
-                     help="Provisioning options for the {non-|}preemptable node type. The syntax "
-                          "depends on the provisioner used. Neither the CGCloud nor the AWS "
-                          "provisioner support any node options.")
-        for p, q in [('min', 'Minimum'), ('max', 'Maximum')]:
-            _addOptionFn(p, 'nodes', default=None, metavar='NUM',
-                         help=q + " number of {non-|}preemptable nodes in the cluster, if using "
-                                  "auto-scaling.")
+    addOptionFn('--nodeOptions', default=None,
+                 help="Options for provisioning the nodes. The syntax "
+                      "depends on the provisioner used. Neither the CGCloud nor the AWS "
+                      "provisioner support any node options.")
+
+    addOptionFn('--minNodes', default=None, 
+                 help="Mininum number of nodes of each type in the cluster, if using "
+                              "auto-scaling. This should be provided as a comma-separated "
+                              "list of the same length as the list of node types.")
+
+    addOptionFn('--maxNodes', default=None,
+                help="Maximum number of nodes of each type in the cluster, if using "
+                "autoscaling. This should be provided as a comma-separated list of the same "
+                "length as the list of node types.")
 
     # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,

@@ -76,8 +76,6 @@ class AWSProvisioner(AbstractProvisioner):
         :param batchSystem:
         """
         super(AWSProvisioner, self).__init__(config)
-        self.spotBid = None
-        self.instanceType = {}
         if config:
             self.instanceMetaData = get_instance_metadata()
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
@@ -87,15 +85,24 @@ class AWSProvisioner(AbstractProvisioner):
             self.tags = self._getLeader(self.clusterName).tags
             self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
-            assert config.preemptableNodeType or config.nodeType
-            if config.preemptableNodeType is not None:
-                nodeBidTuple = config.preemptableNodeType.split(':', 1)
-                preemptable = True
-                self.spotBid = nodeBidTuple[1]
-                self.instanceType[preemptable] = ec2_instance_types[nodeBidTuple[0]]
-            else:
-                preemptable = False
-                self.instanceType[preemptable] = ec2_instance_types[config.nodeType]
+            spotBids = []
+            self.nonPreemptableNodeTypes = []
+            self.preemptableNodeTypes = []
+            for nodeTypeStr in config.nodeTypes:
+                nodeBidTuple = nodeTypeStr.split(":")
+                if len(nodeBidTuple) == 2:
+                    #This is a preemptable node type, with a spot bid
+                    self.preemptableNodeTypes.append(nodeBidTuple[0])
+                    spotBids.append(nodeBidTuple[1])
+                else:
+                    self.nonPreemptableNodeTypes.append(nodeTypeStr)
+            self.preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True) for nodeType in self.preemptableNodeTypes]
+            self.nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False) for nodeType in self.nonPreemptableNodeTypes]
+
+            self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
+            self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
+            self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
+
         else:
             self.ctx = None
             self.clusterName = None
@@ -107,18 +114,18 @@ class AWSProvisioner(AbstractProvisioner):
             self.nodeStorage = None
         self.subnetID = None
 
-    def launchCluster(self, instanceType, keyName, clusterName, workers=0,
-                      spotBid=None, userTags=None, zone=None, vpcSubnet=None, leaderStorage=50, nodeStorage=50):
-        # only use this node storage value if launchCluster is called from cluster utility
+    def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName, 
+            clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None, vpcSubnet=None, leaderStorage=50, nodeStorage=50):
         if self.config is None:
             self.nodeStorage = nodeStorage
         if userTags is None:
             userTags = {}
         ctx = self._buildContext(clusterName=clusterName, zone=zone)
         profileARN = self._getProfileARN(ctx)
+        leaderInstanceType = ec2_instance_types[leaderNodeType]
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
-        bdm = self._getBlockDeviceMapping(ec2_instance_types[instanceType], rootVolSize=leaderStorage)
+        bdm = self._getBlockDeviceMapping(leaderInstanceType, rootVolSize=leaderStorage)
         self.masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
         leaderData = dict(role='leader',
                           image=applianceSelf(),
@@ -127,13 +134,13 @@ class AWSProvisioner(AbstractProvisioner):
                           args=leaderArgs.format(name=clusterName))
         userData = awsUserData.format(**leaderData)
         kwargs = {'key_name': keyName, 'security_group_ids': [sg.id for sg in sgs],
-                  'instance_type': instanceType,
+                  'instance_type': leaderNodeType,
                   'user_data': userData, 'block_device_map': bdm,
                   'instance_profile_arn': profileARN,
                   'placement': zone}
         if vpcSubnet:
             kwargs["subnet_id"] = vpcSubnet
-        if not spotBid:
+        if not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
             create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
                                       spec=kwargs, num_instances=1)
@@ -141,7 +148,7 @@ class AWSProvisioner(AbstractProvisioner):
             logger.info('Launching preemptable leader')
             # force generator to evaluate
             list(create_spot_instances(ec2=ctx.ec2,
-                                       price=spotBid,
+                                       price=leaderSpotBid,
                                        image_id=self._discoverAMI(ctx),
                                        tags={'clusterName': clusterName},
                                        spec=kwargs,
@@ -156,27 +163,41 @@ class AWSProvisioner(AbstractProvisioner):
         self.leaderIP = leader.private_ip_address
         self._addTags([leader], defaultTags)
         self.ctx = ctx
-        self.spotBid = spotBid
-        preemptable = True if spotBid else False
-        self.instanceType[preemptable] = ec2_instance_types[instanceType]
+        if spotBids:
+            self.spotBids = dict(zip(preemptableNodeTypes, spotBids))
         self.clusterName = clusterName
         self.keyName = keyName
         self.tags = leader.tags
         self.subnetID = leader.subnet_id
-        if workers:
-            # assuming that if the leader was launched without a spotbid then all workers
-            # will be non-preemptable
-            workersCreated = self.addNodes(workers, preemptable=bool(spotBid))
-            logger.info('Added %d workers with %d workers requested', workersCreated, workers)
+        # assuming that if the leader was launched without a spotbid then all workers
+        # will be non-preemptable
+        workersCreated = 0
+        for nodeType, workers in zip(nodeTypes, numWorkers):
+            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
+        for nodeType, workers in zip(preemptableNodeTypes, numPreemptableWorkers):
+            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True)
+        logger.info('Added %d workers', workersCreated)
 
         return leader
 
-    def getNodeShape(self, preemptable=False):
-        instanceType = self._getInstanceType(preemptable)
+    def getNodeShape(self, nodeType, preemptable=False):
+        instanceType = ec2_instance_types[nodeType]
+
+        disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
+        if disk == 0:
+            # This is an EBS-backed instance. We will use the root
+            # volume, so add the amount of EBS storage requested for
+            # the root volume
+            disk = self.nodeStorage * 2 ** 30
+
+        #Underestimate memory by 100M to prevent autoscaler from disagreeing with 
+        #mesos about whether a job can run on a particular node type
+        memory = (instanceType.memory - 0.1) * 2** 30
         return Shape(wallTime=60 * 60,
-                     memory=instanceType.memory * 2 ** 30,
+                     memory=memory,
                      cores=instanceType.cores,
-                     disk=(instanceType.disks * instanceType.disk_capacity * 2 ** 30))
+                     disk=disk,
+                     preemptable=preemptable)
 
     @staticmethod
     def retryPredicate(e):
@@ -188,7 +209,7 @@ class AWSProvisioner(AbstractProvisioner):
             return e.status == 400 and 'dependent object' in e.body
 
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
-        instances = cls._getNodesInCluster(ctx, clusterName, both=True)
+        instances = cls._getNodesInCluster(ctx, clusterName, nodeType=None, both=True)
         spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
         if spotIDs:
             ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
@@ -241,8 +262,8 @@ class AWSProvisioner(AbstractProvisioner):
     def terminateNodes(self, nodes):
         self._terminateNodes(nodes, self.ctx)
 
-    def addNodes(self, numNodes, preemptable):
-        instanceType = self._getInstanceType(preemptable)
+    def addNodes(self, nodeType, numNodes, preemptable):
+        instanceType = ec2_instance_types[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
@@ -276,10 +297,10 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.info('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = getSpotZone(self.spotBid, instanceType.name, self.ctx)
+                    kwargs['placement'] = getSpotZone(self.spotBids[nodeType], instanceType.name, self.ctx)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
-                                                                   price=self.spotBid,
+                                                                   price=self.spotBids[nodeType],
                                                                    image_id=self._discoverAMI(self.ctx),
                                                                    tags={'clusterName': self.clusterName},
                                                                    spec=kwargs,
@@ -300,8 +321,8 @@ class AWSProvisioner(AbstractProvisioner):
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
-    def getProvisionedWorkers(self, preemptable):
-        entireCluster = self._getNodesInCluster(ctx=self.ctx, clusterName=self.clusterName, both=True)
+    def getProvisionedWorkers(self, nodeType, preemptable):
+        entireCluster = self._getNodesInCluster(ctx=self.ctx, clusterName=self.clusterName, both=True, nodeType=nodeType)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP]
         logger.debug('All workers found in cluster: %s', workerInstances)
@@ -309,18 +330,9 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
-                     name=i.id, launchTime=i.launch_time)
+                     name=i.id, launchTime=i.launch_time, nodeType=i.instance_type, 
+                     preemptable=preemptable)
                 for i in workerInstances]
-
-    def _getInstanceType(self, preemptable):
-        try:
-            iType = self.instanceType[preemptable]
-        except KeyError:
-            # if (non)preemptable node type has not been explicitly defined default to the other
-            # node type. Can occur, for example, if user specifies only preemptable nodes but the spot bid was too low.
-            # in that situation we want on-demand nodes of the same size.
-            iType = self.instanceType[not preemptable]
-        return iType
 
     def _getClusterNameFromTags(self, md):
         """Retrieve cluster name from current instance tags
@@ -508,7 +520,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getLeader(cls, clusterName, wait=False, zone=None):
         ctx = cls._buildContext(clusterName=clusterName, zone=zone)
-        instances = cls._getNodesInCluster(ctx, clusterName, both=True)
+        instances = cls._getNodesInCluster(ctx, clusterName, nodeType=None, both=True)
         instances.sort(key=lambda x: x.launch_time)
         try:
             leader = instances[0]  # assume leader was launched first
@@ -722,7 +734,7 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm
 
     @classmethod
-    def _getNodesInCluster(cls, ctx, clusterName, preemptable=False, both=False):
+    def _getNodesInCluster(cls, ctx, clusterName, nodeType=None, preemptable=False, both=False):
         for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
             with attempt:
                 pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
@@ -731,6 +743,9 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
                                                                        'instance-state-name': 'running'})
+        if nodeType:
+            pendingInstances = [instance for instance in pendingInstances if instance.instance_type == nodeType]
+            runningInstances = [instance for instance in runningInstances if instance.instance_type == nodeType]
         instances = set(pendingInstances)
         if not preemptable and not both:
             return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is None]

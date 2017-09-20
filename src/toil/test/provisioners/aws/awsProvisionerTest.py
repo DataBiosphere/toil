@@ -62,7 +62,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         if args is None:
             args = []
         callCommand = ['toil', 'launch-cluster', '-p=aws', '--keyPairName=%s' % self.keyName,
-                       '--nodeType=%s' % self.instanceType, self.clusterName]
+                       '--leaderNodeType=%s' % self.leaderInstanceType, self.clusterName]
         callCommand = callCommand + args if args else callCommand
         subprocess.check_call(callCommand)
 
@@ -72,12 +72,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
-        self.instanceType = 'm3.large'
         self.keyName = os.getenv('TOIL_AWS_KEYNAME')
+        self.leaderInstanceType = 't2.medium'
+        self.instanceTypes = ["m3.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
-        self.numWorkers = 2
+        self.numWorkers = ['2']
         self.numSamples = 2
-        self.spotBid = '0.15'
+        self.spotBid = 0.15
 
     def setUp(self):
         super(AbstractAWSAutoscaleTest, self).setUp()
@@ -108,6 +109,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         raise NotImplementedError()
 
+
     @abstractmethod
     def _runScript(self, toilOptions):
         """
@@ -119,16 +121,11 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """
         raise NotImplementedError()
 
-    def _test(self, spotInstances=False, fulfillableBid=True):
+    def _test(self, preemptableJobs=False):
         """
         Does the work of the testing. Many features' test are thrown in here is no particular
         order
-
-        :param spotInstances: Specify if you want to use spotInstances
-        :param fulfillableBid: If false, the bid will never succeed. Used to test bid failure
         """
-        if not fulfillableBid:
-            self.spotBid = '0.01'
         from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
@@ -160,16 +157,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--logFile=/home/sort.log',
                        '--provisioner=aws']
 
-        if spotInstances:
-            toilOptions.extend([
-                '--preemptableNodeType=%s:%s' % (self.instanceType, self.spotBid),
-                # The RNASeq pipeline does not specify a preemptability requirement so we
-                # need to specify a default, otherwise jobs would never get scheduled.
-                '--defaultPreemptable',
-                '--maxPreemptableNodes=%s' % self.numWorkers])
-        else:
-            toilOptions.extend(['--nodeType=' + self.instanceType,
-                                '--maxNodes=%s' % self.numWorkers])
+        toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
+                            '--maxNodes=%s' % ",".join(self.numWorkers)])
+        if preemptableJobs:
+            toilOptions.extend(['--defaultPreemptable'])
 
         self._runScript(toilOptions)
 
@@ -250,12 +241,16 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     @integrative
     @needs_aws
     def testAutoScale(self):
-        self._test(spotInstances=False)
+        self.instanceTypes = ["m3.large"]
+        self.numWorkers = ['2']
+        self._test()
 
     @integrative
     @needs_aws
     def testSpotAutoScale(self):
-        self._test(spotInstances=True)
+        self.instanceTypes = ["m3.large:%f" % self.spotBid]
+        self.numWorkers = ['2']
+        self._test(preemptableJobs=True)
 
 
 @pytest.mark.timeout(1200)
@@ -269,7 +264,8 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
 
     def launchCluster(self):
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
-                                     '-w', '2', '--nodeStorage', str(self.requestedLeaderStorage)])
+                                     '--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers), '--nodeStorage', str(self.requestedLeaderStorage)])
+
         ctx = AWSProvisioner._buildContext(self.clusterName)
         nodes = AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)
         nodes.sort(key=lambda x: x.launch_time)
@@ -291,6 +287,40 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
+@pytest.mark.timeout(1200)
+class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
+
+    def __init__(self, name):
+        super(AWSAutoscaleTestMultipleNodeTypes, self).__init__(name)
+        self.clusterName = 'provisioner-test-' + str(uuid4())
+
+    def setUp(self):
+        super(AWSAutoscaleTestMultipleNodeTypes, self).setUp()
+        self.jobStore = 'aws:%s:autoscale-%s' % (self.awsRegion(), uuid4())
+
+    def _getScript(self):
+        sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
+        with open(sseKeyFile, 'w') as f:
+            f.write('01234567890123456789012345678901')
+        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
+        self.rsyncUtil(sseKeyFile, ':/home/keyFile')
+        os.unlink(sseKeyFile)
+
+    def _runScript(self, toilOptions):
+        #Set memory requirements so that sort jobs can be run
+        # on small instances, but merge jobs must be run on large
+        # instances
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=1.0G', '--mergeMemory=3.0G']
+        runCommand.extend(toilOptions)
+        runCommand.append('--sseKey=/home/keyFile')
+        self.sshUtil(runCommand)
+
+    @integrative
+    @needs_aws
+    def testAutoScale(self):
+        self.instanceTypes = ["t2.small", "m3.large"]
+        self.numWorkers = ['2','1']
+        self._test()
 
 @pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
@@ -304,7 +334,8 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
     def setUp(self):
         super(AWSRestartTest, self).setUp()
-        self.instanceType = 't2.micro'
+        self.instanceTypes = ['t2.micro']
+        self.numWorkers = ['1']
         self.scriptName = "/home/restartScript.py"
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
@@ -351,21 +382,21 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
     def testAutoScaledCluster(self):
         self._test()
 
-
 @pytest.mark.timeout(1200)
-class PremptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
+class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
-        super(PremptableDeficitCompensationTest, self).__init__(name)
+        super(PreemptableDeficitCompensationTest, self).__init__(name)
         self.clusterName = 'deficit-test-' + str(uuid4())
 
     def setUp(self):
-        super(PremptableDeficitCompensationTest, self).setUp()
-        self.instanceType = 'm3.large' # instance needs to be available on the spot market
+        super(PreemptableDeficitCompensationTest, self).setUp()
+        self.instanceTypes = ['m3.large:0.01', "m3.large"] # instance needs to be available on the spot market
+        self.numWorkers = ['1','1']
         self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
     def test(self):
-        self._test(spotInstances=True, fulfillableBid=False)
+        self._test(preemptableJobs=True)
 
     def _getScript(self):
         def userScript():
