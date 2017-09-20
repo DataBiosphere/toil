@@ -67,18 +67,18 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         """
         def getRunningJobIDs(self):
             times = {}
-
-            self.boss.sleepSeconds() 
             currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
             logger.debug("getRunningJobIDs current jobs are: " + str(currentjobs))
-            # Limit qstat to current username to avoid clogging the batch system on heavily loaded clusters
-            #job_user = os.environ.get('USER')
-            #process = subprocess.Popen(['qstat', '-u', job_user], stdout=subprocess.PIPE)
-            # -x shows exit status in PBSPro, not XML output like OSS PBS
+            # Skip running qstat if we don't have any current jobs
+            if not currentjobs:
+                return times
+            # Only query for job IDs to avoid clogging the batch system on heavily loaded clusters
+            # PBS plain qstat will return every running job on the system.
+            jobids = sorted(currentjobs.keys())
             if self._version == "pro":
-                process = subprocess.Popen(['qstat', '-x'], stdout=subprocess.PIPE)
+                process = subprocess.Popen(['qstat', '-x'] + jobids, stdout=subprocess.PIPE)
             elif self._version == "oss":
-                process = subprocess.Popen(['qstat'], stdout=subprocess.PIPE)
+                process = subprocess.Popen(['qstat'] + jobids, stdout=subprocess.PIPE)
 
 
             stdout, stderr = process.communicate()
@@ -107,7 +107,6 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
         def getUpdatedBatchJob(self, maxWait):
             try:
-                self.boss.sleepSeconds()
                 logger.debug("getUpdatedBatchJob: Job updates")
                 pbsJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
                 self.updatedJobsQueue.task_done()

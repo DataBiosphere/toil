@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 
 from builtins import str
+from datetime import datetime
 import os
 import shutil
 import logging
@@ -65,6 +66,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
             self.boss = boss
             self.allocatedCpus = dict()
             self.batchJobIDs = dict()
+            self._checkOnJobsCache = None
+            self._checkOnJobsTimestamp = None
 
         def getBatchSystemID(self, jobID):
             """
@@ -177,12 +180,16 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
             return True
 
         def checkOnJobs(self):
-            """
-            Check and update status of all running jobs.
-            """
-            activity = False
-            self.boss.sleepSeconds()
+            """Check and update status of all running jobs.
 
+            Respects statePollingWait and will return cached results if not within
+            time period to talk with the scheduler.
+            """
+            if (self._checkOnJobsTimestamp and
+                 (datetime.now() - self._checkOnJobsTimestamp).total_seconds() < self.boss.config.statePollingWait):
+                return self._checkOnJobsCache
+
+            activity = False
             for jobID in list(self.runningJobs):
                 batchJobID = self.getBatchSystemID(jobID)
                 status = self.getJobExitCode(batchJobID)
@@ -190,6 +197,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
                     activity = True
                     self.updatedJobsQueue.put((jobID, status))
                     self.forgetJob(jobID)
+            self._checkOnJobsCache = activity
+            self._checkOnJobsTimestamp = datetime.now()
             return activity
 
         def run(self):
@@ -296,6 +305,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         self.worker.start()
         self.localBatch = registry.batchSystemFactoryFor(registry.defaultBatchSystem())()(config, maxCores,
                                                                                           maxMemory, maxDisk)
+        self._getRunningBatchJobIDsTimestamp = None
+        self._getRunningBatchJobIDsCache = {}
 
     def __des__(self):
         # Closes the file handle associated with the results file.
@@ -351,8 +362,19 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         return list(self.localBatch.getIssuedBatchJobIDs()) + list(self.currentJobs)
 
     def getRunningBatchJobIDs(self):
+        """Retrieve running job IDs from local and batch scheduler.
+
+        Respects statePollingWait and will return cached results if not within
+        time period to talk with the scheduler.
+        """
         localIds = self.localBatch.getRunningBatchJobIDs()
-        batchIds = self.worker.getRunningJobIDs()
+        if (self._getRunningBatchJobIDsTimestamp and
+             (datetime.now() - self._getRunningBatchJobIDsTimestamp).total_seconds() < self.config.statePollingWait):
+            batchIds = self._getRunningBatchJobIDsCache
+        else:
+            batchIds = self.worker.getRunningJobIDs()
+            self._getRunningBatchJobIDsCache = batchIds
+            self._getRunningBatchJobIDsTimestamp = datetime.now()
         batchIds.update(localIds)
         return batchIds
 
@@ -394,13 +416,10 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
     def getRescueBatchJobFrequency(cls):
         return 30 * 60 # Half an hour
 
-    def sleepSeconds(self, sleeptime=None):
+    def sleepSeconds(self, sleeptime=1):
         """ Helper function to drop on all state-querying functions to avoid over-querying.
         """
-        sleeptime = sleeptime or self.config.statePollingWait
-        logger.debug('Querying job state, waiting for %s seconds', sleeptime)
         time.sleep(sleeptime)
-        
         return sleeptime
 
     @abstractclassmethod
