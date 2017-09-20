@@ -95,8 +95,9 @@ class BinPackedFit(object):
     :param Shape nodeShapes: A list of possible types of nodes that can be launched.
 
     """
-    def __init__(self, nodeShapes):
+    def __init__(self, nodeShapes, targetTime=3600):
         self.nodeShapes = nodeShapes
+        self.targetTime = targetTime
         # Prioritize preemptable node shapes with the lowest memory
         self.nodeShapes.sort(key=lambda nS: not nS.preemptable)
         self.nodeShapes.sort(key=lambda nS: nS.memory)
@@ -130,8 +131,10 @@ class BinPackedFit(object):
                 startingReservation = nodeReservation
                 # current end of the slices we can fit in so far
                 endingReservation = startingReservation
-                # amount of the job covered by slices
+                # the amount of runtime of the job currently covered by slices
                 t = 0
+                # total time from when the instance started up to startingReservation
+                startingReservationTime = 0
 
                 while True:
                     # Considering a new ending reservation.
@@ -156,9 +159,13 @@ class BinPackedFit(object):
                         elif endingReservation.nReservation == None and startingReservation == nodeReservation:
                             # Extend the node reservation to accommodate jobShape
                             endingReservation.nReservation = NodeReservation(nodeShape)
-                    else: # Does not fit, reset
-                        startingReservation = endingReservation.nReservation
-                        t = 0
+                    else:
+                        if startingReservationTime + t <= self.targetTime:
+                            startingReservation = endingReservation.nReservation
+                            startingReservationTime += t + endingReservation.shape.wallTime
+                            t = 0
+                        else:
+                            break
 
                     endingReservation = endingReservation.nReservation
                     if endingReservation is None:
