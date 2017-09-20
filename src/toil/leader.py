@@ -47,8 +47,7 @@ from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.provisioners.clusterScaler import ClusterScaler
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
-from toil.jobGraph import JobNode
-from toil.job import ServiceJobNode
+from toil.job import JobNode, ServiceJobNode
 from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
