@@ -30,7 +30,11 @@ from bd2k.util.objects import abstractclassmethod
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.batchSystems import registry
-from toil.cwl import cwltoil
+try:
+    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+except ImportError:
+    # CWL extra not installed
+    CWL_INTERNAL_JOBS = ()
 
 logger = logging.getLogger(__name__)
 
@@ -311,7 +315,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
 
     def issueBatchJob(self, jobNode):
         # Avoid submitting internal jobs to the batch queue, handle locally
-        if jobNode.jobName.startswith(cwltoil.CWL_INTERNAL_JOBS):
+        if jobNode.jobName.startswith(CWL_INTERNAL_JOBS):
             jobID = self.localBatch.issueBatchJob(jobNode)
         else:
             self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
