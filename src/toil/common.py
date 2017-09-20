@@ -422,7 +422,8 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
                 help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
     addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
-                help=("The minimum number of seconds to wait before retrieving the current job state, in seconds"))
+                help=("Time, in seconds, to wait before doing a scheduler query for job state. "
+                      "Return cached results if within the waiting period."))
 
     #
     #Resource requirements
