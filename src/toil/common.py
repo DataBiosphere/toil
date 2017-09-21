@@ -222,7 +222,7 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-	    setOption("preemptableCompensation", float)
+        setOption("preemptableCompensation", float)
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
