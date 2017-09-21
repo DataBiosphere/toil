@@ -111,7 +111,6 @@ class FileStore(with_metaclass(ABCMeta, object)):
         self.jobStore = jobStore
         self.jobGraph = jobGraph
         self.localTempDir = os.path.abspath(localTempDir)
-        self.workFlowDir = os.path.dirname(self.localTempDir)
         self.jobName = self.jobGraph.command.split()[1]
         self.inputBlockFn = inputBlockFn
         self.loggingMessages = []
@@ -1612,8 +1611,8 @@ class NonCachingFileStore(FileStore):
     def open(self, job):
         jobReqs = job.disk
         startingDir = os.getcwd()
+        self.findAndHandleDeadJobs(self.localTempDir)
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
-        self.findAndHandleDeadJobs(self.workFlowDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
