@@ -114,10 +114,9 @@ class ClusterScalerTest(ToilTest):
                                              cores=random.choice(list(range(1, x.cores + 1))),
                                              disk=random.choice(list(range(1, x.disk + 1))),
                                              preemptable=False)
-            randomJobShapes = []
-            for nodeShape in nodeShapes:
-                numberOfJobs = random.choice(list(range(1, 1000)))
-                randomJobShapes.extend([randomJobShape(nodeShape) for i in range(numberOfJobs)])
+
+            numberOfJobs = random.choice(list(range(1, 1000)))
+            randomJobShapes = [randomJobShape(random.choice(nodeShapes)) for i in range(numberOfJobs)]
             numberOfBins = binPacking(jobShapes=randomJobShapes, nodeShapes=nodeShapes)
             logger.info("Made the following node reservations: %s" % numberOfBins)
 
