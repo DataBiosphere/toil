@@ -45,6 +45,7 @@ from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromO
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
+from toil.batchSystems.options import setOptions as setBatchOptions
 
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,7 @@ class Config(object):
 
         #Batch system options
         setOption("batchSystem")
+        setBatchOptions(self, setOption)
         setOption("disableHotDeployment")
         setOption("scale", float, fC(0.0))
         setOption("mesosMasterAddress")
@@ -220,7 +222,7 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-	setOption("preemptableCompensation", float)
+	    setOption("preemptableCompensation", float)
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
