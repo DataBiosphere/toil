@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from builtins import str
+from past.builtins import str as oldstr
 from builtins import next
 from builtins import range
 from past.utils import old_div
@@ -27,17 +28,13 @@ import logging
 import types
 
 import errno
-from contextlib import closing
 from ssl import SSLError
-from multiprocessing import cpu_count
 
 # Python 3 compatibility imports
 import itertools
 
 
-import boto
 from bd2k.util.exceptions import panic
-from concurrent.futures import ThreadPoolExecutor
 from six import iteritems
 
 from bd2k.util.retry import retry
@@ -46,6 +43,7 @@ from boto.exception import (SDBResponseError,
                             S3ResponseError,
                             S3CreateError,
                             S3CopyError)
+import boto3
 
 log = logging.getLogger(__name__)
 
@@ -257,83 +255,57 @@ def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSiz
     return version
 
 
-def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
+def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName, sseAlgorithm=None, sseKey=None,
+                     copySourceSseAlgorithm=None, copySourceSseKey=None):
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
     key will be created. If the destination bucket does not exist an error will be raised.
 
-    :param boto.s3.key.Key srcKey: The source key to be copied from.
+    :param str srcBucketName: The name of the bucket to be copied from.
+    :param str srcKeyName: The name of the key to be copied from.
+    :param str srcKeyVersion: The version of the key to be copied from.
     :param str dstBucketName: The name of the destination bucket for the copy.
     :param str dstKeyName: The name of the destination key that will be created or overwritten.
-    :param int partSize: The size of each individual part, must be >= 5 MiB but large enough to
-           not exceed 10k parts for the whole file
-    :param dict headers: Any headers that should be passed.
+    :param str sseAlgorithm: Server-side encryption algorithm for the destination.
+    :param str sseKey: Server-side encryption key for the destination.
+    :param str copySourceSseAlgorithm: Server-side encryption algorithm for the source.
+    :param str copySourceSseKey: Server-side encryption key for the source.
 
-    :rtype: boto.s3.multipart.CompletedMultiPartUpload
-    :return: An object representing the completed upload.
+    :rtype: str
+    :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
+    s3 = boto3.resource('s3')
+    dstBucket = s3.Bucket(oldstr(dstBucketName))
+    dstObject = dstBucket.Object(oldstr(dstKeyName))
+    copySource = {'Bucket': oldstr(srcBucketName), 'Key': oldstr(srcKeyName)}
+    if srcKeyVersion is not None:
+        copySource['VersionId'] = oldstr(srcKeyVersion)
 
-    def copyPart(partIndex):
-        if exceptions:
-            return None
-        try:
-            for attempt in retry_s3():
-                with attempt:
-                    start = partIndex * partSize
-                    end = min(start + partSize, totalSize)
-                    part = upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
-                                                     src_key_name=bytes(srcKey.name),
-                                                     src_version_id=srcKey.version_id,
-                                                     # S3 part numbers are 1-based
-                                                     part_num=partIndex + 1,
-                                                     # S3 range intervals are closed at the end
-                                                     start=start, end=end - 1,
-                                                     headers=headers)
-        except Exception as e:
-            if len(exceptions) < 5:
-                exceptions.append(e)
-                log.error('Failed to copy part number %d:', partIndex, exc_info=True)
-            else:
-                log.warn('Also failed to copy part number %d due to %s.', partIndex, e)
-            return None
-        else:
-            log.debug('Successfully copied part %d of %d.', partIndex, totalParts)
-            # noinspection PyUnboundLocalVariable
-            return part
+    # The boto3 functions don't allow passing parameters as None to
+    # indicate they weren't provided. So we have to do a bit of work
+    # to ensure we only provide the parameters when they are actually
+    # required.
+    destEncryptionArgs = {}
+    if sseKey is not None:
+        destEncryptionArgs.update({'SSECustomerAlgorithm': sseAlgorithm,
+                                   'SSECustomerKey': sseKey})
+    copyEncryptionArgs = {}
+    if copySourceSseKey is not None:
+        copyEncryptionArgs.update({'CopySourceSSECustomerAlgorithm': copySourceSseAlgorithm,
+                                   'CopySourceSSECustomerKey': copySourceSseKey})
+    copyEncryptionArgs.update(destEncryptionArgs)
 
-    totalSize = srcKey.size
-    totalParts = old_div((totalSize + partSize - 1), partSize)
-    exceptions = []
-    # We need a location-agnostic connection to S3 so we can't use the one that we
-    # normally use for interacting with the job store bucket.
-    with closing(boto.connect_s3()) as s3:
-        for attempt in retry_s3():
-            with attempt:
-                dstBucket = s3.get_bucket(dstBucketName)
-                upload = dstBucket.initiate_multipart_upload(bytes(dstKeyName), headers=headers)
-        log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
-                 srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
-        try:
-            # We can oversubscribe cores by at least a factor of 16 since each copy task just
-            # blocks, waiting on the server. Limit # of threads to 128, since threads aren't
-            # exactly free either. Lastly, we don't need more threads than we have parts.
-            with ThreadPoolExecutor(max_workers=min(cpu_count() * 16, totalParts, 128)) as executor:
-                parts = list(executor.map(copyPart, range(0, totalParts)))
-                if exceptions:
-                    raise RuntimeError('Failed to copy at least %d part(s)' % len(exceptions))
-                assert len([_f for _f in parts if _f]) == totalParts
-        except:
-            with panic(log=log):
-                upload.cancel_upload()
-        else:
-            for attempt in retry_s3():
-                with attempt:
-                    completed = upload.complete_upload()
-                    log.info("Completed copy from 's3://%s/%s' to 's3://%s/%s'.",
-                             srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
-                    return completed
+    dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
 
+    # Unfortunately, boto3's managed copy doesn't return the version
+    # that it actually copied to. So we have to check immediately
+    # after, leaving open the possibility that it may have been
+    # modified again in the few seconds since the copy finished. There
+    # isn't much we can do about it.
+    info = boto3.client('s3').head_object(Bucket=dstObject.bucket_name, Key=dstObject.key,
+                                          **destEncryptionArgs)
+    return info.get('VersionId', None)
 
 def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
                                replace=True, expected_value=None):
