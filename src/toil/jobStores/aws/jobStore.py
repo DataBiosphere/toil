@@ -35,7 +35,7 @@ import urllib.parse
 import urllib.request, urllib.parse, urllib.error
 
 # Python 3 compatibility imports
-from six.moves import xrange, StringIO, reprlib
+from six.moves import StringIO, reprlib
 from six import iteritems
 
 from bd2k.util import strict_bool
@@ -46,6 +46,7 @@ import boto.sdb
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 
+from toil.fileStore import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              ConcurrentFileModificationException,
@@ -382,6 +383,7 @@ class AWSJobStore(AbstractJobStore):
     def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, AWSJobStore):
             srcKey = self._getKeyForUrl(url, existing=True)
+            size = srcKey.size
             try:
                 if sharedFileName is None:
                     info = self.FileInfo.create(srcKey.name)
@@ -395,7 +397,7 @@ class AWSJobStore(AbstractJobStore):
                 info.save()
             finally:
                 srcKey.bucket.connection.close()
-            return info.fileID if sharedFileName is None else None
+            return FileID(info.fileID, size) if sharedFileName is None else None
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url,
                                                         sharedFileName=sharedFileName)

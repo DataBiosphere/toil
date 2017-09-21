@@ -40,7 +40,7 @@ from unittest import skip
 
 # Python 3 compatibility imports
 from six.moves.queue import Queue
-from six.moves import xrange, socketserver as SocketServer, SimpleHTTPServer
+from six.moves import SimpleHTTPServer
 from six import iteritems
 import six.moves.urllib.parse as urlparse
 from six.moves.urllib.request import urlopen, Request
@@ -52,9 +52,9 @@ from bd2k.util.exceptions import panic
 from mock import patch
 
 from toil.common import Config, Toil
+from toil.fileStore import FileID
 from toil.job import Job, JobNode
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchJobException,
+from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
 from toil.jobStores.aws.utils import region_to_bucket_location
 from toil.jobStores.fileJobStore import FileJobStore
@@ -465,6 +465,7 @@ class AbstractJobStoreTest(object):
                 srcUrl, srcMd5 = other._prepareTestFile(store, size)
                 # Import into job store under test
                 jobStoreFileID = self.master.importFile(srcUrl)
+                self.assertTrue(isinstance(jobStoreFileID, FileID))
                 with self.master.readFileStream(jobStoreFileID) as f:
                     fileMD5 = hashlib.md5(f.read()).hexdigest()
                 self.assertEqual(fileMD5, srcMd5)
