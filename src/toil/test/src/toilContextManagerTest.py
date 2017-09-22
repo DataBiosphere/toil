@@ -13,6 +13,8 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+import os
+import tempfile
 from toil.common import Toil, ToilContextManagerException
 from toil.job import Job
 from toil.test import ToilTest, slow
@@ -32,6 +34,25 @@ class ToilContextManagerTest(ToilTest):
         toil = Toil(options)
         self.assertRaises(ToilContextManagerException, toil.start, HelloWorld())
 
+    def testExportAfterFailedExport(self):
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        exportLocation = tempfile.mkstemp()
+        try:
+            with Toil(options) as toil:
+                _ = toil.start(HelloWorld())
+                # oh no, an error! :(
+                raise RuntimeError("we died after workflow completion but before our export finished")
+        except:
+            pass
+        options.restart = True
+        with Toil(options) as toil:
+            fileID = toil.restart()
+            # Hopefully the error didn't cause us to lose all our work!
+            toil.exportFile(fileID, 'file://' + exportLocation)
+        with open(exportLocation) as f:
+            # The file should have all our content
+            self.assertEquals(f.read(), "Hello, World!")
+        os.remove(exportLocation)
 
 class HelloWorld(Job):
     def __init__(self):
@@ -39,7 +60,7 @@ class HelloWorld(Job):
 
     def run(self, fileStore):
         fileID = self.addChildJobFn(childFn, cores=1, memory='1M', disk='1M').rv()
-        self.addFollowOn(FollowOn(fileID))
+        return self.addFollowOn(FollowOn(fileID)).rv()
 
 
 def childFn(job):
@@ -58,4 +79,4 @@ class FollowOn(Job):
         tempFilePath = "/".join([tempDir, 'LocalCopy'])
         with fileStore.readGlobalFileStream(self.fileId) as globalFile:
             with open(tempFilePath, "w") as localFile:
-                localFile.write(globalFile.read())
+                return localFile.write(globalFile.read())
