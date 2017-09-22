@@ -184,7 +184,7 @@ class FileJobStore(AbstractJobStore):
         srcPath = self._extractPathFromUrl(srcURL)
         if self.linkImports:
             try:
-                os.link(os.path.realpath(srcPath), destPath)
+                os.symlink(os.path.realpath(srcPath), destPath)
             except OSError:
                 shutil.copyfile(srcPath, destPath)
             else:
