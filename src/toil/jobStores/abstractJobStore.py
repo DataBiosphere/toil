@@ -208,6 +208,16 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         self.setRootJob(rootJob.jobStoreID)
         return rootJob
 
+    def getRootJobReturnValue(self):
+        """
+        Parse the return value from the root job.
+
+        Raises an exception if the root job hasn't fulfilled its promise yet.
+        """
+        # Parse out the return value from the root job
+        with self.readSharedFileStream('rootJobReturnValue') as fH:
+            return pickle.load(fH)
+
     @property
     @memoize
     def _jobStoreClasses(self):

@@ -14,7 +14,7 @@
 
 from __future__ import absolute_import
 import os
-import tempfile
+from toil.lib.bioio import getTempFile
 from toil.common import Toil, ToilContextManagerException
 from toil.job import Job
 from toil.test import ToilTest, slow
@@ -22,6 +22,12 @@ from toil.test import ToilTest, slow
 
 @slow
 class ToilContextManagerTest(ToilTest):
+    def setUp(self):
+        self.exportPath = getTempFile()
+
+    def tearDown(self):
+        os.remove(self.exportPath)
+
     def testContextManger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = 'INFO'
@@ -36,23 +42,23 @@ class ToilContextManagerTest(ToilTest):
 
     def testExportAfterFailedExport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        exportLocation = tempfile.mkstemp()
         try:
             with Toil(options) as toil:
                 _ = toil.start(HelloWorld())
                 # oh no, an error! :(
                 raise RuntimeError("we died after workflow completion but before our export finished")
-        except:
+        except RuntimeError:
             pass
+
         options.restart = True
         with Toil(options) as toil:
             fileID = toil.restart()
+            print fileID
             # Hopefully the error didn't cause us to lose all our work!
-            toil.exportFile(fileID, 'file://' + exportLocation)
-        with open(exportLocation) as f:
+            toil.exportFile(fileID, 'file://' + self.exportPath)
+        with open(self.exportPath) as f:
             # The file should have all our content
             self.assertEquals(f.read(), "Hello, World!")
-        os.remove(exportLocation)
 
 class HelloWorld(Job):
     def __init__(self):
@@ -79,4 +85,5 @@ class FollowOn(Job):
         tempFilePath = "/".join([tempDir, 'LocalCopy'])
         with fileStore.readGlobalFileStream(self.fileId) as globalFile:
             with open(tempFilePath, "w") as localFile:
-                return localFile.write(globalFile.read())
+                localFile.write(globalFile.read())
+        return self.fileId
