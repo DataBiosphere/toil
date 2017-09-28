@@ -69,8 +69,10 @@ class AsyncJobStoreWrite(object):
     def blockUntilSync(self):
         pass
 
-def main():
+def main(argv=None):
     logging.basicConfig()
+    if argv is None:
+        argv = sys.argv
 
     ##########################################
     #Import necessary modules 
@@ -98,9 +100,9 @@ def main():
     #Input args
     ##########################################
     
-    listOfJobs = [sys.argv[1]]
-    jobStoreLocator = sys.argv[2]
-    jobStoreID = sys.argv[3]
+    listOfJobs = [argv[1]]
+    jobStoreLocator = argv[2]
+    jobStoreID = argv[3]
     
     ##########################################
     #Load the jobStore/config file

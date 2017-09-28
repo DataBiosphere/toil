@@ -32,10 +32,10 @@ from threading import Lock, Condition
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
-from six.moves import xrange
 
 import toil
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, InsufficientSystemResources
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil import worker as toil_worker
 
 log = logging.getLogger(__name__)
 
@@ -85,6 +85,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # (scale > 1).
         self.scale = config.scale
         # Number of worker threads that will be started
+        self.forkless = config.forkless
         self.numWorkers = int(old_div(self.maxCores, self.minCores))
         # A counter to generate job IDs and a lock to guard it
         self.jobIndex = 0
@@ -122,19 +123,24 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A pool representing the available space in bytes
         self.disk = ResourcePool(self.maxDisk, 'disk', self.acquisitionTimeout)
 
-        log.debug('Setting up the thread pool with %i workers, '
-                 'given a minimum CPU fraction of %f '
-                 'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
-        for i in range(self.numWorkers):
-            worker = Thread(target=self.worker, args=(self.inputQueue,))
-            self.workerThreads.append(worker)
-            worker.start()
+        if not self.forkless:
+            log.debug('Setting up the thread pool with %i workers, '
+                     'given a minimum CPU fraction of %f '
+                     'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
+            for i in range(self.numWorkers):
+                worker = Thread(target=self.worker, args=(self.inputQueue,))
+                self.workerThreads.append(worker)
+                worker.start()
+        else:
+            log.debug('Started in forkless mode.')
 
     # Note: The input queue is passed as an argument because the corresponding attribute is reset
     # to None in shutdown()
 
     def worker(self, inputQueue):
         while True:
+            if self.forkless and inputQueue.empty():
+                return
             args = inputQueue.get()
             if args is None:
                 log.debug('Received queue sentinel.')
@@ -151,28 +157,52 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                   jobCores)
                         with self.coreFractions.acquisitionOf(coreFractions):
                             with self.disk.acquisitionOf(jobDisk):
-                                startTime = time.time() #Time job is started
-                                with self.popenLock:
-                                    popen = subprocess.Popen(jobCommand,
+                                startTime = time.time()  # Time job is started
+                                if "_toil_worker" in jobCommand:
+                                    info = Info(time.time(), None,
+                                                killIntended=False)
+                                    self.runningJobs[jobID] = info
+                                    statusCode = 0
+                                    statusCode = toil_worker.main(
+                                            jobCommand.split())
+                                    if statusCode is None:
+                                        statusCode = 0
+                                    if 0 != statusCode:
+                                        if statusCode != -9 or \
+                                                not info.killIntended:
+                                            log.error(
+                                                    "Got exit code %i "
+                                                    "(indicating failure) "
+                                                    "from job %s.", statusCode,
+                                                    self.jobs[jobID])
+                                    self.runningJobs.pop(jobID)
+                                    if statusCode is not None \
+                                            and not info.killIntended:
+                                        self.outputQueue.put(
+                                                (jobID, statusCode, time.time()
+                                                    - startTime))
+                                else:
+                                    with self.popenLock:
+                                        popen = subprocess.Popen(jobCommand,
                                                              shell=True,
                                                              env=dict(os.environ, **environment))
-                                statusCode = None
-                                info = Info(time.time(), popen, killIntended=False)
-                                try:
-                                    self.runningJobs[jobID] = info
+                                    statusCode = None
+                                    info = Info(time.time(), popen, killIntended=False)
                                     try:
-                                        statusCode = popen.wait()
-                                        if 0 != statusCode:
-                                            if statusCode != -9 or not info.killIntended:
-                                                log.error("Got exit code %i (indicating failure) "
-                                                          "from job %s.", statusCode,
-                                                          self.jobs[jobID])
+                                        self.runningJobs[jobID] = info
+                                        try:
+                                            statusCode = popen.wait()
+                                            if 0 != statusCode:
+                                                if statusCode != -9 or not info.killIntended:
+                                                    log.error("Got exit code %i (indicating failure) "
+                                                              "from job %s.", statusCode,
+                                                              self.jobs[jobID])
+                                        finally:
+                                            self.runningJobs.pop(jobID)
                                     finally:
-                                        self.runningJobs.pop(jobID)
-                                finally:
-                                    if statusCode is not None and not info.killIntended:
-                                        self.outputQueue.put((jobID, statusCode,
-                                                              time.time() - startTime))
+                                        if statusCode is not None and not info.killIntended:
+                                            self.outputQueue.put((jobID, statusCode,
+                                                                  time.time() - startTime))
                 except ResourcePool.AcquisitionTimeoutException as e:
                     log.debug('Could not acquire enough (%s) to run job (%s). Requested: (%s), '
                               'Avaliable: %s. Sleeping for 10s.', e.resource, jobID, e.requested,
@@ -214,6 +244,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.jobs[jobID] = jobNode.command
         self.inputQueue.put((jobNode.command, jobID, cores, jobNode.memory,
                              jobNode.disk, self.environment.copy()))
+        if self.forkless:  # then run immediately, blocking for return
+            self.worker(self.inputQueue)
         return jobID
 
     def killBatchJobs(self, jobIDs):
