@@ -49,7 +49,7 @@ class CWLTest(ToilTest):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
         st = StringIO()
-        cwltoil.main(['--forkless', '--outdir', outDir,
+        cwltoil.main(['--debug-forkless', '--outdir', outDir,
                             os.path.join(rootDir, cwlfile),
                             os.path.join(rootDir, jobfile)],
                      stdout=st)
