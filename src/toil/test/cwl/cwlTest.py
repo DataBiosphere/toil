@@ -13,15 +13,12 @@
 # limitations under the License.
 from __future__ import absolute_import
 from __future__ import print_function
-from future import standard_library
 import json
 import os
 import subprocess
 import re
 import shutil
-from future.moves.urllib.parse import urlparse, urlencode
-from future.moves.urllib.request import urlopen, Request, urlretrieve
-from future.moves.urllib.error import HTTPError
+from future.moves.urllib.request import urlretrieve
 import zipfile
 
 # Python 3 compatibility imports
@@ -29,6 +26,7 @@ from six.moves import StringIO
 from six import u as str
 
 from toil.test import ToilTest, needs_cwl, slow
+
 
 @needs_cwl
 class CWLTest(ToilTest):
@@ -38,6 +36,20 @@ class CWLTest(ToilTest):
         rootDir = self._projectRootPath()
         st = StringIO()
         cwltoil.main(['--outdir', outDir,
+                            os.path.join(rootDir, cwlfile),
+                            os.path.join(rootDir, jobfile)],
+                     stdout=st)
+        out = json.loads(st.getvalue())
+        out["output"].pop("http://commonwl.org/cwltool#generation", None)
+        out["output"].pop("nameext", None)
+        out["output"].pop("nameroot", None)
+        self.assertEquals(out, expect)
+
+    def _forkless_tester(self, cwlfile, jobfile, outDir, expect):
+        from toil.cwl import cwltoil
+        rootDir = self._projectRootPath()
+        st = StringIO()
+        cwltoil.main(['--forkless', '--outdir', outDir,
                             os.path.join(rootDir, cwlfile),
                             os.path.join(rootDir, jobfile)],
                      stdout=st)
@@ -61,6 +73,20 @@ class CWLTest(ToilTest):
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
 
+    def test_run_revsort_forkless(self):
+        outDir = self._createTempDir()
+        self._forkless_tester('src/toil/test/cwl/revsort.cwl',
+                     'src/toil/test/cwl/revsort-job.json',
+                     outDir, {
+            # Having unicode string literals isn't necessary for the assertion but makes for a
+            # less noisy diff in case the assertion fails.
+            u'output': {
+                u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
+                u'basename': str("output.txt"),
+                u'size': 1111,
+                u'class': u'File',
+                u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+
     @slow
     def test_restart(self):
         """Enable restarts with CWLtoil -- run failing test, re-run correct test.
@@ -72,6 +98,7 @@ class CWLTest(ToilTest):
         cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
         cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
                os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
+
         def path_without_rev():
             return ":".join([d for d in os.environ["PATH"].split(":")
                              if not os.path.exists(os.path.join(d, "rev"))])
