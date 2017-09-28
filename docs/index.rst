@@ -43,6 +43,14 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    running/hpcEnvironments
 
 .. toctree::
+   :caption: Using Ansible to Deploy Workflows
+   :maxdepth: 2
+
+   ansible/overview
+   ansible/install
+   ansible/azure/install
+
+.. toctree::
    :caption: Developing Toil Workflows
    :maxdepth: 2
  
