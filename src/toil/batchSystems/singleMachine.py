@@ -85,7 +85,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # (scale > 1).
         self.scale = config.scale
         # Number of worker threads that will be started
-        self.forkless = config.forkless
+        self.debugWorker = config.debugWorker
         self.numWorkers = int(old_div(self.maxCores, self.minCores))
         # A counter to generate job IDs and a lock to guard it
         self.jobIndex = 0
@@ -123,7 +123,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A pool representing the available space in bytes
         self.disk = ResourcePool(self.maxDisk, 'disk', self.acquisitionTimeout)
 
-        if not self.forkless:
+        if not self.debugWorker:
             log.debug('Setting up the thread pool with %i workers, '
                      'given a minimum CPU fraction of %f '
                      'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
@@ -132,14 +132,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 self.workerThreads.append(worker)
                 worker.start()
         else:
-            log.debug('Started in forkless mode.')
+            log.debug('Started in worker debug mode.')
 
     # Note: The input queue is passed as an argument because the corresponding attribute is reset
     # to None in shutdown()
 
     def worker(self, inputQueue):
         while True:
-            if self.forkless and inputQueue.empty():
+            if self.debugWorker and inputQueue.empty():
                 return
             args = inputQueue.get()
             if args is None:
@@ -244,7 +244,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.jobs[jobID] = jobNode.command
         self.inputQueue.put((jobNode.command, jobID, cores, jobNode.memory,
                              jobNode.disk, self.environment.copy()))
-        if self.forkless:  # then run immediately, blocking for return
+        if self.debugWorker:  # then run immediately, blocking for return
             self.worker(self.inputQueue)
         return jobID
 

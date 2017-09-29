@@ -45,14 +45,13 @@ class CWLTest(ToilTest):
         out["output"].pop("nameroot", None)
         self.assertEquals(out, expect)
 
-    def _forkless_tester(self, cwlfile, jobfile, outDir, expect):
+    def _debug_worker_tester(self, cwlfile, jobfile, outDir, expect):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
         st = StringIO()
-        cwltoil.main(['--debug-forkless', '--outdir', outDir,
-                            os.path.join(rootDir, cwlfile),
-                            os.path.join(rootDir, jobfile)],
-                     stdout=st)
+        cwltoil.main(['--debug-worker', '--outdir', outDir,
+                     os.path.join(rootDir, cwlfile),
+                     os.path.join(rootDir, jobfile)], stdout=st)
         out = json.loads(st.getvalue())
         out["output"].pop("http://commonwl.org/cwltool#generation", None)
         out["output"].pop("nameext", None)
@@ -73,19 +72,20 @@ class CWLTest(ToilTest):
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
 
-    def test_run_revsort_forkless(self):
+    def test_run_revsort_debug_worker(self):
         outDir = self._createTempDir()
-        self._forkless_tester('src/toil/test/cwl/revsort.cwl',
-                     'src/toil/test/cwl/revsort-job.json',
-                     outDir, {
-            # Having unicode string literals isn't necessary for the assertion but makes for a
-            # less noisy diff in case the assertion fails.
-            u'output': {
-                u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
-                u'basename': str("output.txt"),
-                u'size': 1111,
-                u'class': u'File',
-                u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+        # Having unicode string literals isn't necessary for the assertion
+        # but makes for a less noisy diff in case the assertion fails.
+        self._debug_worker_tester(
+                'src/toil/test/cwl/revsort.cwl',
+                'src/toil/test/cwl/revsort-job.json', outDir, {u'output': {
+                    u'location': "file://" + str(os.path.join(
+                        outDir, 'output.txt')),
+                    u'basename': str("output.txt"),
+                    u'size': 1111,
+                    u'class': u'File',
+                    u'checksum':
+                        u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
 
     @slow
     def test_restart(self):

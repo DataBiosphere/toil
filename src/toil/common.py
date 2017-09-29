@@ -127,7 +127,7 @@ class Config(object):
         self.useAsync = True
 
         #Debug options
-        self.forkless = False
+        self.debugWorker = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
@@ -263,7 +263,7 @@ class Config(object):
         setOption("servicePollingInterval", float, fC(0.0))
 
         #Debug options
-        setOption("forkless")
+        setOption("debugWorker")
         setOption("badWorker", float, fC(0.0, 1.0))
         setOption("badWorkerFailInterval", float, fC(0.0))
 
@@ -537,8 +537,8 @@ def _addOptions(addGroupFn, config):
     #Debug options
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
-    addOptionFn("--debug-forkless", default=False, dest="forkless",
-            action="store_true", help="Experimental no forking mode for local "
+    addOptionFn("--debug-worker", default=False, action="store_true",
+            help="Experimental no forking mode for local "
             "debugging.")
     addOptionFn("--badWorker", dest="badWorker", default=None,
                       help=("For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
