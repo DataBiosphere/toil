@@ -11,7 +11,7 @@ from docker.errors import ContainerError
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 from toil.lib import FORGO, STOP, RM
 from toil.lib.docker import dockerCall, dockerCheckOutput, \
                             _containerIsRunning, _dockerKill
@@ -131,82 +131,102 @@ class DockerTest(ToilTest):
         self.testDockerClean(disableCaching=True, detached=False, rm=True,
                              deferParam=None)
 
+    @slow
     def testDockerClean_CxD_FORGO(self):
         self.testDockerClean(disableCaching=True, detached=True, rm=False,
                              deferParam=FORGO)
 
+    @slow
     def testDockerClean_CxD_STOP(self):
         self.testDockerClean(disableCaching=True, detached=True, rm=False,
                              deferParam=STOP)
 
+    @slow
     def testDockerClean_CxD_RM(self):
         self.testDockerClean(disableCaching=True, detached=True, rm=False,
                              deferParam=RM)
 
+    @slow
     def testDockerClean_CxD_None(self):
         self.testDockerClean(disableCaching=True, detached=True, rm=False,
                              deferParam=None)
 
+    @slow
     def testDockerClean_Cxx_FORGO(self):
         self.testDockerClean(disableCaching=True, detached=False, rm=False,
                              deferParam=FORGO)
 
+    @slow
     def testDockerClean_Cxx_STOP(self):
         self.testDockerClean(disableCaching=True, detached=False, rm=False,
                              deferParam=STOP)
 
+    @slow
     def testDockerClean_Cxx_RM(self):
         self.testDockerClean(disableCaching=True, detached=False, rm=False,
                              deferParam=RM)
 
+    @slow
     def testDockerClean_Cxx_None(self):
         self.testDockerClean(disableCaching=True, detached=False, rm=False,
                              deferParam=None)
 
+    @slow
     def testDockerClean_xRx_FORGO(self):
         self.testDockerClean(disableCaching=False, detached=False, rm=True,
                              deferParam=FORGO)
 
+    @slow
     def testDockerClean_xRx_STOP(self):
         self.testDockerClean(disableCaching=False, detached=False, rm=True,
                              deferParam=STOP)
 
+    @slow
     def testDockerClean_xRx_RM(self):
         self.testDockerClean(disableCaching=False, detached=False, rm=True,
                              deferParam=RM)
 
+    @slow
     def testDockerClean_xRx_None(self):
         self.testDockerClean(disableCaching=False, detached=False, rm=True,
                              deferParam=None)
 
+    @slow
     def testDockerClean_xxD_FORGO(self):
         self.testDockerClean(disableCaching=False, detached=True, rm=False,
                              deferParam=FORGO)
 
+    @slow
     def testDockerClean_xxD_STOP(self):
         self.testDockerClean(disableCaching=False, detached=True, rm=False,
                              deferParam=STOP)
 
+    @slow
     def testDockerClean_xxD_RM(self):
         self.testDockerClean(disableCaching=False, detached=True, rm=False,
                              deferParam=RM)
 
+    @slow
     def testDockerClean_xxD_None(self):
         self.testDockerClean(disableCaching=False, detached=True, rm=False,
                              deferParam=None)
 
+    @slow
     def testDockerClean_xxx_FORGO(self):
         self.testDockerClean(disableCaching=False, detached=False, rm=False,
                              deferParam=FORGO)
 
+    @slow
     def testDockerClean_xxx_STOP(self):
         self.testDockerClean(disableCaching=False, detached=False, rm=False,
                              deferParam=STOP)
 
+    @slow
     def testDockerClean_xxx_RM(self):
         self.testDockerClean(disableCaching=False, detached=False, rm=False,
                              deferParam=RM)
 
+    @slow
     def testDockerClean_xxx_None(self):
         self.testDockerClean(disableCaching=False, detached=False, rm=False,
                              deferParam=None)
@@ -246,9 +266,11 @@ class DockerTest(ToilTest):
         rv = Job.Runner.startToil(A, options)
         assert rv == True
 
+    @slow
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(disableCaching=False)
 
+    @slow
     def testNonCachingDockerChainErrorDetection(self):
         self.testDockerPipeChainErrorDetection(disableCaching=False)
 
@@ -288,14 +310,16 @@ def _testDockerCleanFn(job,
                deferParam=deferParam,
                containerName=containerName,
                detach=detached,
-               removeOnExit=rm)
+               removeOnExit=rm,
+               privileged=True)
 
 def _testDockerPipeChainFn(job):
     """Return the result of a simple pipe chain.  Should be 2."""
     parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
     return dockerCheckOutput(job,
                              tool='quay.io/ucsc_cgl/spooky_test',
-                             parameters=parameters)
+                             parameters=parameters,
+                             privileged=True)
 
 def _testDockerPipeChainErrorFn(job):
     """Return True if the command exit 1 | wc -l raises a ContainerError."""
