@@ -158,7 +158,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         with self.coreFractions.acquisitionOf(coreFractions):
                             with self.disk.acquisitionOf(jobDisk):
                                 startTime = time.time()  # Time job is started
-                                if "_toil_worker" in jobCommand:
+                                if self.debugWorker \
+                                        and "_toil_worker" in jobCommand:
                                     info = Info(time.time(), None,
                                                 killIntended=False)
                                     self.runningJobs[jobID] = info
