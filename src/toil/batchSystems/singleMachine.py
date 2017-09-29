@@ -134,6 +134,44 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         else:
             log.debug('Started in worker debug mode.')
 
+    def _runWorker(self, jobCommand, jobID, environment):
+        """
+        Run the jobCommand using the worker and wait for it to finish.
+        The worker is forked unless it is a '_toil_worker' job and
+        debugWorker is True.
+        """
+        startTime = time.time()  # Time job is started
+        popen = None
+        statusCode = None
+        forkWorker = not self.debugWorker or "_toil_worker" not in jobCommand
+        if forkWorker:
+            with self.popenLock:
+                popen = subprocess.Popen(jobCommand,
+                                         shell=True,
+                                         env=dict(os.environ, **environment))
+        else:
+            statusCode = toil_worker.main(jobCommand.split())
+            if statusCode is None:
+                statusCode = 0
+
+        info = Info(time.time(), popen, killIntended=False)
+        try:
+            self.runningJobs[jobID] = info
+            try:
+                if forkWorker:
+                    statusCode = popen.wait()
+                if 0 != statusCode:
+                    if statusCode != -9 or not info.killIntended:
+                        log.error("Got exit code %i (indicating failure) "
+                                  "from job %s.", statusCode,
+                                  self.jobs[jobID])
+            finally:
+                self.runningJobs.pop(jobID)
+        finally:
+            if statusCode is not None and not info.killIntended:
+                self.outputQueue.put((jobID, statusCode,
+                                      time.time() - startTime))
+
     # Note: The input queue is passed as an argument because the corresponding attribute is reset
     # to None in shutdown()
 
@@ -157,53 +195,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                   jobCores)
                         with self.coreFractions.acquisitionOf(coreFractions):
                             with self.disk.acquisitionOf(jobDisk):
-                                startTime = time.time()  # Time job is started
-                                if self.debugWorker \
-                                        and "_toil_worker" in jobCommand:
-                                    info = Info(time.time(), None,
-                                                killIntended=False)
-                                    self.runningJobs[jobID] = info
-                                    statusCode = 0
-                                    statusCode = toil_worker.main(
-                                            jobCommand.split())
-                                    if statusCode is None:
-                                        statusCode = 0
-                                    if 0 != statusCode:
-                                        if statusCode != -9 or \
-                                                not info.killIntended:
-                                            log.error(
-                                                    "Got exit code %i "
-                                                    "(indicating failure) "
-                                                    "from job %s.", statusCode,
-                                                    self.jobs[jobID])
-                                    self.runningJobs.pop(jobID)
-                                    if statusCode is not None \
-                                            and not info.killIntended:
-                                        self.outputQueue.put(
-                                                (jobID, statusCode, time.time()
-                                                    - startTime))
-                                else:
-                                    with self.popenLock:
-                                        popen = subprocess.Popen(jobCommand,
-                                                             shell=True,
-                                                             env=dict(os.environ, **environment))
-                                    statusCode = None
-                                    info = Info(time.time(), popen, killIntended=False)
-                                    try:
-                                        self.runningJobs[jobID] = info
-                                        try:
-                                            statusCode = popen.wait()
-                                            if 0 != statusCode:
-                                                if statusCode != -9 or not info.killIntended:
-                                                    log.error("Got exit code %i (indicating failure) "
-                                                              "from job %s.", statusCode,
-                                                              self.jobs[jobID])
-                                        finally:
-                                            self.runningJobs.pop(jobID)
-                                    finally:
-                                        if statusCode is not None and not info.killIntended:
-                                            self.outputQueue.put((jobID, statusCode,
-                                                                  time.time() - startTime))
+                                self._runWorker(jobCommand, jobID, environment)
+
                 except ResourcePool.AcquisitionTimeoutException as e:
                     log.debug('Could not acquire enough (%s) to run job (%s). Requested: (%s), '
                               'Avaliable: %s. Sleeping for 10s.', e.resource, jobID, e.requested,

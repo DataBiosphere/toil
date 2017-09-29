@@ -538,8 +538,9 @@ def _addOptions(addGroupFn, config):
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
     addOptionFn("--debug-worker", default=False, action="store_true",
-            help="Experimental no forking mode for local "
-            "debugging.")
+            help="Experimental no forking mode for local debugging."
+                 " Specifically, workers are not forked and"
+                 " stderr/stdout are not redirected to the log.")
     addOptionFn("--badWorker", dest="badWorker", default=None,
                       help=("For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
     addOptionFn("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
