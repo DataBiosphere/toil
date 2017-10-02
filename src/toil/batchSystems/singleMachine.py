@@ -143,7 +143,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         startTime = time.time()  # Time job is started
         popen = None
         statusCode = None
-        forkWorker = not (self.debugWorker and "_toil_worker" not in jobCommand)
+        forkWorker = not (self.debugWorker and "_toil_worker" in jobCommand)
         if forkWorker:
             with self.popenLock:
                 popen = subprocess.Popen(jobCommand,
