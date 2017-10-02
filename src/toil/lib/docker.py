@@ -188,7 +188,7 @@ def dockerCall(job,
     # practice:
     # http://docker-py.readthedocs.io/en/stable/containers.html
     elif len(parameters) > 0 and type(parameters) is list:
-        command = [' '.join(p) for p in parameters]
+        command = ' '.join(parameters)
         _logger.debug("Calling docker with: " + repr(command))
 
     # If the 'parameters' lists are empty, they are respecified as None, which
