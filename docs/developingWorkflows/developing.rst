@@ -714,10 +714,12 @@ each node of the cluster.
 
 When invoking docker containers from within a Toil workflow, it is strongly
 recommended that you use :func:`dockerCall`, a toil job function provided in
-``toil.lib.docker``. ``dockerCall`` provides a layer of abstraction over using the
-``subprocess`` module to call Docker directly, and provides container cleanup on
-job failure. When docker containers are run without this feature, failed jobs can
-result in resource leaks.
+``toil.lib.docker``. ``dockerCall`` leverages docker's own python API, 
+and provides container cleanup on job failure. When docker containers are 
+run without this feature, failed jobs can result in resource leaks.  Docker's
+API can be found at this _website.
+
+.. _website: https://docker-py.readthedocs.io/en/stable/
 
 In order to use ``dockerCall``, your installation of Docker must be set up to run
 without ``sudo``. Instructions for setting this up can be found here_.
@@ -728,7 +730,7 @@ An example of a basic ``dockerCall`` is below:
 
     dockerCall(job=job,
                 tool='quay.io/ucsc_cgl/bwa',
-                work_dir=job.fileStore.getLocalTempDir(),
+                workDir=job.fileStore.getLocalTempDir(),
                 parameters=['index', '/data/reference.fa'])
 
 ``dockerCall`` can also be added to workflows like any other job function:
@@ -737,7 +739,7 @@ An example of a basic ``dockerCall`` is below:
  
      align = Job.wrapJobFn(dockerCall,
                            tool='quay.io/ucsc_cgl/bwa',
-                           work_dir=job.fileStore.getLocalTempDir(),
+                           workDir=job.fileStore.getLocalTempDir(),
                            parameters=['index', '/data/reference.fa']))
 
      if __name__=="__main__":
@@ -753,22 +755,15 @@ commonly used in bioinformatics analysis.
 The documentation provides guidelines for developing your own Docker containers
 that can be used with Toil and ``dockerCall``. In order for a container to be
 compatible with ``dockerCall``, it must have an ``ENTRYPOINT`` set to a wrapper
-script, as described in cgl-docker-lib containerization standards. Alternately,
-the entrypoint to the container can be set using the docker option
-``--entrypoint``. The container should be runnable directly with Docker as:
+script, as described in cgl-docker-lib containerization standards.  This can be
+set by passing in the optional keyword argument, 'entrypoint'.  Example: 
 
-.. code-block:: console
+     entrypoint=["/bin/bash","-c"]
 
-    $ docker run <docker parameters> <tool name> <tool parameters>
+dockerCall supports currently the 75 keyword arguments found in the python
+Docker API at this _website, under the 'run' command.
 
-For example:
-
-.. code-block:: console
-
-    $ docker run -d quay.io/ucsc-cgl/bwa -s -o /data/aligned /data/ref.fa
-
-
-.. _service-dev-ref:
+.. _website: https://docker-py.readthedocs.io/en/stable/containers.html
 
 Services
 --------
