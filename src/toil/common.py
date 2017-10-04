@@ -737,8 +737,7 @@ class Toil(object):
 
     def restart(self):
         """
-        Restarts a workflow that has been interrupted. This method should be called if and only
-        if a workflow has previously been started and has not finished.
+        Restarts a workflow that has been interrupted.
 
         :return: The root job's return value
         """
@@ -746,6 +745,13 @@ class Toil(object):
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
+
+        from toil.job import JobException
+        try:
+            self._jobStore.loadRootJob()
+        except JobException:
+            logger.warning('Requested restart but the workflow has already been completed; allowing exports to rerun.')
+            return self._jobStore.getRootJobReturnValue()
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupHotDeployment()

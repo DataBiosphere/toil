@@ -208,13 +208,8 @@ class Leader(object):
         if len(self.toilState.totalFailedJobs) > 0:
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
 
-        # Parse out the return value from the root job
-        with self.jobStore.readSharedFileStream('rootJobReturnValue') as fH:
-            try:
-                return pickle.load(fH)
-            except EOFError:
-                logger.exception('Failed to unpickle root job return value')
-                raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
+
+        return self.jobStore.getRootJobReturnValue()
 
     def innerLoop(self):
         """
