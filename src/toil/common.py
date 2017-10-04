@@ -27,7 +27,6 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser
-from threading import Thread
 
 try:
     import cPickle as pickle
@@ -128,6 +127,7 @@ class Config(object):
         self.useAsync = True
 
         #Debug options
+        self.debugWorker = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
@@ -263,6 +263,7 @@ class Config(object):
         setOption("servicePollingInterval", float, fC(0.0))
 
         #Debug options
+        setOption("debugWorker")
         setOption("badWorker", float, fC(0.0, 1.0))
         setOption("badWorkerFailInterval", float, fC(0.0))
 
@@ -536,6 +537,10 @@ def _addOptions(addGroupFn, config):
     #Debug options
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
+    addOptionFn("--debug-worker", default=False, action="store_true",
+            help="Experimental no forking mode for local debugging."
+                 " Specifically, workers are not forked and"
+                 " stderr/stdout are not redirected to the log.")
     addOptionFn("--badWorker", dest="badWorker", default=None,
                       help=("For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
     addOptionFn("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
@@ -732,8 +737,7 @@ class Toil(object):
 
     def restart(self):
         """
-        Restarts a workflow that has been interrupted. This method should be called if and only
-        if a workflow has previously been started and has not finished.
+        Restarts a workflow that has been interrupted.
 
         :return: The root job's return value
         """
@@ -741,6 +745,13 @@ class Toil(object):
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
+
+        from toil.job import JobException
+        try:
+            self._jobStore.loadRootJob()
+        except JobException:
+            logger.warning('Requested restart but the workflow has already been completed; allowing exports to rerun.')
+            return self._jobStore.getRootJobReturnValue()
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupHotDeployment()
