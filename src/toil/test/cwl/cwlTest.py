@@ -18,14 +18,15 @@ import os
 import subprocess
 import re
 import shutil
-import urllib
+from future.moves.urllib.request import urlretrieve
 import zipfile
 
 # Python 3 compatibility imports
 from six.moves import StringIO
-from six import u as unicode
+from six import u as str
 
-from toil.test import ToilTest, needs_cwl
+from toil.test import ToilTest, needs_cwl, slow
+
 
 @needs_cwl
 class CWLTest(ToilTest):
@@ -44,6 +45,19 @@ class CWLTest(ToilTest):
         out["output"].pop("nameroot", None)
         self.assertEquals(out, expect)
 
+    def _debug_worker_tester(self, cwlfile, jobfile, outDir, expect):
+        from toil.cwl import cwltoil
+        rootDir = self._projectRootPath()
+        st = StringIO()
+        cwltoil.main(['--debug-worker', '--outdir', outDir,
+                     os.path.join(rootDir, cwlfile),
+                     os.path.join(rootDir, jobfile)], stdout=st)
+        out = json.loads(st.getvalue())
+        out["output"].pop("http://commonwl.org/cwltool#generation", None)
+        out["output"].pop("nameext", None)
+        out["output"].pop("nameroot", None)
+        self.assertEquals(out, expect)
+
     def test_run_revsort(self):
         outDir = self._createTempDir()
         self._tester('src/toil/test/cwl/revsort.cwl',
@@ -52,12 +66,28 @@ class CWLTest(ToilTest):
             # Having unicode string literals isn't necessary for the assertion but makes for a
             # less noisy diff in case the assertion fails.
             u'output': {
-                u'location': "file://" + unicode(os.path.join(outDir, 'output.txt')),
-                u'basename': unicode("output.txt"),
+                u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
+                u'basename': str("output.txt"),
                 u'size': 1111,
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
 
+    def test_run_revsort_debug_worker(self):
+        outDir = self._createTempDir()
+        # Having unicode string literals isn't necessary for the assertion
+        # but makes for a less noisy diff in case the assertion fails.
+        self._debug_worker_tester(
+                'src/toil/test/cwl/revsort.cwl',
+                'src/toil/test/cwl/revsort-job.json', outDir, {u'output': {
+                    u'location': "file://" + str(os.path.join(
+                        outDir, 'output.txt')),
+                    u'basename': str("output.txt"),
+                    u'size': 1111,
+                    u'class': u'File',
+                    u'checksum':
+                        u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+
+    @slow
     def test_restart(self):
         """Enable restarts with CWLtoil -- run failing test, re-run correct test.
         """
@@ -68,6 +98,7 @@ class CWLTest(ToilTest):
         cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
         cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
                os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
+
         def path_without_rev():
             return ":".join([d for d in os.environ["PATH"].split(":")
                              if not os.path.exists(os.path.join(d, "rev"))])
@@ -89,19 +120,20 @@ class CWLTest(ToilTest):
         except NoSuchJobStoreException:
             pass
 
+    @slow
     def test_run_conformance(self):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
         testhash = "7f510ec768b424601beb8c86700343afe722ac76"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(cwlSpec):
-            urllib.urlretrieve(url, "spec.zip")
+            urlretrieve(url, "spec.zip")
             with zipfile.ZipFile('spec.zip', "r") as z:
                 z.extractall()
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
         try:
-            subprocess.check_output(["bash", "run_test.sh", "RUNNER=cwltoil", "DRAFT=v1.0"], cwd=cwlSpec,
+            subprocess.check_output(["bash", "run_test.sh", "RUNNER=toil-cwl-runner", "DRAFT=v1.0"], cwd=cwlSpec,
                                     stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False

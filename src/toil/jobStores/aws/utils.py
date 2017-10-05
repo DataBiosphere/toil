@@ -13,6 +13,12 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from builtins import str
+from builtins import next
+from builtins import range
+from past.utils import old_div
+from builtins import object
 import base64
 import bz2
 import os
@@ -51,13 +57,13 @@ class SDBHelper(object):
     >>> import os
     >>> H=SDBHelper
     >>> H.presenceIndicator()
-    '000'
+    u'000'
     >>> H.binaryToAttributes(None)
     {}
     >>> H.attributesToBinary({})
     (None, 0)
     >>> H.binaryToAttributes('')
-    {'000': 'VQ=='}
+    {u'000': 'VQ=='}
     >>> H.attributesToBinary({'000': 'VQ=='})
     ('', 1)
 
@@ -92,7 +98,9 @@ class SDBHelper(object):
 
     maxAttributesPerItem = 256
     maxValueSize = 1024
-    maxRawValueSize = maxValueSize * 3 / 4
+    # in python2 1 / 2 == 0, in python 3 1 / 2 == 0.5
+    # old_div implents the python2 behavior in both 2 & 3
+    maxRawValueSize = old_div(maxValueSize * 3, 4)
     # Just make sure we don't have a problem with padding or integer truncation:
     assert len(base64.b64encode(' ' * maxRawValueSize)) == 1024
     assert len(base64.b64encode(' ' * (1 + maxRawValueSize))) > 1024
@@ -197,7 +205,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
     """
     file_size, file_time = fileSizeAndTime(localFilePath)
     if file_size <= partSize:
-        key = bucket.new_key(key_name=fileID)
+        key = bucket.new_key(key_name=bytes(fileID))
         key.name = fileID
         for attempt in retry_s3():
             with attempt:
@@ -208,7 +216,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
             version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
     for attempt in retry_s3():
         with attempt:
-            key = bucket.get_key(fileID,
+            key = bucket.get_key(bytes(fileID),
                                  headers=headers,
                                  version_id=version)
     assert key.size == file_size
@@ -221,7 +229,7 @@ def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSiz
     for attempt in retry_s3():
         with attempt:
             upload = bucket.initiate_multipart_upload(
-                key_name=fileID,
+                key_name=bytes(fileID),
                 headers=headers)
     try:
         start = 0
@@ -275,7 +283,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
                     start = partIndex * partSize
                     end = min(start + partSize, totalSize)
                     part = upload.copy_part_from_key(src_bucket_name=srcKey.bucket.name,
-                                                     src_key_name=srcKey.name,
+                                                     src_key_name=bytes(srcKey.name),
                                                      src_version_id=srcKey.version_id,
                                                      # S3 part numbers are 1-based
                                                      part_num=partIndex + 1,
@@ -295,7 +303,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
             return part
 
     totalSize = srcKey.size
-    totalParts = (totalSize + partSize - 1) / partSize
+    totalParts = old_div((totalSize + partSize - 1), partSize)
     exceptions = []
     # We need a location-agnostic connection to S3 so we can't use the one that we
     # normally use for interacting with the job store bucket.
@@ -303,7 +311,7 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
         for attempt in retry_s3():
             with attempt:
                 dstBucket = s3.get_bucket(dstBucketName)
-                upload = dstBucket.initiate_multipart_upload(dstKeyName, headers=headers)
+                upload = dstBucket.initiate_multipart_upload(bytes(dstKeyName), headers=headers)
         log.info("Initiated multipart copy from 's3://%s/%s' to 's3://%s/%s'.",
                  srcKey.bucket.name, srcKey.name, dstBucketName, dstKeyName)
         try:
@@ -311,10 +319,10 @@ def copyKeyMultipart(srcKey, dstBucketName, dstKeyName, partSize, headers=None):
             # blocks, waiting on the server. Limit # of threads to 128, since threads aren't
             # exactly free either. Lastly, we don't need more threads than we have parts.
             with ThreadPoolExecutor(max_workers=min(cpu_count() * 16, totalParts, 128)) as executor:
-                parts = list(executor.map(copyPart, xrange(0, totalParts)))
+                parts = list(executor.map(copyPart, range(0, totalParts)))
                 if exceptions:
                     raise RuntimeError('Failed to copy at least %d part(s)' % len(exceptions))
-                assert len(filter(None, parts)) == totalParts
+                assert len([_f for _f in parts if _f]) == totalParts
         except:
             with panic(log=log):
                 upload.cancel_upload()
@@ -392,12 +400,14 @@ def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryabl
 
 
 def retryable_s3_errors(e):
-    return (isinstance(e, (S3CreateError, S3ResponseError))
-            and e.status == 409
-            and 'try again' in e.message
+    return ((isinstance(e, (S3CreateError, S3ResponseError))
+             and e.status == 409
+             and 'try again' in e.message)
             or connection_reset(e)
-            or isinstance(e, BotoServerError) and e.status == 500
-            or isinstance(e, S3CopyError) and 'try again' in e.message)
+            or (isinstance(e, BotoServerError) and e.status == 500)
+            # Throttling response sometimes received on bucket creation
+            or (isinstance(e, BotoServerError) and e.status == 503 and e.code == 'SlowDown')
+            or (isinstance(e, S3CopyError) and 'try again' in e.message))
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):

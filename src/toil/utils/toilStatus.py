@@ -18,6 +18,8 @@ Reports the state of a Toil workflow
 from __future__ import absolute_import
 from __future__ import print_function
 
+from builtins import map
+from builtins import str
 import logging
 import sys
 
@@ -91,13 +93,13 @@ def main():
             totalJobs.append(jobGraph)
             # Traverse jobs in stack
             for jobs in jobGraph.stack:
-                for successorJobStoreID in map(lambda x: x.jobStoreID, jobs):
+                for successorJobStoreID in [x.jobStoreID for x in jobs]:
                     if (successorJobStoreID not in foundJobStoreIDs and jobStore.exists(successorJobStoreID)):
                         inner(jobStore.load(successorJobStoreID))
 
             # Traverse service jobs
             for jobs in jobGraph.services:
-                for serviceJobStoreID in map(lambda x: x.jobStoreID, jobs):
+                for serviceJobStoreID in [x.jobStoreID for x in jobs]:
                     if jobStore.exists(serviceJobStoreID):
                         assert serviceJobStoreID not in foundJobStoreIDs
                         foundJobStoreIDs.add(serviceJobStoreID)

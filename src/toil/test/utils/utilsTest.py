@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 
+from builtins import str
 import os
 import sys
 import uuid
@@ -29,7 +30,7 @@ import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -48,7 +49,7 @@ class UtilsTest(ToilTest):
         super(UtilsTest, self).setUp()
         self.tempDir = self._createTempDir()
         self.tempFile = getTempFile(rootDir=self.tempDir)
-        self.outputFile = getTempFile(rootDir=self.tempDir)
+        self.outputFile = 'someSortedStuff.txt'
         self.toilDir = os.path.join(self.tempDir, "jobstore")
         self.assertFalse(os.path.exists(self.toilDir))
         self.lines = 1000
@@ -86,6 +87,7 @@ class UtilsTest(ToilTest):
     @pytest.mark.timeout(1200)
     @needs_aws
     @integrative
+    @slow
     def testAWSProvisionerUtils(self):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         keyName = os.getenv('TOIL_AWS_KEYNAME')
@@ -93,7 +95,7 @@ class UtilsTest(ToilTest):
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
-            system([self.toilMain, 'launch-cluster', '--nodeType=t2.micro',
+            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro',
                     '--keyPairName=' + keyName, clusterName])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
@@ -106,7 +108,7 @@ class UtilsTest(ToilTest):
 
             # launch preemptable master with same name
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
-                    '--nodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
+                    '--leaderNodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--logLevel=DEBUG'])
 
             # test leader tags
@@ -184,6 +186,7 @@ class UtilsTest(ToilTest):
             except NameError:
                 pass
 
+    @slow
     def testUtilsSort(self):
         """
         Tests the status and stats commands of the toil command line utility using the
@@ -196,6 +199,7 @@ class UtilsTest(ToilTest):
                        self.toilDir,
                        '--logLevel=DEBUG',
                        '--fileToSort', self.tempFile,
+                       '--outputFile', self.outputFile,
                        '--N', str(self.N),
                        '--stats',
                        '--retryCount=2',
@@ -236,20 +240,21 @@ class UtilsTest(ToilTest):
                 # Check the toil status command does not issue an exception
         system(self.statusCommand())
 
-        # Check if we try to launch after its finished that we get a JobException
-        self.assertRaises(CalledProcessError, system, toilCommand + ['--restart'])
-
         # Check we can run 'toil stats'
         system(self.statsCommand)
 
         # Check the file is properly sorted
-        with open(self.tempFile, 'r') as fileHandle:
+        with open(self.outputFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
             self.assertEquals(self.correctSort, l2)
+
+        # Delete output file before next step
+        os.remove(self.outputFile)
 
         # Check we can run 'toil clean'
         system(self.cleanCommand)
 
+    @slow
     def testUtilsStatsSort(self):
         """
         Tests the stats commands on a complete run of the stats test.
@@ -260,6 +265,7 @@ class UtilsTest(ToilTest):
                        self.toilDir,
                        '--logLevel=DEBUG',
                        '--fileToSort', self.tempFile,
+                       '--outputFile', self.outputFile,
                        '--N', str(self.N),
                        '--stats',
                        '--retryCount=99',
@@ -274,9 +280,12 @@ class UtilsTest(ToilTest):
         system(self.statsCommand)
 
         # Check the file is properly sorted
-        with open(self.tempFile, 'r') as fileHandle:
+        with open(self.outputFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
             self.assertEquals(self.correctSort, l2)
+
+        # Delete output file
+        os.remove(self.outputFile)
 
     def testUnicodeSupport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -284,6 +293,7 @@ class UtilsTest(ToilTest):
         options.logLevel = 'debug'
         Job.Runner.startToil(Job.wrapFn(printUnicodeCharacter), options)
 
+    @slow
     def testMultipleJobsPerWorkerStats(self):
         """
         Tests case where multiple jobs are run on 1 worker to insure that all jobs report back their data

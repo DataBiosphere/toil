@@ -15,6 +15,9 @@
 from __future__ import absolute_import
 from __future__ import print_function
 
+from builtins import str
+from builtins import range
+from builtins import object
 import filecmp
 from abc import abstractmethod, ABCMeta
 from struct import pack, unpack
@@ -22,7 +25,7 @@ from uuid import uuid4
 
 from toil.job import Job
 from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental, slow
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.fileStore import CacheUnbalancedError
@@ -33,29 +36,29 @@ import os
 import random
 import signal
 import time
-import unittest
+import pytest
 
 # Python 3 compatibility imports
 from six.moves import xrange
+from future.utils import with_metaclass
 
 # Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
 testingIsAutomatic = True
 
 
-class hidden:
+class hidden(object):
     """
     Hiding the abstract test classes from the Unittest loader so it can be inherited in different
     test suites for the different job stores.
     """
-    class AbstractFileStoreTest(ToilTest):
+    class AbstractFileStoreTest(with_metaclass(ABCMeta, ToilTest)):
         """
         An abstract base class for testing the various general functions described in
         :class:toil.fileStore.FileStore
         """
         # This is overwritten in the inheriting classs
         jobStoreType = None
-        __metaclass__ = ABCMeta
 
         def _getTestJobStore(self):
             if self.jobStoreType == 'file':
@@ -63,7 +66,8 @@ class hidden:
             elif self.jobStoreType == 'aws':
                 return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
             elif self.jobStoreType == 'azure':
-                return 'azure:toiltest:cache-tests-' + str(uuid4())
+                accountName = os.getenv('TOIL_AZURE_KEYNAME')
+                return 'azure:%s:cache-tests-%s' % (accountName, str(uuid4()))
             elif self.jobStoreType == 'google':
                 projectID = 'cgc-05-0006'
                 return 'google:' + projectID + ':cache-tests-' + str(uuid4())
@@ -103,6 +107,7 @@ class hidden:
 
         # Test filestore operations.  This is a slightly less intense version of the cache specific
         # test `testReturnFileSizes`
+        @slow
         def testFileStoreOperations(self):
             """
             Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
@@ -128,7 +133,7 @@ class hidden:
             fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
                                                fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
-            localFileIDs.add(writtenFiles.keys()[0])
+            localFileIDs.add(list(writtenFiles.keys())[0])
             i = 0
             while i <= numIters:
                 randVal = random.random()
@@ -144,7 +149,7 @@ class hidden:
                     if len(writtenFiles) == 0:
                         continue
                     else:
-                        fsID, rdelFileSize = random.choice(writtenFiles.items())
+                        fsID, rdelFileSize = random.choice(list(writtenFiles.items()))
                         rdelRandVal = random.random()
                     if randVal < 0.66:  # Read
                         mutable = True if random.random() <= 0.5 else False
@@ -250,6 +255,7 @@ class hidden:
             job.defer(lmd, files[0], nlf=files[1])
             return None
 
+        @slow
         def testDeferredFunctionRunsWithFailures(self):
             """
             Create 2 non local filesto use as flags.  Create a job that registers a function that
@@ -308,6 +314,7 @@ class hidden:
             if nlf is not None:
                 os.remove(nlf)
 
+        @slow
         def testNewJobsCanHandleOtherJobDeaths(self):
             """
             Create 2 non-local files and then create 2 jobs. The first job registers a deferred job
@@ -437,29 +444,28 @@ class hidden:
 
             return job.fileStore.writeGlobalFile(testFile.name), testFile
 
-    class AbstractNonCachingFileStoreTest(AbstractFileStoreTest):
+    class AbstractNonCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
         """
         Abstract tests for the the various functions in :class:toil.fileStore.NonCachingFileStore.
         These tests are general enough that they can also be used for
         :class:toil.fileStore.CachingFileStore.
         """
-        __metaclass__ = ABCMeta
 
         def setUp(self):
             super(hidden.AbstractNonCachingFileStoreTest, self).setUp()
             self.options.disableCaching = True
 
-    class AbstractCachingFileStoreTest(AbstractFileStoreTest):
+    class AbstractCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
         """
         Abstract tests for the the various cache-related functions in
         :class:toil.fileStore.CachingFileStore.
         """
-        __metaclass__ = ABCMeta
 
         def setUp(self):
             super(hidden.AbstractCachingFileStoreTest, self).setUp()
             self.options.disableCaching = False
 
+        @slow
         def testExtremeCacheSetup(self):
             """
             Try to create the cache with bad worker active and then have 10 child jobs try to run in
@@ -471,16 +477,17 @@ class hidden:
             self.options.retryCount = 20
             self.options.badWorker = 0.5
             self.options.badWorkerFailInterval = 0.1
-            for test in xrange(0, 20):
+            for test in range(0, 20):
                 E = Job.wrapJobFn(self._uselessFunc)
                 F = Job.wrapJobFn(self._uselessFunc)
                 jobs = {}
-                for i in xrange(0, 10):
+                for i in range(0, 10):
                     jobs[i] = Job.wrapJobFn(self._uselessFunc)
                     E.addChild(jobs[i])
                     jobs[i].addChild(F)
                 Job.Runner.startToil(E, self.options)
 
+        @slow
         def testCacheLockRace(self):
             """
             Make 3 jobs compete for the same cache lock file.  If they have the lock at the same
@@ -516,7 +523,7 @@ class hidden:
             Try to acquire a lock on the lock file.  If 2 threads have the lock concurrently, then
             abort.
             """
-            for i in xrange(0, 1000):
+            for i in range(0, 1000):
                 with job.fileStore.cacheLock():
                     cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
                     cacheInfo.nlink += 1
@@ -539,6 +546,7 @@ class hidden:
                 assert cacheInfo.nlink == 0
                 assert cacheInfo.cached > 1
 
+        @slow
         def testCacheEvictionPartialEvict(self):
             """
             Ensure the cache eviction happens as expected.  Two files (20MB and 30MB) are written
@@ -554,6 +562,7 @@ class hidden:
 
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=10)
 
+        @slow
         def testCacheEvictionTotalEvict(self):
             """
             Ensure the cache eviction happens as expected.  Two files (20MB and 30MB) are written
@@ -569,6 +578,7 @@ class hidden:
 
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=30)
 
+        @slow
         def testCacheEvictionFailCase(self):
             """
             Ensure the cache eviction happens as expected.  Two files (20MB and 30MB) are written
@@ -706,6 +716,7 @@ class hidden:
                     assert cacheInfoMB == expectedMB, 'Testing %s: Expected ' % value + \
                                                       '%s but got %s.' % (expectedMB, cacheInfoMB)
 
+        @slow
         def testAsyncWriteWithCaching(self):
             """
             Ensure the Async Writing of files happens as expected.  The first Job forcefully
@@ -865,6 +876,7 @@ class hidden:
             A.addChild(B)
             Job.Runner.startToil(A, self.options)
 
+        @slow
         def testMultipleJobsReadSameCacheHitGlobalFile(self):
             """
             Write a local file to the job store (hence adding a copy to cache), then have 10 jobs
@@ -875,6 +887,7 @@ class hidden:
             """
             self._testMultipleJobsReadGlobalFileFunction(cacheHit=True)
 
+        @slow
         def testMultipleJobsReadSameCacheMissGlobalFile(self):
             """
             Write a non-local file to the job store(hence no cached copy), then have 10 jobs read
@@ -900,7 +913,7 @@ class hidden:
                               fileMB=256)
             B = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
             jobs = {}
-            for i in xrange(0, 10):
+            for i in range(0, 10):
                 jobs[i] = Job.wrapJobFn(self._multipleFileReader, diskMB=1024, fsID=A.rv(),
                                         maxWriteFile=os.path.abspath(x.name), disk='1G',
                                         memory='10M', cores=1)
@@ -957,6 +970,7 @@ class hidden:
             job.fileStore.exportFile(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
             assert filecmp.cmp(fileName, outputFile)
 
+        @slow
         def testFileStoreExportFile(self):
             # Tests that files written to job store can be immediately exported
             # motivated by https://github.com/BD2KGenomics/toil/issues/1469
@@ -964,6 +978,7 @@ class hidden:
             Job.Runner.startToil(root, self.options)
 
         # Testing for the return of file sizes to the sigma job pool.
+        @slow
         def testReturnFileSizes(self):
             """
             Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
@@ -978,6 +993,7 @@ class hidden:
                               disk='2G')
             Job.Runner.startToil(F, self.options)
 
+        @slow
         def testReturnFileSizesWithBadWorker(self):
             """
             Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
@@ -1015,9 +1031,9 @@ class hidden:
             cls = hidden.AbstractCachingFileStoreTest
             fsId = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True, fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
-            if job.fileStore._fileIsCached(writtenFiles.keys()[0]):
+            if job.fileStore._fileIsCached(list(writtenFiles.keys())[0]):
                 cached += writeFileSize * 1024 * 1024
-            localFileIDs[writtenFiles.keys()[0]].append('local')
+            localFileIDs[list(writtenFiles.keys())[0]].append('local')
             cls._requirementsConcur(job, jobDisk, cached)
             i = 0
             while i <= numIters:
@@ -1044,7 +1060,7 @@ class hidden:
                     if len(writtenFiles) == 0:
                         continue
                     else:
-                        fsID, rdelFileSize = random.choice(writtenFiles.items())
+                        fsID, rdelFileSize = random.choice(list(writtenFiles.items()))
                         rdelRandVal = random.random()
                         fileWasCached = job.fileStore._fileIsCached(fsID)
                     if randVal < 0.66:  # Read
@@ -1064,14 +1080,14 @@ class hidden:
                         cls._requirementsConcur(job, jobDisk, cached)
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
-                            if fsID not in localFileIDs.keys():
+                            if fsID not in list(localFileIDs.keys()):
                                 continue
                             job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
                             job.fileStore.deleteGlobalFile(fsID)
                             assert not os.path.exists(job.fileStore.encodedFileID(fsID))
                             writtenFiles.pop(fsID)
-                        if fsID in localFileIDs.keys():
+                        if fsID in list(localFileIDs.keys()):
                             for lFID in localFileIDs[fsID]:
                                 if lFID not in ('non-local', 'mutable'):
                                     jobDisk += rdelFileSize * 1024 * 1024
@@ -1100,6 +1116,7 @@ class hidden:
             assert jobState['jobReqs'] == jobDisk
 
         # Testing the resumability of a failed worker
+        @slow
         def testControlledFailedWorkerRetry(self):
             """
             Conduct a couple of job store operations.  Then die.  Ensure that the restarted job is
@@ -1136,12 +1153,14 @@ class hidden:
                     fH.write(pack('d', cached))
                 os.kill(os.getpid(), signal.SIGKILL)
 
+        @slow
         def testRemoveLocalMutablyReadFile(self):
             """
             If a mutably read file is deleted by the user, it is ok.
             """
             self._deleteLocallyReadFilesFn(readAsMutable=True)
 
+        @slow
         def testRemoveLocalImmutablyReadFile(self):
             """
             If an immutably read file is deleted by the user, it is not ok.
@@ -1272,7 +1291,7 @@ class _deleteMethods(object):
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'file'
 
-
+@pytest.mark.timeout(1000)
 class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
@@ -1282,7 +1301,9 @@ class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreT
     jobStoreType = 'aws'
 
 
+@slow
 @needs_aws
+@pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
 
@@ -1292,7 +1313,9 @@ class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStor
     jobStoreType = 'azure'
 
 
+@slow
 @needs_azure
+@pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'azure'
 
@@ -1303,8 +1326,10 @@ class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileSto
     jobStoreType = 'google'
 
 
+@slow
 @experimental
 @needs_google
+@pytest.mark.timeout(1000)
 class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'google'
 

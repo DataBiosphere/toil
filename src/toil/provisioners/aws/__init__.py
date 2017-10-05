@@ -111,8 +111,7 @@ def choose_spot_zone(zones, bid, spot_history):
     #
     markets_under_bid, markets_over_bid = [], []
     for zone in zones:
-        zone_histories = filter(lambda zone_history:
-                                zone_history.availability_zone == zone.name, spot_history)
+        zone_histories = [zone_history for zone_history in spot_history if zone_history.availability_zone == zone.name]
         if zone_histories:
             price_deviation = std_dev([history.price for history in zone_histories])
             recent_price = zone_histories[0].price

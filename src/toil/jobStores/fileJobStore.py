@@ -14,15 +14,20 @@
 
 from __future__ import absolute_import
 
+from builtins import range
 from contextlib import contextmanager
 import logging
-import pickle as pickler
 import random
 import shutil
 import os
 import tempfile
 import stat
 import errno
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 # Python 3 compatibility imports
 from six.moves import xrange
@@ -97,9 +102,19 @@ class FileJobStore(AbstractJobStore):
         # Make the job
         job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getRelativePath(absJobDir),
                                    tryCount=self._defaultTryCount())
-        # Write job file to disk
-        self.update(job)
+        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+            self._batchedJobGraphs.append(job)
+        else:
+            self.update(job)
         return job
+
+    @contextmanager
+    def batch(self):
+        self._batchedJobGraphs = []
+        yield
+        for jobGraph in self._batchedJobGraphs:
+            self.update(jobGraph)
+        self._batchedJobGraphs = None
 
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
@@ -124,7 +139,7 @@ class FileJobStore(AbstractJobStore):
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'r') as fileHandle:
-            job = pickler.load(fileHandle)
+            job = pickle.load(fileHandle)
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -139,7 +154,7 @@ class FileJobStore(AbstractJobStore):
         # Atomicity guarantees use the fact the underlying file systems "move"
         # function is atomic.
         with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
-            pickler.dump(job, f)
+            pickle.dump(job, f)
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
 
@@ -404,7 +419,7 @@ class FileJobStore(AbstractJobStore):
         :rtype : string, path to temporary directory in which to place files/directories.
         """
         tempDir = self.tempFilesDir
-        for i in xrange(self.levels):
+        for i in range(self.levels):
             tempDir = os.path.join(tempDir, random.choice(self.validDirs))
             if not os.path.exists(tempDir):
                 try:

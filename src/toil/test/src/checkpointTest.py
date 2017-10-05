@@ -14,7 +14,7 @@
 
 from __future__ import absolute_import
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 
@@ -32,6 +32,7 @@ class CheckpointTest(ToilTest):
         with self.assertRaises(FailedJobsException):
             Job.Runner.startToil(CheckRetryCount(numFailuresBeforeSuccess=1), options)
 
+    @slow
     def testCheckpointRetriedOnce(self):
         """A checkpoint job should be retried exactly once if the workflow has a retryCount of 1."""
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -47,6 +48,7 @@ class CheckpointTest(ToilTest):
         with self.assertRaises(FailedJobsException):
             Job.Runner.startToil(CheckRetryCount(numFailuresBeforeSuccess=2), options)
 
+    @slow
     def testCheckpointedRestartSucceeds(self):
         """A checkpointed job should succeed on restart of a failed run if its child job succeeds."""
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())

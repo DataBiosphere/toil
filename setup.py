@@ -34,7 +34,8 @@ def runSetup():
         install_requires=[
             'bd2k-python-lib>=1.14a1.dev35',
             'dill==0.2.5',
-            'six>=1.10.0'],
+            'six>=1.10.0',
+            'future'],
         extras_require={
             'mesos': [
                 'psutil==3.0.1'],
@@ -66,6 +67,7 @@ def runSetup():
                 'toil = toil.utils.toilMain:main',
                 '_toil_worker = toil.worker:main',
                 'cwltoil = toil.cwl.cwltoil:main [cwl]',
+                'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]']})
 

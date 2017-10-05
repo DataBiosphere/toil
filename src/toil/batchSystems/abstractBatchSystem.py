@@ -15,19 +15,23 @@
 
 from __future__ import absolute_import
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import object
 import os
 import shutil
 import logging
 import time
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-from Queue import Queue, Empty
+from queue import Queue, Empty
 from contextlib import contextmanager
 
 from bd2k.util.objects import abstractclassmethod
 
 from toil.common import Toil, cacheDirName
 from toil.fileStore import shutdownFileStore
+from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
 
@@ -41,13 +45,11 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
     # The value of the cleanWorkDir flag
     'cleanWorkDir'))
 
-class AbstractBatchSystem(object):
+class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
     """
     An abstract (as far as Python currently allows) base class to represent the interface the batch
     system must provide to Toil.
     """
-
-    __metaclass__ = ABCMeta
 
     # noinspection PyMethodParameters
     @abstractclassmethod
@@ -401,6 +403,28 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         :param method: This will be used as a filter on nodes considered when assigning new jobs.
             After this context manager exits the filter should be removed
         :rtype: None
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def ignoreNode(self, nodeAddress):
+        """
+        Stop sending jobs to this node. Used in autoscaling
+        when the autoscaler is ready to terminate a node, but 
+        jobs are still running. This allows the node to be terminated
+        after the current jobs have finished.
+
+        :param str: IP address of node to ignore.
+        :rtype: None
+        """
+        raise NotImplementedError()
+
+    @abstractmethod
+    def unignoreNode(self, nodeAddress):
+        """
+        Stop ignoring this address, presumably after
+        a node with this address has been terminated. This allows for the
+        possibility of a new node having the same address as a terminated one.
         """
         raise NotImplementedError()
 

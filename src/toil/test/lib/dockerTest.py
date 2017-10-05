@@ -11,7 +11,7 @@ from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.lib.docker import dockerCall, dockerCheckOutput, _containerIsRunning, _dockerKill, STOP, FORGO, RM
-from toil.test import ToilTest, needs_appliance
+from toil.test import ToilTest, needs_appliance, slow
 
 _log = logging.getLogger(__name__)
 
@@ -33,6 +33,7 @@ class DockerTest(ToilTest):
     def setUp(self):
         self.tempDir = self._createTempDir(purpose='tempDir')
 
+    @slow
     def testDockerClean(self, caching=True):
         """
         Run the test container that creates a file in the work dir, and sleeps for 5 minutes.  Ensure
@@ -145,6 +146,7 @@ class DockerTest(ToilTest):
     def testDockerPermissionsNonCaching(self):
         self.testDockerPermissions(caching=False)
 
+    @slow
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(caching=False)
 

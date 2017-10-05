@@ -1,5 +1,9 @@
+.. _api:
+
 Toil API
 ********
+
+This section describes the API for writing Toil workflows in Python.
 
 Job methods
 -----------

@@ -12,12 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from builtins import str
+from builtins import range
 import uuid
 import random
 
-from toil.test import ToilTest, needs_mesos
+from toil.test import ToilTest, needs_mesos, slow
 
 
+@slow
 @needs_mesos
 class DataStructuresTest(ToilTest):
 
@@ -41,7 +44,7 @@ class DataStructuresTest(ToilTest):
         jobQueue = JobQueue()
 
         for jobNum in range(0, testJobs):
-            testJob = self._getJob(cores=random.choice(range(10)), preemptable=random.choice([True, False]))
+            testJob = self._getJob(cores=random.choice(list(range(10))), preemptable=random.choice([True, False]))
             jobQueue.insertJob(testJob, testJob.resources)
 
         sortedTypes = jobQueue.sorted()
@@ -62,7 +65,7 @@ class DataStructuresTest(ToilTest):
         # make sure proper number of jobs are in queue
         self.assertEqual(len(jobQueue.jobIDs()), testJobs)
 
-        testJob = self._getJob(cores=random.choice(range(10)))
+        testJob = self._getJob(cores=random.choice(list(range(10))))
         jobQueue.insertJob(testJob, testJob.resources)
         testJobs += 1
 

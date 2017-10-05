@@ -17,6 +17,11 @@ Reports statistical data about a given Toil workflow.
 """
 
 from __future__ import absolute_import, print_function
+from __future__ import division
+from builtins import str
+from builtins import range
+from past.utils import old_div
+from builtins import object
 from functools import partial
 import logging
 import json
@@ -45,7 +50,7 @@ class ColumnWidths(object):
         """ Return the total printed length of this category item.
         """
         return sum(
-            map(lambda x: self.getWidth(category, x), self.fields))
+            [self.getWidth(category, x) for x in self.fields])
     def getWidth(self, category, field):
         category = category.lower()
         return self.data["%s_%s" % (category, field)]
@@ -95,8 +100,7 @@ def checkOptions(options, parser):
     if options.categories is None:
         options.categories = defaultCategories
     else:
-        options.categories = map(lambda x: x.lower(),
-                                 options.categories.split(","))
+        options.categories = [x.lower() for x in options.categories.split(",")]
     for c in options.categories:
         if c not in defaultCategories:
             parser.error("Unknown category %s. Must be from %s"
@@ -140,7 +144,7 @@ def prettyMemory(k, field=None, isBytes=False):
     if k < 1024:
         return padStr("%gK" % k, field)
     if k < (1024 * 1024):
-        return padStr("%.1fM" % (k / 1024.0), field)
+        return padStr("%.1fM" % (old_div(k, 1024.0)), field)
     if k < (1024 * 1024 * 1024):
         return padStr("%.1fG" % (k / 1024.0 / 1024.0), field)
     if k < (1024 * 1024 * 1024 * 1024):
@@ -156,21 +160,20 @@ def prettyTime(t, field=None):
     if t < 120:
         return padStr("%ds" % t, field)
     if t < 120 * 60:
-        m = floor(t / 60.)
+        m = floor(old_div(t, 60.))
         s = t % 60
         return padStr("%dm%ds" % (m, s), field)
     if t < 25 * 60 * 60:
         h = floor(t / 60. / 60.)
-        m = floor((t - (h * 60. * 60.)) / 60.)
+        m = floor(old_div((t - (h * 60. * 60.)), 60.))
         s = t % 60
         return padStr("%dh%gm%ds" % (h, m, s), field)
     if t < 7 * 24 * 60 * 60:
         d = floor(t / 24. / 60. / 60.)
         h = floor((t - (d * 24. * 60. * 60.)) / 60. / 60.)
-        m = floor((t
+        m = floor(old_div((t
                    - (d * 24. * 60. * 60.)
-                   - (h * 60. * 60.))
-                  / 60.)
+                   - (h * 60. * 60.)), 60.))
         s = t % 60
         dPlural = pluralDict[d > 1]
         return padStr("%dday%s%dh%dm%ds" % (d, dPlural, h, m, s), field)
@@ -180,11 +183,10 @@ def prettyTime(t, field=None):
                  - (w * 7. * 24. * 60. * 60.)
                  - (d * 24. * 60. * 60.))
                 / 60. / 60.)
-    m = floor((t
+    m = floor(old_div((t
                  - (w * 7. * 24. * 60. * 60.)
                  - (d * 24. * 60. * 60.)
-                 - (h * 60. * 60.))
-                / 60.)
+                 - (h * 60. * 60.)), 60.))
     s = t % 60
     wPlural = pluralDict[w > 1]
     dPlural = pluralDict[d > 1]
@@ -475,23 +477,23 @@ def buildElement(element, items, itemName):
     element[itemName]=Expando(
         total_number=float(len(items)),
         total_time=float(sum(itemTimes)),
-        median_time=float(itemTimes[len(itemTimes)/2]),
-        average_time=float(sum(itemTimes)/len(itemTimes)),
+        median_time=float(itemTimes[old_div(len(itemTimes),2)]),
+        average_time=float(old_div(sum(itemTimes),len(itemTimes))),
         min_time=float(min(itemTimes)),
         max_time=float(max(itemTimes)),
         total_clock=float(sum(itemClocks)),
-        median_clock=float(itemClocks[len(itemClocks)/2]),
-        average_clock=float(sum(itemClocks)/len(itemClocks)),
+        median_clock=float(itemClocks[old_div(len(itemClocks),2)]),
+        average_clock=float(old_div(sum(itemClocks),len(itemClocks))),
         min_clock=float(min(itemClocks)),
         max_clock=float(max(itemClocks)),
         total_wait=float(sum(itemWaits)),
-        median_wait=float(itemWaits[len(itemWaits)/2]),
-        average_wait=float(sum(itemWaits)/len(itemWaits)),
+        median_wait=float(itemWaits[old_div(len(itemWaits),2)]),
+        average_wait=float(old_div(sum(itemWaits),len(itemWaits))),
         min_wait=float(min(itemWaits)),
         max_wait=float(max(itemWaits)),
         total_memory=float(sum(itemMemory)),
-        median_memory=float(itemMemory[len(itemMemory)/2]),
-        average_memory=float(sum(itemMemory)/len(itemMemory)),
+        median_memory=float(itemMemory[old_div(len(itemMemory),2)]),
+        average_memory=float(old_div(sum(itemMemory),len(itemMemory))),
         min_memory=float(min(itemMemory)),
         max_memory=float(max(itemMemory)),
         name=itemName
@@ -504,8 +506,8 @@ def createSummary(element, containingItems, containingItemName, getFn):
     itemCounts.sort()
     if len(itemCounts) == 0:
         itemCounts.append(0)
-    element["median_number_per_%s" % containingItemName] = itemCounts[len(itemCounts) / 2]
-    element["average_number_per_%s" % containingItemName] = float(sum(itemCounts)) / len(itemCounts)
+    element["median_number_per_%s" % containingItemName] = itemCounts[old_div(len(itemCounts), 2)]
+    element["average_number_per_%s" % containingItemName] = old_div(float(sum(itemCounts)), len(itemCounts))
     element["min_number_per_%s" % containingItemName] = min(itemCounts)
     element["max_number_per_%s" % containingItemName] = max(itemCounts)
 
@@ -516,7 +518,7 @@ def getStats(jobStore):
     def aggregateStats(fileHandle,aggregateObject):
         try:
             stats = json.load(fileHandle, object_hook=Expando)
-            for key in stats.keys():
+            for key in list(stats.keys()):
                 if key in aggregateObject:
                     aggregateObject[key].append(stats[key])
                 else:
@@ -550,8 +552,8 @@ def processData(config, stats):
                                )
 
     # Add worker info
-    worker = filter(None, stats.workers)
-    jobs = filter(None, stats.jobs)
+    worker = [_f for _f in stats.workers if _f]
+    jobs = [_f for _f in stats.jobs if _f]
     jobs = [item for sublist in jobs for item in sublist]
 
     def fn4(job):

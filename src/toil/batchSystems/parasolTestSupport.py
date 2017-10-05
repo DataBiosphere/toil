@@ -1,10 +1,12 @@
 from __future__ import absolute_import
+from builtins import object
 import logging
 import tempfile
 import threading
 import time
 import subprocess
 import multiprocessing
+import signal
 import os
 from bd2k.util.files import rm_f
 from bd2k.util.objects import InnerClass
@@ -59,7 +61,7 @@ class ParasolTestSupport(object):
             with self.lock:
                 self.popen = subprocess.Popen(command)
             status = self.popen.wait()
-            if status != 0:
+            if status != 0 and status != -signal.SIGKILL:
                 log.error("Command '%s' failed with %i.", command, status)
                 raise subprocess.CalledProcessError(status, command)
             log.info('Exiting %s', self.__class__.__name__)

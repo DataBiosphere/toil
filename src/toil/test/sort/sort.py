@@ -15,6 +15,9 @@
 """A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
 """
 from __future__ import absolute_import
+from __future__ import division
+from builtins import range
+from past.utils import old_div
 from argparse import ArgumentParser
 import os
 import random
@@ -29,7 +32,7 @@ defaultLineLen = 50
 sortMemory = '1000M'
 
 
-def setup(job, inputFile, N, downCheckpoints):
+def setup(job, inputFile, N, downCheckpoints, options):
     """
     Sets up the sort.
     Returns the FileID of the sorted file
@@ -38,10 +41,11 @@ def setup(job, inputFile, N, downCheckpoints):
     return job.addChildJobFn(down,
                              inputFile, N,
                              downCheckpoints,
+                             options = options,
                              memory='1000M').rv()
 
 
-def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
+def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
     """
     Input is a file and a range into that file to sort and an output location in which
     to write the sorted file.
@@ -68,9 +72,9 @@ def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
         # we communicate the dependency without hindering concurrency.
         return job.addFollowOnJobFn(up,
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, memory=sortMemory).rv(),
+                                                      checkpoint=downCheckpoints, options=options, memory=options.sortMemory).rv(),
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, memory=sortMemory).rv()).rv()
+                                                      checkpoint=downCheckpoints, options=options, memory=options.mergeMemory).rv(), options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
         job.fileStore.logToMaster("Sorting file: %s of size: %s"
@@ -81,7 +85,7 @@ def down(job, inputFileStoreID, N, downCheckpoints, memory=sortMemory):
         return job.fileStore.writeGlobalFile(inputFile + '.sort')
 
 
-def up(job, inputFileID1, inputFileID2, memory=sortMemory):
+def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
     """
     Merges the two files and places them in the output.
     """
@@ -144,7 +148,7 @@ def getMidPoint(file, fileStart, fileEnd):
     Returns an int i such that fileStart <= i < fileEnd
     """
     fileHandle = open(file, 'r')
-    midPoint = (fileStart + fileEnd) / 2
+    midPoint = old_div((fileStart + fileEnd), 2)
     assert midPoint >= fileStart
     fileHandle.seek(midPoint)
     line = fileHandle.readline()
@@ -160,18 +164,21 @@ def getMidPoint(file, fileStart, fileEnd):
 
 def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
     with open(fileName, 'w') as fileHandle:
-        for _ in xrange(lines):
-            line = "".join(random.choice('actgACTGNXYZ') for _ in xrange(lineLen - 1)) + '\n'
+        for _ in range(lines):
+            line = "".join(random.choice('actgACTGNXYZ') for _ in range(lineLen - 1)) + '\n'
             fileHandle.write(line)
 
 
 def main(options=None):
     if not options:
+        # deal with command line arguments
         parser = ArgumentParser()
         Job.Runner.addToilOptions(parser)
         parser.add_argument('--numLines', default=defaultLines, help='Number of lines in file to sort.', type=int)
         parser.add_argument('--lineLength', default=defaultLineLen, help='Length of lines in file to sort.', type=int)
-        parser.add_argument("--fileToSort", dest="fileToSort", help="The file you wish to sort")
+        parser.add_argument("--fileToSort", help="The file you wish to sort")
+        parser.add_argument("--outputFile", help="Where the sorted output will go")
+        parser.add_argument("--overwriteOutput", help="Write over the output file if it already exists.", default=True)
         parser.add_argument("--N", dest="N",
                             help="The threshold below which a serial sort function is used to sort file. "
                                  "All lines must of length less than or equal to N or program will fail",
@@ -179,15 +186,35 @@ def main(options=None):
         parser.add_argument('--downCheckpoints', action='store_true',
                             help='If this option is set, the workflow will make checkpoints on its way through'
                                  'the recursive "down" part of the sort')
+        parser.add_argument("--sortMemory", dest="sortMemory",
+                        help="Memory for jobs that sort chunks of the file.",
+                        default=None)
+    
+        parser.add_argument("--mergeMemory", dest="mergeMemory",
+                        help="Memory for jobs that collate results.",
+                        default=None)
+
         options = parser.parse_args()
+    if not hasattr(options, "sortMemory") or not options.sortMemory:
+        options.sortMemory = sortMemory
+    if not hasattr(options, "mergeMemory") or not options.mergeMemory:
+        options.mergeMemory = sortMemory
+
+    # do some input verification
+    sortedFileName = options.outputFile or "sortedFile.txt"
+    if not options.overwriteOutput and os.path.exists(sortedFileName):
+        print("the output file {} already exists. Delete it to run the sort example again or use --overwriteOutput=True".format(sortedFileName))
+        exit()
 
     fileName = options.fileToSort
-
     if options.fileToSort is None:
         # make the file ourselves
         fileName = 'fileToSort.txt'
-        print 'No sort file specified. Generating one automatically called %s.' % fileName
-        makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
+        if os.path.exists(fileName):
+            print "Sorting existing file", fileName
+        else:
+            print 'No sort file specified. Generating one automatically called %s.' % fileName
+            makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
     else:
         if not os.path.exists(options.fileToSort):
             raise RuntimeError("File to sort does not exist: %s" % options.fileToSort)
@@ -196,15 +223,16 @@ def main(options=None):
         raise RuntimeError("Invalid value of N: %s" % options.N)
 
     # Now we are ready to run
-    with Toil(options) as toil:
-        sortFileURL = 'file://' + os.path.abspath(fileName)
-        if not toil.options.restart:
+    with Toil(options) as workflow:
+        sortedFileURL = 'file://' + os.path.abspath(sortedFileName)
+        if not workflow.options.restart:
             sortFileURL = 'file://' + os.path.abspath(fileName)
-            sortFileID = toil.importFile(sortFileURL)
-            sortedFileID = toil.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints,
+            sortFileID = workflow.importFile(sortFileURL)
+            sortedFileID = workflow.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints, options=options,
                                                     memory=sortMemory))
         else:
-            sortedFileID = toil.restart()
-        toil.exportFile(sortedFileID, sortFileURL)
+            sortedFileID = workflow.restart()
+        workflow.exportFile(sortedFileID, sortedFileURL)
+
 if __name__ == '__main__':
     main()

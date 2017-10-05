@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 
+from builtins import str
 import logging
 import os
 import uuid
@@ -24,7 +25,7 @@ import boto.s3
 
 from toil.jobStores.aws.jobStore import copyKeyMultipart
 from toil.jobStores.aws.utils import region_to_bucket_location
-from toil.test import ToilTest, make_tests
+from toil.test import ToilTest, make_tests, slow
 
 partSize = 2 ** 20 * 5
 logger = logging.getLogger(__name__)
@@ -60,6 +61,7 @@ def openS3(keySize=None):
             bucket.delete()
 
 
+@slow
 class AWSMultipartCopyTest(ToilTest):
 
     @classmethod

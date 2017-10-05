@@ -14,6 +14,11 @@
 
 from __future__ import absolute_import
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from builtins import object
 import logging
 import os
 import re
@@ -22,10 +27,13 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser
-from threading import Thread
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 # Python 3 compatibility imports
-from six.moves import cPickle
 from six import iteritems
 
 from bd2k.util.exceptions import require
@@ -36,6 +44,7 @@ from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromO
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
+from toil.batchSystems.options import setOptions as setBatchOptions
 
 
 logger = logging.getLogger(__name__)
@@ -76,14 +85,10 @@ class Config(object):
 
         #Autoscaling options
         self.provisioner = None
-        self.nodeType = None
+        self.nodeTypes = []
         self.nodeOptions = None
-        self.minNodes = 0
-        self.maxNodes = 10
-        self.preemptableNodeType = None
-        self.preemptableNodeOptions = None
-        self.minPreemptableNodes = 0
-        self.maxPreemptableNodes = 0
+        self.minNodes = None
+        self.maxNodes = []
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 30
@@ -122,6 +127,7 @@ class Config(object):
         self.useAsync = True
 
         #Debug options
+        self.debugWorker = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
@@ -160,6 +166,14 @@ class Config(object):
                 return Toil.buildLocator(name, os.path.abspath(rest))
             else:
                 return s
+        def parseStrList(s):
+            s = s.split(",")
+            s = [str(x) for x in s]
+            return s
+        def parseIntList(s):
+            s = s.split(",")
+            s = [int(x) for x in s]
+            return s
 
         #Core options
         setOption("jobStore", parsingFn=parseJobStore)
@@ -189,6 +203,7 @@ class Config(object):
 
         #Batch system options
         setOption("batchSystem")
+        setBatchOptions(self, setOption)
         setOption("disableHotDeployment")
         setOption("scale", float, fC(0.0))
         setOption("mesosMasterAddress")
@@ -200,14 +215,10 @@ class Config(object):
 
         #Autoscaling options
         setOption("provisioner")
-        setOption("nodeType")
+        setOption("nodeTypes", parseStrList)
         setOption("nodeOptions")
-        setOption("minNodes", int)
-        setOption("maxNodes", int)
-        setOption("preemptableNodeType")
-        setOption("preemptableNodeOptions")
-        setOption("minPreemptableNodes", int)
-        setOption("maxPreemptableNodes", int)
+        setOption("minNodes", parseIntList)
+        setOption("maxNodes", parseIntList)
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
@@ -252,6 +263,7 @@ class Config(object):
         setOption("servicePollingInterval", float, fC(0.0))
 
         #Debug options
+        setOption("debugWorker")
         setOption("badWorker", float, fC(0.0, 1.0))
         setOption("badWorkerFailInterval", float, fC(0.0))
 
@@ -343,32 +355,33 @@ def _addOptions(addGroupFn, config):
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
                      "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
 
-    for preemptable in (False, True):
-        def _addOptionFn(*name, **kwargs):
-            name = list(name)
-            if preemptable:
-                name.insert(-1, 'preemptable' )
-            name = ''.join((s[0].upper() + s[1:]) if i else s for i, s in enumerate(name))
-            terms = re.compile(r'\{([^{}]+)\}')
-            _help = kwargs.pop('help')
-            _help = ''.join((term.split('|') * 2)[int(preemptable)] for term in terms.split(_help))
-            addOptionFn('--' + name, dest=name,
-                        help=_help + ' The default is %s.' % getattr(config, name),
-                        **kwargs)
+    addOptionFn('--nodeTypes', default=None,
+                 help="List of node types separated by commas. The syntax for each node type "
+                      "depends on the provisioner used. For the cgcloud and AWS provisioners "
+                      "this is the name of an EC2 instance type, optionally followed by a "
+                      "colon and the price in dollars "
+                      "to bid for a spot instance of that type, for example 'c3.8xlarge:0.42'."
+                      "If no spot bid is specified, nodes of this type will be non-preemptable."
+                      "It is acceptable to specify an instance as both preemptable and "
+                      "non-preemptable, including it twice in the list. In that case,"
+                      "preemptable nodes of that type will be preferred when creating "
+                      "new nodes once the maximum number of preemptable-nodes has been"
+                      "reached.")
 
-        _addOptionFn('nodeType', metavar='TYPE',
-                     help="Node type for {non-|}preemptable nodes. The syntax depends on the "
-                          "provisioner used. For the cgcloud and AWS provisioners this is the name "
-                          "of an EC2 instance type{|, followed by a colon and the price in dollar "
-                          "to bid for a spot instance}, for example 'c3.8xlarge{|:0.42}'.")
-        _addOptionFn('nodeOptions', metavar='OPTIONS',
-                     help="Provisioning options for the {non-|}preemptable node type. The syntax "
-                          "depends on the provisioner used. Neither the CGCloud nor the AWS "
-                          "provisioner support any node options.")
-        for p, q in [('min', 'Minimum'), ('max', 'Maximum')]:
-            _addOptionFn(p, 'nodes', default=None, metavar='NUM',
-                         help=q + " number of {non-|}preemptable nodes in the cluster, if using "
-                                  "auto-scaling.")
+    addOptionFn('--nodeOptions', default=None,
+                 help="Options for provisioning the nodes. The syntax "
+                      "depends on the provisioner used. Neither the CGCloud nor the AWS "
+                      "provisioner support any node options.")
+
+    addOptionFn('--minNodes', default=None, 
+                 help="Mininum number of nodes of each type in the cluster, if using "
+                              "auto-scaling. This should be provided as a comma-separated "
+                              "list of the same length as the list of node types.")
+
+    addOptionFn('--maxNodes', default=None,
+                help="Maximum number of nodes of each type in the cluster, if using "
+                "autoscaling. This should be provided as a comma-separated list of the same "
+                "length as the list of node types.")
 
     # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
@@ -412,7 +425,8 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
                 help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
     addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
-                help=("The minimum number of seconds to wait before retrieving the current job state, in seconds"))
+                help=("Time, in seconds, to wait before doing a scheduler query for job state. "
+                      "Return cached results if within the waiting period."))
 
     #
     #Resource requirements
@@ -523,6 +537,10 @@ def _addOptions(addGroupFn, config):
     #Debug options
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
+    addOptionFn("--debug-worker", default=False, action="store_true",
+            help="Experimental no forking mode for local debugging."
+                 " Specifically, workers are not forked and"
+                 " stderr/stdout are not redirected to the log.")
     addOptionFn("--badWorker", dest="badWorker", default=None,
                       help=("For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
     addOptionFn("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
@@ -706,7 +724,7 @@ class Toil(object):
             with self._jobStore.writeSharedFileStream('rootJobReturnValue') as fH:
                 rootJob.prepareForPromiseRegistration(self._jobStore)
                 promise = rootJob.rv()
-                cPickle.dump(promise, fH, protocol=cPickle.HIGHEST_PROTOCOL)
+                pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
 
             # Setup the first wrapper and cache it
             rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
@@ -719,8 +737,7 @@ class Toil(object):
 
     def restart(self):
         """
-        Restarts a workflow that has been interrupted. This method should be called if and only
-        if a workflow has previously been started and has not finished.
+        Restarts a workflow that has been interrupted.
 
         :return: The root job's return value
         """
@@ -728,6 +745,13 @@ class Toil(object):
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
+
+        from toil.job import JobException
+        try:
+            self._jobStore.loadRootJob()
+        except JobException:
+            logger.warning('Requested restart but the workflow has already been completed; allowing exports to rerun.')
+            return self._jobStore.getRootJobReturnValue()
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupHotDeployment()
@@ -859,7 +883,7 @@ class Toil(object):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
                     with self._jobStore.writeSharedFileStream('userScript') as f:
-                        cPickle.dump(userScript, f, protocol=cPickle.HIGHEST_PROTOCOL)
+                        pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
                     from toil.batchSystems.singleMachine import SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
@@ -872,7 +896,7 @@ class Toil(object):
             from toil.jobStores.abstractJobStore import NoSuchFileException
             try:
                 with self._jobStore.readSharedFileStream('userScript') as f:
-                    userScript = cPickle.load(f)
+                    userScript = pickle.load(f)
             except NoSuchFileException:
                 logger.info('User script neither set explicitly nor present in the job store.')
                 userScript = None
@@ -918,7 +942,7 @@ class Toil(object):
         """
         # Dump out the environment of this process in the environment pickle file.
         with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
-            cPickle.dump(os.environ, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            pickle.dump(os.environ, fileHandle, pickle.HIGHEST_PROTOCOL)
         logger.info("Written the environment for the jobs to the environment file")
 
     def _cacheAllJobs(self):
@@ -1123,5 +1147,3 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
-
-

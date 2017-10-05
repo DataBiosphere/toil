@@ -13,6 +13,10 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+from __future__ import division
+from builtins import range
+from builtins import object
+from past.utils import old_div
 import os
 import logging
 import time
@@ -20,13 +24,13 @@ import toil.test.batchSystems.batchSystemTest as batchSystemTest
 
 from toil.job import Job
 from toil.job import PromisedRequirement
-from toil.test import needs_mesos
+from toil.test import needs_mesos, slow
 from toil.batchSystems.mesos.test import MesosTestSupport
 
 log = logging.getLogger(__name__)
 
 
-class hidden:
+class hidden(object):
     """
     Hide abstract base class from unittest's test case loader.
 
@@ -38,6 +42,7 @@ class hidden:
         An abstract base class for testing Toil workflows with promised requirements.
         """
 
+        @slow
         def testConcurrencyDynamic(self):
             """
             Asserts that promised core resources are allocated properly using a dynamic Toil workflow
@@ -50,8 +55,9 @@ class hidden:
                                      cores=1, memory='1M', disk='1M')
                 values = Job.Runner.startToil(root, self.getOptions(tempDir))
                 maxValue = max(values)
-                self.assertEqual(maxValue, self.cpuCount / coresPerJob)
+                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
 
+        @slow
         def testConcurrencyStatic(self):
             """
             Asserts that promised core resources are allocated properly using a static DAG
@@ -72,7 +78,7 @@ class hidden:
                                                 disk='1M'))
                 Job.Runner.startToil(root, self.getOptions(tempDir))
                 _, maxValue = batchSystemTest.getCounters(counterPath)
-                self.assertEqual(maxValue, self.cpuCount / coresPerJob)
+                self.assertEqual(maxValue, old_div(self.cpuCount, coresPerJob))
 
         def getOptions(self, tempDir, caching=True):
             options = super(hidden.AbstractPromisedRequirementsTest, self).getOptions(tempDir)
@@ -122,6 +128,7 @@ class hidden:
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
 
+        @slow
         def testPromiseRequirementRaceStatic(self):
             """
             Checks for a race condition when using promised requirements and child job functions.

@@ -13,6 +13,11 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from builtins import next
+from builtins import str
+from past.utils import old_div
+from future.utils import listitems
 import logging
 import os
 import re
@@ -31,6 +36,7 @@ from bd2k.util.processes import which
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.bioio import getTempFile
+from toil.common import Toil
 
 logger = logging.getLogger(__name__)
 
@@ -59,9 +65,14 @@ class ParasolBatchSystem(BatchSystemSupport):
                 command = next(which(command))
             except StopIteration:
                 raise RuntimeError("Can't find %s on PATH." % command)
-        logger.debug('Using Parasol at %s', command)
+        logger.info('Using Parasol at %s', command)
         self.parasolCommand = command
-        self.parasolResultsDir = tempfile.mkdtemp(dir=config.jobStore)
+        jobStoreType, path = Toil.parseLocator(config.jobStore)
+        if jobStoreType != 'file':
+            raise RuntimeError("The parasol batch system doesn't currently work with any "
+                               "jobStore type except file jobStores.")
+        self.parasolResultsDir = tempfile.mkdtemp(dir=os.path.abspath(path))
+        logger.debug("Using parasol results dir: %s", self.parasolResultsDir)
 
         # In Parasol, each results file corresponds to a separate batch, and all jobs in a batch
         # have the same cpu and memory requirements. The keys to this dictionary are the (cpu,
@@ -128,7 +139,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
 
         MiB = 1 << 20
-        truncatedMemory = (jobNode.memory / MiB) * MiB
+        truncatedMemory = (old_div(jobNode.memory, MiB)) * MiB
         # Look for a batch for jobs with these resource requirements, with
         # the memory rounded down to the nearest megabyte. Rounding down
         # meams the new job can't ever decrease the memory requirements
@@ -156,12 +167,12 @@ class ParasolBatchSystem(BatchSystemSupport):
                 jobID = self.cpuUsageQueue.get_nowait()
             except Empty:
                 break
-            if jobID in self.jobIDsToCpu.keys():
+            if jobID in list(self.jobIDsToCpu.keys()):
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
             assert self.usedCpus >= 0
         while self.usedCpus > self.maxCores:  # If we are still waiting
             jobID = self.cpuUsageQueue.get()
-            if jobID in self.jobIDsToCpu.keys():
+            if jobID in list(self.jobIDsToCpu.keys()):
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
             assert self.usedCpus >= 0
         # Now keep going
@@ -171,7 +182,7 @@ class ParasolBatchSystem(BatchSystemSupport):
             if match is None:
                 # This is because parasol add job will return success, even if the job was not
                 # properly issued!
-                logger.debug('We failed to properly add the job, we will try again after a 5s.')
+                logger.info('We failed to properly add the job, we will try again after a 5s.')
                 time.sleep(5)
             else:
                 jobID = int(match.group(1))
@@ -186,7 +197,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return super(ParasolBatchSystem, self).setEnv(name, value)
 
     def __environment(self):
-        return (k + '=' + (os.environ[k] if v is None else v) for k, v in self.environment.items())
+        return (k + '=' + (os.environ[k] if v is None else v) for k, v in listitems(self.environment))
 
     def killBatchJobs(self, jobIDs):
         """Kills the given jobs, represented as Job ids, then checks they are dead by checking
@@ -198,7 +209,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                     self.runningJobs.remove(jobID)
                 exitValue = self._runParasol(['remove', 'job', str(jobID)],
                                              autoRetry=False)[0]
-                logger.debug("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
+                logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 break
@@ -207,10 +218,9 @@ class ParasolBatchSystem(BatchSystemSupport):
             time.sleep(5)
         # Update the CPU usage, because killed jobs aren't written to the results file.
         for jobID in jobIDs:
-            if jobID in self.jobIDsToCpu.keys():
+            if jobID in list(self.jobIDsToCpu.keys()):
                 self.usedCpus -= self.jobIDsToCpu.pop(jobID)
 
-    queuePattern = re.compile(r'q\s+([0-9]+)')
     runningPattern = re.compile(r'r\s+([0-9]+)\s+[\S]+\s+[\S]+\s+([0-9]+)\s+[\S]+')
 
     def getJobIDsForResultsFile(self, resultsFile):
@@ -218,15 +228,11 @@ class ParasolBatchSystem(BatchSystemSupport):
         Get all queued and running jobs for a results file.
         """
         jobIDs = []
-        for line in self._runParasol(['-results=' + resultsFile, 'pstat2'])[1]:
-            runningJobMatch = self.runningPattern.match(line)
-            queuedJobMatch = self.queuePattern.match(line)
-            if runningJobMatch:
-                jobID = runningJobMatch.group(1)
-            elif queuedJobMatch:
-                jobID = queuedJobMatch.group(1)
-            else:
+        for line in self._runParasol(['-extended', 'list', 'jobs'])[1]:
+            fields = line.strip().split()
+            if len(fields) == 0 or fields[-1] != resultsFile:
                 continue
+            jobID = fields[0]
             jobIDs.append(int(jobID))
         return set(jobIDs)
 
@@ -367,7 +373,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         logger.debug('Joining worker thread...')
         self.worker.join()
         logger.debug('... joined worker thread.')
-        for results in self.resultsFiles.values():
+        for results in list(self.resultsFiles.values()):
             os.remove(results)
         os.rmdir(self.parasolResultsDir)
 

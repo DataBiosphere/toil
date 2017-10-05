@@ -14,16 +14,24 @@
 
 from __future__ import absolute_import
 
+from builtins import next
+from builtins import filter
+from builtins import str
+from builtins import object
 import ast
 import logging
 import os
-import pickle
 import pwd
 import socket
 import time
 import sys
 from contextlib import contextmanager
 from struct import unpack
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 import itertools
 
@@ -149,10 +157,18 @@ class MesosBatchSystem(BatchSystemSupport,
         self.lastTimeOfferLogged = 0
         self.logPeriod = 30  # seconds
 
+        self.ignoredNodes = set()
+
         self._startDriver()
 
     def setUserScript(self, userScript):
         self.userScript = userScript
+
+    def ignoreNode(self, nodeAddress):
+        self.ignoredNodes.add(nodeAddress)
+
+    def unignoreNode(self, nodeAddress):
+        self.ignoredNodes.remove(nodeAddress)
 
     def issueBatchJob(self, jobNode):
         """
@@ -205,12 +221,12 @@ class MesosBatchSystem(BatchSystemSupport,
 
     def getIssuedBatchJobIDs(self):
         jobIds = set(self.jobQueues.jobIDs())
-        jobIds.update(self.runningJobMap.keys())
+        jobIds.update(list(self.runningJobMap.keys()))
         return list(jobIds)
 
     def getRunningBatchJobIDs(self):
         currentTime = dict()
-        for jobID, data in self.runningJobMap.items():
+        for jobID, data in list(self.runningJobMap.items()):
             currentTime[jobID] = time.time() - data.startTime
         return currentTime
 
@@ -382,6 +398,11 @@ class MesosBatchSystem(BatchSystemSupport,
         unableToRun = True
         # Right now, gives priority to largest jobs
         for offer in offers:
+            if offer.hostname in self.ignoredNodes:
+                log.debug("Declining offer %s because node %s is designated for termination" %
+                        (offer.id.value, offer.hostname))
+                driver.declineOffer(offer.id)
+                continue
             runnableTasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
             offerCores, offerMemory, offerDisk, offerPreemptable = self._parseOffer(offer)
@@ -465,8 +486,8 @@ class MesosBatchSystem(BatchSystemSupport,
         if not self.nodeFilter:
             return offers
         executorInfoOrNone = [self.executors.get(socket.gethostbyname(offer.hostname)) for offer in offers]
-        executorInfos = filter(None, executorInfoOrNone)
-        executorsToConsider = filter(self.nodeFilter[0], executorInfos)
+        executorInfos = [_f for _f in executorInfoOrNone if _f]
+        executorsToConsider = list(filter(self.nodeFilter[0], executorInfos))
         ipsToConsider = {ex.nodeAddress for ex in executorsToConsider}
         return [offer for offer in offers if socket.gethostbyname(offer.hostname) in ipsToConsider]
 

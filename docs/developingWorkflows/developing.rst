@@ -1,6 +1,6 @@
 .. _tutorial-ref:
 
-Developing a workflow
+Developing a Workflow
 =====================
 
 This tutorial walks through the features of Toil necessary for developing a
@@ -526,6 +526,9 @@ This object is a small wrapper around Python's builtin string class. It is used 
 represent a file's ID in the file store, and has a ``size`` attribute that is the
 file's size in bytes. This object is returned by ``importFile`` and ``writeGlobalFile``.
 
+
+.. _managingFiles:
+
 Managing files within a workflow
 --------------------------------
 
@@ -829,6 +832,8 @@ services can define sub-services using :func:`toil.job.Job.Service.addChild`.
 This allows complex networks of services to be created, e.g. Apache Spark
 clusters, within a workflow.
 
+
+.. _checkpoints:
 
 Checkpoints
 -----------

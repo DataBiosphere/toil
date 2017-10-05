@@ -17,7 +17,7 @@ import subprocess
 import sys
 import os
 
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 from toil.test.mesos import helloWorld
 
 
@@ -46,6 +46,7 @@ class RegularLogTest(ToilTest):
                     self.assertEqual(mime[1], encoding)
 
 
+    @slow
     def testLogToMaster(self):
         toilOutput = subprocess.check_output([sys.executable,
                                               '-m', helloWorld.__name__,
@@ -64,6 +65,7 @@ class RegularLogTest(ToilTest):
                                              stderr=subprocess.STDOUT)
         self._assertFileTypeExists(self.tempDir, '.log')
 
+    @slow
     def testWriteGzipLogs(self):
         toilOutput = subprocess.check_output([sys.executable,
                                               '-m', helloWorld.__name__,
@@ -74,6 +76,7 @@ class RegularLogTest(ToilTest):
                                               stderr=subprocess.STDOUT)
         self._assertFileTypeExists(self.tempDir, '.log.gz', 'gzip')
 
+    @slow
     def testMultipleLogToMaster(self):
         toilOutput = subprocess.check_output([sys.executable,
                                               '-m', helloWorld.__name__,

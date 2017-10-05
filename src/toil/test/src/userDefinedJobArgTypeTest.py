@@ -13,10 +13,11 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from builtins import object
 import sys
 from subprocess import check_call
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 
 
 class UserDefinedJobArgTypeTest(ToilTest):
@@ -38,6 +39,7 @@ class UserDefinedJobArgTypeTest(ToilTest):
         """Test with first job being a function"""
         Job.Runner.startToil(Job.wrapJobFn(jobFunction, 0, Foo()), self.options)
 
+    @slow
     def testJobClass(self):
         """Test with first job being an instance of a class"""
         Job.Runner.startToil(JobClass(0, Foo()), self.options)

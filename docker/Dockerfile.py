@@ -77,7 +77,10 @@ print(heredoc('''
     RUN chmod 777 /usr/bin/waitForKey.sh
 
     # The stock pip is too old and can't install from sdist with extras
-    RUN pip install --upgrade pip==8.1.2
+    RUN pip install --upgrade pip==9.0.1
+
+    # Default setuptools is too old
+    RUN pip install --upgrade setuptools==36.5.0
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
     RUN pip install --upgrade virtualenv==15.0.3

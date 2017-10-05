@@ -16,26 +16,38 @@
 The leader script (of the leader/worker pair) for running jobs.
 """
 from __future__ import absolute_import
+from __future__ import division
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import object
+from past.utils import old_div
 import logging
 import gzip
 import os
 import time
 from collections import namedtuple
 
-# Python 3 compatibility imports
-from six.moves import cPickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import bytes2human
 
 from toil import resolveEntryPoint
+try:
+    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+except ImportError:
+    # CWL extra not installed
+    CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.provisioners.clusterScaler import ClusterScaler
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
-from toil.jobGraph import JobNode
-from toil.job import ServiceJobNode
+from toil.job import JobNode, ServiceJobNode
 from toil.toilState import ToilState
 
 logger = logging.getLogger( __name__ )
@@ -77,7 +89,7 @@ class DeadlockException( Exception ):
 ##Following class represents the leader
 ####################################################
 
-class Leader:
+class Leader(object):
     """ Class that encapsulates the logic of the leader.
     """
     def __init__(self, config, batchSystem, provisioner, jobStore, rootJob, jobCache=None):
@@ -130,7 +142,7 @@ class Leader:
         # Class used to create/destroy nodes in the cluster, may be None if
         # using a statically defined cluster
         self.provisioner = provisioner
-
+ 
         # Create cluster scaling thread if the provisioner is not None
         self.clusterScaler = None if self.provisioner is None else ClusterScaler(self.provisioner, self, self.config)
 
@@ -143,10 +155,6 @@ class Leader:
         # Set used to monitor deadlocked jobs
         self.potentialDeadlockedJobs = set()
         self.potentialDeadlockTime = 0
-
-        # internal jobs we should not expose at top level debugging
-        self.debugJobNames = ("CWLJob", "CWLWorkflow", "CWLScatter", "CWLGather",
-                              "ResolveIndirect")
 
     def run(self):
         """
@@ -189,7 +197,7 @@ class Leader:
             self.statsAndLogging.shutdown()
 
         # Filter the failed jobs
-        self.toilState.totalFailedJobs = filter(lambda j : self.jobStore.exists(j.jobStoreID), self.toilState.totalFailedJobs)
+        self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
         logger.info("Finished toil run %s" %
                      ("successfully" if len(self.toilState.totalFailedJobs) == 0 else ("with %s failed jobs" % len(self.toilState.totalFailedJobs))))
@@ -200,13 +208,8 @@ class Leader:
         if len(self.toilState.totalFailedJobs) > 0:
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
 
-        # Parse out the return value from the root job
-        with self.jobStore.readSharedFileStream('rootJobReturnValue') as fH:
-            try:
-                return cPickle.load(fH)
-            except EOFError:
-                logger.exception('Failed to unpickle root job return value')
-                raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
+
+        return self.jobStore.getRootJobReturnValue()
 
     def innerLoop(self):
         """
@@ -432,7 +435,7 @@ class Leader:
                                 "for job %s", jobID)
                 else:
                     if result == 0:
-                        cur_logger = (logger.debug if str(updatedJob.jobName).startswith(self.debugJobNames)
+                        cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
                                       else logger.info)
                         cur_logger('Job ended successfully: %s', updatedJob)
                     else:
@@ -497,8 +500,8 @@ class Leader:
         totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
         # If there are no updated jobs and at least some jobs running
         if totalServicesIssued >= totalRunningJobs and len(self.toilState.updatedJobs) == 0 and totalRunningJobs > 0:
-            serviceJobs = filter(lambda x : isinstance(x, ServiceJobNode), self.jobBatchSystemIDToIssuedJob.values())
-            runningServiceJobs = set(filter(lambda x : self.serviceManager.isRunning(x), serviceJobs))
+            serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.values()) if isinstance(x, ServiceJobNode)]
+            runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.isRunning(x)])
             assert len(runningServiceJobs) <= totalRunningJobs
 
             # If all the running jobs are active services then we have a potential deadlock
@@ -524,14 +527,14 @@ class Leader:
         Add a job to the queue of jobs
         """
         jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
-                                    self.jobStoreLocator, jobNode.jobStoreID))
+                                    jobNode.jobName, self.jobStoreLocator, jobNode.jobStoreID))
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
         if jobNode.preemptable:
             # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
             self.preemptableJobsIssued += 1
-        cur_logger = (logger.debug if jobNode.jobName.startswith(self.debugJobNames)
+        cur_logger = (logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS)
                       else logger.info)
         cur_logger("Issued job %s with job batch system ID: "
                    "%s and cores: %s, disk: %s, and memory: %s",
@@ -576,7 +579,6 @@ class Leader:
           If true, return just the number of preemptable jobs. If false, return
           just the number of non-preemptable jobs.
         """
-        #assert self.jobsIssued >= 0 and self._preemptableJobsIssued >= 0
         if preemptable is None:
             return len(self.jobBatchSystemIDToIssuedJob)
         elif preemptable:
@@ -585,14 +587,6 @@ class Leader:
             assert len(self.jobBatchSystemIDToIssuedJob) >= self.preemptableJobsIssued
             return len(self.jobBatchSystemIDToIssuedJob) - self.preemptableJobsIssued
 
-    def getNumberAndAvgRuntimeOfCurrentlyRunningJobs(self):
-        """
-        Returns a tuple (x, y) where x is number of currently running jobs and y
-        is the average number of seconds (as a float)
-        the jobs have been running for.
-        """
-        runningJobs = self.batchSystem.getRunningBatchJobIDs()
-        return len(runningJobs), 0 if len(runningJobs) == 0 else float(sum(runningJobs.values()))/len(runningJobs)
 
     def getJobStoreID(self, jobBatchSystemID):
         """
@@ -621,12 +615,17 @@ class Leader:
                 self.serviceJobsIssued -= 1
 
         return jobNode
+    def getJobs(self, preemptable=None):
+        jobs = self.jobBatchSystemIDToIssuedJob.values()
+        if preemptable is not None:
+            jobs = [job for job in jobs if job.preemptable == preemptable]
+        return jobs
 
     def getJobIDs(self):
         """
         Gets the set of jobs currently issued.
         """
-        return self.jobBatchSystemIDToIssuedJob.keys()
+        return list(self.jobBatchSystemIDToIssuedJob.keys())
 
     def killJobs(self, jobsToKill):
         """
@@ -650,7 +649,7 @@ class Leader:
         if maxJobDuration < 10000000:  # We won't bother doing anything if the rescue
             # time is more than 16 weeks.
             runningJobs = self.batchSystem.getRunningBatchJobIDs()
-            for jobBatchSystemID in runningJobs.keys():
+            for jobBatchSystemID in list(runningJobs.keys()):
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
                     logger.warn("The job: %s has been running for: %s seconds, more than the "
                                 "max job duration: %s, we'll kill it",

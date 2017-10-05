@@ -19,7 +19,7 @@ import logging
 from toil.common import Toil
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 
 import inspect
 import os
@@ -44,9 +44,11 @@ class RestartDAGTest(ToilTest):
         super(RestartDAGTest, self).tearDown()
         shutil.rmtree(self.testJobStore)
 
+    @slow
     def testRestartedWorkflowSchedulesCorrectJobsOnFailedParent(self):
         self._testRestartedWorkflowSchedulesCorrectJobs('raise')
 
+    @slow
     def testRestartedWorkflowSchedulesCorrectJobsOnKilledParent(self):
         self._testRestartedWorkflowSchedulesCorrectJobs('kill')
 
