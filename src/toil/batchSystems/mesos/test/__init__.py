@@ -1,4 +1,6 @@
 from __future__ import absolute_import
+from builtins import next
+from builtins import object
 from abc import ABCMeta, abstractmethod
 import logging
 import shutil
@@ -8,6 +10,7 @@ import multiprocessing
 
 from bd2k.util.processes import which
 from bd2k.util.threading import ExceptionalThread
+from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
@@ -32,10 +35,7 @@ class MesosTestSupport(object):
         self.master.popen.kill()
         self.master.join()
 
-    class MesosThread(ExceptionalThread):
-        __metaclass__ = ABCMeta
-
-        # Lock is used because subprocess is NOT thread safe: http://tinyurl.com/pkp5pgq
+    class MesosThread(with_metaclass(ABCMeta, ExceptionalThread)):
         lock = threading.Lock()
 
         def __init__(self, numCores):

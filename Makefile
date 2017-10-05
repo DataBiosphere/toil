@@ -38,13 +38,13 @@ uploaded to PyPI.
 The 'docs' target uses Sphinx to create HTML documentation in the docs/_build directory
 
 The 'test' target runs Toil's unit tests serially with pytest. It will run some docker tests and
-setup. If you wish to avoid this, use the 'test_local' target instead. Note: this target does not
+setup. If you wish to avoid this, use the 'test_offline' target instead. Note: this target does not
 capture output from the terminal. For any of the test targets, set the 'tests' variable to run a
 particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
-The 'test_local' target is similar to 'test' but it skips the docker dependent tests and their
+The 'test_offline' target is similar to 'test' but it skips the docker dependent tests and their
 setup.
 
 The 'integration_test_local' target runs toil's integration tests. These are more thorough but also

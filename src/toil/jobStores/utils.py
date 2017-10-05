@@ -1,13 +1,16 @@
+from builtins import object
 import logging
 import os
+import errno
 from abc import ABCMeta
 from abc import abstractmethod
 
 from bd2k.util.threading import ExceptionalThread
+from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
-class WritablePipe(object):
+class WritablePipe(with_metaclass(ABCMeta, object)):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.readFrom` to consume the readable end of the pipe, then instantiate the class as a
@@ -69,8 +72,6 @@ class WritablePipe(object):
     True
     """
 
-    __metaclass__ = ABCMeta
-
     @abstractmethod
     def readFrom(self, readable):
         """
@@ -105,10 +106,14 @@ class WritablePipe(object):
             self.writable.close()
             # Closeing the writable end will send EOF to the readable and cause the reader thread
             # to finish.
+            if self.thread is not None:
+                # reraises any exception that was raised in the thread
+                self.thread.join()
+        except:
             if exc_type is None:
-                if self.thread is not None:
-                    # reraises any exception that was raised in the thread
-                    self.thread.join()
+                # Only raise the child exception if there wasn't
+                # already an exception in the main thread
+                raise
         finally:
             # The responsibility for closing the readable end is generally that of the reader
             # thread. To cover the small window before the reader takes over we also close it here.
@@ -119,14 +124,7 @@ class WritablePipe(object):
                 os.close(readable_fh)
 
 
-# FIXME: Unfortunately these two classes are almost an exact mirror image of each other.
-# Basically, read and write are swapped. The only asymmetry lies in how shutdown is handled. I
-# tried generalizing but the code becomes inscrutable. Until I (or someone else) has a better
-# idea how to solve this, I think its better to have code that is readable at the expense of
-# duplication.
-
-
-class ReadablePipe(object):
+class ReadablePipe(with_metaclass(ABCMeta, object)):
     """
     An object-oriented wrapper for os.pipe. Clients should subclass it, implement
     :meth:`.writeTo` to place data into the writable end of the pipe, then instantiate the class
@@ -188,8 +186,6 @@ class ReadablePipe(object):
     True
     """
 
-    __metaclass__ = ABCMeta
-
     @abstractmethod
     def writeTo(self, writable):
         """
@@ -201,10 +197,14 @@ class ReadablePipe(object):
         raise NotImplementedError()
 
     def _writer(self):
-        with os.fdopen(self.writable_fh, 'w') as writable:
-            # FIXME: another race here, causing a redundant attempt to close in the main thread
-            self.writable_fh = None  # signal to parent thread that we've taken over
-            self.writeTo(writable)
+        try:
+            with os.fdopen(self.writable_fh, 'w') as writable:
+                self.writeTo(writable)
+        except IOError as e:
+            # The other side of the pipe may have been closed by the
+            # reading thread, which is OK.
+            if e.errno != errno.EPIPE:
+                raise
 
     def __init__(self):
         super(ReadablePipe, self).__init__()
@@ -220,17 +220,16 @@ class ReadablePipe(object):
         return self.readable
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # Close the read end of the pipe. The writing thread may
+        # still be writing to the other end, but this will wake it up
+        # if that's the case.
+        self.readable.close()
         try:
+            if self.thread is not None:
+                # reraises any exception that was raised in the thread
+                self.thread.join()
+        except:
             if exc_type is None:
-                if self.thread is not None:
-                    # reraises any exception that was raised in the thread
-                    self.thread.join()
-        finally:
-            self.readable.close()
-            # The responsibility for closing the writable end is generally that of the writer
-            # thread. To cover the small window before the writer takes over we also close it here.
-            writable_fh = self.writable_fh
-            if writable_fh is not None:
-                # FIXME: This is still racy. The writer thread could close it now, and someone
-                # else may immediately open a new file, reusing the file handle.
-                os.close(writable_fh)
+                # Only raise the child exception if there wasn't
+                # already an exception in the main thread
+                raise

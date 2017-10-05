@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import
 
+from builtins import str
+from datetime import datetime
 import os
 import shutil
 import logging
@@ -23,10 +25,17 @@ from abc import ABCMeta, abstractmethod
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
+from future.utils import with_metaclass
 
 from bd2k.util.objects import abstractclassmethod
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.batchSystems import registry
+try:
+    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+except ImportError:
+    # CWL extra not installed
+    CWL_INTERNAL_JOBS = ()
 
 logger = logging.getLogger(__name__)
 
@@ -37,9 +46,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
     implemented.
     """
 
-    class Worker(Thread):
-
-        __metaclass__ = ABCMeta
+    class Worker(with_metaclass(ABCMeta, Thread)):
 
         def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
             """
@@ -63,6 +70,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
             self.boss = boss
             self.allocatedCpus = dict()
             self.batchJobIDs = dict()
+            self._checkOnJobsCache = None
+            self._checkOnJobsTimestamp = None
 
         def getBatchSystemID(self, jobID):
             """
@@ -175,12 +184,16 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
             return True
 
         def checkOnJobs(self):
-            """
-            Check and update status of all running jobs.
-            """
-            activity = False
-            self.boss.sleepSeconds()
+            """Check and update status of all running jobs.
 
+            Respects statePollingWait and will return cached results if not within
+            time period to talk with the scheduler.
+            """
+            if (self._checkOnJobsTimestamp and
+                 (datetime.now() - self._checkOnJobsTimestamp).total_seconds() < self.boss.config.statePollingWait):
+                return self._checkOnJobsCache
+
+            activity = False
             for jobID in list(self.runningJobs):
                 batchJobID = self.getBatchSystemID(jobID)
                 status = self.getJobExitCode(batchJobID)
@@ -188,6 +201,8 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
                     activity = True
                     self.updatedJobsQueue.put((jobID, status))
                     self.forgetJob(jobID)
+            self._checkOnJobsCache = activity
+            self._checkOnJobsTimestamp = datetime.now()
             return activity
 
         def run(self):
@@ -284,7 +299,6 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         # much smaller
         self.maxCPU, self.maxMEM = self.obtainSystemConstants()
 
-        self.nextJobID = 0
         self.newJobsQueue = Queue()
         self.updatedJobsQueue = Queue()
         self.killQueue = Queue()
@@ -293,6 +307,10 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         self.worker = self.Worker(self.newJobsQueue, self.updatedJobsQueue, self.killQueue,
                               self.killedJobsQueue, self)
         self.worker.start()
+        self.localBatch = registry.batchSystemFactoryFor(registry.defaultBatchSystem())()(config, maxCores,
+                                                                                          maxMemory, maxDisk)
+        self._getRunningBatchJobIDsTimestamp = None
+        self._getRunningBatchJobIDsCache = {}
 
     def __des__(self):
         # Closes the file handle associated with the results file.
@@ -307,12 +325,17 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         return False
 
     def issueBatchJob(self, jobNode):
-        self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
-        jobID = self.nextJobID
-        self.nextJobID += 1
-        self.currentJobs.add(jobID)
-        self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command))
-        logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
+        # Avoid submitting internal jobs to the batch queue, handle locally
+        if jobNode.jobName.startswith(CWL_INTERNAL_JOBS):
+            jobID = self.localBatch.issueBatchJob(jobNode)
+        else:
+            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+            with self.localBatch.jobIndexLock:
+                jobID = self.localBatch.jobIndex
+                self.localBatch.jobIndex += 1
+            self.currentJobs.add(jobID)
+            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command))
+            logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
         return jobID
 
     def killBatchJobs(self, jobIDs):
@@ -320,6 +343,7 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         Kills the given jobs, represented as Job ids, then checks they are dead by checking
         they are not in the list of issued jobs.
         """
+        self.localBatch.killBatchJobs(jobIDs)
         jobIDs = set(jobIDs)
         logger.debug('Jobs to be killed: %r', jobIDs)
         for jobID in jobIDs:
@@ -339,25 +363,44 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
         """
         Gets the list of issued jobs
         """
-        return list(self.currentJobs)
+        return list(self.localBatch.getIssuedBatchJobIDs()) + list(self.currentJobs)
 
     def getRunningBatchJobIDs(self):
-        return self.worker.getRunningJobIDs()
+        """Retrieve running job IDs from local and batch scheduler.
+
+        Respects statePollingWait and will return cached results if not within
+        time period to talk with the scheduler.
+        """
+        localIds = self.localBatch.getRunningBatchJobIDs()
+        if (self._getRunningBatchJobIDsTimestamp and
+             (datetime.now() - self._getRunningBatchJobIDsTimestamp).total_seconds() < self.config.statePollingWait):
+            batchIds = self._getRunningBatchJobIDsCache
+        else:
+            batchIds = self.worker.getRunningJobIDs()
+            self._getRunningBatchJobIDsCache = batchIds
+            self._getRunningBatchJobIDsTimestamp = datetime.now()
+        batchIds.update(localIds)
+        return batchIds
 
     def getUpdatedBatchJob(self, maxWait):
-        try:
-            item = self.updatedJobsQueue.get(timeout=maxWait)
-        except Empty:
-            return None
-        logger.debug('UpdatedJobsQueue Item: %s', item)
-        jobID, retcode = item
-        self.currentJobs.remove(jobID)
-        return jobID, retcode, None
+        local_tuple = self.localBatch.getUpdatedBatchJob(0)
+        if local_tuple:
+            return local_tuple
+        else:
+            try:
+                item = self.updatedJobsQueue.get(timeout=maxWait)
+            except Empty:
+                return None
+            logger.debug('UpdatedJobsQueue Item: %s', item)
+            jobID, retcode = item
+            self.currentJobs.remove(jobID)
+            return jobID, retcode, None
 
     def shutdown(self):
         """
         Signals worker to shutdown (via sentinel) then cleanly joins the thread
         """
+        self.localBatch.shutdown()
         newJobsQueue = self.newJobsQueue
         self.newJobsQueue = None
 
@@ -377,13 +420,10 @@ class AbstractGridEngineBatchSystem(BatchSystemSupport):
     def getRescueBatchJobFrequency(cls):
         return 30 * 60 # Half an hour
 
-    def sleepSeconds(self, sleeptime=None):
+    def sleepSeconds(self, sleeptime=1):
         """ Helper function to drop on all state-querying functions to avoid over-querying.
         """
-        sleeptime = sleeptime or self.config.statePollingWait
-        logger.debug('Querying job state, waiting for %s seconds', sleeptime)
         time.sleep(sleeptime)
-        
         return sleeptime
 
     @abstractclassmethod

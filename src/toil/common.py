@@ -14,6 +14,11 @@
 
 from __future__ import absolute_import
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from builtins import object
 import logging
 import os
 import re
@@ -23,10 +28,13 @@ import time
 import uuid
 import subprocess
 from argparse import ArgumentParser
-from threading import Thread
+
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 # Python 3 compatibility imports
-from six.moves import cPickle
 from six import iteritems
 
 from bd2k.util.exceptions import require
@@ -38,6 +46,7 @@ from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromO
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
+from toil.batchSystems.options import setOptions as setBatchOptions
 
 from toil.version import dockerRegistry, dockerTag
 
@@ -122,6 +131,7 @@ class Config(object):
         self.useAsync = True
 
         #Debug options
+        self.debugWorker = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
@@ -197,6 +207,7 @@ class Config(object):
 
         #Batch system options
         setOption("batchSystem")
+        setBatchOptions(self, setOption)
         setOption("disableHotDeployment")
         setOption("scale", float, fC(0.0))
         setOption("mesosMasterAddress")
@@ -257,6 +268,7 @@ class Config(object):
         setOption("servicePollingInterval", float, fC(0.0))
 
         #Debug options
+        setOption("debugWorker")
         setOption("badWorker", float, fC(0.0, 1.0))
         setOption("badWorkerFailInterval", float, fC(0.0))
 
@@ -422,7 +434,8 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
                 help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
     addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
-                help=("The minimum number of seconds to wait before retrieving the current job state, in seconds"))
+                help=("Time, in seconds, to wait before doing a scheduler query for job state. "
+                      "Return cached results if within the waiting period."))
 
     #
     #Resource requirements
@@ -533,6 +546,10 @@ def _addOptions(addGroupFn, config):
     #Debug options
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
+    addOptionFn("--debug-worker", default=False, action="store_true",
+            help="Experimental no forking mode for local debugging."
+                 " Specifically, workers are not forked and"
+                 " stderr/stdout are not redirected to the log.")
     addOptionFn("--badWorker", dest="badWorker", default=None,
                       help=("For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
     addOptionFn("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
@@ -716,7 +733,7 @@ class Toil(object):
             with self._jobStore.writeSharedFileStream('rootJobReturnValue') as fH:
                 rootJob.prepareForPromiseRegistration(self._jobStore)
                 promise = rootJob.rv()
-                cPickle.dump(promise, fH, protocol=cPickle.HIGHEST_PROTOCOL)
+                pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
 
             # Setup the first wrapper and cache it
             rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
@@ -729,8 +746,7 @@ class Toil(object):
 
     def restart(self):
         """
-        Restarts a workflow that has been interrupted. This method should be called if and only
-        if a workflow has previously been started and has not finished.
+        Restarts a workflow that has been interrupted.
 
         :return: The root job's return value
         """
@@ -738,6 +754,13 @@ class Toil(object):
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
+
+        from toil.job import JobException
+        try:
+            self._jobStore.loadRootJob()
+        except JobException:
+            logger.warning('Requested restart but the workflow has already been completed; allowing exports to rerun.')
+            return self._jobStore.getRootJobReturnValue()
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupHotDeployment()
@@ -869,7 +892,7 @@ class Toil(object):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
                     with self._jobStore.writeSharedFileStream('userScript') as f:
-                        cPickle.dump(userScript, f, protocol=cPickle.HIGHEST_PROTOCOL)
+                        pickle.dump(userScript, f, protocol=pickle.HIGHEST_PROTOCOL)
                 else:
                     from toil.batchSystems.singleMachine import SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
@@ -882,7 +905,7 @@ class Toil(object):
             from toil.jobStores.abstractJobStore import NoSuchFileException
             try:
                 with self._jobStore.readSharedFileStream('userScript') as f:
-                    userScript = cPickle.load(f)
+                    userScript = pickle.load(f)
             except NoSuchFileException:
                 logger.info('User script neither set explicitly nor present in the job store.')
                 userScript = None
@@ -928,7 +951,7 @@ class Toil(object):
         """
         # Dump out the environment of this process in the environment pickle file.
         with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
-            cPickle.dump(os.environ, fileHandle, cPickle.HIGHEST_PROTOCOL)
+            pickle.dump(os.environ, fileHandle, pickle.HIGHEST_PROTOCOL)
         logger.info("Written the environment for the jobs to the environment file")
 
     def _cacheAllJobs(self):
@@ -1260,5 +1283,3 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
-
-

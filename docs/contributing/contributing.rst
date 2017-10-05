@@ -5,43 +5,135 @@
 Running tests
 -------------
 
-To invoke all unit tests use
+Test make targets, invoked as ``$ make <target>``, subject to which
+environment variables are set (see :ref:`test_env_vars`).
+
++-------------------------+---------------------------------------------------+
+|     TARGET              |        DESCRIPTION                                |
++-------------------------+---------------------------------------------------+
+|  test                   | Invokes all tests.                                |
++-------------------------+---------------------------------------------------+
+| integration_test        | Invokes only the integration tests.               |
++-------------------------+---------------------------------------------------+
+| test_offline            | Skips building the Docker appliance and only      |
+|                         | invokes tests that have no docker dependencies.   |
++-------------------------+---------------------------------------------------+
+| integration_test_local  | Makes integration tests easier to debug locally   |
+|                         | by running the integration tests serially and     |
+|                         | doesn't redirect output. This makes it appears on |
+|                         | the terminal as expected.                         |
++-------------------------+---------------------------------------------------+
+
+Run all tests (including slow tests):
 
 ::
 
     $ make test
 
-To invoke all non-AWS integration tests use
+Run only quick tests (as of Sep 18, 2017, this was < 30 minutes):
 
 ::
 
-    $ make integration_test
+    $ export TOIL_TEST_QUICK=True; make test
 
-To invoke all integration tests, including AWS tests, use
-
-::
-
-    $ export TOIL_AWS_KEYNAME=<aws_keyname>; make integration_test
-
-To skip building the Docker appliance and run tests that have no docker dependency use
+Run an individual test with:
 
 ::
 
-    $ make test_offline
+    $ make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
-To make integration tests easier to debug locally one can use
+The default value for ``tests`` is ``"src"`` which includes all tests in the
+``src/`` subdirectory of the project root. Tests that require a particular
+feature will be skipped implicitly. If you want to explicitly skip tests that
+depend on a currently installed *feature*, use:
 
 ::
 
-    $ make integration_test_local
+    $ make test tests="-m 'not azure' src"
 
-which runs the integration tests in serial and doesn't redirect output. This makes it appears on the terminal as
-expected.
+This will run only the tests that don't depend on the ``azure`` extra, even if
+that extra is currently installed. Note the distinction between the terms
+*feature* and *extra*. Every extra is a feature but there are features that are
+not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
+involving both the Parasol feature and the Azure extra, use the following
 
+::
+
+    $ make test tests="-m 'not azure and not parasol' src"
+
+Running tests with pytest
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Often it is simpler to use pytest directly, instead of calling the ``make`` wrapper.
+This usually works as expected, but some tests need some manual preparation.
+
+ - Running tests that make use of Docker (e.g. autoscaling tests and Docker tests)
+   require an appliance image to be hosted. This process first requires :ref:`quaySetup`.
+   Then to build and host the appliance image run the ``make`` targets ``docker``
+   and ``push_docker`` respectively.
+
+ - Running integration tests require setting the environment variable ::
+
+       export TOIL_TEST_INTEGRATIVE=True
+
+To run a specific test with pytest ::
+
+    python -m pytest src/toil/test/sort/sortTest.py::SortTest::testSort
+
+For more information, see the `pytest documentation`_.
+
+.. _pytest documentation: https://docs.pytest.org/en/latest/
+
+
+
+.. _test_env_vars:
+
+Test environment variables
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
++------------------------+----------------------------------------------------+
+| TOIL_TEST_TEMP         | An absolute path to a directory where Toil tests   |
+|                        | will write their temporary files. Defaults to the  |
+|                        | system's `standard temporary directory`_.          |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_INTEGRATIVE  | If ``True``, this allows the integration tests to  |
+|                        | run. Only valid when running the tests from the    |
+|                        | source directory via ``make test`` or              |
+|                        | ``make test_parallel``.                            |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_EXPERIMENTAL | If ``True``, this allows tests on experimental     |
+|                        | features to run (such as the Google and Azure) job |
+|                        | stores. Only valid when running tests from the     |
+|                        | source directory via ``make test`` or              |
+|                        | ``make test_parallel``.                            |
++------------------------+----------------------------------------------------+
+| TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepare_aws-ref`), which |
+|                        | is required to run the AWS tests.                  |
++------------------------+----------------------------------------------------+
+| TOIL_AZURE_KEYNAME     | An Azure account keyname (see                      |
+|                        | :ref:`prepare_azure-ref`),                         |
+|                        | which is required to run the AWS tests.            |
++------------------------+----------------------------------------------------+
+| TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |
+|                        | (see :ref:`runningGCE`), which is required to      |
+|                        | to run the Google Cloud tests.                     |
++------------------------+----------------------------------------------------+
+| TOIL_TEST_QUICK        | If ``True``, long running tests are skipped.       |
++------------------------+----------------------------------------------------+
+
+.. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir
+
+.. admonition:: Partial install and failing tests.
+
+    Some tests may fail with an ImportError if the required extras are not installed
+    (:ref:`building_from_source-ref`). Install Toil with all of the extras
+    do prevent such errors.
+
+.. _quaySetup:
 
 Installing Docker with Quay
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-`Docker`_ is needed for some of the tests. Follow the appopriate
+`Docker`_ is needed for some of the tests. Follow the appropriate
 installation instructions for your system on their website to get started.
 
 When running ``make test`` you might still get the following error::
@@ -60,29 +152,6 @@ For convenience you may want to add this variable to your bashrc by running
 ::
 
    $ echo 'export TOIL_DOCKER_REGISTRY=quay.io/USER' >> $HOME/.bashrc
-
-Run an individual test with
-
-::
-
-    $ make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
-
-The default value for ``tests`` is ``"src"`` which includes all tests in the
-``src/`` subdirectory of the project root. Tests that require a particular
-feature will be skipped implicitly. If you want to explicitly skip tests that
-depend on a currently installed *feature*, use
-
-::
-
-    $ make test tests="-m 'not azure' src"
-
-This will run only the tests that don't depend on the ``azure`` extra, even if
-that extra is currently installed. Note the distinction between the terms
-*feature* and *extra*. Every extra is a feature but there are features that are
-not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
-involving both the Parasol feature and the Azure extra, use the following::
-
-    $ make test tests="-m 'not azure and not parasol' src"
 
 Running Mesos tests
 ~~~~~~~~~~~~~~~~~~~
@@ -114,9 +183,7 @@ as soon as a developer makes a commit or dirties the working copy they will no
 longer be able to rely on Toil to automatically detect the proper Toil Appliance
 image. Instead, developers wishing to test any appliance changes in autoscaling
 should build and push their own appliance image to a personal Docker registry.
-See :ref:`Autoscaling` and :func:`toil.applianceSelf` for information on how to
-configure Toil to pull the Toil Appliance image from your personal repo instead
-of the our official Quay account.
+This is described in the next section.
 
 General workflow for using Quay
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

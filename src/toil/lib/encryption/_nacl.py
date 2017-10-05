@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from builtins import str
 import nacl
 from nacl.secret import SecretBox
 
@@ -52,7 +53,7 @@ def encrypt(message, keyPath):
     # recommended in the libsodium documentation.)
     nonce = nacl.utils.random(SecretBox.NONCE_SIZE)
     assert len(nonce) == SecretBox.NONCE_SIZE
-    return str(sb.encrypt(message, nonce))
+    return bytes(sb.encrypt(message, nonce))
 
 def decrypt(ciphertext, keyPath):
     """

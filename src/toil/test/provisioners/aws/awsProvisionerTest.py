@@ -11,6 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from builtins import next
+from builtins import str
+from builtins import range
 import logging
 import os
 import subprocess
@@ -30,7 +33,7 @@ from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from uuid import uuid4
 
 
-from toil.test import needs_aws, integrative, ToilTest, needs_appliance, timeLimit
+from toil.test import needs_aws, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)
 
@@ -38,6 +41,7 @@ log = logging.getLogger(__name__)
 @needs_aws
 @integrative
 @needs_appliance
+@slow
 class AbstractAWSAutoscaleTest(ToilTest):
 
     def sshUtil(self, command):

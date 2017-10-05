@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import, print_function
+from __future__ import division
+from builtins import chr
+from builtins import map
+from builtins import str
+from builtins import range
+from past.utils import old_div
 import unittest
 import logging
 import os
@@ -24,7 +30,7 @@ from toil.common import Toil
 from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
-from toil.test import ToilTest
+from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +56,7 @@ class JobTest(ToilTest):
         with Toil(options) as toil:
             toil.start(Job.wrapJobFn(checkRequirements, memory='1000M'))
 
+    @slow
     def testStatic(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -133,7 +140,8 @@ class JobTest(ToilTest):
             self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
-            
+
+    @slow
     def testTrivialDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'
@@ -161,6 +169,7 @@ class JobTest(ToilTest):
             else:
                 self.fail()
 
+    @slow
     def testSiblingDAGConsistency(self):
         """
         Slightly more complex case. The stranded job's predecessors are siblings instead of
@@ -185,9 +194,9 @@ class JobTest(ToilTest):
         check they cause an exception properly. Also check that multiple roots 
         causes a deadlock exception.
         """
-        for test in xrange(10):
+        for test in range(10):
             # Make a random DAG for the set of child edges
-            nodeNumber = random.choice(xrange(2, 20))
+            nodeNumber = random.choice(range(2, 20))
             childEdges = self.makeRandomDAG(nodeNumber)
             # Get an adjacency list representation and check is acyclic
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
@@ -257,7 +266,7 @@ class JobTest(ToilTest):
             checkChildEdgeCycleDetection(tNode, fNode)   
 
             # Try adding a self child edge
-            node = random.choice(xrange(nodeNumber))
+            node = random.choice(range(nodeNumber))
             checkChildEdgeCycleDetection(node, node)
 
             # Try adding a follow on edge from a descendant to an ancestor
@@ -273,6 +282,7 @@ class JobTest(ToilTest):
                 and (fNode, tNode) not in childEdges and (fNode, tNode) not in followOnEdges):
                 checkFollowOnEdgeCycleDetection(fNode, tNode)
 
+    @slow
     def testNewCheckpointIsLeafVertexNonRootCase(self):
         """
         Test for issue #1465: Detection of checkpoint jobs that are not leaf vertices
@@ -294,6 +304,7 @@ class JobTest(ToilTest):
 
         self.runNewCheckpointIsLeafVertexTest(createWorkflow)
 
+    @slow
     def testNewCheckpointIsLeafVertexRootCase(self):
         """
         Test for issue #1466: Detection of checkpoint jobs that are not leaf vertices
@@ -379,6 +390,7 @@ class JobTest(ToilTest):
             except expectedException as ex:
                 logger.info("The expected exception was thrown: %s", repr(ex))
 
+    @slow
     def testEvaluatingRandomDAG(self):
         """
         Randomly generate test input then check that the job graph can be 
@@ -386,11 +398,11 @@ class JobTest(ToilTest):
         to validate the run.
         """
         jobStore = self._getTestJobStorePath()
-        for test in xrange(10):
+        for test in range(10):
             # Temporary file
             tempDir = self._createTempDir(purpose='tempDir')
             # Make a random DAG for the set of child edges
-            nodeNumber = random.choice(xrange(2, 8))
+            nodeNumber = random.choice(range(2, 8))
             childEdges = self.makeRandomDAG(nodeNumber)
             # Get an adjacency list representation and check is acyclic
             adjacencyList = self.getAdjacencyList(nodeNumber, childEdges)
@@ -434,9 +446,9 @@ class JobTest(ToilTest):
             # relationships contained within the output file to the ordering relationship,
             # so we can check they are compatible with the relationships defined by the job DAG.
             ordering = None
-            for i in xrange(nodeNumber):
+            for i in range(nodeNumber):
                 with open(os.path.join(tempDir, str(i)), 'r') as fH:
-                    ordering = map(int, fH.readline().split())
+                    ordering = list(map(int, fH.readline().split()))
                     self.assertEquals(int(ordering[-1]), i)
                     for j in ordering[:-1]:
                         adjacencyList[int(j)].add(i)
@@ -451,8 +463,8 @@ class JobTest(ToilTest):
     @staticmethod
     def getRandomEdge(nodeNumber):
         assert nodeNumber > 1
-        fNode = random.choice(xrange(nodeNumber - 1))
-        return fNode, random.choice(xrange(fNode+1, nodeNumber))
+        fNode = random.choice(range(nodeNumber - 1))
+        return fNode, random.choice(range(fNode+1, nodeNumber))
 
     @staticmethod
     def makeRandomDAG(nodeNumber):
@@ -462,9 +474,9 @@ class JobTest(ToilTest):
         referring to nodes and the edge is from a to b.
         """
         # Pick number of total edges to create
-        edgeNumber = random.choice(xrange(nodeNumber - 1, 1 + (nodeNumber * (nodeNumber - 1)) / 2))
+        edgeNumber = random.choice(range(nodeNumber - 1, 1 + old_div((nodeNumber * (nodeNumber - 1)), 2)))
         # Make a spanning tree of edges so that nodes are connected
-        edges = set(map(lambda i: (random.choice(xrange(i)), i), xrange(1, nodeNumber)))
+        edges = set([(random.choice(range(i)), i) for i in range(1, nodeNumber)])
         # Add extra random edges until there are edgeNumber edges
         while len(edges) < edgeNumber:
             edges.add(JobTest.getRandomEdge(nodeNumber))
@@ -475,7 +487,7 @@ class JobTest(ToilTest):
         """
         Make adjacency list representation of edges
         """
-        adjacencyList = [set() for _ in xrange(nodeNumber)]
+        adjacencyList = [set() for _ in range(nodeNumber)]
         for fNode, tNode in edges:
             adjacencyList[fNode].add(tNode)
         return adjacencyList
@@ -490,9 +502,9 @@ class JobTest(ToilTest):
         def dfs(fNode):
             if fNode not in visited:
                 visited.add(fNode)
-                map(dfs, adjacencyList[fNode])
+                list(map(dfs, adjacencyList[fNode]))
                 if followOnAdjacencyList is not None:
-                    map(dfs, followOnAdjacencyList[fNode])
+                    list(map(dfs, followOnAdjacencyList[fNode]))
 
         dfs(node)
         return visited
@@ -519,17 +531,17 @@ class JobTest(ToilTest):
                         visited.add(node2)
                         for i in followOnEdges:
                             augmentedAdjacencyList[node2].add(i)
-                        map(f, childAdjacencyList[node2])
-                        map(f, followOnAdjacencyList[node2])
+                        list(map(f, childAdjacencyList[node2]))
+                        list(map(f, followOnAdjacencyList[node2]))
 
-                map(f, childAdjacencyList[node])
+                list(map(f, childAdjacencyList[node]))
 
-            for node in xrange(len(followOnAdjacencyList)):
+            for node in range(len(followOnAdjacencyList)):
                 addImpliedEdges(node, followOnAdjacencyList[node])
             return augmentedAdjacencyList
 
         followOnEdges = set()
-        followOnAdjacencyList = map(lambda i: set(), childAdjacencyList)
+        followOnAdjacencyList = [set() for i in childAdjacencyList]
         # Loop to create the follow on edges (try 1000 times)
         while random.random() > 0.001:
             fNode, tNode = JobTest.getRandomEdge(len(childAdjacencyList))
@@ -571,7 +583,7 @@ class JobTest(ToilTest):
             return job
 
         # Make the jobs
-        jobs = map(lambda i: makeJob(str(i)), xrange(nodeNumber))
+        jobs = [makeJob(str(i)) for i in range(nodeNumber)]
         
         # Make the edges
         for fNode, tNode in childEdges:
@@ -580,7 +592,7 @@ class JobTest(ToilTest):
             jobs[fNode].addFollowOn(jobs[tNode])
             
         # Map of jobs to return values
-        jobsToRvs = dict(map(lambda job : (job, job.addService(TrivialService(job.rv())) if addServices else job.rv()), jobs))
+        jobsToRvs = dict([(job, job.addService(TrivialService(job.rv())) if addServices else job.rv()) for job in jobs])
 
         def getRandomPredecessor(job):
             predecessor = random.choice(list(job._directPredecessors))
@@ -590,7 +602,7 @@ class JobTest(ToilTest):
 
         # Connect up set of random promises compatible with graph                                          
         while random.random() > 0.01:
-            job = random.choice(jobsToPromisesMap.keys())
+            job = random.choice(list(jobsToPromisesMap.keys()))
             promises = jobsToPromisesMap[job]
             if len(job._directPredecessors) > 0:
                 predecessor = getRandomPredecessor(job)
@@ -616,7 +628,7 @@ class JobTest(ToilTest):
             return fNode in stack
 
         visited = set()
-        for i in xrange(len(adjacencyList)):
+        for i in range(len(adjacencyList)):
             if cyclic(i, visited, []):
                 return False
         return True

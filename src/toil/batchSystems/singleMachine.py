@@ -13,6 +13,13 @@
 # limitations under the License.
 
 from __future__ import absolute_import
+from __future__ import division
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from builtins import object
+from past.utils import old_div
 from contextlib import contextmanager
 import logging
 import multiprocessing
@@ -25,10 +32,10 @@ from threading import Lock, Condition
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
-from six.moves import xrange
 
 import toil
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, InsufficientSystemResources
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil import worker as toil_worker
 
 log = logging.getLogger(__name__)
 
@@ -78,7 +85,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # (scale > 1).
         self.scale = config.scale
         # Number of worker threads that will be started
-        self.numWorkers = int(self.maxCores / self.minCores)
+        self.debugWorker = config.debugWorker
+        self.numWorkers = int(old_div(self.maxCores, self.minCores))
         # A counter to generate job IDs and a lock to guard it
         self.jobIndex = 0
         self.jobIndexLock = Lock()
@@ -115,19 +123,62 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A pool representing the available space in bytes
         self.disk = ResourcePool(self.maxDisk, 'disk', self.acquisitionTimeout)
 
-        log.debug('Setting up the thread pool with %i workers, '
-                 'given a minimum CPU fraction of %f '
-                 'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
-        for i in xrange(self.numWorkers):
-            worker = Thread(target=self.worker, args=(self.inputQueue,))
-            self.workerThreads.append(worker)
-            worker.start()
+        if not self.debugWorker:
+            log.debug('Setting up the thread pool with %i workers, '
+                     'given a minimum CPU fraction of %f '
+                     'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
+            for i in range(self.numWorkers):
+                worker = Thread(target=self.worker, args=(self.inputQueue,))
+                self.workerThreads.append(worker)
+                worker.start()
+        else:
+            log.debug('Started in worker debug mode.')
+
+    def _runWorker(self, jobCommand, jobID, environment):
+        """
+        Run the jobCommand using the worker and wait for it to finish.
+        The worker is forked unless it is a '_toil_worker' job and
+        debugWorker is True.
+        """
+        startTime = time.time()  # Time job is started
+        popen = None
+        statusCode = None
+        forkWorker = not (self.debugWorker and "_toil_worker" in jobCommand)
+        if forkWorker:
+            with self.popenLock:
+                popen = subprocess.Popen(jobCommand,
+                                         shell=True,
+                                         env=dict(os.environ, **environment))
+        else:
+            statusCode = toil_worker.main(jobCommand.split())
+            if statusCode is None:
+                statusCode = 0
+
+        info = Info(time.time(), popen, killIntended=False)
+        try:
+            self.runningJobs[jobID] = info
+            try:
+                if forkWorker:
+                    statusCode = popen.wait()
+                if 0 != statusCode:
+                    if statusCode != -9 or not info.killIntended:
+                        log.error("Got exit code %i (indicating failure) "
+                                  "from job %s.", statusCode,
+                                  self.jobs[jobID])
+            finally:
+                self.runningJobs.pop(jobID)
+        finally:
+            if statusCode is not None and not info.killIntended:
+                self.outputQueue.put((jobID, statusCode,
+                                      time.time() - startTime))
 
     # Note: The input queue is passed as an argument because the corresponding attribute is reset
     # to None in shutdown()
 
     def worker(self, inputQueue):
         while True:
+            if self.debugWorker and inputQueue.empty():
+                return
             args = inputQueue.get()
             if args is None:
                 log.debug('Received queue sentinel.')
@@ -135,7 +186,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
             while True:
                 try:
-                    coreFractions = int(jobCores / self.minCores)
+                    coreFractions = int(old_div(jobCores, self.minCores))
                     log.debug('Acquiring %i bytes of memory from a pool of %s.', jobMemory,
                               self.memory)
                     with self.memory.acquisitionOf(jobMemory):
@@ -144,28 +195,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                   jobCores)
                         with self.coreFractions.acquisitionOf(coreFractions):
                             with self.disk.acquisitionOf(jobDisk):
-                                startTime = time.time() #Time job is started
-                                with self.popenLock:
-                                    popen = subprocess.Popen(jobCommand,
-                                                             shell=True,
-                                                             env=dict(os.environ, **environment))
-                                statusCode = None
-                                info = Info(time.time(), popen, killIntended=False)
-                                try:
-                                    self.runningJobs[jobID] = info
-                                    try:
-                                        statusCode = popen.wait()
-                                        if 0 != statusCode:
-                                            if statusCode != -9 or not info.killIntended:
-                                                log.error("Got exit code %i (indicating failure) "
-                                                          "from job %s.", statusCode,
-                                                          self.jobs[jobID])
-                                    finally:
-                                        self.runningJobs.pop(jobID)
-                                finally:
-                                    if statusCode is not None and not info.killIntended:
-                                        self.outputQueue.put((jobID, statusCode,
-                                                              time.time() - startTime))
+                                self._runWorker(jobCommand, jobID, environment)
+
                 except ResourcePool.AcquisitionTimeoutException as e:
                     log.debug('Could not acquire enough (%s) to run job (%s). Requested: (%s), '
                               'Avaliable: %s. Sleeping for 10s.', e.resource, jobID, e.requested,
@@ -190,13 +221,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         # Round cores to minCores and apply scale
         cores = math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores
-        assert cores <= self.maxCores, ('The job is requesting {} cores, more than the maximum of '
+        assert cores <= self.maxCores, ('The job {} is requesting {} cores, more than the maximum of '
                                         '{} cores this batch system was configured with. Scale is '
-                                        'set to {}.'.format(cores, self.maxCores, self.scale))
+                                        'set to {}.'.format(jobNode.jobName, cores, self.maxCores, self.scale))
         assert cores >= self.minCores
-        assert jobNode.memory <= self.maxMemory, ('The job is requesting {} bytes of memory, more than '
+        assert jobNode.memory <= self.maxMemory, ('The job {} is requesting {} bytes of memory, more than '
                                           'the maximum of {} this batch system was configured '
-                                          'with.'.format(jobNode.memory, self.maxMemory))
+                                          'with.'.format(jobNode.jobName, jobNode.memory, self.maxMemory))
 
         self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
@@ -207,6 +238,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.jobs[jobID] = jobNode.command
         self.inputQueue.put((jobNode.command, jobID, cores, jobNode.memory,
                              jobNode.disk, self.environment.copy()))
+        if self.debugWorker:  # then run immediately, blocking for return
+            self.worker(self.inputQueue)
         return jobID
 
     def killBatchJobs(self, jobIDs):
@@ -226,11 +259,11 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         Just returns all the jobs that have been run, but not yet returned as updated.
         """
-        return self.jobs.keys()
+        return list(self.jobs.keys())
 
     def getRunningBatchJobIDs(self):
         now = time.time()
-        return {jobID: now - info.time for jobID, info in self.runningJobs.items()}
+        return {jobID: now - info.time for jobID, info in list(self.runningJobs.items())}
 
     def shutdown(self):
         """
@@ -240,7 +273,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Remove reference to inputQueue (raises exception if inputQueue is used after method call)
         inputQueue = self.inputQueue
         self.inputQueue = None
-        for i in xrange(self.numWorkers):
+        for i in range(self.numWorkers):
             inputQueue.put(None)
         for thread in self.workerThreads:
             thread.join()

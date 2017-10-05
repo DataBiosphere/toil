@@ -18,6 +18,11 @@
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
 
+from future import standard_library
+standard_library.install_aliases()
+from builtins import str
+from builtins import range
+from builtins import object
 from toil.job import Job
 from toil.common import Toil
 from toil.version import baseVersion
@@ -53,6 +58,10 @@ from six import iteritems, string_types
 import six.moves.urllib.parse as urlparse
 
 cwllogger = logging.getLogger("cwltool")
+
+# Define internal jobs we should avoid submitting to batch systems and logging
+CWL_INTERNAL_JOBS = ("CWLJob", "CWLJobWrapper", "CWLWorkflow", "CWLScatter", "CWLGather",
+                     "ResolveIndirect")
 
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
@@ -126,7 +135,7 @@ def _resolve_indirect_inner(d):
 
     if isinstance(d, IndirectDict):
         r = {}
-        for k, v in d.items():
+        for k, v in list(d.items()):
             if isinstance(v, MergeInputs):
                 r[k] = v.resolve()
             else:
@@ -418,20 +427,21 @@ class CWLJob(Job):
         cwljob = resolve_indirect(self.cwljob)
         fillInDefaults(self.step_inputs, cwljob)
 
+        opts = copy.deepcopy(self.executor_options)
+        # Exports temporary directory for batch systems that reset TMPDIR
+        os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or fileStore.getLocalTempDir())
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
         os.mkdir(outdir)
+        tmp_outdir_prefix = os.path.join(opts.pop("workdir", None) or os.environ["TMPDIR"], "out_tmpdir")
 
         index = {}
         existing = {}
 
         # Run the tool
-        opts = copy.deepcopy(self.executor_options)
-        # Exports temporary directory for batch systems that reset TMPDIR
-        os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or tmpdir)
         (output, status) = cwltool.main.single_job_executor(self.cwltool, cwljob,
                                                             basedir=os.getcwd(),
                                                             outdir=outdir,
-                                                            tmp_outdir_prefix=fileStore.getLocalTempDir(),
+                                                            tmp_outdir_prefix=tmp_outdir_prefix,
                                                             tmpdir_prefix=fileStore.getLocalTempDir(),
                                                             make_fs_access=functools.partial(ToilFsAccess, fileStore=fileStore),
                                                             toil_get_file=functools.partial(toilGetFile, fileStore, index, existing),
@@ -499,7 +509,7 @@ class CWLScatter(Job):
     def flat_crossproduct_scatter(self, joborder, scatter_keys, outputs, postScatterEval):
         scatter_key = shortname(scatter_keys[0])
         l = len(joborder[scatter_key])
-        for n in xrange(0, l):
+        for n in range(0, l):
             jo = copy.copy(joborder)
             jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
@@ -514,7 +524,7 @@ class CWLScatter(Job):
         scatter_key = shortname(scatter_keys[0])
         l = len(joborder[scatter_key])
         outputs = []
-        for n in xrange(0, l):
+        for n in range(0, l):
             jo = copy.copy(joborder)
             jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
@@ -551,10 +561,10 @@ class CWLScatter(Job):
                             None, None, {}, context=v)
                 else:
                     return v
-            return {k: valueFromFunc(k, v) for k,v in io.items()}
+            return {k: valueFromFunc(k, v) for k,v in list(io.items())}
 
         if scatterMethod == "dotproduct":
-            for i in xrange(0, len(cwljob[shortname(scatter[0])])):
+            for i in range(0, len(cwljob[shortname(scatter[0])])):
                 copyjob = copy.copy(cwljob)
                 for sc in [shortname(x) for x in scatter]:
                     copyjob[sc] = cwljob[sc][i]
@@ -590,7 +600,7 @@ class CWLGather(Job):
 
     def allkeys(self, obj, keys):
         if isinstance(obj, dict):
-            for k in obj.keys():
+            for k in list(obj.keys()):
                 keys.add(k)
         elif isinstance(obj, list):
             for l in obj:
@@ -920,8 +930,8 @@ def main(args=None, stdout=sys.stdout):
             make_fs_access = functools.partial(ToilFsAccess, fileStore=toil)
             try:
                 (wf1, wf2) = makeJob(t, {}, use_container=use_container,
-                        preserve_environment=options.preserve_environment,
-                        tmpdir=os.path.realpath(outdir))
+                                     preserve_environment=options.preserve_environment,
+                                     tmpdir=os.path.realpath(outdir), workdir=options.workDir)
             except cwltool.process.UnsupportedRequirement as e:
                 logging.error(e)
                 return 33
