@@ -452,12 +452,6 @@ def _addOptions(addGroupFn, config):
                      bytes2human( config.defaultDisk, symbols='iec' ))
     assert not config.defaultPreemptable, 'User would be unable to reset config.defaultPreemptable'
     addOptionFn('--defaultPreemptable', dest='defaultPreemptable', action='store_true')
-    addOptionFn("--readGlobalFileMutableByDefault", dest="readGlobalFileMutableByDefault",
-                action='store_true', default=None, help='Toil disallows modification of read '
-                                                        'global files. Setting this flag causes '
-                                                        'them to be mutable. Unfortunately, this '
-                                                        'prevents saving space by caching files '
-                                                        'with hardlinks.')
     addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
                 help='The maximum number of CPU cores to request from the batch system at any one '
                      'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '

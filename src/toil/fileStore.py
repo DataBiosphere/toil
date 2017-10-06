@@ -201,7 +201,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
         return self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID)
 
     @abstractmethod
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
+    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False):
         """
         Makes the file associated with fileStoreID available locally. If mutable is True,
         then a copy of the file will be created locally so that the original is not modified
@@ -440,7 +440,6 @@ class CachingFileStore(FileStore):
         self.workerNumber = 2
         self.queue = Queue()
         self.updateSemaphore = Semaphore()
-        self.mutable = self.jobStore.config.readGlobalFileMutableByDefault
         self.workers = [Thread(target=self.asyncWrite) for i in range(self.workerNumber)]
         for worker in self.workers:
             worker.start()
@@ -596,7 +595,7 @@ class CachingFileStore(FileStore):
         # TODO: Make this work with caching
         return super(CachingFileStore, self).writeGlobalFileStream(cleanup)
 
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
+    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False):
         """
         Downloads a file described by fileStoreID from the file store to the local directory.
         The function first looks for the file in the cache and if found, it hardlinks to the
@@ -611,16 +610,12 @@ class CachingFileStore(FileStore):
                complete.
         :param bool mutable: If True, the file path returned points to a file that is
                modifiable by the user. Using False is recommended as it saves disk by making
-               multiple workers share a file via hard links. The default is False unless backwards
-               compatibility was requested.
+               multiple workers share a file via hard links. The default is False.
         """
         # Check that the file hasn't been deleted by the user
         if fileStoreID in self.filesToDelete:
             raise RuntimeError('Trying to access a file in the jobStore you\'ve deleted: ' + \
                                '%s' % fileStoreID)
-        # Set up the modifiable variable if it wasn't provided by the user in the function call.
-        if mutable is None:
-            mutable = self.mutable
         # Get the name of the file as it would be in the cache
         cachedFileName = self.encodedFileID(fileStoreID)
         # setup the harbinger variable for the file.  This is an identifier that the file is
@@ -973,7 +968,7 @@ class CachingFileStore(FileStore):
         # rather than unicode.
         return base64.urlsafe_b64decode(bytes(fileName))
 
-    def addToCache(self, localFilePath, jobStoreFileID, callingFunc, mutable=None):
+    def addToCache(self, localFilePath, jobStoreFileID, callingFunc, mutable=False):
         """
         Used to process the caching of a file. This depends on whether a file is being written
         to file store, or read from it.
@@ -990,10 +985,6 @@ class CachingFileStore(FileStore):
         :param bool mutable: See modifiable in readGlobalFile
         """
         assert callingFunc in ('read', 'write')
-        # Set up the modifiable variable if it wasn't provided by the user in the function call.
-        if mutable is None:
-            mutable = self.mutable
-        assert isinstance(mutable, bool)
         with self.cacheLock() as lockFileHandle:
             cachedFile = self.encodedFileID(jobStoreFileID)
             # The file to be cached MUST originate in the environment of the TOIL temp directory
@@ -1657,7 +1648,7 @@ class NonCachingFileStore(FileStore):
         self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
 
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=None):
+    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False):
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
