@@ -1,0 +1,70 @@
+- name: CREATE VM PLAYBOOK
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  vars:
+    # Variables 'vnet', 'subnet', 'vmname' and 'resgrp' need to be provided at command line with arg --extra-vars
+    dnsname: '{{ vmname }}.westus.cloudapp.azure.com'
+    # The DNS name might not be right depending on your region!!
+    ip: "{{ lookup ('dig', '{{ dnsname }}') }}"
+
+  tasks:
+  - debug: msg="Public DNS name {{ dnsname }} resolved to IP {{ ip }}. "
+# The following check is disabled so that the playbook does not stop upon existence of DNS name. Otherwise
+# it cannot be re-run after VM creation
+#  - name: Check if DNS is taken
+#    fail: msg="That DNS name seems to be already taken"
+#    when: ip != 'NXDOMAIN'
+  - name: Create storage account
+    azure_rm_storageaccount:
+      resource_group: '{{ resgrp }}'
+      name: '{{ vmname }}'
+      account_type: Standard_LRS
+  - name: Create security group that allows SSH and HTTP
+    azure_rm_securitygroup:
+      resource_group: '{{ resgrp }}'
+      name: '{{ vmname }}'
+      rules:
+        - name: SSH
+          protocol: Tcp
+          destination_port_range: 22
+          access: Allow
+          priority: 101
+          direction: Inbound
+        - name: WEB
+          protocol: Tcp
+          destination_port_range: 80
+          access: Allow
+          priority: 102
+          direction: Inbound
+  - name: Create public IP address
+    azure_rm_publicipaddress:
+      resource_group: '{{ resgrp }}'
+      allocation_method: Static
+      name: '{{ vmname }}'
+      domain_name_label: '{{ vmname }}'
+  - name: Create NIC
+    azure_rm_networkinterface:
+      resource_group: '{{ resgrp }}'
+      name: '{{ vmname }}'
+      virtual_network: '{{ vnet }}'
+      subnet: '{{ subnet }}'
+      public_ip_name: '{{ vmname }}'
+      security_group: '{{ vmname }}'
+  - name: Create VM
+    azure_rm_virtualmachine:
+      resource_group: '{{ resgrp }}'
+      name: '{{ vmname }}'
+      storage_account: '{{ vmname }}'
+      storage_container: '{{ vmname }}'
+      storage_blob: '{{ vmname }}.vhd'
+      network_interfaces: '{{ vmname }}'
+      vm_size: Standard_A0
+      admin_username: test-user
+      admin_password: Microsoft123!
+      ssh_password_enabled: True
+      image:
+        offer: CentOS
+        publisher: OpenLogic
+        sku: '7.2'
+        version: latest

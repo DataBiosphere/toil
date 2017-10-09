@@ -46,9 +46,9 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    :caption: Using Ansible to Deploy Workflows
    :maxdepth: 2
 
+   ansible/azure/install
    ansible/overview
    ansible/install
-   ansible/azure/install
 
 .. toctree::
    :caption: Developing Toil Workflows

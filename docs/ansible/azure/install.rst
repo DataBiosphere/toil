@@ -8,35 +8,36 @@ In this section, you will install the Azure CLI and configure it so that you can
 
 Install Azure
 -------------
-1. Install the Azure CLI using ``pip``::
+#. Install the Azure CLI using ``pip``::
 
-   $ pip install azure-cli
+   (venv) $ pip install azure==2.0.0rc5
+   (venv) $ pip install azure-cli
 
 
-2. Verify that the version of the Azure CLI is 2.0 or higher::
+#. Verify that the version of the Azure CLI is 2.0 or higher::
 
-   $ az --version
+   (venv) $ az --version
 
-3. Install a Python DNS resolver using ``pip``::
+#. Install a Python DNS resolver using ``pip``::
 
-   $ pip install dnspython
+   (venv) $ pip install dnspython
 
-4. Install a REST client for Azure using ``pip``::
+#. Install a REST client for Azure using ``pip``::
 
-   $ pip install msrestazure
+   (venv) $ pip install msrestazure
 
 
 Create an Azure service principal
 ---------------------------------
-1. Login to Azure::
+#. Login to Azure::
 
-   $ az login
+   (venv) $ az login
 
    You will be prompted to open a Web browser, go to a Web site, and enter a code in the text box presented at that site.  Following that, your browser will be redirected to login the http://login.microsoftonline.com.  Once you login there, your ``az login`` command is complete and your shell session is authenticated with Azure.
 
-2. Create an Active Directory application::
+#. Create an Active Directory application::
 
-   $ az ad app create --password abc123 --display-name myApp --homepage myapp.acme.com --identifier-uris myapp.acme.com
+   (venv) $ az ad app create --password abc123 --display-name myApp --homepage myapp.acme.com --identifier-uris myapp.acme.com
 
    Your expected output will be similar to the following::
 
@@ -54,29 +55,29 @@ Create an Azure service principal
       "replyUrls": []
       }
 
-3. Create a resource group in a location near you::
+#. Create a resource group in a location near you::
 
-   $ az group create --name <resource-group-name> --location <location>
-
-   e.g.::
-
-   $ az group create --name myresourcegroup --location westus
-
-4. Set the resource group you just created to be your default resource group::
-
-   $ az configure --defaults group=<resource-group-name>
+   (venv) $ az group create --name <resource-group-name> --location <location>
 
    e.g.::
 
-   $ az configure --defaults group=myresourcegroup
+   (venv) $ az group create --name myresourcegroup --location westus
 
-5. Create an Azure service principal for the application::
+#. Set the resource group you just created to be your default resource group::
 
-   $ az ad sp create --id <appId>
+   (venv) $ az configure --defaults group=<resource-group-name>
 
    e.g.::
 
-   $ az ad sp create --id 11111111-1111-1111-1111-111111111111
+   (venv) $ az configure --defaults group=myresourcegroup
+
+#. Create an Azure service principal for the application::
+
+   (venv) $ az ad sp create --id <appId>
+
+   e.g.::
+
+   (venv) $ az ad sp create --id 11111111-1111-1111-1111-111111111111
 
    Your expected output will be similar to the following::
 
@@ -91,9 +92,9 @@ Create an Azure service principal
 
    Note the value associated with the ``objectId`` -- you'll need that in a subsequent step.
 
-6. Identify your Azure subscription ID and tenant ID::
+#. Identify your Azure subscription ID and tenant ID::
 
-   $ az account show
+   (venv) $ az account show
 
    Your expected output will be similar to the following::
 
@@ -108,13 +109,13 @@ Create an Azure service principal
      }
 
 
-7. Assign the Azure Contributor role to the service principal associated with the default resource group::
+#. Assign the Azure Contributor role to the service principal associated with the default resource group::
 
-   $ az role assignment create --assignee <objectId> --role contributor
+   (venv) $ az role assignment create --assignee <objectId> --role contributor
 
    e.g.::
 
-   $ az role assignment create --assignee 44444444-4444-4444-4444-444444444444 --role contributor
+   (venv) $ az role assignment create --assignee 44444444-4444-4444-4444-444444444444 --role contributor
 
    Your expected output will be similar to the following::
 
@@ -133,22 +134,23 @@ Create an Azure service principal
 Create Azure network resources
 ------------------------------
 
-1. Create a virtual network in which your virtual machines will run::
+#. Create a virtual network in which your virtual machines will run::
 
-   $ az network vnet create -n <virtual-network-name> --address-prefixes <cidr-network> --subnet-name <subnet-name> --subnet-prefix <subnet-prefix>
-
-   e.g.::
-
-   $ az network vnet create -n myVnet --address-prefixes 192.168.0.0/16 --subnet-name mySubnet --subnet-prefix 192.168.1.0/24
-
-2. Create a public IP address for your VM::
-
-   $ az network public-ip create --name <ip-name>
-
+   (venv) $ az network vnet create -n <virtual-network-name> --address-prefixes <cidr-network> --subnet-name <subnet-name> --subnet-prefix <subnet-prefix>
 
    e.g.::
 
-   $ az network public-ip create --name myIP
+   (venv) $ az network vnet create -n myVnet --address-prefixes 192.168.0.0/16 --subnet-name mySubnet --subnet-prefix 192.168.1.0/24
+
+#. Create a public IP address for your VM::
+
+
+   (venv) $ az network public-ip create --name <ip-name>
+
+
+   e.g.::
+
+   (venv) $ az network public-ip create --name myIP
 
    Your expected output will be similar to the following::
 
@@ -167,9 +169,9 @@ Create Azure network resources
 Create a virtual machine in Azure
 ---------------------------------
 
-1. Create a VM in Azure::
+#. Create a VM in Azure::
 
-   $ az vm create -n mytestvm --image OpenLogic:CentOS:7.3:latest --vnet-name myVnet --subnet mySubnet --public-ip-address myIP --authentication-type password --admin-username test-user --admin-password Microsoft123!
+   (venv) $ az vm create -n mytestvm --image OpenLogic:CentOS:7.3:latest --vnet-name myVnet --subnet mySubnet --public-ip-address myIP --authentication-type password --admin-username test-user --admin-password Microsoft123!
 
    Your expected output will be similar to the following::
 
@@ -186,19 +188,39 @@ Create a virtual machine in Azure
       }
 
 
-2. Use SSH to login to your new VM::
+#. Use SSH to login to your new VM::
 
-   $ ssh <user>@<IP-address>
+   (venv) $ ssh <user>@<IP-address>
 
    e.g.::
 
-   $ ssh test-user@40.118.134.86
+   (venv) $ ssh test-user@40.118.134.86
 
 
-3. Logout of your VM::
+#. Logout of your VM::
 
    $ exit
 
-4. Delete your VM::
+#. Delete your VM::
 
-   $ az vm delete mytestvm
+   (venv) $ az vm delete --name mytestvm
+
+Create a credentials file for Azure
+-----------------------------------
+We will need to store our Azure credentials in some location where the Ansible scripts can read them.  There are multiple options for doing so as described here_.
+
+.. _here: http://docs.ansible.com/ansible/latest/guide_azure.html#providing-credentials-to-azure-modules.o/docs/py2or3.html
+
+#. Create a directory in your home directory called `.azure`::
+
+   (venv) $ mkdir ~/.azure
+
+#. Create a file called `~/.azure/credentials`::
+
+      (venv) $ vi ~/.azure/credentials
+      [default]
+      subscription_id=22222222-2222-2222-2222-222222222222
+      client_id=1111111-111-1111-111-111111111
+      secret=abc123
+      tenant=33333333-3333-3333-3333-333333333333
+

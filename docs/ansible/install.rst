@@ -74,3 +74,13 @@ Your output should be similar to the following::
 
    localhost | SUCCESS | rc=0 >>
    hello world
+
+Using an Ansible playbook to create a VM in Azure
+-------------------------------------------------
+
+#. Download :download:`the example playbook <../../src/toil/test/provisioners/azure/create-azure-vm.yml>`.
+
+
+#. Run the playbook using the Azure cloud resources created earlier in the Azure installation document (TODO reference here)::
+
+      (venv) $ ansible-playbook -v -c local --extra-vars "vmname=mytest2 resgrp=myresourcegroup vnet=myVnet subnet=mySubnet" create-azure-vm.yml
