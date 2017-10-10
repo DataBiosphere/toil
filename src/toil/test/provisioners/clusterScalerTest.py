@@ -104,7 +104,7 @@ class ClusterScalerTest(ToilTest):
             logger.info("Creating test jobs")
             list(map(lambda x: mock.addJob(jobShape=jobShape), list(range(numJobs))))
             list(map(lambda x: mock.addJob(jobShape=jobShape, preemptable=True), list(range(numPreemptableJobs))))
-    
+
             # Add some completed jobs
             for preemptable in (True, False):
                 if preemptable and numPreemptableJobs > 0 or not preemptable and numJobs > 0:
@@ -119,7 +119,7 @@ class ClusterScalerTest(ToilTest):
                                      command=None,
                                      jobName='testClusterScaling', unitName='')
                         clusterScaler.addCompletedJob(iJ, random.choice(list(range(1, x.wallTime))))
-    
+
             logger.info("Waiting for jobs to be processed")
             startTime = time.time()
             # Wait while the cluster the process chunks through the jobs
@@ -173,7 +173,7 @@ class ClusterScalerTest(ToilTest):
         config.scaleInterval = 3
 
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=0, jobShape=config.nodeTypes[0])
-        
+
     @slow
     def testClusterScalingMultipleNodeTypes(self):
 
@@ -182,7 +182,7 @@ class ClusterScalerTest(ToilTest):
         largeNode = Shape(20, 20, 10, 10, False)
 
         numJobs = 100
-        
+
         config = Config()
 
         # Make defaults dummy values
@@ -198,13 +198,13 @@ class ClusterScalerTest(ToilTest):
         #Make sure the node types don't have to be ordered
         config.nodeTypes = [largeNode, smallNode, mediumNode]
         config.minNodes = [0, 0, 0]
-        config.maxNodes = [10, 10, 10]
+        config.maxNodes = [10, 10] # test expansion of this list
 
         # Algorithm parameters
         config.alphaPacking = 0.8
         config.betaInertia = 1.2
         config.scaleInterval = 3
-        
+
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
         clusterScaler = ClusterScaler(mock, mock, config)
         clusterScaler.start()
@@ -214,7 +214,7 @@ class ClusterScalerTest(ToilTest):
             #Add small jobs
             list(map(lambda x: mock.addJob(jobShape=smallNode), list(range(numJobs))))
             list(map(lambda x: mock.addJob(jobShape=mediumNode), list(range(numJobs))))
-            
+
             #Add medium completed jobs
             for i in range(1000):
                 iJ = JobNode(jobStoreID=1,
@@ -242,7 +242,7 @@ class ClusterScalerTest(ToilTest):
         self.assertTrue(mock.maxWorkers[mediumNode] > 0)
 
         self.assertEqual(mock.maxWorkers[largeNode], 0)
-        
+
     @slow
     def testClusterScalingWithPreemptableJobs(self):
         """
@@ -311,7 +311,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.running = False
         self.leaderThread.join()
 
-    
+
     # Stub out all AbstractBatchSystem methods since they are never called
 
     for name, value in iteritems(AbstractBatchSystem.__dict__):
@@ -381,7 +381,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
 
     def getJobs(self):
         return self.jobBatchSystemIDToIssuedJob.values()
-    
+
     # AbstractScalableBatchSystem functionality
 
     def getNodes(self, preemptable=False, timeout=None):
@@ -418,7 +418,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
             if updatedJobID:
                 del self.jobBatchSystemIDToIssuedJob[updatedJobID]
             time.sleep(0.1)
-            
+
 
     def _addNodes(self, numNodes, nodeType, preemptable=False):
         nodeShape = self.getNodeShape(nodeType=nodeType, preemptable=preemptable)
@@ -474,4 +474,4 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
             return len(self.workers[nodeShape])
         else:
             return len(self.nodesToWorker)
-                
+
