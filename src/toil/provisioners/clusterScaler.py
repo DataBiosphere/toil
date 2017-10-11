@@ -366,9 +366,11 @@ class ScalerThread(ExceptionalThread):
         self.jobShapes = RecentJobShapes(scaler.config, nodeShape=self.nodeShapes[0])
         # Minimum/maximum number of either preemptable or non-preemptable nodes in the cluster
         minNodes = scaler.config.minNodes
-        maxNodes = scaler.config.maxNodes
         if minNodes is None:
             minNodes = [0 for node in self.nodeTypes]
+        maxNodes = scaler.config.maxNodes
+        while len(maxNodes) < len(self.nodeTypes):
+            maxNodes.append(maxNodes[0])
         self.minNodes = dict(zip(self.nodeShapes, minNodes))
         self.maxNodes = dict(zip(self.nodeShapes, maxNodes))
 
