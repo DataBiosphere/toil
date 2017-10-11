@@ -18,6 +18,7 @@ import base64
 import logging
 import os
 import pipes
+import re
 import uuid
 
 from bd2k.util.exceptions import require
@@ -124,7 +125,9 @@ def _docker(job,
     if dockerParameters:
         baseDockerCall += dockerParameters
     else:
-        baseDockerCall += ['--rm', '--log-driver', 'none', '-v',
+        if defer is RM:
+            baseDockerCall += ['--rm']
+        baseDockerCall += ['--log-driver', 'none', '-v',
                            os.path.abspath(workDir) + ':/data']
 
     # Ensure the user has passed a valid value for defer
@@ -249,10 +252,15 @@ def _fixPermissions(tool, workDir):
         with attempt:
             subprocess.check_call(command)
 
+DOCKER_NAME_RE = re.compile(r"(?:^[^a-zA-Z0-9])|([^a-zA-Z0-9_.-]+)")
 
 def _getContainerName(job):
-    return '--'.join([str(job),
-                      base64.b64encode(os.urandom(9), '-_')]).replace("'", '').replace('_', '')
+    jobname = str(job)
+    jobname = DOCKER_NAME_RE.sub("--", jobname)
+    containername =  '--'.join([jobname,
+                                base64.b64encode(os.urandom(9), '-_')])
+    containername = containername.replace("'", '').replace('_', '')
+    return containername
 
 
 def _containerIsRunning(container_name):
