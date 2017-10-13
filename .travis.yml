@@ -4,6 +4,6 @@ python:
   - "2.7"
 install:
   - make prepare
-  - make develop  # NOTE: no extras yet. Let's keep this simple
+  - make develop extras=[aws,google] # adding extras to avoid import errors
 script:
   - make test_offline
