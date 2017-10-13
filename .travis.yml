@@ -5,4 +5,4 @@ install:
   - make prepare
   - make develop extras=[aws,google] # adding extras to avoid import errors
 script:
-  - TOIL_TEST_QUICK=TRUE make test_offline
+  - TOIL_TEST_QUICK=True make test_offline
