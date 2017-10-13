@@ -63,3 +63,39 @@ def std_dev(xs):
     """
     m = mean(xs)  # this checks our pre-conditions, too
     return sqrt(sum((x - m) ** 2 for x in xs) / float(len(xs)))
+
+
+def partition_seq(seq, size):
+    """
+    Splits a sequence into an iterable of subsequences. All subsequences are of the given size,
+    except the last one, which may be smaller. If the input list is modified while the returned
+    list is processed, the behavior of the program is undefined.
+
+    :param seq: the list to split
+    :param size: the desired size of the sublists, must be > 0
+    :type size: int
+    :return: an iterable of sublists
+
+    >>> list(partition_seq("",1))
+    []
+    >>> list(partition_seq("abcde",2))
+    ['ab', 'cd', 'e']
+    >>> list(partition_seq("abcd",2))
+    ['ab', 'cd']
+    >>> list(partition_seq("abcde",1))
+    ['a', 'b', 'c', 'd', 'e']
+    >>> list(partition_seq("abcde",0))
+    Traceback (most recent call last):
+    ...
+    ValueError: Size must be greater than 0
+    >>> l=[1,2,3,4]
+    >>> i = iter( partition_seq(l,2) )
+    >>> l.pop(0)
+    1
+    >>> i.next()
+    [2, 3]
+    """
+    if size < 1:
+        raise ValueError('Size must be greater than 0')
+    return (seq[pos:pos + size] for pos in xrange(0, len(seq), size))
+

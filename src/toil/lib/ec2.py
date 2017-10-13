@@ -11,8 +11,8 @@ from boto.ec2.ec2object import TaggedEC2Object
 from boto.ec2.instance import Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
-from cgcloud.lib.util import partition_seq
-from cgcloud_Crypto.PublicKey import RSA
+from toil.lib.misc import partition_seq
+from toil.lib.encryption import RSA
 
 a_short_time = 5
 
