@@ -117,7 +117,7 @@ class Config(object):
         self.rescueJobsFrequency = 3600
 
         #Misc
-        self.disableCaching = False
+        self.disableCaching = True
         self.maxLogFileSize = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
@@ -487,7 +487,7 @@ def _addOptions(addGroupFn, config):
     #Misc options
     #
     addOptionFn = addGroupFn("toil miscellaneous options", "Miscellaneous options")
-    addOptionFn('--disableCaching', dest='disableCaching', action='store_true', default=False,
+    addOptionFn('--disableCaching', dest='disableCaching', action='store_true', default=True,
                 help='Disables caching in the file store. This flag must be set to use '
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
                      'LSF, or Slurm')
