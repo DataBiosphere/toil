@@ -1,6 +1,5 @@
 import logging
 import sys
-
 from toil.provisioners.ansible import azureAnsibleProvisioner
 
 logging.basicConfig(level=logging.DEBUG)

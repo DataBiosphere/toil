@@ -1,8 +1,6 @@
 import argparse
 import logging
-
 import pipettor
-
 from toil.provisioners.ansible.abstractAnsibleProvisioner import AbstractAnsibleProvisioner
 
 logging.basicConfig(level=logging.DEBUG)
