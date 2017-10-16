@@ -1071,6 +1071,7 @@ class ToilMetrics:
             subprocess.check_call(["docker", "rm", "-f", "toil_mtail"])
         except subprocess.CalledProcessError:
             pass
+
         try:
             self.mtailProc = subprocess.Popen(["docker", "run", "--rm", "--interactive",
                                                "--net=host",
@@ -1078,10 +1079,11 @@ class ToilMetrics:
                                                "-p", "3903:3903",
                                                self.mtailImage],
                                               stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-
         except subprocess.CalledProcessError:
             logger.warn("Could not start toil metrics server.")
             self.mtailProc = None
+        except KeyboardInterrupt:
+            self.mtailProc.terminate()
 
         # On single machine, launch a node exporter instance to monitor CPU/RAM usage.
         # On AWS this is handled by the EC2 init script
@@ -1102,6 +1104,8 @@ class ToilMetrics:
             except subprocess.CalledProcessError:
                 logger.warn("Couldn't start node exporter, won't get RAM and CPU usage for dashboard.")
                 self.nodeExporterProc = None
+            except KeyboardInterrupt:
+                self.nodeExporterProc.terminate()
 
     @staticmethod
     def _containerRunning(containerName):
@@ -1115,7 +1119,10 @@ class ToilMetrics:
     def startDashboard(self, clusterName):
         try:
             if not self._containerRunning("toil_prometheus"):
-                subprocess.check_call(["docker", "rm", "-f", "toil_prometheus"])
+                try:
+                    subprocess.check_call(["docker", "rm", "-f", "toil_prometheus"])
+                except subprocess.CalledProcessError:
+                    pass
                 subprocess.check_call(["docker", "run",
                                  "--name", "toil_prometheus",
                                  "--net=host",
@@ -1125,13 +1132,17 @@ class ToilMetrics:
                                  clusterName])
 
             if not self._containerRunning("toil_grafana"):
-                subprocess.check_call(["docker", "rm", "-f", "toil_grafana"])
+                try:
+                    subprocess.check_call(["docker", "rm", "-f", "toil_grafana"])
+                except subprocess.CalledProcessError:
+                    pass
                 subprocess.check_call(["docker", "run",
                                  "--name", "toil_grafana",
                                  "-d", "-p=3000:3000",
                                  self.grafanaImage])
         except subprocess.CalledProcessError:
             logger.warn("Could not start prometheus/grafana dashboard.")
+            return
 
         #Add prometheus data source
         def requestPredicate(e):
