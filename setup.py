@@ -36,7 +36,8 @@ def runSetup():
             'dill==0.2.5',
             'six>=1.10.0',
             'future',
-            'requests'],
+            'requests',
+            'docker==2.5.1'],
         extras_require={
             'mesos': [
                 'psutil==3.0.1'],

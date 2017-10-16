@@ -93,7 +93,7 @@ class Config(object):
         self.nodeTypes = []
         self.nodeOptions = None
         self.minNodes = None
-        self.maxNodes = []
+        self.maxNodes = [10]
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 30
@@ -383,12 +383,13 @@ def _addOptions(addGroupFn, config):
     addOptionFn('--minNodes', default=None, 
                  help="Mininum number of nodes of each type in the cluster, if using "
                               "auto-scaling. This should be provided as a comma-separated "
-                              "list of the same length as the list of node types.")
+                              "list of the same length as the list of node types. default=0")
 
     addOptionFn('--maxNodes', default=None,
                 help="Maximum number of nodes of each type in the cluster, if using "
-                "autoscaling. This should be provided as a comma-separated list of the same "
-                "length as the list of node types.")
+                "autoscaling, provided as a comma-separated list. The first value is used "
+                "as a default if the list length is less than the number of nodeTypes. "
+                "default=%s" % config.maxNodes[0])
 
     # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
