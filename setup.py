@@ -35,7 +35,8 @@ def runSetup():
             'bd2k-python-lib>=1.14a1.dev35',
             'dill==0.2.5',
             'six>=1.10.0',
-            'future'],
+            'future',
+            'requests'],
         extras_require={
             'mesos': [
                 'psutil==3.0.1'],
