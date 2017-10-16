@@ -61,9 +61,6 @@ involving both the Parasol feature and the Azure extra, use the following
 
     $ make test tests="-m 'not azure and not parasol' src"
 
-.. note::
-    Install the aws extra to avoid py.test collection errors (see :ref:`building_from_source-ref`).
-
 Running tests with pytest
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
