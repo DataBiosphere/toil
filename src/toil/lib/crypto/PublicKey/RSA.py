@@ -42,7 +42,7 @@ bytes if *n* is 2048 bit long).
 This module provides facilities for generating fresh, new RSA keys, constructing
 them from known components, exporting them, and importing them.
 
-    >>> from cgcloud_Crypto.PublicKey import RSA
+    >>> from toil.lib.crypto.PublicKey import RSA
     >>>
     >>> key = RSA.generate(2048)
     >>> f = open('mykey.pem','w')
@@ -69,25 +69,24 @@ __all__ = ['generate', 'construct', 'error', 'importKey', 'RSAImplementation',
            '_RSAobj', 'oid', 'algorithmIdentifier']
 
 import sys
-
 if sys.version_info[0] == 2 and sys.version_info[1] == 1:
-    from cgcloud_Crypto.Util.py21compat import *
-from cgcloud_Crypto.Util.py3compat import *
+    from toil.lib.crypto.Util.py21compat import *
+from toil.lib.crypto.Util.py3compat import *
 
-from cgcloud_Crypto.Util.number import bytes_to_long, long_to_bytes
+from toil.lib.crypto.Util.number import bytes_to_long, long_to_bytes
 
-from cgcloud_Crypto.PublicKey import _slowmath
-from cgcloud_Crypto.IO import PKCS8, PEM
+from toil.lib.crypto.PublicKey import _slowmath
+from toil.lib.crypto.IO import PKCS8, PEM
 
-from cgcloud_Crypto.Util.asn1 import *
+from toil.lib.crypto.Util.asn1 import *
 
 import binascii
 import struct
 
-from cgcloud_Crypto.Util.number import inverse
+from toil.lib.crypto.Util.number import inverse
 
 try:
-    from cgcloud_Crypto.PublicKey import _fastmath
+    from toil.lib.crypto.PublicKey import _fastmath
 except ImportError:
     _fastmath = None
 
@@ -307,19 +306,19 @@ class RSAImplementation(object):
             When **use_fast_math** =True but fast math is not available.
         """
         use_fast_math = kwargs.get('use_fast_math', None)
-        if use_fast_math is None:  # Automatic
+        if use_fast_math is None:   # Automatic
             if _fastmath is not None:
                 self._math = _fastmath
             else:
                 self._math = _slowmath
 
-        elif use_fast_math:  # Explicitly select fast math
+        elif use_fast_math:     # Explicitly select fast math
             if _fastmath is not None:
                 self._math = _fastmath
             else:
                 raise RuntimeError("fast math module not available")
 
-        else:  # Explicitly select slow math
+        else:   # Explicitly select slow math
             self._math = _slowmath
 
         self.error = self._math.error
@@ -367,11 +366,11 @@ class RSAImplementation(object):
             # Try PKCS#1 first, for a private key
             if len(der) == 9 and der.hasOnlyInts() and der[0] == 0:
                 # ASN.1 RSAPrivateKey element
-                del der[6:]  # Remove d mod (p-1),
+                del der[6:]     # Remove d mod (p-1),
                 # d mod (q-1), and
                 # q^{-1} mod p
                 der.append(inverse(der[4], der[5]))  # Add p^{-1} mod q
-                del der[0]  # Remove version
+                del der[0]      # Remove version
                 return self.construct(der[:])
 
             # Keep on trying PKCS#1, but now for a public key
@@ -461,7 +460,7 @@ class RSAImplementation(object):
             return self._importKeyDER(der, passphrase)
 
         if extern_key.startswith(b('ssh-rsa ')):
-            # This is probably an OpenSSH key
+                # This is probably an OpenSSH key
             keystring = binascii.a2b_base64(extern_key.split(b(' '))[1])
             keyparts = []
             while len(keystring) > 4:
@@ -489,8 +488,8 @@ oid = "1.2.840.113549.1.1.1"
 #: This is the standard DER object that qualifies a cryptographic algorithm
 #: in ASN.1-based data structures (e.g. X.509 certificates).
 algorithmIdentifier = DerSequence(
-    [DerObjectId(oid).encode(),  # algorithm field
-     DerNull().encode()]  # parameters field
+    [DerObjectId(oid).encode(),      # algorithm field
+     DerNull().encode()]              # parameters field
 ).encode()
 
 _impl = RSAImplementation()
@@ -507,3 +506,5 @@ construct = _impl.construct
 #:
 importKey = _impl.importKey
 error = _impl.error
+
+# vim:set ts=4 sw=4 sts=4 expandtab:

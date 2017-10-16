@@ -12,7 +12,7 @@ from boto.ec2.instance import Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
 from toil.lib.misc import partition_seq
-from toil.lib.encryption import RSA
+from toil.lib.crypto.PublicKey import RSA
 
 a_short_time = 5
 
