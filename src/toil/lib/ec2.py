@@ -12,7 +12,7 @@ from boto.ec2.instance import Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
 from toil.lib.misc import partition_seq
-from toil.lib.crypto.PublicKey import RSA
+from Crypto.PublicKey import RSA
 
 a_short_time = 5
 
@@ -472,7 +472,7 @@ def tag_object_persistently(tagged_ec2_object, tags_dict):
 
 def ec2_keypair_fingerprint(ssh_key, reject_private_keys=False):
     """
-    Computes the fingerrint of a public or private OpenSSH key in the way Amazon does it for
+    Computes the fingerprint of a public or private OpenSSH key in the way Amazon does it for
     keypairs resulting from either importing a SSH public key or generating a new keypair.
 
     :param ssh_key: a RSA public key in OpenSSH format, or an RSA private key in PEM format
