@@ -32,7 +32,7 @@
   "annotations": {
     "list": []
   },
-  "editable": true,
+  "editable": false,
   "gnetId": null,
   "graphTooltip": 0,
   "hideControls": false,
@@ -47,6 +47,8 @@
         {
           "aliasColors": {},
           "bars": false,
+          "dashLength": 10,
+          "dashes": false,
           "datasource": "DS_PROMETHEUS",
           "fill": 1,
           "id": 1,
@@ -71,6 +73,7 @@
           "points": false,
           "renderer": "flot",
           "seriesOverrides": [],
+          "spaceLength": 10,
           "span": 6,
           "stack": false,
           "steppedLine": false,
@@ -81,7 +84,7 @@
               "legendFormat": "{{instance}}",
               "metric": "node",
               "refId": "A",
-              "step": 2
+              "step": 10
             }
           ],
           "thresholds": [],
@@ -95,6 +98,7 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
             "name": null,
             "show": true,
@@ -122,6 +126,8 @@
         {
           "aliasColors": {},
           "bars": false,
+          "dashLength": 10,
+          "dashes": false,
           "datasource": "DS_PROMETHEUS",
           "fill": 1,
           "id": 2,
@@ -143,6 +149,7 @@
           "points": false,
           "renderer": "flot",
           "seriesOverrides": [],
+          "spaceLength": 10,
           "span": 6,
           "stack": false,
           "steppedLine": false,
@@ -152,7 +159,7 @@
               "intervalFactor": 2,
               "legendFormat": "{{instance}}",
               "refId": "A",
-              "step": 2
+              "step": 10
             }
           ],
           "thresholds": [],
@@ -166,6 +173,7 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
             "name": null,
             "show": true,
@@ -205,6 +213,8 @@
         {
           "aliasColors": {},
           "bars": false,
+          "dashLength": 10,
+          "dashes": false,
           "datasource": "DS_PROMETHEUS",
           "fill": 1,
           "id": 3,
@@ -226,23 +236,26 @@
           "points": false,
           "renderer": "flot",
           "seriesOverrides": [],
+          "spaceLength": 10,
           "span": 6,
           "stack": false,
           "steppedLine": false,
           "targets": [
             {
               "expr": "autoscaler_cur_size",
+              "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{node_type}}",
+              "legendFormat": "{{node_type}} (current)",
               "refId": "A",
-              "step": 2
+              "step": 10
             },
             {
               "expr": "autoscaler_desired_size",
+              "format": "time_series",
               "intervalFactor": 2,
-              "legendFormat": "{{node_type}}",
+              "legendFormat": "{{node_type}} (desired)",
               "refId": "B",
-              "step": 2
+              "step": 10
             }
           ],
           "thresholds": [],
@@ -256,6 +269,7 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
             "name": null,
             "show": true,
@@ -283,6 +297,8 @@
         {
           "aliasColors": {},
           "bars": false,
+          "dashLength": 10,
+          "dashes": false,
           "datasource": "DS_PROMETHEUS",
           "fill": 1,
           "id": 4,
@@ -304,6 +320,7 @@
           "points": false,
           "renderer": "flot",
           "seriesOverrides": [],
+          "spaceLength": 10,
           "span": 6,
           "stack": false,
           "steppedLine": false,
@@ -313,7 +330,7 @@
               "intervalFactor": 2,
               "legendFormat": "Queue size",
               "refId": "A",
-              "step": 2
+              "step": 10
             }
           ],
           "thresholds": [],
@@ -327,6 +344,7 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
             "name": null,
             "show": true,
@@ -366,6 +384,8 @@
         {
           "aliasColors": {},
           "bars": true,
+          "dashLength": 10,
+          "dashes": false,
           "datasource": "DS_PROMETHEUS",
           "fill": 1,
           "id": 5,
@@ -385,25 +405,28 @@
           "lines": false,
           "linewidth": 1,
           "links": [],
-          "nullPointMode": "null",
+          "nullPointMode": "null as zero",
           "percentage": false,
           "pointradius": 5,
           "points": false,
           "renderer": "flot",
           "seriesOverrides": [],
+          "spaceLength": 10,
           "span": 6,
           "stack": true,
           "steppedLine": false,
           "targets": [
             {
-              "expr": "(((issued_jobs - completed_jobs) or issued_jobs) - failed_jobs) or (issued_jobs - completed_jobs) or issued_jobs",
+              "expr": "sum((((issued_jobs - completed_jobs) or issued_jobs)) or (issued_jobs - completed_jobs) or issued_jobs) by (job_type)",
+              "format": "time_series",
               "intervalFactor": 2,
               "legendFormat": "{{job_type}}",
               "refId": "A",
-              "step": 2
+              "step": 10
             },
             {
               "expr": "",
+              "format": "time_series",
               "intervalFactor": 2,
               "refId": "B"
             }
@@ -411,14 +434,15 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Running or queued jobs",
+          "title": "Running or queued jobs (log scale)",
           "tooltip": {
-            "shared": false,
+            "shared": true,
             "sort": 2,
             "value_type": "individual"
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
             "name": null,
             "show": true,
@@ -428,7 +452,7 @@
             {
               "format": "short",
               "label": null,
-              "logBase": 1,
+              "logBase": 10,
               "max": null,
               "min": null,
               "show": true
@@ -446,6 +470,8 @@
         {
           "aliasColors": {},
           "bars": false,
+          "dashLength": 10,
+          "dashes": false,
           "datasource": "DS_PROMETHEUS",
           "fill": 1,
           "id": 6,
@@ -467,6 +493,7 @@
           "points": false,
           "renderer": "flot",
           "seriesOverrides": [],
+          "spaceLength": 10,
           "span": 6,
           "stack": false,
           "steppedLine": false,
@@ -476,7 +503,7 @@
               "intervalFactor": 2,
               "legendFormat": "{{job_type}}",
               "refId": "A",
-              "step": 2
+              "step": 10
             }
           ],
           "thresholds": [],
@@ -490,6 +517,7 @@
           },
           "type": "graph",
           "xaxis": {
+            "buckets": null,
             "mode": "time",
             "name": null,
             "show": true,
@@ -530,7 +558,7 @@
     "list": []
   },
   "time": {
-    "from": "now-15m",
+    "from": "now-1h",
     "to": "now"
   },
   "timepicker": {
