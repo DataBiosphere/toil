@@ -460,27 +460,20 @@ class ScalerThread(ExceptionalThread):
     def tryRun(self):
         while not self.scaler.stop:
             with throttle(self.scaler.config.scaleInterval):
-                # Estimate of number of nodes needed to run recent jobs
-                recentJobShapes = self.jobShapes.get()
                 queuedJobs = self.scaler.leader.getJobs()
-                logger.info("Detected %i queued jobs." % len(queuedJobs))
                 logger.info("avg runtime dict: %s" % repr(self.scaler.jobNameToAvgRuntime))
                 for jobName in set(job.jobName for job in queuedJobs):
                     logger.info("Got avg runtime %s for job %s." % (self.scaler.getAverageRuntime(jobName), jobName))
                 queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
-                nodesToRunRecentJobs = binPacking(jobShapes=recentJobShapes, nodeShapes=self.nodeShapes)
+                logger.info("job shapes: %s" % (repr(set(queuedJobShapes))))
                 nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes)
                 for nodeShape in self.nodeShapes:
                     nodeType = self.nodeShapeToType[nodeShape]
                     self.totalNodes[nodeShape] = len(self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=nodeShape.preemptable))
 
-                    logger.info("Nodes of type %s to run recent jobs: %s" % (nodeType, nodesToRunRecentJobs[nodeShape]))
                     logger.info("Nodes of type %s to run queued jobs = %s" % (nodeType, nodesToRunQueuedJobs[nodeShape]))
                     # Actual calculation of the estimated number of nodes required
-                    estimatedNodes = 0 if nodesToRunQueuedJobs[nodeShape] == 0 else max(1, int(round(
-                        self.scaler.config.alphaPacking
-                        * nodesToRunRecentJobs[nodeShape]
-                        + (1 - self.scaler.config.alphaPacking) * nodesToRunQueuedJobs[nodeShape])))
+                    estimatedNodes = 0 if nodesToRunQueuedJobs[nodeShape] == 0 else max(1, int(round(nodesToRunQueuedJobs[nodeShape])))
                     logger.info("Estimating %i nodes of shape %s" % (estimatedNodes, nodeShape))
 
 
@@ -497,27 +490,12 @@ class ScalerThread(ExceptionalThread):
                             logger.info('Adding %d preemptable nodes of type %s to compensate for a deficit of %d '
                                         'non-preemptable ones.', compensationNodes, nodeType, self.preemptableNodeDeficit[nodeType])
                         estimatedNodes += compensationNodes 
-                    jobsPerNode = (0 if nodesToRunRecentJobs[nodeShape] <= 0
-                                   else old_div(len(recentJobShapes), float(nodesToRunRecentJobs[nodeShape])))
-                    if estimatedNodes > 0 and self.totalNodes[nodeShape] < self.maxNodes[nodeShape]:
-                        logger.info('Estimating that cluster needs %s of shape %s, from current '
-                                    'size of %s, given a queue size of %s, the number of jobs per node '
-                                    'estimated to be %s, an alpha parameter of %s.',
-                                    estimatedNodes, nodeShape,
-                                    self.totalNodes[nodeShape], len(queuedJobs), jobsPerNode,
-                                    self.scaler.config.alphaPacking)
 
                     # Use inertia parameter to stop small fluctuations
                     logger.info("Currently %i nodes of type %s in cluster" % (self.totalNodes[nodeShape], nodeType))
                     if self.scaler.leader.toilMetrics:
                         self.scaler.leader.toilMetrics.logClusterSize(nodeType=nodeType, currentSize=self.totalNodes[nodeShape],
                                                                       desiredSize=estimatedNodes)
-                    delta = self.totalNodes[nodeShape] * max(0.0, self.scaler.config.betaInertia - 1.0)
-                    if self.totalNodes[nodeShape] - delta <= estimatedNodes <= self.totalNodes[nodeShape] + delta:
-                        logger.debug('Difference in new (%s) and previous estimates in number of '
-                                     '%s (%s) required is within beta (%s), making no change.',
-                                     estimatedNodes, nodeType, self.totalNodes[nodeShape], self.scaler.config.betaInertia)
-                        estimatedNodes = self.totalNodes[nodeShape]
 
                     # Bound number using the max and min node parameters
                     if estimatedNodes > self.maxNodes[nodeShape]:
