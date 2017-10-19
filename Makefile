@@ -166,11 +166,11 @@ test_parallel: jenkins_test_parallel
 integration_test: jenkins_test_integration
 
 # This target is designed only for use on Jenkins
-jenkins_test_parallel: check_venv check_build_reqs
+jenkins_test_parallel: check_venv check_build_reqs docker
 	$(python) run_tests.py test $(tests)
 
 # This target is designed only for use on Jenkins
-jenkins_test_integration: check_venv check_build_reqs sdist push_docker docker
+jenkins_test_integration: check_venv check_build_reqs sdist push_docker
 	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 

@@ -156,7 +156,7 @@ class ClusterScalerTest(ToilTest):
 
         # Make defaults dummy values
         config.defaultMemory = 1
-        config.defaultCores = .5
+        config.defaultCores = 1
         config.defaultDisk = 1
 
         # No preemptable nodes/jobs
@@ -255,7 +255,7 @@ class ClusterScalerTest(ToilTest):
 
         # Make defaults dummy values
         config.defaultMemory = 1
-        config.defaultCores = .5
+        config.defaultCores = 1
         config.defaultDisk = 1
 
         # non-preemptable node parameters
