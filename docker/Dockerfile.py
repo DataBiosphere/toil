@@ -91,7 +91,7 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN curl https://get.docker.com/builds/Linux/x86_64/docker-1.12.3.tgz \
+    RUN curl https://get.docker.com/builds/Linux/x86_64/docker-1.13.1.tgz \
          | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
          && chmod u+x /usr/local/bin/docker
 
