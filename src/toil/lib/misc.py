@@ -1,3 +1,5 @@
+from math import sqrt
+
 
 def mean(xs):
     """
