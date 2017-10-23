@@ -48,8 +48,8 @@ def shortVersion():
 
 def _version(shorten=False):
     return '-'.join(filter(None, [distVersion(),
-                                  currentCommit()[:7 if shorten else None],
-                                  ('dirty' if dirty() else None)]))
+                                  str(currentCommit()[:7 if shorten else None]),
+                                   str('dirty' if dirty() else None)]))
 
 
 def distVersion():

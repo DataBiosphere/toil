@@ -16,15 +16,29 @@ from setuptools import find_packages, setup
 
 botoRequirement = 'boto==2.38.0'
 
+versionFileName = 'version.py'
+versionFilePath = 'src/toil/'
+
+def readVersionKeyValues():
+    """
+    Read and return key values from the version file.
+    """
+    versionVars = {}
+    with open(versionFilePath+versionFileName) as versionFile:
+        for line in versionFile:
+            name, var = line.partition("=")[::2]
+            versionVars[name.strip()] = var.strip()
+    return versionVars
 
 def runSetup():
     """
     Calls setup(). This function exists so the setup() invocation preceded more internal
-    functionality. The `version` module is imported dynamically by importVersion() below.
+    functionality. The distribution version is generated dynamically with checkVersionFile.
     """
+    versionDict = readVersionKeyValues()
     setup(
         name='toil',
-        version=version.distVersion,
+        version=versionDict['distVersion'],
         description='Pipeline management software for clusters.',
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
@@ -32,7 +46,6 @@ def runSetup():
         classifiers=["License :: OSI Approved :: Apache Software License"],
         license="Apache License v2.0",
         install_requires=[
-            'bd2k-python-lib>=1.14a1.dev35',
             'dill==0.2.5',
             'six>=1.10.0',
             'future',
@@ -73,28 +86,27 @@ def runSetup():
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]']})
 
 
-def importVersion():
+def checkVersionFile():
     """
-    Load and return the module object for src/toil/version.py, generating it from the template if
-    required.
+    Check version.py, generating it from the template if required.
     """
-    import imp
     try:
         # Attempt to load the template first. It only exists in a working copy cloned via git.
         import version_template
     except ImportError:
         # If loading the template fails we must be in a unpacked source distribution and
-        # src/toil/version.py will already exist.
+        # version.py will already exist.
         pass
     else:
-        # Use the template to generate src/toil/version.py
+        # Use the template to generate version.py
         import os
         import errno
         from tempfile import NamedTemporaryFile
 
         new = version_template.expand_()
+        versionFullPath = versionFilePath + versionFileName
         try:
-            with open('src/toil/version.py') as f:
+            with open(versionFullPath) as f:
                 old = f.read()
         except IOError as e:
             if e.errno == errno.ENOENT:
@@ -103,14 +115,11 @@ def importVersion():
                 raise
 
         if old != new:
-            with NamedTemporaryFile(dir='src/toil', prefix='version.py.', delete=False) as f:
+            with NamedTemporaryFile(dir=versionFilePath, prefix=versionFileName, delete=False) as f:
                 f.write(new)
-            os.rename(f.name, 'src/toil/version.py')
-    # Unfortunately, we can't use a straight import here because that would also load the stuff
-    # defined in src/toil/__init__.py which imports modules from external dependencies that may
-    # yet to be installed when setup.py is invoked.
-    return imp.load_source('toil.version', 'src/toil/version.py')
+            os.rename(f.name, versionFullPath)
 
 
-version = importVersion()
+
+checkVersionFile()
 runSetup()
