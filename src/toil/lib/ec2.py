@@ -5,8 +5,8 @@ import time
 from collections import Iterator
 from operator import attrgetter
 
-from bd2k.util.exceptions import panic
-from bd2k.util.retry import retry
+from toil.lib.util.exceptions import panic
+from toil.lib.util.retry import retry
 from boto.ec2.ec2object import TaggedEC2Object
 from boto.ec2.instance import Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest

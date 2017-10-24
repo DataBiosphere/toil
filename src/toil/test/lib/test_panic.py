@@ -3,7 +3,7 @@ import logging
 import unittest
 import sys
 
-from bd2k.util.exceptions import panic
+from toil.lib.util.exceptions import panic
 
 log = logging.getLogger( __name__ )
 logging.basicConfig( )
