@@ -57,6 +57,8 @@ if False:
 
 
 class ClusterScalerTest(ToilTest):
+
+    @slow
     def testBinPacking(self):
         """
         Tests the bin-packing method used by the cluster scaler.

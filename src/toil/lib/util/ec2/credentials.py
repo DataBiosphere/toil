@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 
 import os
-from tiol.util.files import mkdir_p
+from toil.lib.util.files import mkdir_p
 
 log = logging.getLogger( __name__ )
 

@@ -49,7 +49,7 @@ def shortVersion():
 def _version(shorten=False):
     return '-'.join(filter(None, [distVersion(),
                                   currentCommit()[:7 if shorten else None],
-                                   ('dirty' if dirty() else None)]))
+                                  ('dirty' if dirty() else None)]))
 
 
 def distVersion():
@@ -108,8 +108,7 @@ def buildNumber():
 
 def currentCommit():
     from subprocess import check_output
-    val = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0]
-    return val.decode("utf-8")
+    return check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0]
 
 
 def dirty():

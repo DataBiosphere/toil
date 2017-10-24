@@ -49,9 +49,9 @@ class ExceptionalThread( threading.Thread ):
     def join( self, *args, **kwargs ):
         super( ExceptionalThread, self ).join( *args, **kwargs )
         if not self.is_alive( ) and self.exc_info is not None:
-            tmp_exc_info = self.exc_info
+            type, value, traceback = self.exc_info
             self.exc_info = None
-            raise tmp_exc_info
+            raise type, value, traceback
 
 
 # noinspection PyPep8Naming

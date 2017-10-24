@@ -134,7 +134,7 @@ def retry_http( delays=default_delays, timeout=default_timeout, predicate=retrya
     ...         raise urllib.error.HTTPError('http://www.test.com', '408', 'some message', {}, None)
     Traceback (most recent call last):
     ...
-    urllib.error.HTTPError: HTTP Error 408: some message
+    HTTPError: HTTP Error 408: some message
     >>> i > 1
     True
     """

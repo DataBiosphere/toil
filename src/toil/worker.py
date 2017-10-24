@@ -38,7 +38,7 @@ try:
 except ImportError:
     import pickle
 
-from toil.utils.expando import MagicExpando
+from toil.lib.util.expando import MagicExpando
 from toil.common import Toil
 from toil.fileStore import FileStore
 from toil import logProcessContext

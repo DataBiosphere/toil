@@ -34,8 +34,8 @@ class panic( object ):
     def __exit__( self, *exc_info ):
         if self.log is not None and exc_info and exc_info[ 0 ]:
             self.log.warn( "Exception during panic", exc_info=exc_info )
-        tmp_exc_info = self.exc_info
-        raise tmp_exc_info
+        exc_type, exc_value, traceback = self.exc_info
+        raise exc_type, exc_value, traceback
 
 
 class RequirementError( Exception ):
