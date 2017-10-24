@@ -34,14 +34,14 @@ from bd2k.util import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from cgcloud.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
-                             create_spot_instances, wait_instances_running, wait_transition)
+from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
+                          create_spot_instances, wait_instances_running, wait_transition)
 from itertools import count
 
 from toil import applianceSelf
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
-from cgcloud.lib.context import Context
+from toil.lib.context import Context
 from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
 from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
@@ -718,7 +718,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
-        # determine number of ephemeral drives via cgcloud-lib
+        # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
         bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.lowercase[1:]]
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
