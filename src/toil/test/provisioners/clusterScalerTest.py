@@ -390,8 +390,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
             if node.preemptable == preemptable:
                 worker = self.nodesToWorker[node]
                 nodes[node.privateIP] = NodeInfo(coresTotal=0, coresUsed=0, requestedCores=1,
-                                                        memoryTotal=0, memoryUsed=0, requestedMemory=1,
-                                                        workers=1 if worker.busyEvent.is_set() else 0)
+                                                 memoryTotal=0, memoryUsed=0, requestedMemory=1,
+                                                 workers=1 if worker.busyEvent.is_set() else 0)
         return nodes
 
     # AbstractProvisioner functionality

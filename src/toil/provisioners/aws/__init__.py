@@ -16,7 +16,7 @@ import os
 from collections import namedtuple
 from operator import attrgetter
 import datetime
-from cgcloud.lib.util import std_dev, mean
+from toil.lib.misc import std_dev, mean
 
 from toil.test import runningOnEC2
 

@@ -398,7 +398,7 @@ class JobTest(ToilTest):
         to validate the run.
         """
         jobStore = self._getTestJobStorePath()
-        for test in range(10):
+        for test in range(5):
             # Temporary file
             tempDir = self._createTempDir(purpose='tempDir')
             # Make a random DAG for the set of child edges

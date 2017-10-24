@@ -24,7 +24,10 @@ from textwrap import dedent
 import time
 
 import pytest
-from cgcloud.lib.ec2 import wait_instances_running
+from boto.ec2.blockdevicemapping import BlockDeviceType
+from boto.exception import EC2ResponseError
+from toil.lib.ec2 import wait_instances_running
+
 
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 

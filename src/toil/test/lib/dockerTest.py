@@ -11,18 +11,17 @@ from docker.errors import ContainerError
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, needs_appliance
 from toil.lib import FORGO, STOP, RM
-from toil.lib.docker import dockerCall, dockerCheckOutput, \
-                            _containerIsRunning, _dockerKill
+from toil.lib.docker import apiDockerCall, containerIsRunning, dockerKill
 
 _logger = logging.getLogger(__name__)
 
 
+@needs_appliance
 class DockerTest(ToilTest):
     """
     Tests dockerCall and ensures no containers are left around.
-
     When running tests you may optionally set the TOIL_TEST_TEMP environment
     variable to the path of a directory where you want temporary test files be
     placed. The directory will be created if it doesn't exist. The path may be
@@ -45,7 +44,6 @@ class DockerTest(ToilTest):
         """
         Run the test container that creates a file in the work dir, and sleeps
         for 5 minutes.
-
         Ensure that the calling job gets SIGKILLed after a minute, leaving
         behind the spooky/ghost/zombie container. Ensure that the container is
         killed on batch system shutdown (through the deferParam mechanism).
@@ -62,23 +60,23 @@ class DockerTest(ToilTest):
         #  Neither     R         R         E      X
 
         data_dir = os.path.join(self.tempDir, 'data')
-        work_dir = os.path.join(self.tempDir, 'working')
-        test_file = os.path.join(work_dir, 'test.txt')
+        working_dir = os.path.join(self.tempDir, 'working')
+        test_file = os.path.join(working_dir, 'test.txt')
 
         mkdir_p(data_dir)
-        mkdir_p(work_dir)
+        mkdir_p(working_dir)
 
         options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir,
                                                             'jobstore'))
         options.logLevel = self.dockerTestLogLevel
-        options.workDir = work_dir
+        options.workDir = working_dir
         options.clean = 'always'
         options.disableCaching = disableCaching
 
         # No base64 logic since it might create a name starting with a `-`.
         container_name = uuid.uuid4().hex
         A = Job.wrapJobFn(_testDockerCleanFn,
-                          work_dir,
+                          working_dir,
                           detached,
                           rm,
                           deferParam,
@@ -96,20 +94,20 @@ class DockerTest(ToilTest):
 
             if (rm and (deferParam != FORGO)) or deferParam == RM:
                 # These containers should not exist
-                assert _containerIsRunning(container_name) is None, \
+                assert containerIsRunning(container_name) is None, \
                     'Container was not removed.'
 
             elif deferParam == STOP:
                 # These containers should exist but be non-running
-                assert _containerIsRunning(container_name) == False, \
+                assert containerIsRunning(container_name) == False, \
                     'Container was not stopped.'
 
             else:
                 # These containers will be running
-                assert _containerIsRunning(container_name) == True, \
+                assert containerIsRunning(container_name) == True, \
                     'Container was not running.'
         client = docker.from_env(version='auto')
-        _dockerKill(container_name, client)
+        dockerKill(container_name, client)
         try:
             os.remove(test_file)
         except:
@@ -275,7 +273,7 @@ class DockerTest(ToilTest):
         self.testDockerPipeChainErrorDetection(disableCaching=False)
 
 def _testDockerCleanFn(job,
-                       workDir,
+                       working_dir,
                        detached=None,
                        rm=None,
                        deferParam=None,
@@ -284,14 +282,14 @@ def _testDockerCleanFn(job,
     Test function for test docker_clean.  Runs a container with given flags and
     then dies leaving behind a zombie container.
     :param toil.job.Job job: job
-    :param workDir: See `work_dir=` in :func:`dockerCall`
+    :param working_dir: See `work_dir=` in :func:`dockerCall`
     :param bool rm: See `rm=` in :func:`dockerCall`
     :param bool detached: See `detached=` in :func:`dockerCall`
     :param int deferParam: See `deferParam=` in :func:`dockerCall`
     :param str containerName: See `container_name=` in :func:`dockerCall`
     """
     def killSelf():
-        test_file = os.path.join(workDir, 'test.txt')
+        test_file = os.path.join(working_dir, 'test.txt')
         # Kill the worker once we are sure the docker container is started
         while not os.path.exists(test_file):
             _logger.debug('Waiting on the file created by spooky_container.')
@@ -304,30 +302,30 @@ def _testDockerCleanFn(job,
     # Make it a daemon thread so that thread failure doesn't hang tests.
     t.daemon = True
     t.start()
-    dockerCall(job,
-               tool='quay.io/ucsc_cgl/spooky_test',
-               workDir=workDir,
-               deferParam=deferParam,
-               containerName=containerName,
-               detach=detached,
-               removeOnExit=rm,
-               privileged=True)
+    apiDockerCall(job,
+                  image='quay.io/ucsc_cgl/spooky_test',
+                  working_dir=working_dir,
+                  deferParam=deferParam,
+                  containerName=containerName,
+                  detach=detached,
+                  remove=rm,
+                  privileged=True)
 
 def _testDockerPipeChainFn(job):
     """Return the result of a simple pipe chain.  Should be 2."""
     parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
-    return dockerCheckOutput(job,
-                             tool='quay.io/ucsc_cgl/spooky_test',
-                             parameters=parameters,
-                             privileged=True)
+    return apiDockerCall(job,
+                         image='quay.io/ucsc_cgl/spooky_test',
+                         parameters=parameters,
+                         privileged=True)
 
 def _testDockerPipeChainErrorFn(job):
     """Return True if the command exit 1 | wc -l raises a ContainerError."""
     parameters = [ ['exit', '1'], ['wc', '-l'] ]
     try:
-        dockerCheckOutput(job,
-                          tool='quay.io/ucsc_cgl/spooky_test',
-                          parameters=parameters)
+        apiDockerCall(job,
+                      image='quay.io/ucsc_cgl/spooky_test',
+                      parameters=parameters)
     except ContainerError:
         return True
     return False
