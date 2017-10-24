@@ -1,6 +1,7 @@
 from builtins import map
 from builtins import zip
 from builtins import object
+from builtins import range
 from itertools import takewhile, dropwhile, chain
 try:
     from itertools import zip_longest as zip_longest
@@ -71,7 +72,7 @@ class concat( object ):
 
     Note that concat() flattens (or chains) all iterable arguments into a single result iterable:
 
-    >>> list( concat( 1, xrange( 2, 4 ), 4 ) )
+    >>> list( concat( 1, range( 2, 4 ), 4 ) )
     [1, 2, 3, 4]
 
     It only does so one level deep. If you need to recursively flatten a data structure,
@@ -79,8 +80,8 @@ class concat( object ):
 
     If you want to prevent that flattening for an iterable argument, wrap it in concat():
 
-    >>> list( concat( 1, concat( xrange( 2, 4 ) ), 4 ) )
-    [1, xrange(2, 4), 4]
+    >>> list( concat( 1, concat( range( 2, 4 ) ), 4 ) )
+    [1, range(2, 4), 4]
 
     Some more example.
 

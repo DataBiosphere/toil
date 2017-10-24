@@ -116,7 +116,8 @@ def checkVersionFile():
 
         if old != new:
             with NamedTemporaryFile(dir=versionFilePath, prefix=versionFileName, delete=False) as f:
-                f.write(bytes(new, 'utf-8'))
+                #f.write(bytes(new, 'utf-8'))
+                f.write(new)
             os.rename(f.name, versionFullPath)
 
 

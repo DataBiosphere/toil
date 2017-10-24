@@ -9,7 +9,7 @@ class ExceptionalThread( threading.Thread ):
     A thread whose join() method re-raises exceptions raised during run(). While join() is
     idempotent, the exception is only during the first invocation of join() that succesfully
     joined the thread. If join() times out, no exception will be re reraised even though an
-    exception might already have occured in run().
+    exception might already have occurred in run().
 
     When subclassing this thread, override tryRun() instead of run().
 
@@ -60,7 +60,7 @@ class defaultlocal( threading.local ):
     Thread local storage with default values for each field in each thread
 
     >>> l = defaultlocal( foo=42 )
-    >>> def f(): print l.foo
+    >>> def f(): print(l.foo)
     >>> t = threading.Thread(target=f)
     >>> t.start() ; t.join()
     42
