@@ -30,7 +30,7 @@ from _ssl import SSLError
 from six import iteritems
 from six.moves import xrange
 
-from bd2k.util import memoize
+from toil.lib.util import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
@@ -43,7 +43,7 @@ from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from toil.lib.context import Context
 from boto.utils import get_instance_metadata
-from bd2k.util.retry import retry
+from toil.lib.util.retry import retry
 from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
                                Node, NoSuchClusterException)
 

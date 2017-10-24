@@ -34,8 +34,7 @@ try:
 except ImportError:
     import pickle
 
-from bd2k.util.expando import Expando
-from bd2k.util.humanize import bytes2human
+from toil.lib.util.humanize import bytes2human
 
 from toil import resolveEntryPoint
 try:

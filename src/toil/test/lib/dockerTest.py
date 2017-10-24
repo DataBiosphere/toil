@@ -8,7 +8,7 @@ import docker
 from threading import Thread
 from docker.errors import ContainerError
 
-from bd2k.util.files import mkdir_p
+from toil.lib.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow, needs_appliance

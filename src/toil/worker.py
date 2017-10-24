@@ -38,7 +38,7 @@ try:
 except ImportError:
     import pickle
 
-from bd2k.util.expando import MagicExpando
+from toil.utils.expando import MagicExpando
 from toil.common import Toil
 from toil.fileStore import FileStore
 from toil import logProcessContext
@@ -94,7 +94,7 @@ def main(argv=None):
         pass
     else:
         # boto is installed, monkey patch it now
-        from bd2k.util.ec2.credentials import enable_metadata_credential_caching
+        from toil.lib.util.ec2.credentials import enable_metadata_credential_caching
         enable_metadata_credential_caching()
     ##########################################
     #Input args

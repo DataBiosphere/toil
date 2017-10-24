@@ -53,7 +53,6 @@ import functools
 import uuid
 
 # Python 3 compatibility imports
-from six.moves import xrange
 from six import iteritems, string_types
 import six.moves.urllib.parse as urlparse
 

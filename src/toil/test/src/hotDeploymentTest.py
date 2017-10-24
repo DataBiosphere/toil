@@ -5,7 +5,7 @@ import logging
 from contextlib import contextmanager
 from subprocess import CalledProcessError
 
-from bd2k.util.iterables import concat
+from toil.lib.util.iterables import concat
 
 from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow
 

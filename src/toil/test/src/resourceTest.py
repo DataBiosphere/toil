@@ -23,7 +23,7 @@ from subprocess import check_call, Popen, PIPE
 from textwrap import dedent
 from zipfile import ZipFile
 
-from bd2k.util.files import mkdir_p
+from toil.lib.util.files import mkdir_p
 from mock import MagicMock, patch
 
 from toil import inVirtualEnv

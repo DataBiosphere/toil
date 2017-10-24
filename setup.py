@@ -27,7 +27,7 @@ def readVersionKeyValues():
     with open(versionFilePath+versionFileName) as versionFile:
         for line in versionFile:
             name, var = line.partition("=")[::2]
-            versionVars[name.strip()] = var.strip()
+            versionVars[name.strip()] = var.strip().strip('\'')
     return versionVars
 
 def runSetup():
@@ -116,7 +116,7 @@ def checkVersionFile():
 
         if old != new:
             with NamedTemporaryFile(dir=versionFilePath, prefix=versionFileName, delete=False) as f:
-                f.write(new)
+                f.write(bytes(new, 'utf-8'))
             os.rename(f.name, versionFullPath)
 
 
