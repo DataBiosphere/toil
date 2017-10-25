@@ -26,6 +26,9 @@ Install Azure
 
    (venv) $ pip install msrestazure
 
+#. Install `packaging` using ``pip``::
+
+   (venv) $ pip install packaging
 
 Create an Azure service principal
 ---------------------------------
