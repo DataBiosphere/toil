@@ -187,10 +187,13 @@ variable_ecu = -1  # variable ecu
 
 _ec2_instance_types = [
     # current generation instance types
+    InstanceType('t2.nano', 1, variable_ecu, 0.5, [hvm], 0, None, 0, False),
     InstanceType('t2.micro', 1, variable_ecu, 1, [hvm], 0, None, 0, False),
     InstanceType('t2.small', 1, variable_ecu, 2, [hvm], 0, None, 0, False),
     InstanceType('t2.medium', 2, variable_ecu, 4, [hvm], 0, None, 0, False),
     InstanceType('t2.large', 2, variable_ecu, 8, [hvm], 0, None, 0, False),
+    InstanceType('t2.xlarge', 4, variable_ecu, 16, [hvm], 0, None, 0, False),
+    InstanceType('t2.2xlarge', 8, variable_ecu, 32, [hvm], 0, None, 0, False),
 
     InstanceType('m3.medium', 1, 3, 3.75, [hvm, pv], 1, ssd, 4, True),
     InstanceType('m3.large', 2, 6.5, 7.5, [hvm, pv], 1, ssd, 32, True),
@@ -202,6 +205,7 @@ _ec2_instance_types = [
     InstanceType('m4.2xlarge', 8, 26, 32, [hvm], 0, None, 0, True),
     InstanceType('m4.4xlarge', 16, 53.5, 64, [hvm], 0, None, 0, True),
     InstanceType('m4.10xlarge', 40, 124.5, 160, [hvm], 0, None, 0, True),
+    InstanceType('m4.16xlarge', 64, 188, 256, [hvm], 0, None, 0, True),
 
     InstanceType('c4.large', 2, 8, 3.75, [hvm], 0, None, 0, True),
     InstanceType('c4.xlarge', 4, 16, 7.5, [hvm], 0, None, 0, True),
@@ -215,7 +219,19 @@ _ec2_instance_types = [
     InstanceType('c3.4xlarge', 16, 55, 30, [hvm, pv], 2, ssd, 160, True),
     InstanceType('c3.8xlarge', 32, 108, 60, [hvm, pv], 2, ssd, 320, True),
 
+    InstanceType('p2.xlarge', 4, 12, 61, [hvm], 0, None, 0, True),
+    InstanceType('p2.8xlarge', 32, 94, 488, [hvm], 0, None, 0, True),
+    InstanceType('p2.16xlarge', 64, 188, 732, [hvm], 0, None, 0, True),
+    InstanceType('g3.4xlarge', 16, 47, 122, [hvm], 0, None, 0, True),
+    InstanceType('g3.8xlarge', 32, 94, 244, [hvm], 0, None, 0, True),
+    InstanceType('g3.16xlarge', 64, 188, 488, [hvm], 0, None, 0, True),
+
     InstanceType('g2.2xlarge', 8, 26, 15, [hvm], 1, ssd, 60, True),
+    InstanceType('g2.8xlarge', 32, 104, 60, [hvm], 2, ssd, 120, True),
+
+    InstanceType('x1.16large', 64, 174.5, 976, [hvm], 1, ssd, 1920, True),
+    InstanceType('x1.32large', 128, 349, 1952, [hvm], 2, ssd, 1920, True),
+    InstanceType('x1e.32large', 128, 349, 3904, [hvm], 2, ssd, 1920, True),
 
     InstanceType('r3.large', 2, 6.5, 15, [hvm], 1, ssd, 32, True),
     InstanceType('r3.xlarge', 4, 13, 30.5, [hvm], 1, ssd, 80, True),
@@ -223,10 +239,24 @@ _ec2_instance_types = [
     InstanceType('r3.4xlarge', 16, 52, 122, [hvm], 1, ssd, 320, True),
     InstanceType('r3.8xlarge', 32, 104, 244, [hvm], 2, ssd, 320, True),
 
+    InstanceType('r4.large', 2, 6.5, 15, [hvm], 0, None, 0, True),
+    InstanceType('r4.xlarge', 4, 13, 30.5, [hvm], 0, None, 0, True),
+    InstanceType('r4.2xlarge', 8, 26, 61, [hvm], 0, None, 0, True),
+    InstanceType('r4.4xlarge', 16, 52, 122, [hvm], 0, None, 0, True),
+    InstanceType('r4.8xlarge', 32, 104, 244, [hvm], 0, None, 0, True),
+    InstanceType('r4.16xlarge', 64, 195, 488, [hvm], 0, None, 0, True),
+
     InstanceType('i2.xlarge', 4, 14, 30.5, [hvm], 1, ssd, 800, False),
     InstanceType('i2.2xlarge', 8, 27, 61, [hvm], 2, ssd, 800, False),
     InstanceType('i2.4xlarge', 16, 53, 122, [hvm], 4, ssd, 800, False),
     InstanceType('i2.8xlarge', 32, 104, 244, [hvm], 8, ssd, 800, False),
+
+    InstanceType('i3.large', 2, 7, 15.25, [hvm], 1, ssd, 475, True),
+    InstanceType('i3.xlarge', 4, 13, 30.5, [hvm], 1, ssd, 950, True),
+    InstanceType('i3.2xlarge', 8, 27, 61, [hvm], 1, ssd, 1900, True),
+    InstanceType('i3.4xlarge', 16, 53, 122, [hvm], 2, ssd, 1900, True),
+    InstanceType('i3.8xlarge', 32, 104, 244, [hvm], 4, ssd, 1900, True),
+    InstanceType('i3.16xlarge', 64, 200, 488, [hvm], 8, ssd, 1900, True),
 
     InstanceType('d2.xlarge', 4, 14, 30.5, [hvm], 3, hdd, 2000, True),
     InstanceType('d2.2xlarge', 8, 28, 61, [hvm], 6, hdd, 2000, True),
