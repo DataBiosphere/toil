@@ -193,6 +193,9 @@ class FileJobStore(AbstractJobStore):
                 fd, absPath = self._getTempFile()  # use this to get a valid path to write to in job store
                 os.close(fd)
                 os.unlink(absPath)
+                # remove the .tmp extension and add the original file name
+                (noExt,ext) = os.path.splitext(absPath)
+                absPath = noExt + '-' + os.path.basename(url.path)
                 self._copyOrLink(url, absPath)
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
