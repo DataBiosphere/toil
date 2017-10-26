@@ -305,6 +305,7 @@ class Job(JobLikeObject):
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
         self._fileStore = None
+        self._tempDir = None
 
     def run(self, fileStore):
         """
@@ -456,6 +457,24 @@ class Job(JobLikeObject):
             return self.addFollowOn(PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs))
         else:
             return self.addFollowOn(JobFunctionWrappingJob(fn, *args, **kwargs))
+
+    @property
+    def tempDir(self):
+        """
+        Shortcut to calling `job.fileStore.getLocalTempDir`. Temp dir is created on first call
+        and will be returned for first and future calls
+        :return: Path to tempDir. See `job.fileStore.getLocalTempDir`
+        :rtype: str
+        """
+        if self._tempDir is None:
+            self._tempDir = self._fileStore.getLocalTempDir()
+        return self._tempDir
+
+    def log(self, text, level=logging.INFO):
+        """
+        clone of `fileStore.logToMaster` for convenience
+        """
+        self._fileStore.logToMaster(text, level)
 
     @staticmethod
     def wrapFn(fn, *args, **kwargs):
