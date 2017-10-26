@@ -22,3 +22,8 @@
       name:  '{{ vmname }}'
       state: absent
       # ignore_errors: yes
+  - name: Remove security group
+    azure_rm_securitygroup:
+      resource_group: '{{ resgrp }}'
+      name: '{{ vmname }}'
+      state: absent
