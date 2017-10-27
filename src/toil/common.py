@@ -112,7 +112,7 @@ class Config(object):
         self.maxDisk = sys.maxsize
 
         #Retrying/rescuing jobs
-        self.retryCount = 0
+        self.retryCount = 1
         self.maxJobDuration = sys.maxsize
         self.rescueJobsFrequency = 3600
 
@@ -245,7 +245,7 @@ class Config(object):
         setOption("defaultPreemptable")
 
         #Retrying/rescuing jobs
-        setOption("retryCount", int, iC(0))
+        setOption("retryCount", int, iC(1))
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
 
