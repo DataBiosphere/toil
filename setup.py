@@ -49,10 +49,8 @@ def runSetup():
             'azure': [
                 'azure==2.0.0',
                 'azure-cosmosdb-table==0.37.1',
-                'azure-cli==2.0.20',
+                'ansible[azure]==2.4.0.0',
                 'dnspython==1.15.0',
-                'msrestazure==0.4.15',
-                'packaging==16.8',
                 'pipettor==0.2.0'],
             'encryption': [
                 'pynacl==1.1.2'],

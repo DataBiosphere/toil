@@ -8,27 +8,9 @@ In this section, you will install the Azure CLI and configure it so that you can
 
 Install Azure
 -------------
-#. Install the Azure CLI using ``pip``::
+Make sure the Toil ``ansible`` extra is installed:::
 
-   (venv) $ pip install azure==2.0.0rc5
-   (venv) $ pip install azure-cli
-
-
-#. Verify that the version of the Azure CLI is 2.0 or higher::
-
-   (venv) $ az --version
-
-#. Install a Python DNS resolver using ``pip``::
-
-   (venv) $ pip install dnspython
-
-#. Install a REST client for Azure using ``pip``::
-
-   (venv) $ pip install msrestazure
-
-#. Install `packaging` using ``pip``::
-
-   (venv) $ pip install packaging
+   (venv) $ pip install toil[azure]
 
 Create an Azure service principal
 ---------------------------------
