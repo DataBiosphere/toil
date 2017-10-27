@@ -56,7 +56,7 @@ gigabytes of memory, 2 cores and 3 gigabytes of local disk to complete the work.
 
 The :func:`toil.job.Job.run` method is the function the user overrides to get
 work done. Here it just logs a message using
-:func:`toil.fileStore.FileStore.logToMaster`, which will be registered in the log
+:func:`toil.job.Job.log`, which will be registered in the log
 output of the leader process of the workflow.
 
 
@@ -106,8 +106,8 @@ For example::
             self.message = message
 
         def run(self, fileStore):
-            fileStore.logToMaster("Hello, world!, I have a message: %s"
-                                  % self.message)
+            self.log("Hello, world!, I have a message: {}".format(self.message))
+
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
         options.logLevel = "INFO"
@@ -235,17 +235,15 @@ argument in a class, this allows access to the methods of the wrapping job, see
     from toil.job import Job
 
     def helloWorld(job, message):
-        job.fileStore.logToMaster("Hello world, "
-        "I have a message: %s" % message) # This uses a logging function
-        # of the toil.fileStore.FileStore class
+        job.log("Hello world, I have a message: {}".format(message))
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
         options.logLevel = "INFO"
         print Job.Runner.startToil(Job.wrapJobFn(helloWorld, "woot"), options)
 
-Here ``helloWorld()`` is a job function. It accesses the
-:class:`toil.fileStore.FileStore` attribute of the job to log a message that will
+Here ``helloWorld()`` is a job function. It uses the :func:`toil.job.Job.log`
+to log a message that will
 be printed to the output console. Here the only subtle difference to note is
 the line::
 
@@ -277,9 +275,7 @@ earlier ``helloWorld()`` job function::
     from toil.job import Job
 
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
-        job.fileStore.logToMaster("Hello world, "
-        "I have a message: %s" % message) # This uses a logging function
-        # of the toil.fileStore.FileStore class
+        job.log("Hello world, I have a message: {}".format(message))
 
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = Job.wrapJobFn(helloWorld, "second or third")
@@ -304,9 +300,7 @@ example::
     from toil.job import Job
 
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
-        job.fileStore.logToMaster("Hello world, "
-        "I have a message: %s" % message) # This uses a logging function
-        # of the toil.fileStore.FileStore class
+        job.log("Hello world, I have a message: {}".format(message))
 
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = j1.addChildJobFn(helloWorld, "second or third")
@@ -330,9 +324,7 @@ specified as a DAG as follows::
     from toil.job import Job
 
     def helloWorld(job, message, memory="2G", cores=2, disk="3G"):
-        job.fileStore.logToMaster("Hello world, "
-        "I have a message: %s" % message) # This uses a logging function
-        # of the toil.fileStore.FileStore class
+        job.log("Hello world, I have a message: {}".format(message))
 
     j1 = Job.wrapJobFn(helloWorld, "first")
     j2 = j1.addChildJobFn(helloWorld, "second or third")
@@ -362,7 +354,7 @@ Toil also allows jobs to be created dynamically within jobs. For example::
             job.addChildJobFn(binaryStringFn, depth-1, message + "0")
             job.addChildJobFn(binaryStringFn, depth-1, message + "1")
         else:
-            job.fileStore.logToMaster("Binary string: %s" % message)
+            job.log("Binary string: {}".format(message))
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
@@ -391,7 +383,7 @@ the following example::
     from toil.job import Job
 
     def fn(job, i):
-        job.fileStore.logToMaster("i is: %s" % i, level=100)
+        job.log("i is: %s" % i, level=100)
         return i+1
 
     j1 = Job.wrapJobFn(fn, 1)
@@ -546,9 +538,9 @@ node and that will be cleaned up, regardless of failure, when the job finishes::
 
     class LocalFileStoreJob(Job):
         def run(self, fileStore):
-            scratchDir = fileStore.getLocalTempDir() #Create a temporary
-            # directory safely within the allocated disk space
-            # reserved for the job.
+            scratchDir = self.tempDir
+            # self.TempDir will always contain the name of a directory within
+            # the allocated disk space reserved for the job
 
             scratchFile = fileStore.getLocalTempFile() #Similarly
             # create a temporary file.
@@ -565,7 +557,7 @@ Job functions can also access the file store for the job. The equivalent of the
 ``LocalFileStoreJob`` class is::
 
     def localFileStoreJobFn(job):
-        scratchDir = job.fileStore.getLocalTempDir()
+        scratchDir = job.tempDir
         scratchFile = job.fileStore.getLocalTempFile()
 
 Note that the ``fileStore`` attribute is accessed as an attribute of the
@@ -580,9 +572,8 @@ example::
     import os
 
     def globalFileStoreJobFn(job):
-        job.fileStore.logToMaster("The following example exercises all the"
-                                  " methods provided by the"
-                                  " toil.fileStore.FileStore class")
+        job.log("The following example exercises all the methods provided"
+                " by the toil.fileStore.FileStore class")
 
         scratchFile = job.fileStore.getLocalTempFile() # Create a local
         # temporary file.
@@ -606,7 +597,7 @@ example::
         scratchFile2 = job.fileStore.readGlobalFile(fileID)
 
         # Read the second file to a desired location: scratchFile3.
-        scratchFile3 = os.path.join(job.fileStore.getLocalTempDir(), "foo.txt")
+        scratchFile3 = os.path.join(job.tempDir, "foo.txt")
         job.fileStore.readGlobalFile(fileID2, userPath=scratchFile3)
 
         # Read the second file again using a stream.
@@ -730,7 +721,7 @@ An example of a basic ``dockerCall`` is below:
 
     dockerCall(job=job,
                 tool='quay.io/ucsc_cgl/bwa',
-                workDir=job.fileStore.getLocalTempDir(),
+                workDir=job.tempDir,
                 parameters=['index', '/data/reference.fa'])
 
 ``dockerCall`` can also be added to workflows like any other job function:
@@ -739,7 +730,7 @@ An example of a basic ``dockerCall`` is below:
  
      align = Job.wrapJobFn(dockerCall,
                            tool='quay.io/ucsc_cgl/bwa',
-                           workDir=job.fileStore.getLocalTempDir(),
+                           workDir=job.tempDir,
                            parameters=['index', '/data/reference.fa']))
 
      if __name__=="__main__":
@@ -760,10 +751,12 @@ set by passing in the optional keyword argument, 'entrypoint'.  Example:
 
      entrypoint=["/bin/bash","-c"]
 
-dockerCall supports currently the 75 keyword arguments found in the python
-Docker API at this _website, under the 'run' command.
+dockerCall supports currently the 75 keyword arguments found in the `python
+Docker API`_ under the 'run' command.
 
-.. _website: https://docker-py.readthedocs.io/en/stable/containers.html
+.. _`python Docker API`: https://docker-py.readthedocs.io/en/stable/containers.html
+
+.. _serviceDev:
 
 Services
 --------

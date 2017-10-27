@@ -131,7 +131,7 @@ defined before launching the Job, i.e:
 Running Workflows with Services
 -------------------------------
 
-Toil supports jobs, or clusters of jobs, that run as *services* (see :ref:`service-dev-ref` ) to other
+Toil supports jobs, or clusters of jobs, that run as *services* (see :ref:`serviceDev`) to other
 *accessor* jobs. Example services include server databases or Apache Spark
 Clusters. As service jobs exist to provide services to accessor jobs their
 runtime is dependent on the concurrent running of their accessor jobs. The dependencies

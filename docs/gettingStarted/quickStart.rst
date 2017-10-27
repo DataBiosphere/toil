@@ -183,7 +183,7 @@ Next let's look at the job that begins the actual workflow, ``setup``.
 .. literalinclude:: ../../src/toil/test/sort/sort.py
     :pyobject: setup
 
-``setup`` really only does two things. First it writes to the logs using :func:`Job.FileStore.logToMaster` and then
+``setup`` really only does two things. First it writes to the logs using :func:`Job.log` and then
 calls :func:`addChildJobFn`. Child jobs run directly after the current job. This function turns the 'job function'
 ``down`` into an actual job and passes in the inputs including an optional resource requirement, ``memory``. The job
 doesn't actually get run until the call to :func:`Job.rv`. Once the job ``down`` finishes, its output is returned here.

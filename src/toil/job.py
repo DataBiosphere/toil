@@ -461,7 +461,7 @@ class Job(JobLikeObject):
     @property
     def tempDir(self):
         """
-        Shortcut to calling `job.fileStore.getLocalTempDir`. Temp dir is created on first call
+        Shortcut to calling :func:`job.fileStore.getLocalTempDir`. Temp dir is created on first call
         and will be returned for first and future calls
         :return: Path to tempDir. See `job.fileStore.getLocalTempDir`
         :rtype: str
@@ -472,7 +472,7 @@ class Job(JobLikeObject):
 
     def log(self, text, level=logging.INFO):
         """
-        clone of `fileStore.logToMaster` for convenience
+        convenience wrapper for :func:`fileStore.logToMaster`
         """
         self._fileStore.logToMaster(text, level)
 
