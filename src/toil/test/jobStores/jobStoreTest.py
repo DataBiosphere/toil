@@ -1161,16 +1161,16 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
 
     def _prepareTestFile(self, containerName, size=None):
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob import BlobService
+        from azure.storage.blob.blockblobservice import BlockBlobService
 
         fileName = 'testfile_%s' % uuid.uuid4()
         url = 'wasb://%s@%s.blob.core.windows.net/%s' % (containerName, self.accountName, fileName)
         if size is None:
             return url
-        blobService = BlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                  account_name=self.accountName)
+        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
+                                       account_name=self.accountName)
         content = os.urandom(size)
-        blobService.put_block_blob_from_text(containerName, fileName, content)
+        blobService.create_blob_from_text(containerName, fileName, content)
         return url, hashlib.md5(content).hexdigest()
 
     def _hashTestFile(self, url):
@@ -1179,24 +1179,24 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
         blob = AzureJobStore._parseWasbUrl(url)
         for attempt in retry_azure():
             with attempt:
-                content = blob.service.get_blob_to_bytes(blob.container, blob.name)
-                return hashlib.md5(content).hexdigest()
+                blob = blob.service.get_blob_to_bytes(blob.container, blob.name)
+                return hashlib.md5(blob.content).hexdigest()
 
     def _createExternalStore(self):
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob import BlobService
+        from azure.storage.blob.blockblobservice import BlockBlobService
 
-        blobService = BlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                  account_name=self.accountName)
+        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
+                                       account_name=self.accountName)
         containerName = 'import-export-test-%s' % uuid.uuid4()
         blobService.create_container(containerName)
         return containerName
 
     def _cleanUpExternalStore(self, containerName):
         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob import BlobService
-        blobService = BlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                  account_name=self.accountName)
+        from azure.storage.blob.blockblobservice import BlockBlobService
+        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
+                                       account_name=self.accountName)
         blobService.delete_container(containerName)
 
 
