@@ -10,6 +10,7 @@ __pycache__
 /test-report-*.xml
 /venv/
 /src/toil/test/cwl/spec
+/cwltool_deps/
 /docs/generated_rst/
 /docker/Dockerfile
 /docker/toil-*.tar.gz

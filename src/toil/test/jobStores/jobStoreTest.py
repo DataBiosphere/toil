@@ -56,7 +56,6 @@ from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchFileException)
-from toil.jobStores.aws.utils import region_to_bucket_location
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import (ToilTest,
                        needs_aws,
@@ -1083,6 +1082,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         import boto.s3
+        from toil.jobStores.aws.utils import region_to_bucket_location
         s3 = boto.s3.connect_to_region(self.awsRegion())
         try:
             return s3.create_bucket(bucket_name='import-export-test-%s' % uuid.uuid4(),
