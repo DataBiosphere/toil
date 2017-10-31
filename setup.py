@@ -54,6 +54,7 @@ def runSetup():
             'cwl': [
                 'cwltool==1.0.20170822192924',
                 'schema-salad >= 2.6, < 3',
+                'galaxy-lib==17.9.3',
                 'cwltest>=1.0.20170214185319']},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
