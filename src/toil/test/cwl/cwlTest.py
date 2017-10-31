@@ -27,22 +27,20 @@ from six import u as str
 
 from toil.test import ToilTest, needs_cwl, slow
 
-
 @needs_cwl
 class CWLTest(ToilTest):
 
-    def _tester(self, cwlfile, jobfile, outDir, expect):
+    def _tester(self, cwlfile, jobfile, outDir, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
         st = StringIO()
-        cwltoil.main(['--outdir', outDir,
-                            os.path.join(rootDir, cwlfile),
-                            os.path.join(rootDir, jobfile)],
-                     stdout=st)
+        main_args = main_args[:]
+        main_args.extend(['--outdir', outDir, os.path.join(rootDir, cwlfile), os.path.join(rootDir, jobfile)])
+        cwltoil.main(main_args, stdout=st)
         out = json.loads(st.getvalue())
-        out["output"].pop("http://commonwl.org/cwltool#generation", None)
-        out["output"].pop("nameext", None)
-        out["output"].pop("nameroot", None)
+        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
+        out[out_name].pop("nameext", None)
+        out[out_name].pop("nameroot", None)
         self.assertEquals(out, expect)
 
     def _debug_worker_tester(self, cwlfile, jobfile, outDir, expect):
@@ -148,3 +146,32 @@ class CWLTest(ToilTest):
             if not only_unsupported:
                 print(e.output)
                 raise e
+
+    @slow
+    def test_bioconda(self):
+        outDir = self._createTempDir()
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     outDir,
+                     self._expected_seqtk_output(outDir),
+                     main_args=["--beta-conda-dependencies"],
+                     out_name="output1")
+
+    def test_biocontainers(self):
+        outDir = self._createTempDir()
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     outDir,
+                     self._expected_seqtk_output(outDir),
+                     main_args=["--beta-use-biocontainers"],
+                     out_name="output1")
+
+    def _expected_seqtk_output(self, outDir):
+        return {
+            u"output1":  {
+                u"location": "file://" + str(os.path.join(outDir, 'out')),
+                u"checksum": u"sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2",
+                u"basename": str("out"),
+                u"class": u"File",
+                u"size": 150}
+        }
