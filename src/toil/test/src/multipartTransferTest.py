@@ -20,11 +20,6 @@ import os
 import uuid
 from contextlib import contextmanager, closing
 
-import boto
-import boto.s3
-
-from toil.jobStores.aws.jobStore import copyKeyMultipart
-from toil.jobStores.aws.utils import region_to_bucket_location
 from toil.test import ToilTest, make_tests, slow
 
 partSize = 2 ** 20 * 5
@@ -40,6 +35,8 @@ def openS3(keySize=None):
 
     :param int keySize: Size of key to be created.
     """
+    import boto.s3
+    from toil.jobStores.aws.utils import region_to_bucket_location
     if keySize is not None and keySize < 0:
         raise ValueError('Key size must be greater than zero')
     with closing(boto.s3.connect_to_region(AWSMultipartCopyTest.awsRegion())) as s3:
@@ -67,6 +64,7 @@ class AWSMultipartCopyTest(ToilTest):
     @classmethod
     def makeTests(cls):
         def multipartCopy(self, threadPoolSize):
+            from toil.jobStores.aws.jobStore import copyKeyMultipart
             # key size is padded to ensure some threads are reused
             keySize = int((threadPoolSize * partSize) * 1.3)
             with openS3(keySize) as srcKey:

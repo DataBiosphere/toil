@@ -708,9 +708,9 @@ recommended that you use :func:`dockerCall`, a toil job function provided in
 ``toil.lib.docker``. ``dockerCall`` leverages docker's own python API, 
 and provides container cleanup on job failure. When docker containers are 
 run without this feature, failed jobs can result in resource leaks.  Docker's
-API can be found at this _website.
+API can be found at `docker-py`_.
 
-.. _website: https://docker-py.readthedocs.io/en/stable/
+.. _docker-py: https://docker-py.readthedocs.io/en/stable/
 
 In order to use ``dockerCall``, your installation of Docker must be set up to run
 without ``sudo``. Instructions for setting this up can be found here_.
@@ -751,12 +751,14 @@ set by passing in the optional keyword argument, 'entrypoint'.  Example:
 
      entrypoint=["/bin/bash","-c"]
 
-dockerCall supports currently the 75 keyword arguments found in the `python
-Docker API`_ under the 'run' command.
 
-.. _`python Docker API`: https://docker-py.readthedocs.io/en/stable/containers.html
+dockerCall supports currently the 75 keyword arguments found in the python
+`Docker API`_, under the 'run' command.
 
-.. _serviceDev:
+.. _Docker API: https://docker-py.readthedocs.io/en/stable/containers.html
+
+
+.. _service-dev-ref:
 
 Services
 --------

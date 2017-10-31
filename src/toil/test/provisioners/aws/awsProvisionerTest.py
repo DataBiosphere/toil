@@ -28,6 +28,7 @@ from boto.ec2.blockdevicemapping import BlockDeviceType
 from boto.exception import EC2ResponseError
 from toil.lib.ec2 import wait_instances_running
 
+
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
 from uuid import uuid4
@@ -98,6 +99,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.createClusterUtil()
 
     def getRootVolID(self):
+        from boto.ec2.blockdevicemapping import BlockDeviceType
         rootBlockDevice = self.leader.block_device_mapping["/dev/xvda"]
         assert isinstance(rootBlockDevice, BlockDeviceType)
         return rootBlockDevice.volume_id
@@ -174,6 +176,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         self.sshUtil(checkStatsCommand)
 
+        from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
         ctx = AWSProvisioner._buildContext(self.clusterName)
         AWSProvisioner.destroyCluster(self.clusterName)
@@ -263,6 +266,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
+        from boto.ec2.blockdevicemapping import BlockDeviceType
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers), '--nodeStorage', str(self.requestedLeaderStorage)])
 

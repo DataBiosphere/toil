@@ -88,6 +88,7 @@ SHELL=bash
 python=python2.7
 pip=pip2.7
 tests=src
+tests_local=src/toil/test
 # do slightly less than travis timeout of 10 min.
 pytest_args_local=-vv --timeout=530
 extras=
@@ -147,7 +148,7 @@ clean_sdist:
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
-		$(python) -m pytest $(pytest_args_local) $(tests)
+		$(python) -m pytest $(pytest_args_local) $(tests_local)
 
 # The hot deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
