@@ -733,7 +733,7 @@ class hidden(object):
             A = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=1024, disk='1G')
             B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=850, disk='900M')
             # Set it to > 2GB such that the cleanup jobs don't die.
-            C = Job.wrapJobFn(self._readFromJobStoreWithoutAsssertions, fsID=B.rv(), disk='1G')
+            C = Job.wrapJobFn(self._readFromJobStoreWithoutAssertions, fsID=B.rv(), disk='1G')
             D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='1G')
             A.addChild(B)
             B.addChild(C)
@@ -763,13 +763,13 @@ class hidden(object):
 
             job.fileStore.writeGlobalFile(testFile.name)
             fsID = job.fileStore.writeGlobalFile(testFile.name)
-            hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAsssertions(job, fsID)
+            hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(job, fsID)
             # Make this take longer so we can test asynchronous writes across jobs/workers.
             job.fileStore.HarbingerFile.read = newHarbingerFileRead
             return job.fileStore.writeGlobalFile(testFile.name)
 
         @staticmethod
-        def _readFromJobStoreWithoutAsssertions(job, fsID):
+        def _readFromJobStoreWithoutAssertions(job, fsID):
             """
             Reads a file from the job store.  That will be all, thank you.
 
