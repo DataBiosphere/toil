@@ -45,7 +45,8 @@ def runSetup():
                 'futures==3.0.5',
                 'pycrypto==2.6.1'],
             'azure': [
-                'azure==1.0.3'],
+                'azure==2.0.0',
+                'azure-cosmosdb-table==0.37.1'],
             'encryption': [
                 'pynacl==1.1.2'],
             'google': [
