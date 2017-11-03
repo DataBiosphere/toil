@@ -87,8 +87,10 @@ class GoogleJobStore(AbstractJobStore):
         self._headerValues = {"x-goog-project-id": bytes(projectID)} if projectID else {}
 
         # Not reading .boto correctly, this works to create bucket after 'pip install gsutils', which updates osauth2
-        #import gcs_oauth2_boto_plugin
-        #gcs_oauth2_boto_plugin.SetFallbackClientIdAndSecret(gs_access_key_id, gs_secret_access_key)
+        import gcs_oauth2_boto_plugin
+        gs_access_key_id = '100104111990-j5cbf2hop385t4i0h4d9mhsqmmeslikd.apps.googleusercontent.com'
+        gs_secret_access_key = 'LBBElhojiC8T3yU0EvW8-Qls'
+        gcs_oauth2_boto_plugin.SetFallbackClientIdAndSecret(gs_access_key_id, gs_secret_access_key)
 
         self._encryptedHeaders = self.headerValues
 

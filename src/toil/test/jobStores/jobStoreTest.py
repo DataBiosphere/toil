@@ -63,8 +63,7 @@ from toil.test import (ToilTest,
                        needs_encryption,
                        make_tests,
                        needs_google,
-                       slow,
-                       experimental)
+                       slow)
 from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
@@ -872,7 +871,6 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         shutil.rmtree(dirPath)
 
 
-@experimental
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
