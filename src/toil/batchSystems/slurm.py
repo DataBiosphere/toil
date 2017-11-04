@@ -45,7 +45,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # -h for no header
             # --format to get jobid i, state %t and time days-hours:minutes:seconds
 
-            lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).split('\n')
+            lines = subprocess.check_output(['squeue', '--noheader', '--format="%i %t %M"']).split('\n')
             for line in lines:
                 values = line.split()
                 if len(values) < 3:
