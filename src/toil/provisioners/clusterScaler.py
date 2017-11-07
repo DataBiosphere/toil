@@ -19,7 +19,6 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import map
-from past.utils import old_div
 from builtins import object
 import json
 import logging
@@ -98,9 +97,6 @@ class BinPackedFit(object):
     def __init__(self, nodeShapes, targetTime=3600):
         self.nodeShapes = nodeShapes
         self.targetTime = targetTime
-        # Prioritize preemptable node shapes with the lowest memory
-        self.nodeShapes.sort(key=lambda nS: not nS.preemptable)
-        self.nodeShapes.sort(key=lambda nS: nS.memory)
         self.nodeReservations = {nodeShape:[] for nodeShape in nodeShapes}  # The list of node reservations
 
     def binPack(self, jobShapes):
