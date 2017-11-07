@@ -19,7 +19,7 @@ from collections import namedtuple
 
 
 
-from bd2k.util.retry import never
+from toil.lib.util.retry import never
 from future.utils import with_metaclass
 
 

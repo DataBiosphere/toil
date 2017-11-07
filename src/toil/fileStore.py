@@ -21,7 +21,7 @@ from builtins import range
 from builtins import object
 from abc import abstractmethod, ABCMeta
 
-from bd2k.util.objects import abstractclassmethod
+from toil.lib.util.objects import abstractclassmethod
 
 import base64
 from collections import namedtuple, defaultdict
@@ -46,7 +46,7 @@ from threading import Thread, Semaphore, Event
 from six.moves.queue import Empty, Queue
 from six.moves import xrange
 
-from bd2k.util.humanize import bytes2human
+from toil.lib.util.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor

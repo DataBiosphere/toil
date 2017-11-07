@@ -36,11 +36,11 @@ import itertools
 
 
 import boto
-from bd2k.util.exceptions import panic
+from toil.lib.util.exceptions import panic
 from concurrent.futures import ThreadPoolExecutor
 from six import iteritems
 
-from bd2k.util.retry import retry
+from toil.lib.util.retry import retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,

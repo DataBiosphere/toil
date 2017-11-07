@@ -45,8 +45,8 @@ from six import iteritems
 import six.moves.urllib.parse as urlparse
 from six.moves.urllib.request import urlopen, Request
 
-from bd2k.util import memoize
-from bd2k.util.exceptions import panic
+from toil.lib.util import memoize
+from toil.lib.util.exceptions import panic
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
 from mock import patch

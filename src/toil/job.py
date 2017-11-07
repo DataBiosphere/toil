@@ -43,9 +43,9 @@ from io import BytesIO
 # Python 3 compatibility imports
 from six import iteritems, string_types
 
-from bd2k.util.exceptions import require
-from bd2k.util.expando import Expando
-from bd2k.util.humanize import human2bytes
+from toil.lib.util.exceptions import require
+from toil.lib.util.expando import Expando
+from toil.lib.util.humanize import human2bytes
 
 from toil.common import Toil, addOptions
 from toil.fileStore import DeferredFunction
@@ -272,11 +272,11 @@ class Job(JobLikeObject):
             exhausting all their retries, remove any successor jobs and rerun this job to restart the
             subtree. Job must be a leaf vertex in the job graph when initially defined, see
             :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
-        :type cores: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type disk: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        :type cores: int or string convertable by toil.lib.util.humanize.human2bytes to an int
+        :type disk: int or string convertable by toil.lib.util.humanize.human2bytes to an int
         :type preemptable: bool
-        :type cache: int or string convertable by bd2k.util.humanize.human2bytes to an int
-        :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
+        :type cache: int or string convertable by toil.lib.util.humanize.human2bytes to an int
+        :type memory: int or string convertable by toil.lib.util.humanize.human2bytes to an int
         """
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}

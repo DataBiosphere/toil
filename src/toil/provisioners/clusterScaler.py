@@ -28,10 +28,10 @@ from collections import deque, defaultdict
 from threading import Lock
 
 import time
-from bd2k.util.exceptions import require
-from bd2k.util.retry import retry
-from bd2k.util.threading import ExceptionalThread
-from bd2k.util.throttle import throttle
+from toil.lib.util.exceptions import require
+from toil.lib.util.retry import retry
+from toil.lib.util.threading import ExceptionalThread
+from toil.lib.util.throttle import throttle
 from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo

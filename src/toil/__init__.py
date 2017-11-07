@@ -20,7 +20,7 @@ import sys
 
 from subprocess import check_output
 
-from bd2k.util import memoize
+from toil.lib.util import memoize
 
 log = logging.getLogger(__name__)
 

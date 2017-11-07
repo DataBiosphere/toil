@@ -36,8 +36,8 @@ except ImportError:
 # Python 3 compatibility imports
 from six import iteritems
 
-from bd2k.util.exceptions import require
-from bd2k.util.humanize import bytes2human
+from toil.lib.util.exceptions import require
+from toil.lib.util.humanize import bytes2human
 
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
@@ -135,7 +135,7 @@ class Config(object):
         """
         Creates a config object from the options object.
         """
-        from bd2k.util.humanize import human2bytes #This import is used to convert
+        from toil.lib.util.humanize import human2bytes #This import is used to convert
         #from human readable quantites to integers
         def setOption(varName, parsingFn=None, checkFn=None, default=None):
             #If options object has the option "varName" specified
@@ -771,7 +771,7 @@ class Toil(object):
             self._provisioner = None
         elif self.config.provisioner == 'aws':
             logger.info('Using AWS provisioner.')
-            from bd2k.util.ec2.credentials import enable_metadata_credential_caching
+            from toil.lib.util.ec2.credentials import enable_metadata_credential_caching
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             enable_metadata_credential_caching()
             self._provisioner = AWSProvisioner(self.config)
@@ -794,7 +794,7 @@ class Toil(object):
             from toil.jobStores.fileJobStore import FileJobStore
             return FileJobStore(rest)
         elif name == 'aws':
-            from bd2k.util.ec2.credentials import enable_metadata_credential_caching
+            from toil.lib.util.ec2.credentials import enable_metadata_credential_caching
             from toil.jobStores.aws.jobStore import AWSJobStore
             enable_metadata_credential_caching()
             return AWSJobStore(rest)

@@ -27,10 +27,7 @@ import uuid
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
-from six.moves import xrange
 from six import iteritems
-
-from bd2k.util.objects import InnerClass
 
 from toil.job import JobNode, Job
 
@@ -60,6 +57,8 @@ if False:
 
 
 class ClusterScalerTest(ToilTest):
+
+    @slow
     def testBinPacking(self):
         """
         Tests the bin-packing method used by the cluster scaler.

@@ -5,7 +5,7 @@ import errno
 from abc import ABCMeta
 from abc import abstractmethod
 
-from bd2k.util.threading import ExceptionalThread
+from toil.lib.util.threading import ExceptionalThread
 from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)

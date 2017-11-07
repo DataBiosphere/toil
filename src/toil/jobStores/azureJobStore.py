@@ -47,9 +47,9 @@ from azure.cosmosdb.table import TableService, EntityProperty, Entity
 # noinspection PyPackageRequirements
 # (pulled in transitively)
 import requests
-from bd2k.util import strict_bool, memoize
-from bd2k.util.exceptions import panic
-from bd2k.util.retry import retry
+from toil.lib.util import strict_bool, memoize
+from toil.lib.util.exceptions import panic
+from toil.lib.util.retry import retry
 
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph

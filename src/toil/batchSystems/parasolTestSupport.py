@@ -8,8 +8,8 @@ import subprocess
 import multiprocessing
 import signal
 import os
-from bd2k.util.files import rm_f
-from bd2k.util.objects import InnerClass
+from toil.lib.util.files import rm_f
+from toil.lib.util.objects import InnerClass
 
 from toil import physicalMemory
 

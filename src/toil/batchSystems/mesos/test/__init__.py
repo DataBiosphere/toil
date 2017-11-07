@@ -8,8 +8,8 @@ import threading
 import subprocess
 import multiprocessing
 
-from bd2k.util.processes import which
-from bd2k.util.threading import ExceptionalThread
+from toil.lib.util.processes import which
+from toil.lib.util.threading import ExceptionalThread
 from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)

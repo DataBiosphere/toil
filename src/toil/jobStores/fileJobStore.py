@@ -32,7 +32,7 @@ except ImportError:
 # Python 3 compatibility imports
 from six.moves import xrange
 
-from bd2k.util.exceptions import require
+from toil.lib.util.exceptions import require
 
 from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath

@@ -29,7 +29,7 @@ from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
 from toil.version import version
-from bd2k.util.expando import Expando
+from toil.lib.util.expando import Expando
 
 logger = logging.getLogger( __name__ )
 

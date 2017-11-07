@@ -18,7 +18,7 @@ import datetime
 import logging
 import os
 
-from bd2k.util import parse_iso_utc, less_strict_bool
+from toil.lib.util import parse_iso_utc, less_strict_bool
 
 
 logger = logging.getLogger(__name__)
