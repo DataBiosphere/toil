@@ -38,7 +38,6 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobExceptio
                                              NoSuchFileException,
                                              ConcurrentFileModificationException)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobGraph import JobGraph
 
 log = logging.getLogger(__name__)
 
@@ -86,11 +85,7 @@ class GoogleJobStore(AbstractJobStore):
 
         self._headerValues = {"x-goog-project-id": bytes(projectID)} if projectID else {}
 
-        # Not reading .boto correctly, this works to create bucket after 'pip install gsutils', which updates osauth2
-        import gcs_oauth2_boto_plugin
-        gs_access_key_id = 'id'
-        gs_secret_access_key = 'key'
-        gcs_oauth2_boto_plugin.SetFallbackClientIdAndSecret(gs_access_key_id, gs_secret_access_key)
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
 
         self._encryptedHeaders = self.headerValues
 
