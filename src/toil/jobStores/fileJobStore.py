@@ -183,13 +183,7 @@ class FileJobStore(AbstractJobStore):
         # linking is not done be default because of issue #1755
         srcPath = self._extractPathFromUrl(srcURL)
         if self.linkImports:
-            try:
-                os.link(os.path.realpath(srcPath), destPath)
-            except OSError:
-                shutil.copyfile(srcPath, destPath)
-            else:
-                # make imported files read-only if they're linked for protection
-                os.chmod(destPath, 0o444)
+            os.symlink(os.path.realpath(srcPath), destPath)
         else:
             shutil.copyfile(srcPath, destPath)
 

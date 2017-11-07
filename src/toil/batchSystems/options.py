@@ -54,7 +54,7 @@ def _singleMachineOptions(addOptionFn):
                       "Used in singleMachine batch system. default=%s" % 1))
     addOptionFn("--linkImports", dest="linkImports", default=False, action='store_true',
                 help=("When using Toil's importFile function for staging, input files are copied to the job store. "
-                      "Specifying this option saves space by hard-linking imported files. As long as caching is "
+                      "Specifying this option saves space by symlinking imported files. As long as caching is "
                       "enabled Toil will protect the file automatically by changing the permissions to read-only."))
 
 
