@@ -62,7 +62,7 @@ def runMain(options):
     main(options)
     yield
     try:
-        os.remove('sortedFile.txt')
+        os.remove(options.outputFile)
     except OSError as e:
         if e.errno == errno.ENOENT:
             pass
@@ -118,7 +118,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     options.mesosMasterAddress = 'localhost:5050'
                 options.downCheckpoints = downCheckpoints
                 options.N = N
-                options.outputFile = 'sortedFile.txt'
+                options.outputFile = os.path.join(self.tempDir, 'sortedFile.txt')
                 options.overwriteOutput = True
 
                 # Make the file to sort
@@ -135,7 +135,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.restart = True
                 with self.assertRaises(NoSuchJobStoreException):
                     with runMain(options):
-                        pass
+                        # Now check the file is properly sorted..
+                        with open(options.outputFile, 'r') as fileHandle:
+                            l2 = fileHandle.readlines()
+                            self.assertEquals(l, l2)
 
                 options.restart = False
 
@@ -167,15 +170,6 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                         if totalTrys > 32:  # p(fail after this many restarts) = 0.5**32
                             self.fail('Exceeded a reasonable number of restarts')
                         totalTrys += 1
-
-                # Now check that if you try to restart from here it will raise an exception
-                # indicating that there are no jobs remaining in the workflow.
-                with self.assertRaises(JobException):
-                    with runMain(options):
-                        # Now check the file is properly sorted..
-                        with open(tempSortFile, 'r') as fileHandle:
-                            l2 = fileHandle.readlines()
-                            self.assertEquals(l, l2)
             finally:
                 subprocess.check_call([resolveEntryPoint('toil'), 'clean', jobStoreLocator])
 

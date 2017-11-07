@@ -35,17 +35,19 @@ def runSetup():
             'bd2k-python-lib>=1.14a1.dev35',
             'dill==0.2.5',
             'six>=1.10.0',
-            'future'],
+            'future',
+            'docker==2.5.1'],
         extras_require={
             'mesos': [
                 'psutil==3.0.1'],
             'aws': [
                 botoRequirement,
                 'boto3==1.4.7',
-                'cgcloud-lib==' + version.cgcloudVersion,
-                'futures==3.0.5'],
+                'futures==3.0.5',
+                'pycrypto==2.6.1'],
             'azure': [
-                'azure==1.0.3'],
+                'azure==2.0.0',
+                'azure-cosmosdb-table==0.37.1'],
             'encryption': [
                 'pynacl==1.1.2'],
             'google': [
@@ -54,6 +56,7 @@ def runSetup():
             'cwl': [
                 'cwltool==1.0.20170822192924',
                 'schema-salad >= 2.6, < 3',
+                'galaxy-lib==17.9.3',
                 'cwltest>=1.0.20170214185319']},
         package_dir={'': 'src'},
         packages=find_packages(where='src',

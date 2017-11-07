@@ -251,9 +251,6 @@ class UtilsTest(ToilTest):
         # Delete output file before next step
         os.remove(self.outputFile)
 
-        # Check if we try to launch after its finished that we get a JobException
-        self.assertRaises(CalledProcessError, system, toilCommand + ['--restart'])
-
         # Check we can run 'toil clean'
         system(self.cleanCommand)
 

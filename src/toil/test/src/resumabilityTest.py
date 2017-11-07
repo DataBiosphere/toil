@@ -35,6 +35,7 @@ class ResumabilityTest(ToilTest):
         """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"
+        options.retryCount = 0
         root = Job.wrapJobFn(parent)
         with self.assertRaises(FailedJobsException):
             # This one is intended to fail.
