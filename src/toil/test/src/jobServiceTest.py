@@ -76,6 +76,7 @@ class JobServiceTest(ToilTest):
                 os.remove(outFile)
 
     @slow
+    @skipIf(SingleMachineBatchSystem.numCores < 4, 'Need at least four cores to run this test')
     def testServiceDeadlock(self):
         """
         Creates a job with more services than maxServices, checks that deadlock is detected.

@@ -27,7 +27,6 @@ import tempfile
 import time
 import uuid
 from argparse import ArgumentParser
-from threading import Thread
 
 try:
     import cPickle as pickle
@@ -45,6 +44,7 @@ from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromO
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
+from toil.batchSystems.options import setOptions as setBatchOptions
 
 
 logger = logging.getLogger(__name__)
@@ -88,7 +88,7 @@ class Config(object):
         self.nodeTypes = []
         self.nodeOptions = None
         self.minNodes = None
-        self.maxNodes = []
+        self.maxNodes = [10]
         self.alphaPacking = 0.8
         self.betaInertia = 1.2
         self.scaleInterval = 30
@@ -112,7 +112,7 @@ class Config(object):
         self.maxDisk = sys.maxsize
 
         #Retrying/rescuing jobs
-        self.retryCount = 0
+        self.retryCount = 1
         self.maxJobDuration = sys.maxsize
         self.rescueJobsFrequency = 3600
 
@@ -127,6 +127,7 @@ class Config(object):
         self.useAsync = True
 
         #Debug options
+        self.debugWorker = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
@@ -202,6 +203,7 @@ class Config(object):
 
         #Batch system options
         setOption("batchSystem")
+        setBatchOptions(self, setOption)
         setOption("disableHotDeployment")
         setOption("scale", float, fC(0.0))
         setOption("mesosMasterAddress")
@@ -220,7 +222,7 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
-	setOption("preemptableCompensation", float)
+        setOption("preemptableCompensation", float)
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
@@ -243,7 +245,7 @@ class Config(object):
         setOption("defaultPreemptable")
 
         #Retrying/rescuing jobs
-        setOption("retryCount", int, iC(0))
+        setOption("retryCount", int, iC(1))
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
 
@@ -261,6 +263,7 @@ class Config(object):
         setOption("servicePollingInterval", float, fC(0.0))
 
         #Debug options
+        setOption("debugWorker")
         setOption("badWorker", float, fC(0.0, 1.0))
         setOption("badWorkerFailInterval", float, fC(0.0))
 
@@ -373,12 +376,13 @@ def _addOptions(addGroupFn, config):
     addOptionFn('--minNodes', default=None, 
                  help="Mininum number of nodes of each type in the cluster, if using "
                               "auto-scaling. This should be provided as a comma-separated "
-                              "list of the same length as the list of node types.")
+                              "list of the same length as the list of node types. default=0")
 
     addOptionFn('--maxNodes', default=None,
                 help="Maximum number of nodes of each type in the cluster, if using "
-                "autoscaling. This should be provided as a comma-separated list of the same "
-                "length as the list of node types.")
+                "autoscaling, provided as a comma-separated list. The first value is used "
+                "as a default if the list length is less than the number of nodeTypes. "
+                "default=%s" % config.maxNodes[0])
 
     # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
     addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
@@ -534,6 +538,10 @@ def _addOptions(addGroupFn, config):
     #Debug options
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
+    addOptionFn("--debug-worker", default=False, action="store_true",
+            help="Experimental no forking mode for local debugging."
+                 " Specifically, workers are not forked and"
+                 " stderr/stdout are not redirected to the log.")
     addOptionFn("--badWorker", dest="badWorker", default=None,
                       help=("For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
     addOptionFn("--badWorkerFailInterval", dest="badWorkerFailInterval", default=None,
@@ -730,8 +738,7 @@ class Toil(object):
 
     def restart(self):
         """
-        Restarts a workflow that has been interrupted. This method should be called if and only
-        if a workflow has previously been started and has not finished.
+        Restarts a workflow that has been interrupted.
 
         :return: The root job's return value
         """
@@ -739,6 +746,13 @@ class Toil(object):
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
+
+        from toil.job import JobException
+        try:
+            self._jobStore.loadRootJob()
+        except JobException:
+            logger.warning('Requested restart but the workflow has already been completed; allowing exports to rerun.')
+            return self._jobStore.getRootJobReturnValue()
 
         self._batchSystem = self.createBatchSystem(self.config)
         self._setupHotDeployment()

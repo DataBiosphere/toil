@@ -42,21 +42,22 @@ Activate your virtual environment.
 ::
 
     $ source ~/venv/bin/activate
-   
 
 Basic Installation
 ------------------
 
-Toil can be easily installed using pip::
+If you need only the basic version of Toil, it can be easily installed using pip::
 
     $ pip install toil
 
 Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 
+(If you need any of the extra features don't do this yet and instead skip to the next section.)
+
 .. _extras:
 
-Installing extra features
--------------------------
+Installing Toil with extra features
+-----------------------------------
 
 Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first

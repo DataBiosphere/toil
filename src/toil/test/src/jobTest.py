@@ -323,6 +323,18 @@ class JobTest(ToilTest):
 
         self.runNewCheckpointIsLeafVertexTest(createWorkflow)
 
+    def testTempDir(self):
+        """
+        test that job.tempDir works as expected and make use of job.log for logging
+        """
+        message = "I love rachael price"
+
+        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
+        with Toil(options) as workflow:
+            j = sillyTestJob(message)
+            j.addChildJobFn(seriousTestJob, message)
+            workflow.start(j)
+
     def runNewCheckpointIsLeafVertexTest(self, createWorkflowFn):
         """
         Test verification that a checkpoint job is a leaf vertex using both
@@ -398,7 +410,7 @@ class JobTest(ToilTest):
         to validate the run.
         """
         jobStore = self._getTestJobStorePath()
-        for test in range(10):
+        for test in range(5):
             # Temporary file
             tempDir = self._createTempDir(purpose='tempDir')
             # Make a random DAG for the set of child edges
@@ -691,6 +703,44 @@ def diamond(job):
 
 def child(job):
     pass
+
+
+class sillyTestJob(Job):
+    """
+    all this job does is write a message to a tempFile
+    in the tempDir (which is deleted)
+    """
+    def __init__(self, message):
+        Job.__init__(self)
+        self.message = message
+
+    @staticmethod
+    def sillify(message):
+        """
+        Turns "this serious help message" into "shis serious selp sessage"
+        """
+        return ' '.join(['s' + word if word[0] in 'aeiou' else 's' + word[1:] for word in message.split()])
+
+    def run(self, fileStore):
+        file1 = self.tempDir + 'sillyFile.txt'
+        self.log('first filename is {}'.format(file1))
+        file2 = self.tempDir + 'sillyFile.txt'
+        self.log('second filename is {}'.format(file1))
+        # make sure we get the same thing every time
+        assert file1 == file2
+
+        # write to the tempDir to be sure that everything works
+        with open(file1, 'w') as fd:
+            fd.write(self.sillify(self.message))
+
+
+def seriousTestJob(job, message):
+    # testing job.temDir for functionJobs
+    with open(job.tempDir + 'seriousFile.txt', 'w') as fd:
+        fd.write("The unadulterated message is:")
+        fd.write(message)
+    # and logging
+    job.log("message has been written")
 
 
 def checkRequirements(job):

@@ -13,15 +13,12 @@
 # limitations under the License.
 from __future__ import absolute_import
 from __future__ import print_function
-from future import standard_library
 import json
 import os
 import subprocess
 import re
 import shutil
-from future.moves.urllib.parse import urlparse, urlencode
-from future.moves.urllib.request import urlopen, Request, urlretrieve
-from future.moves.urllib.error import HTTPError
+from future.moves.urllib.request import urlretrieve
 import zipfile
 
 # Python 3 compatibility imports
@@ -33,14 +30,26 @@ from toil.test import ToilTest, needs_cwl, slow
 @needs_cwl
 class CWLTest(ToilTest):
 
-    def _tester(self, cwlfile, jobfile, outDir, expect):
+    def _tester(self, cwlfile, jobfile, outDir, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
         st = StringIO()
-        cwltoil.main(['--outdir', outDir,
-                            os.path.join(rootDir, cwlfile),
-                            os.path.join(rootDir, jobfile)],
-                     stdout=st)
+        main_args = main_args[:]
+        main_args.extend(['--outdir', outDir, os.path.join(rootDir, cwlfile), os.path.join(rootDir, jobfile)])
+        cwltoil.main(main_args, stdout=st)
+        out = json.loads(st.getvalue())
+        out[out_name].pop("http://commonwl.org/cwltool#generation", None)
+        out[out_name].pop("nameext", None)
+        out[out_name].pop("nameroot", None)
+        self.assertEquals(out, expect)
+
+    def _debug_worker_tester(self, cwlfile, jobfile, outDir, expect):
+        from toil.cwl import cwltoil
+        rootDir = self._projectRootPath()
+        st = StringIO()
+        cwltoil.main(['--debug-worker', '--outdir', outDir,
+                     os.path.join(rootDir, cwlfile),
+                     os.path.join(rootDir, jobfile)], stdout=st)
         out = json.loads(st.getvalue())
         out["output"].pop("http://commonwl.org/cwltool#generation", None)
         out["output"].pop("nameext", None)
@@ -61,6 +70,21 @@ class CWLTest(ToilTest):
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
 
+    def test_run_revsort_debug_worker(self):
+        outDir = self._createTempDir()
+        # Having unicode string literals isn't necessary for the assertion
+        # but makes for a less noisy diff in case the assertion fails.
+        self._debug_worker_tester(
+                'src/toil/test/cwl/revsort.cwl',
+                'src/toil/test/cwl/revsort-job.json', outDir, {u'output': {
+                    u'location': "file://" + str(os.path.join(
+                        outDir, 'output.txt')),
+                    u'basename': str("output.txt"),
+                    u'size': 1111,
+                    u'class': u'File',
+                    u'checksum':
+                        u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+
     @slow
     def test_restart(self):
         """Enable restarts with CWLtoil -- run failing test, re-run correct test.
@@ -72,6 +96,7 @@ class CWLTest(ToilTest):
         cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
         cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
                os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
+
         def path_without_rev():
             return ":".join([d for d in os.environ["PATH"].split(":")
                              if not os.path.exists(os.path.join(d, "rev"))])
@@ -121,3 +146,32 @@ class CWLTest(ToilTest):
             if not only_unsupported:
                 print(e.output)
                 raise e
+
+    @slow
+    def test_bioconda(self):
+        outDir = self._createTempDir()
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     outDir,
+                     self._expected_seqtk_output(outDir),
+                     main_args=["--beta-conda-dependencies"],
+                     out_name="output1")
+
+    def test_biocontainers(self):
+        outDir = self._createTempDir()
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     outDir,
+                     self._expected_seqtk_output(outDir),
+                     main_args=["--beta-use-biocontainers"],
+                     out_name="output1")
+
+    def _expected_seqtk_output(self, outDir):
+        return {
+            u"output1":  {
+                u"location": "file://" + str(os.path.join(outDir, 'out')),
+                u"checksum": u"sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2",
+                u"basename": str("out"),
+                u"class": u"File",
+                u"size": 150}
+        }

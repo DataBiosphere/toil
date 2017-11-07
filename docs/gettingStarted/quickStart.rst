@@ -183,7 +183,7 @@ Next let's look at the job that begins the actual workflow, ``setup``.
 .. literalinclude:: ../../src/toil/test/sort/sort.py
     :pyobject: setup
 
-``setup`` really only does two things. First it writes to the logs using :func:`Job.FileStore.logToMaster` and then
+``setup`` really only does two things. First it writes to the logs using :func:`Job.log` and then
 calls :func:`addChildJobFn`. Child jobs run directly after the current job. This function turns the 'job function'
 ``down`` into an actual job and passes in the inputs including an optional resource requirement, ``memory``. The job
 doesn't actually get run until the call to :func:`Job.rv`. Once the job ``down`` finishes, its output is returned here.
@@ -363,11 +363,11 @@ After having installed the ``aws`` extra for Toil during the :ref:`installation-
 Note that when running in AWS, users can either run the workflow on a single instance or run it on a cluster (which is running across multiple containers on multliple AWS instances).  For more information on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
 
-#. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``, ``nodeType``, and ``zone`` are required to launch a cluster. ::
+#. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``, ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
 
        (venv) $ toil launch-cluster <cluster-name> \
 	--keyPairName <AWS-key-pair-name> \
-       --nodeType t2.medium \
+       --leaderNodeType t2.medium \
 	--zone us-west-2a
 
 
@@ -407,7 +407,7 @@ the user can run a CWL workflow with Toil on AWS.
 
     	(venv) $ toil launch-cluster <cluster-name> \
     	--keyPairName <AWS-key-pair-name> \
-    	--nodeType t2.micro \
+    	--leaderNodeType t2.micro \
     	--zone us-west-2a
 
 #. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the :ref:`rsyncCluster` command. ::

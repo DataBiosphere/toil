@@ -38,7 +38,7 @@ uploaded to PyPI.
 The 'docs' target uses Sphinx to create HTML documentation in the docs/_build directory
 
 The 'test' target runs Toil's unit tests serially with pytest. It will run some docker tests and
-setup. If you wish to avoid this, use the 'test_local' target instead. Note: this target does not
+setup. If you wish to avoid this, use the 'test_offline' target instead. Note: this target does not
 capture output from the terminal. For any of the test targets, set the 'tests' variable to run a
 particular test, e.g.
 
@@ -88,7 +88,9 @@ SHELL=bash
 python=python2.7
 pip=pip2.7
 tests=src
-pytest_args_local=-vv --timeout=600
+tests_local=src/toil/test
+# do slightly less than travis timeout of 10 min.
+pytest_args_local=-vv --timeout=530
 extras=
 
 dist_version:=$(shell $(python) version_template.py distVersion)
@@ -146,7 +148,7 @@ clean_sdist:
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
-		$(python) -m pytest $(pytest_args_local) $(tests)
+		$(python) -m pytest $(pytest_args_local) $(tests_local)
 
 # The hot deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
@@ -247,7 +249,8 @@ check_build_reqs:
 
 
 prepare: check_venv
-	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 pytest-timeout==1.2.0
+	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 \
+		pytest-timeout==1.2.0
 
 
 check_venv:
@@ -299,3 +302,4 @@ check_cpickle:
 		check_running_on_jenkins \
 		check_build_reqs \
 		docker clean_docker push_docker
+

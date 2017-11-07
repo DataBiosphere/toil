@@ -9,7 +9,7 @@ programming.
 * Check the `website`_ for a description of Toil and its features.
 * Full documentation for the latest stable release can be found at
   `Read the Docs`_.
-* Google Groups disucussion `forum`_ and videochat `invite list`_.
+* Google Groups discussion `forum`_ and videochat `invite list`_.
 
 .. _website: http://toil.ucsc-cgl.org/
 .. _Read the Docs: http://toil.readthedocs.org/

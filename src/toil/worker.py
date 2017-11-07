@@ -38,15 +38,13 @@ try:
 except ImportError:
     import pickle
 
-from bd2k.util.expando import Expando, MagicExpando
+from bd2k.util.expando import MagicExpando
 from toil.common import Toil
 from toil.fileStore import FileStore
 from toil import logProcessContext
 import signal
 
-logger = logging.getLogger( __name__ )
-
-
+logger = logging.getLogger(__name__)
 
 
 def nextOpenDescriptor():
@@ -55,6 +53,7 @@ def nextOpenDescriptor():
     descriptor = os.open("/dev/null", os.O_RDONLY)
     os.close(descriptor)
     return descriptor
+
 
 class AsyncJobStoreWrite(object):
     def __init__(self, jobStore):
@@ -69,8 +68,11 @@ class AsyncJobStoreWrite(object):
     def blockUntilSync(self):
         pass
 
-def main():
+
+def main(argv=None):
     logging.basicConfig()
+    if argv is None:
+        argv = sys.argv
 
     ##########################################
     #Import necessary modules 
@@ -97,11 +99,11 @@ def main():
     ##########################################
     #Input args
     ##########################################
-    
-    listOfJobs = [sys.argv[1]]
-    jobStoreLocator = sys.argv[2]
-    jobStoreID = sys.argv[3]
-    
+
+    listOfJobs = [argv[1]]
+    jobStoreLocator = argv[2]
+    jobStoreID = argv[3]
+
     ##########################################
     #Load the jobStore/config file
     ##########################################
@@ -175,29 +177,30 @@ def main():
 
     #What file do we want to point FDs 1 and 2 to?
     tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")
-    
-    #Save the original stdout and stderr (by opening new file descriptors to the
-    #same files)
-    origStdOut = os.dup(1)
-    origStdErr = os.dup(2)
 
-    #Open the file to send stdout/stderr to.
-    logFh = os.open(tempWorkerLogPath, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
+    if not config.debugWorker:
+        # Save the original stdout and stderr (by opening new file descriptors
+        # to the same files)
+        origStdOut = os.dup(1)
+        origStdErr = os.dup(2)
 
-    #Replace standard output with a descriptor for the log file
-    os.dup2(logFh, 1)
-    
-    #Replace standard error with a descriptor for the log file
-    os.dup2(logFh, 2)
-    
-    #Since we only opened the file once, all the descriptors duped from the
-    #original will share offset information, and won't clobber each others'
-    #writes. See <http://stackoverflow.com/a/5284108/402891>. This shouldn't
-    #matter, since O_APPEND seeks to the end of the file before every write, but
-    #maybe there's something odd going on...
-    
-    #Close the descriptor we used to open the file
-    os.close(logFh)
+        # Open the file to send stdout/stderr to.
+        logFh = os.open(tempWorkerLogPath, os.O_WRONLY | os.O_CREAT | os.O_APPEND)
+
+        # Replace standard output with a descriptor for the log file
+        os.dup2(logFh, 1)
+
+        # Replace standard error with a descriptor for the log file
+        os.dup2(logFh, 2)
+
+        # Since we only opened the file once, all the descriptors duped from
+        # the original will share offset information, and won't clobber each
+        # others' writes. See <http://stackoverflow.com/a/5284108/402891>. This
+        # shouldn't matter, since O_APPEND seeks to the end of the file before
+        # every write, but maybe there's something odd going on...
+
+        # Close the descriptor we used to open the file
+        os.close(logFh)
 
     debugging = logging.getLogger().isEnabledFor(logging.DEBUG)
     ##########################################
@@ -472,30 +475,32 @@ def main():
     ##########################################
     #Cleanup
     ##########################################
-    
-    #Close the worker logging
-    #Flush at the Python level
+
+    # Close the worker logging
+    # Flush at the Python level
     sys.stdout.flush()
     sys.stderr.flush()
-    #Flush at the OS level
-    os.fsync(1)
-    os.fsync(2)
+    if not config.debugWorker:
+        # Flush at the OS level
+        os.fsync(1)
+        os.fsync(2)
 
-    #Close redirected stdout and replace with the original standard output.
-    os.dup2(origStdOut, 1)
+        # Close redirected stdout and replace with the original standard output.
+        os.dup2(origStdOut, 1)
 
-    #Close redirected stderr and replace with the original standard error.
-    os.dup2(origStdErr, 2)
+        # Close redirected stderr and replace with the original standard error.
+        os.dup2(origStdErr, 2)
 
-    #sys.stdout and sys.stderr don't need to be modified at all. We don't need
-    #to call redirectLoggerStreamHandlers since they still log to sys.stderr
+        # sys.stdout and sys.stderr don't need to be modified at all. We don't
+        # need to call redirectLoggerStreamHandlers since they still log to
+        # sys.stderr
 
-    #Close our extra handles to the original standard output and standard error
-    #streams, so we don't leak file handles.
-    os.close(origStdOut)
-    os.close(origStdErr)
+        # Close our extra handles to the original standard output and standard
+        # error streams, so we don't leak file handles.
+        os.close(origStdOut)
+        os.close(origStdErr)
 
-    #Now our file handles are in exactly the state they were in before.
+    # Now our file handles are in exactly the state they were in before.
 
     #Copy back the log file to the global dir, if needed
     if workerFailed:
@@ -511,7 +516,7 @@ def main():
                 w.write(f.read())
         jobStore.update(jobGraph)
 
-    elif debugging:  # write log messages
+    elif debugging and not config.debugWorker:  # write log messages
         with open(tempWorkerLogPath, 'r') as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
                 if logFileByteReportLimit > 0:
