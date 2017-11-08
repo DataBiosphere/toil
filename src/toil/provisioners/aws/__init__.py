@@ -291,6 +291,28 @@ coreos:
             --name=toil_{role} \
             {image} \
             {args}
+    - name: "node-exporter.service"
+      command: "start"
+      content: |
+        [Unit]
+        Description=node-exporter container
+        After=docker.service
+
+        [Service]
+        Restart=on-failure
+        RestartSec=2
+        ExecPre=-/usr/bin/docker rm node_exporter
+        ExecStart=/usr/bin/docker run \
+            -p 9100:9100 \
+            -v /proc:/host/proc \
+            -v /sys:/host/sys \
+            -v /:/rootfs \
+            --name node-exporter \
+            --restart always \
+            prom/node-exporter:0.12.0 \
+            -collector.procfs /host/proc \
+            -collector.sysfs /host/sys \
+            -collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
 
 ssh_authorized_keys:
     - "ssh-rsa {sshKey}"

@@ -1,0 +1,41 @@
+gauge autoscaler_cur_size by node_type
+gauge autoscaler_desired_size by node_type
+gauge autoscaler_queue_size
+counter total_issued_jobs
+counter issued_jobs by job_type
+counter total_completed_jobs
+counter completed_jobs by job_type
+counter total_failed_jobs
+counter failed_jobs by job_type
+counter missing_jobs
+
+/desired_size '(?P<node_type>\S+)' (?P<desired_size>\d+)/ {
+     autoscaler_desired_size[$node_type] = $desired_size
+}
+
+/current_size '(?P<node_type>\S+)' (?P<cur_size>\d+)/ {
+     autoscaler_cur_size[$node_type] = $cur_size
+}
+
+/queue_size (?P<queue_size>\d+)/ {
+     autoscaler_queue_size = $queue_size
+}
+
+/issued_job '(?P<job_type>\S+)'/ {
+     issued_jobs[$job_type]++
+     total_issued_jobs++
+}
+
+/missing_job/ {
+     missing_jobs++
+}
+
+/failed_job '(?P<job_type>\S+)'/ {
+     total_failed_jobs++
+     failed_jobs[$job_type]++
+}
+
+/completed_job '(?P<job_type>\S+)'/ {
+     completed_jobs[$job_type]++
+     total_completed_jobs++
+}
