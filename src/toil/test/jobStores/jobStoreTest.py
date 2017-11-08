@@ -872,6 +872,17 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
     def _cleanUpExternalStore(self, dirPath):
         shutil.rmtree(dirPath)
 
+    def testPreserveFileName(self):
+        "Check that the fileID ends with the given file name."
+        fh, path = tempfile.mkstemp()
+        try:
+            os.close(fh)
+            job = self.master.create(self.arbitraryJob)
+            fileID = self.master.writeFile(path, job.jobStoreID)
+            self.assertTrue(fileID.endswith(os.path.basename(path)))
+        finally:
+            os.unlink(path)
+
 
 @experimental
 @needs_google
