@@ -188,6 +188,10 @@ docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
 docker_short_tag:=$(shell $(python) version_template.py dockerShortTag)
 docker_minimal_tag:=$(shell $(python) version_template.py dockerMinimalTag)
 
+grafana_image:=$(TOIL_DOCKER_REGISTRY)/toil-grafana
+prometheus_image:=$(TOIL_DOCKER_REGISTRY)/toil-prometheus
+mtail_image:=$(TOIL_DOCKER_REGISTRY)/toil-mtail
+
 define tag_docker
 	@printf "$(cyan)Removing old tag $2. This may fail but that's expected.$(normal)\n"
 	-docker rmi $2
@@ -200,6 +204,19 @@ docker: docker/Dockerfile
 	@set -ex \
 	; cd docker \
 	; docker build --tag=$(docker_image):$(docker_tag) -f Dockerfile .
+
+	@set -ex \
+	; cd dashboard/prometheus \
+	; docker build --tag=$(prometheus_image):$(docker_tag) -f Dockerfile .
+
+	@set -ex \
+	; cd dashboard/grafana \
+	; docker build --tag=$(grafana_image):$(docker_tag) -f Dockerfile .
+
+	@set -ex \
+	; cd dashboard/mtail \
+	; docker build --tag=$(mtail_image):$(docker_tag) -f Dockerfile .
+
 ifdef BUILD_NUMBER
 	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_short_tag))
 	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_minimal_tag))
@@ -224,6 +241,9 @@ obliterate_docker: clean_docker
 
 push_docker: docker check_docker_registry
 	for i in $$(seq 1 5); do docker push $(docker_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 5); do docker push $(grafana_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 5); do docker push $(prometheus_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 5); do docker push $(mtail_image):$(docker_tag) && break || sleep 60; done
 
 else
 

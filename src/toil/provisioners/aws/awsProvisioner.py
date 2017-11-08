@@ -450,6 +450,8 @@ class AWSProvisioner(AbstractProvisioner):
         if not strict:
             kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get('sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
+        #Forward port 3000 for grafana dashboard
+        commandTokens.extend(['-L', '3000:localhost:3000', '-L', '9090:localhost:9090'])
         if sshOptions:
             # add specified options to ssh command
             assert isinstance(sshOptions, list)
