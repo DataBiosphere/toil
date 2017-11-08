@@ -35,7 +35,7 @@ import urllib.parse
 import urllib.request, urllib.parse, urllib.error
 
 # Python 3 compatibility imports
-from six.moves import xrange, StringIO, reprlib
+from six.moves import StringIO, reprlib
 from six import iteritems
 
 from bd2k.util import strict_bool
@@ -46,6 +46,7 @@ import boto.sdb
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 
+from toil.fileStore import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              ConcurrentFileModificationException,
@@ -382,6 +383,7 @@ class AWSJobStore(AbstractJobStore):
     def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, AWSJobStore):
             srcKey = self._getKeyForUrl(url, existing=True)
+            size = srcKey.size
             try:
                 if sharedFileName is None:
                     info = self.FileInfo.create(srcKey.name)
@@ -395,7 +397,7 @@ class AWSJobStore(AbstractJobStore):
                 info.save()
             finally:
                 srcKey.bucket.connection.close()
-            return info.fileID if sharedFileName is None else None
+            return FileID(info.fileID, size) if sharedFileName is None else None
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url,
                                                         sharedFileName=sharedFileName)
@@ -1096,10 +1098,13 @@ class AWSJobStore(AbstractJobStore):
             if srcKey.size <= self._maxInlinedSize():
                 self.content = srcKey.get_contents_as_string()
             else:
-                self.version = self._copyKey(srcKey=srcKey,
-                                             dstBucketName=self.outer.filesBucket.name,
-                                             dstKeyName=self._fileID,
-                                             headers=self._s3EncryptionHeaders()).version_id
+                self.version = copyKeyMultipart(srcBucketName=srcKey.bucket.name,
+                                                srcKeyName=srcKey.name,
+                                                srcKeyVersion=srcKey.version_id,
+                                                dstBucketName=self.outer.filesBucket.name,
+                                                dstKeyName=self._fileID,
+                                                sseAlgorithm='AES256',
+                                                sseKey=self._getSSEKey())
 
         def copyTo(self, dstKey):
             """
@@ -1120,37 +1125,15 @@ class AWSJobStore(AbstractJobStore):
                         srcKey = self.outer.filesBucket.get_key(bytes(self.fileID))
                     srcKey.version_id = self.version
                     with attempt:
-                        headers = {k.replace('amz-', 'amz-copy-source-', 1): v
-                                   for k, v in iteritems(self._s3EncryptionHeaders())}
-                        self._copyKey(srcKey=srcKey,
-                                      dstBucketName=dstKey.bucket.name,
-                                      dstKeyName=dstKey.name,
-                                      headers=headers)
+                        copyKeyMultipart(srcBucketName=srcKey.bucket.name,
+                                         srcKeyName=srcKey.name,
+                                         srcKeyVersion=srcKey.version_id,
+                                         dstBucketName=dstKey.bucket.name,
+                                         dstKeyName=dstKey.name,
+                                         copySourceSseAlgorithm='AES256',
+                                         copySourceSseKey=self._getSSEKey())
             else:
                 assert False
-
-        def _copyKey(self, srcKey, dstBucketName, dstKeyName, headers=None):
-            headers = headers or {}
-            assert srcKey.size is not None 
-            if srcKey.size > self.outer.partSize:
-                return copyKeyMultipart(srcKey=srcKey,
-                                        dstBucketName=dstBucketName,
-                                        dstKeyName=dstKeyName,
-                                        partSize=self.outer.partSize,
-                                        headers=headers)
-            else:
-                # We need a location-agnostic connection to S3 so we can't use the one that we
-                # normally use for interacting with the job store bucket.
-                with closing(boto.connect_s3()) as s3:
-                    for attempt in retry_s3():
-                        with attempt:
-                            dstBucket = s3.get_bucket(dstBucketName)
-                            return dstBucket.copy_key(new_key_name=bytes(dstKeyName),
-                                                      src_bucket_name=srcKey.bucket.name,
-                                                      src_version_id=srcKey.version_id,
-                                                      src_key_name=bytes(srcKey.name),
-                                                      metadata=srcKey.metadata,
-                                                      headers=headers)
 
         def download(self, localFilePath):
             if self.content is not None:
@@ -1203,20 +1186,25 @@ class AWSJobStore(AbstractJobStore):
                             store.filesBucket.delete_key(key_name=bytes(self.fileID),
                                                          version_id=self.previousVersion)
 
-        def _s3EncryptionHeaders(self):
+        def _getSSEKey(self):
             sseKeyPath = self.outer.sseKeyPath
+            if sseKeyPath is None:
+                return None
+            else:
+                with open(sseKeyPath) as f:
+                    sseKey = f.read()
+                    return sseKey
+
+        def _s3EncryptionHeaders(self):
             if self.encrypted:
-                if sseKeyPath is None:
-                    raise AssertionError('Content is encrypted but no key was provided.')
-                else:
-                    with open(sseKeyPath) as f:
-                        sseKey = f.read()
-                    assert len(sseKey) == 32
-                    encodedSseKey = base64.b64encode(sseKey)
-                    encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest())
-                    return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
-                            'x-amz-server-side-encryption-customer-key': encodedSseKey,
-                            'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
+                sseKey = self._getSSEKey()
+                assert sseKey is not None, 'Content is encrypted but no key was provided.'
+                assert len(sseKey) == 32
+                encodedSseKey = base64.b64encode(sseKey)
+                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest())
+                return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
+                        'x-amz-server-side-encryption-customer-key': encodedSseKey,
+                        'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
             else:
                 return {}
 

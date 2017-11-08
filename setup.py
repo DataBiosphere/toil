@@ -42,6 +42,7 @@ def runSetup():
                 'psutil==3.0.1'],
             'aws': [
                 botoRequirement,
+                'boto3==1.4.7',
                 'futures==3.0.5',
                 'pycrypto==2.6.1'],
             'azure': [
