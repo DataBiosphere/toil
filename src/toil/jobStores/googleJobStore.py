@@ -38,23 +38,14 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobExceptio
                                              NoSuchFileException,
                                              ConcurrentFileModificationException)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
-
+from toil.jobGraph import JobGraph
+from toil.jobStores.aws.utils import SDBHelper
 log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'
 
 
 class GoogleJobStore(AbstractJobStore):
-
-    @classmethod
-    def initialize(cls, locator, config=None):
-        try:
-            projectID, namePrefix = locator.split(":", 1)
-        except ValueError:
-            # we don't have a specified projectID
-            namePrefix = locator
-            projectID = None
-        return cls(namePrefix, projectID, config)
 
     # BOTO WILL UPDATE HEADERS WITHOUT COPYING THEM FIRST. To enforce immutability & prevent
     # this, we use getters that return copies of our original dictionaries. reported:
@@ -75,40 +66,59 @@ class GoogleJobStore(AbstractJobStore):
     def headerValues(self, value):
         self._headerValues = value
 
-    def __init__(self, namePrefix, projectID=None, config=None):
+    def __init__(self, locator):
+        super(GoogleJobStore, self).__init__()
+
+        try:
+            projectID, namePrefix = locator.split(":", 1)
+        except ValueError:
+            # we don't have a specified projectID
+            namePrefix = locator
+            projectID = None
+
         #  create 2 buckets
         self.projectID = projectID
-
         self.bucketName = namePrefix+"--toil"
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
-        self.gsBucketURL = "gs://"+self.bucketName
-
+        self.gsBucketURL = bytes("gs://"+self.bucketName)
         self._headerValues = {"x-goog-project-id": bytes(projectID)} if projectID else {}
-
-        import gcs_oauth2_boto_plugin # needed to import authentication handler
-
         self._encryptedHeaders = self.headerValues
 
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         self.uri = boto.storage_uri(self.gsBucketURL, GOOGLE_STORAGE)
         self.files = None
-
-        exists = True
-        try:
-            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
-        except GSResponseError:
-            exists = False
-
-        if not exists:
-            self.files = self._retryCreateBucket(self.uri, self.headerValues)
-
-        super(GoogleJobStore, self).__init__(config=config)
-        self.sseKeyPath = self.config.sseKey
-        # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
-        self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders())
 
         self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
         self.statsReadPrefix = '_'
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
+
+    def initialize(self, config=None):
+        exists = True
+        try:
+            self.uri.get_bucket(headers=self.headerValues, validate=True)
+        except GSResponseError:
+            exists = False
+
+        if exists:
+            raise JobStoreExistsException(self.locator)
+
+        self.files = self._retryCreateBucket(self.uri, self.headerValues)
+
+        # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
+        self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders(config))
+
+        super(GoogleJobStore, self).initialize(config)
+
+    def resume(self):
+        try:
+            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
+        except GSResponseError:
+            raise NoSuchJobStoreException(self.locator)
+        super(GoogleJobStore, self).resume()
+
+    @property
+    def sseKeyPath(self):
+        return self.config.sseKey
 
     def destroy(self):
         # no upper time limit on this call keep trying delete calls until we succeed - we can
@@ -135,13 +145,19 @@ class GoogleJobStore(AbstractJobStore):
                     pass
 
     def create(self, jobNode):
-        job = self.getJobGraph(jobNode)
-        self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
+        jobStoreID = self._newJobID()
+        log.debug("Creating job %s for '%s'",
+                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
+        job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
+        self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
             self._batchedJobGraphs.append(job)
         else:
-            self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
+            self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))
         return job
+
+    def _newJobID(self):
+        return str(uuid.uuid4())
 
     def exists(self, jobStoreID):
         # used on job files, which will be encrypted if avaliable
@@ -351,7 +367,6 @@ class GoogleJobStore(AbstractJobStore):
         while True:
             try:
                 # FIMXE: this leaks a connection on exceptions
-                print "====HEADERS", headers
                 return uri.create_bucket(headers=headers)
             except GSResponseError as e:
                 if e.status == 429:
@@ -368,8 +383,8 @@ class GoogleJobStore(AbstractJobStore):
         else:  # job id
             return "job"+str(uuid.uuid4())
 
-    def _resolveEncryptionHeaders(self):
-        sseKeyPath = self.sseKeyPath
+    def _resolveEncryptionHeaders(self, config):
+        sseKeyPath = config.sseKey
         if sseKeyPath is None:
             return {}
         else:
@@ -434,9 +449,9 @@ class GoogleJobStore(AbstractJobStore):
             key = self._getKey(jobStoreID=jobStoreID, headers=headers)
         else:
             key = self._newKey(jobStoreID=jobStoreID)
-        headers = self.encryptedHeaders if encrypt else self.headerValues
+        headers = self.encryptedHeaders if encrypt else self.headerValues # UPDATE: why is this duplicated?
         try:
-            key.set_contents_from_file(fileObj, headers=headers)
+             key.set_contents_from_file(fileObj, headers=headers)
         except GSDataError:
             if encrypt:
                 # Per https://cloud.google.com/storage/docs/encryption#customer-supplied_encryption_keys

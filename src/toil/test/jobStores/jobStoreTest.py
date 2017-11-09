@@ -878,7 +878,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createJobStore(self):
         from toil.jobStores.googleJobStore import GoogleJobStore
-        return GoogleJobStore.initialize(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
+        return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
 
     def _corruptJobStore(self):
         # The Google job store has only one resource, the bucket, so we can't corrupt it without
