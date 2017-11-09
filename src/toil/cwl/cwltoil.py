@@ -190,6 +190,14 @@ def resolve_indirect(d):
     else:
         return res
 
+def simplify_list(l):
+    """Turn a length one list loaded by cwltool into a scalar.
+    Anything else is passed as-is, by reference.""" 
+    if isinstance(l, CommentedSeq):
+        l = aslist(l)
+        if len(l)==1:
+            return l[0]
+    return l
 
 class ToilPathMapper(PathMapper):
     """ToilPathMapper keeps track of a file's symbolic identifier (the Toil
@@ -845,8 +853,13 @@ class CWLWorkflow(Job):
                             "Unsupported linkMerge '{}'".format(linkMerge))
 
             else:
-                outobj[key] = (shortname(out["outputSource"]),
-                    promises[out["outputSource"]].rv())
+                # A CommentedSeq of length one still appears here rarely -
+                # not clear why from the CWL code. When it does, it breaks
+                # the execution by causing a non-hashable type exception.
+                # We simplify the list into its first (and only) element.
+                src = simplify_list(out["outputSource"])
+                outobj[key] = (shortname(src),
+                    promises[src].rv())
 
         return IndirectDict(outobj)
 
