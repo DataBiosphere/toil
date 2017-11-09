@@ -8,14 +8,15 @@ can be run just by designating a job store location as shown in
 
 
 If you wish to use the Google Storage job store, install Toil with the
-``google`` extra (:ref:`extras`). Then, create a file named ``.boto`` with your
-credentials and some configuration:
+``google`` extra (:ref:`extras`). Add the following credentials and
+configuration to the ``.boto`` file in your home directory. Create this
+file if necessary.
 
 .. code-block:: ini
 
     [Credentials]
-    gs_access_key_id = KEY_ID
-    gs_secret_access_key = SECRET_KEY
+    gs_access_key_id = CLIENT_ID
+    gs_secret_access_key = CLIENT_SECRET
 
     [Boto]
     https_validate_certificates = True
