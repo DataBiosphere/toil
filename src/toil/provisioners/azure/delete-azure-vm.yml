@@ -27,3 +27,12 @@
       resource_group: '{{ resgrp }}'
       name: '{{ vmname }}'
       state: absent
+  - name: Delete virtual network
+    azure_rm_virtualnetwork:
+      name: '{{ resgrp }}'
+      resource_group: '{{ resgrp }}'
+      state: absent
+  - name: Delete a resource group
+    azure_rm_resourcegroup:
+      name: '{{ resgrp }}'
+      state: absent

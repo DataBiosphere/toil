@@ -1,4 +1,4 @@
-- name: CREATE VM PLAYBOOK
+- name: Launch Azure VM
   hosts: localhost
   connection: local
   gather_facts: False
@@ -15,11 +15,41 @@
 #  - name: Check if DNS is taken
 #    fail: msg="That DNS name seems to be already taken"
 #    when: ip != 'NXDOMAIN'
+  - name: Create a resource group
+    azure_rm_resourcegroup:
+      name: '{{ resgrp }}'
+      location: westus
+      tags:
+          testing: testing
+          delete: never
   - name: Create storage account
     azure_rm_storageaccount:
       resource_group: '{{ resgrp }}'
       name: '{{ vmname }}'
       account_type: Standard_LRS
+
+  - name: Create a virtual network
+    azure_rm_virtualnetwork:
+      name: '{{ vnet }}'
+      resource_group: '{{ resgrp }}'
+      address_prefixes: '192.168.0.0/16'
+      state: present
+
+  - name: Create a subnet
+    azure_rm_subnet:
+      name: '{{ subnet }}'
+      virtual_network_name: '{{ vnet }}'
+      resource_group: '{{ resgrp }}'
+      address_prefix: '192.168.0.0/24'
+      state: present
+
+  - name: Create public IP address
+    azure_rm_publicipaddress:
+      resource_group: '{{ resgrp }}'
+      allocation_method: Static
+      name: '{{ vmname }}'
+      domain_name_label: '{{ vmname }}'
+
   - name: Create security group that allows SSH and HTTP
     azure_rm_securitygroup:
       resource_group: '{{ resgrp }}'
@@ -37,12 +67,7 @@
           access: Allow
           priority: 102
           direction: Inbound
-  - name: Create public IP address
-    azure_rm_publicipaddress:
-      resource_group: '{{ resgrp }}'
-      allocation_method: Static
-      name: '{{ vmname }}'
-      domain_name_label: '{{ vmname }}'
+
   - name: Create NIC
     azure_rm_networkinterface:
       resource_group: '{{ resgrp }}'
@@ -51,6 +76,7 @@
       subnet: '{{ subnet }}'
       public_ip_name: '{{ vmname }}'
       security_group: '{{ vmname }}'
+
   - name: Create VM
     azure_rm_virtualmachine:
       resource_group: '{{ resgrp }}'
