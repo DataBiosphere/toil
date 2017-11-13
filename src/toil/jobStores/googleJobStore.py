@@ -45,6 +45,16 @@ log = logging.getLogger(__name__)
 GOOGLE_STORAGE = 'gs'
 
 
+# TODO
+# - Update gcs_oauth2_boto_plugin.
+# - Check consistency.
+# - update GCE instructions
+#   - needed to run 'gsutil config' to get 'gs_oauth2_refresh_token' in the boto file
+#   - needed to copy client_id and client_secret to the oauth section
+# - Azure uses bz2 compression with pickling. Is this useful here?
+# - boto3? http://boto.cloudhackers.com/en/latest/ref/gs.html
+
+
 class GoogleJobStore(AbstractJobStore):
 
     # BOTO WILL UPDATE HEADERS WITHOUT COPYING THEM FIRST. To enforce immutability & prevent
@@ -153,7 +163,7 @@ class GoogleJobStore(AbstractJobStore):
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
             self._batchedJobGraphs.append(job)
         else:
-            self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))
+            self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)) #UPDATE: bz2.compress(
         return job
 
     def _newJobID(self):
@@ -183,7 +193,7 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        return pickle.loads(jobString)
+        return pickle.loads(jobString) #UPDATE bz2.decompress(
 
     def update(self, job):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
@@ -418,6 +428,13 @@ class GoogleJobStore(AbstractJobStore):
                 pass
 
     def _getKey(self, jobStoreID=None, headers=None):
+
+        # UPDATE _getKey() has problems - listing buckets works though
+        for obj in self.uri.get_bucket():
+            #print '%s://%s/%s' % (self.uri.scheme, self.uri.bucket_name, obj.name)
+            if jobStoreID == obj.name:
+                return obj
+
         # gets remote key, in contrast to self._newKey
         key = None
         try:
