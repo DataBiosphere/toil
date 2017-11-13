@@ -67,12 +67,16 @@ class AsyncJobStoreWrite(object):
     
     def blockUntilSync(self):
         pass
-
-
-def main(argv=None):
+    
+def workerScript(jobStoreLocator, jobName, jobStoreID):
+    """
+    Worker process script, runs a job. 
+    
+    :param str jobName: The "job name" (a user friendly name) of the job to be run
+    :param str jobStoreLocator: Specifies the job store to use
+    :param str jobStoreID: The job store ID of the job to be run
+    """
     logging.basicConfig()
-    if argv is None:
-        argv = sys.argv
 
     ##########################################
     #Import necessary modules 
@@ -96,13 +100,6 @@ def main(argv=None):
         # boto is installed, monkey patch it now
         from bd2k.util.ec2.credentials import enable_metadata_credential_caching
         enable_metadata_credential_caching()
-    ##########################################
-    #Input args
-    ##########################################
-
-    listOfJobs = [argv[1]]
-    jobStoreLocator = argv[2]
-    jobStoreID = argv[3]
 
     ##########################################
     #Load the jobStore/config file
@@ -213,6 +210,7 @@ def main(argv=None):
     statsDict.workers.logsToMaster = []
     blockFn = lambda : True
     cleanCacheFn = lambda x : True
+    listOfJobs = [jobName]
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
@@ -539,3 +537,15 @@ def main(argv=None):
     if (not workerFailed) and jobGraph.command == None and len(jobGraph.stack) == 0 and len(jobGraph.services) == 0:
         # We can now safely get rid of the jobGraph
         jobStore.delete(jobGraph.jobStoreID)
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+        
+    # Parse input args
+    jobName = argv[1]
+    jobStoreLocator = argv[2]
+    jobStoreID = argv[3]
+    
+    # Call the worker
+    workerScript(jobStoreLocator, jobName, jobStoreID)
