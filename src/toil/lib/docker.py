@@ -30,7 +30,7 @@ from toil.test import timeLimit
 logger = logging.getLogger(__name__)
 
 
-def dockerCheckOutput(job, *args, **kwargs):
+def dockerCheckOutput(*args, **kwargs):
     """
     Deprecated.  Runs subprocessDockerCall() using 'subprocess.check_output()'.
 
@@ -40,9 +40,9 @@ def dockerCheckOutput(job, *args, **kwargs):
     """
     logger.warn("WARNING: dockerCheckOutput() using subprocess.check_output() "
                 "is deprecated, please switch to apiDockerCall().")
-    return subprocessDockerCall(job=job, *args, **kwargs)
+    return subprocessDockerCall(*args, **kwargs)
 
-def dockerCall(job, *args, **kwargs):
+def dockerCall(*args, **kwargs):
     """
     Deprecated.  Runs subprocessDockerCall() using 'subprocess.check_output()'.
 
@@ -52,7 +52,7 @@ def dockerCall(job, *args, **kwargs):
     """
     logger.warn("WARNING: dockerCall() using subprocess.check_output() "
                 "is deprecated, please switch to apiDockerCall().")
-    return subprocessDockerCall(job=job, *args, **kwargs)
+    return subprocessDockerCall(*args, **kwargs)
 
 def subprocessDockerCall(job,
                          tool,
