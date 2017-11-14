@@ -134,6 +134,10 @@ class GoogleJobStore(AbstractJobStore):
         # no upper time limit on this call keep trying delete calls until we succeed - we can
         # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
         # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket
+
+        # just return if not connect to physical storage
+        if self.files is None:
+            return
         while True:
             try:
                 self.uri.delete_bucket()
@@ -203,9 +207,11 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreID, encrypt=True)
 
     def jobs(self):
-        for key in self.files.list(prefix='job'):
+        # UPDATE: it seems that jobs used to have a 'job-' prefix.
+        # How are jobs distinguished from other files now? Just uuid length?
+        for key in self.files.list():
             jobStoreID = key.name
-            if len(jobStoreID) == 39:
+            if len(jobStoreID) == 36: #uuid length
                 yield self.load(jobStoreID)
 
     def writeFile(self, localFilePath, jobStoreID=None):
@@ -335,7 +341,10 @@ class GoogleJobStore(AbstractJobStore):
 
         while True:
             filesReadThisLoop = 0
-            for key in list(self.files.list(prefix=prefix)):
+            # prefix seems broken
+            for key in list(self.files.list()): #prefix=prefix)):
+                if not key.name.startswith(prefix):
+                    continue
                 try:
                     with self.readSharedFileStream(key.name) as readable:
                         log.debug("Reading stats file: %s", key.name)
@@ -421,11 +430,12 @@ class GoogleJobStore(AbstractJobStore):
                 if e.status == 404:
                     pass
         # best effort delete associated files
-        for fileID in self.files.list(prefix=jobStoreID):
-            try:
-                self.deleteFile(fileID)
-            except NoSuchFileException:
-                pass
+        for fileID in self.files.list():
+            if fileID.name.startswith(jobStoreID):
+                try:
+                    self.deleteFile(fileID)
+                except NoSuchFileException:
+                    pass
 
     def _getKey(self, jobStoreID=None, headers=None):
 
