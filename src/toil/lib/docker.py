@@ -193,6 +193,7 @@ def apiDockerCall(job,
                   remove=False,
                   user=None,
                   environment=None,
+                  outfile=None,
                   **kwargs):
     """
     A toil wrapper for the python docker API.
@@ -339,6 +340,11 @@ def apiDockerCall(job,
                                     user=user,
                                     environment=environment,
                                     **kwargs)
+        if outfile:
+            file = open(outfile, "w")
+            file.write(out)
+            file.close()
+
         return out
     # If the container exits with a non-zero exit code and detach is False.
     except ContainerError:
