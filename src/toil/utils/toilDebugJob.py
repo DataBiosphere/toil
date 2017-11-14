@@ -29,8 +29,7 @@ def main():
     parser = getBasicOptionParser()
 
     parser.add_argument("jobStore", type=str,
-                        help="The location of the job store used by the workflow whose jobs should "
-                             "be killed." + jobStoreLocatorHelp)
+                        help="The location of the job store used by the workflow." + jobStoreLocatorHelp)
     parser.add_argument("--version", action='version', version=version)
     parser.add_argument("jobID", nargs=1, help="The job store id of the job to run locally")
     

@@ -30,8 +30,7 @@ def main():
     parser = getBasicOptionParser()
 
     parser.add_argument("jobStore", type=str,
-                        help="The location of the job store used by the workflow whose jobs should "
-                             "be killed." + jobStoreLocatorHelp)
+                        help="The location of the job store used by the workflow." + jobStoreLocatorHelp)
     parser.add_argument("jobStoreFileIDs", nargs='+', help="List of N job-store file ids to be copied locally")
     parser.add_argument("localFilePath", nargs=1, help="Location to which to copy job store files")
     parser.add_argument("--version", action='version', version=version)
@@ -42,6 +41,8 @@ def main():
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)
     logger.info("Connected to job store: %s", config.jobStore)
+    
+    # TODO: Option to symlink files from job store, where possible
 
     # Copy the files locally
     for jobStoreFileID in options.jobStoreFileIDs:
