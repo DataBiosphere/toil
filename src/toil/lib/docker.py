@@ -160,7 +160,7 @@ def subprocessDockerCall(job,
                                  'set -eo pipefail && {}'.format(' | '.join(chain_params))]
     else:
         call = baseDockerCall + [tool] + parameters
-    _logger.info("Calling docker with " + repr(call))
+    logger.info("Calling docker with " + repr(call))
 
     params = {}
     if outfile:
