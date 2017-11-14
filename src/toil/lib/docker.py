@@ -40,7 +40,7 @@ def dockerCheckOutput(*args, **kwargs):
     """
     logger.warn("WARNING: dockerCheckOutput() using subprocess.check_output() "
                 "is deprecated, please switch to apiDockerCall().")
-    return subprocessDockerCall(*args, **kwargs)
+    return subprocessDockerCall(*args, checkOutput=True, **kwargs)
 
 def dockerCall(*args, **kwargs):
     """
@@ -52,7 +52,7 @@ def dockerCall(*args, **kwargs):
     """
     logger.warn("WARNING: dockerCall() using subprocess.check_output() "
                 "is deprecated, please switch to apiDockerCall().")
-    return subprocessDockerCall(*args, **kwargs)
+    return subprocessDockerCall(*args, checkOutput=False, **kwargs)
 
 def subprocessDockerCall(job,
                          tool,
@@ -150,31 +150,29 @@ def subprocessDockerCall(job,
 
     # Make subprocess call
 
-    # If parameters is list of lists, treat each list as
-    # separate command and chain with pipes
+    # If parameters is list of lists, treat each list as separate command and chain with pipes
     if len(parameters) > 0 and type(parameters[0]) is list:
-        # When piping, all arguments now get merged into a single string to
-        # bash -c.
-        # We try to support spaces in paths by wrapping them all in quotes
-        # first.
-        chain_params = [' '.join(p) for p in [list(map(pipes.quote, q))
-                                              for q in parameters]]
-        # Use bash's set -eo pipefail to detect and abort on a failure in any
-        # command in the chain
+        # When piping, all arguments now get merged into a single string to bash -c.
+        # We try to support spaces in paths by wrapping them all in quotes first.
+        chain_params = [' '.join(p) for p in [list(map(pipes.quote, q)) for q in parameters]]
+        # Use bash's set -eo pipefail to detect and abort on a failure in any command in the chain
         call = baseDockerCall + ['--entrypoint', '/bin/bash',  tool, '-c',
-                                 'set -eo pipefail && {}'.format(' | '
-                                                         .join(chain_params))]
+                                 'set -eo pipefail && {}'.format(' | '.join(chain_params))]
     else:
         call = baseDockerCall + [tool] + parameters
-    logger.info("Calling docker with " + repr(call))
+    _logger.info("Calling docker with " + repr(call))
 
     params = {}
     if outfile:
         params['stdout'] = outfile
+    if checkOutput:
+        callMethod = subprocess.check_output
+    else:
+        callMethod = subprocess.check_call
 
     for attempt in retry(predicate=dockerPredicate):
         with attempt:
-            out = subprocess.check_output(call, **params)
+            out = callMethod(call, **params)
 
     _fixPermissions(tool=tool, workDir=workDir)
     return out
