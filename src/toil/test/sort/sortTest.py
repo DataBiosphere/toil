@@ -325,7 +325,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         return "azure:%s:sort-test-%s" % (accountName, uuid4())
 
     def _googleJobStore(self):
-        return "google:cgc-05-0006:sort-test-%s" % uuid4()
+        projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
+        return 'google:%s:sort-test-%s' % (projectID, str(uuid4()))
 
     def _loadFile(self, path):
         with open(path, 'r') as f:

@@ -35,7 +35,8 @@ except ImportError:
 from six.moves import StringIO
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
-                                             NoSuchFileException,
+                                             NoSuchFileException, NoSuchJobStoreException,
+                                             JobStoreExistsException,
                                              ConcurrentFileModificationException)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
@@ -53,7 +54,7 @@ GOOGLE_STORAGE = 'gs'
 #   - needed to copy client_id and client_secret to the oauth section
 # - Azure uses bz2 compression with pickling. Is this useful here?
 # - boto3? http://boto.cloudhackers.com/en/latest/ref/gs.html
-
+# - better way to assign job ids? - currently 'job'+uuid
 
 class GoogleJobStore(AbstractJobStore):
 
@@ -87,6 +88,7 @@ class GoogleJobStore(AbstractJobStore):
             projectID = None
 
         #  create 2 buckets
+        self.locator = locator
         self.projectID = projectID
         self.bucketName = namePrefix+"--toil"
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
@@ -163,7 +165,6 @@ class GoogleJobStore(AbstractJobStore):
         log.debug("Creating job %s for '%s'",
                   jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
         job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
-        self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
             self._batchedJobGraphs.append(job)
         else:
@@ -171,7 +172,7 @@ class GoogleJobStore(AbstractJobStore):
         return job
 
     def _newJobID(self):
-        return str(uuid.uuid4())
+        return "job"+str(uuid.uuid4())
 
     def exists(self, jobStoreID):
         # used on job files, which will be encrypted if avaliable
@@ -187,7 +188,21 @@ class GoogleJobStore(AbstractJobStore):
             key = self._getKey(fileName)
         except:
             raise NoSuchFileException(fileName)
-        return key.generate_url(expires_in=self.publicUrlExpiration.total_seconds())
+
+        #https://github.com/GoogleCloudPlatform/gcs-oauth2-boto-plugin/issues/15
+        # The google connection is missing sign_string().
+        # It is only signing 'GET', though, so skipping the encoding might be fine.
+        def sign_string(self, string_to_sign):
+            #import base64
+            #from oauth2client.crypt import Signer
+            #signer = Signer.from_string(self.oauth2_client._private_key)
+            #return base64.b64encode(signer.sign(string_to_sign))
+            return string_to_sign
+        import types
+        key.bucket.connection._auth_handler.sign_string = types.MethodType(sign_string, key.bucket.connection._auth_handler)
+        key.set_canned_acl('public-read')
+        return key.generate_url(query_auth=False,
+                               expires_in=self.publicUrlExpiration.total_seconds())
 
     def getSharedPublicUrl(self, sharedFileName):
         return self.getPublicUrl(sharedFileName)
@@ -207,11 +222,9 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreID, encrypt=True)
 
     def jobs(self):
-        # UPDATE: it seems that jobs used to have a 'job-' prefix.
-        # How are jobs distinguished from other files now? Just uuid length?
         for key in self.files.list():
             jobStoreID = key.name
-            if len(jobStoreID) == 36: #uuid length
+            if len(jobStoreID) == 39: # 'job' + uuid length
                 yield self.load(jobStoreID)
 
     def writeFile(self, localFilePath, jobStoreID=None):
@@ -298,23 +311,20 @@ class GoogleJobStore(AbstractJobStore):
 
     @staticmethod
     def _getResources(url):
-        projectID = url.host
-        bucketAndKey = url.path
-        return projectID, 'gs://'+bucketAndKey
+        return 'gs://' + url.netloc + url.path
 
     @classmethod
     def getSize(cls, url):
-        projectID, uri = GoogleJobStore._getResources(url)
+        uri = GoogleJobStore._getResources(url)
         uri = boto.storage_uri(uri, GOOGLE_STORAGE)
         return uri.get_key().size
 
     @classmethod
     def _readFromUrl(cls, url, writable):
         # gs://projectid/bucket/key
-        projectID, uri = GoogleJobStore._getResources(url)
+        uri = GoogleJobStore._getResources(url)
         uri = boto.storage_uri(uri, GOOGLE_STORAGE)
-        headers = {"x-goog-project-id": projectID}
-        uri.get_contents_to_file(writable, headers=headers)
+        uri.get_contents_to_file(writable)
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
@@ -322,10 +332,9 @@ class GoogleJobStore(AbstractJobStore):
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        projectID, uri = GoogleJobStore._getResources(url)
+        uri = GoogleJobStore._getResources(url)
         uri = boto.storage_uri(uri, GOOGLE_STORAGE)
-        headers = {"x-goog-project-id": projectID}
-        uri.set_contents_from_file(readable, headers=headers)
+        uri.set_contents_from_stream(readable)
 
     def writeStatsAndLogging(self, statsAndLoggingString):
         statsID = self.statsBaseID + str(uuid.uuid4())
