@@ -12,7 +12,7 @@ virtualenv --system-site-packages --never-download venv
 make prepare
 
 # Install Toil and its runtime requirements
-make develop extras=[aws,mesos,azure,encryption,cwl]
+make develop extras=[aws,mesos,azure,google,encryption,cwl]
 
 # Required for running Mesos master and slave daemons as part of the tests
 export LIBPROCESS_IP=127.0.0.1
