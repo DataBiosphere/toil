@@ -887,6 +887,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _prepareTestFile(self, bucket, size=None):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         fileName = 'testfile_%s' % uuid.uuid4()
         url = 'gs://%s/%s' % (bucket.name, fileName)
         if size is None:
@@ -898,6 +899,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         from toil.jobStores.googleJobStore import GoogleJobStore
         uri = GoogleJobStore._getResources(urlparse.urlparse(url))
         uri = boto.storage_uri(uri)
@@ -906,6 +908,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         from toil.jobStores.googleJobStore import GoogleJobStore
         uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
         uri = boto.storage_uri(uriString)
@@ -913,6 +916,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _cleanUpExternalStore(self, bucket):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         while True:
             try:
                 for key in bucket.list():
