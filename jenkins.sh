@@ -21,6 +21,7 @@ export LIBPROCESS_IP=127.0.0.1
 export CGCLOUD_ME=jenkins@jenkins-master
 export TOIL_AWS_KEYNAME=jenkins@jenkins-master
 export TOIL_AZURE_KEYNAME=toiltest
+export TOIL_GOOGLE_PROJECTID=toil-dev
 
 TMPDIR=/mnt/ephemeral/tmp
 # Run rm "as root" so we can clean up files left over by rogue containers
