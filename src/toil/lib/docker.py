@@ -59,6 +59,7 @@ def subprocessDockerCall(job,
                          parameters=None,
                          workDir=None,
                          dockerParameters=None,
+                         checkOutput=True,
                          outfile=None,
                          defer=None):
     """
