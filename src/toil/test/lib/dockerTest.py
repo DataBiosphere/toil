@@ -5,6 +5,7 @@ import time
 import os
 import uuid
 import docker
+import subprocess
 from threading import Thread
 from docker.errors import ContainerError
 
@@ -18,6 +19,9 @@ from toil.lib.docker import dockerCall, dockerCheckOutput, apiDockerCall, contai
 # only needed for subprocessDockerCall tests
 from subprocess import CalledProcessError
 from pwd import getpwuid
+from bd2k.util.retry import retry
+from toil.lib import dockerPredicate
+
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +133,7 @@ class DockerTest(ToilTest):
         self.testDockerClean(disableCaching=True, detached=False, rm=True,
                              deferParam=RM)
 
+    @slow
     def testDockerClean_CRx_None(self):
         self.testDockerClean(disableCaching=True, detached=False, rm=True,
                              deferParam=None)
@@ -268,15 +273,16 @@ class DockerTest(ToilTest):
         rv = Job.Runner.startToil(A, options)
         assert rv == True
 
-    @slow
     def testNonCachingDockerChain(self):
         self.testDockerPipeChain(disableCaching=False)
 
-    @slow
     def testNonCachingDockerChainErrorDetection(self):
         self.testDockerPipeChainErrorDetection(disableCaching=False)
 
-    # everything below this point tests subprocessDockerCall
+    ########################################################
+    # all tests below this point test subprocessDockerCall #
+    ########################################################
+
     @slow
     def testSubprocessDockerClean(self, caching=True):
         """
@@ -340,7 +346,7 @@ class DockerTest(ToilTest):
                                 'Container was not running.'
                     finally:
                         # Prepare for the next test.
-                        dockerKill(container_name, RM)
+                        _dockerKill(container_name, RM)
                         os.remove(test_file)
 
     def testSubprocessDockerPipeChain(self, caching=True):
@@ -390,13 +396,13 @@ class DockerTest(ToilTest):
     def testSubprocessDockerPermissionsNonCaching(self):
         self.testSubprocessDockerPermissions(caching=False)
 
-    @slow
     def testSubprocessNonCachingDockerChain(self):
         self.testSubprocessDockerPipeChain(caching=False)
 
     def testSubprocessNonCachingDockerChainErrorDetection(self):
         self.testSubprocessDockerPipeChainErrorDetection(caching=False)
 
+    @slow
     def testSubprocessNonCachingDockerClean(self):
         self.testSubprocessDockerClean(caching=False)
 
@@ -458,9 +464,6 @@ def _testDockerPipeChainErrorFn(job):
         return True
     return False
 
-###########################################################################
-
-
 def _testSubprocessDockerCleanFn(job, workDir, detached=None, rm=None, defer=None, containerName=None):
     """
     Test function for test docker_clean.  Runs a container with given flags and then dies leaving
@@ -520,7 +523,6 @@ def _testSubprocessDockerPermissions(job):
     assert os.path.exists(outFile)
     assert not ownerName(outFile) == "root"
 
-
 def ownerName(filename):
     """
     Determines a given file's owner
@@ -528,3 +530,43 @@ def ownerName(filename):
     :return: name of filename's owner
     """
     return getpwuid(os.stat(filename).st_uid).pw_name
+
+def _dockerKill(containerName, action):
+    """
+    Kills the specified container.
+    :param str containerName: The name of the container created by docker_call
+    :param int action: What action should be taken on the container?  See `defer=` in
+           :func:`docker_call`
+    """
+    running = containerIsRunning(containerName)
+    if running is None:
+        # This means that the container doesn't exist.  We will see this if the container was run
+        # with --rm and has already exited before this call.
+        logger.info('The container with name "%s" appears to have already been removed.  Nothing to '
+                     'do.', containerName)
+    else:
+        if action in (None, FORGO):
+            logger.info('The container with name %s continues to exist as we were asked to forgo a '
+                         'post-job action on it.', containerName)
+        else:
+            logger.info('The container with name %s exists. Running user-specified defer functions.',
+                         containerName)
+            if running and action >= STOP:
+                logger.info('Stopping container "%s".', containerName)
+                for attempt in retry(predicate=dockerPredicate):
+                    with attempt:
+                        subprocess.check_call(['docker', 'stop', containerName])
+            else:
+                logger.info('The container "%s" was not found to be running.', containerName)
+            if action >= RM:
+                # If the container was run with --rm, then stop will most likely remove the
+                # container.  We first check if it is running then remove it.
+                running = containerIsRunning(containerName)
+                if running is not None:
+                    logger.info('Removing container "%s".', containerName)
+                    for attempt in retry(predicate=dockerPredicate):
+                        with attempt:
+                            subprocess.check_call(['docker', 'rm', '-f', containerName])
+                else:
+                    logger.info('The container "%s" was not found on the system.  Nothing to remove.',
+                                 containerName)
