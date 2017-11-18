@@ -1,8 +1,0 @@
-  "outputs": {
-    "SimpleVariantDiscovery.combine.filteredVCF": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantDiscovery/8ea85dbf-d109-4812-8f4c-9e0054db92ec/call-combine/execution/WDL_tut3_output.filtered.snps.indels.vcf",
-    "SimpleVariantDiscovery.hardFilterSNP.filteredSNPs": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantDiscovery/8ea85dbf-d109-4812-8f4c-9e0054db92ec/call-hardFilterSNP/execution/WDL_tut3_output.filtered.snps.vcf",
-    "SimpleVariantDiscovery.selectIndels.rawSubset": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantDiscovery/8ea85dbf-d109-4812-8f4c-9e0054db92ec/call-selectIndels/execution/WDL_tut3_output_raw.INDEL.vcf",
-    "SimpleVariantDiscovery.selectSNPs.rawSubset": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantDiscovery/8ea85dbf-d109-4812-8f4c-9e0054db92ec/call-selectSNPs/execution/WDL_tut3_output_raw.SNP.vcf",
-    "SimpleVariantDiscovery.haplotypeCaller.rawVCF": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantDiscovery/8ea85dbf-d109-4812-8f4c-9e0054db92ec/call-haplotypeCaller/execution/WDL_tut3_output.raw.indels.snps.vcf",
-    "SimpleVariantDiscovery.hardFilterIndel.filteredIndels": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/SimpleVariantDiscovery/8ea85dbf-d109-4812-8f4c-9e0054db92ec/call-hardFilterIndel/execution/WDL_tut3_output.filtered.indels.vcf"
-  }

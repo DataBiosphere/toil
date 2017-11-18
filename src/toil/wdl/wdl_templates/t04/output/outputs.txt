@@ -1,4 +1,0 @@
-  "outputs": {
-    "jointCallingGenotypes.GenotypeGVCFs.rawVCF": "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/jointCallingGenotypes/05a9ec0c-2413-404f-a077-2f6348f2468a/call-GenotypeGVCFs/execution/CEUtrio_rawVariants.vcf",
-    "jointCallingGenotypes.HaplotypeCallerERC.GVCF": ["/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/jointCallingGenotypes/05a9ec0c-2413-404f-a077-2f6348f2468a/call-HaplotypeCallerERC/shard-0/execution/WDL_tut4a_output_rawLikelihoods.g.vcf", "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/jointCallingGenotypes/05a9ec0c-2413-404f-a077-2f6348f2468a/call-HaplotypeCallerERC/shard-1/execution/WDL_tut4b_output_rawLikelihoods.g.vcf", "/home/lifeisaboutfishtacos/Desktop/wdl-tutorials/cromwell-executions/jointCallingGenotypes/05a9ec0c-2413-404f-a077-2f6348f2468a/call-HaplotypeCallerERC/shard-2/execution/WDL_tut4c_output_rawLikelihoods.g.vcf"]
-  }
