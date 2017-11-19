@@ -17,7 +17,7 @@ class TestCase(unittest.TestCase):
 
         self.program = 'src/toil/wdl/toilwdl.py'
         self.tutorial_test_output_dir = 'src/toil/wdl/wdl_working/'
-        self.output_file = "src/toil/wdl/wdl_working/toilwdl_compiled.py"
+        self.output_file = "toilwdl_compiled.py"
 
         if not os.path.exists(self.tutorial_test_output_dir):
             try:
@@ -47,7 +47,6 @@ class TestCase(unittest.TestCase):
         tutorial_good_output_dir = 'src/toil/test/wdl/wdl_templates/t01/output/'
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.tutorial_test_output_dir])
-        subprocess.check_call(['python', self.output_file])
 
         default_output_files = os.listdir(tutorial_good_output_dir)
         test_output_files = os.listdir(self.tutorial_test_output_dir)
@@ -82,7 +81,6 @@ class TestCase(unittest.TestCase):
         tutorial_good_output_dir = 'src/toil/test/wdl/wdl_templates/t02/output/'
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.tutorial_test_output_dir])
-        subprocess.check_call(['python', self.output_file])
 
         default_output_files = os.listdir(tutorial_good_output_dir)
         test_output_files = os.listdir(self.tutorial_test_output_dir)
@@ -117,7 +115,6 @@ class TestCase(unittest.TestCase):
         tutorial_good_output_dir = 'src/toil/test/wdl/wdl_templates/t03/output/'
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.tutorial_test_output_dir])
-        subprocess.check_call(['python', self.output_file])
 
         default_output_files = os.listdir(tutorial_good_output_dir)
         test_output_files = os.listdir(self.tutorial_test_output_dir)
@@ -152,7 +149,6 @@ class TestCase(unittest.TestCase):
         tutorial_good_output_dir = 'src/toil/test/wdl/wdl_templates/t04/output/'
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.tutorial_test_output_dir])
-        subprocess.check_call(['python', self.output_file])
 
         default_output_files = os.listdir(tutorial_good_output_dir)
         test_output_files = os.listdir(self.tutorial_test_output_dir)
@@ -187,7 +183,6 @@ class TestCase(unittest.TestCase):
         tutorial_good_output_dir = 'src/toil/test/wdl/wdl_templates/testENCODE/output/'
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.tutorial_test_output_dir])
-        subprocess.check_call(['python', self.output_file])
 
         default_output_files = os.listdir(tutorial_good_output_dir)
         test_output_files = os.listdir(self.tutorial_test_output_dir)
@@ -220,7 +215,6 @@ class TestCase(unittest.TestCase):
         tutorial_good_output_dir = 'src/toil/test/wdl/wdl_templates/testPipe/output/'
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.tutorial_test_output_dir])
-        subprocess.check_call(['python', self.output_file])
 
         default_output_files = os.listdir(tutorial_good_output_dir)
         test_output_files = os.listdir(self.tutorial_test_output_dir)
