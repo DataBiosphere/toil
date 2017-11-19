@@ -23,7 +23,7 @@ import json
 import os
 import collections
 import subprocess
-import toil.wdl.wdl_parser
+import toil.wdl.wdl_parser as wdl_parser
 import sys
 import json
 import logging
@@ -160,6 +160,21 @@ class ToilWDL:
 
     def __init__(self, wdl_filename, secondary_filename, output_directory):
 
+        # inputs
+        self.wdl_file = wdl_filename
+        self.secondary_file = secondary_filename
+        self.output_directory = output_directory
+
+        if not os.path.exists(self.output_directory):
+            try:
+                os.makedirs(self.output_directory)
+            except:
+                raise OSError(
+                    'Could not create directory.  Insufficient permissions or disk space most likely.')
+
+
+        self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
+
         # only json is required; tsv/csv are optional
         self.json_dict = {}
         self.tsv_dict = {}
@@ -179,11 +194,6 @@ class ToilWDL:
 
         # a job's 'level' on the DAG
         self.task_priority = 0
-
-        # inputs
-        self.wdl_file = wdl_filename
-        self.secondary_file = secondary_filename
-        self.output_directory = output_directory
 
         # string used to write imports to the file
         self.module_string = 'from toil.job import Job\n' + \
@@ -220,8 +230,6 @@ class ToilWDL:
             '        ' + 'start = time.time()\n' + \
             '        ' + 'with open("' + os.path.join(self.output_directory, "wdl-stats.log") + '", "a+") as f:\n' + \
             '            ' + 'f.write("Starting WDL Job @ " + str(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) + "' + '\\' + 'n' + '\\' + 'n' + '")\n'
-
-        self.output_file = 'toilwdl_compiled.py'
 
     def find_asts(self, ast_root, name):
         '''
@@ -1946,12 +1954,11 @@ class ToilWDL:
         :param job_section: A string import files into toil and declaring jobs.
         :param output_file: The file to write the compiled toil script to.
         '''
-        file = open(output_file, 'w')
-        file.write(module_section)
-        file.write(fn_section)
-        file.write(main_prelude_section)
-        file.write(main_section)
-        file.close
+        with open(output_file, 'w') as file:
+	        file.write(module_section)
+	        file.write(fn_section)
+	        file.write(main_prelude_section)
+	        file.write(main_section)
 
     def print_AST(self):
         '''
@@ -2064,7 +2071,7 @@ def main():
                         main_section,
                         w.output_file)
 
+    subprocess.check_call(['python', w.output_file])
+
 if __name__ == '__main__':
     main()
-
-
