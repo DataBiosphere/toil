@@ -189,8 +189,8 @@ class ToilWDL:
         self.module_string = 'from toil.job import Job\n' + \
                    'from toil.common import Toil\n' + \
                    'from toil.lib.docker import apiDockerCall\n' + \
-                   'from toilwdl import generate_docker_bashscript_file\n' + \
-                   'from toilwdl import recursive_glob\n' + \
+                   'from toil.wdl.toilwdl import generate_docker_bashscript_file\n' + \
+                   'from toil.wdl.toilwdl import recursive_glob\n' + \
                    'import fnmatch\n' + \
                    'import subprocess\n' + \
                    'import os\n' + \
