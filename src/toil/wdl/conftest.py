@@ -17,6 +17,6 @@
 collect_ignore = []
 
 try:
-    import wdl_parser
+    import toil.wdl.wdl_parser
 except ImportError:
     collect_ignore.append("toilwdl.py")

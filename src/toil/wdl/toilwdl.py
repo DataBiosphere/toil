@@ -23,7 +23,7 @@ import json
 import os
 import collections
 import subprocess
-import wdl_parser
+import toil.wdl.wdl_parser
 import sys
 import json
 import logging

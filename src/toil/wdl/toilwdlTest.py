@@ -3,7 +3,7 @@ import unittest
 import os
 import subprocess
 from toil.test import slow
-from toilwdl import ToilWDL
+from toil.wdl.toilwdl import ToilWDL
 import zipfile
 import time
 
