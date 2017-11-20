@@ -150,32 +150,14 @@ class GoogleJobStore(AbstractJobStore):
         return self.config.sseKey
 
     def destroy(self):
-        # no upper time limit on this call keep trying delete calls until we succeed - we can
-        # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
-        # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket
+        try:
+            self.bucket.delete(force=True)
+            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+        except ValueError:
+            self.bucket.delete_blobs(self.bucket.list_blobs)
+            self.bucket.delete()
+            # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
 
-        # just return if not connect to physical storage
-        if self.files is None:
-            return
-        while True:
-            try:
-                self.uri.delete_bucket()
-            except GSResponseError as e:
-                if e.status == 404:
-                    return  # the bucket doesn't exist so we are done
-                else:
-                    # bucket could still have objects, or contain ghost objects
-                    time.sleep(0.5)
-            else:
-                # we have succesfully deleted bucket
-                return
-
-            # object could have been deleted already
-            for obj in self.files.list():
-                try:
-                    obj.delete()
-                except GSResponseError:
-                    pass
 
     def create(self, jobNode):
         jobStoreID = self._newJobID()
