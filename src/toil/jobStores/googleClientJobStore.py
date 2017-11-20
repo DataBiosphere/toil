@@ -183,25 +183,10 @@ class GoogleJobStore(AbstractJobStore):
         return True
 
     def getPublicUrl(self, fileName):
-        try:
-            key = self._getKey(fileName)
-        except:
+        blob = self.bucket.get_blob(fileName)
+        if blob is None:
             raise NoSuchFileException(fileName)
-
-        #https://github.com/GoogleCloudPlatform/gcs-oauth2-boto-plugin/issues/15
-        # The google connection is missing sign_string().
-        # It is only signing 'GET', though, so skipping the encoding might be fine.
-        def sign_string(self, string_to_sign):
-            #import base64
-            #from oauth2client.crypt import Signer
-            #signer = Signer.from_string(self.oauth2_client._private_key)
-            #return base64.b64encode(signer.sign(string_to_sign))
-            return string_to_sign
-        import types
-        key.bucket.connection._auth_handler.sign_string = types.MethodType(sign_string, key.bucket.connection._auth_handler)
-        key.set_canned_acl('public-read')
-        return key.generate_url(query_auth=False,
-                               expires_in=self.publicUrlExpiration.total_seconds())
+        return blob.generate_signed_url(self.publicUrlExpiration)
 
     def getSharedPublicUrl(self, sharedFileName):
         return self.getPublicUrl(sharedFileName)
