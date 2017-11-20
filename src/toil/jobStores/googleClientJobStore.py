@@ -25,6 +25,7 @@ import boto
 from boto.exception import GSResponseError, GSDataError
 import logging
 import time
+from google.cloud import storage, exceptions
 
 try:
     import cPickle as pickle
@@ -99,6 +100,7 @@ class GoogleJobStore(AbstractJobStore):
         import gcs_oauth2_boto_plugin # needed to import authentication handler
         self.uri = boto.storage_uri(self.gsBucketURL, GOOGLE_STORAGE)
         self.files = None
+        self.bucket = None
 
         self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
         self.statsReadPrefix = '_'
@@ -114,11 +116,11 @@ class GoogleJobStore(AbstractJobStore):
         if exists:
             raise JobStoreExistsException(self.locator)
 
-        from google.cloud import storage
         storage_client = storage.Client()
-        bucket = storage_client.create_bucket(self.bucketName)
-        #self.files = self._retryCreateBucket(self.uri, self.headerValues)
+        self.bucket = storage_client.create_bucket(self.bucketName)
 
+        # TODO: DELETE ME
+        # self.files = self._retryCreateBucket(self.uri, self.headerValues)
         try:
             self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
         except GSResponseError:
@@ -130,6 +132,13 @@ class GoogleJobStore(AbstractJobStore):
         super(GoogleJobStore, self).initialize(config)
 
     def resume(self):
+        storage_client = storage.Client()
+        try:
+            self.bucket = storage_client.get_bucket(self.bucketName)
+        except exceptions.NotFound:
+            raise NoSuchJobStoreException(self.locator)
+
+        # TODO: DELETE ME
         try:
             self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
         except GSResponseError:
