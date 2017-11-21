@@ -230,13 +230,13 @@ class GoogleJobStore(AbstractJobStore):
         return fileID
 
     def readFile(self, jobStoreFileID, localFilePath):
-        # used on non-shared files which will be encrypted if avaliable
-        headers = self.encryptedHeaders
-        # checking for JobStoreID existance
-        if not self.exists(jobStoreFileID):
+        # used on non-shared files which will be encrypted if available
+        # TODO deal with encryption stuff
+        # checking for JobStoreID existence
+        if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
         with open(localFilePath, 'w') as writeable:
-            self._getKey(jobStoreFileID, headers).get_contents_to_file(writeable, headers=headers)
+            self.bucket.get_blob(jobStoreFileID).download_to_file(writeable)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
@@ -275,9 +275,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName, isProtected=True):
-        headers = self.encryptedHeaders if isProtected else self.headerValues
-        key = self._getKey(sharedFileName, headers=headers)
-        with self._downloadStream(key, encrypt=isProtected) as readable:
+        with self._downloadStream(sharedFileName, encrypt=isProtected) as readable:
             yield readable
 
     @staticmethod
@@ -500,14 +498,27 @@ class GoogleJobStore(AbstractJobStore):
             yield writable
 
     @contextmanager
-    def _downloadStream(self, key, encrypt=True):
-        store = self
+    def _downloadStream(self, fileName, encrypt=True):
+        """
+        Yields a context manager that can be used to read from the bucket
+        with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
+
+        :param fileName: name of file in bucket to be read
+        :type fileName: str
+        :param encrypt: whether or not the file is encrypted
+        :type encrypt: bool
+        :return: an instance of ReadablePipe.
+        :rtype: :class:`~toil.jobStores.utils.ReadablePipe`
+        """
+        blob = self.bucket.get_blob(fileName)
+        if blob is None:
+            raise NoSuchFileException(fileName)
 
         class DownloadPipe(ReadablePipe):
             def writeTo(self, writable):
-                headers = store.encryptedHeaders if encrypt else store.headerValues
+                # TODO encryption stuff here
                 try:
-                    key.get_file(writable, headers=headers)
+                    blob.download_to_file(writable)
                 finally:
                     writable.close()
 
