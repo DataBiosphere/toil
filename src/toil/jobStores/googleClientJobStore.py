@@ -206,6 +206,10 @@ class GoogleJobStore(AbstractJobStore):
         # jobs will always be encrypted when avaliable
         self._delete(jobStoreID, encrypt=True)
 
+        # best effort delete associated files
+        for blob in self.bucket.list_blobs(prefix=jobStoreID):
+            self._delete(blob.name)
+
     def jobs(self):
         for blob in self.bucket.list_blobs(prefix='job'):
             jobStoreID = blob.name
@@ -244,17 +248,7 @@ class GoogleJobStore(AbstractJobStore):
             yield readable
 
     def deleteFile(self, jobStoreFileID):
-        headers = self.encryptedHeaders
-        try:
-            self._getKey(jobStoreFileID, headers).delete(headers)
-        except GSDataError as e:
-            # we tried to delete unencrypted file with encryption headers. unfortunately,
-            # we can't determine whether the file passed in is encrypted or not beforehand.
-            if e.status == 400:
-                headers = self.headerValues
-                self._getKey(jobStoreFileID, headers).delete(headers)
-            else:
-                raise e
+        self._delete(jobStoreFileID)
 
     def fileExists(self, jobStoreFileID):
         return self.bucket.blob(jobStoreFileID).exists()
@@ -394,25 +388,11 @@ class GoogleJobStore(AbstractJobStore):
                     'x-goog-encryption-key-sha256': encodedSseKeyMd5,
                     "Cache-Control": "no-store"}
 
-    def _delete(self, jobStoreID, encrypt=True):
-        headers = self.encryptedHeaders if encrypt else self.headerValues
-        try:
-            key = self._getKey(jobStoreID, headers)
-        except NoSuchFileException:
-            pass
-        else:
-            try:
-                key.delete()
-            except GSResponseError as e:
-                if e.status == 404:
-                    pass
-        # best effort delete associated files
-        for fileID in self.files.list():
-            if fileID.name.startswith(jobStoreID):
-                try:
-                    self.deleteFile(fileID)
-                except NoSuchFileException:
-                    pass
+    def _delete(self, jobStoreFileID, encrypt=True):
+        if self.fileExists(jobStoreFileID):
+            self.bucket.get_blob(jobStoreFileID).delete()
+        # remember, this is supposed to be idempotent, so we don't do anything
+        # if the file doesn't exist
 
     def _getKey(self, jobStoreID=None, headers=None):
 
