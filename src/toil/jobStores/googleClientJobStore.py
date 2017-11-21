@@ -207,9 +207,9 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreID, encrypt=True)
 
     def jobs(self):
-        for key in self.files.list():
-            jobStoreID = key.name
-            if len(jobStoreID) == 39: # 'job' + uuid length
+        for blob in self.bucket.list_blobs(prefix='job'):
+            jobStoreID = blob.name
+            if len(jobStoreID) == 39:  # 'job' + uuid length
                 yield self.load(jobStoreID)
 
     def writeFile(self, localFilePath, jobStoreID=None):
@@ -454,10 +454,19 @@ class GoogleJobStore(AbstractJobStore):
         # Does not create a key remotely. Careful -- does not ensure key name is unique
         return self.files.new_key(jobStoreID)
 
+    # TODO: abstract and require implementation?
     def _readContents(self, jobStoreID):
-        # used on job files only, which will be encrypted if avaliable
-        headers = self.encryptedHeaders
-        return self._getKey(jobStoreID, headers).get_contents_as_string(headers=headers)
+        """
+        To be used on files representing jobs only. Which will be encrypted if possible.
+        :param jobStoreID: the ID of the job
+        :type jobStoreID: str
+        :return: contents of the job file
+        :rtype: string
+        """
+        job = self.bucket.get_blob(jobStoreID)
+        if job is None:
+            raise NoSuchJobException(jobStoreID)
+        return job.download_as_string()
 
     def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
         headers = self.encryptedHeaders if encrypt else self.headerValues
