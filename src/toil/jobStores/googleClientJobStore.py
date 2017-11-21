@@ -468,23 +468,14 @@ class GoogleJobStore(AbstractJobStore):
             raise NoSuchJobException(jobStoreID)
         return job.download_as_string()
 
+    # TODO: abstract and require implementation?
     def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
-        headers = self.encryptedHeaders if encrypt else self.headerValues
-        if update:
-            key = self._getKey(jobStoreID=jobStoreID, headers=headers)
-        else:
-            key = self._newKey(jobStoreID=jobStoreID)
-        try:
-             key.set_contents_from_file(fileObj, headers=headers)
-        except GSDataError:
-            if encrypt:
-                # Per https://cloud.google.com/storage/docs/encryption#customer-supplied_encryption_keys
-                # the etag and md5 will not match with customer supplied
-                # keys. However boto didn't get the memo apparently, and will raise this error if
-                # they dont match. Reported: https://github.com/boto/boto/issues/3518
-                pass
-            else:
-                raise
+        # TODO: add encryption stuff here
+        blob = self.bucket.blob(jobStoreID)
+        if not update:
+            # TODO: should probably raise a special exception and be added to all jobStores
+            assert not blob.exists()
+        blob.upload_from_file(fileObj)
 
     def _writeString(self, jobStoreID, stringToUpload, **kwarg):
         self._writeFile(jobStoreID, StringIO(stringToUpload), **kwarg)
@@ -493,7 +484,7 @@ class GoogleJobStore(AbstractJobStore):
     def _uploadStream(self, fileName, update=False, encrypt=True):
         """
         Yields a context manager that can be used to write to the bucket
-        with a stream. See :class:`~WritablePipe` for an example.
+        with a stream. See :class:`~toil.jobStores.utils.WritablePipe` for an example.
 
         Will throw assertion error if the file shouldn't be updated
         and yet exists.
@@ -502,9 +493,10 @@ class GoogleJobStore(AbstractJobStore):
         :type fileName: str
         :param update: whether or not the file is to be updated
         :type update: bool
-        :param encrypt:
+        :param encrypt: whether or not the file is encrypted
         :type encrypt: bool
         :return: an instance of WritablePipe.
+        :rtype: :class:`~toil.jobStores.utils.writablePipe`
         """
         blob = self.bucket.blob(fileName)
 
