@@ -995,7 +995,7 @@ class ToilWDL:
                 main_section = main_section + '            ' + iterator + ' = []\n'
                 main_section = main_section + '            for i in ' + iterator + '0:\n'
                 main_section = main_section + '                if os.path.isfile(str(i)):\n'
-                main_section = main_section + '                    ' + iterator + '0 = toil.importFile("file://" + i)\n'
+                main_section = main_section + '                    ' + iterator + '0 = toil.importFile("file://" + os.path.abspath(i))\n'
                 main_section = main_section + '                    ' + iterator + '0_preserveThisFilename = i.split("/")[-1]\n'
                 main_section = main_section + '                    ' + iterator + '.append((' + iterator + '0, ' + iterator + '0_preserveThisFilename))\n'
                 main_section = main_section + '                else:\n'
@@ -1955,10 +1955,10 @@ class ToilWDL:
         :param output_file: The file to write the compiled toil script to.
         '''
         with open(output_file, 'w') as file:
-	        file.write(module_section)
-	        file.write(fn_section)
-	        file.write(main_prelude_section)
-	        file.write(main_section)
+            file.write(module_section)
+            file.write(fn_section)
+            file.write(main_prelude_section)
+            file.write(main_section)
 
     def print_AST(self):
         '''
