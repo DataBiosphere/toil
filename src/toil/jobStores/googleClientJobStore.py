@@ -257,17 +257,7 @@ class GoogleJobStore(AbstractJobStore):
                 raise e
 
     def fileExists(self, jobStoreFileID):
-        try:
-            self._getKey(jobStoreFileID)
-            return True
-        except (NoSuchFileException, GSResponseError) as e:
-            if isinstance(e, NoSuchFileException):
-                return False
-            elif e.status == 400:
-                # will happen w/ self.fileExists(encryptedFile). If file didn't exist code == 404
-                return True
-            else:
-                return False
+        return self.bucket.blob(jobStoreFileID).exists()
 
     def updateFile(self, jobStoreFileID, localFilePath):
         with open(localFilePath) as f:
