@@ -16,7 +16,8 @@ from __future__ import absolute_import
 
 from future import standard_library
 standard_library.install_aliases()
-from builtins import str
+# the following line was causing weird errors with some api files
+# from builtins import str
 import base64
 from contextlib import contextmanager
 import hashlib
@@ -220,9 +221,8 @@ class GoogleJobStore(AbstractJobStore):
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
-        key = self._newKey(fileID)
-        with self._uploadStream(key, update=False) as writable:
-            yield writable, key.name
+        with self._uploadStream(fileID, update=True) as writable:
+            yield writable, fileID
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
@@ -275,16 +275,13 @@ class GoogleJobStore(AbstractJobStore):
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
-        headers = self.encryptedHeaders
-        key = self._getKey(jobStoreFileID, headers)
-        with self._uploadStream(key, update=True) as readable:
-            yield readable
+        with self._uploadStream(jobStoreFileID, update=True) as writable:
+            yield writable
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=True):
-        key = self._newKey(sharedFileName)
-        with self._uploadStream(key, encrypt=isProtected, update=True) as readable:
-            yield readable
+        with self._uploadStream(sharedFileName, encrypt=isProtected, update=True) as writable:
+            yield writable
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName, isProtected=True):
@@ -322,9 +319,8 @@ class GoogleJobStore(AbstractJobStore):
 
     def writeStatsAndLogging(self, statsAndLoggingString):
         statsID = self.statsBaseID + str(uuid.uuid4())
-        key = self._newKey(statsID)
-        log.debug("Writing stats file: %s", key.name)
-        with self._uploadStream(key, encrypt=False, update=False) as f:
+        log.debug("Writing stats file: %s", statsID)
+        with self._uploadStream(statsID, encrypt=False, update=False) as f:
             f.write(statsAndLoggingString)
 
     def readStatsAndLogging(self, callback, readAll=False):
@@ -485,40 +481,29 @@ class GoogleJobStore(AbstractJobStore):
         self._writeFile(jobStoreID, StringIO(stringToUpload), **kwarg)
 
     @contextmanager
-    def _uploadStream(self, key, update=False, encrypt=True):
-        store = self
+    def _uploadStream(self, fileName, update=False, encrypt=True):
+        """
+        Yields a context manager that can be used to write to the bucket
+        with a stream. See :class:`~WritablePipe` for an example.
+
+        Will throw assertion error if the file shouldn't be updated
+        and yet exists.
+
+        :param fileName: name of file to be inserted into bucket
+        :type fileName: str
+        :param update: whether or not the file is to be updated
+        :type update: bool
+        :param encrypt:
+        :type encrypt: bool
+        :return: an instance of WritablePipe.
+        """
+        blob = self.bucket.blob(fileName)
 
         class UploadPipe(WritablePipe):
             def readFrom(self, readable):
-                headers = store.encryptedHeaders if encrypt else store.headerValues
-                if update:
-                    try:
-                        key.set_contents_from_stream(readable, headers=headers)
-                    except GSDataError:
-                        if encrypt:
-                            # https://github.com/boto/boto/issues/3518
-                            # see self._writeFile for more
-                            pass
-                        else:
-                            raise
-                else:
-                    try:
-                        # The if_generation argument insures that the existing key matches the
-                        # given generation, i.e. version, before modifying anything. Passing a
-                        # generation of 0 insures that the key does not exist remotely.
-                        key.set_contents_from_stream(readable, headers=headers, if_generation=0)
-                    except (GSResponseError, GSDataError) as e:
-                        if isinstance(e, GSResponseError):
-                            if e.status == 412:
-                                raise ConcurrentFileModificationException(key.name)
-                            else:
-                                raise e
-                        elif encrypt:
-                            # https://github.com/boto/boto/issues/3518
-                            # see self._writeFile for more
-                            pass
-                        else:
-                            raise
+                if not update:
+                    assert not blob.exists()
+                blob.upload_from_file(readable)
 
         with UploadPipe() as writable:
             yield writable
