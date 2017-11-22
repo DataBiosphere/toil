@@ -1955,10 +1955,10 @@ class ToilWDL:
         :param output_file: The file to write the compiled toil script to.
         '''
         with open(output_file, 'w') as file:
-	        file.write(module_section)
-	        file.write(fn_section)
-	        file.write(main_prelude_section)
-	        file.write(main_section)
+            file.write(module_section)
+            file.write(fn_section)
+            file.write(main_prelude_section)
+            file.write(main_section)
 
     def print_AST(self):
         '''
