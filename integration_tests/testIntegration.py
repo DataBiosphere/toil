@@ -3,8 +3,12 @@ import unittest
 import os
 import subprocess
 from toil.test import slow
-from toil.wdl.toilwdl import ToilWDL
 import zipfile
+
+#######################################
+# Note: GATK.jar requires java 7      #
+# jenkins has only java 6 (11-22-2017)#
+#######################################
 
 class TestCase(unittest.TestCase):
     """A set of test cases for toilwdl.py"""
@@ -20,7 +24,7 @@ class TestCase(unittest.TestCase):
 
         self.test_directory = os.path.abspath("src/toil/test/wdl/")
 
-        self.encode_data = os.path.join(self.test_directory, "ENCODE_data.zip")
+        self.gatk_data = os.path.join(self.test_directory, "GATK_data.zip")
         self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
 
         if not os.path.exists(self.output_dir):
@@ -31,7 +35,7 @@ class TestCase(unittest.TestCase):
                     "Could not create directory.  "
                     "Insufficient permissions or disk space most likely.")
 
-        with zipfile.ZipFile(self.encode_data, 'r') as zip_ref:
+        with zipfile.ZipFile(self.gatk_data, 'r') as zip_ref:
             zip_ref.extractall(self.test_directory)
         with zipfile.ZipFile(self.wdl_data, 'r') as zip_ref:
             zip_ref.extractall(self.test_directory)
@@ -40,64 +44,57 @@ class TestCase(unittest.TestCase):
         """Default tearDown for unittest."""
         unittest.TestCase.tearDown(self)
 
-    # estimated run time 80 sec
+    # estimated run time 27 sec
     @slow
-    def testENCODE(self):
-        '''Test if toilwdl produces the same outputs as known good outputs for
-        a short ENCODE run.'''
-        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/testENCODE/encode_mapping_workflow.wdl")
-        json = os.path.abspath("src/toil/test/wdl/wdl_templates/testENCODE/encode_mapping_workflow.wdl.json")
-        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/testENCODE/output/")
+    def testTut01(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #1.'''
+        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl")
+        json = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
+        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/output/")
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
 
         self.compare_runs(ref_dir)
 
-    # estimated run time 2 sec
-    def testPipe(self):
-        '''Test basic bash input functionality with a pipe.'''
-        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/testPipe/call.wdl")
-        json = os.path.abspath("src/toil/test/wdl/wdl_templates/testPipe/call.json")
-        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/testPipe/output/")
+    # estimated run time 28 sec
+    @slow
+    def testTut02(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #2.'''
+        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection.wdl")
+        json = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection_inputs.json")
+        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/output/")
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
 
         self.compare_runs(ref_dir)
 
-    # estimated run time <1 sec
-    def testCSV(self):
-        default_csv_output = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']]
-        t = ToilWDL(os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
-                    os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
-                    self.output_dir)
-        csv_array = t.create_csv_array('src/toil/test/wdl/test.csv')
-        assert csv_array == default_csv_output
+    # estimated run time 60 sec
+    @slow
+    def testTut03(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #3.'''
+        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery.wdl")
+        json = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery_inputs.json")
+        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/output/")
 
-    # estimated run time <1 sec
-    def testTSV(self):
-        default_tsv_output = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']]
-        t = ToilWDL(os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
-                    os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
-                    self.output_dir)
-        tsv_array = t.create_tsv_array('src/toil/test/wdl/test.tsv')
-        assert tsv_array == default_tsv_output
+        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
 
-    # estimated run time <1 sec
-    def testJSON(self):
-        default_json_dict_output = {u'RefIndex': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta.fai',
-                                    u'sampleName': u'WDL_tut1_output',
-                                    u'inputBAM': u'src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bam',
-                                    u'bamIndex': u'src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bai',
-                                    u'GATK': u'src/toil/test/wdl/GATK_data/GenomeAnalysisTK.jar',
-                                    u'RefDict': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict',
-                                    u'RefFasta': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta'}
+        self.compare_runs(ref_dir)
 
-        t = ToilWDL("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl",
-                    "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json",
-                    self.output_dir)
+    # estimated run time 175 sec
+    @slow
+    def testTut04(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #4.'''
+        wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes.wdl")
+        json = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes_inputs.json")
+        ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/output/")
 
-        json_dict = t.dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
-        assert json_dict == default_json_dict_output
+        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+
+        self.compare_runs(ref_dir)
 
     def compare_runs(self, ref_dir):
         """
