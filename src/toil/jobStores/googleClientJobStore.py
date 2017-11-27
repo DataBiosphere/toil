@@ -175,13 +175,7 @@ class GoogleJobStore(AbstractJobStore):
         return "job"+str(uuid.uuid4())
 
     def exists(self, jobStoreID):
-        # used on job files, which will be encrypted if avaliable
-        headers = self.encryptedHeaders
-        try:
-            self._getKey(jobStoreID, headers)
-        except NoSuchFileException:
-            return False
-        return True
+        return self.bucket.blob(jobStoreID).exists()
 
     def getPublicUrl(self, fileName):
         blob = self.bucket.get_blob(fileName)
