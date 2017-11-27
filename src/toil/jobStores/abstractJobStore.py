@@ -281,6 +281,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             - 'http'
                 e.g. http://someurl.com/path
 
+            - 'gs'
+                e.g. gs://bucket/file
+
         :param str srcUrl: URL that points to a file or object in the storage mechanism of a
                 supported URL scheme e.g. a blob in an Azure Blob Storage container.
 

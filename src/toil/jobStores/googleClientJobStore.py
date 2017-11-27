@@ -272,22 +272,44 @@ class GoogleJobStore(AbstractJobStore):
         with self._downloadStream(sharedFileName, encrypt=isProtected) as readable:
             yield readable
 
-    @staticmethod
-    def _getResources(url):
-        return 'gs://' + url.netloc + url.path
+    @classmethod
+    def _getBlobFromURL(cls, url, exists=False):
+        """
+        Gets the blob specified by the url.
+
+        caution: makes no api request. blob may not ACTUALLY exist
+
+        :param urlparse.ParseResult url: the URL
+
+        :param bool exists: if True, then syncs local blob object with cloud
+        and raises exceptions if it doesn't exist remotely
+
+        :return: the blob requested
+        :rtype: :class:`~google.cloud.storage.blob.Blob`
+        """
+        # TODO: this needs to work with encryption
+        bucketName = url.netloc
+        fileName = url.path
+
+        storageClient = storage.Client()
+        bucket = storageClient.get_bucket(bucketName)
+        blob = bucket.blob(fileName)
+
+        if exists:
+            if not blob.exists():
+                raise NoSuchFileException
+            # sync with cloud so info like size is available
+            blob.reload()
+        return blob
 
     @classmethod
     def getSize(cls, url):
-        uri = GoogleJobStore._getResources(url)
-        uri = boto.storage_uri(uri, GOOGLE_STORAGE)
-        return uri.get_key().size
+        return cls._getBlobFromURL(url, exists=True).size
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        # gs://projectid/bucket/key
-        uri = GoogleJobStore._getResources(url)
-        uri = boto.storage_uri(uri, GOOGLE_STORAGE)
-        uri.get_contents_to_file(writable)
+        blob = cls._getBlobFromURL(url, exists=True)
+        blob.download_to_file(writable)
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
@@ -295,9 +317,8 @@ class GoogleJobStore(AbstractJobStore):
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        uri = GoogleJobStore._getResources(url)
-        uri = boto.storage_uri(uri, GOOGLE_STORAGE)
-        uri.set_contents_from_stream(readable)
+        blob = cls._getBlobFromURL(url)
+        blob.upload_from_file(readable)
 
     def writeStatsAndLogging(self, statsAndLoggingString):
         statsID = self.statsBaseID + str(uuid.uuid4())
