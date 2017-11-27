@@ -151,6 +151,11 @@ class GoogleJobStore(AbstractJobStore):
         return self.config.sseKey
 
     def destroy(self):
+        # just return if not connect to physical storage. Needed because testDestructionIdempotence
+        # calls destroy before initializing. I (jesse) don't see why this is necessary
+        if self.bucket is None:
+            return
+
         try:
             self.bucket.delete(force=True)
             # throws ValueError if bucket has more than 256 objects. Then we must delete manually
