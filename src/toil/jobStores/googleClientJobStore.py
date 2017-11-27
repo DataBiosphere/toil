@@ -151,8 +151,7 @@ class GoogleJobStore(AbstractJobStore):
         return self.config.sseKey
 
     def destroy(self):
-        # just return if not connect to physical storage. Needed because testDestructionIdempotence
-        # calls destroy before initializing. I (jesse) don't see why this is necessary
+        # just return if not connect to physical storage. Needed for idempotency
         if self.bucket is None:
             return
 
@@ -163,6 +162,10 @@ class GoogleJobStore(AbstractJobStore):
             self.bucket.delete_blobs(self.bucket.list_blobs)
             self.bucket.delete()
             # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
+
+        # google freaks out if we call delete multiple times on the bucket obj, so after success
+        # just set to None.
+        self.bucket = None
 
 
     def create(self, jobNode):
