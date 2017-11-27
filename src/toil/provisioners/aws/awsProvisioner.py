@@ -575,7 +575,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _waitForDockerDaemon(cls, ip_address):
         logger.info('Waiting for docker on %s to start...', ip_address)
         while True:
-            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux')
+            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'auxww')
             time.sleep(5)
             if 'dockerd' in output:
                 # docker daemon has started
