@@ -18,7 +18,6 @@ from __future__ import division
 from future import standard_library
 standard_library.install_aliases()
 from builtins import next
-from builtins import str
 from builtins import range
 from past.utils import old_div
 from builtins import object
@@ -40,7 +39,7 @@ from unittest import skip
 
 # Python 3 compatibility imports
 from six.moves.queue import Queue
-from six.moves import xrange, socketserver as SocketServer, SimpleHTTPServer
+from six.moves import xrange, socketserver as SocketServer, SimpleHTTPServer, StringIO
 from six import iteritems
 import six.moves.urllib.parse as urlparse
 from six.moves.urllib.request import urlopen, Request
@@ -385,7 +384,7 @@ class AbstractJobStoreTest(object):
         def _prepareTestFile(self, store, size=None):
             """
             Generates a URL that can be used to point at a test file in the storage mechanism
-            used by the job store under test by this class. Optionaly creates a file at that URL.
+            used by the job store under test by this class. Optionally creates a file at that URL.
 
             :param: store: an object referencing the store, same type as _createExternalStore's
                     return value
@@ -878,7 +877,6 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createJobStore(self):
         from toil.jobStores.googleClientJobStore import GoogleJobStore
-        #from toil.jobStores.googleJobStore import GoogleJobStore
         return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
 
     def _corruptJobStore(self):
@@ -887,51 +885,35 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         pass
 
     def _prepareTestFile(self, bucket, size=None):
-        import boto
+        from toil.jobStores.googleClientJobStore import GoogleJobStore
         fileName = 'testfile_%s' % uuid.uuid4()
         url = 'gs://%s/%s' % (bucket.name, fileName)
         if size is None:
             return url
         with open('/dev/urandom', 'r') as readable:
             contents = readable.read(size)
-            boto.storage_uri(url).set_contents_from_string(contents)
+        GoogleJobStore._writeToUrl(StringIO(contents))
         return url, hashlib.md5(contents).hexdigest()
 
     def _hashTestFile(self, url):
-        import boto
-        #from toil.jobStores.googleJobStore import GoogleJobStore
         from toil.jobStores.googleClientJobStore import GoogleJobStore
-        uri = GoogleJobStore._getResources(urlparse.urlparse(url))
-        uri = boto.storage_uri(uri)
-        contents = uri.get_contents_as_string(headers=self.headers)
+        contents = GoogleJobStore._getBlobFromURL(url).download_as_string()
         return hashlib.md5(contents).hexdigest()
 
     def _createExternalStore(self):
-        import boto
-        #from toil.jobStores.googleJobStore import GoogleJobStore
-        from toil.jobStores.googleClientJobStore import GoogleJobStore
-        uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
-        uri = boto.storage_uri(uriString)
-        return GoogleJobStore._retryCreateBucket(uri=uri, headers=self.headers)
+        from google.cloud import storage
+        bucketName = "gs://import-export-test-%s" % str(uuid.uuid4())
+        storageClient = storage.Client()
+        return storageClient.create_bucket(bucketName)
 
     def _cleanUpExternalStore(self, bucket):
-        import boto
-        while True:
-            try:
-                for key in bucket.list():
-                    try:
-                        key.delete()
-                    except boto.exception.GSResponseError as e:
-                        if e.status == 404:
-                            pass
-                        else:
-                            raise
-                bucket.delete()
-            except boto.exception.GSResponseError as e:
-                if e.status == 404:
-                    break
-                else:
-                    continue
+        # this is copied from googleJobStore.destroy
+        try:
+            bucket.delete(force=True)
+            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+        except ValueError:
+            bucket.delete_blobs(bucket.list_blobs)
+            bucket.delete()
 
 
 @needs_aws
