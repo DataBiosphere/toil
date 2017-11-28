@@ -16,8 +16,7 @@ from __future__ import absolute_import
 
 from future import standard_library
 standard_library.install_aliases()
-# the following line was causing weird errors with some api files
-# from builtins import str
+from builtins import str
 import base64
 from contextlib import contextmanager
 import hashlib
@@ -151,10 +150,10 @@ class GoogleJobStore(AbstractJobStore):
         return "job"+str(uuid.uuid4())
 
     def exists(self, jobStoreID):
-        return self.bucket.blob(jobStoreID).exists()
+        return self.bucket.blob(bytes(jobStoreID)).exists()
 
     def getPublicUrl(self, fileName):
-        blob = self.bucket.get_blob(fileName)
+        blob = self.bucket.get_blob(bytes(fileName))
         if blob is None:
             raise NoSuchFileException(fileName)
         return blob.generate_signed_url(self.publicUrlExpiration)
@@ -177,11 +176,11 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreID, encrypt=True)
 
         # best effort delete associated files
-        for blob in self.bucket.list_blobs(prefix=jobStoreID):
+        for blob in self.bucket.list_blobs(prefix=bytes(jobStoreID)):
             self._delete(blob.name)
 
     def jobs(self):
-        for blob in self.bucket.list_blobs(prefix='job'):
+        for blob in self.bucket.list_blobs(prefix=b'job'):
             jobStoreID = blob.name
             if len(jobStoreID) == 39:  # 'job' + uuid length
                 yield self.load(jobStoreID)
@@ -210,7 +209,7 @@ class GoogleJobStore(AbstractJobStore):
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
         with open(localFilePath, 'w') as writeable:
-            self.bucket.get_blob(jobStoreFileID).download_to_file(writeable)
+            self.bucket.get_blob(bytes(jobStoreFileID)).download_to_file(writeable)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
@@ -221,7 +220,7 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreFileID)
 
     def fileExists(self, jobStoreFileID):
-        return self.bucket.blob(jobStoreFileID).exists()
+        return self.bucket.blob(bytes(jobStoreFileID)).exists()
 
     def updateFile(self, jobStoreFileID, localFilePath):
         with open(localFilePath) as f:
@@ -263,7 +262,7 @@ class GoogleJobStore(AbstractJobStore):
 
         storageClient = storage.Client()
         bucket = storageClient.get_bucket(bucketName)
-        blob = bucket.blob(fileName)
+        blob = bucket.blob(bytes(fileName))
 
         if exists:
             if not blob.exists():
@@ -304,7 +303,7 @@ class GoogleJobStore(AbstractJobStore):
         while True:
             filesReadThisLoop = 0
             # prefix seems broken
-            for blob in self.bucket.list_blobs(prefix=prefix):
+            for blob in self.bucket.list_blobs(prefix=bytes(prefix)):
                 try:
                     with self.readSharedFileStream(blob.name) as readable:
                         log.debug("Reading stats file: %s", blob.name)
@@ -316,7 +315,7 @@ class GoogleJobStore(AbstractJobStore):
                         newID = self.readStatsBaseID + blob.name[len(self.statsBaseID):]
                         # NOTE: just copies then deletes old.
                         # TODO: abstract renaming for ultimate efficiency
-                        self.bucket.rename_blob(blob, newID)
+                        self.bucket.rename_blob(blob, bytes(newID))
                 except NoSuchFileException:
                     log.debug("Stats file not found: %s", blob.name)
             if readAll:
@@ -366,8 +365,9 @@ class GoogleJobStore(AbstractJobStore):
                     "Cache-Control": "no-store"}
 
     def _delete(self, jobStoreFileID, encrypt=True):
+        # TODO: deal with encryption
         if self.fileExists(jobStoreFileID):
-            self.bucket.get_blob(jobStoreFileID).delete()
+            self.bucket.get_blob(bytes(jobStoreFileID)).delete()
         # remember, this is supposed to be idempotent, so we don't do anything
         # if the file doesn't exist
 
@@ -380,7 +380,7 @@ class GoogleJobStore(AbstractJobStore):
         :return: contents of the job file
         :rtype: string
         """
-        job = self.bucket.get_blob(jobStoreID)
+        job = self.bucket.get_blob(bytes(jobStoreID))
         if job is None:
             raise NoSuchJobException(jobStoreID)
         return job.download_as_string()
@@ -388,12 +388,13 @@ class GoogleJobStore(AbstractJobStore):
     # TODO: abstract and require implementation?
     def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
         # TODO: add encryption stuff here
-        blob = self.bucket.blob(jobStoreID)
+        blob = self.bucket.blob(bytes(jobStoreID))
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
             assert not blob.exists()
         blob.upload_from_file(fileObj)
 
+    # TODO: abstract?
     def _writeString(self, jobStoreID, stringToUpload, **kwarg):
         self._writeFile(jobStoreID, StringIO(stringToUpload), **kwarg)
 
@@ -415,7 +416,7 @@ class GoogleJobStore(AbstractJobStore):
         :return: an instance of WritablePipe.
         :rtype: :class:`~toil.jobStores.utils.writablePipe`
         """
-        blob = self.bucket.blob(fileName)
+        blob = self.bucket.blob(bytes(fileName))
 
         class UploadPipe(WritablePipe):
             def readFrom(self, readable):
@@ -439,7 +440,7 @@ class GoogleJobStore(AbstractJobStore):
         :return: an instance of ReadablePipe.
         :rtype: :class:`~toil.jobStores.utils.ReadablePipe`
         """
-        blob = self.bucket.get_blob(fileName)
+        blob = self.bucket.get_blob(bytes(fileName))
         if blob is None:
             raise NoSuchFileException(fileName)
 
