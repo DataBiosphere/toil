@@ -915,12 +915,16 @@ class Job(JobLikeObject):
         unpickler = pickle.Unpickler(fileHandle)
 
         def filter_main(module_name, class_name):
-            if module_name == '__main__':
-                logger.debug('Getting %s from user module __main__ (%s).', class_name, userModule)
-                return getattr(userModule, class_name)
-            else:
-                logger.debug('Getting %s from module %s.', class_name, module_name)
-                return getattr(importlib.import_module(module_name), class_name)
+            try:
+                if module_name == '__main__':
+                    return getattr(userModule, class_name)
+                else:
+                    return getattr(importlib.import_module(module_name), class_name)
+            except:
+                if module_name == '__main__':
+                    logger.debug('Failed getting %s from module %s.', class_name, userModule)
+                else:
+                    logger.debug('Failed getting %s from module %s.', class_name, module_name)
 
         unpickler.find_global = filter_main
         runnable = unpickler.load()
