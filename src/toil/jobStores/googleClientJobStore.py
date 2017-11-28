@@ -89,18 +89,12 @@ class GoogleJobStore(AbstractJobStore):
             namePrefix = locator
             projectID = None
 
-        #  create 2 buckets
         self.locator = locator
         self.projectID = projectID
         self.bucketName = namePrefix+"--toil"
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
-        self.gsBucketURL = bytes("gs://"+self.bucketName)
-        self._headerValues = {"x-goog-project-id": bytes(projectID)} if projectID else {}
-        self._encryptedHeaders = self.headerValues
 
         import gcs_oauth2_boto_plugin # needed to import authentication handler
-        self.uri = boto.storage_uri(self.gsBucketURL, GOOGLE_STORAGE)
-        self.files = None
         self.bucket = None
 
         self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
@@ -108,28 +102,11 @@ class GoogleJobStore(AbstractJobStore):
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
     def initialize(self, config=None):
-        exists = True
+        storageClient = storage.Client()
         try:
-            self.uri.get_bucket(headers=self.headerValues, validate=True)
-        except GSResponseError:
-            exists = False
-
-        if exists:
+            self.bucket = storageClient.create_bucket(self.bucketName)
+        except exceptions.Conflict:
             raise JobStoreExistsException(self.locator)
-
-        storage_client = storage.Client()
-        self.bucket = storage_client.create_bucket(self.bucketName)
-
-        # TODO: DELETE ME
-        # self.files = self._retryCreateBucket(self.uri, self.headerValues)
-        try:
-            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
-        except GSResponseError:
-            raise NoSuchJobStoreException(self.locator)
-
-        # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
-        self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders(config))
-
         super(GoogleJobStore, self).initialize(config)
 
     def resume(self):
@@ -137,12 +114,6 @@ class GoogleJobStore(AbstractJobStore):
         try:
             self.bucket = storage_client.get_bucket(self.bucketName)
         except exceptions.NotFound:
-            raise NoSuchJobStoreException(self.locator)
-
-        # TODO: DELETE ME
-        try:
-            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
-        except GSResponseError:
             raise NoSuchJobStoreException(self.locator)
         super(GoogleJobStore, self).resume()
 
@@ -374,19 +345,6 @@ class GoogleJobStore(AbstractJobStore):
         return filesRead
 
     @staticmethod
-    def _retryCreateBucket(uri, headers):
-        # FIMXE: This should use retry from utils
-        while True:
-            try:
-                # FIMXE: this leaks a connection on exceptions
-                return uri.create_bucket(headers=headers)
-            except GSResponseError as e:
-                if e.status == 429:
-                    time.sleep(10)
-                else:
-                    raise
-
-    @staticmethod
     def _newID(isFile=False, jobStoreID=None):
         if isFile and jobStoreID:  # file associated with job
             return jobStoreID+str(uuid.uuid4())
@@ -415,34 +373,6 @@ class GoogleJobStore(AbstractJobStore):
             self.bucket.get_blob(jobStoreFileID).delete()
         # remember, this is supposed to be idempotent, so we don't do anything
         # if the file doesn't exist
-
-    def _getKey(self, jobStoreID=None, headers=None):
-
-        # UPDATE _getKey() has problems - listing buckets works though
-        for obj in self.uri.get_bucket():
-            #print '%s://%s/%s' % (self.uri.scheme, self.uri.bucket_name, obj.name)
-            if jobStoreID == obj.name:
-                return obj
-
-        # gets remote key, in contrast to self._newKey
-        key = None
-        try:
-            key = self.files.get_key(jobStoreID, headers=headers)
-        except GSDataError:
-            if headers == self.encryptedHeaders:
-                # https://github.com/boto/boto/issues/3518
-                # see self._writeFile for more
-                pass
-            else:
-                raise
-        if key is None:
-            raise NoSuchFileException(jobStoreID)
-        else:
-            return key
-
-    def _newKey(self, jobStoreID):
-        # Does not create a key remotely. Careful -- does not ensure key name is unique
-        return self.files.new_key(jobStoreID)
 
     # TODO: abstract and require implementation?
     def _readContents(self, jobStoreID):
