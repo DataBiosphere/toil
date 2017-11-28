@@ -25,7 +25,7 @@ from uuid import uuid4
 
 from toil.job import Job
 from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google, experimental, slow
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.fileStore import CacheUnbalancedError
@@ -69,8 +69,8 @@ class hidden(object):
                 accountName = os.getenv('TOIL_AZURE_KEYNAME')
                 return 'azure:%s:cache-tests-%s' % (accountName, str(uuid4()))
             elif self.jobStoreType == 'google':
-                projectID = 'cgc-05-0006'
-                return 'google:' + projectID + ':cache-tests-' + str(uuid4())
+                projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
+                return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))
             else:
                 raise RuntimeError('Illegal job store type.')
 
@@ -1320,14 +1320,12 @@ class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest)
     jobStoreType = 'azure'
 
 
-@experimental
 @needs_google
 class NonCachingFileStoreTestWithGoogleJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'google'
 
 
 @slow
-@experimental
 @needs_google
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithGoogleJobStore(hidden.AbstractCachingFileStoreTest):

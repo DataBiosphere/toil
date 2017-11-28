@@ -114,7 +114,15 @@ class GoogleJobStore(AbstractJobStore):
         if exists:
             raise JobStoreExistsException(self.locator)
 
-        self.files = self._retryCreateBucket(self.uri, self.headerValues)
+        from google.cloud import storage
+        storage_client = storage.Client()
+        bucket = storage_client.create_bucket(self.bucketName)
+        #self.files = self._retryCreateBucket(self.uri, self.headerValues)
+
+        try:
+            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
+        except GSResponseError:
+            raise NoSuchJobStoreException(self.locator)
 
         # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
         self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders(config))
@@ -485,9 +493,8 @@ class GoogleJobStore(AbstractJobStore):
             key = self._getKey(jobStoreID=jobStoreID, headers=headers)
         else:
             key = self._newKey(jobStoreID=jobStoreID)
-        headers = self.encryptedHeaders if encrypt else self.headerValues # UPDATE: why is this duplicated?
         try:
-            key.set_contents_from_file(fileObj, headers=headers)
+             key.set_contents_from_file(fileObj, headers=headers)
         except GSDataError:
             if encrypt:
                 # Per https://cloud.google.com/storage/docs/encryption#customer-supplied_encryption_keys
