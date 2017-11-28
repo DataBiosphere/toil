@@ -29,121 +29,6 @@ import json
 import logging
 
 
-def recursive_glob(job, directoryname, glob_pattern):
-    '''
-    Walks through a directory and its subdirectories looking for files matching
-    the glob_pattern and returns a list=[].
-
-    :param job: A "job" object representing the current task node "job" being
-                passed around by toil.  Toil's minimum unit of work.
-    :param directoryname: Any accessible folder name on the filesystem.
-    :param glob_pattern: A string like "*.txt", which would find all text files.
-    :return: A list=[] of absolute filepaths matching the glob pattern.
-    '''
-    matches = []
-    for root, dirnames, filenames in os.walk(directoryname):
-        for filename in fnmatch.filter(filenames, glob_pattern):
-            absolute_filepath = os.path.join(root, filename)
-            matches.append(absolute_filepath)
-    return matches
-
-def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
-    '''
-    Creates a bashscript to inject into a docker container for the job.
-
-    This script wraps the job command(s) given in a bash script, hard links the
-    outputs and returns an "rc" file containing the exit code.  All of this is
-    done in an effort to parallel the Broad's cromwell engine, which is the
-    native WDL runner.  As they've chosen to write and then run a bashscript for
-    every command, so shall we.
-
-    :param temp_dir: The current directory outside of docker to deposit the
-                     bashscript into, which will be the bind mount that docker
-                     loads files from into its own containerized filesystem.
-                     This is usually the tempDir created by this individual job
-                     using 'tempDir = job.fileStore.getLocalTempDir()'.
-    :param docker_dir: The working directory inside of the docker container
-                       which is bind mounted to 'temp_dir'.  By default this is
-                       'data'.
-    :param globs: A list of expected output files to retrieve as glob patterns
-                  that will be returned as hard links to the current working
-                  directory.
-    :param cmd: A bash command to be written into the bash script and run.
-    :param job_name: The job's name, only used to write in a file name
-                     identifying the script as written for that job.
-                     Will be used to call the script later.
-    :return: Nothing, but it writes and deposits a bash script in temp_dir
-             intended to be run inside of a docker container for this job.
-    '''
-    bashfile_prefix = \
-        '#!/bin/bash\n\n' + \
-        "# Borrowed/rewritten from the Broad's Cromwell implementation.  As" + \
-        "# that's under a BSD-ish license, I include here the license off " + \
-        "# of their GitHub repo.  Thank you Broadies!" + '\n\n' + \
-        '# Copyright (c) 2015, Broad Institute, Inc.' + '\n' + \
-        '# All rights reserved.' + '\n\n' + \
-        '# Redistribution and use in source and binary forms, with or without' + '\n' + \
-        '# modification, are permitted provided that the following conditions are met:' + '\n\n' + \
-        '# * Redistributions of source code must retain the above copyright notice, this' + '\n' + \
-        '#   list of conditions and the following disclaimer.' + '\n\n' + \
-        '# * Redistributions in binary form must reproduce the above copyright notice,' + '\n' + \
-        '#   this list of conditions and the following disclaimer in the documentation' + '\n' + \
-        '#   and/or other materials provided with the distribution.' + '\n\n' + \
-        '# * Neither the name Broad Institute, Inc. nor the names of its' + '\n' + \
-        '#   contributors may be used to endorse or promote products derived from' + '\n' + \
-        '#   this software without specific prior written permission.' + '\n\n' + \
-        '# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"' + '\n' + \
-        '# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE' + '\n' + \
-        '# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE' + '\n' + \
-        '# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE' + '\n' + \
-        '# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL' + '\n' + \
-        '# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR' + '\n' + \
-        '# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER' + '\n' + \
-        '# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,' + '\n' + \
-        '# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE' + '\n' + \
-        '# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE' + '\n\n' + \
-        '# make a temp directory w/identifier' + '\n' + \
-        'tmpDir=$(mktemp -d /' + docker_dir + '/execution/tmp.XXXXXX)' + \
-        '\n' + \
-        'chmod 777 $tmpDir' + '\n' + \
-        '# set destination for java to deposit all of its files' + '\n' + \
-        'export _JAVA_OPTIONS=-Djava.io.tmpdir=$tmpDir' + '\n' + \
-        'export TMPDIR=$tmpDir' + '\n\n' + \
-        '(' + '\n' + \
-        'cd /' + docker_dir + '/execution' + '\n' + \
-        cmd + '\n' + \
-        ')' + '\n\n' + \
-        '# gather the input command return code' + '\n' + \
-        'echo $? > "$tmpDir/rc.tmp"' + '\n\n'
-
-    bashfile_string = bashfile_prefix
-
-    begin_globbing_string = \
-        '(' + '\n' + \
-        'cd $tmpDir' + '\n' + \
-        'mkdir "$tmpDir/globs"' + '\n'
-
-    bashfile_string = bashfile_string + begin_globbing_string
-
-    for glob_input in globs:
-        add_this_glob = \
-            '( ln -L ' + glob_input + \
-            ' "$tmpDir/globs" 2> /dev/null ) || ( ln ' + glob_input + \
-            ' "$tmpDir/globs" )' + '\n'
-        bashfile_string = bashfile_string + add_this_glob
-
-    bashfile_suffix = \
-        ')' + '\n\n' + \
-        '# flush RAM to disk' + '\n' + \
-        'sync' + '\n\n' + \
-        'mv "$tmpDir/rc.tmp" "$tmpDir/rc"'
-
-    bashfile_string = bashfile_string + bashfile_suffix
-
-    with open(temp_dir + '/' + job_name + '_script.sh', 'w') as bashfile:
-        bashfile.write(bashfile_string)
-    bashfile.close()
-
 class ToilWDL:
     '''
     A program to run WDL input files using native Toil scripts.
@@ -194,42 +79,6 @@ class ToilWDL:
 
         # a job's 'level' on the DAG
         self.task_priority = 0
-
-        # string used to write imports to the file
-        self.module_string = 'from toil.job import Job\n' + \
-                   'from toil.common import Toil\n' + \
-                   'from toil.lib.docker import apiDockerCall\n' + \
-                   'from toil.wdl.toilwdl import generate_docker_bashscript_file\n' + \
-                   'from toil.wdl.toilwdl import recursive_glob\n' + \
-                   'import fnmatch\n' + \
-                   'import subprocess\n' + \
-                   'import os\n' + \
-                   'import errno\n' + \
-                   'import glob\n' + \
-                   'import time\n' + \
-                   'import shutil\n' + \
-                   'import shlex\n' + \
-                   'import uuid\n' + \
-                   'import logging\n' + \
-                   '\n' + \
-                   'logger = logging.getLogger(__name__)\n\n\n'
-
-        # string used to write the main function to the file
-        # TODO: Hand down toil options
-        self.main_prelude_string = \
-            '\n\n' + \
-            'if __name__=="__main__":\n' + \
-            '    ' + \
-            'options = Job.Runner.getDefaultOptions("./toilWorkflowRun")\n' + \
-            '    ' + \
-            'options.clean = "always"\n' + \
-            '    ' + \
-            'options.logLevel = "INFO"\n' + \
-            '    ' + \
-            'with Toil(options) as toil:\n' + \
-            '        ' + 'start = time.time()\n' + \
-            '        ' + 'with open("' + os.path.join(self.output_directory, "wdl-stats.log") + '", "a+") as f:\n' + \
-            '            ' + 'f.write("Starting WDL Job @ " + str(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) + "' + '\\' + 'n' + '\\' + 'n' + '")\n'
 
     def find_asts(self, ast_root, name):
         '''
@@ -926,6 +775,28 @@ class ToilWDL:
                         io_map.setdefault(key_name, {})['type'] = value_type
         return(io_map)
 
+    def write_modules(self):
+
+        # string used to write imports to the file
+        module_string = 'from toil.job import Job\n' + \
+                             'from toil.common import Toil\n' + \
+                             'from toil.lib.docker import apiDockerCall\n' + \
+                             'from toil.wdl.toilwdl import generate_docker_bashscript_file\n' + \
+                             'from toil.wdl.toilwdl import recursive_glob\n' + \
+                             'import fnmatch\n' + \
+                             'import subprocess\n' + \
+                             'import os\n' + \
+                             'import errno\n' + \
+                             'import glob\n' + \
+                             'import time\n' + \
+                             'import shutil\n' + \
+                             'import shlex\n' + \
+                             'import uuid\n' + \
+                             'import logging\n' + \
+                             '\n' + \
+                             'logger = logging.getLogger(__name__)\n\n\n'
+        return module_string
+
     def write_main(self):
         '''
         Writes out a huge string representing the main section of the python
@@ -948,6 +819,10 @@ class ToilWDL:
         '''
 
         main_section = ''
+
+        # write out the JSON/YML file declarations
+        main_header = self.write_main_header()
+        main_section = main_section + main_header
 
         # write out the JSON/YML file declarations
         main_section = main_section + '\n\n        # JSON Variables\n'
@@ -977,6 +852,22 @@ class ToilWDL:
         main_section = main_section + jobs_to_write
 
         return main_section
+
+    def write_main_header(self):
+
+        main_header = \
+            '\n\n' + \
+            'if __name__=="__main__":\n' + \
+            '    ' + \
+            'options = Job.Runner.getDefaultOptions("./toilWorkflowRun")\n' + \
+            '    ' + \
+            'with Toil(options) as toil:\n' + \
+            '        ' + 'start = time.time()\n' + \
+            '        ' + 'with open("' + os.path.join(self.output_directory, "wdl-stats.log") + '", "a+") as f:\n' + \
+            '            ' + \
+            'f.write("Starting WDL Job @ " + str(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) + "' + \
+            '\\' + 'n' + '\\' + 'n' + '")\n'
+        return main_header
 
     def write_main_arrayarrayfile(self, aaf_dict):
         '''
@@ -1942,11 +1833,10 @@ class ToilWDL:
     def write_python_file(self,
                           module_section,
                           fn_section,
-                          main_prelude_section,
                           main_section,
                           output_file):
         '''
-        Just takes four strings and writes them to output_file.
+        Just takes three strings and writes them to output_file.
 
         :param module_section: A string of 'import modules'.
         :param fn_section: A string of python 'def functions()'.
@@ -1957,22 +1847,22 @@ class ToilWDL:
         with open(output_file, 'w') as file:
             file.write(module_section)
             file.write(fn_section)
-            file.write(main_prelude_section)
             file.write(main_section)
 
-    def print_AST(self):
+    def write_AST(self):
         '''
         Prints an AST to stdout.
 
         Does not work by default with toil since Toil actively suppresses stdout
         during the run.
         '''
-        wdl = open(self.wdl_file, 'r')
-        wdl_string = wdl.read()
-        ast = wdl_parser.parse(wdl_string).ast()
-        print(ast.dumps(indent=2))
+        with open('AST.out', 'w') as f:
+            wdl = open(self.wdl_file, 'r')
+            wdl_string = wdl.read()
+            ast = wdl_parser.parse(wdl_string).ast()
+            f.write(ast.dumps(indent=2))
 
-    def print_mappings_for_debugging(self, i):
+    def write_mappings(self, i):
         '''
         Intended to take a ToilWDL_instance (i) and prints the final task dict,
         workflow dict, csv dict, and tsv dict.
@@ -1986,43 +1876,160 @@ class ToilWDL:
                                 self.tsv_dict
                                 self.csv_dict
         '''
-        print('\n\ntask_dict')
-        print(i.tasks_dictionary)
-        for each_task in i.tasks_dictionary:
-            print(each_task)
-            if i.tasks_dictionary[each_task]:
-                for each_section in i.tasks_dictionary[each_task]:
-                    print('    ' + str(each_section))
-                    if i.tasks_dictionary[each_task][each_section]:
-                        for each_variable in i.tasks_dictionary[each_task][
-                            each_section]:
-                            print('        ' + str(each_variable))
+        with open('mappings.out', 'w') as f:
+            f.write('\n\ntask_dict')
+            f.write(str(i.tasks_dictionary))
+            for each_task in i.tasks_dictionary:
+                f.write(str(each_task))
+                if i.tasks_dictionary[each_task]:
+                    for each_section in i.tasks_dictionary[each_task]:
+                        f.write('    ' + str(each_section))
+                        if i.tasks_dictionary[each_task][each_section]:
+                            for each_variable in i.tasks_dictionary[each_task][
+                                each_section]:
+                                f.write('        ' + str(each_variable))
 
-        print('\n\nworkflows_dict')
-        print(i.workflows_dictionary)
-        for each_task in i.workflows_dictionary:
-            print(each_task)
-            if 'wf_declarations' in i.workflows_dictionary[each_task]:
-                print('    wf_declarations')
-                for d in i.workflows_dictionary[each_task]['wf_declarations']:
-                    print('        ' + str(d))
-            if 'job_declarations' in i.workflows_dictionary[each_task]:
-                print('    job_declarations')
-                for j in i.workflows_dictionary[each_task]['job_declarations']:
-                    print('        ' + str(j))
-                    for g in i.workflows_dictionary[each_task]['job_declarations'][j]:
-                        print('            ' + g + ': ' +
-                              i.workflows_dictionary[each_task]['job_declarations'][j][g])
+                        f.write('\n\nworkflows_dict')
+            f.write(str(i.workflows_dictionary))
+            for each_task in i.workflows_dictionary:
+                f.write(str(each_task))
+                if 'wf_declarations' in i.workflows_dictionary[each_task]:
+                    f.write('    wf_declarations')
+                    for d in i.workflows_dictionary[each_task]['wf_declarations']:
+                        f.write('        ' + str(d))
+                if 'job_declarations' in i.workflows_dictionary[each_task]:
+                    f.write('    job_declarations')
+                    for j in i.workflows_dictionary[each_task]['job_declarations']:
+                        f.write('        ' + str(j))
+                        for g in i.workflows_dictionary[each_task]['job_declarations'][j]:
+                            f.write('            ' + g + ': ' +
+                                  i.workflows_dictionary[each_task]['job_declarations'][j][g])
 
-        print('\n\ntsv_dict')
-        for var in i.tsv_dict:
-            print(var)
-            print(i.tsv_dict)
+            f.write('\n\ntsv_dict')
+            for var in i.tsv_dict:
+                f.write(str(var))
+                f.write(str(i.tsv_dict))
 
-        print('\n\ncsv_dict')
-        for var in i.csv_dict:
-            print(var)
-            print(i.csv_dict)
+            f.write('\n\ncsv_dict')
+            for var in i.csv_dict:
+                f.write(str(var))
+                f.write(str(i.csv_dict))
+
+def recursive_glob(job, directoryname, glob_pattern):
+    '''
+    Walks through a directory and its subdirectories looking for files matching
+    the glob_pattern and returns a list=[].
+
+    :param job: A "job" object representing the current task node "job" being
+                passed around by toil.  Toil's minimum unit of work.
+    :param directoryname: Any accessible folder name on the filesystem.
+    :param glob_pattern: A string like "*.txt", which would find all text files.
+    :return: A list=[] of absolute filepaths matching the glob pattern.
+    '''
+    matches = []
+    for root, dirnames, filenames in os.walk(directoryname):
+        for filename in fnmatch.filter(filenames, glob_pattern):
+            absolute_filepath = os.path.join(root, filename)
+            matches.append(absolute_filepath)
+    return matches
+
+def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
+    '''
+    Creates a bashscript to inject into a docker container for the job.
+
+    This script wraps the job command(s) given in a bash script, hard links the
+    outputs and returns an "rc" file containing the exit code.  All of this is
+    done in an effort to parallel the Broad's cromwell engine, which is the
+    native WDL runner.  As they've chosen to write and then run a bashscript for
+    every command, so shall we.
+
+    :param temp_dir: The current directory outside of docker to deposit the
+                     bashscript into, which will be the bind mount that docker
+                     loads files from into its own containerized filesystem.
+                     This is usually the tempDir created by this individual job
+                     using 'tempDir = job.fileStore.getLocalTempDir()'.
+    :param docker_dir: The working directory inside of the docker container
+                       which is bind mounted to 'temp_dir'.  By default this is
+                       'data'.
+    :param globs: A list of expected output files to retrieve as glob patterns
+                  that will be returned as hard links to the current working
+                  directory.
+    :param cmd: A bash command to be written into the bash script and run.
+    :param job_name: The job's name, only used to write in a file name
+                     identifying the script as written for that job.
+                     Will be used to call the script later.
+    :return: Nothing, but it writes and deposits a bash script in temp_dir
+             intended to be run inside of a docker container for this job.
+    '''
+    bashfile_prefix = \
+        '#!/bin/bash\n\n' + \
+        "# Borrowed/rewritten from the Broad's Cromwell implementation.  As" + \
+        "# that's under a BSD-ish license, I include here the license off " + \
+        "# of their GitHub repo.  Thank you Broadies!" + '\n\n' + \
+        '# Copyright (c) 2015, Broad Institute, Inc.' + '\n' + \
+        '# All rights reserved.' + '\n\n' + \
+        '# Redistribution and use in source and binary forms, with or without' + '\n' + \
+        '# modification, are permitted provided that the following conditions are met:' + '\n\n' + \
+        '# * Redistributions of source code must retain the above copyright notice, this' + '\n' + \
+        '#   list of conditions and the following disclaimer.' + '\n\n' + \
+        '# * Redistributions in binary form must reproduce the above copyright notice,' + '\n' + \
+        '#   this list of conditions and the following disclaimer in the documentation' + '\n' + \
+        '#   and/or other materials provided with the distribution.' + '\n\n' + \
+        '# * Neither the name Broad Institute, Inc. nor the names of its' + '\n' + \
+        '#   contributors may be used to endorse or promote products derived from' + '\n' + \
+        '#   this software without specific prior written permission.' + '\n\n' + \
+        '# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"' + '\n' + \
+        '# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE' + '\n' + \
+        '# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE' + '\n' + \
+        '# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE' + '\n' + \
+        '# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL' + '\n' + \
+        '# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR' + '\n' + \
+        '# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER' + '\n' + \
+        '# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,' + '\n' + \
+        '# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE' + '\n' + \
+        '# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE' + '\n\n' + \
+        '# make a temp directory w/identifier' + '\n' + \
+        'tmpDir=$(mktemp -d /' + docker_dir + '/execution/tmp.XXXXXX)' + \
+        '\n' + \
+        'chmod 777 $tmpDir' + '\n' + \
+        '# set destination for java to deposit all of its files' + '\n' + \
+        'export _JAVA_OPTIONS=-Djava.io.tmpdir=$tmpDir' + '\n' + \
+        'export TMPDIR=$tmpDir' + '\n\n' + \
+        '(' + '\n' + \
+        'cd /' + docker_dir + '/execution' + '\n' + \
+        cmd + '\n' + \
+        ')' + '\n\n' + \
+        '# gather the input command return code' + '\n' + \
+        'echo $? > "$tmpDir/rc.tmp"' + '\n\n'
+
+    bashfile_string = bashfile_prefix
+
+    begin_globbing_string = \
+        '(' + '\n' + \
+        'cd $tmpDir' + '\n' + \
+        'mkdir "$tmpDir/globs"' + '\n'
+
+    bashfile_string = bashfile_string + begin_globbing_string
+
+    for glob_input in globs:
+        add_this_glob = \
+            '( ln -L ' + glob_input + \
+            ' "$tmpDir/globs" 2> /dev/null ) || ( ln ' + glob_input + \
+            ' "$tmpDir/globs" )' + '\n'
+        bashfile_string = bashfile_string + add_this_glob
+
+    bashfile_suffix = \
+        ')' + '\n\n' + \
+        '# flush RAM to disk' + '\n' + \
+        'sync' + '\n\n' + \
+        'mv "$tmpDir/rc.tmp" "$tmpDir/rc"'
+
+    bashfile_string = bashfile_string + bashfile_suffix
+
+    with open(temp_dir + '/' + job_name + '_script.sh', 'w') as bashfile:
+        bashfile.write(bashfile_string)
+    bashfile.close()
+
 
 def main():
     parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
@@ -2034,8 +2041,15 @@ def main():
                         default=os.getcwd(),
                         help='Optionally specify the directory that outputs '
                         'are written to.  Default is the current working dir.')
+    parser.add_argument('--gen_parse_files', required=False, default=False,
+                        help='Creates "AST.out", which holds the printed AST and'
+                        '"mappings.out", which holds the printed task, workflow,'
+                        'csv, and tsv dictionaries generated by the parser.')
 
-    args = parser.parse_args()
+    # wdl_run_args is an array containing all of the unknown arguments not
+    # specified by the parser in this main.  All of these will be passed down in
+    # check_call later to run the compiled toil file.
+    args, wdl_run_args = parser.parse_known_args()
 
     wdl_file_path = os.path.abspath(args.wdl_file)
     args.secondary_file = os.path.abspath(args.secondary_file)
@@ -2059,19 +2073,24 @@ def main():
 
     # use the AST dictionaries to write 4 strings
     # these are the future 4 sections of the compiled toil python file
-    module_section = w.module_string
+    module_section = w.write_modules()
     fn_section = w.write_functions()
-    main_prelude_section = w.main_prelude_string
     main_section = w.write_main()
 
-    # write 4 strings to a python file
+    # write 3 strings to a python output file
     w.write_python_file(module_section,
                         fn_section,
-                        main_prelude_section,
                         main_section,
                         w.output_file)
 
-    subprocess.check_call(['python', w.output_file])
+    if args.gen_parse_files:
+        w.write_mappings(w)
+        w.write_AST()
+
+    cmd = ['python', w.output_file]
+    cmd.extend(wdl_run_args)
+    subprocess.check_call(cmd)
+    os.remove(w.output_file)
 
 if __name__ == '__main__':
     main()
