@@ -19,6 +19,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import next
 from builtins import range
+from builtins import str
 from past.utils import old_div
 from builtins import object
 import socketserver
@@ -892,17 +893,17 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             return url
         with open('/dev/urandom', 'r') as readable:
             contents = readable.read(size)
-        GoogleJobStore._writeToUrl(StringIO(contents))
+        GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
         return url, hashlib.md5(contents).hexdigest()
 
     def _hashTestFile(self, url):
         from toil.jobStores.googleClientJobStore import GoogleJobStore
-        contents = GoogleJobStore._getBlobFromURL(url).download_as_string()
+        contents = GoogleJobStore._getBlobFromURL(urlparse.urlparse(url)).download_as_string()
         return hashlib.md5(contents).hexdigest()
 
     def _createExternalStore(self):
         from google.cloud import storage
-        bucketName = "gs://import-export-test-%s" % str(uuid.uuid4())
+        bucketName = b"import-export-test-" + bytes(uuid.uuid4())
         storageClient = storage.Client()
         return storageClient.create_bucket(bucketName)
 
