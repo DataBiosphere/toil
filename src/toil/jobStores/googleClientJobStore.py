@@ -22,8 +22,6 @@ import base64
 from contextlib import contextmanager
 import hashlib
 import uuid
-import boto
-from boto.exception import GSResponseError, GSDataError
 import logging
 import time
 from google.cloud import storage, exceptions
@@ -42,7 +40,6 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobExceptio
                                              ConcurrentFileModificationException)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
-from toil.jobStores.aws.utils import SDBHelper
 log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'
