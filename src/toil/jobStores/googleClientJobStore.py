@@ -336,22 +336,21 @@ class GoogleJobStore(AbstractJobStore):
         while True:
             filesReadThisLoop = 0
             # prefix seems broken
-            for key in list(self.files.list()): #prefix=prefix)):
-                if not key.name.startswith(prefix):
-                    continue
+            for blob in self.bucket.list_blobs(prefix=prefix):
                 try:
-                    with self.readSharedFileStream(key.name) as readable:
-                        log.debug("Reading stats file: %s", key.name)
+                    with self.readSharedFileStream(blob.name) as readable:
+                        log.debug("Reading stats file: %s", blob.name)
                         callback(readable)
                         filesReadThisLoop += 1
                     if not readAll:
                         # rename this file by copying it and deleting the old version to avoid
                         # rereading it
-                        newID = self.readStatsBaseID + key.name[len(self.statsBaseID):]
-                        self.files.copy_key(newID, self.files.name, key.name)
-                        key.delete()
+                        newID = self.readStatsBaseID + blob.name[len(self.statsBaseID):]
+                        # NOTE: just copies then deletes old.
+                        # TODO: abstract renaming for ultimate efficiency
+                        self.bucket.rename_blob(blob, newID)
                 except NoSuchFileException:
-                    log.debug("Stats file not found: %s", key.name)
+                    log.debug("Stats file not found: %s", blob.name)
             if readAll:
                 # The readAll parameter is only by the toil stats util after the completion of the
                 # pipeline. Assume that this means the bucket is in a consistent state when readAll
