@@ -181,12 +181,12 @@ class ToilWDL:
         :return: Creates the self.tasks_dictionary necessary for much of the
         parser.  Returning it is only necessary for unittests.
         '''
-        wdl = open(self.wdl_file, 'r')
-        wdl_string = wdl.read()
-        ast = wdl_parser.parse(wdl_string).ast()
-        tasks = self.find_asts(ast, 'Task')
-        for task in tasks:
-            self.parse_task(task)
+        with open(self.wdl_file, 'r') as wdl:
+            wdl_string = wdl.read()
+            ast = wdl_parser.parse(wdl_string).ast()
+            tasks = self.find_asts(ast, 'Task')
+            for task in tasks:
+                self.parse_task(task)
         return self.tasks_dictionary
 
     def parse_task(self, task):
@@ -601,12 +601,12 @@ class ToilWDL:
         :return: Creates the self.workflows_dictionary necessary for much of the
         parser.  Returning it is only necessary for unittests.
         '''
-        wdl = open(self.wdl_file, 'r')
-        wdl_string = wdl.read()
-        ast = wdl_parser.parse(wdl_string).ast()
-        workflows = self.find_asts(ast, 'Workflow')
-        for workflow in workflows:
-            self.parse_workflow(workflow)
+        with open(self.wdl_file, 'r') as wdl:
+            wdl_string = wdl.read()
+            ast = wdl_parser.parse(wdl_string).ast()
+            workflows = self.find_asts(ast, 'Workflow')
+            for workflow in workflows:
+                self.parse_workflow(workflow)
         return self.workflows_dictionary
 
     def parse_workflow(self, workflow):
@@ -1857,10 +1857,10 @@ class ToilWDL:
         during the run.
         '''
         with open('AST.out', 'w') as f:
-            wdl = open(self.wdl_file, 'r')
-            wdl_string = wdl.read()
-            ast = wdl_parser.parse(wdl_string).ast()
-            f.write(ast.dumps(indent=2))
+            with open(self.wdl_file, 'r') as wdl:
+                wdl_string = wdl.read()
+                ast = wdl_parser.parse(wdl_string).ast()
+                f.write(ast.dumps(indent=2))
 
     def write_mappings(self, i):
         '''
