@@ -129,7 +129,6 @@ class GoogleJobStore(AbstractJobStore):
             self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))  # UPDATE: bz2.compress(
         return job
 
-    # TODO: abstract?
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
 
@@ -145,7 +144,6 @@ class GoogleJobStore(AbstractJobStore):
     def getSharedPublicUrl(self, sharedFileName):
         return self.getPublicUrl(sharedFileName)
 
-    # TODO: abstract?
     def load(self, jobStoreID):
         try:
             jobString = self._readContents(jobStoreID)
@@ -153,11 +151,9 @@ class GoogleJobStore(AbstractJobStore):
             raise NoSuchJobException(jobStoreID)
         return pickle.loads(jobString)  # UPDATE bz2.decompress(
 
-    # TODO: abstract?
     def update(self, job):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
-    # TODO: abstract? probably cannot, unless abstract listing files
     def delete(self, jobStoreID):
         self._delete(jobStoreID)
 
@@ -171,21 +167,18 @@ class GoogleJobStore(AbstractJobStore):
             if len(jobStoreID) == 39:  # 'job' + uuid length
                 yield self.load(jobStoreID)
 
-    # TODO: abstract?
     def writeFile(self, localFilePath, jobStoreID=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
         with open(localFilePath) as f:
             self._writeFile(fileID, f)
         return fileID
 
-    # TODO: abstract?
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
         with self._uploadStream(fileID, update=True) as writable:
             yield writable, fileID
 
-    # TODO: abstract?
     def getEmptyFileStoreID(self, jobStoreID=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
         self._writeFile(fileID, StringIO(""))
@@ -193,7 +186,6 @@ class GoogleJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath):
         # used on non-shared files which will be encrypted if available
-        # TODO deal with encryption stuff
         # checking for JobStoreID existence
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
@@ -201,13 +193,11 @@ class GoogleJobStore(AbstractJobStore):
             blob = self.bucket.get_blob(bytes(jobStoreFileID), encryption_key=self.sseKey)
             blob.download_to_file(writeable)
 
-    # TODO abstract?
     @contextmanager
     def readFileStream(self, jobStoreFileID):
         with self.readSharedFileStream(jobStoreFileID, isProtected=True) as readable:
             yield readable
 
-    # TODO abstract?
     def deleteFile(self, jobStoreFileID):
         self._delete(jobStoreFileID)
 
@@ -218,19 +208,16 @@ class GoogleJobStore(AbstractJobStore):
         with open(localFilePath) as f:
             self._writeFile(jobStoreFileID, f, update=True)
 
-    # TODO abstract?
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
         with self._uploadStream(jobStoreFileID, update=True) as writable:
             yield writable
 
-    # TODO abstract?
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=True):
         with self._uploadStream(sharedFileName, encrypt=isProtected, update=True) as writable:
             yield writable
 
-    # TODO abstract?
     @contextmanager
     def readSharedFileStream(self, sharedFileName, isProtected=True):
         with self._downloadStream(sharedFileName, encrypt=isProtected) as readable:
@@ -289,7 +276,6 @@ class GoogleJobStore(AbstractJobStore):
         with self._uploadStream(statsID, encrypt=False, update=False) as f:
             f.write(statsAndLoggingString)
 
-    # TODO: abstract (only possible if list and blob.name are abstracted)
     def readStatsAndLogging(self, callback, readAll=False):
         prefix = self.readStatsBaseID if readAll else self.statsBaseID
         filesRead = 0
@@ -309,7 +295,6 @@ class GoogleJobStore(AbstractJobStore):
                         # rereading it
                         newID = self.readStatsBaseID + blob.name[len(self.statsBaseID):]
                         # NOTE: just copies then deletes old.
-                        # TODO: abstract renaming for ultimate efficiency
                         self.bucket.rename_blob(blob, bytes(newID))
                 except NoSuchFileException:
                     log.debug("Stats file not found: %s", blob.name)
@@ -344,14 +329,12 @@ class GoogleJobStore(AbstractJobStore):
         else:  # job id
             return "job"+str(uuid.uuid4())
 
-    # TODO: abstract and require implementation?
     def _delete(self, jobStoreFileID):
         if self.fileExists(jobStoreFileID):
             self.bucket.get_blob(bytes(jobStoreFileID)).delete()
         # remember, this is supposed to be idempotent, so we don't do anything
         # if the file doesn't exist
 
-    # TODO: abstract and require implementation?
     def _readContents(self, jobStoreID):
         """
         To be used on files representing jobs only. Which will be encrypted if possible.
@@ -365,7 +348,6 @@ class GoogleJobStore(AbstractJobStore):
             raise NoSuchJobException(jobStoreID)
         return job.download_as_string()
 
-    # TODO: abstract and require implementation?
     def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
         blob = self.bucket.blob(bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
@@ -376,7 +358,6 @@ class GoogleJobStore(AbstractJobStore):
                 raise NoSuchFileException(jobStoreID)
         blob.upload_from_file(fileObj)
 
-    # TODO: abstract?
     def _writeString(self, jobStoreID, stringToUpload, **kwarg):
         self._writeFile(jobStoreID, StringIO(stringToUpload), **kwarg)
 
