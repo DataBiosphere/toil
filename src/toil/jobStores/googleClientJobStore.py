@@ -120,7 +120,6 @@ class GoogleJobStore(AbstractJobStore):
         # just set to None.
         self.bucket = None
 
-
     def create(self, jobNode):
         jobStoreID = self._newJobID()
         log.debug("Creating job %s for '%s'",
@@ -152,7 +151,7 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        return pickle.loads(jobString) #UPDATE bz2.decompress(
+        return pickle.loads(jobString)  # UPDATE bz2.decompress(
 
     def update(self, job):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
@@ -357,11 +356,13 @@ class GoogleJobStore(AbstractJobStore):
 
     # TODO: abstract and require implementation?
     def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
-        # TODO: add encryption stuff here
         blob = self.bucket.blob(bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
             assert not blob.exists()
+        else:
+            if not blob.exists():
+                raise NoSuchFileException(jobStoreID)
         blob.upload_from_file(fileObj)
 
     # TODO: abstract?

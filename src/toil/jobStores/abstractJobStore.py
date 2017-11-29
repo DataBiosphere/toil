@@ -363,7 +363,10 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @abstractclassmethod
     def getSize(cls, url):
         """
-        returns the size of the file at the given URL
+        returns the size in bytes of the file at the given URL
+
+        :param urlparse.ParseResult url: URL that points to a file or object in the storage
+               mechanism of a supported URL scheme e.g. a blob in an Azure Blob Storage container.
         """
         raise NotImplementedError
 
@@ -373,7 +376,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Reads the contents of the object at the specified location and writes it to the given
         writable stream.
 
-        Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
+        Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an Azure Blob Storage container.
