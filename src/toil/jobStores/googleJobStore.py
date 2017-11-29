@@ -46,12 +46,10 @@ GOOGLE_STORAGE = 'gs'
 
 # TODO
 # - Update gcs_oauth2_boto_plugin.
-# - Check consistency.
 # - update GCE instructions
 #   - needed to run 'gsutil config' to get 'gs_oauth2_refresh_token' in the boto file
 #   - needed to copy client_id and client_secret to the oauth section
 # - Azure uses bz2 compression with pickling. Is this useful here?
-# - boto3? http://boto.cloudhackers.com/en/latest/ref/gs.html
 # - better way to assign job ids? - currently 'job'+uuid
 
 class GoogleJobStore(AbstractJobStore):
