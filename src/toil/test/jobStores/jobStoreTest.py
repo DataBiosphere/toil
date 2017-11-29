@@ -877,7 +877,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     headers = {"x-goog-project-id": projectID}
 
     def _createJobStore(self):
-        from toil.jobStores.googleClientJobStore import GoogleJobStore
+        from toil.jobStores.googleJobStore import GoogleJobStore
         return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
 
     def _corruptJobStore(self):
@@ -886,7 +886,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         pass
 
     def _prepareTestFile(self, bucket, size=None):
-        from toil.jobStores.googleClientJobStore import GoogleJobStore
+        from toil.jobStores.googleJobStore import GoogleJobStore
         fileName = 'testfile_%s' % uuid.uuid4()
         url = 'gs://%s/%s' % (bucket.name, fileName)
         if size is None:
@@ -897,7 +897,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         return url, hashlib.md5(contents).hexdigest()
 
     def _hashTestFile(self, url):
-        from toil.jobStores.googleClientJobStore import GoogleJobStore
+        from toil.jobStores.googleJobStore import GoogleJobStore
         contents = GoogleJobStore._getBlobFromURL(urlparse.urlparse(url)).download_as_string()
         return hashlib.md5(contents).hexdigest()
 

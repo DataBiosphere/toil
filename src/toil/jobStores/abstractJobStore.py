@@ -229,7 +229,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         jobStoreClassNames = (
             "toil.jobStores.azureJobStore.AzureJobStore",
             "toil.jobStores.fileJobStore.FileJobStore",
-            "toil.jobStores.googleClientJobStore.GoogleJobStore",
+            "toil.jobStores.googleJobStore.GoogleJobStore",
             "toil.jobStores.aws.jobStore.AWSJobStore",
             "toil.jobStores.abstractJobStore.JobStoreSupport")
         jobStoreClasses = []

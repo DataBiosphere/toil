@@ -803,7 +803,7 @@ class Toil(object):
             return AzureJobStore(rest)
         elif name == 'google':
             #from toil.jobStores.googleJobStore import GoogleJobStore
-            from toil.jobStores.googleClientJobStore import GoogleJobStore
+            from toil.jobStores.googleJobStore import GoogleJobStore
             return GoogleJobStore(rest)
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
