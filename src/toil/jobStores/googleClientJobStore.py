@@ -56,25 +56,6 @@ GOOGLE_STORAGE = 'gs'
 
 class GoogleJobStore(AbstractJobStore):
 
-    # BOTO WILL UPDATE HEADERS WITHOUT COPYING THEM FIRST. To enforce immutability & prevent
-    # this, we use getters that return copies of our original dictionaries. reported:
-    # https://github.com/boto/boto/issues/3517
-    @property
-    def encryptedHeaders(self):
-        return self._encryptedHeaders.copy()
-
-    @encryptedHeaders.setter
-    def encryptedHeaders(self, value):
-        self._encryptedHeaders = value
-
-    @property
-    def headerValues(self):
-        return self._headerValues.copy()
-
-    @headerValues.setter
-    def headerValues(self, value):
-        self._headerValues = value
-
     def __init__(self, locator):
         super(GoogleJobStore, self).__init__()
 
@@ -90,12 +71,15 @@ class GoogleJobStore(AbstractJobStore):
         self.bucketName = namePrefix+"--toil"
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
 
-        import gcs_oauth2_boto_plugin # needed to import authentication handler
+        import gcs_oauth2_boto_plugin  # needed to import authentication handler
+        # this is a :class:`~google.cloud.storage.bucket.Bucket`
         self.bucket = None
 
         self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
         self.statsReadPrefix = '_'
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
+
+        self.sseKey = None
 
     def initialize(self, config=None):
         storageClient = storage.Client()
@@ -105,6 +89,12 @@ class GoogleJobStore(AbstractJobStore):
             raise JobStoreExistsException(self.locator)
         super(GoogleJobStore, self).initialize(config)
 
+        # set up sever side encryption after we set up config in super
+        if self.config.sseKey is not None:
+            with open(self.config.sseKey) as f:
+                self.sseKey = bytes(f.read())
+                assert len(self.sseKey) == 32
+
     def resume(self):
         storage_client = storage.Client()
         try:
@@ -112,10 +102,6 @@ class GoogleJobStore(AbstractJobStore):
         except exceptions.NotFound:
             raise NoSuchJobStoreException(self.locator)
         super(GoogleJobStore, self).resume()
-
-    @property
-    def sseKeyPath(self):
-        return self.config.sseKey
 
     def destroy(self):
         # just return if not connect to physical storage. Needed for idempotency
@@ -143,17 +129,17 @@ class GoogleJobStore(AbstractJobStore):
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
             self._batchedJobGraphs.append(job)
         else:
-            self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)) #UPDATE: bz2.compress(
+            self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL))  # UPDATE: bz2.compress(
         return job
 
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
 
     def exists(self, jobStoreID):
-        return self.bucket.blob(bytes(jobStoreID)).exists()
+        return self.bucket.blob(bytes(jobStoreID), encryption_key=self.sseKey).exists()
 
     def getPublicUrl(self, fileName):
-        blob = self.bucket.get_blob(bytes(fileName))
+        blob = self.bucket.get_blob(bytes(fileName), encryption_key=self.sseKey)
         if blob is None:
             raise NoSuchFileException(fileName)
         return blob.generate_signed_url(self.publicUrlExpiration)
@@ -172,8 +158,7 @@ class GoogleJobStore(AbstractJobStore):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
     def delete(self, jobStoreID):
-        # jobs will always be encrypted when avaliable
-        self._delete(jobStoreID, encrypt=True)
+        self._delete(jobStoreID)
 
         # best effort delete associated files
         for blob in self.bucket.list_blobs(prefix=bytes(jobStoreID)):
@@ -209,7 +194,8 @@ class GoogleJobStore(AbstractJobStore):
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
         with open(localFilePath, 'w') as writeable:
-            self.bucket.get_blob(bytes(jobStoreFileID)).download_to_file(writeable)
+            blob = self.bucket.get_blob(bytes(jobStoreFileID), encryption_key=self.sseKey)
+            blob.download_to_file(writeable)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
@@ -220,7 +206,7 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreFileID)
 
     def fileExists(self, jobStoreFileID):
-        return self.bucket.blob(bytes(jobStoreFileID)).exists()
+        return self.bucket.blob(bytes(jobStoreFileID), encryption_key=self.sseKey).exists()
 
     def updateFile(self, jobStoreFileID, localFilePath):
         with open(localFilePath) as f:
@@ -256,7 +242,6 @@ class GoogleJobStore(AbstractJobStore):
         :return: the blob requested
         :rtype: :class:`~google.cloud.storage.blob.Blob`
         """
-        # TODO: this needs to work with encryption
         bucketName = url.netloc
         fileName = url.path
 
@@ -349,23 +334,8 @@ class GoogleJobStore(AbstractJobStore):
         else:  # job id
             return "job"+str(uuid.uuid4())
 
-    def _resolveEncryptionHeaders(self, config):
-        sseKeyPath = config.sseKey
-        if sseKeyPath is None:
-            return {}
-        else:
-            with open(sseKeyPath) as f:
-                sseKey = f.read()
-            assert len(sseKey) == 32
-            encodedSseKey = base64.b64encode(sseKey)
-            encodedSseKeyMd5 = base64.b64encode(hashlib.sha256(sseKey).digest())
-            return {'x-goog-encryption-algorithm': 'AES256',
-                    'x-goog-encryption-key': encodedSseKey,
-                    'x-goog-encryption-key-sha256': encodedSseKeyMd5,
-                    "Cache-Control": "no-store"}
-
-    def _delete(self, jobStoreFileID, encrypt=True):
-        # TODO: deal with encryption
+    # TODO: abstract and require implementation?
+    def _delete(self, jobStoreFileID):
         if self.fileExists(jobStoreFileID):
             self.bucket.get_blob(bytes(jobStoreFileID)).delete()
         # remember, this is supposed to be idempotent, so we don't do anything
@@ -380,7 +350,7 @@ class GoogleJobStore(AbstractJobStore):
         :return: contents of the job file
         :rtype: string
         """
-        job = self.bucket.get_blob(bytes(jobStoreID))
+        job = self.bucket.get_blob(bytes(jobStoreID), encryption_key=self.sseKey)
         if job is None:
             raise NoSuchJobException(jobStoreID)
         return job.download_as_string()
@@ -388,7 +358,7 @@ class GoogleJobStore(AbstractJobStore):
     # TODO: abstract and require implementation?
     def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
         # TODO: add encryption stuff here
-        blob = self.bucket.blob(bytes(jobStoreID))
+        blob = self.bucket.blob(bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
             assert not blob.exists()
@@ -416,7 +386,7 @@ class GoogleJobStore(AbstractJobStore):
         :return: an instance of WritablePipe.
         :rtype: :class:`~toil.jobStores.utils.writablePipe`
         """
-        blob = self.bucket.blob(bytes(fileName))
+        blob = self.bucket.blob(bytes(fileName), encryption_key=self.sseKey if encrypt else None)
 
         class UploadPipe(WritablePipe):
             def readFrom(self, readable):
@@ -440,13 +410,12 @@ class GoogleJobStore(AbstractJobStore):
         :return: an instance of ReadablePipe.
         :rtype: :class:`~toil.jobStores.utils.ReadablePipe`
         """
-        blob = self.bucket.get_blob(bytes(fileName))
+        blob = self.bucket.get_blob(bytes(fileName), encryption_key=self.sseKey if encrypt else None)
         if blob is None:
             raise NoSuchFileException(fileName)
 
         class DownloadPipe(ReadablePipe):
             def writeTo(self, writable):
-                # TODO encryption stuff here
                 try:
                     blob.download_to_file(writable)
                 finally:
