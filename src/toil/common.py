@@ -26,6 +26,8 @@ import sys
 import tempfile
 import time
 import uuid
+import subprocess
+import requests
 from argparse import ArgumentParser
 
 try:
@@ -38,6 +40,7 @@ from six import iteritems
 
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
+from bd2k.util.retry import retry
 
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
@@ -46,6 +49,8 @@ from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
 
+from toil import lookupEnvVar
+from toil.version import dockerRegistry, dockerTag
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +99,7 @@ class Config(object):
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
+        self.metrics = False
         
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxsize
@@ -117,7 +123,7 @@ class Config(object):
         self.rescueJobsFrequency = 3600
 
         #Misc
-        self.disableCaching = False
+        self.disableCaching = True
         self.maxLogFileSize = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
@@ -222,6 +228,7 @@ class Config(object):
         setOption("alphaPacking", float)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
+        setOption("metrics")
         setOption("preemptableCompensation", float)
         require(0.0 <= self.preemptableCompensation <= 1.0,
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
@@ -411,6 +418,10 @@ def _addOptions(addGroupFn, config):
                 help=("Specify the size of the root volume of worker nodes when they are launched "
                       "in gigabytes. You may want to set this if your jobs require a lot of disk "
                       "space. The default value is 50."))
+    addOptionFn("--metrics", dest="metrics",
+                default=False, action="store_true",
+                help=("Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, queue size, "
+                      "and issued jobs."))
     
     #        
     # Parameters to limit service jobs / detect service deadlocks
@@ -453,12 +464,6 @@ def _addOptions(addGroupFn, config):
                      bytes2human( config.defaultDisk, symbols='iec' ))
     assert not config.defaultPreemptable, 'User would be unable to reset config.defaultPreemptable'
     addOptionFn('--defaultPreemptable', dest='defaultPreemptable', action='store_true')
-    addOptionFn("--readGlobalFileMutableByDefault", dest="readGlobalFileMutableByDefault",
-                action='store_true', default=None, help='Toil disallows modification of read '
-                                                        'global files. Setting this flag causes '
-                                                        'them to be mutable. Unfortunately, this '
-                                                        'prevents saving space by caching files '
-                                                        'with hardlinks.')
     addOptionFn('--maxCores', dest='maxCores', default=None, metavar='INT',
                 help='The maximum number of CPU cores to request from the batch system at any one '
                      'time. Standard suffixes like K, Ki, M, Mi, G or Gi are supported. Default '
@@ -494,7 +499,7 @@ def _addOptions(addGroupFn, config):
     #Misc options
     #
     addOptionFn = addGroupFn("toil miscellaneous options", "Miscellaneous options")
-    addOptionFn('--disableCaching', dest='disableCaching', action='store_true', default=False,
+    addOptionFn('--disableCaching', dest='disableCaching', action='store_true', default=True,
                 help='Disables caching in the file store. This flag must be set to use '
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
                      'LSF, or Slurm')
@@ -1035,6 +1040,150 @@ class ToilContextManagerException(Exception):
     def __init__(self):
         super(ToilContextManagerException, self).__init__(
             'This method cannot be called outside the "with Toil(...)" context manager.')
+
+
+class ToilMetrics:
+    def __init__(self, provisioner=None):
+        if provisioner is not None:
+            self.clusterName = provisioner.clusterName
+        else:
+            self.clusterName = "none"
+
+        registry = lookupEnvVar(name='docker registry',
+                                envName='TOIL_DOCKER_REGISTRY',
+                                defaultValue=dockerRegistry)
+
+        self.mtailImage = "%s/toil-mtail:%s" % (registry, dockerTag)
+        self.grafanaImage = "%s/toil-grafana:%s" % (registry, dockerTag)
+        self.prometheusImage = "%s/toil-prometheus:%s" % (registry, dockerTag)
+
+        self.startDashboard(clusterName = self.clusterName)
+
+        # Always restart the mtail container, because metrics should start from scratch
+        # for each workflow
+        try:
+            subprocess.check_call(["docker", "rm", "-f", "toil_mtail"])
+        except subprocess.CalledProcessError:
+            pass
+
+        try:
+            self.mtailProc = subprocess.Popen(["docker", "run", "--rm", "--interactive",
+                                               "--net=host",
+                                               "--name", "toil_mtail",
+                                               "-p", "3903:3903",
+                                               self.mtailImage],
+                                              stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        except subprocess.CalledProcessError:
+            logger.warn("Could not start toil metrics server.")
+            self.mtailProc = None
+        except KeyboardInterrupt:
+            self.mtailProc.terminate()
+
+        # On single machine, launch a node exporter instance to monitor CPU/RAM usage.
+        # On AWS this is handled by the EC2 init script
+        self.nodeExporterProc = None
+        if not provisioner:
+            try:
+                self.nodeExporterProc = subprocess.Popen(["docker", "run", "--rm",
+                                                          "--net=host",
+                                                          "-p", "9100:9100",
+                                                          "-v", "/proc:/host/proc",
+                                                          "-v", "/sys:/host/sys",
+                                                          "-v", "/:/rootfs",
+                                                          "prom/node-exporter:0.12.0",
+                                                          "-collector.procfs", "/host/proc",
+                                                          "-collector.sysfs", "/host/sys",
+                                                          "-collector.filesystem.ignored-mount-points",
+                                                          "^/(sys|proc|dev|host|etc)($|/)"])
+            except subprocess.CalledProcessError:
+                logger.warn("Couldn't start node exporter, won't get RAM and CPU usage for dashboard.")
+                self.nodeExporterProc = None
+            except KeyboardInterrupt:
+                self.nodeExporterProc.terminate()
+
+    @staticmethod
+    def _containerRunning(containerName):
+        try:
+            result = subprocess.check_output(["docker", "inspect", "-f",
+                                                          "'{{.State.Running}}'", containerName]) == "true"
+        except subprocess.CalledProcessError:
+            result = False
+        return result
+
+    def startDashboard(self, clusterName):
+        try:
+            if not self._containerRunning("toil_prometheus"):
+                try:
+                    subprocess.check_call(["docker", "rm", "-f", "toil_prometheus"])
+                except subprocess.CalledProcessError:
+                    pass
+                subprocess.check_call(["docker", "run",
+                                 "--name", "toil_prometheus",
+                                 "--net=host",
+                                 "-d",
+                                 "-p", "9090:9090",
+                                 self.prometheusImage,
+                                 clusterName])
+
+            if not self._containerRunning("toil_grafana"):
+                try:
+                    subprocess.check_call(["docker", "rm", "-f", "toil_grafana"])
+                except subprocess.CalledProcessError:
+                    pass
+                subprocess.check_call(["docker", "run",
+                                 "--name", "toil_grafana",
+                                 "-d", "-p=3000:3000",
+                                 self.grafanaImage])
+        except subprocess.CalledProcessError:
+            logger.warn("Could not start prometheus/grafana dashboard.")
+            return
+
+        #Add prometheus data source
+        def requestPredicate(e):
+            if isinstance(e, requests.exceptions.ConnectionError):
+                return True
+            return False
+        try:
+            for attempt in retry(delays=(0, 1, 1, 4, 16), predicate=requestPredicate):
+                with attempt:
+                    requests.post('http://localhost:3000/api/datasources', auth=('admin','admin'),
+                                  data='{"name":"DS_PROMETHEUS","type":"prometheus", \
+                                  "url":"http://localhost:9090", "access":"direct"}',
+                                  headers = {'content-type': 'application/json', "access": "direct"})
+        except requests.exceptions.ConnectionError:
+            logger.info("Could not add data source to Grafana dashboard - no metrics will be displayed.")
+
+    def log(self, message):
+        if self.mtailProc:
+            self.mtailProc.stdin.write(message + "\n")
+
+    # Note: The mtail configuration (dashboard/mtail/toil.mtail) depends on these messages
+    # remaining intact
+
+    def logMissingJob(self):
+        self.log("missing_job")
+
+    def logClusterSize(self, nodeType, currentSize, desiredSize):
+        self.log("current_size '%s' %i" % (nodeType, currentSize))
+        self.log("desired_size '%s' %i" % (nodeType, desiredSize))
+
+    def logQueueSize(self, queueSize):
+        self.log("queue_size %i" % queueSize)
+
+    def logIssuedJob(self, jobType):
+        self.log("issued_job %s" % jobType)
+
+    def logFailedJob(self, jobType):
+        self.log("failed_job %s" % jobType)
+
+    def logCompletedJob(self, jobType):
+        self.log("completed_job %s" % jobType)
+
+    def shutdown(self):
+        if self.mtailProc:
+            self.mtailProc.kill()
+        if self.nodeExporterProc:
+            self.nodeExporterProc.kill()
 
 # Nested functions can't have doctests so we have to make this global
 

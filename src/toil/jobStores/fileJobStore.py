@@ -183,22 +183,14 @@ class FileJobStore(AbstractJobStore):
         # linking is not done be default because of issue #1755
         srcPath = self._extractPathFromUrl(srcURL)
         if self.linkImports:
-            try:
-                os.link(os.path.realpath(srcPath), destPath)
-            except OSError:
-                shutil.copyfile(srcPath, destPath)
-            else:
-                # make imported files read-only if they're linked for protection
-                os.chmod(destPath, 0o444)
+            os.symlink(os.path.realpath(srcPath), destPath)
         else:
             shutil.copyfile(srcPath, destPath)
 
     def _importFile(self, otherCls, url, sharedFileName=None):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
-                fd, absPath = self._getTempFile()  # use this to get a valid path to write to in job store
-                os.close(fd)
-                os.unlink(absPath)
+                absPath = self._getUniqueName(url.path)  # use this to get a valid path to write to in job store
                 self._copyOrLink(url, absPath)
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
@@ -244,9 +236,8 @@ class FileJobStore(AbstractJobStore):
         return url.scheme.lower() == 'file'
 
     def writeFile(self, localFilePath, jobStoreID=None):
-        fd, absPath = self._getTempFile(jobStoreID)
+        absPath = self._getUniqueName(localFilePath, jobStoreID)
         shutil.copyfile(localFilePath, absPath)
-        os.close(fd)
         return self._getRelativePath(absPath)
 
     @contextmanager
@@ -444,6 +435,26 @@ class FileJobStore(AbstractJobStore):
                 yield path
         for tempDir in _dirs(self.tempFilesDir, self.levels):
             yield tempDir
+
+    def _getUniqueName(self, fileName, jobStoreID=None):
+        """
+        Create unique file name within a jobStore directory or tmp directory.
+
+        :param fileName: A file name, which can be a full path as only the
+        basename will be used.
+        :param jobStoreID: If given, the path returned will be in the jobStore directory.
+        Otherwise, the tmp directory will be used.
+        :return: The full path with a unique file name.
+        """
+        fd, absPath = self._getTempFile(jobStoreID)
+        os.close(fd)
+        os.unlink(absPath)
+        # remove the .tmp extension and add the file name
+        (noExt,ext) = os.path.splitext(absPath)
+        uniquePath = noExt + '-' + os.path.basename(fileName)
+        if os.path.exists(absPath):
+            return absPath  # give up, just return temp name to avoid conflicts
+        return uniquePath
 
     def _getTempFile(self, jobStoreID=None):
         """

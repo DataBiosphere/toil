@@ -40,7 +40,7 @@ from unittest import skip
 
 # Python 3 compatibility imports
 from six.moves.queue import Queue
-from six.moves import xrange, socketserver as SocketServer, SimpleHTTPServer, StringIO
+from six.moves import SimpleHTTPServer, StringIO
 from six import iteritems
 import six.moves.urllib.parse as urlparse
 from six.moves.urllib.request import urlopen, Request
@@ -52,9 +52,9 @@ from bd2k.util.exceptions import panic
 from mock import patch
 
 from toil.common import Config, Toil
+from toil.fileStore import FileID
 from toil.job import Job, JobNode
-from toil.jobStores.abstractJobStore import (AbstractJobStore,
-                                             NoSuchJobException,
+from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import (ToilTest,
@@ -463,6 +463,7 @@ class AbstractJobStoreTest(object):
                 srcUrl, srcMd5 = other._prepareTestFile(store, size)
                 # Import into job store under test
                 jobStoreFileID = self.master.importFile(srcUrl)
+                self.assertTrue(isinstance(jobStoreFileID, FileID))
                 with self.master.readFileStream(jobStoreFileID) as f:
                     fileMD5 = hashlib.md5(f.read()).hexdigest()
                 self.assertEqual(fileMD5, srcMd5)
@@ -870,6 +871,17 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
     def _cleanUpExternalStore(self, dirPath):
         shutil.rmtree(dirPath)
 
+    def testPreserveFileName(self):
+        "Check that the fileID ends with the given file name."
+        fh, path = tempfile.mkstemp()
+        try:
+            os.close(fh)
+            job = self.master.create(self.arbitraryJob)
+            fileID = self.master.writeFile(path, job.jobStoreID)
+            self.assertTrue(fileID.endswith(os.path.basename(path)))
+        finally:
+            os.unlink(path)
+
 
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
@@ -925,7 +937,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         partSize = self._partSize()
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
-        return AWSJobStore(self.awsRegion()+ ':' + self.namePrefix, partSize=partSize)
+        return AWSJobStore(self.awsRegion() + ':' + self.namePrefix, partSize=partSize)
 
     def _corruptJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1003,33 +1015,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             args, kwargs = mock_log.warn.call_args
             self.assertTrue('Could not determine location' in args[0])
 
-    @slow
-    def testMultiPartImportFailures(self):
-        # This should be less than the number of threads in the pool used by the MP copy.
-        num_parts = 10
-        i = count()
-
-        # noinspection PyUnusedLocal
-        def fail(*args, **kwargs):
-            # The sleep ensures that all tasks are scheduled in the thread pool. Without it,
-            # there is a chance that one task fails before another is scheduled, causing the
-            # latter to bail out immediatly and failing the assertion that ensure the number of
-            # failing tasks.
-            time.sleep(.25)
-            if next(i) % 2 == 0:
-                raise RuntimeError()
-
-        with patch('boto.s3.multipart.MultiPartUpload.copy_part_from_key',
-                   new_callable=lambda: fail):
-            self.master.partSize = self.mpTestPartSize
-            bucket = self._externalStore()
-            url, md5 = self._prepareTestFile(bucket, self.mpTestPartSize * num_parts)
-            try:
-                self.master.importFile(url)
-            except RuntimeError as e:
-                self.assertEquals(e.message, 'Failed to copy at least %d part(s)' % (old_div(num_parts, 2)))
-            else:
-                self.fail('Expected a RuntimeError to be raised')
     def testOverlargeJob(self):
         master = self.master
         masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)

@@ -60,6 +60,8 @@ if False:
 
 
 class ClusterScalerTest(ToilTest):
+
+    @slow
     def testBinPacking(self):
         """
         Tests the bin-packing method used by the cluster scaler.
@@ -295,6 +297,8 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.jobBatchSystemIDToIssuedJob = {}
         self.totalJobs = 0 # Count of total jobs processed
         self.totalWorkerTime = 0.0  # Total time spent in worker threads
+
+        self.toilMetrics = None
 
         self.nodesToWorker = {}  # Map from Node to instances of the Worker class
 
