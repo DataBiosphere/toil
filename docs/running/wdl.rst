@@ -1,11 +1,11 @@
 WDL Support in Toil
-********
+*******************
 
 Support is still in the alpha phase and should be able to handle basic wdl files.  See the specification below for more
 details.
 
 How to Run a WDL file in Toil
------------
+-----------------------------
 Recommended best practice when running wdl files is to first use the Broad's wdltool for syntax validation and generating the
 needed json input file.  Full documentation can be found on the repository_, and a precompiled jar binary can be downloaded here: wdltool_.
 
@@ -28,7 +28,7 @@ Once a wdl file is validated and has an appropriate json file, workflows can be 
 See options below for more parameters.
 
 ENCODE Example from ENCODE-DCC
------------
+------------------------------
 To follow this example, you will need docker installed.  The original workflow can be found here:
 https://github.com/ENCODE-DCC/pipeline-container
 
@@ -43,35 +43,27 @@ Next, use wdltool_ to generate a json file for this wdl file:
 
 ``java -jar wdltool.jar inputs encode_mapping_workflow.wdl``
 
-This json file once opened should look like this:
-
+This json file once opened should look like this::
 
     {
-
     "encode_mapping_workflow.fastqs": "Array[File]",
-
     "encode_mapping_workflow.trimming_parameter": "String",
-
     "encode_mapping_workflow.reference": "File"
-
     }
 
-The trimming_parameter should be set to 'native' and the data files needed for an example run with this workflow are
-found here:
+The trimming_parameter should be set to 'native'.
+Download :download:`the example code <../../src/toil/test/wdl/ENCODE_data.zip>` and unzip.  Inside are two data files
+required for the run:
 
-src/toil/test/wdl/ENCODE_data/reference/GRCh38_chr21_bwa.tar.gz
-src/toil/test/wdl/ENCODE_data/ENCFF000VOL_chr21.fq.gz
+``ENCODE_data/reference/GRCh38_chr21_bwa.tar.gz``
+``ENCODE_data/ENCFF000VOL_chr21.fq.gz``
 
-Editing the json to include these as inputs, the json should now look something like this:
+Editing the json to include these as inputs, the json should now look something like this::
 
     {
-
-    "encode_mapping_workflow.fastqs": ["/home/username/toil/src/toil/test/wdl/ENCODE_data/ENCFF000VOL_chr21.fq.gz"],
-
+    "encode_mapping_workflow.fastqs": ["/path/to/unzipped/ENCODE_data/ENCFF000VOL_chr21.fq.gz"],
     "encode_mapping_workflow.trimming_parameter": "native",
-
-    "encode_mapping_workflow.reference": "/home/username/toil/src/toil/test/wdl/ENCODE_data/reference/GRCh38_chr21_bwa.tar.gz"
-
+    "encode_mapping_workflow.reference": "/path/to/unzipped/ENCODE_data/reference/GRCh38_chr21_bwa.tar.gz"
     }
 
 The wdl and json files can now be run using the command:
@@ -82,13 +74,13 @@ This should deposit the output files in the user's current working directory (to
 with the '-o' option).
 
 GATK Examples from the Broad
------------
+----------------------------
 Simple examples of WDL can be found on the Broad's website as tutorials:
 https://software.broadinstitute.org/wdl/documentation/topic?name=wdl-tutorials
 
 One can follow along with these tutorials, write their own wdl files following the directions and run them using either
 cromwell or toil.  For example, in tutorial 1, if you've followed along and named your wdl file 'helloHaplotypeCall.wdl'
-then once you've validated your wdl file using wdltool_:
+then once you've validated your wdl file using wdltool_ (this requires "java 7"_):
 
 ``java -jar wdltool.jar validate helloHaplotypeCaller.wdl``
 
@@ -103,7 +95,7 @@ Then the wdl script can be run using the command:
 ``toil-wdl-runner helloHaplotypeCaller.wdl helloHaplotypeCaller_inputs.json``
 
 toilwdl.py Options
------------
+------------------
 The '-o' or '--output_directory' option specifies the output folder, and defaults to the current working directory if
 not specified by the user.
 
@@ -117,7 +109,7 @@ as toil options once the wdl/json files are processed.  For valid toil options, 
 http://toil.readthedocs.io/en/3.12.0/running/cli.html
 
 WDL Specifications
-----------
+------------------
 WDL language specifications can be found here: https://github.com/broadinstitute/wdl/blob/develop/SPEC.md
 
 Implementing support for more features is currently underway, but a basic roadmap so far is:
@@ -137,3 +129,5 @@ TO BE IMPLEMENTED SOON:
 
 .. _repository: https://github.com/broadinstitute/wdltool
 .. _wdltool: https://github.com/broadinstitute/wdltool/releases
+.. _"java 7"_: http://www.oracle.com/technetwork/java/javase/downloads/java-archive-downloads-javase7-521261.html
+.. _here: https://github.com/BD2KGenomics/toil/tree/master/src/toil/test/wdl/ENCODE_data.zip
