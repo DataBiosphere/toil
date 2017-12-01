@@ -83,33 +83,49 @@ def main():
         except ImportError:
             raise RuntimeError('The aws extra must be installed to use this provisioner')
         provisioner = AWSProvisioner()
-
-        #Parse leader node type and spot bid
-        parsedBid = config.leaderNodeType.split(':', 1)
-        if len(config.leaderNodeType) != len(parsedBid[0]):
-            leaderSpotBid = float(parsedBid[1])
-            config.leaderNodeType = parsedBid[0]
-
-        if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
-            raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
-        if config.nodeTypes:
-            nodeTypesList = config.nodeTypes.split(",")
-            numWorkersList = config.workers.split(",")
-            if not len(nodeTypesList) == len(numWorkersList):
-                raise RuntimeError("List of node types must be same length as list of numbers of workers.")
-            for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
-                parsedBid = nodeTypeStr.split(':', 1)
-                if len(nodeTypeStr) != len(parsedBid[0]):
-                    #Is a preemptable node
-
-                    preemptableNodeTypes.append(parsedBid[0])
-                    spotBids.append(float(parsedBid[1]))
-                    numPreemptableNodes.append(int(num))
-                else:
-                    nodeTypes.append(nodeTypeStr)
-                    numNodes.append(int(num))
+    elif config.provisioner == 'libcloud':
+        logger.info('Using a libcloud provisioner.')
+        try:
+            from toil.provisioners.aws.libCloudProvisioner import LibCloudProvisioner
+        except ImportError:
+            raise RuntimeError('The libCloud extra must be installed to use this provisioner')
+        provisioner = LibCloudProvisioner()
+    elif config.provisioner == 'gce':
+        logger.info('Using a gce provisioner.')
+        try:
+            from toil.provisioners.aws.gceProvisioner import GCEProvisioner
+        except ImportError:
+            raise RuntimeError('The libCloud extra must be installed to use this provisioner')
+        provisioner = GCEProvisioner()
     else:
         assert False
+
+
+    #Parse leader node type and spot bid
+    parsedBid = config.leaderNodeType.split(':', 1)
+    if len(config.leaderNodeType) != len(parsedBid[0]):
+        leaderSpotBid = float(parsedBid[1])
+        config.leaderNodeType = parsedBid[0]
+
+    if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
+        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
+    if config.nodeTypes:
+        nodeTypesList = config.nodeTypes.split(",")
+        numWorkersList = config.workers.split(",")
+        if not len(nodeTypesList) == len(numWorkersList):
+            raise RuntimeError("List of node types must be same length as list of numbers of workers.")
+        for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
+            parsedBid = nodeTypeStr.split(':', 1)
+            if len(nodeTypeStr) != len(parsedBid[0]):
+                #Is a preemptable node
+
+                preemptableNodeTypes.append(parsedBid[0])
+                spotBids.append(float(parsedBid[1]))
+                numPreemptableNodes.append(int(num))
+            else:
+                nodeTypes.append(nodeTypeStr)
+                numNodes.append(int(num))
+
 
     provisioner.launchCluster(leaderNodeType=config.leaderNodeType,
                               leaderSpotBid=leaderSpotBid,
