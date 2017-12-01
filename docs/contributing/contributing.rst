@@ -1,6 +1,6 @@
 .. highlight:: console
 
-
+.. _runningTests:
 
 Running tests
 -------------

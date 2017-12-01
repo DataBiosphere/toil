@@ -36,6 +36,7 @@ from six.moves.queue import Empty, Queue
 import toil
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil import worker as toil_worker
+from toil.common import Toil
 
 log = logging.getLogger(__name__)
 
@@ -150,7 +151,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                                          shell=True,
                                          env=dict(os.environ, **environment))
         else:
-            statusCode = toil_worker.main(jobCommand.split())
+            jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:] # Parse command
+            jobStore = Toil.resumeJobStore(jobStoreLocator)
+            statusCode = toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID, 
+                                                  redirectOutputToLogFile=not self.debugWorker) # Call the worker
             if statusCode is None:
                 statusCode = 0
 
