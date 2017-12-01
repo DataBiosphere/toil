@@ -36,6 +36,10 @@ from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
+
+from libcloud.compute.types import Provider
+from libcloud.compute.providers import get_driver
+
 from itertools import count
 
 from toil import applianceSelf
@@ -50,7 +54,7 @@ from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNod
 logger = logging.getLogger(__name__)
 
 
-class AWSProvisioner(AbstractProvisioner):
+class LibCloudProvisioner(AbstractProvisioner):
 
     def __init__(self, config=None):
         """
@@ -75,7 +79,7 @@ class AWSProvisioner(AbstractProvisioner):
         :param config: Optional config object from common.py
         :param batchSystem:
         """
-        super(AWSProvisioner, self).__init__(config)
+        super(LibCloudProvisioner, self).__init__(config)
         if config:
             self.instanceMetaData = get_instance_metadata()
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
@@ -135,15 +139,44 @@ class AWSProvisioner(AbstractProvisioner):
         userData = awsUserData.format(**leaderData)
         kwargs = {'key_name': keyName, 'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': leaderNodeType,
-                  'user_data': userData, 'block_device_map': bdm,
+                  'user_data': userData,
+                  'block_device_map': bdm,
                   'instance_profile_arn': profileARN,
                   'placement': zone}
         if vpcSubnet:
             kwargs["subnet_id"] = vpcSubnet
+
+
+        ## NEW CODE
+        # BDM - creates a RAID from empheral drives that come with larger, multi-cpu instances
+        #     - /var/lib - directories will be put on ephemeral drives if they exist
+        #     - also sets root volume size
+        # SGE - security groups define security for all instances in group
+        #     - used to get all instances
+        driverCls = get_driver(Provider.EC2)
+        accessId = os.getenv('ACCESS_ID')
+        secretKey = os.getenv('SECRET_KEY')
+        driver = driverCls(accessId, secretKey, region='us-west-2')
+
+        IMAGE_ID = 'ami-5ab5063a'
+        images = driver.list_images(ex_image_ids = [IMAGE_ID] )
+
+        sizes = driver.list_sizes()
+        size = [s for s in sizes if s.id == leaderNodeType][0]
+
+        # NEED:
+            # check addition bdms (needs workers?)
         if not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
-            create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
-                                      spec=kwargs, num_instances=1)
+            #create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
+            #                          spec=kwargs, num_instances=1)
+            bdms = self._getBlockDeviceMappingList(leaderInstanceType, rootVolSize=leaderStorage)
+            node = driver.create_node(name=clusterName, image=images[0], size=size,
+                                     ex_security_groups=[clusterName],
+                                     ex_userdata=userData,
+                                     ex_blockdevicemappings=bdms,
+                                     ex_iamprofile=bytes(profileARN),
+                                     ex_keyname=keyName)
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
@@ -201,7 +234,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     @staticmethod
     def retryPredicate(e):
-        return AWSProvisioner._throttlePredicate(e)
+        return LibCloudProvisioner._throttlePredicate(e)
 
     @classmethod
     def destroyCluster(cls, clusterName, zone=None):
@@ -286,7 +319,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         instancesLaunched = []
 
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
             with attempt:
                 # after we start launching instances we want to insure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
@@ -310,12 +343,12 @@ class AWSProvisioner(AbstractProvisioner):
                     # flatten the list
                     instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
 
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
             with attempt:
                 wait_instances_running(self.ctx.ec2, instancesLaunched)
 
         # request throttling retry happens internally to these two methods to insure proper granularity
-        AWSProvisioner._addTags(instancesLaunched, self.tags)
+        LibCloudProvisioner._addTags(instancesLaunched, self.tags)
         self._propagateKey(instancesLaunched)
 
         logger.info('Launched %s new instance(s)', numNodes)
@@ -344,7 +377,7 @@ class AWSProvisioner(AbstractProvisioner):
         zone = getCurrentAWSZone()
         region = Context.availability_zone_re.match(zone).group(1)
         conn = boto.ec2.connect_to_region(region)
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
             with attempt:
                 return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
@@ -539,7 +572,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _addTags(cls, instances, tags):
         for instance in instances:
             for key, value in iteritems(tags):
-                for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+                for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
                     with attempt:
                         instance.add_tag(key, value)
 
@@ -649,7 +682,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _terminateIDs(cls, instanceIDs, ctx):
         logger.info('Terminating instance(s): %s', instanceIDs)
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
             with attempt:
                 ctx.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
@@ -712,11 +745,25 @@ class AWSProvisioner(AbstractProvisioner):
         if not self.config or not self.config.sseKey:
             return
         for node in instances:
-            for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+            for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
                 with attempt:
                     # since we're going to be rsyncing into the appliance we need the appliance to be running first
                     ipAddress = self._waitForNode(node, 'toil_worker')
                     self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
+
+    # NEW CODE
+    @classmethod
+    def _getBlockDeviceMappingList(cls, instanceType, rootVolSize=50):
+        bdms = [{'VirtualName': None,
+                'Ebs': {'VolumeSize': rootVolSize,
+                        'VolumeType': 'standard',
+                        'DeleteOnTermination': 'true'},
+                        'DeviceName': '/dev/xvda'}]
+        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.lowercase[1:]]
+        for disk in range(1, instanceType.disks + 1):
+            ephemeralName = 'ephemeral{}'.format(disk - 1) # ephemeral counts start at 0
+            bdms.append({'VirtualName': ephemeralName})
+        return bdms
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
@@ -737,11 +784,11 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _getNodesInCluster(cls, ctx, clusterName, nodeType=None, preemptable=False, both=False):
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
             with attempt:
                 pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
                                                                        'instance-state-name': 'pending'})
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
             with attempt:
                 runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
                                                                        'instance-state-name': 'running'})

@@ -41,3 +41,10 @@ console's banner at the top of the screen. The ``jobStore`` component is a name
 of your choosing that you will use to refer to this job store.
 
 
+REWRITE THIS SECTION
+- Switch to use service account.
+- Add an rsa pub key to google (metadata/ssh in the console.)
+- coreos-config error, but doesn't seem to change anything
+    - to fix: I needed to use this format: ssh-rsa [KEY_VALUE] google-ssh {"userName":"[USERNAME]","expireOn":"[EXPIRE_TIME]"}
+
+

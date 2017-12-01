@@ -69,6 +69,12 @@ class Cluster(object):
         if provisioner == 'aws':
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             self.provisioner = AWSProvisioner
+        elif provisioner == 'libcloud':
+            from toil.provisioners.aws.libCloudProvisioner import LibCloudProvisioner
+            self.provisioner = LibCloudProvisioner
+        elif provisioner == 'gce':
+            from toil.provisioners.aws.gceProvisioner import GCEProvisioner
+            self.provisioner = GCEProvisioner
         else:
             assert False, "Invalid provisioner '%s'" % provisioner
 
@@ -77,6 +83,11 @@ class Cluster(object):
 
     def rsyncCluster(self, args, **kwargs):
         self.provisioner.rsyncLeader(self.clusterName, args, self.zone, **kwargs)
+        #TODO: Jesse added this code to rysnc to the workers, too
+        #  Is it needed? It is not documented.
+        #  If so, redo it so it is not AWS specific. Document it, too.
+        #  Probably keep the functionality, but add a switch to turn it off.
+        return
         ctx = self.provisioner._buildContext(self.clusterName, zone=self.zone)
         instances = self.provisioner._getNodesInCluster(ctx, self.clusterName, both=True)
         leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
