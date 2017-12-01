@@ -83,7 +83,7 @@ class Cluster(object):
         workers = [i for i in instances if i.public_dns_name != leader.public_dns_name]
         for instance in workers:
             self.provisioner._waitForNode(instance, 'toil_worker')
-            self.provisioner._rsyncNode(instance.public_dns_name, args, applianceName='toil_worker', **kwargs)
+            self.provisioner._coreRsync(instance.public_dns_name, args, applianceName='toil_worker', **kwargs)
 
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)
