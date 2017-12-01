@@ -315,22 +315,25 @@ def needs_google(test_item):
     Use as a decorator before test classes or methods to only run them if Google Storage usable.
     """
     test_item = _mark_test('google', test_item)
+
+    credPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    if not credPath or credPath is None:
+        helpURL = "https://developers.google.com/identity/protocols/application-default-credentials#howtheywork"
+        return unittest.skip("Set GOOGLE_APPLICATION_CREDENTIALS to include this test. For more "
+                             "information, see " + helpURL)(test_item)
+
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
     if not projectID or projectID is None:
         return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
+
     try:
         # noinspection PyUnresolvedReferences
-        from boto import config
+        from google.cloud import storage
     except ImportError:
         return unittest.skip(
             "Install Toil with the 'google' extra to include this test.")(test_item)
     else:
-        boto_credentials = config.get('Credentials', 'gs_access_key_id')
-        if boto_credentials:
-            return test_item
-        else:
-            return unittest.skip(
-                "Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
+        return test_item
 
 
 def needs_azure(test_item):
