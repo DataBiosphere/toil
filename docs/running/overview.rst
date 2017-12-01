@@ -13,5 +13,5 @@ Specifically, the running Toil section documents detail for the following:
    amazon
    azure
    openstack
-   gce
+   google
    hpcEnvironments

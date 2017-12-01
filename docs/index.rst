@@ -39,7 +39,7 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    running/amazon
    running/azure
    running/openstack
-   running/gce
+   running/google
    running/hpcEnvironments
 
 .. toctree::
