@@ -874,7 +874,6 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-    headers = {"x-goog-project-id": projectID}
 
     def _createJobStore(self):
         from toil.jobStores.googleClientJobStore import GoogleJobStore
@@ -888,6 +887,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _prepareTestFile(self, bucket, size=None):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         fileName = 'testfile_%s' % uuid.uuid4()
         url = 'gs://%s/%s' % (bucket.name, fileName)
         if size is None:
@@ -899,8 +899,8 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url):
         import boto
-        #from toil.jobStores.googleJobStore import GoogleJobStore
-        from toil.jobStores.googleClientJobStore import GoogleJobStore
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
+        from toil.jobStores.googleJobStore import GoogleJobStore
         uri = GoogleJobStore._getResources(urlparse.urlparse(url))
         uri = boto.storage_uri(uri)
         contents = uri.get_contents_as_string(headers=self.headers)
@@ -908,14 +908,15 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createExternalStore(self):
         import boto
-        #from toil.jobStores.googleJobStore import GoogleJobStore
-        from toil.jobStores.googleClientJobStore import GoogleJobStore
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
+        from toil.jobStores.googleJobStore import GoogleJobStore
         uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
         uri = boto.storage_uri(uriString)
         return GoogleJobStore._retryCreateBucket(uri=uri, headers=self.headers)
 
     def _cleanUpExternalStore(self, bucket):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         while True:
             try:
                 for key in bucket.list():

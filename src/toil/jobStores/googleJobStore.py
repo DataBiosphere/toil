@@ -487,7 +487,7 @@ class GoogleJobStore(AbstractJobStore):
             key = self._newKey(jobStoreID=jobStoreID)
         headers = self.encryptedHeaders if encrypt else self.headerValues # UPDATE: why is this duplicated?
         try:
-             key.set_contents_from_file(fileObj, headers=headers)
+            key.set_contents_from_file(fileObj, headers=headers)
         except GSDataError:
             if encrypt:
                 # Per https://cloud.google.com/storage/docs/encryption#customer-supplied_encryption_keys
