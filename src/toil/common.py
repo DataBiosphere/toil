@@ -696,6 +696,7 @@ class Toil(object):
                     logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
                     logger.info("Failed to delete the job store: %s" % str(self._jobStore))
+                    raise
         except Exception as e:
             if exc_type is None:
                 raise

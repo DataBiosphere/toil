@@ -925,6 +925,7 @@ class Job(JobLikeObject):
                     logger.debug('Failed getting %s from module %s.', class_name, userModule)
                 else:
                     logger.debug('Failed getting %s from module %s.', class_name, module_name)
+                raise
 
         unpickler.find_global = filter_main
         runnable = unpickler.load()

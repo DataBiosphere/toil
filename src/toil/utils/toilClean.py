@@ -37,3 +37,4 @@ def main():
         logger.info("Successfully deleted the job store: %s" % str(jobStore))
     except:
         logger.info("Failed to delete the job store: %s" % str(jobStore))
+        raise
