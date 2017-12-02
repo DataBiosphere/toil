@@ -55,14 +55,15 @@ def main():
                       default=True)
     
     parser.add_argument("--printDot", action="store_true",
-                      help="Print dot formatted description of the graph. default=%(default)s",
+                      help="Print dot formatted description of the graph. If using --jobs will "
+                      "restrict to subgraph including only those jobs. default=%(default)s",
                       default=False)
     
     parser.add_argument("--jobs", nargs='+',
                       help="Restrict reporting to the following jobs (allows subsetting of the report).",
                       default=None)
     
-    parser.add_argument("--printPerJob", action="store_true",
+    parser.add_argument("--printPerJobStats", action="store_true",
                       help="Print info about each job. default=%(default)s",
                       default=False)
     
@@ -102,7 +103,7 @@ def main():
         try:
             rootJob = jobStore.loadRootJob()
         except JobException:
-            print('The root job of the job store is absent, the workflow completed successfully.',
+            print('The root job of the job store is absent, the workflow may have completed successfully.',
                   file=sys.stderr)
             sys.exit(0)
 
@@ -182,7 +183,7 @@ def main():
             services.append(job)
             properties.append("IS_SERVICE")
             
-        if options.printPerJob:
+        if options.printPerJobStats:
             # Print aggregate stats about the jobs
             lf = lambda x : "%s:%s" % (x, str(x in properties))
             print("\t".join(("JOB:%s" % job, "LOG_FILE:%s" % job.logJobStoreFileID, "TRYS_REMAINING:%i" % job.remainingRetryCount, 

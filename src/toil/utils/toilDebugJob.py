@@ -41,15 +41,13 @@ def main():
     
     # Load the job store
     jobStore = Toil.resumeJobStore(config.jobStore)
-    #config = jobStore.config
     
     # TODO: Option to run job within python debugger, allowing step through of arguments
+    # idea would be to have option to import pdb and set breakpoint at the start of the users code
 
     # Run the job locally
     jobID = options.jobID[0]
     logger.info("Going to run the following job locally: %s", jobID)
-    
-    # TODO: Deal with status code
-    # TODO: Alter logging level
-    statusCode = workerScript(jobStore, config, jobID, jobID, redirectOutputToLogFile=False)
+    workerScript(jobStore, config, jobID, jobID, redirectOutputToLogFile=False)
+    logger.info("Ran the following job locally: %s", jobID)
     

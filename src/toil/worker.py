@@ -208,7 +208,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
-        print("---TOIL WORKER OUTPUT LOG---")
+        logger.info("---TOIL WORKER OUTPUT LOG---")
         sys.stdout.flush()
         
         #Log the number of open file descriptors so we can tell if we're leaking

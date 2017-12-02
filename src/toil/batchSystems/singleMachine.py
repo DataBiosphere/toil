@@ -142,39 +142,42 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         debugWorker is True.
         """
         startTime = time.time()  # Time job is started
-        popen = None
-        statusCode = None
-        forkWorker = not (self.debugWorker and "_toil_worker" in jobCommand)
-        if forkWorker:
+        if not (self.debugWorker and "_toil_worker" in jobCommand): # fork worker
             with self.popenLock:
                 popen = subprocess.Popen(jobCommand,
                                          shell=True,
                                          env=dict(os.environ, **environment))
+                info = Info(time.time(), popen, killIntended=False)
+                try:
+                    self.runningJobs[jobID] = info
+                    try:
+                        statusCode = popen.wait()
+                        if statusCode != 0 and not info.killIntended:
+                            log.error("Got exit code %i (indicating failure) "
+                                      "from job %s.", statusCode, self.jobs[jobID])
+                    finally:
+                        self.runningJobs.pop(jobID)
+                finally:
+                    if not info.killIntended:
+                        self.outputQueue.put((jobID, statusCode,
+                                              time.time() - startTime))
         else:
+            # Run the worker without forking
             jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:] # Parse command
             jobStore = Toil.resumeJobStore(jobStoreLocator)
-            statusCode = toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID, 
-                                                  redirectOutputToLogFile=not self.debugWorker) # Call the worker
-            if statusCode is None:
-                statusCode = 0
-
-        info = Info(time.time(), popen, killIntended=False)
-        try:
-            self.runningJobs[jobID] = info
+            # TODO: The following does not yet properly populate self.runningJobs so it is not possible to kill
+            # running jobs in forkless mode - see the "None" value in place of popen
+            info = Info(time.time(), None, killIntended=False)
             try:
-                if forkWorker:
-                    statusCode = popen.wait()
-                if 0 != statusCode:
-                    if statusCode != -9 or not info.killIntended:
-                        log.error("Got exit code %i (indicating failure) "
-                                  "from job %s.", statusCode,
-                                  self.jobs[jobID])
+                self.runningJobs[jobID] = info
+                try:
+                    toil_worker.workerScript(jobStore, jobStore.config, jobName, jobStoreID, 
+                                             redirectOutputToLogFile=not self.debugWorker) # Call the worker
+                finally:
+                    self.runningJobs.pop(jobID)
             finally:
-                self.runningJobs.pop(jobID)
-        finally:
-            if statusCode is not None and not info.killIntended:
-                self.outputQueue.put((jobID, statusCode,
-                                      time.time() - startTime))
+                if not info.killIntended:
+                    self.outputQueue.put((jobID, 0, time.time() - startTime))
 
     # Note: The input queue is passed as an argument because the corresponding attribute is reset
     # to None in shutdown()
@@ -255,7 +258,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             if jobID in self.runningJobs:
                 info = self.runningJobs[jobID]
                 info.killIntended = True
-                os.kill(info.popen.pid, 9)
+                if info.popen != None:
+                    os.kill(info.popen.pid, 9)
+                else:
+                    # No popen if running in forkless mode currently 
+                    assert self.debugWorker
+                    log.critical("Can't kill job: %s in debug mode")
                 while jobID in self.runningJobs:
                     pass
 
