@@ -263,7 +263,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 else:
                     # No popen if running in forkless mode currently 
                     assert self.debugWorker
-                    log.critical("Can't kill job: %s in debug mode")
+                    log.critical("Can't kill job: %s in debug mode" % jobID)
                 while jobID in self.runningJobs:
                     pass
 
