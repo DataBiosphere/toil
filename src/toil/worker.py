@@ -224,16 +224,16 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         
         jobGraph = jobStore.load(jobStoreID)
         listOfJobs[0] = str(jobGraph)
-        logger.debug("Parsed jobGraph")
+        logger.debug("Parsed job wrapper")
         
         ##########################################
         #Cleanup from any earlier invocation of the jobGraph
         ##########################################
         
         if jobGraph.command == None:
-            logger.debug("Job has no command to run.")
+            logger.debug("Wrapper has no user job to run.")
             # Cleanup jobs already finished
-            f = lambda jobs : [x for x in [[y for y in x if jobStore.exists(y.jobStoreID)] for x in jobs] if len(x) > 0]
+            f = lambda jobs : [z for z in [[y for y in x if jobStore.exists(y.jobStoreID)] for x in jobs] if len(z) > 0]
             jobGraph.stack = f(jobGraph.stack)
             jobGraph.services = f(jobGraph.services)
             logger.debug("Cleaned up any references to completed successor jobs")
@@ -315,6 +315,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 #The command may be none, in which case
                 #the jobGraph is either a shell ready to be deleted or has
                 #been scheduled after a failure to cleanup
+                logger.debug("No user job to run, so finishing")
                 break
             
             if FileStore._terminateEvent.isSet():
