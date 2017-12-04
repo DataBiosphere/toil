@@ -158,7 +158,7 @@ def main():
         if job.logJobStoreFileID is not None:
             hasLogFile.append(job)
         
-        childNumber =  reduce(lambda x, y : x + y, map(len, job.stack))
+        childNumber =  reduce(lambda x, y : x + y, map(len, job.stack) + [0])
         if childNumber > 0: # Total number of successors > 0
             hasChildren.append(job)
             properties.add("HAS_CHILDREN")
