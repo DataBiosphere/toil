@@ -828,7 +828,18 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     def getEmptyFileStoreID(self, jobStoreID=None):
-        """"""
+        """
+        Creates an empty file in the job store and returns its ID.
+        Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
+
+        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated with
+               that job and when jobStore.delete(job) is called a best effort attempt is made to delete
+               all files written with the given job.jobStoreID
+
+        :return: a jobStoreFileID that references the newly created file and can be used to reference the
+                 file in the future.
+        :rtype: str
+        """
         raise NotImplementedError()
 
     @abstractmethod

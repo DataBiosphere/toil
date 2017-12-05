@@ -17,9 +17,7 @@ from __future__ import absolute_import
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
-import base64
 from contextlib import contextmanager
-import hashlib
 import uuid
 import logging
 import time
@@ -45,8 +43,6 @@ GOOGLE_STORAGE = 'gs'
 
 
 # TODO
-# - Update gcs_oauth2_boto_plugin.
-# - update GCE instructions
 #   - needed to run 'gsutil config' to get 'gs_oauth2_refresh_token' in the boto file
 #   - needed to copy client_id and client_secret to the oauth section
 # - Azure uses bz2 compression with pickling. Is this useful here?
@@ -69,7 +65,6 @@ class GoogleJobStore(AbstractJobStore):
         self.bucketName = namePrefix+"--toil"
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
 
-        import gcs_oauth2_boto_plugin  # needed to import authentication handler
         # this is a :class:`~google.cloud.storage.bucket.Bucket`
         self.bucket = None
 

@@ -807,7 +807,6 @@ class Toil(object):
             from toil.jobStores.azureJobStore import AzureJobStore
             return AzureJobStore(rest)
         elif name == 'google':
-            #from toil.jobStores.googleJobStore import GoogleJobStore
             from toil.jobStores.googleJobStore import GoogleJobStore
             return GoogleJobStore(rest)
         else:
