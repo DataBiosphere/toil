@@ -106,9 +106,6 @@ To launch worker nodes alongside the leader we use the ``-w`` option.::
 
 This will spin up a leader node of type t2.small with five additional workers - one m3.large instance and four t2.micro.
 
-Now we can follow the instructions under :ref:`runningAWS` to start the workflow
-on the cluster.
-
 Currently static provisioning is only possible during the cluster's creation.
 The ability to add new nodes and remove existing nodes via the native provisioner is
 in development, but can also be achieved through CGCloud_. Of course the cluster can
@@ -155,7 +152,7 @@ Autoscaling is a feature of running Toil in a cloud whereby additional cloud ins
 
 #. Copy the `sort.py` script up to the leader node. ::
 
-	(venv) $ toil rsync-cluster <cluster-name> sort.py :/tmp
+	(venv) $ toil rsync-cluster <cluster-name> sort.py :/root
 
 #. Login to the leader node. ::
 
@@ -163,7 +160,7 @@ Autoscaling is a feature of running Toil in a cloud whereby additional cloud ins
 
 #. Run the script as an autoscaling workflow. ::
 
-	$ python /tmp/sort.py  \
+	$ python /root/sort.py  \
 	aws:us-west-2:autoscaling-sort-jobstore \
 	--provisioner aws --nodeTypes c3.large --maxNodes 2\
 	--batchSystem mesos --mesosMaster <private-IP>:5050 

@@ -144,7 +144,9 @@ class Leader(object):
         self.provisioner = provisioner
  
         # Create cluster scaling thread if the provisioner is not None
-        self.clusterScaler = None if self.provisioner is None else ClusterScaler(self.provisioner, self, self.config)
+        self.clusterScaler = None
+        if self.provisioner is not None and len(self.provisioner.nodeTypes) > 0:
+            self.clusterScaler = ClusterScaler(self.provisioner, self, self.config)
 
         # A service manager thread to start and terminate services
         self.serviceManager = ServiceManager(jobStore, self.toilState)
