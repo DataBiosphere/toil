@@ -886,10 +886,10 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-    headers = {"x-goog-project-id": projectID}
 
     def _createJobStore(self):
-        from toil.jobStores.googleJobStore import GoogleJobStore
+        from toil.jobStores.googleClientJobStore import GoogleJobStore
+        #from toil.jobStores.googleJobStore import GoogleJobStore
         return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
 
     def _corruptJobStore(self):
