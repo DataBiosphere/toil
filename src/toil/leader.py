@@ -908,7 +908,6 @@ class Leader(object):
                 self.toilState.servicesIssued.pop(predecessorJob.jobStoreID) # The job has no running services
                 self.toilState.updatedJobs.add((predecessorJob, 0)) # Now we know
                 # the job is done we can add it to the list of updated job files
-                logger.debug("Job %s services have completed or totally failed, adding to updated jobs", predecessorJob)
 
         elif jobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
             #We have reach the root job
