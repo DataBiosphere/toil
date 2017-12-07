@@ -157,7 +157,8 @@ class GCEProvisioner(AbstractProvisioner):
         """
         super(GCEProvisioner, self).__init__(config)
         if config:
-            # TODO: check these
+            self._getLeader(clusterName, zone=zone)
+
             self.instanceMetaData = get_instance_metadata()
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
             self.leaderIP = self.instanceMetaData['local-ipv4']  # this is PRIVATE IP
@@ -227,7 +228,7 @@ class GCEProvisioner(AbstractProvisioner):
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         zone = 'us-west1-a'
 
-        # TODO: add leader tags
+        # TODO: add leader tags (is this for identification and billing?)
         defaultTags = {'Name': clusterName, 'Owner': keyName}
         defaultTags.update(userTags)
 
@@ -248,6 +249,7 @@ class GCEProvisioner(AbstractProvisioner):
                                     location=zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
+                                    ex_subnetwork=vpcSubnet,
                                     ex_tags=defaultTags)
         else:
             logger.info('Launching preemptable leader')
@@ -433,6 +435,9 @@ class GCEProvisioner(AbstractProvisioner):
         #    with attempt:
         #        wait_instances_running(self.ctx.ec2, instancesLaunched)
 
+        for instance in instancesLaunched:
+            self._waitForNode(instance.public_ips[0], self.keyName, role='toil_worker')
+
         # request throttling retry happens internally to these two methods to insure proper granularity
         #LibCloudProvisioner._addTags(instancesLaunched, self.tags)
         self._propagateKey(instancesLaunched)
@@ -457,10 +462,10 @@ class GCEProvisioner(AbstractProvisioner):
     @classmethod
     def _getLeader(cls, clusterName, zone=None):
         instances = cls._getNodesInCluster(clusterName, nodeType=None, both=True)
-        for x in instances:
-            print x
-            dir(x)
-            print dir(x)
+        #for x in instances:
+            #print x
+            #dir(x)
+            #print dir(x)
             #print x.extra
 
         instances.sort(key=lambda x: x.created_at)
@@ -509,6 +514,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         cls._waitForSSHKeys(instanceIP, keyName=keyName)
 
+        # TODO: this should be in a separate function (_waitForNode() is just for waiting)
         # copy keys to core user
         # - normal mechanism failed unless public key was in the google-ssh format
         # - even so, the key wasn't copied correctly to the core account
