@@ -66,6 +66,7 @@ class Cluster(object):
     def __init__(self, clusterName, provisioner, zone=None):
         self.clusterName = clusterName
         self.zone = zone
+        self.provisionerType = provisioner
         if provisioner == 'aws':
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             self.provisioner = AWSProvisioner
@@ -83,11 +84,22 @@ class Cluster(object):
 
     def rsyncCluster(self, args, **kwargs):
         self.provisioner.rsyncLeader(self.clusterName, args, self.zone, **kwargs)
+
+        if self.provisionerType == 'gce':
+            leader = self.provisioner._getLeader(self.clusterName)
+
+            instances = self.provisioner._getNodesInCluster(self.clusterName, both=True)
+            for instance in instances:
+                if instance.public_ips[0] != leader.public_ips[0]:
+                    kwargs["applianceName"] = 'toil_worker'
+                    self.provisioner._rsyncNode(instance.public_ips[0], args, **kwargs)
+            return
+
         #TODO: Jesse added this code to rysnc to the workers, too
         #  Is it needed? It is not documented.
         #  If so, redo it so it is not AWS specific. Document it, too.
         #  Probably keep the functionality, but add a switch to turn it off.
-        return
+
         ctx = self.provisioner._buildContext(self.clusterName, zone=self.zone)
         instances = self.provisioner._getNodesInCluster(ctx, self.clusterName, both=True)
         leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
