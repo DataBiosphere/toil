@@ -255,24 +255,37 @@ class FileJobStore(AbstractJobStore):
         self._checkJobStoreFileID(jobStoreFileID)
         shutil.copyfile(localFilePath, self._getAbsPath(jobStoreFileID))
 
-    def readFile(self, jobStoreFileID, localFilePath):
+    def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getAbsPath(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
         # If local file would end up on same file system as the one hosting this job store ...
         if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
             # ... we can hard-link the file, ...
-            try:
-                os.link(jobStoreFilePath, localFilePath)
-            except OSError as e:
-                if e.errno == errno.EEXIST:
-                    # Overwrite existing file, emulating shutil.copyfile().
-                    os.unlink(localFilePath)
-                    # It would be very unlikely to fail again for same reason but possible
-                    # nonetheless in which case we should just give up.
+            if symlink:
+                try:
+                    os.symlink(jobStoreFilePath, localFilePath)
+                except OSError as e:
+                    if e.errno == errno.EEXIST:
+                        # Overwrite existing file, emulating shutil.copyfile().
+                        os.unlink(localFilePath)
+                        # It would be very unlikely to fail again for same reason but possible
+                        # nonetheless in which case we should just give up.
+                        os.symlink(jobStoreFilePath, localFilePath)
+                    else:
+                        raise
+            else:
+                try:
                     os.link(jobStoreFilePath, localFilePath)
-                else:
-                    raise
+                except OSError as e:
+                    if e.errno == errno.EEXIST:
+                        # Overwrite existing file, emulating shutil.copyfile().
+                        os.unlink(localFilePath)
+                        # It would be very unlikely to fail again for same reason but possible
+                        # nonetheless in which case we should just give up.
+                        os.link(jobStoreFilePath, localFilePath)
+                    else:
+                        raise
         else:
             # ... otherwise we have to copy it.
             shutil.copyfile(jobStoreFilePath, localFilePath)

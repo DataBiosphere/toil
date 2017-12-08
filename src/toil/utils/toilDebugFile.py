@@ -17,6 +17,7 @@
 
 from __future__ import absolute_import
 import logging
+import fnmatch
 import os.path
 
 from toil.lib.bioio import getBasicOptionParser
@@ -26,13 +27,77 @@ from toil.version import version
 
 logger = logging.getLogger( __name__ )
 
+def recursiveGlob(directoryname, glob_pattern):
+    '''
+    Walks through a directory and its subdirectories looking for files matching
+    the glob_pattern and returns a list=[].
+
+    :param directoryname: Any accessible folder name on the filesystem.
+    :param glob_pattern: A string like "*.txt", which would find all text files.
+    :return: A list=[] of absolute filepaths matching the glob pattern.
+    '''
+    directoryname = os.path.abspath(directoryname)
+    matches = []
+    for root, dirnames, filenames in os.walk(directoryname):
+        for filename in fnmatch.filter(filenames, glob_pattern):
+            absolute_filepath = os.path.join(root, filename)
+            matches.append(absolute_filepath)
+    return matches
+
+def fetchJobStoreFiles(jobStore, options):
+    """
+    Takes a list of file names as glob patterns, searches for these within a
+    given directory, and attempts to take all of the files found and copy them
+    into options.localFilePath.
+
+    :param jobStore: A fileJobStore object.
+    :param options.fetchTheseJobStoreFiles: List of file glob patterns to search
+        for in the jobStore and copy into options.localFilePath.
+    :param options.localFilePath: Local directory to copy files into.
+    :param options.jobStore: The path to the jobStore directory.
+    """
+    for jobStoreFile in options.fetchTheseJobStoreFiles:
+        jobStoreHits = recursiveGlob(directoryname=options.jobStore, glob_pattern=jobStoreFile)
+        for jobStoreFileID in jobStoreHits:
+            localFileID = os.path.join(jobStoreFileID, options.localFilePath)
+            logger.info("Copying job store file: %s to %s", jobStoreFileID, localFileID)
+            jobStore.readGlobalFile(jobStoreFileID, localFileID, symlink=options.useSymlinks)
+
+def printContentsOfJobStore(jobStore):
+    """
+    Fetch a list of files contained in the jobStore directory input, then print
+    out that list.  options.debugWorker must be True for toil, otherwise stdout
+    will be suppressed and will not be visible to the user.
+
+    :param jobStore: Directory path to recursively look for files.
+    """
+    list_of_files = recursiveGlob(directoryname=jobStore, glob_pattern="*")
+    for gfile in list_of_files:
+        print(gfile)
+
 def main():
     parser = getBasicOptionParser()
 
-    parser.add_argument("jobStore", type=str,
-                        help="The location of the job store used by the workflow." + jobStoreLocatorHelp)
-    parser.add_argument("jobStoreFileIDs", nargs='+', help="List of N job-store file ids to be copied locally")
-    parser.add_argument("localFilePath", nargs=1, help="Location to which to copy job store files")
+    parser.add_argument("jobStore",
+                        type=str,
+                        help="The location of the job store used by the workflow." +
+                        jobStoreLocatorHelp)
+    parser.add_argument("localFilePath",
+                        nargs=1,
+                        help="Location to which to copy job store files.")
+    parser.add_argument("--fetchTheseJobStoreFiles",
+                        nargs='+',
+                        help="List of job-store files to be copied locally."
+                        "Use either explicit names (i.e. 'data.txt'), or "
+                        "specify glob patterns (i.e. '*.txt')")
+    parser.add_argument("--listFilesInJobStore",
+                        help="Prints a list of the current files in the jobStore.")
+    parser.add_argument("--fetchEntireJobStore",
+                        help="Copy all job store files into a local directory.")
+    parser.add_argument("--useSymlinks",
+                        help="Creates symlink 'shortcuts' of files in the localFilePath"
+                        " instead of hardlinking or copying, where possible.  If this is"
+                        "not possible, it will copy the files (shutil.copyfile()).")
     parser.add_argument("--version", action='version', version=version)
     
     # Load the jobStore
@@ -41,12 +106,18 @@ def main():
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)
     logger.info("Connected to job store: %s", config.jobStore)
-    
-    # TODO: Option to symlink files from job store, where possible
 
-    # Copy the files locally
-    for jobStoreFileID in options.jobStoreFileIDs:
-        localFileID = os.path.join(jobStoreFileID, options.localFilePath)
-        logger.info("Copying job store file: %s to %s", jobStoreFileID, localFileID)
-        jobStore.readGlobalFile(jobStoreFileID, localFileID)
-    
+    if options.fetchTheseJobStoreFiles:
+        # Copy only the listed files locally
+        fetchJobStoreFiles(jobStore=jobStore, options=options)
+
+    elif options.fetchEntireJobStore:
+        # Copy all jobStore files locally
+        options.fetchTheseJobStoreFiles = "*"
+        fetchJobStoreFiles(jobStore=jobStore, options=options)
+
+    if options.listFilesInJobStore:
+        printContentsOfJobStore(options.jobStore)
+
+if __name__=="__main__":
+    main()
