@@ -1,9 +1,22 @@
+# Copyright (C) 2017 UCSC Computational Genomics Lab
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 - name: Launch Azure VM
   hosts: localhost
   connection: local
   gather_facts: False
   vars:
-    # Variables 'vnet', 'subnet', 'vmname' and 'resgrp' need to be provided at command line with arg --extra-vars
     dnsname: '{{ vmname }}.westus.cloudapp.azure.com'
     # The DNS name might not be right depending on your region!!
     ip: "{{ lookup ('dig', '{{ dnsname }}') }}"
@@ -15,6 +28,7 @@
 #  - name: Check if DNS is taken
 #    fail: msg="That DNS name seems to be already taken"
 #    when: ip != 'NXDOMAIN'
+
   - name: Create a resource group
     azure_rm_resourcegroup:
       name: '{{ resgrp }}'
@@ -22,38 +36,11 @@
       tags:
           testing: testing
           delete: never
-  - name: Create storage account
-    azure_rm_storageaccount:
-      resource_group: '{{ resgrp }}'
-      name: '{{ vmname }}'
-      account_type: Standard_LRS
-
-  - name: Create a virtual network
-    azure_rm_virtualnetwork:
-      name: '{{ vnet }}'
-      resource_group: '{{ resgrp }}'
-      address_prefixes: '192.168.0.0/16'
-      state: present
-
-  - name: Create a subnet
-    azure_rm_subnet:
-      name: '{{ subnet }}'
-      virtual_network_name: '{{ vnet }}'
-      resource_group: '{{ resgrp }}'
-      address_prefix: '192.168.0.0/24'
-      state: present
-
-  - name: Create public IP address
-    azure_rm_publicipaddress:
-      resource_group: '{{ resgrp }}'
-      allocation_method: Static
-      name: '{{ vmname }}'
-      domain_name_label: '{{ vmname }}'
 
   - name: Create security group that allows SSH and HTTP
     azure_rm_securitygroup:
       resource_group: '{{ resgrp }}'
-      name: '{{ vmname }}'
+      name: '{{ clustername }}'
       rules:
         - name: SSH
           protocol: Tcp
@@ -68,14 +55,39 @@
           priority: 102
           direction: Inbound
 
+  - name: Create a virtual network
+    tags:
+      - abridged
+    azure_rm_virtualnetwork:
+      name: '{{ vmname }}'
+      resource_group: '{{ resgrp }}'
+      address_prefixes: '192.168.0.0/16'
+      state: present
+
+  - name: Create a subnet
+    azure_rm_subnet:
+      name: '{{ vmname }}'
+      virtual_network_name: '{{ vmname }}'
+      resource_group: '{{ resgrp }}'
+      address_prefix: '192.168.0.0/24'
+      state: present
+
+  - name: Create public IP address
+    register: public_ip
+    azure_rm_publicipaddress:
+      resource_group: '{{ resgrp }}'
+      allocation_method: Static
+      name: '{{ vmname }}'
+      domain_name_label: '{{ vmname }}'
+
   - name: Create NIC
     azure_rm_networkinterface:
       resource_group: '{{ resgrp }}'
       name: '{{ vmname }}'
-      virtual_network: '{{ vnet }}'
-      subnet: '{{ subnet }}'
+      virtual_network: '{{ vmname }}'
+      subnet: '{{ vmname }}'
       public_ip_name: '{{ vmname }}'
-      security_group: '{{ vmname }}'
+      security_group: '{{ clustername }}'
 
   - name: Create VM
     azure_rm_virtualmachine:
@@ -85,12 +97,31 @@
       storage_container: '{{ vmname }}'
       storage_blob: '{{ vmname }}.vhd'
       network_interfaces: '{{ vmname }}'
-      vm_size: Standard_A0
+      vm_size: '{{ vmsize }}'
       admin_username: test-user
       admin_password: Microsoft123!
       ssh_password_enabled: True
+      append_tags: True
+      tags:
+        toil-cluster: "{{ resgrp }}"
+        role: "{{ role }}"
       image:
-        offer: CentOS
-        publisher: OpenLogic
-        sku: '7.2'
-        version: latest
+        offer: CoreOS
+        publisher: CoreOS
+        sku: Stable
+        version: 1235.5.0
+
+  - add_host:
+      name: "{{ public_ip.state.ip_address }}"
+      groups: new
+
+
+- hosts: new
+  tasks:
+  - name: Copy cloud-config file to the new instance
+    copy:
+      src: "{{ cloudconfig }}"
+      dest: /cloudconfig
+
+  - name: Configure new instance with coreos-cloudinit using cloud-config file
+    command: coreos-cloudinit --from-file=/cloudconfig

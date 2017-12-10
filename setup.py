@@ -47,9 +47,8 @@ def runSetup():
                 'futures==3.0.5',
                 'pycrypto==2.6.1'],
             'azure': [
-                'azure==2.0.0',
                 'azure-cosmosdb-table==0.37.1',
-                'ansible[azure]==2.4.0.0',
+                'ansible[azure]==2.4.2.0',
                 'dnspython==1.15.0',
                 'pipettor==0.2.0'],
             'encryption': [
