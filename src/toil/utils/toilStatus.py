@@ -16,12 +16,18 @@
 """
 Reports the state of a Toil workflow
 """
+
+# python 2/3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
+from builtins import map
+from builtins import str
 
+# standard library
 import logging
 import sys
 
+# toil imports
 from toil.lib.bioio import logStream
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions

@@ -65,15 +65,18 @@ def fetchJobStoreFiles(jobStore, options):
 
 def printContentsOfJobStore(jobStore):
     """
-    Fetch a list of files contained in the jobStore directory input, then print
-    out that list.  options.debugWorker must be True for toil, otherwise stdout
-    will be suppressed and will not be visible to the user.
+    Fetch a list of files contained in the jobStore directory input, then prints
+    out that list to the log.  Also generates a file called:
+    list_of_jobstore_files.txt in the current working directory with this list.
 
     :param jobStore: Directory path to recursively look for files.
     """
     list_of_files = recursiveGlob(directoryname=jobStore, glob_pattern="*")
     for gfile in list_of_files:
-        print(gfile)
+        logger.info("File: %s", gfile)
+        with open("list_of_jobstore_files.txt", "w") as f:
+            f.write(gfile)
+            f.write("\n")
 
 def main():
     parser = getBasicOptionParser()
@@ -117,6 +120,7 @@ def main():
         fetchJobStoreFiles(jobStore=jobStore, options=options)
 
     if options.listFilesInJobStore:
+        # Log filenames and create a file containing these names in cwd
         printContentsOfJobStore(options.jobStore)
 
 if __name__=="__main__":

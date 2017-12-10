@@ -31,8 +31,12 @@ def main():
 
     parser.add_argument("jobStore", type=str,
                         help="The location of the job store used by the workflow." + jobStoreLocatorHelp)
+    parser.add_argument("jobID", nargs=1, help="The job store id of a job "
+                        "within the provided jobstore to run by itself.")
+    parser.add_argument("--printJobInfo", nargs=1, help="Return information about"
+                        " this job to the user including preceding jobs, inputs,"
+                        " outputs, and runtime from the last known run.")
     parser.add_argument("--version", action='version', version=version)
-    parser.add_argument("jobID", nargs=1, help="The job store id of the job to run locally")
     
     # Parse options
     options = parseBasicOptions(parser)
@@ -41,7 +45,9 @@ def main():
     
     # Load the job store
     jobStore = Toil.resumeJobStore(config.jobStore)
-    
+
+    # TODO: Options to print job store file ids of files created by job
+    # TODO: Option to print list of successor jobs
     # TODO: Option to run job within python debugger, allowing step through of arguments
     # idea would be to have option to import pdb and set breakpoint at the start of the users code
 
@@ -50,4 +56,3 @@ def main():
     logger.info("Going to run the following job locally: %s", jobID)
     workerScript(jobStore, config, jobID, jobID, redirectOutputToLogFile=False)
     logger.info("Ran the following job locally: %s", jobID)
-    
