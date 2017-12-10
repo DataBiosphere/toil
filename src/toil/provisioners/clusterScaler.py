@@ -115,28 +115,31 @@ class BinPackedFit(object):
         Function adds the job to the first node reservation in which it will fit (this
         is the bin-packing aspect)
         """
-        for nodeShape, nodeReservations in iteritems(self.nodeReservations):
-            for nodeReservation in nodeReservations:
-                if nodeReservation.attemptToAddJob(jobShape, nodeShape, self.targetTime):
-                    # We succeeded adding the job to this node reservation. Now we're done.
-                    return
+        chosenNodeShape = None
+        for nodeShape in self.nodeShapes:
+            if NodeReservation(nodeShape).fits(jobShape):
+                # This node shape is the first that fits this jobShape
+                chosenNodeShape = nodeShape
+                break
 
-        # If we get here, the job didn't fit into any existing node
-        # reservations. Assign to the smallest node shape that will
-        # fit this job, prioritizing preemptable nodes
-        consideredNodes = [nodeShape for nodeShape in self.nodeShapes if nodeShape.cores >= jobShape.cores and nodeShape.memory >= jobShape.memory and nodeShape.disk >= jobShape.disk and (jobShape.preemptable or not nodeShape.preemptable)]
-        if len(consideredNodes) == 0:
-            return
-        nodeShape = consideredNodes[0]
-        reservation = NodeReservation(nodeShape)
-        t = nodeShape.wallTime
+        if chosenNodeShape is None:
+            logger.warning("Couldn't fit job with requirements %r into any nodes in the nodeTypes list." % jobShape)
+
+        nodeReservations = self.nodeReservations[chosenNodeShape]
+        for nodeReservation in nodeReservations:
+            if nodeReservation.attemptToAddJob(jobShape, chosenNodeShape, self.targetTime):
+                # We succeeded adding the job to this node reservation. Now we're done.
+                return
+
+        reservation = NodeReservation(chosenNodeShape)
+        t = chosenNodeShape.wallTime
         adjustEndingReservationForJob(reservation, jobShape, 0)
-        self.nodeReservations[nodeShape].append(reservation)
+        self.nodeReservations[chosenNodeShape].append(reservation)
 
         # Extend the reservation if necessary to cover the job's entire runtime.
         while t < jobShape.wallTime:
             y = NodeReservation(reservation.shape)
-            t += nodeShape.wallTime
+            t += chosenNodeShape.wallTime
             reservation.nReservation = y
             reservation = y
 
