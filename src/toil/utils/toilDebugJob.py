@@ -23,6 +23,7 @@ from toil.lib.bioio import parseBasicOptions
 from toil.common import jobStoreLocatorHelp, Config, Toil
 from toil.version import version
 from toil.worker import workerScript
+from toil.utils.toilDebugFile import printContentsOfJobStore
 
 logger = logging.getLogger( __name__ )
 
@@ -33,9 +34,10 @@ def main():
                         help="The location of the job store used by the workflow." + jobStoreLocatorHelp)
     parser.add_argument("jobID", nargs=1, help="The job store id of a job "
                         "within the provided jobstore to run by itself.")
-    parser.add_argument("--printJobInfo", nargs=1, help="Return information about"
-                        " this job to the user including preceding jobs, inputs,"
-                        " outputs, and runtime from the last known run.")
+    parser.add_argument("--printJobInfo", nargs=1,
+                        help="Return information about this job to the user"
+                        " including preceding jobs, inputs, outputs, and runtime"
+                        " from the last known run.")
     parser.add_argument("--version", action='version', version=version)
     
     # Parse options
@@ -46,7 +48,9 @@ def main():
     # Load the job store
     jobStore = Toil.resumeJobStore(config.jobStore)
 
-    # TODO: Options to print job store file ids of files created by job
+    if options.printJobInfo:
+        printContentsOfJobStore(jobStorePath=options.jobStore, nameOfJob=options.printJobInfo)
+
     # TODO: Option to print list of successor jobs
     # TODO: Option to run job within python debugger, allowing step through of arguments
     # idea would be to have option to import pdb and set breakpoint at the start of the users code

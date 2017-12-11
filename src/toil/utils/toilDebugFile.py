@@ -63,20 +63,34 @@ def fetchJobStoreFiles(jobStore, options):
             logger.info("Copying job store file: %s to %s", jobStoreFileID, localFileID)
             jobStore.readGlobalFile(jobStoreFileID, localFileID, symlink=options.useSymlinks)
 
-def printContentsOfJobStore(jobStore):
+def printContentsOfJobStore(jobStorePath, nameOfJob=None):
     """
-    Fetch a list of files contained in the jobStore directory input, then prints
-    out that list to the log.  Also generates a file called:
-    list_of_jobstore_files.txt in the current working directory with this list.
+    Fetch a list of all files contained in the jobStore directory input if
+    nameOfJob is not declared, otherwise it only prints out the names of files
+    for that specific job for which it can find a match.  Also creates a logFile
+    containing this same record of job files in the working directory.
 
     :param jobStore: Directory path to recursively look for files.
+    :param nameOfJob: Default is None, which prints out all files in the jobStore.
+    If specified, it will print all jobStore files that have been written to the
+    jobStore by that job.
     """
-    list_of_files = recursiveGlob(directoryname=jobStore, glob_pattern="*")
+
+    if nameOfJob:
+        glob = "*" + nameOfJob + "*"
+        logFile = nameOfJob + "_fileset.txt"
+    else:
+        glob = "*"
+        logFile = "jobstore_files.txt"
+        nameOfJob = ""
+
+    list_of_files = recursiveGlob(directoryname=jobStore, glob_pattern=glob)
     for gfile in list_of_files:
-        logger.info("File: %s", gfile)
-        with open("list_of_jobstore_files.txt", "w") as f:
+        logger.info(nameOfJob + "File: %s", gfile)
+        with open(logFile, "w") as f:
             f.write(gfile)
             f.write("\n")
+
 
 def main():
     parser = getBasicOptionParser()
@@ -100,7 +114,7 @@ def main():
     parser.add_argument("--useSymlinks",
                         help="Creates symlink 'shortcuts' of files in the localFilePath"
                         " instead of hardlinking or copying, where possible.  If this is"
-                        "not possible, it will copy the files (shutil.copyfile()).")
+                        " not possible, it will copy the files (shutil.copyfile()).")
     parser.add_argument("--version", action='version', version=version)
     
     # Load the jobStore
@@ -121,7 +135,7 @@ def main():
 
     if options.listFilesInJobStore:
         # Log filenames and create a file containing these names in cwd
-        printContentsOfJobStore(options.jobStore)
+        printContentsOfJobStore(jobStorePath=options.jobStore)
 
 if __name__=="__main__":
     main()

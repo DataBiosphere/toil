@@ -12,28 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# python 2/3 compatibility
 from __future__ import absolute_import
-
 from builtins import range
+from six.moves import xrange
+
+# standard library
 from contextlib import contextmanager
 import logging
 import random
 import shutil
 import os
+import re
 import tempfile
 import stat
 import errno
-
+import traceback
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
 
-# Python 3 compatibility imports
-from six.moves import xrange
-
+# toil and bd2k dependencies
 from bd2k.util.exceptions import require
-
 from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
@@ -236,7 +237,18 @@ class FileJobStore(AbstractJobStore):
         return url.scheme.lower() == 'file'
 
     def writeFile(self, localFilePath, jobStoreID=None):
-        absPath = self._getUniqueName(localFilePath, jobStoreID)
+
+        # log the name of the function writing the file in (the job creating it)
+        try:
+            sourceFunctionName = traceback.extract_stack()[0][3].split("(")[0]
+        except:
+            sourceFunctionName = "x"
+            # make sure the function name fetched has no spaces or oddities
+        if re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
+            pass
+        else:
+            sourceFunctionName = "x"
+        absPath = self._getUniqueName(localFilePath, jobStoreID, sourceFunctionName)
         shutil.copyfile(localFilePath, absPath)
         return self._getRelativePath(absPath)
 
@@ -449,7 +461,7 @@ class FileJobStore(AbstractJobStore):
         for tempDir in _dirs(self.tempFilesDir, self.levels):
             yield tempDir
 
-    def _getUniqueName(self, fileName, jobStoreID=None):
+    def _getUniqueName(self, fileName, jobStoreID=None, sourceFunctionName="x"):
         """
         Create unique file name within a jobStore directory or tmp directory.
 
@@ -464,7 +476,7 @@ class FileJobStore(AbstractJobStore):
         os.unlink(absPath)
         # remove the .tmp extension and add the file name
         (noExt,ext) = os.path.splitext(absPath)
-        uniquePath = noExt + '-' + os.path.basename(fileName)
+        uniquePath = noExt + '-' + sourceFunctionName + '-' + os.path.basename(fileName)
         if os.path.exists(absPath):
             return absPath  # give up, just return temp name to avoid conflicts
         return uniquePath
