@@ -157,13 +157,12 @@ class GCEProvisioner(AbstractProvisioner):
         """
         super(GCEProvisioner, self).__init__(config)
         if config:
-            self._getLeader(clusterName, zone=zone)
+            self.clusterName = 'gce-test'
+            leader = self._getLeader(self.clusterName) #TODO: is zone needed?
 
-            self.instanceMetaData = get_instance_metadata()
-            self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
-            self.leaderIP = self.instanceMetaData['local-ipv4']  # this is PRIVATE IP
-            self.keyName = list(self.instanceMetaData['public-keys'].keys())[0]
-            self.tags = self._getLeader(self.clusterName).tags
+            self.leaderIP = leader.private_ips  # this is PRIVATE IP
+            self.keyName = 'ejacox'
+            #self.tags = self._getLeader(self.clusterName).tags
             self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
             spotBids = []
@@ -239,17 +238,30 @@ class GCEProvisioner(AbstractProvisioner):
         elif not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
             # TODO:
-            # - rootVolSize=leaderStorage
             # - ex_keyname=keyName (what for?)
             # - tags? - Are they labels in gce?
-            # - kwargs
-            #   - kwargs["subnet_id"] = vpcSubnet
-            #   - 'key_name': keyName,
+            #       - clusterName tag is used to get clusterName from within instance
+            # -  TEST vpcSubnet
+
+
+            disk = {}
+            disk['initializeParams'] = {
+                #'diskName': clusterName,
+                #'diskType': bytes('https://www.googleapis.com/compute/v1/projects/curoverse-production/zones/us-central1-a/diskTypes/local-ssd'),
+                'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
+                'diskSizeGb' : leaderStorage }
+            disk.update({'boot': True,
+                 #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
+            #     'mode': 'READ_WRITE',
+            #     'deviceName': clusterName,
+                 'autoDelete': True })
+            print "params", disk
             leader = driver.create_node(clusterName, leaderNodeType, imageType,
                                     location=zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
                                     ex_subnetwork=vpcSubnet,
+                                    ex_disks_gce_struct = [disk],
                                     ex_tags=defaultTags)
         else:
             logger.info('Launching preemptable leader')
@@ -408,14 +420,30 @@ class GCEProvisioner(AbstractProvisioner):
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         zone = 'us-west1-a'
 
+        # TODO:
+        #    - node/volume naming: clusterName-???, How to increment across restarts?
+        #    - bug in gce.py for ex_create_multiple_nodes (erroneously, doesn't allow image and disk to specified)
         driver = self._getDriver()
         if not preemptable:
             logger.info('Launching %s non-preemptable nodes', numNodes)
+            disk = {}
+            disk['initializeParams'] = {
+                #'diskName': clusterName,
+                #'diskType': bytes('https://www.googleapis.com/compute/v1/projects/curoverse-production/zones/us-central1-a/diskTypes/local-ssd'),
+                'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
+                'diskSizeGb' : self.nodeStorage }
+            disk.update({'boot': True,
+                 #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
+            #     'mode': 'READ_WRITE',
+            #     'deviceName': clusterName,
+                 'autoDelete': True })
             instancesLaunched = driver.ex_create_multiple_nodes(self.clusterName, nodeType, imageType, numNodes,
                                     location=zone,
                                     ex_service_accounts=sa_scopes,
-                                    ex_metadata=metadata)
-                                    #ex_tags=defaultTags)
+                                    ex_metadata=metadata,
+                                    ex_disks_gce_struct = [disk]
+                                    #ex_tags=defaultTags
+                                    )
         else:
             logger.info('Launching %s preemptable nodes', numNodes)
             kwargs['placement'] = getSpotZone(self.spotBids[nodeType], instanceType.name, self.ctx)
@@ -502,6 +530,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     @classmethod
     def _getDriver(cls):
+        # TODO: how should these be set? Environment variables?
         GCE_JSON = "/Users/ejacox/toil-dev-41fd0135b44d.json"
         GCE_CLIENT_EMAIL = "100104111990-compute@developer.gserviceaccount.com"
         driverCls = get_driver(Provider.GCE)
@@ -715,3 +744,16 @@ class GCEProvisioner(AbstractProvisioner):
 
         return subprocess.check_call(command + parsedArgs)
 
+    def _setSSH(self):
+        if not os.path.exists('/root/.sshSuccess'):
+            subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
+            with open('/root/.sshSuccess', 'w') as f:
+                f.write('written here because of restrictive permissions on .ssh dir')
+        os.chmod('/root/.ssh', 0o700)
+        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
+        with open('/root/.ssh/id_rsa.pub') as f:
+            masterPublicKey = f.read()
+        masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
+        # confirm it really is an RSA public key
+        assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
+        return masterPublicKey
