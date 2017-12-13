@@ -26,30 +26,28 @@ class ToilWdlIntegrationTest(ToilTest):
         self.test_directory = os.path.abspath("src/toil/test/wdl/")
         self.output_dir = self._createTempDir(purpose='tempDir')
 
+        ############# FETCH AND EXTRACT GATK DATASETS FROM S3#################
         self.gatk_data = os.path.join(self.test_directory, "GATK_data.zip")
-        self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
-
         self.gatk_data_dir = os.path.join(self.test_directory, "GATK_data")
-        self.wdl_data_dir = os.path.join(self.test_directory, "wdl_templates")
-
         # download the data from s3 if not already present
         if not os.path.exists(self.gatk_data):
-            gatk_s3_loc = 'http://toil-datasets.s3.amazonaws.com/gatk_data.zip'
+            gatk_s3_loc = 'http://toil-datasets.s3.amazonaws.com/GATK_data.zip'
             fetch_gatk_from_s3_cmd = ["wget", "-P", self.test_directory, gatk_s3_loc]
             subprocess.check_call(fetch_gatk_from_s3_cmd)
+        # extract the compressed data if not already extracted
+        if not os.path.exists(self.gatk_data_dir):
+            with zipfile.ZipFile(self.gatk_data, 'r') as zip_ref:
+                zip_ref.extractall(self.test_directory)
 
+        ############# FETCH AND EXTRACT WDL TEMPLATES FROM S3###################
+        self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
+        self.wdl_data_dir = os.path.join(self.test_directory, "wdl_templates")
         # download the data from s3 if not already present
         if not os.path.exists(self.wdl_data):
             wdl_s3_loc = 'http://toil-datasets.s3.amazonaws.com/wdl_templates.zip'
             fetch_wdldata_from_s3_cmd = ["wget", "-P", self.test_directory, wdl_s3_loc]
             subprocess.check_call(fetch_wdldata_from_s3_cmd)
-
-        # extract the compressed gatk data if not already extracted
-        if not os.path.exists(self.gatk_data_dir):
-            with zipfile.ZipFile(self.gatk_data, 'r') as zip_ref:
-                zip_ref.extractall(self.test_directory)
-
-        # extract the compressed wdl data if not already extracted
+        # extract the compressed data if not already extracted
         if not os.path.exists(self.wdl_data_dir):
             with zipfile.ZipFile(self.wdl_data, 'r') as zip_ref:
                 zip_ref.extractall(self.test_directory)

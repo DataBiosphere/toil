@@ -2028,6 +2028,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
         '# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE' + '\n' + \
         '# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE' + '\n\n' + \
         '# make a temp directory w/identifier' + '\n' + \
+        'set -beEu -o pipefail' + '\n' + \
         'tmpDir=$(mktemp -d /' + docker_dir + '/execution/tmp.XXXXXX)' + \
         '\n' + \
         'chmod 777 $tmpDir' + '\n' + \
