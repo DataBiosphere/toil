@@ -439,8 +439,6 @@ class ToilWDL:
         More Abstract Cases
         -------------------
 
-        ('cc_file', 'File', ['*.cc.qc'], {'index_lookup': '0', 'glob': 'None'})
-
         Array[File] allOfMyTerribleIdeas = glob(*.txt)[0]
             var_name:      'allOfMyTerribleIdeas'
             var_type**:    'File'
@@ -543,7 +541,7 @@ class ToilWDL:
         :return var_value, var_action: The variable's declared value and any
                                        special actions that need to be taken.
         '''
-
+        var_value = []
         var_action = {}
 
         # a primitive var_value like '7' (shown above)
@@ -555,48 +553,18 @@ class ToilWDL:
             orderedDictOfVars = base_value_AST.attributes
 
             if 'name' in orderedDictOfVars:
-                var_value_name = orderedDictOfVars['name']
-                if isinstance(var_value_name, wdl_parser.Terminal):
-                    var_action[var_value_name.source_string] = 'None'
+                var_action = self.parse_task_output_value_name(orderedDictOfVars, var_action)
 
             if 'params' in orderedDictOfVars:
-                var_value_params = orderedDictOfVars['params']
-                if isinstance(var_value_params, wdl_parser.AstList):
-                    var_value = []
-                    for param in var_value_params:
-                        if isinstance(param, wdl_parser.Terminal):
-                            var_value.append(param.source_string)
+                var_value = self.parse_task_output_value_params(orderedDictOfVars, var_value)
 
-            # mostly determine actions for specific outputs
+            # mostly determines actions for specific outputs
             if 'lhs' in orderedDictOfVars:
-                var_value_lhs = base_value_AST.attributes['lhs']
-                if isinstance(var_value_lhs, wdl_parser.Ast):
-                    orderedDictOfVars = var_value_lhs.attributes
-                    if 'name' in orderedDictOfVars:
-                        var_value_name = orderedDictOfVars['name']
-                        if isinstance(var_value_name, wdl_parser.Terminal):
-                            var_action[var_value_name.source_string] = 'None'
-                    if 'params' in orderedDictOfVars:
-                        var_value_params = orderedDictOfVars['params']
-                        if isinstance(var_value_params, wdl_parser.Terminal):
-                            var_value = [var_value_params]
-                        if isinstance(var_value_params, wdl_parser.AstList):
-                            var_value = []
-                            for param in var_value_params:
-                                if isinstance(param, wdl_parser.Terminal):
-                                    var_value.append(param.source_string)
+                var_action, var_value = self.parse_task_output_value_lhs(base_value_AST, var_action, var_value)
 
-            # this is not implemented at the moment, but later will be important
-            # for returning index values and should be incorporated below for
-            # 'ArrayOrMapLookup' and such-like.
+            # not implemented at the moment
             if 'rhs' in orderedDictOfVars:
-                var_value_rhs = orderedDictOfVars['rhs']
-                if isinstance(var_value_rhs, wdl_parser.Terminal):
-                    raise NotImplementedError
-                if isinstance(var_value_rhs, wdl_parser.Ast):
-                    raise NotImplementedError
-                if isinstance(var_value_rhs, wdl_parser.AstList):
-                    raise NotImplementedError
+                self.parse_task_output_value_rhs(orderedDictOfVars)
 
             if base_value_AST.name == 'ArrayOrMapLookup':
                 try:
@@ -609,6 +577,51 @@ class ToilWDL:
             var_value = ''
 
         return var_value, var_action
+
+    def parse_task_output_value_name(self, orderedDictOfVars, var_action):
+        var_value_name = orderedDictOfVars['name']
+        if isinstance(var_value_name, wdl_parser.Terminal):
+            var_action[var_value_name.source_string] = 'None'
+        return var_action
+
+    def parse_task_output_value_params(self, orderedDictOfVars, var_value):
+        var_value_params = orderedDictOfVars['params']
+        if isinstance(var_value_params, wdl_parser.AstList):
+            var_value = []
+            for param in var_value_params:
+                if isinstance(param, wdl_parser.Terminal):
+                    var_value.append(param.source_string)
+        return var_value
+
+    def parse_task_output_value_lhs(self, base_value_AST, var_action, var_value):
+        var_value_lhs = base_value_AST.attributes['lhs']
+        if isinstance(var_value_lhs, wdl_parser.Ast):
+            orderedDictOfVars = var_value_lhs.attributes
+            if 'name' in orderedDictOfVars:
+                var_value_name = orderedDictOfVars['name']
+                if isinstance(var_value_name, wdl_parser.Terminal):
+                    var_action[var_value_name.source_string] = 'None'
+            if 'params' in orderedDictOfVars:
+                var_value_params = orderedDictOfVars['params']
+                if isinstance(var_value_params, wdl_parser.Terminal):
+                    var_value = [var_value_params]
+                if isinstance(var_value_params, wdl_parser.AstList):
+                    var_value = []
+                    for param in var_value_params:
+                        if isinstance(param, wdl_parser.Terminal):
+                            var_value.append(param.source_string)
+        return var_action, var_value
+
+    def parse_task_output_value_rhs(self, orderedDictOfVars):
+        """Stub to be implemented."""
+        # var_value_rhs = orderedDictOfVars['rhs']
+        # if isinstance(var_value_rhs, wdl_parser.Terminal):
+        #     raise NotImplementedError
+        # if isinstance(var_value_rhs, wdl_parser.Ast):
+        #     raise NotImplementedError
+        # if isinstance(var_value_rhs, wdl_parser.AstList):
+        #     raise NotImplementedError
+        return
 
     def create_workflows_dict(self, ast):
         '''
@@ -650,35 +663,8 @@ class ToilWDL:
             self.workflows_dictionary.setdefault(workflow_name, {})['wf_declarations'] = wf_declared_dict
 
             if section.name == "Scatter":
+                self.parse_workflow_scatter(section, workflow_name)
                 self.task_priority = self.task_priority + 1
-
-                # name of iterator; e.g. 'sample'
-                # also serves as a variable input in function for indexed variables; e.g. sample[0], sample[1], etc.
-                scatter_counter = section.attributes['item'].source_string
-                # name of collection to iterate over
-                scatter_collection = section.attributes['collection'].source_string
-
-                self.workflows_dictionary.setdefault('scatter_calls', {})[scatter_collection] = scatter_counter
-
-                if scatter_collection in self.workflows_dictionary[workflow_name]['wf_declarations']:
-                    if self.workflows_dictionary[workflow_name]['wf_declarations'][scatter_collection]['type'] == 'Array':
-                        scatter_array = self.workflows_dictionary[workflow_name]['wf_declarations'][scatter_collection]['value']
-                        scatter_num = 0
-                        for set_of_vars in scatter_array:
-                            for j in section.attributes['body']:
-                                self.task_number = self.task_number + 1
-                                task_being_called = j.attributes['task'].source_string
-                                if j.attributes['alias']:
-                                    task_alias = j.attributes['alias'].source_string
-                                else:
-                                    task_alias = task_being_called
-                                job = self.parse_workflow_call(j, scatter_num=str(scatter_num))
-                                self.workflows_dictionary.setdefault((self.task_priority, self.task_number, task_being_called, task_alias), {})['job_declarations'] = job
-                            scatter_num = scatter_num + 1
-                    else:
-                        raise RuntimeError('Scatter failed.  Scatter collection is not an array.')
-                else:
-                    raise RuntimeError('Scatter failed.  Scatter collection not found in workflows_dictionary.')
 
             if section.name == "Call":
                 self.task_priority = self.task_priority + 1
@@ -690,6 +676,7 @@ class ToilWDL:
                     task_alias = task_being_called
                 job = self.parse_workflow_call(section)
                 self.workflows_dictionary.setdefault((self.task_priority, self.task_number, task_being_called, task_alias), {})['job_declarations'] = job
+
 
     def parse_workflow_declaration(self, wf_declaration_subAST):
         '''
@@ -747,6 +734,39 @@ class ToilWDL:
 
         return var_name, var_map
 
+    def parse_workflow_scatter(self, section, workflow_name):
+        # name of iterator; e.g. 'sample'
+        scatter_counter = section.attributes['item'].source_string
+
+        # name of collection to iterate over
+        scatter_collection = section.attributes['collection'].source_string
+
+        self.workflows_dictionary.setdefault('scatter_calls', {})[scatter_collection] = scatter_counter
+
+        if scatter_collection in self.workflows_dictionary[workflow_name]['wf_declarations']:
+            if self.workflows_dictionary[workflow_name]['wf_declarations'][scatter_collection]['type'] == 'Array':
+                scatter_array = self.workflows_dictionary[workflow_name]['wf_declarations'][scatter_collection]['value']
+                self.parse_workflow_scatter_array(section, scatter_array)
+            else:
+                raise RuntimeError('Scatter failed.  Scatter collection is not an array.')
+        else:
+            raise RuntimeError('Scatter failed.  Scatter collection not found in workflows_dictionary.')
+
+    def parse_workflow_scatter_array(self, section, scatter_array):
+        scatter_num = 0
+        for set_of_vars in scatter_array:
+            for j in section.attributes['body']:
+                self.task_number = self.task_number + 1
+                task_being_called = j.attributes['task'].source_string
+                if j.attributes['alias']:
+                    task_alias = j.attributes['alias'].source_string
+                else:
+                    task_alias = task_being_called
+                job = self.parse_workflow_call(j, scatter_num=str(scatter_num))
+                self.workflows_dictionary.setdefault((self.task_priority, self.task_number, task_being_called, task_alias), {})['job_declarations'] = job
+            scatter_num = scatter_num + 1
+
+
     def parse_workflow_call(self, i, scatter_num=None):
         '''
         Parses a WDL workflow call AST subtree to give the variable mappings for
@@ -790,7 +810,6 @@ class ToilWDL:
         return(io_map)
 
     def write_modules(self):
-
         # string used to write imports to the file
         module_string = 'from toil.job import Job\n' + \
                         'from toil.common import Toil\n' + \

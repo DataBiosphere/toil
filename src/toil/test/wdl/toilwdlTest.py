@@ -138,8 +138,8 @@ def compare_runs(output_dir, ref_dir):
                     if file == test_file:
                         test_filepath = os.path.join(output_dir, file)
                         if file.endswith(".vcf"):
-                            self.compare_vcf_files(filepath1=filepath,
-                                                   filepath2=test_filepath)
+                            compare_vcf_files(filepath1=filepath,
+                                              filepath2=test_filepath)
                         else:
                             with open(test_filepath, 'r') as test_file:
                                 test_data = []
