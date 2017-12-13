@@ -17,8 +17,7 @@
    - [ ] Azure Batch
    - [ ] AWS Batch
 - [ ] Containerize leader (work with Consonance)
-* Improve the user experience.
-   - [ ] Change the thread pool model to improve single machine usage.
+- [ ] Change the thread pool model to improve single machine usage.
 * Improve the development process.
    - [ ] Add a linter
    - [ ] Add a code coverage tool.
