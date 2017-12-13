@@ -24,7 +24,7 @@
    - [ ] Organize tests.
    - [ ] Better access to tests for external developers.
 - [ ] TES support
-- [ ] WES Support
+- [ ] WES Support (if Consonance does not work well)
 
 # Longer Term
 - [ ] Better track versions of specifications (e.g. CWL, WDL) and dependencies.
