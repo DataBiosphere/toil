@@ -14,8 +14,6 @@ class ToilWdlIntegrationTest(ToilTest):
         """
         Initial set up of variables for the test.
         """
-
-        # TODO: Setup ftp to host and pull files from; test_directory == tempDir
         self.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
         self.test_directory = os.path.abspath("src/toil/test/wdl/")
@@ -24,10 +22,30 @@ class ToilWdlIntegrationTest(ToilTest):
         self.encode_data = os.path.join(self.test_directory, "ENCODE_data.zip")
         self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
 
-        with zipfile.ZipFile(self.encode_data, 'r') as zip_ref:
-            zip_ref.extractall(self.test_directory)
-        with zipfile.ZipFile(self.wdl_data, 'r') as zip_ref:
-            zip_ref.extractall(self.test_directory)
+        self.encode_data_dir = os.path.join(self.test_directory, "ENCODE_data")
+        self.wdl_data_dir = os.path.join(self.test_directory, "wdl_templates")
+
+        # download the data from s3 if not already present
+        if not os.path.exists(self.encode_data):
+            encode_s3_loc = 'http://toil-datasets.s3.amazonaws.com/ENCODE_data.zip'
+            fetch_encode_from_s3_cmd = ["wget", "-P", self.test_directory, encode_s3_loc]
+            subprocess.check_call(fetch_encode_from_s3_cmd)
+
+        # download the data from s3 if not already present
+        if not os.path.exists(self.wdl_data):
+            wdl_s3_loc = 'http://toil-datasets.s3.amazonaws.com/wdl_templates.zip'
+            fetch_wdldata_from_s3_cmd = ["wget", "-P", self.test_directory, wdl_s3_loc]
+            subprocess.check_call(fetch_wdldata_from_s3_cmd)
+
+        # extract the compressed encode data if not already extracted
+        if not os.path.exists(self.encode_data_dir):
+            with zipfile.ZipFile(self.encode_data, 'r') as zip_ref:
+                zip_ref.extractall(self.test_directory)
+
+        # extract the compressed wdl data if not already extracted
+        if not os.path.exists(self.wdl_data_dir):
+            with zipfile.ZipFile(self.wdl_data, 'r') as zip_ref:
+                zip_ref.extractall(self.test_directory)
 
     def tearDown(self):
         """Default tearDown for unittest."""
