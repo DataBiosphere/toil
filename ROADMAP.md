@@ -1,4 +1,4 @@
-# Near Term (In Progress)
+# Near Term (In Progress, Estimated Completion Date?)
 * Ansible provisioning.
    - [ ] Azure
    - [ ] AWS
@@ -11,7 +11,7 @@
 - [ ] Run massive workflows
 - [ ] Better feedback (error messages, logging).
 
-# Medium Term (~ 6-month goals)
+# Medium Term (~ 6-month goals, by ~June 2018?)
 * Batch systems
    - [ ] Google Pipelines
    - [ ] Azure Batch
