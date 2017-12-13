@@ -1,8 +1,12 @@
 # Near Term (In Progress)
-- Ansible provisioning.
+* Ansible provisioning.
    - [ ] Azure
    - [ ] AWS
-- [ ] Google provisioning
+   - [ ] Google
+*  Libcloud provisioning
+   - [ ] Google
+   - [ ] AWS
+   - [ ] Azure
 - [ ] Fix flaky tests
 - [ ] Run massive workflows
 - [ ] Better feedback (error messages, logging).
