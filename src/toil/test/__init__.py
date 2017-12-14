@@ -267,8 +267,9 @@ def needs_rsync3(test_item):
         # version output looks like: 'rsync  version 2.6.9 ...'
         versionNum = int(versionInfo.split()[2].split('.')[0])
         if versionNum < 3:
-            return unittest.skip('This test depends on rsync version 3.0.0+.')
-        return test_item
+            return unittest.skip('This test depends on rsync version 3.0.0+.')(test_item)
+
+    return test_item
 
 
 def needs_aws(test_item):
@@ -484,8 +485,8 @@ def experimental(test_item):
     """
     Use this to decorate experimental or brittle tests in order to skip them during regular builds.
     """
-    # We'll pytest.mark_test the test as experimental but we'll also unittest.skip it via an 
-    # environment variable. 
+    # We'll pytest.mark_test the test as experimental but we'll also unittest.skip it via an
+    # environment variable.
     test_item = _mark_test('experimental', test_item)
     if less_strict_bool(os.getenv('TOIL_TEST_EXPERIMENTAL')):
         return test_item

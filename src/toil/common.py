@@ -691,9 +691,12 @@ class Toil(object):
             if (exc_type is not None and self.config.clean == "onError" or
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
-                logger.info("Attempting to delete the job store")
-                self._jobStore.destroy()
-                logger.info("Successfully deleted the job store")
+                try:
+                    self._jobStore.destroy()
+                    logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
+                except:
+                    logger.info("Failed to delete the job store: %s" % str(self._jobStore))
+                    raise
         except Exception as e:
             if exc_type is None:
                 raise
@@ -808,8 +811,7 @@ class Toil(object):
             return AzureJobStore(rest)
         elif name == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
-            projectID, namePrefix = rest.split(':', 1)
-            return GoogleJobStore(namePrefix, projectID)
+            return GoogleJobStore(rest)
         else:
             raise RuntimeError("Unknown job store implementation '%s'" % name)
 

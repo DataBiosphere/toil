@@ -63,8 +63,7 @@ from toil.test import (ToilTest,
                        needs_encryption,
                        make_tests,
                        needs_google,
-                       slow,
-                       experimental)
+                       slow)
 from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
@@ -884,7 +883,6 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             os.unlink(path)
 
 
-@experimental
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
@@ -892,7 +890,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _createJobStore(self):
         from toil.jobStores.googleJobStore import GoogleJobStore
-        return GoogleJobStore.initialize(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
+        return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
 
     def _corruptJobStore(self):
         # The Google job store has only one resource, the bucket, so we can't corrupt it without
@@ -901,23 +899,28 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _prepareTestFile(self, bucket, size=None):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         fileName = 'testfile_%s' % uuid.uuid4()
-        uri = 'gs://%s/%s' % (bucket.name, fileName)
-        if size:
-            with open('/dev/urandom', 'r') as readable:
-                boto.storage_uri(uri).set_contents_from_string(readable.read(size))
-        return uri
+        url = 'gs://%s/%s' % (bucket.name, fileName)
+        if size is None:
+            return url
+        with open('/dev/urandom', 'r') as readable:
+            contents = readable.read(size)
+            boto.storage_uri(url).set_contents_from_string(contents)
+        return url, hashlib.md5(contents).hexdigest()
 
     def _hashTestFile(self, url):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         from toil.jobStores.googleJobStore import GoogleJobStore
-        projectID, uri = GoogleJobStore._getResources(urlparse.urlparse(url))
+        uri = GoogleJobStore._getResources(urlparse.urlparse(url))
         uri = boto.storage_uri(uri)
         contents = uri.get_contents_as_string(headers=self.headers)
         return hashlib.md5(contents).hexdigest()
 
     def _createExternalStore(self):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         from toil.jobStores.googleJobStore import GoogleJobStore
         uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
         uri = boto.storage_uri(uriString)
@@ -925,16 +928,17 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
 
     def _cleanUpExternalStore(self, bucket):
         import boto
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         while True:
-            for key in bucket.list():
-                try:
-                    key.delete()
-                except boto.exception.GSResponseError as e:
-                    if e.status == 404:
-                        pass
-                    else:
-                        raise
             try:
+                for key in bucket.list():
+                    try:
+                        key.delete()
+                    except boto.exception.GSResponseError as e:
+                        if e.status == 404:
+                            pass
+                        else:
+                            raise
                 bucket.delete()
             except boto.exception.GSResponseError as e:
                 if e.status == 404:

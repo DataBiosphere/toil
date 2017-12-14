@@ -12,15 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from builtins import str
-from builtins import map
 from builtins import range
-import pipes
-import socket
-import subprocess
 import logging
-
 import time
-
+import subprocess
 import sys
 import string
 
@@ -28,7 +23,6 @@ import string
 from _ssl import SSLError
 
 from six import iteritems
-from six.moves import xrange
 
 from bd2k.util import memoize
 import boto.ec2
@@ -36,7 +30,6 @@ from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
-from itertools import count
 
 from toil import applianceSelf
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
@@ -114,7 +107,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.nodeStorage = None
         self.subnetID = None
 
-    def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName, 
+    def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
             clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None, vpcSubnet=None, leaderStorage=50, nodeStorage=50):
         if self.config is None:
             self.nodeStorage = nodeStorage
@@ -190,7 +183,7 @@ class AWSProvisioner(AbstractProvisioner):
             # the root volume
             disk = self.nodeStorage * 2 ** 30
 
-        #Underestimate memory by 100M to prevent autoscaler from disagreeing with 
+        #Underestimate memory by 100M to prevent autoscaler from disagreeing with
         #mesos about whether a job can run on a particular node type
         memory = (instanceType.memory - 0.1) * 2** 30
         return Shape(wallTime=60 * 60,
@@ -254,7 +247,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
         leader = cls._getLeader(clusterName, zone=zone)
-        cls._rsyncNode(leader.public_dns_name, args, **kwargs)
+        cls._coreRsync(leader.public_dns_name, args, **kwargs)
 
     def remainingBillingInterval(self, node):
         return awsRemainingBillingInterval(node)
@@ -330,7 +323,7 @@ class AWSProvisioner(AbstractProvisioner):
         logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
         return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
-                     name=i.id, launchTime=i.launch_time, nodeType=i.instance_type, 
+                     name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
                      preemptable=preemptable)
                 for i in workerInstances]
 
@@ -417,98 +410,6 @@ class AWSProvisioner(AbstractProvisioner):
                                'for a full list of available versions.')
 
     @classmethod
-    def _sshAppliance(cls, leaderIP, *args, **kwargs):
-        """
-        :param str leaderIP: IP of the master
-        :param args: arguments to execute in the appliance
-        :param kwargs: tty=bool tells docker whether or not to create a TTY shell for
-            interactive SSHing. The default value is False. Input=string is passed as
-            input to the Popen call.
-        """
-        kwargs['appliance'] = True
-        return cls._coreSSH(leaderIP, *args, **kwargs)
-
-    @classmethod
-    def _sshInstance(cls, nodeIP, *args, **kwargs):
-        # returns the output from the command
-        kwargs['collectStdout'] = True
-        return cls._coreSSH(nodeIP, *args, **kwargs)
-
-    @classmethod
-    def _coreSSH(cls, nodeIP, *args, **kwargs):
-        """
-        If strict=False, strict host key checking will be temporarily disabled.
-        This is provided as a convenience for internal/automated functions and
-        ought to be set to True whenever feasible, or whenever the user is directly
-        interacting with a resource (e.g. rsync-cluster or ssh-cluster). Assumed
-        to be False by default.
-
-        kwargs: input, tty, appliance, collectStdout, sshOptions, strict
-        """
-        commandTokens = ['ssh', '-t']
-        strict = kwargs.pop('strict', False)
-        if not strict:
-            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get('sshOptions', [])
-        sshOptions = kwargs.pop('sshOptions', None)
-        #Forward port 3000 for grafana dashboard
-        commandTokens.extend(['-L', '3000:localhost:3000', '-L', '9090:localhost:9090'])
-        if sshOptions:
-            # add specified options to ssh command
-            assert isinstance(sshOptions, list)
-            commandTokens.extend(sshOptions)
-        # specify host
-        commandTokens.append('core@%s' % nodeIP)
-        appliance = kwargs.pop('appliance', None)
-        if appliance:
-            # run the args in the appliance
-            tty = kwargs.pop('tty', None)
-            ttyFlag = '-t' if tty else ''
-            commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
-        inputString = kwargs.pop('input', None)
-        if inputString is not None:
-            kwargs['stdin'] = subprocess.PIPE
-        collectStdout = kwargs.pop('collectStdout', None)
-        if collectStdout:
-            kwargs['stdout'] = subprocess.PIPE
-        logger.debug('Node %s: %s', nodeIP, ' '.join(args))
-        args = list(map(pipes.quote, args))
-        commandTokens += args
-        logger.debug('Full command %s', ' '.join(commandTokens))
-        popen = subprocess.Popen(commandTokens, **kwargs)
-        stdout, stderr = popen.communicate(input=inputString)
-        # at this point the process has already exited, no need for a timeout
-        resultValue = popen.wait()
-        if resultValue != 0:
-            raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
-                               'exit code %s with stdout %s and stderr %s' % (' '.join(args), resultValue, stdout, stderr))
-        assert stderr is None
-        return stdout
-
-    @classmethod
-    def _rsyncNode(cls, ip, args, applianceName='toil_leader', **kwargs):
-        remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
-        parsedArgs = []
-        sshCommand = "ssh"
-        strict = kwargs.pop('strict', False)
-        if not strict:
-            sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
-        hostInserted = False
-        # Insert remote host address
-        for i in args:
-            if i.startswith(":") and not hostInserted:
-                i = ("core@%s" % ip) + i
-                hostInserted = True
-            elif i.startswith(":") and hostInserted:
-                raise ValueError("Cannot rsync between two remote hosts")
-            parsedArgs.append(i)
-        if not hostInserted:
-            raise ValueError("No remote host found in argument list")
-        command = ['rsync', '-e', sshCommand, '--rsync-path', remoteRsync]
-        logger.debug("Running %r.", command + parsedArgs)
-
-        return subprocess.check_call(command + parsedArgs)
-
-    @classmethod
     def _toNameSpace(cls, clusterName):
         assert isinstance(clusterName, (str, bytes))
         if any((char.isupper() for char in clusterName)) or '_' in clusterName:
@@ -575,7 +476,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _waitForDockerDaemon(cls, ip_address):
         logger.info('Waiting for docker on %s to start...', ip_address)
         while True:
-            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux')
+            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'auxww')
             time.sleep(5)
             if 'dockerd' in output:
                 # docker daemon has started
@@ -610,27 +511,6 @@ class AWSProvisioner(AbstractProvisioner):
             if instance.ip_address or instance.public_dns_name:
                 logger.info('...got ip')
                 break
-
-    @classmethod
-    def _waitForSSHPort(cls, ip_address):
-        """
-        Wait until the instance represented by this box is accessible via SSH.
-
-        :return: the number of unsuccessful attempts to connect to the port before a the first
-        success
-        """
-        logger.info('Waiting for ssh port to open...')
-        for i in count():
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.settimeout(a_short_time)
-                s.connect((ip_address, 22))
-                logger.info('...ssh port open')
-                return i
-            except socket.error:
-                pass
-            finally:
-                s.close()
 
     @classmethod
     def _terminateNodes(cls, nodes, ctx):
@@ -716,7 +596,7 @@ class AWSProvisioner(AbstractProvisioner):
                 with attempt:
                     # since we're going to be rsyncing into the appliance we need the appliance to be running first
                     ipAddress = self._waitForNode(node, 'toil_worker')
-                    self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
+                    self._coreRsync(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):

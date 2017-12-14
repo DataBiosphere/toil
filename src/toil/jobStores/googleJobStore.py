@@ -35,27 +35,28 @@ except ImportError:
 from six.moves import StringIO
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
-                                             NoSuchFileException,
+                                             NoSuchFileException, NoSuchJobStoreException,
+                                             JobStoreExistsException,
                                              ConcurrentFileModificationException)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
-
+from toil.jobStores.aws.utils import SDBHelper
 log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'
 
 
-class GoogleJobStore(AbstractJobStore):
+# TODO
+# - Update gcs_oauth2_boto_plugin.
+# - Check consistency.
+# - update GCE instructions
+#   - needed to run 'gsutil config' to get 'gs_oauth2_refresh_token' in the boto file
+#   - needed to copy client_id and client_secret to the oauth section
+# - Azure uses bz2 compression with pickling. Is this useful here?
+# - boto3? http://boto.cloudhackers.com/en/latest/ref/gs.html
+# - better way to assign job ids? - currently 'job'+uuid
 
-    @classmethod
-    def initialize(cls, locator, config=None):
-        try:
-            projectID, namePrefix = locator.split(":", 1)
-        except ValueError:
-            # we don't have a specified projectID
-            namePrefix = locator
-            projectID = None
-        return cls(namePrefix, projectID, config)
+class GoogleJobStore(AbstractJobStore):
 
     # BOTO WILL UPDATE HEADERS WITHOUT COPYING THEM FIRST. To enforce immutability & prevent
     # this, we use getters that return copies of our original dictionaries. reported:
@@ -76,47 +77,69 @@ class GoogleJobStore(AbstractJobStore):
     def headerValues(self, value):
         self._headerValues = value
 
-    def __init__(self, namePrefix, projectID=None, config=None):
-        #  create 2 buckets
-        self.projectID = projectID
+    def __init__(self, locator):
+        super(GoogleJobStore, self).__init__()
 
+        try:
+            projectID, namePrefix = locator.split(":", 1)
+        except ValueError:
+            # we don't have a specified projectID
+            namePrefix = locator
+            projectID = None
+
+        #  create 2 buckets
+        self.locator = locator
+        self.projectID = projectID
         self.bucketName = namePrefix+"--toil"
         log.debug("Instantiating google jobStore with name: %s", self.bucketName)
-        self.gsBucketURL = "gs://"+self.bucketName
-
+        self.gsBucketURL = bytes("gs://"+self.bucketName)
         self._headerValues = {"x-goog-project-id": bytes(projectID)} if projectID else {}
-
-        # Not reading .boto correctly, this works to create bucket after 'pip install gsutils', which updates osauth2
-        #import gcs_oauth2_boto_plugin
-        #gcs_oauth2_boto_plugin.SetFallbackClientIdAndSecret(gs_access_key_id, gs_secret_access_key)
-
         self._encryptedHeaders = self.headerValues
 
+        import gcs_oauth2_boto_plugin # needed to import authentication handler
         self.uri = boto.storage_uri(self.gsBucketURL, GOOGLE_STORAGE)
         self.files = None
-
-        exists = True
-        try:
-            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
-        except GSResponseError:
-            exists = False
-
-        if not exists:
-            self.files = self._retryCreateBucket(self.uri, self.headerValues)
-
-        super(GoogleJobStore, self).__init__(config=config)
-        self.sseKeyPath = self.config.sseKey
-        # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
-        self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders())
 
         self.statsBaseID = 'f16eef0c-b597-4b8b-9b0c-4d605b4f506c'
         self.statsReadPrefix = '_'
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
+    def initialize(self, config=None):
+        exists = True
+        try:
+            self.uri.get_bucket(headers=self.headerValues, validate=True)
+        except GSResponseError:
+            exists = False
+
+        if exists:
+            raise JobStoreExistsException(self.locator)
+
+        self.files = self._retryCreateBucket(self.uri, self.headerValues)
+
+        # functionally equivalent to dictionary1.update(dictionary2) but works with our immutable dicts
+        self.encryptedHeaders = dict(self.encryptedHeaders, **self._resolveEncryptionHeaders(config))
+
+        super(GoogleJobStore, self).initialize(config)
+
+    def resume(self):
+        try:
+            self.files = self.uri.get_bucket(headers=self.headerValues, validate=True)
+        except GSResponseError:
+            raise NoSuchJobStoreException(self.locator)
+        super(GoogleJobStore, self).resume()
+
+    @property
+    def sseKeyPath(self):
+        return self.config.sseKey
+
     def destroy(self):
         # no upper time limit on this call keep trying delete calls until we succeed - we can
         # fail because of eventual consistency in 2 ways: 1) skipping unlisted objects in bucket
         # that are meant to be deleted 2) listing of ghost objects when trying to delete bucket
+
+        # just return if not connect to physical storage
+        if self.files is None:
+            return
         while True:
             try:
                 self.uri.delete_bucket()
@@ -138,13 +161,18 @@ class GoogleJobStore(AbstractJobStore):
                     pass
 
     def create(self, jobNode):
-        job = self.getJobGraph(jobNode)
-        self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
+        jobStoreID = self._newJobID()
+        log.debug("Creating job %s for '%s'",
+                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
+        job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
             self._batchedJobGraphs.append(job)
         else:
-            self._writeString(jobStoreID, cPickle.dumps(job, protocol=cPickle.HIGHEST_PROTOCOL))
+            self._writeString(jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)) #UPDATE: bz2.compress(
         return job
+
+    def _newJobID(self):
+        return "job"+str(uuid.uuid4())
 
     def exists(self, jobStoreID):
         # used on job files, which will be encrypted if avaliable
@@ -160,7 +188,21 @@ class GoogleJobStore(AbstractJobStore):
             key = self._getKey(fileName)
         except:
             raise NoSuchFileException(fileName)
-        return key.generate_url(expires_in=self.publicUrlExpiration.total_seconds())
+
+        #https://github.com/GoogleCloudPlatform/gcs-oauth2-boto-plugin/issues/15
+        # The google connection is missing sign_string().
+        # It is only signing 'GET', though, so skipping the encoding might be fine.
+        def sign_string(self, string_to_sign):
+            #import base64
+            #from oauth2client.crypt import Signer
+            #signer = Signer.from_string(self.oauth2_client._private_key)
+            #return base64.b64encode(signer.sign(string_to_sign))
+            return string_to_sign
+        import types
+        key.bucket.connection._auth_handler.sign_string = types.MethodType(sign_string, key.bucket.connection._auth_handler)
+        key.set_canned_acl('public-read')
+        return key.generate_url(query_auth=False,
+                               expires_in=self.publicUrlExpiration.total_seconds())
 
     def getSharedPublicUrl(self, sharedFileName):
         return self.getPublicUrl(sharedFileName)
@@ -170,7 +212,7 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        return pickle.loads(jobString)
+        return pickle.loads(jobString) #UPDATE bz2.decompress(
 
     def update(self, job):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
@@ -180,9 +222,9 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreID, encrypt=True)
 
     def jobs(self):
-        for key in self.files.list(prefix='job'):
+        for key in self.files.list():
             jobStoreID = key.name
-            if len(jobStoreID) == 39:
+            if len(jobStoreID) == 39: # 'job' + uuid length
                 yield self.load(jobStoreID)
 
     def writeFile(self, localFilePath, jobStoreID=None):
@@ -269,23 +311,20 @@ class GoogleJobStore(AbstractJobStore):
 
     @staticmethod
     def _getResources(url):
-        projectID = url.host
-        bucketAndKey = url.path
-        return projectID, 'gs://'+bucketAndKey
+        return 'gs://' + url.netloc + url.path
 
     @classmethod
     def getSize(cls, url):
-        projectID, uri = GoogleJobStore._getResources(url)
+        uri = GoogleJobStore._getResources(url)
         uri = boto.storage_uri(uri, GOOGLE_STORAGE)
         return uri.get_key().size
 
     @classmethod
     def _readFromUrl(cls, url, writable):
         # gs://projectid/bucket/key
-        projectID, uri = GoogleJobStore._getResources(url)
+        uri = GoogleJobStore._getResources(url)
         uri = boto.storage_uri(uri, GOOGLE_STORAGE)
-        headers = {"x-goog-project-id": projectID}
-        uri.get_contents_to_file(writable, headers=headers)
+        uri.get_contents_to_file(writable)
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
@@ -293,10 +332,9 @@ class GoogleJobStore(AbstractJobStore):
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        projectID, uri = GoogleJobStore._getResources(url)
+        uri = GoogleJobStore._getResources(url)
         uri = boto.storage_uri(uri, GOOGLE_STORAGE)
-        headers = {"x-goog-project-id": projectID}
-        uri.set_contents_from_file(readable, headers=headers)
+        uri.set_contents_from_stream(readable)
 
     def writeStatsAndLogging(self, statsAndLoggingString):
         statsID = self.statsBaseID + str(uuid.uuid4())
@@ -312,7 +350,10 @@ class GoogleJobStore(AbstractJobStore):
 
         while True:
             filesReadThisLoop = 0
-            for key in list(self.files.list(prefix=prefix)):
+            # prefix seems broken
+            for key in list(self.files.list()): #prefix=prefix)):
+                if not key.name.startswith(prefix):
+                    continue
                 try:
                     with self.readSharedFileStream(key.name) as readable:
                         log.debug("Reading stats file: %s", key.name)
@@ -354,7 +395,6 @@ class GoogleJobStore(AbstractJobStore):
         while True:
             try:
                 # FIMXE: this leaks a connection on exceptions
-                print "====HEADERS", headers
                 return uri.create_bucket(headers=headers)
             except GSResponseError as e:
                 if e.status == 429:
@@ -371,8 +411,8 @@ class GoogleJobStore(AbstractJobStore):
         else:  # job id
             return "job"+str(uuid.uuid4())
 
-    def _resolveEncryptionHeaders(self):
-        sseKeyPath = self.sseKeyPath
+    def _resolveEncryptionHeaders(self, config):
+        sseKeyPath = config.sseKey
         if sseKeyPath is None:
             return {}
         else:
@@ -399,13 +439,21 @@ class GoogleJobStore(AbstractJobStore):
                 if e.status == 404:
                     pass
         # best effort delete associated files
-        for fileID in self.files.list(prefix=jobStoreID):
-            try:
-                self.deleteFile(fileID)
-            except NoSuchFileException:
-                pass
+        for fileID in self.files.list():
+            if fileID.name.startswith(jobStoreID):
+                try:
+                    self.deleteFile(fileID)
+                except NoSuchFileException:
+                    pass
 
     def _getKey(self, jobStoreID=None, headers=None):
+
+        # UPDATE _getKey() has problems - listing buckets works though
+        for obj in self.uri.get_bucket():
+            #print '%s://%s/%s' % (self.uri.scheme, self.uri.bucket_name, obj.name)
+            if jobStoreID == obj.name:
+                return obj
+
         # gets remote key, in contrast to self._newKey
         key = None
         try:
@@ -437,7 +485,7 @@ class GoogleJobStore(AbstractJobStore):
             key = self._getKey(jobStoreID=jobStoreID, headers=headers)
         else:
             key = self._newKey(jobStoreID=jobStoreID)
-        headers = self.encryptedHeaders if encrypt else self.headerValues
+        headers = self.encryptedHeaders if encrypt else self.headerValues # UPDATE: why is this duplicated?
         try:
             key.set_contents_from_file(fileObj, headers=headers)
         except GSDataError:

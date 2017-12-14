@@ -31,7 +31,10 @@ def main():
     parser.add_argument("--version", action='version', version=version)
     config = Config()
     config.setOptions(parseBasicOptions(parser))
-    logger.info("Attempting to delete the job store")
-    jobStore = Toil.getJobStore(config.jobStore)
-    jobStore.destroy()
-    logger.info("Successfully deleted the job store")
+    try:
+        jobStore = Toil.getJobStore(config.jobStore)
+        jobStore.destroy()
+        logger.info("Successfully deleted the job store: %s" % str(jobStore))
+    except:
+        logger.info("Failed to delete the job store: %s" % str(jobStore))
+        raise
