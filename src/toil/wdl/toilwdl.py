@@ -1534,24 +1534,51 @@ class ToilWDL:
                         suffix = ''
 
                     if 'glob' in output_action_dict:
-                        fn_section = fn_section + '    ' + output_name + suffix + ' = []\n'
-                        fn_section = fn_section + '    for x in recursive_glob(job, directoryname=tempDir, glob_pattern="' + output_value[0] + '"):\n'
-                        fn_section = fn_section + '        output_file = job.fileStore.writeGlobalFile(x)\n'
-                        fn_section = fn_section + '        output_filename = os.path.basename(x)\n'
-                        fn_section = fn_section + '        job.fileStore.exportFile(output_file, "file://' + self.output_directory + '/" + output_filename)\n'
-                        fn_section = fn_section + '        ' + output_name + suffix + '.append((output_file, output_filename))\n'
+
+                        glob_dict = {
+                            "output_name": output_name,
+                            "suffix": suffix,
+                            "out_value": output_value[0],
+                            "out_dir": self.output_directory
+                            }
+                        glob_template = (
+                            '    {output_name}{suffix} = []\n'
+                            '    for x in recursive_glob(job, directoryname=tempDir, glob_pattern="{out_value}"):\n'
+                            '        output_file = job.fileStore.writeGlobalFile(x)\n'
+                            '        output_filename = os.path.basename(x)\n'
+                            '        job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)\n'
+                            '        {output_name}{suffix}.append((output_file, output_filename))\n'
+                            )
+                        fn_section = fn_section + glob_template.format(**glob_dict)
+
                         if 'index_lookup' in output_action_dict:
-                            index_num = output_action_dict['index_lookup']
-                            fn_section = fn_section + '    ' + output_name + ' = ' + output_name + suffix + '[' + str(index_num) + ']\n\n'
+                            index_dict = {
+                                "output_name": output_name,
+                                "suffix": suffix,
+                                "index_num": str(output_action_dict['index_lookup'])
+                                }
+                            index_template = (
+                                '    {output_name} = {output_name}{suffix}[{index_num}]\n\n'
+                                )
+                            fn_section = fn_section + index_template.format(**index_dict)
+
                         else:
-                            fn_section = fn_section + '\n'
+                            fn_section = fn_section + '\n'''
                         files_to_return.append(output_name)
                     else:
-                        formatted_output_filename = self.translate_wdl_string_to_python_string(job, output_value)
-                        fn_section = fn_section + "    output_filename = " + formatted_output_filename + '\n'
-                        fn_section = fn_section + "    output_file = job.fileStore.writeGlobalFile(output_filename)\n"
-                        fn_section = fn_section + '    job.fileStore.exportFile(output_file, "file://' + self.output_directory + '/" + output_filename)\n'
-                        fn_section = fn_section + '    ' + output_name + ' = (output_file, output_filename)\n\n'
+                        nonglob_dict = {
+                            "formatted_output_filename": self.translate_wdl_string_to_python_string(job, output_value),
+                            "output_name": output_name,
+                            "out_dir": self.output_directory
+                            }
+
+                        nonglob_template = (
+                        '    output_filename = {formatted_output_filename}\n'
+                        '    output_file = job.fileStore.writeGlobalFile(output_filename)\n'
+                        '    job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)\n'
+                        '    {output_name} = (output_file, output_filename)\n\n'
+                        )
+                        fn_section = fn_section + nonglob_template.format(**nonglob_dict)
                         files_to_return.append(output_name)
 
             if files_to_return:
@@ -1562,17 +1589,24 @@ class ToilWDL:
                 fn_section = fn_section[:-2]
             if files_to_return:
                 fn_section = fn_section + '}\n\n'
+
             # only for logging stats
-            fn_section = fn_section + '    end = time.time()\n'
-            fn_section = fn_section + '    with open("' + os.path.join(self.output_directory, "wdl-stats.log") + '", "a+") as f:\n'
-            fn_section = fn_section + '        f.write(str("' + job[3] + '") + " now being run.")\n'
-            fn_section = fn_section + '        f.write("' + '\\' + 'n' + '\\' + 'n' + '")\n'
-            fn_section = fn_section + '        f.write("Outputs:' + '\\' + 'n' + '")\n'
-            fn_section = fn_section + '        for rv in rvDict:\n'
-            fn_section = fn_section + '            f.write(str(rv) + ": " + str(rvDict[rv]))\n'
-            fn_section = fn_section + '            f.write("' + '\\' + 'n' + '")\n'
-            fn_section = fn_section + '        f.write("Total runtime: %2.2f sec" % (end - start))\n'
-            fn_section = fn_section + '        f.write("' + '\\' + 'n' + '\\' + 'n")\n\n'
+            stats_dict = {"log_dir": os.path.join(self.output_directory, "wdl-stats.log"),
+                          "job_name": job[3],
+                            }
+            stats_template = (
+                '    end = time.time()\n'
+                '    with open("{log_dir}", "a+") as f:\n'
+                '        f.write(str("{job_name}") + " now being run.")\n'
+                '        f.write("' + '\\' + 'n' + '\\' + 'n' + '")\n'
+                '        f.write("Outputs:' + '\\' + 'n' + '")\n'
+                '        for rv in rvDict:\n'
+                '            f.write(str(rv) + ": " + str(rvDict[rv]))\n'
+                '            f.write("' + '\\' + 'n' + '")\n'
+                '        f.write("Total runtime: %2.2f sec" % (end - start))\n'
+                '        f.write("' + '\\' + 'n' + '\\' + 'n")\n\n'
+                )
+            fn_section = fn_section + stats_template.format(**stats_dict)
 
             if files_to_return:
                 fn_section = fn_section + '    return rvDict\n\n'
