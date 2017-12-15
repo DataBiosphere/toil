@@ -53,21 +53,15 @@ logger = logging.getLogger(__name__)
 #   - TODO: do gs by default
 #   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
-# 1. config: clustername, keyname, zone, ...
-#    - on VM / github
-#    - check that values are being retrieved
-#    - change ssh key transfer to a list? (or is copying .ssh enough)
+
 # 2. copy credentials and test autoscaling
 # 3. gce jobstore
 # 4. commit
 # 5. spot instances
 
 # TODO
-# * config:
-#   - clustername
-#   - zone
 # * gce bug that doesn't allow multi nodes
-#   - just copy function for now
+#   - submit issue
 # * revisit ssh keys
 #   - cloud config?
 #   - This error: Failed Units: 1 coreos-metadata-sshkeys@core.service
@@ -235,22 +229,20 @@ class GCEProvisioner(AbstractProvisioner):
             self.clusterName = requests.get(metadata_server + 'name', headers = metadata_flavor).text
             self.zone = requests.get(metadata_server + 'zone', headers = metadata_flavor).text
 
-            # we need any valid key for checking docker/appliance status
-            keyListStr = requests.get(metadata_server + 'attributes/ssh-keys', headers = metadata_flavor).text
-            self.keyName = keyListStr.split('\n')[0]
+            project_metadata_server = "http://metadata/computeMetadata/v1/project/"
+            self.projectId = requests.get(project_metadata_server + 'project-id', headers = metadata_flavor).text
+
+            leader = self._getLeader(self.clusterName)
+            self.tags = leader.extra['description']
+            tags = json.loads(self.tags)
+            self.keyName = tags['Owner']
 
             print "GOT================================"
             print "clusterName=", self.clusterName
             print "zone=", self.zone
             print "keyName=", self.keyName
+            print "projectId", self.projectId
 
-            #TODO: get this info from the leader (current instance)
-            #self.clusterName = 'gce-test'
-            #self.projectId = 'toil-dev'
-
-
-            leader = self._getLeader(self.clusterName)
-            self.tags = leader.extra['description']
             self.leaderIP = leader.private_ips  # this is PRIVATE IP
             self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
@@ -338,7 +330,7 @@ class GCEProvisioner(AbstractProvisioner):
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
 
         driver = self._getDriver()
-        if True:
+        if False:
             leader = self._getLeader(clusterName, zone=zone)
         elif not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
@@ -572,13 +564,18 @@ class GCEProvisioner(AbstractProvisioner):
         #        wait_instances_running(self.ctx.ec2, instancesLaunched)
 
 
+        botoDir = "/root/.boto"
+        botoExists = os.path.exists(botoDir)
         for instance in instancesLaunched:
             self._copySshKeys(instance.public_ips[0], self.keyName)
-            if self.config and self.config.sseKey:
+            if self.config and self.config.sseKey or botoExists:
                 self._waitForNode(instance.public_ips[0], self.keyName, role='toil_worker')
-                self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey],
-                                applianceName='toil_worker')
-
+                if self.config and self.config.sseKey:
+                    self._rsyncNode(ipAddress, [botoDir, ':' + self.config.sseKey],
+                                    applianceName='toil_worker')
+                if botoExists:
+                    self._rsyncNode(ipAddress, [self.config.sseKey, ':/root'],
+                                    applianceName='toil_worker')
                 # TODO: check if this is necessary - shouldn't be
                 # copy google application credentials to leader so that it can access the Google jobStore
                 #self._rsyncNode(instance.public_ips[0], [self.googleJson, ':/root/' + self.googleCredentialsFile],
