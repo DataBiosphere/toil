@@ -69,13 +69,13 @@ class Cluster(object):
         self.provisionerType = provisioner
         if provisioner == 'aws':
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-            self.provisioner = AWSProvisioner
+            self.provisioner = AWSProvisioner()
         elif provisioner == 'libcloud':
             from toil.provisioners.aws.libCloudProvisioner import LibCloudProvisioner
-            self.provisioner = LibCloudProvisioner
+            self.provisioner = LibCloudProvisioner()
         elif provisioner == 'gce':
-            from toil.provisioners.aws.gceProvisioner import GCEProvisioner
-            self.provisioner = GCEProvisioner
+            from toil.provisioners.gceProvisioner import GCEProvisioner
+            self.provisioner = GCEProvisioner()
         else:
             assert False, "Invalid provisioner '%s'" % provisioner
 
@@ -85,28 +85,25 @@ class Cluster(object):
     def rsyncCluster(self, args, **kwargs):
         self.provisioner.rsyncLeader(self.clusterName, args, self.zone, **kwargs)
 
+        workersToo = kwargs.pop('workersToo', False)
+        if not workersToo:
+            return
+
         if self.provisionerType == 'gce':
             leader = self.provisioner._getLeader(self.clusterName)
-
             instances = self.provisioner._getNodesInCluster(self.clusterName, both=True)
             for instance in instances:
                 if instance.public_ips[0] != leader.public_ips[0]:
                     kwargs["applianceName"] = 'toil_worker'
                     self.provisioner._rsyncNode(instance.public_ips[0], args, **kwargs)
-            return
-
-        #TODO: Jesse added this code to rysnc to the workers, too
-        #  Is it needed? It is not documented.
-        #  If so, redo it so it is not AWS specific. Document it, too.
-        #  Probably keep the functionality, but add a switch to turn it off.
-
-        ctx = self.provisioner._buildContext(self.clusterName, zone=self.zone)
-        instances = self.provisioner._getNodesInCluster(ctx, self.clusterName, both=True)
-        leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
-        workers = [i for i in instances if i.public_dns_name != leader.public_dns_name]
-        for instance in workers:
-            self.provisioner._waitForNode(instance, 'toil_worker')
-            self.provisioner._coreRsync(instance.public_dns_name, args, applianceName='toil_worker', **kwargs)
+        else: # assume AWS
+            ctx = self.provisioner._buildContext(self.clusterName, zone=self.zone)
+            instances = self.provisioner._getNodesInCluster(ctx, self.clusterName, both=True)
+            leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
+            workers = [i for i in instances if i.public_dns_name != leader.public_dns_name]
+            for instance in workers:
+                self.provisioner._waitForNode(instance, 'toil_worker')
+                self.provisioner._coreRsync(instance.public_dns_name, args, applianceName='toil_worker', **kwargs)
 
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)

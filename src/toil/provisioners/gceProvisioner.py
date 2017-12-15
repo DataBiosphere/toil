@@ -20,6 +20,7 @@ import pipes
 import subprocess
 import time
 import threading
+import json
 
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
@@ -28,8 +29,59 @@ from toil import applianceSelf
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 
+## SECURITY
+# 1. Google Service Account (json file)
+#   - Gives access to the driver.
+#   - Location read from GOOGLE_APPLICATION_CREDENTIALS
+#   - Not necessary from a Google instance (TODO: CHECK THIS)
+#       - Just needed for Toil cluster commands.
+# 2. ssh key
+#   - Add keys to the service account on the Google console
+#   - Automatically inserted into the instance (root).
+#   - the keyName input parameter indicates which key this is
+#   - It is not copied to the core user in the appliance (TODO: Why not)
+#       - copy expressly in _copySshKeys()
+#   - Used in waitForNode (ssh commands), ssh and rysnc
+#   - TODO: can I change this to ssh with the SA account?
+# 3. Jobstore access
+#   - other credentials might be necessary to access jobStore
+#   - TODO: do gs by default
+#   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
+# 1. config: clustername, keyname, zone, ...
+# 2. copy credentials and test autoscaling
+# 3. gce jobstore
+# 4. commit
+# 5. spot instances
+
+# TODO
+# * config:
+#   - clustername
+#   - zone
+# * What can I do with ex_set_common_instance_metadata in libcloud? Set metadata
+# * where to store specs?: image and disk image type
+# * tags: clusterName?, owner
+# * AWS credentials
+#   - can I assume only gs access from Google?
+#   - is there a way to create a credentials folder?
+# - preemptable
+# - security (sse) keys
+#   - test encryption
+#   - keyName is needed to copy ssh key
+# - ex_create_multiple_nodes bug
+# - check changes outside of this class (e.g. rsync call)
+#       git diff master
+# - test vpc-subnet
+# - other functions: remainingBillingInterval, terminate nodes, getProvisionedWokers
+# - advanced
+#   - other disks
+#   - RAID
 logger = logging.getLogger(__name__)
+
+# TODO: Where should this go?
+logDir = '--log_dir=/var/lib/mesos'
+leaderArgs = logDir + ' --registry=in_memory --cluster={name}'
+workerArgs = '{keyPath} --work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} ' + logDir
 
 gceUserData = """#cloud-config
 
@@ -150,19 +202,34 @@ coreos:
 
 class GCEProvisioner(AbstractProvisioner):
 
+    googleCredentialsFile = 'googleApplicationCredentials.json'
+
     def __init__(self, config=None):
         """
         :param config: Optional config object from common.py
         :param batchSystem:
         """
         super(GCEProvisioner, self).__init__(config)
-        if config:
-            self.clusterName = 'gce-test'
-            leader = self._getLeader(self.clusterName) #TODO: is zone needed?
 
-            self.leaderIP = leader.private_ips  # this is PRIVATE IP
+        # TODO: zone should be set in the constructor, not in the various calls
+
+        # From a GCE instance, these values can be blank. Only the projectId is needed
+        self.googleJson = ''
+        self.clientEmail = ''
+
+        if config:
+            #TODO: get this info from the leader (current instance)
+            self.clusterName = 'gce-test'
+            self.projectId = 'toil-dev'
+            # TODO: How to I the zone from the current instance?
+            self.zone = 'us-west1-a'
             self.keyName = 'ejacox'
+            # The tags are needed to set worker tags.
             #self.tags = self._getLeader(self.clusterName).tags
+
+
+            leader = self._getLeader(self.clusterName)
+            self.leaderIP = leader.private_ips  # this is PRIVATE IP
             self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
             spotBids = []
@@ -191,6 +258,22 @@ class GCEProvisioner(AbstractProvisioner):
             self.tags = None
             self.masterPublicKey = None
             self.nodeStorage = None
+
+
+            # TODO: This is not necessary for ssh and rsync. Remove?
+            if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
+                self.googleJson = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            else:
+                raise RuntimeError('GOOGLE_APPLICATION_CREDENTIALS not set.')
+            try:
+                with open(self.googleJson) as jsonFile:
+                    self.googleConnectionParams = json.loads(jsonFile.read())
+            except:
+                 raise RuntimeError('GCEProvisioner: Could not parse the Google service account json file %s' % self.googleJson)
+
+            self.projectId = self.googleConnectionParams['project_id']
+            self.clientEmail = self.googleConnectionParams['client_email']
+
         self.subnetID = None
 
 
@@ -202,13 +285,10 @@ class GCEProvisioner(AbstractProvisioner):
         if userTags is None:
             userTags = {}
 
-        driver = self._getDriver()
-
         # TODO
         # - profileARN: what is this for? access policies?
         # - security group: just for a cluster identifier?
         # - bdm (just for RAID?)
-        # - make imsage type, size and zone user variables
         # - what if cluster already exists? Is this checked in ARN or security group creation?
         #       - test this with AWS
         #profileARN = self._getProfileARN(ctx)
@@ -222,16 +302,14 @@ class GCEProvisioner(AbstractProvisioner):
         userData = gceUserData.format(**leaderData)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
 
-        #size = 'n1-standard-1'
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
-        zone = 'us-west1-a'
 
         # TODO: add leader tags (is this for identification and billing?)
         defaultTags = {'Name': clusterName, 'Owner': keyName}
         defaultTags.update(userTags)
 
-
+        self.zone = zone
         driver = self._getDriver()
         if False:
             leader = self._getLeader(clusterName, zone=zone)
@@ -275,7 +353,15 @@ class GCEProvisioner(AbstractProvisioner):
 
         logger.info('... toil_leader is running')
 
-        self._waitForNode(leader.public_ips[0], keyName, role='toil_leader')
+        # TODO: why is keyname necessary? AWS works with core?
+        self._copySshKeys(leader.public_ips[0], keyName)
+        self._waitForNode(leader.public_ips[0], role='toil_leader')
+
+
+        # NOT NECESSARY? http://libcloud.readthedocs.io/en/latest/compute/drivers/gce.html
+        # copy google application credentials to leader so that it can create instances and access
+        # the Google jobStore
+        #self._rsyncNode(leader.public_ips[0], [self.googleJson, ':/root/' + self.googleCredentialsFile])
 
 
         # TODO: get tags
@@ -302,7 +388,8 @@ class GCEProvisioner(AbstractProvisioner):
         return leader
 
     def getNodeShape(self, nodeType, preemptable=False):
-        instanceType = ec2_instance_types[nodeType]
+        #driver = self._getDriver()
+        #driver.list_sizes
 
         disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
@@ -324,15 +411,17 @@ class GCEProvisioner(AbstractProvisioner):
     def retryPredicate(e):
         return GCEProvisioner._throttlePredicate(e)
 
-    @classmethod
-    def destroyCluster(cls, clusterName, zone=None):
+    def destroyCluster(self, clusterName, zone=None):
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
-        instances = cls._getNodesInCluster(clusterName, nodeType=None, both=True)
+        if zone is not None:
+            self.zone = zone
+
+        instances = self._getNodesInCluster(clusterName, nodeType=None, both=True)
 
         #TODO: anything for this
-        #spotIDs = cls._getSpotRequestIDs(ctx, clusterName)
+        #spotIDs = self._getSpotRequestIDs(ctx, clusterName)
         #if spotIDs:
         #    ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
 
@@ -342,8 +431,8 @@ class GCEProvisioner(AbstractProvisioner):
         vpcId = None
         if instancesToTerminate:
             #vpcId = instancesToTerminate[0].vpc_id
-           # cls._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
-            cls._terminateInstances(instances=instancesToTerminate)
+           # self._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
+            self._terminateInstances(instances=instancesToTerminate)
         return
         # TODO: any cleanup
         if len(instances) == len(instancesToTerminate):
@@ -370,18 +459,16 @@ class GCEProvisioner(AbstractProvisioner):
                            'have failed health checks. As a result, the security group & IAM '
                            'roles will not be deleted.')
 
-    @classmethod
-    def sshLeader(cls, clusterName, args=None, zone=None, **kwargs):
-        leader = cls._getLeader(clusterName, zone=zone)
+    def sshLeader(self, clusterName, args=None, zone=None, **kwargs):
+        leader = self._getLeader(clusterName, zone=zone)
         logger.info('SSH ready')
         kwargs['tty'] = sys.stdin.isatty()
         command = args if args else ['bash']
-        cls._sshAppliance(leader.public_ips[0], *command, **kwargs)
+        self._sshAppliance(leader.public_ips[0], *command, **kwargs)
 
-    @classmethod
-    def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
-        leader = cls._getLeader(clusterName, zone=zone)
-        cls._rsyncNode(leader.public_ips[0], args, **kwargs)
+    def rsyncLeader(self, clusterName, args, zone=None, **kwargs):
+        leader = self._getLeader(clusterName, zone=zone)
+        self._rsyncNode(leader.public_ips[0], args, **kwargs)
 
     def remainingBillingInterval(self, node):
         #TODO - does this exist in GCE?
@@ -389,7 +476,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     def terminateNodes(self, nodes):
         #TODO This takes a set of node ids as input, which might not be compatible with _terminateNodes
-        self._terminateNodes(nodes, self.ctx)
+        self._terminateNodes(nodes)
 
     def addNodes(self, nodeType, numNodes, preemptable):
         #instanceType = ec2_instance_types[nodeType]
@@ -418,7 +505,6 @@ class GCEProvisioner(AbstractProvisioner):
 
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
-        zone = 'us-west1-a'
 
         # TODO:
         #    - node/volume naming: clusterName-???, How to increment across restarts?
@@ -438,7 +524,7 @@ class GCEProvisioner(AbstractProvisioner):
             #     'deviceName': clusterName,
                  'autoDelete': True })
             instancesLaunched = driver.ex_create_multiple_nodes(self.clusterName, nodeType, imageType, numNodes,
-                                    location=zone,
+                                    location=self.zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
                                     ex_disks_gce_struct = [disk]
@@ -463,12 +549,23 @@ class GCEProvisioner(AbstractProvisioner):
         #    with attempt:
         #        wait_instances_running(self.ctx.ec2, instancesLaunched)
 
-        for instance in instancesLaunched:
-            self._waitForNode(instance.public_ips[0], self.keyName, role='toil_worker')
 
-        # request throttling retry happens internally to these two methods to insure proper granularity
+        for instance in instancesLaunched:
+            self._copySshKeys(instance.public_ips[0], self.keyName)
+            if self.config and self.config.sseKey:
+                self._waitForNode(instance.public_ips[0], self.keyName, role='toil_worker')
+                self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey],
+                                applianceName='toil_worker')
+
+                # TODO: check if this is necessary - shouldn't be
+                # copy google application credentials to leader so that it can access the Google jobStore
+                #self._rsyncNode(instance.public_ips[0], [self.googleJson, ':/root/' + self.googleCredentialsFile],
+                #            applianceName='toil_worker')
+
+
+
+        # request throttling retry happens internally to this method to insure proper granularity
         #LibCloudProvisioner._addTags(instancesLaunched, self.tags)
-        self._propagateKey(instancesLaunched)
 
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
@@ -486,10 +583,10 @@ class GCEProvisioner(AbstractProvisioner):
                      preemptable=preemptable)
                 for i in workerInstances]
 
-
-    @classmethod
-    def _getLeader(cls, clusterName, zone=None):
-        instances = cls._getNodesInCluster(clusterName, nodeType=None, both=True)
+    def _getLeader(self, clusterName, zone=None):
+        if zone is not None:
+            self.zone = zone
+        instances = self._getNodesInCluster(clusterName, nodeType=None, both=True)
         #for x in instances:
             #print x
             #dir(x)
@@ -503,10 +600,9 @@ class GCEProvisioner(AbstractProvisioner):
             raise NoSuchClusterException(clusterName)
         return leader
 
-    @classmethod
-    def _getNodesInCluster(cls, clusterName, nodeType=None, preemptable=False, both=False):
+    def _getNodesInCluster(self, clusterName, nodeType=None, preemptable=False, both=False):
 
-        driver = cls._getDriver()
+        driver = self._getDriver()
 
         #TODO:
         # - filter by clusterName
@@ -528,29 +624,35 @@ class GCEProvisioner(AbstractProvisioner):
         elif both:
             return [x for x in instances.union(set(runningInstances))]
 
-    @classmethod
-    def _getDriver(cls):
-        # TODO: how should these be set? Environment variables?
-        GCE_JSON = "/Users/ejacox/toil-dev-41fd0135b44d.json"
-        GCE_CLIENT_EMAIL = "100104111990-compute@developer.gserviceaccount.com"
+    def _getDriver(self):
+        #GCE_JSON = "/Users/ejacox/toil-dev-41fd0135b44d.json"
+        #GCE_CLIENT_EMAIL = "100104111990-compute@developer.gserviceaccount.com"
         driverCls = get_driver(Provider.GCE)
-        return driverCls(GCE_CLIENT_EMAIL, GCE_JSON, project='toil-dev', datacenter='us-west1-a')
+        #return driverCls(GCE_CLIENT_EMAIL, GCE_JSON, project='toil-dev', datacenter=self.zone)
+        return driverCls(self.clientEmail,
+                         self.googleJson,
+                         project=self.projectId,
+                         datacenter=self.zone)
 
     @classmethod
-    def _waitForNode(cls, instanceIP, keyName, role):
+    def _copySshKeys(cls, instanceIP, keyName):
+        """ Copies ssh keys to the core users so that ssh and rsync will work."""
         # returns the node's IP
         #cls._waitForSSHPort(instanceIP)
 
         cls._waitForSSHKeys(instanceIP, keyName=keyName)
 
-        # TODO: this should be in a separate function (_waitForNode() is just for waiting)
-        # copy keys to core user
+        # TODO: test if this is necessary - yes
+        # TODO: Check if there is another way to ssh to a GCE instance with Google credentials
+        # copy keys to core user so that the ssh calls will work
         # - normal mechanism failed unless public key was in the google-ssh format
         # - even so, the key wasn't copied correctly to the core account
         keyFile = '/home/%s/.ssh/authorized_keys' % keyName
         cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/cp', keyFile, '/home/core/.ssh', user=keyName)
         cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/chown', 'core', '/home/core/.ssh/authorized_keys', user=keyName)
 
+    @classmethod
+    def _waitForNode(cls, instanceIP, role):
         # wait here so docker commands can be used reliably afterwards
         cls._waitForDockerDaemon(instanceIP)
         cls._waitForAppliance(instanceIP, role=role)
@@ -578,7 +680,7 @@ class GCEProvisioner(AbstractProvisioner):
             assert isinstance(sshOptions, list)
             commandTokens.extend(sshOptions)
         # specify host
-        user = kwargs.pop('user', 'core')   # TODO: Is this needed?
+        user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
         commandTokens.append('%s@%s' % (user,str(nodeIP)))
         appliance = kwargs.pop('appliance', None)
         if appliance:
@@ -607,13 +709,12 @@ class GCEProvisioner(AbstractProvisioner):
         return stdout
 
 
-    @classmethod
-    def _terminateInstances(cls, instances):
+    def _terminateInstances(self, instances):
         def worker(driver, instance):
             logger.info('Terminating instance: %s', instance.name)
             driver.destroy_node(instance)
 
-        driver = cls._getDriver()
+        driver = self._getDriver()
         threads = []
         for instance in instances:
             t = threading.Thread(target=worker, args=(driver,instance))
@@ -626,58 +727,7 @@ class GCEProvisioner(AbstractProvisioner):
 
 
 
-    def _propagateKey(self, instances):
-        if not self.config or not self.config.sseKey:
-            return
-        for node in instances:
-            # since we're going to be rsyncing into the appliance we need the appliance to be running first
-            ipAddress = self._waitForNode(node, 'toil_worker')
-            self._rsyncNode(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
-
-
-
 ## UNCHANGED CLASSES
-
-    @classmethod
-    def _sshAppliance(cls, leaderIP, *args, **kwargs):
-        """
-        :param str leaderIP: IP of the master
-        :param args: arguments to execute in the appliance
-        :param kwargs: tty=bool tells docker whether or not to create a TTY shell for
-            interactive SSHing. The default value is False. Input=string is passed as
-            input to the Popen call.
-        """
-        kwargs['appliance'] = True
-        return cls._coreSSH(leaderIP, *args, **kwargs)
-
-    @classmethod
-    def _sshInstance(cls, nodeIP, *args, **kwargs):
-        # returns the output from the command
-        kwargs['collectStdout'] = True
-        return cls._coreSSH(nodeIP, *args, **kwargs)
-
-    @classmethod
-    def _waitForSSHPort(cls, ip_address):
-        """
-        Wait until the instance represented by this box is accessible via SSH.
-
-        :return: the number of unsuccessful attempts to connect to the port before a the first
-        success
-        """
-        logger.info('Waiting for ssh port to open...')
-        i=0
-        while True:
-            i += 1
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.settimeout(a_short_time)
-                s.connect((ip_address, 22))
-                logger.info('...ssh port open')
-                return i
-            except socket.error:
-                pass
-            finally:
-                s.close()
 
     @classmethod
     def _waitForSSHKeys(cls, instanceIP, keyName='core'):
@@ -696,10 +746,10 @@ class GCEProvisioner(AbstractProvisioner):
                 return
 
     @classmethod
-    def _waitForDockerDaemon(cls, ip_address):
+    def _waitForDockerDaemon(cls, ip_address, keyName='core'):
         logger.info('Waiting for docker on %s to start...', ip_address)
         while True:
-            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux')
+            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
             time.sleep(5)
             if 'dockerd' in output:
                 # docker daemon has started
@@ -709,10 +759,10 @@ class GCEProvisioner(AbstractProvisioner):
         logger.info('Docker daemon running')
 
     @classmethod
-    def _waitForAppliance(cls, ip_address, role):
+    def _waitForAppliance(cls, ip_address, role, keyName='core'):
         logger.info('Waiting for %s Toil appliance to start...', role)
         while True:
-            output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps')
+            output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps', sshOptions=['-oBatchMode=yes'], user=keyName)
             if role in output:
                 logger.info('...Toil appliance started')
                 break
