@@ -25,6 +25,7 @@ import os
 import collections
 import subprocess
 import logging
+import textwrap
 
 import toil.wdl.wdl_parser as wdl_parser
 
@@ -811,23 +812,27 @@ class ToilWDL:
 
     def write_modules(self):
         # string used to write imports to the file
-        module_string = 'from toil.job import Job\n' + \
-                        'from toil.common import Toil\n' + \
-                        'from toil.lib.docker import apiDockerCall\n' + \
-                        'from toil.wdl.toilwdl import generate_docker_bashscript_file\n' + \
-                        'from toil.wdl.toilwdl import recursive_glob\n' + \
-                        'import fnmatch\n' + \
-                        'import subprocess\n' + \
-                        'import os\n' + \
-                        'import errno\n' + \
-                        'import glob\n' + \
-                        'import time\n' + \
-                        'import shutil\n' + \
-                        'import shlex\n' + \
-                        'import uuid\n' + \
-                        'import logging\n' + \
-                        '\n' + \
-                        'logger = logging.getLogger(__name__)\n\n\n'
+        module_string = heredoc_wdl('''
+                    from toil.job import Job
+                    from toil.common import Toil
+                    from toil.lib.docker import apiDockerCall
+                    from toil.wdl.toilwdl import generate_docker_bashscript_file
+                    from toil.wdl.toilwdl import recursive_glob
+                    import fnmatch
+                    import subprocess
+                    import os
+                    import errno
+                    import glob
+                    import time
+                    import shutil
+                    import shlex
+                    import uuid
+                    import logging
+                    
+                    logger = logging.getLogger(__name__)
+                        
+                        
+                        ''')
         return module_string
 
     def write_main(self):
@@ -887,19 +892,18 @@ class ToilWDL:
         return main_section
 
     def write_main_header(self):
-
-        main_header = \
-            '\n\n' + \
-            'if __name__=="__main__":\n' + \
-            '    ' + \
-            'options = Job.Runner.getDefaultOptions("./toilWorkflowRun")\n' + \
-            '    ' + \
-            'with Toil(options) as toil:\n' + \
-            '        ' + 'start = time.time()\n' + \
-            '        ' + 'with open("' + os.path.join(self.output_directory, "wdl-stats.log") + '", "a+") as f:\n' + \
-            '            ' + \
-            'f.write("Starting WDL Job @ " + str(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) + "' + \
-            '\\' + 'n' + '\\' + 'n' + '")\n'
+        log_dir = os.path.join(self.output_directory, "wdl-stats.log")
+        main_header_dict = {"log_dir": log_dir}
+        main_header = heredoc_wdl('''
+        
+            if __name__=="__main__":
+                options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+                with Toil(options) as toil:
+                    start = time.time()
+                    with open("{log_dir}", "a+") as f:
+                        f.write("Starting WDL Job @ " + str(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) + "\\n\\n")
+                        
+            ''', main_header_dict)
         return main_header
 
     def write_main_arrayarrayfile(self, aaf_dict):
@@ -913,18 +917,24 @@ class ToilWDL:
         for aaf in aaf_dict:
             if aaf in self.workflows_dictionary['scatter_calls']:
                 iterator = self.workflows_dictionary['scatter_calls'][aaf]
-                main_section = main_section + '        ' + aaf + ' = []\n'
-                main_section = main_section + '        ' + aaf + '0 = ' + str(self.tsv_dict[aaf]) + '\n'
-                main_section = main_section + '        for ' + iterator + '0 in ' + aaf + '0:\n'
-                main_section = main_section + '            ' + iterator + ' = []\n'
-                main_section = main_section + '            for i in ' + iterator + '0:\n'
-                main_section = main_section + '                if os.path.isfile(str(i)):\n'
-                main_section = main_section + '                    ' + iterator + '0 = toil.importFile("file://" + os.path.abspath(i))\n'
-                main_section = main_section + '                    ' + iterator + '0_preserveThisFilename = os.path.basename(i)\n'
-                main_section = main_section + '                    ' + iterator + '.append((' + iterator + '0, ' + iterator + '0_preserveThisFilename))\n'
-                main_section = main_section + '                else:\n'
-                main_section = main_section + '                    ' + iterator + '.append(i)\n'
-                main_section = main_section + '            ' + aaf + '.append(' + iterator + ')\n'
+
+                arrayarray_dict = {"aaf": aaf,
+                                   "iterator": iterator,
+                                   "aaf_value": str(self.tsv_dict[aaf])}
+                arrayarray_loop = heredoc_wdl('''
+                        {aaf} = []
+                        {aaf}0 = {aaf_value}
+                        for {iterator}0 in {aaf}0:
+                            {iterator} = []
+                            for i in {iterator}0:
+                                if os.path.isfile(str(i)):
+                                    {iterator}0 = toil.importFile("file://" + os.path.abspath(i))
+                                    {iterator}0_preserveThisFilename = os.path.basename(i)
+                                    {iterator}.append(({iterator}0, {iterator}0_preserveThisFilename))
+                                else:
+                                    {iterator}.append(i)
+                            {aaf}.append({iterator})''', arrayarray_dict, indent='        ')
+                main_section = main_section + arrayarray_loop
         # write for docker as well
         return main_section
 
@@ -1057,14 +1067,16 @@ class ToilWDL:
 
         :return: A string containing this.
         '''
-        main_section = ''
-        main_section = main_section + '        end = time.time()\n'
-        main_section = main_section + '        with open("' + os.path.join(self.output_directory, "wdl-stats.log") + '", "a+") as f:\n'
-        main_section = main_section + '            f.write("Ending WDL Job @ " + str(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())))\n'
-        main_section = main_section + '            f.write("' + '\\' + 'n' + '")\n'
-        main_section = main_section + '            f.write("Total runtime: %2.2f sec" % (end - start))\n'
-        main_section = main_section + '            f.write("' + '\\' + 'n' + '\\' + 'n")\n'
-        main_section = main_section + '            f.write("' + '\\' + 'n' + '-'*80 + '\\' + 'n' + '")\n'
+        log_dir = os.path.join(self.output_directory, "wdl-stats.log")
+        main_section_dict = {"log_dir": log_dir}
+        main_section = heredoc_wdl('''
+                end = time.time()
+                with open("{log_dir}", "a+") as f:
+                    f.write("Ending WDL Job @ " + str(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())))
+                    f.write("\\n")
+                    f.write("Total runtime: %2.2f sec" % (end - start))
+                    f.write("\\n\\n")
+                    f.write("\\n" + "-"*80 + "\\n")''', main_section_dict, indent='        ')
         return main_section
 
 
@@ -1129,13 +1141,15 @@ class ToilWDL:
         fn_section = fn_section + function_header
 
         # log to toil which job is being run when this function is called
-        fn_section = fn_section + \
-                     "    job.fileStore.logToMaster('''" + job_alias + "''')\n" + \
-                     "    start = time.time()\n\n"
-
-        # create a new folder to work in only for this job
-        fn_section = fn_section + \
-                     "    tempDir = job.fileStore.getLocalTempDir()\n"
+        fn_start_dict = {"job_alias": job_alias}
+        fn_start = heredoc_wdl('''
+                                 job.fileStore.logToMaster("{job_alias}")
+                                 start = time.time()
+                             
+                                 tempDir = job.fileStore.getLocalTempDir()
+                             
+                                 ''', fn_start_dict, indent='    ')
+        fn_section = fn_section + fn_start
 
         # import files into the job store using readGlobalFile()
         readglobalfiles_declarations = self.write_function_readglobalfiles(job, job_declaration_array)
@@ -1196,20 +1210,19 @@ class ToilWDL:
         fn_section = fn_section + function_header
 
         # log to toil which job is being run when this function is called
-        fn_section = fn_section + \
-                     "    job.fileStore.logToMaster('''" + job_alias + "''')\n" + \
-                     "    start = time.time()\n\n"
-
-        # create a new folder to work in only for this job
-        fn_section = fn_section + \
-                     "    tempDir = job.fileStore.getLocalTempDir()\n"
-
-        fn_section = fn_section + \
-                     "    try:\n" + \
-                     "        os.makedirs(tempDir + '/execution')\n" + \
-                     "    except OSError as e:\n" + \
-                     "        if e.errno != errno.EEXIST:\n" + \
-                     "            raise\n\n"
+        fn_start_dict = {"job_alias": job_alias}
+        fn_start = heredoc_wdl('''
+                                 job.fileStore.logToMaster("{job_alias}")
+                                 start = time.time()
+                             
+                                 tempDir = job.fileStore.getLocalTempDir()
+                             
+                                 try:
+                                     os.makedirs(tempDir + '/execution')
+                                 except OSError as e:
+                                     if e.errno != errno.EEXIST:
+                                         raise''', fn_start_dict, indent='    ')
+        fn_section = fn_section + fn_start
 
         # import files into the job store using readGlobalFile()
         readglobalfiles_declarations = self.write_function_readglobalfiles(job, job_declaration_array)
@@ -1279,17 +1292,25 @@ class ToilWDL:
             job_declaration_key = None
             if job_declaration_type == 'File':
                 job_declaration_key, parent_job = self.if_output_mk_a_key(job, job_declaration_name)
+                jobdecl_dict = {"job_declaration_name": job_declaration_name,
+                                "job_declaration_key": job_declaration_key}
                 if job_declaration_key:
-                    fn_section = fn_section + '    try:\n'
-                    fn_section = fn_section + '        ' + job_declaration_name + '_fs = job.fileStore.readGlobalFile(' + job_declaration_name + '["' + job_declaration_key + '"][0], userPath=os.path.join(tempDir, ' + job_declaration_name + '["' + job_declaration_key + '"][1]))\n'
-                    fn_section = fn_section + '    except:\n'
-                    fn_section = fn_section + '        ' + job_declaration_name + '_fs = os.path.join(tempDir, ' + job_declaration_name + '["' + job_declaration_key + '"][1])\n'
+                    jobdecl = heredoc_wdl('''
+                        try:
+                            {job_declaration_name}_fs = job.fileStore.readGlobalFile({job_declaration_name}["{job_declaration_key}"][0], userPath=os.path.join(tempDir, {job_declaration_name}["{job_declaration_key}"][1]))
+                        except:
+                            {job_declaration_name}_fs = os.path.join(tempDir, {job_declaration_name}["{job_declaration_key}"][1])
+                            
+                    ''', jobdecl_dict, indent='    ')
                 else:
-                    fn_section = fn_section + '    try:\n'
-                    fn_section = fn_section + '        ' + job_declaration_name + '_fs = job.fileStore.readGlobalFile(' + job_declaration_name + '[0], userPath=os.path.join(tempDir, ' + job_declaration_name + '[1]))\n'
-                    fn_section = fn_section + '    except:\n'
-                    fn_section = fn_section + '        ' + job_declaration_name + '_fs = os.path.join(tempDir, ' + job_declaration_name + '[1])\n\n'
-                job_declaration_key = None
+                    jobdecl = heredoc_wdl('''
+                        try:
+                            {job_declaration_name}_fs = job.fileStore.readGlobalFile({job_declaration_name}[0], userPath=os.path.join(tempDir, {job_declaration_name}[1]))
+                        except:
+                            {job_declaration_name}_fs = os.path.join(tempDir, {job_declaration_name}[1])
+                            
+                    ''', jobdecl_dict, indent='    ')
+                fn_section = fn_section + jobdecl
             if job_declaration_type == 'ArrayFile':
                 # these are handled in write_function_cmdvarprep()
                 pass
@@ -1305,8 +1326,7 @@ class ToilWDL:
         :param job_alias: The actual job name to be written.
         :return: A string writing all of this.
         '''
-        fn_section = ''
-        fn_section = fn_section + "    generate_docker_bashscript_file(temp_dir=tempDir, docker_dir='/data', globs=["
+        fn_section = "    generate_docker_bashscript_file(temp_dir=tempDir, docker_dir='/data', globs=["
         if self.tasks_dictionary[job_task_reference]['outputs']:
             for output in self.tasks_dictionary[job_task_reference]['outputs']:
                 if output[1] == 'ArrayFile' or 'File':
@@ -1330,14 +1350,20 @@ class ToilWDL:
                                                             e.g. "ubuntu:latest"
         :return: A string containing the apiDockerCall() that will run the job.
         '''
-        fn_section = ''
-        fn_section = fn_section + '    apiDockerCall(job, image="'
-        fn_section = fn_section + docker_image
-        fn_section = fn_section + '", working_dir=tempDir, parameters=["/data/' + job_task_reference + '_script.sh"]'
-        fn_section = fn_section + ", entrypoint='/bin/bash', volumes={tempDir: {'bind': '/data'}})"
-        fn_section = fn_section + '\n\n'
+        docker_dict ={"docker_image": docker_image,
+                      "job_task_reference": job_task_reference
+                      }
+        docker_template = heredoc_wdl('''
+        apiDockerCall(job, 
+                      image="{docker_image}", 
+                      working_dir=tempDir, 
+                      parameters=["/data/{job_task_reference}_script.sh"], 
+                      entrypoint="/bin/bash", 
+                      volumes={{tempDir: {{"bind": "/data"}}}})
+        
+            ''', docker_dict, indent='    ')
 
-        return fn_section
+        return docker_template
 
     def write_function_cmdvarprep(self, job, docker=False):
         '''
@@ -1500,9 +1526,10 @@ class ToilWDL:
                         (job priority #, job ID #, Job Skeleton Name, Job Alias)
         :return: A string representing this.
         '''
-        fn_section = ''
-        fn_section = fn_section + '    this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)\n'
-        fn_section = fn_section + '    this_process.communicate()\n\n'
+        fn_section = heredoc_wdl('''
+                this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
+                this_process.communicate()
+            ''', indent='    ')
 
         return fn_section
 
@@ -1539,46 +1566,44 @@ class ToilWDL:
                             "output_name": output_name,
                             "suffix": suffix,
                             "out_value": output_value[0],
-                            "out_dir": self.output_directory
-                            }
-                        glob_template = (
-                            '    {output_name}{suffix} = []\n'
-                            '    for x in recursive_glob(job, directoryname=tempDir, glob_pattern="{out_value}"):\n'
-                            '        output_file = job.fileStore.writeGlobalFile(x)\n'
-                            '        output_filename = os.path.basename(x)\n'
-                            '        job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)\n'
-                            '        {output_name}{suffix}.append((output_file, output_filename))\n'
-                            )
-                        fn_section = fn_section + glob_template.format(**glob_dict)
+                            "out_dir": self.output_directory}
+                        glob_template = heredoc_wdl('''
+                            {output_name}{suffix} = []
+                            for x in recursive_glob(job, directoryname=tempDir, glob_pattern="{out_value}"):
+                                output_file = job.fileStore.writeGlobalFile(x)
+                                output_filename = os.path.basename(x)
+                                job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)
+                                {output_name}{suffix}.append((output_file, output_filename))
+                            
+                            ''', glob_dict, indent='    ')
+                        fn_section = fn_section + glob_template
 
                         if 'index_lookup' in output_action_dict:
                             index_dict = {
                                 "output_name": output_name,
                                 "suffix": suffix,
-                                "index_num": str(output_action_dict['index_lookup'])
-                                }
-                            index_template = (
-                                '    {output_name} = {output_name}{suffix}[{index_num}]\n\n'
-                                )
+                                "index_num": str(output_action_dict['index_lookup'])}
+                            index_template = heredoc_wdl('''
+                                {output_name} = {output_name}{suffix}[{index_num}]
+                                ''', index_dict, indent='    ')
                             fn_section = fn_section + index_template.format(**index_dict)
 
                         else:
-                            fn_section = fn_section + '\n'''
+                            fn_section = fn_section + '\n'
                         files_to_return.append(output_name)
                     else:
                         nonglob_dict = {
                             "formatted_output_filename": self.translate_wdl_string_to_python_string(job, output_value),
                             "output_name": output_name,
-                            "out_dir": self.output_directory
-                            }
-
-                        nonglob_template = (
-                        '    output_filename = {formatted_output_filename}\n'
-                        '    output_file = job.fileStore.writeGlobalFile(output_filename)\n'
-                        '    job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)\n'
-                        '    {output_name} = (output_file, output_filename)\n\n'
-                        )
-                        fn_section = fn_section + nonglob_template.format(**nonglob_dict)
+                            "out_dir": self.output_directory}
+                        nonglob_template = heredoc_wdl('''
+                            output_filename = {formatted_output_filename}
+                            output_file = job.fileStore.writeGlobalFile(output_filename)
+                            job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)
+                            {output_name} = (output_file, output_filename)
+                        
+                        ''', nonglob_dict, indent='    ')
+                        fn_section = fn_section + nonglob_template
                         files_to_return.append(output_name)
 
             if files_to_return:
@@ -1591,22 +1616,22 @@ class ToilWDL:
                 fn_section = fn_section + '}\n\n'
 
             # only for logging stats
-            stats_dict = {"log_dir": os.path.join(self.output_directory, "wdl-stats.log"),
-                          "job_name": job[3],
-                            }
-            stats_template = (
-                '    end = time.time()\n'
-                '    with open("{log_dir}", "a+") as f:\n'
-                '        f.write(str("{job_name}") + " now being run.")\n'
-                '        f.write("' + '\\' + 'n' + '\\' + 'n' + '")\n'
-                '        f.write("Outputs:' + '\\' + 'n' + '")\n'
-                '        for rv in rvDict:\n'
-                '            f.write(str(rv) + ": " + str(rvDict[rv]))\n'
-                '            f.write("' + '\\' + 'n' + '")\n'
-                '        f.write("Total runtime: %2.2f sec" % (end - start))\n'
-                '        f.write("' + '\\' + 'n' + '\\' + 'n")\n\n'
-                )
-            fn_section = fn_section + stats_template.format(**stats_dict)
+            log_dir = os.path.join(self.output_directory, "wdl-stats.log")
+            stats_dict = {"log_dir": log_dir,
+                          "job_name": job[3]}
+            stats_template = heredoc_wdl('''
+                    end = time.time()
+                    with open("{log_dir}", "a+") as f:
+                        f.write(str("{job_name}") + " now being run.")
+                        f.write("\\n\\n")
+                        f.write("Outputs:\\n")
+                        for rv in rvDict:
+                            f.write(str(rv) + ": " + str(rvDict[rv]))
+                            f.write("\\n")
+                        f.write("Total runtime: %2.2f sec" % (end - start))
+                        f.write("\\n\\n")
+                ''', stats_dict, indent='    ')
+            fn_section = fn_section + stats_template
 
             if files_to_return:
                 fn_section = fn_section + '    return rvDict\n\n'
@@ -2034,75 +2059,90 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
     :return: Nothing, but it writes and deposits a bash script in temp_dir
              intended to be run inside of a docker container for this job.
     '''
-    bashfile_prefix = \
-        '#!/bin/bash\n\n' + \
-        "# Borrowed/rewritten from the Broad's Cromwell implementation.  As" + \
-        "# that's under a BSD-ish license, I include here the license off " + \
-        "# of their GitHub repo.  Thank you Broadies!" + '\n\n' + \
-        '# Copyright (c) 2015, Broad Institute, Inc.' + '\n' + \
-        '# All rights reserved.' + '\n\n' + \
-        '# Redistribution and use in source and binary forms, with or without' + '\n' + \
-        '# modification, are permitted provided that the following conditions are met:' + '\n\n' + \
-        '# * Redistributions of source code must retain the above copyright notice, this' + '\n' + \
-        '#   list of conditions and the following disclaimer.' + '\n\n' + \
-        '# * Redistributions in binary form must reproduce the above copyright notice,' + '\n' + \
-        '#   this list of conditions and the following disclaimer in the documentation' + '\n' + \
-        '#   and/or other materials provided with the distribution.' + '\n\n' + \
-        '# * Neither the name Broad Institute, Inc. nor the names of its' + '\n' + \
-        '#   contributors may be used to endorse or promote products derived from' + '\n' + \
-        '#   this software without specific prior written permission.' + '\n\n' + \
-        '# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"' + '\n' + \
-        '# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE' + '\n' + \
-        '# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE' + '\n' + \
-        '# DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE' + '\n' + \
-        '# FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL' + '\n' + \
-        '# DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR' + '\n' + \
-        '# SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER' + '\n' + \
-        '# CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,' + '\n' + \
-        '# OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE' + '\n' + \
-        '# OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE' + '\n\n' + \
-        '# make a temp directory w/identifier' + '\n' + \
-        'set -beEu -o pipefail' + '\n' + \
-        'tmpDir=$(mktemp -d /' + docker_dir + '/execution/tmp.XXXXXX)' + \
-        '\n' + \
-        'chmod 777 $tmpDir' + '\n' + \
-        '# set destination for java to deposit all of its files' + '\n' + \
-        'export _JAVA_OPTIONS=-Djava.io.tmpdir=$tmpDir' + '\n' + \
-        'export TMPDIR=$tmpDir' + '\n\n' + \
-        '(' + '\n' + \
-        'cd /' + docker_dir + '/execution' + '\n' + \
-        cmd + '\n' + \
-        ')' + '\n\n' + \
-        '# gather the input command return code' + '\n' + \
-        'echo $? > "$tmpDir/rc.tmp"' + '\n\n'
-
-    bashfile_string = bashfile_prefix
-
-    begin_globbing_string = \
-        '(' + '\n' + \
-        'cd $tmpDir' + '\n' + \
-        'mkdir "$tmpDir/globs"' + '\n'
-
-    bashfile_string = bashfile_string + begin_globbing_string
+    bashfile_dict = {"docker_dir": docker_dir,
+                     "cmd": cmd
+                    }
+    bashfile_string = heredoc_wdl('''
+    #!/bin/bash
+    
+    # Borrowed/rewritten from the Broads Cromwell implementation.  As
+    # thats under a BSD-ish license, I include here the license off
+    # of their GitHub repo.  Thank you Broadies!
+    
+    # Copyright (c) 2015, Broad Institute, Inc.
+    # All rights reserved.
+    
+    # Redistribution and use in source and binary forms, with or without
+    # modification, are permitted provided that the following conditions are met:
+    
+    # * Redistributions of source code must retain the above copyright notice, this
+    #   list of conditions and the following disclaimer.
+    
+    # * Redistributions in binary form must reproduce the above copyright notice,
+    #   this list of conditions and the following disclaimer in the documentation
+    #   and/or other materials provided with the distribution.
+    
+    # * Neither the name Broad Institute, Inc. nor the names of its
+    #   contributors may be used to endorse or promote products derived from
+    #   this software without specific prior written permission.
+    
+    # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+    # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+    # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    # DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+    # FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+    # DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+    # SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+    # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+    # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+    # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+    
+    # make a temp directory w/identifier
+    set -beEu -o pipefail
+    tmpDir=$(mktemp -d /{docker_dir}/execution/tmp.XXXXXX)
+    chmod 777 $tmpDir
+    # set destination for java to deposit all of its files
+    export _JAVA_OPTIONS=-Djava.io.tmpdir=$tmpDir
+    export TMPDIR=$tmpDir
+    
+    (
+    cd /{docker_dir}/execution
+    {cmd}
+    )
+    
+    # gather the input command return code
+    echo $? > "$tmpDir/rc.tmp"
+    
+    (
+    cd $tmpDir
+    mkdir "$tmpDir/globs"
+    ''', bashfile_dict)
 
     for glob_input in globs:
-        add_this_glob = \
-            '( ln -L ' + glob_input + \
-            ' "$tmpDir/globs" 2> /dev/null ) || ( ln ' + glob_input + \
-            ' "$tmpDir/globs" )' + '\n'
+        glob_input_dict = {"glob_input": glob_input}
+        add_this_glob = heredoc_wdl('''
+            ( ln -L {glob_input} "$tmpDir/globs" 2> /dev/null ) || ( ln {glob_input} "$tmpDir/globs" )
+            ''', glob_input_dict)
         bashfile_string = bashfile_string + add_this_glob
 
-    bashfile_suffix = \
-        ')' + '\n\n' + \
-        '# flush RAM to disk' + '\n' + \
-        'sync' + '\n\n' + \
-        'mv "$tmpDir/rc.tmp" "$tmpDir/rc"'
+    bashfile_suffix = heredoc_wdl(
+        ''')
+        
+        # flush RAM to disk
+        sync
+        
+        mv "$tmpDir/rc.tmp" "$tmpDir/rc"
+        ''')
 
     bashfile_string = bashfile_string + bashfile_suffix
 
     with open(os.path.join(temp_dir, job_name + '_script.sh'), 'w') as bashfile:
         bashfile.write(bashfile_string)
     bashfile.close()
+
+def heredoc_wdl(template, dictionary={}, indent=''):
+    template = textwrap.dedent(template).format(**dictionary)
+    return template.replace('\n','\n' + indent) + '\n'
 
 def main():
     parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
