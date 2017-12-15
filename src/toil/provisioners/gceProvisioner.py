@@ -15,19 +15,24 @@ from builtins import str
 from builtins import map
 from builtins import range
 
+import os
 import sys
 import pipes
 import subprocess
 import time
 import threading
 import json
+import requests
 
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
 
 from toil import applianceSelf
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.aws import *
+from toil.provisioners import (NoSuchClusterException)
+
+import logging
+logger = logging.getLogger(__name__)
 
 ## SECURITY
 # 1. Google Service Account (json file)
@@ -49,6 +54,9 @@ from toil.provisioners.aws import *
 #   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
 # 1. config: clustername, keyname, zone, ...
+#    - on VM / github
+#    - check that values are being retrieved
+#    - change ssh key transfer to a list? (or is copying .ssh enough)
 # 2. copy credentials and test autoscaling
 # 3. gce jobstore
 # 4. commit
@@ -58,9 +66,12 @@ from toil.provisioners.aws import *
 # * config:
 #   - clustername
 #   - zone
-# * What can I do with ex_set_common_instance_metadata in libcloud? Set metadata
-# * where to store specs?: image and disk image type
-# * tags: clusterName?, owner
+# * gce bug that doesn't allow multi nodes
+#   - just copy function for now
+# * revisit ssh keys
+#   - cloud config?
+#   - This error: Failed Units: 1 coreos-metadata-sshkeys@core.service
+#   - try passing keyName to coreSSH instead; then no need to copy authorized keys
 # * AWS credentials
 #   - can I assume only gs access from Google?
 #   - is there a way to create a credentials folder?
@@ -218,17 +229,28 @@ class GCEProvisioner(AbstractProvisioner):
         self.clientEmail = ''
 
         if config:
+            # https://cloud.google.com/compute/docs/storing-retrieving-metadata
+            metadata_server = "http://metadata/computeMetadata/v1/instance/"
+            metadata_flavor = {'Metadata-Flavor' : 'Google'}
+            self.clusterName = requests.get(metadata_server + 'name', headers = metadata_flavor).text
+            self.zone = requests.get(metadata_server + 'zone', headers = metadata_flavor).text
+
+            # we need any valid key for checking docker/appliance status
+            keyListStr = requests.get(metadata_server + 'attributes/ssh-keys', headers = metadata_flavor).text
+            self.keyName = keyListStr.split('\n')[0]
+
+            print "GOT================================"
+            print "clusterName=", self.clusterName
+            print "zone=", self.zone
+            print "keyName=", self.keyName
+
             #TODO: get this info from the leader (current instance)
-            self.clusterName = 'gce-test'
-            self.projectId = 'toil-dev'
-            # TODO: How to I the zone from the current instance?
-            self.zone = 'us-west1-a'
-            self.keyName = 'ejacox'
-            # The tags are needed to set worker tags.
-            #self.tags = self._getLeader(self.clusterName).tags
+            #self.clusterName = 'gce-test'
+            #self.projectId = 'toil-dev'
 
 
             leader = self._getLeader(self.clusterName)
+            self.tags = leader.extra['description']
             self.leaderIP = leader.private_ips  # this is PRIVATE IP
             self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
@@ -284,6 +306,16 @@ class GCEProvisioner(AbstractProvisioner):
             self.nodeStorage = nodeStorage
         if userTags is None:
             userTags = {}
+        self.zone = zone
+        self.clusterName = clusterName
+
+        self.keyName = keyName
+
+        # GCE doesn't have a dictionary tags field. The tags field is just a string list.
+        # Dumping tags into the description.
+        tags = {'Owner': keyName}
+        tags.update(userTags)
+        self.tags = json.dumps(tags)
 
         # TODO
         # - profileARN: what is this for? access policies?
@@ -305,22 +337,11 @@ class GCEProvisioner(AbstractProvisioner):
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
 
-        # TODO: add leader tags (is this for identification and billing?)
-        defaultTags = {'Name': clusterName, 'Owner': keyName}
-        defaultTags.update(userTags)
-
-        self.zone = zone
         driver = self._getDriver()
-        if False:
+        if True:
             leader = self._getLeader(clusterName, zone=zone)
         elif not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
-            # TODO:
-            # - ex_keyname=keyName (what for?)
-            # - tags? - Are they labels in gce?
-            #       - clusterName tag is used to get clusterName from within instance
-            # -  TEST vpcSubnet
-
 
             disk = {}
             disk['initializeParams'] = {
@@ -333,14 +354,13 @@ class GCEProvisioner(AbstractProvisioner):
             #     'mode': 'READ_WRITE',
             #     'deviceName': clusterName,
                  'autoDelete': True })
-            print "params", disk
             leader = driver.create_node(clusterName, leaderNodeType, imageType,
                                     location=zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
                                     ex_subnetwork=vpcSubnet,
                                     ex_disks_gce_struct = [disk],
-                                    ex_tags=defaultTags)
+                                    description=self.tags)
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
@@ -353,7 +373,15 @@ class GCEProvisioner(AbstractProvisioner):
 
         logger.info('... toil_leader is running')
 
-        # TODO: why is keyname necessary? AWS works with core?
+        # if we running launch cluster we need to save this data as it won't be generated
+        # from the metadata. This data is needed to launch worker nodes.
+        self.leaderIP = leader.private_ips[0]
+        if spotBids:
+            self.spotBids = dict(zip(preemptableNodeTypes, spotBids))
+
+        #TODO: get subnetID - what is this used for?
+        #self.subnetID = leader.subnet_id
+
         self._copySshKeys(leader.public_ips[0], keyName)
         self._waitForNode(leader.public_ips[0], role='toil_leader')
 
@@ -364,18 +392,6 @@ class GCEProvisioner(AbstractProvisioner):
         #self._rsyncNode(leader.public_ips[0], [self.googleJson, ':/root/' + self.googleCredentialsFile])
 
 
-        # TODO: get tags
-        #self.tags = leader.tags
-
-        # if we running launch cluster we need to save this data as it won't be generated
-        # from the metadata. This data is needed to launch worker nodes.
-        self.leaderIP = leader.private_ips[0]
-        if spotBids:
-            self.spotBids = dict(zip(preemptableNodeTypes, spotBids))
-        self.clusterName = clusterName
-        self.keyName = keyName
-        #TODO: get subnetID - what is this used for?
-        #self.subnetID = leader.subnet_id
         # assuming that if the leader was launched without a spotbid then all workers
         # will be non-preemptable
         workersCreated = 0
@@ -388,22 +404,26 @@ class GCEProvisioner(AbstractProvisioner):
         return leader
 
     def getNodeShape(self, nodeType, preemptable=False):
-        #driver = self._getDriver()
-        #driver.list_sizes
+        sizes = self._getDriver().list_sizes(location=self.zone)
+        sizes = [x for x in sizes if x.name == nodeType]
+        assert len(sizes) == 1
+        instanceType = sizes[0]
 
-        disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
+        # TODO: When is self.nodeStorage ever not used?
+        disk = 0 #instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
             # volume, so add the amount of EBS storage requested for
             # the root volume
             disk = self.nodeStorage * 2 ** 30
 
+        # TODO: check ram units - google returns M. Is G expected here?
         #Underestimate memory by 100M to prevent autoscaler from disagreeing with
         #mesos about whether a job can run on a particular node type
-        memory = (instanceType.memory - 0.1) * 2** 30
+        memory = (instanceType.ram/1000 - 0.1) * 2** 30
         return Shape(wallTime=60 * 60,
                      memory=memory,
-                     cores=instanceType.cores,
+                     cores=instanceType.extra['guestCpus'],
                      disk=disk,
                      preemptable=preemptable)
 
@@ -434,7 +454,7 @@ class GCEProvisioner(AbstractProvisioner):
            # self._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
             self._terminateInstances(instances=instancesToTerminate)
         return
-        # TODO: any cleanup
+        # TODO: any cleanup?
         if len(instances) == len(instancesToTerminate):
             logger.info('Deleting security group...')
             removed = False
@@ -489,7 +509,7 @@ class GCEProvisioner(AbstractProvisioner):
                           entrypoint=entryPoint,
                           sshKey=self.masterPublicKey,
                           args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable, keyPath=keyPath))
-        userData = awsUserData.format(**workerData)
+        userData = gceUserData.format(**workerData)
         #sgs = [sg for sg in self.ctx.ec2.get_all_security_groups() if sg.name == self.clusterName]
         #kwargs = {'key_name': self.keyName,
         #          'security_group_ids': [sg.id for sg in sgs],
@@ -523,12 +543,14 @@ class GCEProvisioner(AbstractProvisioner):
             #     'mode': 'READ_WRITE',
             #     'deviceName': clusterName,
                  'autoDelete': True })
-            instancesLaunched = driver.ex_create_multiple_nodes(self.clusterName, nodeType, imageType, numNodes,
+            #instancesLaunched = driver.ex_create_multiple_nodes(
+            instancesLaunched = self.ex_create_multiple_nodes(
+                                    self.clusterName, nodeType, imageType, numNodes,
                                     location=self.zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
-                                    ex_disks_gce_struct = [disk]
-                                    #ex_tags=defaultTags
+                                    ex_disks_gce_struct = [disk],
+                                    description=self.tags
                                     )
         else:
             logger.info('Launching %s preemptable nodes', numNodes)
@@ -562,10 +584,6 @@ class GCEProvisioner(AbstractProvisioner):
                 #self._rsyncNode(instance.public_ips[0], [self.googleJson, ':/root/' + self.googleCredentialsFile],
                 #            applianceName='toil_worker')
 
-
-
-        # request throttling retry happens internally to this method to insure proper granularity
-        #LibCloudProvisioner._addTags(instancesLaunched, self.tags)
 
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
@@ -651,11 +669,11 @@ class GCEProvisioner(AbstractProvisioner):
         cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/cp', keyFile, '/home/core/.ssh', user=keyName)
         cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/chown', 'core', '/home/core/.ssh/authorized_keys', user=keyName)
 
-    @classmethod
-    def _waitForNode(cls, instanceIP, role):
+    def _waitForNode(self, instanceIP, role):
         # wait here so docker commands can be used reliably afterwards
-        cls._waitForDockerDaemon(instanceIP)
-        cls._waitForAppliance(instanceIP, role=role)
+        self._waitForSSHKeys(instanceIP, keyName=self.keyName)
+        self._waitForDockerDaemon(instanceIP, keyName=self.keyName)
+        self._waitForAppliance(instanceIP, role=role, keyName=self.keyName)
 
     @classmethod
     def _coreSSH(cls, nodeIP, *args, **kwargs):
@@ -725,6 +743,103 @@ class GCEProvisioner(AbstractProvisioner):
         for t in threads:
             t.join()
 
+
+    DEFAULT_TASK_COMPLETION_TIMEOUT = 180
+    def ex_create_multiple_nodes(
+            self, base_name, size, image, number, location=None,
+            ex_network='default', ex_subnetwork=None, ex_tags=None,
+            ex_metadata=None, ignore_errors=True, use_existing_disk=True,
+            poll_interval=2, external_ip='ephemeral',
+            ex_disk_type='pd-standard', ex_disk_auto_delete=True,
+            ex_service_accounts=None, timeout=DEFAULT_TASK_COMPLETION_TIMEOUT,
+            description=None, ex_can_ip_forward=None, ex_disks_gce_struct=None,
+            ex_nic_gce_struct=None, ex_on_host_maintenance=None,
+            ex_automatic_restart=None, ex_image_family=None,
+            ex_preemptible=None):
+        """
+         Monkey patch to gce.py in libcloud to allow disk and images to be specified.
+        """
+        # if image and ex_disks_gce_struct:
+        #    raise ValueError("Cannot specify both 'image' and "
+        #                     "'ex_disks_gce_struct'.")
+
+        driver = self._getDriver()
+        if image and ex_image_family:
+            raise ValueError("Cannot specify both 'image' and "
+                             "'ex_image_family'")
+
+        location = location or driver.zone
+        if not hasattr(location, 'name'):
+            location = driver.ex_get_zone(location)
+        if not hasattr(size, 'name'):
+            size = driver.ex_get_size(size, location)
+        if not hasattr(ex_network, 'name'):
+            ex_network = driver.ex_get_network(ex_network)
+        if ex_subnetwork and not hasattr(ex_subnetwork, 'name'):
+            ex_subnetwork = \
+                driver.ex_get_subnetwork(ex_subnetwork,
+                                       region=driver._get_region_from_zone(
+                                           location))
+        if ex_image_family:
+            image = driver.ex_get_image_from_family(ex_image_family)
+        if image and not hasattr(image, 'name'):
+            image = driver.ex_get_image(image)
+        if not hasattr(ex_disk_type, 'name'):
+            ex_disk_type = driver.ex_get_disktype(ex_disk_type, zone=location)
+
+        node_attrs = {'size': size,
+                      'image': image,
+                      'location': location,
+                      'network': ex_network,
+                      'subnetwork': ex_subnetwork,
+                      'tags': ex_tags,
+                      'metadata': ex_metadata,
+                      'ignore_errors': ignore_errors,
+                      'use_existing_disk': use_existing_disk,
+                      'external_ip': external_ip,
+                      'ex_disk_type': ex_disk_type,
+                      'ex_disk_auto_delete': ex_disk_auto_delete,
+                      'ex_service_accounts': ex_service_accounts,
+                      'description': description,
+                      'ex_can_ip_forward': ex_can_ip_forward,
+                      'ex_disks_gce_struct': ex_disks_gce_struct,
+                      'ex_nic_gce_struct': ex_nic_gce_struct,
+                      'ex_on_host_maintenance': ex_on_host_maintenance,
+                      'ex_automatic_restart': ex_automatic_restart,
+                      'ex_preemptible': ex_preemptible}
+        # List for holding the status information for disk/node creation.
+        status_list = []
+
+        for i in range(number):
+            name = '%s-%03d' % (base_name, i)
+            status = {'name': name, 'node_response': None, 'node': None}
+            status_list.append(status)
+
+        start_time = time.time()
+        complete = False
+        while not complete:
+            if (time.time() - start_time >= timeout):
+                raise Exception("Timeout (%s sec) while waiting for multiple "
+                                "instances")
+            complete = True
+            time.sleep(poll_interval)
+            for status in status_list:
+                # Create the node or check status if already in progress.
+                if not status['node']:
+                    if not status['node_response']:
+                        driver._multi_create_node(status, node_attrs)
+                    else:
+                        driver._multi_check_node(status, node_attrs)
+                # If any of the nodes have not been created (or failed) we are
+                # not done yet.
+                if not status['node']:
+                    complete = False
+
+        # Return list of nodes
+        node_list = []
+        for status in status_list:
+            node_list.append(status['node'])
+        return node_list
 
 
 ## UNCHANGED CLASSES
