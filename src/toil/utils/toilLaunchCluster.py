@@ -93,7 +93,7 @@ def main():
     elif config.provisioner == 'gce':
         logger.info('Using a gce provisioner.')
         try:
-            from toil.provisioners.aws.gceProvisioner import GCEProvisioner
+            from toil.provisioners.gceProvisioner import GCEProvisioner
         except ImportError:
             raise RuntimeError('The libCloud extra must be installed to use this provisioner')
         provisioner = GCEProvisioner()

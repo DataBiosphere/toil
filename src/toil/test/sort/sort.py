@@ -55,7 +55,7 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
     """
     # Read the file
     inputFile = job.fileStore.readGlobalFile(inputFileStoreID, cache=False)
-    length = os.path.getsize(inputFile)jjj
+    length = os.path.getsize(inputFile)
     if length > N:
         # We will subdivide the file
         job.log("Splitting file: %s of size: %s"

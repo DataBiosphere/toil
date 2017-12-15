@@ -30,6 +30,8 @@ def main():
     parser = addBasicProvisionerOptions(parser)
     parser.add_argument("--insecure", dest='insecure', action='store_true', required=False,
                         help="Temporarily disable strict host key checking.")
+    parser.add_argument("--workersToo", dest='workersToo', action='store_true', required=False,
+                        help="Rsync to the workers, too, not just the leader.")
     parser.add_argument("args", nargs=argparse.REMAINDER, help="Arguments to pass to"
                         "`rsync`. Takes any arguments that rsync accepts. Specify the"
                         " remote with a colon. For example, to upload `example.py`,"
@@ -38,4 +40,4 @@ def main():
                         " -p aws test-cluster :example.py .`")
     config = parseBasicOptions(parser)
     cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName, zone=config.zone)
-    cluster.rsyncCluster(args=config.args, strict=not config.insecure)
+    cluster.rsyncCluster(args=config.args, strict=not config.insecure, workersToo=config.workersToo)
