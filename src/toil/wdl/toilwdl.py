@@ -1067,8 +1067,6 @@ class ToilWDL:
                 main_section = main_section + '        ' + input_var + ' = ' + item + '\n'
             else:
                 main_section = main_section + '        ' + input_var + str(list_iterator) + ' = ' + item + '\n'
-        with open('/home/lifeisaboutfishtacos/git/wdl/new/toil/src/toil/wdl/out.txt', 'w') as f:
-            f.write(main_section)
         return main_section
 
     def write_main_jobwrappers(self):
