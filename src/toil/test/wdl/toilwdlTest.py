@@ -2,7 +2,6 @@ from __future__ import absolute_import
 import unittest
 import os
 import subprocess
-from toil.test import slow
 from toil.wdl.toilwdl import ToilWDL
 from toil.test import ToilTest, slow
 import zipfile
@@ -62,7 +61,7 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testENCODE/output/")
 
         subprocess.check_call(
-            ['python', self.program, wdl, json, '-o', self.output_dir])
+            ['python', self.program, wdl, json, '--out_dir', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -77,7 +76,7 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testPipe/output/")
 
         subprocess.check_call(
-            ['python', self.program, wdl, json, '-o', self.output_dir])
+            ['python', self.program, wdl, json, '--out_dir', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -87,9 +86,9 @@ class ToilWdlIntegrationTest(ToilTest):
                               ['7', '8', '9']]
         t = ToilWDL(os.path.abspath(
             "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
-                    os.path.abspath(
-                        "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
-                    self.output_dir)
+            os.path.abspath(
+                "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
+            self.output_dir)
         csv_array = t.create_csv_array('src/toil/test/wdl/test.csv')
         assert csv_array == default_csv_output
 
@@ -99,9 +98,9 @@ class ToilWdlIntegrationTest(ToilTest):
                               ['7', '8', '9']]
         t = ToilWDL(os.path.abspath(
             "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
-                    os.path.abspath(
-                        "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
-                    self.output_dir)
+            os.path.abspath(
+                "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
+            self.output_dir)
         tsv_array = t.create_tsv_array('src/toil/test/wdl/test.tsv')
         assert tsv_array == default_tsv_output
 

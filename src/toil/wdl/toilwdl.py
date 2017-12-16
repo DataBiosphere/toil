@@ -31,6 +31,7 @@ import toil.wdl.wdl_parser as wdl_parser
 
 wdllogger = logging.getLogger(__name__)
 
+
 class ToilWDL:
     '''
     A program to run WDL input files using native Toil scripts.
@@ -71,7 +72,8 @@ class ToilWDL:
                 raise OSError(
                     'Could not create directory.  Insufficient permissions or disk space most likely.')
 
-        self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
+        self.output_file = os.path.join(self.output_directory,
+                                        'toilwdl_compiled.py')
 
         # only json is required; tsv/csv are optional
         self.json_dict = {}
@@ -134,7 +136,7 @@ class ToilWDL:
             data_file = csv.reader(f, delimiter="\t")
             for line in data_file:
                 tsv_array.append(line)
-        return(tsv_array)
+        return (tsv_array)
 
     def create_csv_array(self, csv_filepath):
         '''
@@ -156,7 +158,7 @@ class ToilWDL:
             data_file = csv.reader(f)
             for line in data_file:
                 csv_array.append(line)
-        return(csv_array)
+        return (csv_array)
 
     def dict_from_YML(self, YML_file):
         '''
@@ -217,27 +219,32 @@ class ToilWDL:
         # task declarations
         declaration_array = []
         for declaration_subAST in task.attr("declarations"):
-            var_name, var_type, var_value = self.parse_task_declaration(declaration_subAST)
+            var_name, var_type, var_value = self.parse_task_declaration(
+                declaration_subAST)
             var_truple = (var_name, var_type, var_value)
             declaration_array.append(var_truple)
-            self.tasks_dictionary.setdefault(task_name, {})['inputs'] = declaration_array
+            self.tasks_dictionary.setdefault(task_name, {})[
+                'inputs'] = declaration_array
 
         for section in task.attr("sections"):
 
             # task commandline entries section [command(s) to run]
             if section.name == "RawCommand":
                 command_array = self.parse_task_rawcommand(section)
-                self.tasks_dictionary.setdefault(task_name, {})['raw_commandline'] = command_array
+                self.tasks_dictionary.setdefault(task_name, {})[
+                    'raw_commandline'] = command_array
 
             # task runtime section (docker image; disk; CPU; RAM; etc.)
             if section.name == "Runtime":
                 runtime_array = self.parse_task_runtime(section)
-                self.tasks_dictionary.setdefault(task_name, {})['runtime'] = runtime_array
+                self.tasks_dictionary.setdefault(task_name, {})[
+                    'runtime'] = runtime_array
 
             # task output filenames section (expected return values/files)
             if section.name == "Outputs":
                 output_array = self.parse_task_outputs(section)
-                self.tasks_dictionary.setdefault(task_name, {})['outputs'] = output_array
+                self.tasks_dictionary.setdefault(task_name, {})[
+                    'outputs'] = output_array
 
     def parse_task_declaration(self, declaration_subAST):
         '''
@@ -266,7 +273,8 @@ class ToilWDL:
                 var_name = declaration_subAST.attr("name").source_string
             elif isinstance(declaration_subAST.attr("name"), wdl_parser.Ast):
                 raise NotImplementedError
-            elif isinstance(declaration_subAST.attr("name"), wdl_parser.AstList):
+            elif isinstance(declaration_subAST.attr("name"),
+                            wdl_parser.AstList):
                 raise NotImplementedError
 
         # variable type
@@ -280,27 +288,39 @@ class ToilWDL:
             elif isinstance(declaration_subAST.attr("type"), wdl_parser.Ast):
 
                 if declaration_subAST.attr("type").attr("name"):
-                    if isinstance(declaration_subAST.attr("type").attr("name"), wdl_parser.Terminal):
-                        var_type = declaration_subAST.attr("type").attr("name").source_string
-                    if isinstance(declaration_subAST.attr("type").attr("name"), wdl_parser.Ast):
+                    if isinstance(declaration_subAST.attr("type").attr("name"),
+                                  wdl_parser.Terminal):
+                        var_type = declaration_subAST.attr("type").attr(
+                            "name").source_string
+                    if isinstance(declaration_subAST.attr("type").attr("name"),
+                                  wdl_parser.Ast):
                         raise NotImplementedError
-                    if isinstance(declaration_subAST.attr("type").attr("name"), wdl_parser.AstList):
+                    if isinstance(declaration_subAST.attr("type").attr("name"),
+                                  wdl_parser.AstList):
                         raise NotImplementedError
 
                 # if the variable type goes deeper and is for instance: Array[Array[File]]
                 if declaration_subAST.attr("type").attr("subtype"):
-                    if isinstance(declaration_subAST.attr("type").attr("subtype"), wdl_parser.Terminal):
+                    if isinstance(
+                            declaration_subAST.attr("type").attr("subtype"),
+                            wdl_parser.Terminal):
                         raise NotImplementedError
-                    if isinstance(declaration_subAST.attr("type").attr("subtype"), wdl_parser.Ast):
+                    if isinstance(
+                            declaration_subAST.attr("type").attr("subtype"),
+                            wdl_parser.Ast):
                         raise NotImplementedError
-                    if isinstance(declaration_subAST.attr("type").attr("subtype"), wdl_parser.AstList):
-                        for subtype in declaration_subAST.attr("type").attr("subtype"):
+                    if isinstance(
+                            declaration_subAST.attr("type").attr("subtype"),
+                            wdl_parser.AstList):
+                        for subtype in declaration_subAST.attr("type").attr(
+                                "subtype"):
                             var_type = var_type + subtype.source_string
 
-            elif isinstance(declaration_subAST.attr("type"), wdl_parser.AstList):
+            elif isinstance(declaration_subAST.attr("type"),
+                            wdl_parser.AstList):
                 raise NotImplementedError
 
-        var_value = None # placeholder to be implemented potentially later
+        var_value = None  # placeholder to be implemented potentially later
 
         return var_name, var_type, var_value
 
@@ -344,32 +364,46 @@ class ToilWDL:
             # a variable like ${dinosaurDNA}
             if isinstance(code_snippet, wdl_parser.Ast):
 
-                if isinstance(code_snippet.attributes["expr"], wdl_parser.Terminal):
+                if isinstance(code_snippet.attributes["expr"],
+                              wdl_parser.Terminal):
                     command_var = code_snippet.attributes["expr"].source_string
                     command_type = 'variable'
                 if isinstance(code_snippet.attributes["expr"], wdl_parser.Ast):
 
                     if code_snippet.attributes["expr"].attributes['lhs']:
-                        if isinstance(code_snippet.attributes["expr"].attributes['lhs'], wdl_parser.Terminal):
-                            command_var = code_snippet.attributes["expr"].attributes['lhs'].source_string
+                        if isinstance(
+                                code_snippet.attributes["expr"].attributes[
+                                    'lhs'], wdl_parser.Terminal):
+                            command_var = \
+                            code_snippet.attributes["expr"].attributes[
+                                'lhs'].source_string
                             command_type = 'variable'
-                        if isinstance(code_snippet.attributes["expr"].attributes['lhs'], wdl_parser.Ast):
+                        if isinstance(
+                                code_snippet.attributes["expr"].attributes[
+                                    'lhs'], wdl_parser.Ast):
                             raise NotImplementedError
-                        if isinstance(code_snippet.attributes["expr"].attributes['lhs'], wdl_parser.Ast):
+                        if isinstance(
+                                code_snippet.attributes["expr"].attributes[
+                                    'lhs'], wdl_parser.Ast):
                             raise NotImplementedError
 
                     if code_snippet.attributes["expr"].attributes['rhs']:
                         raise NotImplementedError
 
-                if isinstance(code_snippet.attributes["expr"], wdl_parser.AstList):
+                if isinstance(code_snippet.attributes["expr"],
+                              wdl_parser.AstList):
                     raise NotImplementedError
 
                 # variables with context like ${sep=" -V " GVCFs}
                 if code_snippet.attributes['attributes']:
-                    for additional_conditions in code_snippet.attributes['attributes']:
-                        keyword_for_a_command = additional_conditions.attributes['key'].source_string
-                        some_value_used_by_the_keyword = additional_conditions.attributes['value'].source_string
-                        command_actions[keyword_for_a_command] = some_value_used_by_the_keyword
+                    for additional_conditions in code_snippet.attributes[
+                        'attributes']:
+                        keyword_for_a_command = \
+                        additional_conditions.attributes['key'].source_string
+                        some_value_used_by_the_keyword = \
+                        additional_conditions.attributes['value'].source_string
+                        command_actions[
+                            keyword_for_a_command] = some_value_used_by_the_keyword
 
             if isinstance(code_snippet, wdl_parser.AstList):
                 raise NotImplementedError
@@ -460,9 +494,11 @@ class ToilWDL:
 
                 var_name = self.parse_task_output_name(var_base_name)
                 var_type = self.parse_task_output_type(var_base_type)
-                var_value, var_actions = self.parse_task_output_value(var_base_value)
+                var_value, var_actions = self.parse_task_output_value(
+                    var_base_value)
 
-                output_array.append((var_name, var_type, var_value, var_actions))
+                output_array.append(
+                    (var_name, var_type, var_value, var_actions))
         return output_array
 
     def parse_task_output_name(self, base_name_AST):
@@ -508,10 +544,12 @@ class ToilWDL:
         if isinstance(base_type_AST, wdl_parser.Ast):
             # array_type: 'Array' '[' ($primitive_type | $object_type | $array_type) ']'
             # concatenate into type + subtype1 + subtype2 + ...
-            if isinstance(base_type_AST.attributes['name'], wdl_parser.Terminal):
+            if isinstance(base_type_AST.attributes['name'],
+                          wdl_parser.Terminal):
                 # Something like "Array" for Array[File] txtFiles = glob(*.txt)
                 var_type = base_type_AST.attributes['name'].source_string
-            if isinstance(base_type_AST.attributes['subtype'], wdl_parser.AstList):
+            if isinstance(base_type_AST.attributes['subtype'],
+                          wdl_parser.AstList):
                 for each_subtype in base_type_AST.attributes['subtype']:
                     # "File" for Array[File] txtFiles = glob(*.txt)
                     var_type = var_type + each_subtype.source_string
@@ -542,7 +580,7 @@ class ToilWDL:
         :return var_value, var_action: The variable's declared value and any
                                        special actions that need to be taken.
         '''
-        var_value = []
+
         var_action = {}
 
         # a primitive var_value like '7' (shown above)
@@ -554,18 +592,48 @@ class ToilWDL:
             orderedDictOfVars = base_value_AST.attributes
 
             if 'name' in orderedDictOfVars:
-                var_action = self.parse_task_output_value_name(orderedDictOfVars, var_action)
+                var_value_name = orderedDictOfVars['name']
+                if isinstance(var_value_name, wdl_parser.Terminal):
+                    var_action[var_value_name.source_string] = 'None'
 
             if 'params' in orderedDictOfVars:
-                var_value = self.parse_task_output_value_params(orderedDictOfVars, var_value)
+                var_value_params = orderedDictOfVars['params']
+                if isinstance(var_value_params, wdl_parser.AstList):
+                    var_value = []
+                    for param in var_value_params:
+                        if isinstance(param, wdl_parser.Terminal):
+                            var_value.append(param.source_string)
 
-            # mostly determines actions for specific outputs
+            # mostly determine actions for specific outputs
             if 'lhs' in orderedDictOfVars:
-                var_action, var_value = self.parse_task_output_value_lhs(base_value_AST, var_action, var_value)
+                var_value_lhs = base_value_AST.attributes['lhs']
+                if isinstance(var_value_lhs, wdl_parser.Ast):
+                    orderedDictOfVars = var_value_lhs.attributes
+                    if 'name' in orderedDictOfVars:
+                        var_value_name = orderedDictOfVars['name']
+                        if isinstance(var_value_name, wdl_parser.Terminal):
+                            var_action[var_value_name.source_string] = 'None'
+                    if 'params' in orderedDictOfVars:
+                        var_value_params = orderedDictOfVars['params']
+                        if isinstance(var_value_params, wdl_parser.Terminal):
+                            var_value = [var_value_params]
+                        if isinstance(var_value_params, wdl_parser.AstList):
+                            var_value = []
+                            for param in var_value_params:
+                                if isinstance(param, wdl_parser.Terminal):
+                                    var_value.append(param.source_string)
 
-            # not implemented at the moment
+            # this is not implemented at the moment, but later will be important
+            # for returning index values and should be incorporated below for
+            # 'ArrayOrMapLookup' and such-like.
             if 'rhs' in orderedDictOfVars:
-                self.parse_task_output_value_rhs(orderedDictOfVars)
+                var_value_rhs = orderedDictOfVars['rhs']
+                if isinstance(var_value_rhs, wdl_parser.Terminal):
+                    raise NotImplementedError
+                if isinstance(var_value_rhs, wdl_parser.Ast):
+                    raise NotImplementedError
+                if isinstance(var_value_rhs, wdl_parser.AstList):
+                    raise NotImplementedError
 
             if base_value_AST.name == 'ArrayOrMapLookup':
                 try:
@@ -578,51 +646,6 @@ class ToilWDL:
             var_value = ''
 
         return var_value, var_action
-
-    def parse_task_output_value_name(self, orderedDictOfVars, var_action):
-        var_value_name = orderedDictOfVars['name']
-        if isinstance(var_value_name, wdl_parser.Terminal):
-            var_action[var_value_name.source_string] = 'None'
-        return var_action
-
-    def parse_task_output_value_params(self, orderedDictOfVars, var_value):
-        var_value_params = orderedDictOfVars['params']
-        if isinstance(var_value_params, wdl_parser.AstList):
-            var_value = []
-            for param in var_value_params:
-                if isinstance(param, wdl_parser.Terminal):
-                    var_value.append(param.source_string)
-        return var_value
-
-    def parse_task_output_value_lhs(self, base_value_AST, var_action, var_value):
-        var_value_lhs = base_value_AST.attributes['lhs']
-        if isinstance(var_value_lhs, wdl_parser.Ast):
-            orderedDictOfVars = var_value_lhs.attributes
-            if 'name' in orderedDictOfVars:
-                var_value_name = orderedDictOfVars['name']
-                if isinstance(var_value_name, wdl_parser.Terminal):
-                    var_action[var_value_name.source_string] = 'None'
-            if 'params' in orderedDictOfVars:
-                var_value_params = orderedDictOfVars['params']
-                if isinstance(var_value_params, wdl_parser.Terminal):
-                    var_value = [var_value_params]
-                if isinstance(var_value_params, wdl_parser.AstList):
-                    var_value = []
-                    for param in var_value_params:
-                        if isinstance(param, wdl_parser.Terminal):
-                            var_value.append(param.source_string)
-        return var_action, var_value
-
-    def parse_task_output_value_rhs(self, orderedDictOfVars):
-        """Stub to be implemented."""
-        # var_value_rhs = orderedDictOfVars['rhs']
-        # if isinstance(var_value_rhs, wdl_parser.Terminal):
-        #     raise NotImplementedError
-        # if isinstance(var_value_rhs, wdl_parser.Ast):
-        #     raise NotImplementedError
-        # if isinstance(var_value_rhs, wdl_parser.AstList):
-        #     raise NotImplementedError
-        return
 
     def create_workflows_dict(self, ast):
         '''
@@ -661,7 +684,8 @@ class ToilWDL:
             if section.name == "Declaration":
                 var_name, var_map = self.parse_workflow_declaration(section)
                 wf_declared_dict[var_name] = var_map
-            self.workflows_dictionary.setdefault(workflow_name, {})['wf_declarations'] = wf_declared_dict
+            self.workflows_dictionary.setdefault(workflow_name, {})[
+                'wf_declarations'] = wf_declared_dict
 
             if section.name == "Scatter":
                 self.parse_workflow_scatter(section, workflow_name)
@@ -676,8 +700,11 @@ class ToilWDL:
                 else:
                     task_alias = task_being_called
                 job = self.parse_workflow_call(section)
-                self.workflows_dictionary.setdefault((self.task_priority, self.task_number, task_being_called, task_alias), {})['job_declarations'] = job
-
+                self.workflows_dictionary.setdefault((self.task_priority,
+                                                      self.task_number,
+                                                      task_being_called,
+                                                      task_alias), {})[
+                    'job_declarations'] = job
 
     def parse_workflow_declaration(self, wf_declaration_subAST):
         '''
@@ -699,7 +726,8 @@ class ToilWDL:
         if isinstance(wf_declaration_subAST.attr("type"), wdl_parser.Terminal):
             var_type = wf_declaration_subAST.attr("type").source_string
         elif isinstance(wf_declaration_subAST.attr("type"), wdl_parser.Ast):
-            var_type = wf_declaration_subAST.attr("type").attributes["name"].source_string
+            var_type = wf_declaration_subAST.attr("type").attributes[
+                "name"].source_string
         elif isinstance(wf_declaration_subAST.attr("type"), wdl_parser.AstList):
             raise NotImplementedError
         var_name = wf_declaration_subAST.attr("name").source_string
@@ -707,11 +735,14 @@ class ToilWDL:
         # only read_tsv currently supported
         tsv_array = []
         if wf_declaration_subAST.attr("expression"):
-            wdl_function_called = wf_declaration_subAST.attr("expression").attributes['name'].source_string
+            wdl_function_called = \
+            wf_declaration_subAST.attr("expression").attributes[
+                'name'].source_string
             if wdl_function_called == 'read_tsv':
                 # get all params for 'read_tsv'
                 # expecting one file name pointing to a path in the JSON/YML secondary file
-                for j in wf_declaration_subAST.attr("expression").attributes['params']:
+                for j in wf_declaration_subAST.attr("expression").attributes[
+                    'params']:
                     filename = j.source_string
                     tsv_filepath = self.json_dict[filename]
                     tsv_array = self.create_tsv_array(tsv_filepath)
@@ -724,7 +755,8 @@ class ToilWDL:
         elif var_type == 'Array':
             pass
         else:
-            raise RuntimeError('Variable in workflow declarations not found in secondary file.')
+            raise RuntimeError(
+                'Variable in workflow declarations not found in secondary file.')
 
         if tsv:
             var_map['type'] = var_type
@@ -742,16 +774,23 @@ class ToilWDL:
         # name of collection to iterate over
         scatter_collection = section.attributes['collection'].source_string
 
-        self.workflows_dictionary.setdefault('scatter_calls', {})[scatter_collection] = scatter_counter
+        self.workflows_dictionary.setdefault('scatter_calls', {})[
+            scatter_collection] = scatter_counter
 
-        if scatter_collection in self.workflows_dictionary[workflow_name]['wf_declarations']:
-            if self.workflows_dictionary[workflow_name]['wf_declarations'][scatter_collection]['type'] == 'Array':
-                scatter_array = self.workflows_dictionary[workflow_name]['wf_declarations'][scatter_collection]['value']
+        if scatter_collection in self.workflows_dictionary[workflow_name][
+            'wf_declarations']:
+            if self.workflows_dictionary[workflow_name]['wf_declarations'][
+                scatter_collection]['type'] == 'Array':
+                scatter_array = \
+                self.workflows_dictionary[workflow_name]['wf_declarations'][
+                    scatter_collection]['value']
                 self.parse_workflow_scatter_array(section, scatter_array)
             else:
-                raise RuntimeError('Scatter failed.  Scatter collection is not an array.')
+                raise RuntimeError(
+                    'Scatter failed.  Scatter collection is not an array.')
         else:
-            raise RuntimeError('Scatter failed.  Scatter collection not found in workflows_dictionary.')
+            raise RuntimeError(
+                'Scatter failed.  Scatter collection not found in workflows_dictionary.')
 
     def parse_workflow_scatter_array(self, section, scatter_array):
         scatter_num = 0
@@ -764,9 +803,12 @@ class ToilWDL:
                 else:
                     task_alias = task_being_called
                 job = self.parse_workflow_call(j, scatter_num=str(scatter_num))
-                self.workflows_dictionary.setdefault((self.task_priority, self.task_number, task_being_called, task_alias), {})['job_declarations'] = job
+                self.workflows_dictionary.setdefault((self.task_priority,
+                                                      self.task_number,
+                                                      task_being_called,
+                                                      task_alias), {})[
+                    'job_declarations'] = job
             scatter_num = scatter_num + 1
-
 
     def parse_workflow_call(self, i, scatter_num=None):
         '''
@@ -784,23 +826,32 @@ class ToilWDL:
                     for k in g.attributes['map']:
                         if isinstance(k.attributes['key'], wdl_parser.Terminal):
                             key_name = k.attributes['key'].source_string
-                        if isinstance(k.attributes['value'], wdl_parser.Terminal):
+                        if isinstance(k.attributes['value'],
+                                      wdl_parser.Terminal):
                             value_name = k.attributes['value'].source_string
                             value_type = k.attributes['value'].str
                         if isinstance(k.attributes['key'], wdl_parser.Ast):
                             raise NotImplementedError
                         if isinstance(k.attributes['value'], wdl_parser.Ast):
-                            if k.attributes['value'].attributes['rhs'].str == 'integer':
-                                output_variable = k.attributes['value'].attributes['rhs'].source_string
-                                task = k.attributes['value'].attributes['lhs'].source_string
+                            if k.attributes['value'].attributes[
+                                'rhs'].str == 'integer':
+                                output_variable = \
+                                k.attributes['value'].attributes[
+                                    'rhs'].source_string
+                                task = k.attributes['value'].attributes[
+                                    'lhs'].source_string
                                 if scatter_num:
                                     value_name = task + '[' + scatter_num + '][' + output_variable + ']'
                                 else:
                                     value_name = task + '[' + output_variable + ']'
                                 value_type = 'index_value'
-                            elif k.attributes['value'].attributes['rhs'].str == 'identifier':
-                                output_variable = k.attributes['value'].attributes['rhs'].source_string
-                                task = k.attributes['value'].attributes['lhs'].source_string
+                            elif k.attributes['value'].attributes[
+                                'rhs'].str == 'identifier':
+                                output_variable = \
+                                k.attributes['value'].attributes[
+                                    'rhs'].source_string
+                                task = k.attributes['value'].attributes[
+                                    'lhs'].source_string
                                 value_name = task + ' ' + output_variable
                                 value_type = 'output'
                             else:
@@ -808,7 +859,7 @@ class ToilWDL:
 
                         io_map.setdefault(key_name, {})['name'] = value_name
                         io_map.setdefault(key_name, {})['type'] = value_type
-        return(io_map)
+        return (io_map)
 
     def write_modules(self):
         # string used to write imports to the file
@@ -828,10 +879,10 @@ class ToilWDL:
                     import shlex
                     import uuid
                     import logging
-                    
+
                     logger = logging.getLogger(__name__)
-                        
-                        
+
+
                         ''')
         return module_string
 
@@ -895,14 +946,14 @@ class ToilWDL:
         log_dir = os.path.join(self.output_directory, "wdl-stats.log")
         main_header_dict = {"log_dir": log_dir}
         main_header = heredoc_wdl('''
-        
+
             if __name__=="__main__":
                 options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
                 with Toil(options) as toil:
                     start = time.time()
                     with open("{log_dir}", "a+") as f:
                         f.write("Starting WDL Job @ " + str(time.strftime("%a, %d %b %Y %H:%M:%S", time.localtime())) + "\\n\\n")
-                        
+
             ''', main_header_dict)
         return main_header
 
@@ -933,7 +984,8 @@ class ToilWDL:
                                     {iterator}.append(({iterator}0, {iterator}0_preserveThisFilename))
                                 else:
                                     {iterator}.append(i)
-                            {aaf}.append({iterator})''', arrayarray_dict, indent='        ')
+                            {aaf}.append({iterator})''', arrayarray_dict,
+                                              indent='        ')
                 main_section = main_section + arrayarray_loop
         # write for docker as well
         return main_section
@@ -941,7 +993,6 @@ class ToilWDL:
     def write_main_JSON(self):
         '''
         Writes file imports and declared variables from the secondary JSON file.
-
         :return: A string representing these file imports and declared variables.
         '''
         main_section = ''
@@ -949,13 +1000,14 @@ class ToilWDL:
         input_dict = self.json_dict
         for dict_var in input_dict:
             v = input_dict[dict_var]
-
             # WDL sometimes supplies a list of file paths
             # later potentially implement a catch for a list of lists
             if type(v) is list:
                 list_iterator = 0
                 for item in v:
-                    importFile_section = self.write_main_importFile(item, dict_var, list_iterator)
+                    importFile_section = self.write_main_importFile(item,
+                                                                    dict_var,
+                                                                    list_iterator)
                     main_section = main_section + importFile_section
                     list_iterator = list_iterator + 1
                 list_iterator = 0
@@ -976,7 +1028,6 @@ class ToilWDL:
                     main_section = main_section + ']\n'
             else:
                 main_section = main_section + self.write_main_importFile(v, dict_var)
-
         return main_section
 
     def write_main_importFile(self, item, input_var, list_iterator=None):
@@ -991,28 +1042,33 @@ class ToilWDL:
         main_section = ''
 
         # if it's a file, then import and save the original filename
-        if os.path.isfile(str(item)):
-            filename = item.split('/')
-            filename = filename[-1]
+        if os.path.isfile(str(item)) or os.path.isfile(str(os.path.join(os.getcwd(), item))):
+            filename = os.path.basename(item)
             if list_iterator is None:
                 main_section = main_section + '        ' + input_var + '0 = toil.importFile("file://' + os.path.abspath(item) + '")\n'
                 main_section = main_section + '        ' + input_var + '0_preserveThisFilename = "' + filename + '"\n'
                 main_section = main_section + '        ' + input_var + ' = (' + input_var + '0, ' + input_var + '0_preserveThisFilename)\n'
             else:
-                main_section = main_section + '        ' + input_var + str(list_iterator) + ' = toil.importFile("file://' + os.path.abspath(item) + '")\n'
-                main_section = main_section + '        ' + input_var + str(list_iterator) + '_preserveThisFilename = "' + filename + '"\n'
+                main_section = main_section + '        ' + input_var + str(
+                    list_iterator) + ' = toil.importFile("file://' + os.path.abspath(
+                    item) + '")\n'
+                main_section = main_section + '        ' + input_var + str(
+                    list_iterator) + '_preserveThisFilename = "' + filename + '"\n'
         # elif string, add quotes
         elif isinstance(item, (str, unicode)):
             if list_iterator is None:
                 main_section = main_section + '        ' + input_var + ' = "' + item + '"\n'
             else:
-                main_section = main_section + '        ' + input_var + str(list_iterator) + ' = "' + item + '"\n'
+                main_section = main_section + '        ' + input_var + str(
+                    list_iterator) + ' = "' + item + '"\n'
         # otherwise, just simply declare the variable
         else:
             if list_iterator is None:
                 main_section = main_section + '        ' + input_var + ' = ' + item + '\n'
             else:
                 main_section = main_section + '        ' + input_var + str(list_iterator) + ' = ' + item + '\n'
+        with open('/home/lifeisaboutfishtacos/git/wdl/new/toil/src/toil/wdl/out.txt', 'w') as f:
+            f.write(main_section)
         return main_section
 
     def write_main_jobwrappers(self):
@@ -1052,7 +1108,8 @@ class ToilWDL:
             for job_declaration in self.workflows_dictionary:
                 if isinstance(job_declaration, (list, tuple)):
                     if job_declaration[0] == priority:
-                        main_section = main_section + '        job0.addChild(job' + str(job_declaration[1]) + ')\n'
+                        main_section = main_section + '        job0.addChild(job' + str(
+                            job_declaration[1]) + ')\n'
             if skip_first == 0:
                 main_section = main_section + '\n        job0 = job0.encapsulate()\n'
             skip_first = 0
@@ -1076,10 +1133,9 @@ class ToilWDL:
                     f.write("\\n")
                     f.write("Total runtime: %2.2f sec" % (end - start))
                     f.write("\\n\\n")
-                    f.write("\\n" + "-"*80 + "\\n")''', main_section_dict, indent='        ')
+                    f.write("\\n" + "-"*80 + "\\n")''', main_section_dict,
+                                   indent='        ')
         return main_section
-
-
 
     def write_functions(self):
         '''
@@ -1130,8 +1186,9 @@ class ToilWDL:
 
         job_priority = job[0]
         job_number = job[1]
-        job_task_reference = job[2] # default name
-        job_alias = job[3] # reassigned name (optional; default if not assigned)
+        job_task_reference = job[2]  # default name
+        job_alias = job[
+            3]  # reassigned name (optional; default if not assigned)
 
         # get all variable declarations for this particular job
         job_declaration_array = self.get_job_declarations(job)
@@ -1145,14 +1202,15 @@ class ToilWDL:
         fn_start = heredoc_wdl('''
                                  job.fileStore.logToMaster("{job_alias}")
                                  start = time.time()
-                             
+
                                  tempDir = job.fileStore.getLocalTempDir()
-                             
+
                                  ''', fn_start_dict, indent='    ')
         fn_section = fn_section + fn_start
 
         # import files into the job store using readGlobalFile()
-        readglobalfiles_declarations = self.write_function_readglobalfiles(job, job_declaration_array)
+        readglobalfiles_declarations = self.write_function_readglobalfiles(job,
+                                                                           job_declaration_array)
         fn_section = fn_section + readglobalfiles_declarations
 
         # write out commandline keywords
@@ -1167,11 +1225,11 @@ class ToilWDL:
         fn_section = fn_section + subprocesspopen
 
         # write the outputs for the definition to return
-        return_outputs = self.write_function_outputreturn(job, job_task_reference)
+        return_outputs = self.write_function_outputreturn(job,
+                                                          job_task_reference)
         fn_section = fn_section + return_outputs
 
         return fn_section
-
 
     def write_docker_function(self, job):
         '''
@@ -1199,8 +1257,9 @@ class ToilWDL:
 
         job_priority = job[0]
         job_number = job[1]
-        job_task_reference = job[2] # default name
-        job_alias = job[3] # reassigned name (optional; default if not assigned)
+        job_task_reference = job[2]  # default name
+        job_alias = job[
+            3]  # reassigned name (optional; default if not assigned)
 
         # get all variable declarations for this particular job
         job_declaration_array = self.get_job_declarations(job)
@@ -1214,9 +1273,9 @@ class ToilWDL:
         fn_start = heredoc_wdl('''
                                  job.fileStore.logToMaster("{job_alias}")
                                  start = time.time()
-                             
+
                                  tempDir = job.fileStore.getLocalTempDir()
-                             
+
                                  try:
                                      os.makedirs(tempDir + '/execution')
                                  except OSError as e:
@@ -1225,7 +1284,8 @@ class ToilWDL:
         fn_section = fn_section + fn_start
 
         # import files into the job store using readGlobalFile()
-        readglobalfiles_declarations = self.write_function_readglobalfiles(job, job_declaration_array)
+        readglobalfiles_declarations = self.write_function_readglobalfiles(job,
+                                                                           job_declaration_array)
         fn_section = fn_section + readglobalfiles_declarations
 
         # prep Array[File] commandline keywords
@@ -1236,16 +1296,19 @@ class ToilWDL:
         cmdline = self.write_function_cmdline(job, docker=True)
         fn_section = fn_section + cmdline
 
-        bashscriptline = self.write_function_bashscriptline(job_task_reference, job_alias)
+        bashscriptline = self.write_function_bashscriptline(job_task_reference,
+                                                            job_alias)
         fn_section = fn_section + bashscriptline
 
         docker_image = self.get_docker_image(job_task_reference)
 
-        dockercall = self.write_function_dockercall(job_task_reference, docker_image)
+        dockercall = self.write_function_dockercall(job_task_reference,
+                                                    docker_image)
         fn_section = fn_section + dockercall
 
         # write the outputs for the definition to return
-        return_outputs = self.write_function_outputreturn(job, job_task_reference)
+        return_outputs = self.write_function_outputreturn(job,
+                                                          job_task_reference)
         fn_section = fn_section + return_outputs
 
         return fn_section
@@ -1291,7 +1354,8 @@ class ToilWDL:
             job_declaration_type = job_declaration[1]
             job_declaration_key = None
             if job_declaration_type == 'File':
-                job_declaration_key, parent_job = self.if_output_mk_a_key(job, job_declaration_name)
+                job_declaration_key, parent_job = self.if_output_mk_a_key(job,
+                                                                          job_declaration_name)
                 jobdecl_dict = {"job_declaration_name": job_declaration_name,
                                 "job_declaration_key": job_declaration_key}
                 if job_declaration_key:
@@ -1300,7 +1364,7 @@ class ToilWDL:
                             {job_declaration_name}_fs = job.fileStore.readGlobalFile({job_declaration_name}["{job_declaration_key}"][0], userPath=os.path.join(tempDir, {job_declaration_name}["{job_declaration_key}"][1]))
                         except:
                             {job_declaration_name}_fs = os.path.join(tempDir, {job_declaration_name}["{job_declaration_key}"][1])
-                            
+
                     ''', jobdecl_dict, indent='    ')
                 else:
                     jobdecl = heredoc_wdl('''
@@ -1308,7 +1372,7 @@ class ToilWDL:
                             {job_declaration_name}_fs = job.fileStore.readGlobalFile({job_declaration_name}[0], userPath=os.path.join(tempDir, {job_declaration_name}[1]))
                         except:
                             {job_declaration_name}_fs = os.path.join(tempDir, {job_declaration_name}[1])
-                            
+
                     ''', jobdecl_dict, indent='    ')
                 fn_section = fn_section + jobdecl
             if job_declaration_type == 'ArrayFile':
@@ -1336,7 +1400,8 @@ class ToilWDL:
                     raise NotImplementedError
             if fn_section.endswith(', '):
                 fn_section = fn_section[:-2]
-        fn_section = fn_section + "], cmd=cmd, job_name='" + str(job_alias) + "')\n"
+        fn_section = fn_section + "], cmd=cmd, job_name='" + str(
+            job_alias) + "')\n"
         fn_section = fn_section + '\n'
 
         return fn_section
@@ -1350,9 +1415,9 @@ class ToilWDL:
                                                             e.g. "ubuntu:latest"
         :return: A string containing the apiDockerCall() that will run the job.
         '''
-        docker_dict ={"docker_image": docker_image,
-                      "job_task_reference": job_task_reference
-                      }
+        docker_dict = {"docker_image": docker_image,
+                       "job_task_reference": job_task_reference
+                       }
         docker_template = heredoc_wdl('''
         apiDockerCall(job, 
                       image="{docker_image}", 
@@ -1360,7 +1425,7 @@ class ToilWDL:
                       parameters=["/data/{job_task_reference}_script.sh"], 
                       entrypoint="/bin/bash", 
                       volumes={{tempDir: {{"bind": "/data"}}}})
-        
+
             ''', docker_dict, indent='    ')
 
         return docker_template
@@ -1376,33 +1441,38 @@ class ToilWDL:
 
         fn_section = ''
         job_task_reference = job[2]
-        for cmd_name, cmd_type, cmd_actions_dict in self.tasks_dictionary[job_task_reference]['raw_commandline']:
+        for cmd_name, cmd_type, cmd_actions_dict in \
+        self.tasks_dictionary[job_task_reference]['raw_commandline']:
             for input in self.tasks_dictionary[job_task_reference]['inputs']:
                 input_var_name = input[0]
                 input_var_type = input[1]
                 if cmd_name == input_var_name:
                     if input_var_type == 'ArrayFile':
-                        job_declaration_key, parent_job = self.if_output_mk_a_key(job, input_var_name)
+                        job_declaration_key, parent_job = self.if_output_mk_a_key(
+                            job, input_var_name)
                         if job_declaration_key:
-                            called_multiple_times = self.determine_if_called_multitimes(parent_job)
+                            called_multiple_times = self.determine_if_called_multitimes(
+                                parent_job)
                         else:
                             called_multiple_times = False
                         if 'sep' in cmd_actions_dict:
                             fn_section = fn_section + \
-                                         self.write_function_cmdvarprep_arrayfile(sep=True,
-                                                                                  sep_var=cmd_actions_dict['sep'],
-                                                                                  docker=docker,
-                                                                                  job_declaration_key=job_declaration_key,
-                                                                                  cmd_name=cmd_name,
-                                                                                  called_multiple_times=called_multiple_times)
+                                         self.write_function_cmdvarprep_arrayfile(
+                                             sep=True,
+                                             sep_var=cmd_actions_dict['sep'],
+                                             docker=docker,
+                                             job_declaration_key=job_declaration_key,
+                                             cmd_name=cmd_name,
+                                             called_multiple_times=called_multiple_times)
                         else:
                             fn_section = fn_section + \
-                                         self.write_function_cmdvarprep_arrayfile(sep=False,
-                                                                                  sep_var=None,
-                                                                                  docker=docker,
-                                                                                  job_declaration_key=job_declaration_key,
-                                                                                  cmd_name=cmd_name,
-                                                                                  called_multiple_times=called_multiple_times)
+                                         self.write_function_cmdvarprep_arrayfile(
+                                             sep=False,
+                                             sep_var=None,
+                                             docker=docker,
+                                             job_declaration_key=job_declaration_key,
+                                             cmd_name=cmd_name,
+                                             called_multiple_times=called_multiple_times)
         return fn_section
 
     def write_function_cmdvarprep_arrayfile(self,
@@ -1456,7 +1526,8 @@ class ToilWDL:
         fn_section = fn_section + '            j = os.path.join(tempDir, i' + multicall_key + '[1])\n'
         if sep:
             fn_section = fn_section + '            ' + cmd_name + '_list.append(' + path_appended + ')\n'
-            fn_section = fn_section + '    ' + cmd_name + '_sep = "' + str(sep_var) + '".join(' + cmd_name + '_list)\n\n'
+            fn_section = fn_section + '    ' + cmd_name + '_sep = "' + str(
+                sep_var) + '".join(' + cmd_name + '_list)\n\n'
         return fn_section
 
     def write_function_cmdline(self, job, docker):
@@ -1479,12 +1550,14 @@ class ToilWDL:
             cmd_actions_dict = cmd[2]
             command_var_decl = 'command' + str(self.command_number)
             if cmd_type == 'variable':
-                job_declaration_key, parent_job = self.if_output_mk_a_key(job, cmd_name)
+                job_declaration_key, parent_job = self.if_output_mk_a_key(job,
+                                                                          cmd_name)
                 if job_declaration_key:
                     output_dict_key = '["' + job_declaration_key + '"]'
                 else:
                     output_dict_key = ''
-                for input in self.tasks_dictionary[job_task_reference]['inputs']:
+                for input in self.tasks_dictionary[job_task_reference][
+                    'inputs']:
                     input_var_name = input[0]
                     input_var_type = input[1]
                     if cmd_name == input_var_name:
@@ -1574,7 +1647,7 @@ class ToilWDL:
                                 output_filename = os.path.basename(x)
                                 job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)
                                 {output_name}{suffix}.append((output_file, output_filename))
-                            
+
                             ''', glob_dict, indent='    ')
                         fn_section = fn_section + glob_template
 
@@ -1582,18 +1655,21 @@ class ToilWDL:
                             index_dict = {
                                 "output_name": output_name,
                                 "suffix": suffix,
-                                "index_num": str(output_action_dict['index_lookup'])}
+                                "index_num": str(
+                                    output_action_dict['index_lookup'])}
                             index_template = heredoc_wdl('''
                                 {output_name} = {output_name}{suffix}[{index_num}]
                                 ''', index_dict, indent='    ')
-                            fn_section = fn_section + index_template.format(**index_dict)
+                            fn_section = fn_section + index_template.format(
+                                **index_dict)
 
                         else:
                             fn_section = fn_section + '\n'
                         files_to_return.append(output_name)
                     else:
                         nonglob_dict = {
-                            "formatted_output_filename": self.translate_wdl_string_to_python_string(job, output_value),
+                            "formatted_output_filename": self.translate_wdl_string_to_python_string(
+                                job, output_value),
                             "output_name": output_name,
                             "out_dir": self.output_directory}
                         nonglob_template = heredoc_wdl('''
@@ -1601,7 +1677,7 @@ class ToilWDL:
                             output_file = job.fileStore.writeGlobalFile(output_filename)
                             job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)
                             {output_name} = (output_file, output_filename)
-                        
+
                         ''', nonglob_dict, indent='    ')
                         fn_section = fn_section + nonglob_template
                         files_to_return.append(output_name)
@@ -1656,9 +1732,13 @@ class ToilWDL:
         '''
         if job in self.workflows_dictionary:
             for input in self.workflows_dictionary[job]['job_declarations']:
-                input_type = self.workflows_dictionary[job]['job_declarations'][input]['type']
+                input_type = \
+                self.workflows_dictionary[job]['job_declarations'][input][
+                    'type']
                 if input_type == 'output':
-                    input_name = self.workflows_dictionary[job]['job_declarations'][input]['name']
+                    input_name = \
+                    self.workflows_dictionary[job]['job_declarations'][input][
+                        'name']
                     if input == job_declaration_name:
                         parent_job = input_name.split()[0]
                         dict_output_key = input_name.split()[-1]
@@ -1679,7 +1759,8 @@ class ToilWDL:
                 if tuple[0] == 'docker':
                     docker_image = tuple[1]
         else:
-            raise RuntimeError('Writing docker function, but no runtime section found.')
+            raise RuntimeError(
+                'Writing docker function, but no runtime section found.')
         return docker_image
 
     def translate_wdl_string_to_python_string(self, job, some_string):
@@ -1708,7 +1789,7 @@ class ToilWDL:
 
         if edited_string.find('${') != -1:
             continue_loop = True
-            while(continue_loop):
+            while (continue_loop):
                 index_start = edited_string.find('${')
                 index_end = edited_string.find('}', index_start)
 
@@ -1717,10 +1798,10 @@ class ToilWDL:
                 if index_start != 0:
                     output_string = output_string + "'" + stringword + "' + "
 
-                keyword = edited_string[index_start+2:index_end]
+                keyword = edited_string[index_start + 2:index_end]
                 output_string = output_string + keyword + " + "
 
-                edited_string = edited_string[index_end+1:]
+                edited_string = edited_string[index_end + 1:]
                 if edited_string.find('${') == -1:
                     continue_loop = False
                     if edited_string:
@@ -1747,7 +1828,7 @@ class ToilWDL:
                 if i == job[0]:
                     job_list_with_redundant_jobs_removed.append(job)
                     break
-        return(job_list_with_redundant_jobs_removed)
+        return (job_list_with_redundant_jobs_removed)
 
     def determine_if_docker_job(self, job):
         '''
@@ -1761,7 +1842,8 @@ class ToilWDL:
         docker = False
         job_task_reference = job[2]  # default name
         if 'runtime' in self.tasks_dictionary[job_task_reference]:
-            for runtime_var in self.tasks_dictionary[job_task_reference]['runtime']:
+            for runtime_var in self.tasks_dictionary[job_task_reference][
+                'runtime']:
                 if runtime_var[0] == 'docker':
                     docker = True
         return docker
@@ -1791,7 +1873,8 @@ class ToilWDL:
             job_alias = job[3]
             job_name = 'job' + str(i)
             declaration_array = [job_alias]
-            for task_declaration in self.tasks_dictionary[job_reference]['inputs']:
+            for task_declaration in self.tasks_dictionary[job_reference][
+                'inputs']:
                 task_var_name = task_declaration[0]
                 mapped_var = self.map_to_final_var(job, task_var_name)
                 declaration_array.append(task_var_name + '=' + mapped_var)
@@ -1814,16 +1897,21 @@ class ToilWDL:
                             declared variable.
         '''
         mapped_var = ' '
-        for wf_declaration in self.workflows_dictionary[job]['job_declarations']:
+        for wf_declaration in self.workflows_dictionary[job][
+            'job_declarations']:
             if task_var_name == wf_declaration:
-                wf_declaration_type = self.workflows_dictionary[job]['job_declarations'][wf_declaration]['type']
-                wf_declaration_name = self.workflows_dictionary[job]['job_declarations'][wf_declaration]['name']
-                mapped_var = self.map_to_final_var_type(wf_declaration_name, wf_declaration_type)
+                wf_declaration_type = \
+                self.workflows_dictionary[job]['job_declarations'][
+                    wf_declaration]['type']
+                wf_declaration_name = \
+                self.workflows_dictionary[job]['job_declarations'][
+                    wf_declaration]['name']
+                mapped_var = self.map_to_final_var_type(wf_declaration_name,
+                                                        wf_declaration_type)
         if mapped_var == ' ':
             return task_var_name
         else:
             return mapped_var
-
 
     def map_to_final_var_type(self, declaration_name, declaration_type):
         '''
@@ -1851,7 +1939,8 @@ class ToilWDL:
         elif declaration_type == 'index_value':
             potential_scatter_item = declaration_name.split('[')[0]
             for collection in self.workflows_dictionary['scatter_calls']:
-                scatter_item = self.workflows_dictionary['scatter_calls'][collection]
+                scatter_item = self.workflows_dictionary['scatter_calls'][
+                    collection]
                 if scatter_item == potential_scatter_item:
                     old_index = declaration_name[len(potential_scatter_item):]
                     return collection + old_index
@@ -1993,15 +2082,20 @@ class ToilWDL:
                 f.write(str(each_task))
                 if 'wf_declarations' in i.workflows_dictionary[each_task]:
                     f.write('    wf_declarations')
-                    for d in i.workflows_dictionary[each_task]['wf_declarations']:
+                    for d in i.workflows_dictionary[each_task][
+                        'wf_declarations']:
                         f.write('        ' + str(d))
                 if 'job_declarations' in i.workflows_dictionary[each_task]:
                     f.write('    job_declarations')
-                    for j in i.workflows_dictionary[each_task]['job_declarations']:
+                    for j in i.workflows_dictionary[each_task][
+                        'job_declarations']:
                         f.write('        ' + str(j))
-                        for g in i.workflows_dictionary[each_task]['job_declarations'][j]:
+                        for g in \
+                        i.workflows_dictionary[each_task]['job_declarations'][
+                            j]:
                             f.write('            ' + g + ': ' +
-                                    i.workflows_dictionary[each_task]['job_declarations'][j][g])
+                                    i.workflows_dictionary[each_task][
+                                        'job_declarations'][j][g])
 
             f.write('\n\ntsv_dict')
             for var in i.tsv_dict:
@@ -2012,6 +2106,7 @@ class ToilWDL:
             for var in i.csv_dict:
                 f.write(str(var))
                 f.write(str(i.csv_dict))
+
 
 def recursive_glob(job, directoryname, glob_pattern):
     '''
@@ -2030,6 +2125,11 @@ def recursive_glob(job, directoryname, glob_pattern):
             absolute_filepath = os.path.join(root, filename)
             matches.append(absolute_filepath)
     return matches
+
+
+def heredoc_wdl(template, dictionary={}, indent=''):
+    template = textwrap.dedent(template).format(**dictionary)
+    return template.replace('\n', '\n' + indent) + '\n'
 
 def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
     '''
@@ -2059,74 +2159,80 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
     :return: Nothing, but it writes and deposits a bash script in temp_dir
              intended to be run inside of a docker container for this job.
     '''
-    bashfile_dict = {"docker_dir": docker_dir,
-                     "cmd": cmd
-                    }
-    bashfile_string = heredoc_wdl('''
-    #!/bin/bash
-    
-    # Borrowed/rewritten from the Broads Cromwell implementation.  As
-    # thats under a BSD-ish license, I include here the license off
-    # of their GitHub repo.  Thank you Broadies!
-    
-    # Copyright (c) 2015, Broad Institute, Inc.
-    # All rights reserved.
-    
-    # Redistribution and use in source and binary forms, with or without
-    # modification, are permitted provided that the following conditions are met:
-    
-    # * Redistributions of source code must retain the above copyright notice, this
-    #   list of conditions and the following disclaimer.
-    
-    # * Redistributions in binary form must reproduce the above copyright notice,
-    #   this list of conditions and the following disclaimer in the documentation
-    #   and/or other materials provided with the distribution.
-    
-    # * Neither the name Broad Institute, Inc. nor the names of its
-    #   contributors may be used to endorse or promote products derived from
-    #   this software without specific prior written permission.
-    
-    # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-    # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-    # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-    # DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-    # FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-    # DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-    # SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-    # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-    # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-    # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
-    
-    # make a temp directory w/identifier
-    set -beEu -o pipefail
-    tmpDir=$(mktemp -d /{docker_dir}/execution/tmp.XXXXXX)
-    chmod 777 $tmpDir
-    # set destination for java to deposit all of its files
-    export _JAVA_OPTIONS=-Djava.io.tmpdir=$tmpDir
-    export TMPDIR=$tmpDir
-    
-    (
-    cd /{docker_dir}/execution
-    {cmd}
-    )
-    
-    # gather the input command return code
-    echo $? > "$tmpDir/rc.tmp"
-    
-    (
-    cd $tmpDir
-    mkdir "$tmpDir/globs"
-    ''', bashfile_dict)
+    wdl_copyright = heredoc_wdl('''#!/bin/bash
+        
+        # Borrowed/rewritten from the Broad's Cromwell implementation.  As 
+        # that is under a BSD-ish license, I include here the license off 
+        # of their GitHub repo.  Thank you Broadies!
+        
+        # Copyright (c) 2015, Broad Institute, Inc.
+        # All rights reserved.
+        
+        # Redistribution and use in source and binary forms, with or without
+        # modification, are permitted provided that the following conditions are met:
+        
+        # * Redistributions of source code must retain the above copyright notice, this
+        #   list of conditions and the following disclaimer.
+        
+        # * Redistributions in binary form must reproduce the above copyright notice,
+        #   this list of conditions and the following disclaimer in the documentation
+        #   and/or other materials provided with the distribution.
+        
+        # * Neither the name Broad Institute, Inc. nor the names of its
+        #   contributors may be used to endorse or promote products derived from
+        #   this software without specific prior written permission.
+        
+        # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+        # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+        # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+        # DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+        # FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+        # DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+        # SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+        # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+        # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+        # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+        
+        # make a temp directory w/identifier
+        ''')
+    prefix_dict = {"docker_dir": docker_dir,
+                   "cmd": cmd}
+    bashfile_prefix = heredoc_wdl('''
+        tmpDir=$(mktemp -d /{docker_dir}/execution/tmp.XXXXXX)
+        chmod 777 $tmpDir
+        # set destination for java to deposit all of its files
+        export _JAVA_OPTIONS=-Djava.io.tmpdir=$tmpDir
+        export TMPDIR=$tmpDir
+        
+        (
+        cd /{docker_dir}/execution
+        {cmd}
+        )
+        
+        # gather the input command return code
+        echo $? > "$tmpDir/rc.tmp"
+        
+        ''', prefix_dict)
+
+    bashfile_string = wdl_copyright + bashfile_prefix
+
+    begin_globbing_string = heredoc_wdl('''
+        (
+        cd $tmpDir
+        mkdir "$tmpDir/globs"
+        ''')
+
+    bashfile_string = bashfile_string + begin_globbing_string
 
     for glob_input in globs:
-        glob_input_dict = {"glob_input": glob_input}
-        add_this_glob = heredoc_wdl('''
-            ( ln -L {glob_input} "$tmpDir/globs" 2> /dev/null ) || ( ln {glob_input} "$tmpDir/globs" )
-            ''', glob_input_dict)
+        add_this_glob = \
+            '( ln -L ' + glob_input + \
+            ' "$tmpDir/globs" 2> /dev/null ) || ( ln ' + glob_input + \
+            ' "$tmpDir/globs" )\n'
         bashfile_string = bashfile_string + add_this_glob
 
-    bashfile_suffix = heredoc_wdl(
-        ''')
+    bashfile_suffix = heredoc_wdl('''
+        )
         
         # flush RAM to disk
         sync
@@ -2138,11 +2244,6 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 
     with open(os.path.join(temp_dir, job_name + '_script.sh'), 'w') as bashfile:
         bashfile.write(bashfile_string)
-    bashfile.close()
-
-def heredoc_wdl(template, dictionary={}, indent=''):
-    template = textwrap.dedent(template).format(**dictionary)
-    return template.replace('\n','\n' + indent) + '\n'
 
 def main():
     parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
