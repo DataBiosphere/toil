@@ -61,7 +61,7 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testENCODE/output/")
 
         subprocess.check_call(
-            ['python', self.program, wdl, json, '--out_dir', self.output_dir])
+            ['python', self.program, wdl, json, '--out_dir', self.output_dir, '--clean=always'])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -76,16 +76,17 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testPipe/output/")
 
         subprocess.check_call(
-            ['python', self.program, wdl, json, '--out_dir', self.output_dir])
+            ['python', self.program, wdl, json, '--out_dir', self.output_dir, '--clean=always'])
 
         compare_runs(self.output_dir, ref_dir)
 
     # estimated run time <1 sec
     def testCSV(self):
-        default_csv_output = [['1', '2', '3'], ['4', '5', '6'],
+        default_csv_output = [['1', '2', '3'], 
+                              ['4', '5', '6'], 
                               ['7', '8', '9']]
         t = ToilWDL(os.path.abspath(
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
+                "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
             os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
             self.output_dir)
@@ -94,10 +95,11 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time <1 sec
     def testTSV(self):
-        default_tsv_output = [['1', '2', '3'], ['4', '5', '6'],
+        default_tsv_output = [['1', '2', '3'], 
+                              ['4', '5', '6'], 
                               ['7', '8', '9']]
         t = ToilWDL(os.path.abspath(
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
+                "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
             os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
             self.output_dir)

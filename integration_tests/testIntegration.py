@@ -65,7 +65,7 @@ class ToilWdlIntegrationTest(ToilTest):
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/output/")
 
-        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir, '--clean=always'])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -78,7 +78,7 @@ class ToilWdlIntegrationTest(ToilTest):
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/output/")
 
-        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir, '--clean=always'])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -91,7 +91,7 @@ class ToilWdlIntegrationTest(ToilTest):
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/output/")
 
-        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir, '--clean=always'])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -104,7 +104,7 @@ class ToilWdlIntegrationTest(ToilTest):
         json = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes_inputs.json")
         ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/output/")
 
-        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir, '--clean=always'])
 
         compare_runs(self.output_dir, ref_dir)
 
