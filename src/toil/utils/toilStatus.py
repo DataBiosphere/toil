@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#from sys import stderr
 
 """
 Reports the state of a Toil workflow
@@ -20,8 +19,9 @@ Reports the state of a Toil workflow
 # python 2/3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
-from builtins import map
-from builtins import str
+# TODO: change functions to support python 3 str and map
+# from builtins import map
+# from builtins import str
 
 # standard library
 import logging
