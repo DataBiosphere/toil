@@ -5,6 +5,7 @@ import subprocess
 from toil.wdl.toilwdl import ToilWDL
 from toil.test import ToilTest, slow
 import zipfile
+import shutil
 
 class ToilWdlIntegrationTest(ToilTest):
     """A set of test cases for toilwdl.py"""
@@ -18,54 +19,65 @@ class ToilWdlIntegrationTest(ToilTest):
         self.test_directory = os.path.abspath("src/toil/test/wdl/")
         self.output_dir = self._createTempDir(purpose='tempDir')
 
+        self.encode_data = os.path.join(self.test_directory, "ENCODE_data.zip")
+        self.encode_data_dir = os.path.join(self.test_directory, "ENCODE_data")
+
+        self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
+        self.wdl_data_dir = os.path.join(self.test_directory, "wdl_templates")
+
+        self.gatk_data = os.path.join(self.test_directory, "GATK_data.zip")
+        self.gatk_data_dir = os.path.join(self.test_directory, "GATK_data")
+
         # GATK tests will not run on jenkins b/c GATK.jar needs Java 7
         # and jenkins only has Java 6 (12-16-2017).
         # Set this to true to run the GATK integration tests locally.
         self.manual_integration_tests = False
 
-        ############# FETCH AND EXTRACT ENCODE DATASETS FROM S3#################
-        self.encode_data = os.path.join(self.test_directory, "ENCODE_data.zip")
-        self.encode_data_dir = os.path.join(self.test_directory, "ENCODE_data")
-        # download the data from s3 if not already present
-        if not os.path.exists(self.encode_data):
-            encode_s3_loc = 'http://toil-datasets.s3.amazonaws.com/ENCODE_data.zip'
-            fetch_encode_from_s3_cmd = ["wget", "-P", self.test_directory, encode_s3_loc]
-            subprocess.check_call(fetch_encode_from_s3_cmd)
-        # extract the compressed data if not already extracted
-        if not os.path.exists(self.encode_data_dir):
-            with zipfile.ZipFile(self.encode_data, 'r') as zip_ref:
-                zip_ref.extractall(self.test_directory)
+        # Delete the test datasets after running the tests.
+        # Jenkins requires this to not error on "untracked files".
+        # Set to true if running tests locally and you don't want to
+        # redownload the data each time you run the test.
+        self.jenkins = True
 
-        ############# FETCH AND EXTRACT WDL TEMPLATES FROM S3###################
-        self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
-        self.wdl_data_dir = os.path.join(self.test_directory, "wdl_templates")
-        # download the data from s3 if not already present
-        if not os.path.exists(self.wdl_data):
-            wdl_s3_loc = 'http://toil-datasets.s3.amazonaws.com/wdl_templates.zip'
-            fetch_wdldata_from_s3_cmd = ["wget", "-P", self.test_directory, wdl_s3_loc]
-            subprocess.check_call(fetch_wdldata_from_s3_cmd)
-        # extract the compressed data if not already extracted
-        if not os.path.exists(self.wdl_data_dir):
-            with zipfile.ZipFile(self.wdl_data, 'r') as zip_ref:
-                zip_ref.extractall(self.test_directory)
+        self.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
+                                     data=self.encode_data,
+                                     data_dir=self.encode_data_dir)
 
+        self.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
+                                     data=self.wdl_data,
+                                     data_dir=self.wdl_data_dir)
+
+        # these tests require Java 7 (GATK.jar); jenkins has Java 6 and so must
+        # be run manually as integration tests (12.16.2017)
         if self.manual_integration_tests:
-            ############# FETCH AND EXTRACT GATK DATASETS FROM S3#################
-            self.gatk_data = os.path.join(self.test_directory, "GATK_data.zip")
-            self.gatk_data_dir = os.path.join(self.test_directory, "GATK_data")
-            # download the data from s3 if not already present
-            if not os.path.exists(self.gatk_data):
-                gatk_s3_loc = 'http://toil-datasets.s3.amazonaws.com/GATK_data.zip'
-                fetch_gatk_from_s3_cmd = ["wget", "-P", self.test_directory, gatk_s3_loc]
-                subprocess.check_call(fetch_gatk_from_s3_cmd)
-            # extract the compressed data if not already extracted
-            if not os.path.exists(self.gatk_data_dir):
-                with zipfile.ZipFile(self.gatk_data, 'r') as zip_ref:
-                    zip_ref.extractall(self.test_directory)
-
+            self.fetch_and_unzip_from_s3(filename='GATK_data.zip',
+                                         data=self.gatk_data,
+                                         data_dir=self.gatk_data_dir)
 
     def tearDown(self):
         """Default tearDown for unittest."""
+
+        # automatically delete the test files
+        # especially for jenkins checking if
+        # there are untracked files in the repo
+        if self.jenkins:
+            if os.path.exists(self.gatk_data):
+                os.remove(self.gatk_data)
+            if os.path.exists(self.gatk_data_dir):
+                shutil.rmtree(self.gatk_data_dir)
+
+            if os.path.exists(self.wdl_data):
+                os.remove(self.wdl_data)
+            if os.path.exists(self.wdl_data_dir):
+                shutil.rmtree(self.wdl_data_dir)
+
+            if os.path.exists(self.encode_data):
+                os.remove(self.encode_data)
+            if os.path.exists(self.encode_data_dir):
+                shutil.rmtree(self.encode_data_dir)
+
+        remove_encode_output()
+
         unittest.TestCase.tearDown(self)
 
     # estimated run time 27 sec
@@ -201,6 +213,52 @@ class ToilWdlIntegrationTest(ToilTest):
         json_dict = t.dict_from_JSON(
             "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
         assert json_dict == default_json_dict_output
+
+    def fetch_and_unzip_from_s3(self, filename, data, data_dir):
+        if not os.path.exists(data):
+            s3_loc = os.path.join('http://toil-datasets.s3.amazonaws.com/', filename)
+            fetch_from_s3_cmd = ["wget", "-P", self.test_directory, s3_loc]
+            subprocess.check_call(fetch_from_s3_cmd)
+        # extract the compressed data if not already extracted
+        if not os.path.exists(data_dir):
+            with zipfile.ZipFile(data, 'r') as zip_ref:
+                zip_ref.extractall(self.test_directory)
+
+def remove_encode_output():
+    '''Remove the outputs generated by the ENCODE unittest.
+
+    These are created in the current working directory, which on jenkins is the
+    main toil folder.  They must be removed so that jenkins does not think we
+    have untracked files in our github repo.'''
+    encode_outputs = ['ENCFF000VOL_chr21.fq.gz',
+                      'ENCFF000VOL_chr21.raw.srt.bam',
+                      'ENCFF000VOL_chr21.raw.srt.bam.flagstat.qc',
+                      'ENCFF000VOL_chr21.raw.srt.dup.qc',
+                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam',
+                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.bam.bai',
+                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz',
+                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.plot.pdf',
+                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.filt.nodup.sample.15.SE.tagAlign.gz.cc.qc',
+                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.flagstat.qc',
+                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.pbc.qc',
+                      'ENCFF000VOL_chr21.raw.srt.filt.nodup.srt.final.SE.tagAlign.gz',
+                      'ENCFF000VOL_chr21.sai',
+                      'test.txt',
+                      'filter_qc.json',
+                      'filter_qc.log',
+                      'GRCh38_chr21_bwa.tar.gz',
+                      'mapping.json',
+                      'mapping.log',
+                      'post_mapping.json',
+                      'post_mapping.log',
+                      'wdl-stats.log',
+                      'xcor.json',
+                      'xcor.log']
+    for output in encode_outputs:
+        output = os.path.abspath(output)
+        if os.path.exists(output):
+            os.remove(output)
+
 
 def compare_runs(output_dir, ref_dir):
     """
