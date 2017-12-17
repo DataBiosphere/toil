@@ -18,6 +18,11 @@ class ToilWdlIntegrationTest(ToilTest):
         self.test_directory = os.path.abspath("src/toil/test/wdl/")
         self.output_dir = self._createTempDir(purpose='tempDir')
 
+        # GATK tests will not run on jenkins b/c GATK.jar needs Java 7
+        # and jenkins only has Java 6 (12-16-2017).
+        # Set this to true to run the GATK integration tests locally.
+        self.manual_integration_tests = False
+
         ############# FETCH AND EXTRACT ENCODE DATASETS FROM S3#################
         self.encode_data = os.path.join(self.test_directory, "ENCODE_data.zip")
         self.encode_data_dir = os.path.join(self.test_directory, "ENCODE_data")
@@ -44,9 +49,80 @@ class ToilWdlIntegrationTest(ToilTest):
             with zipfile.ZipFile(self.wdl_data, 'r') as zip_ref:
                 zip_ref.extractall(self.test_directory)
 
+        if self.manual_integration_tests:
+            ############# FETCH AND EXTRACT GATK DATASETS FROM S3#################
+            self.gatk_data = os.path.join(self.test_directory, "GATK_data.zip")
+            self.gatk_data_dir = os.path.join(self.test_directory, "GATK_data")
+            # download the data from s3 if not already present
+            if not os.path.exists(self.gatk_data):
+                gatk_s3_loc = 'http://toil-datasets.s3.amazonaws.com/GATK_data.zip'
+                fetch_gatk_from_s3_cmd = ["wget", "-P", self.test_directory, gatk_s3_loc]
+                subprocess.check_call(fetch_gatk_from_s3_cmd)
+            # extract the compressed data if not already extracted
+            if not os.path.exists(self.gatk_data_dir):
+                with zipfile.ZipFile(self.gatk_data, 'r') as zip_ref:
+                    zip_ref.extractall(self.test_directory)
+
+
     def tearDown(self):
         """Default tearDown for unittest."""
         unittest.TestCase.tearDown(self)
+
+    # estimated run time 27 sec
+    @slow
+    def testTut01(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #1.'''
+        if self.manual_integration_tests:
+            wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl")
+            json = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
+            ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/output/")
+
+            subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+
+            compare_runs(self.output_dir, ref_dir)
+
+    # estimated run time 28 sec
+    @slow
+    def testTut02(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #2.'''
+        if self.manual_integration_tests:
+            wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection.wdl")
+            json = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection_inputs.json")
+            ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/output/")
+
+            subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+
+            compare_runs(self.output_dir, ref_dir)
+
+    # estimated run time 60 sec
+    @slow
+    def testTut03(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #3.'''
+        if self.manual_integration_tests:
+            wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery.wdl")
+            json = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery_inputs.json")
+            ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/output/")
+
+            subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+
+            compare_runs(self.output_dir, ref_dir)
+
+    # estimated run time 175 sec
+    @slow
+    def testTut04(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #4.'''
+        if self.manual_integration_tests:
+            wdl = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes.wdl")
+            json = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes_inputs.json")
+            ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/output/")
+
+            subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+
+            compare_runs(self.output_dir, ref_dir)
 
     # estimated run time 80 sec
     @slow
