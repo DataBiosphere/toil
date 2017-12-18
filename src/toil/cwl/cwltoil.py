@@ -455,12 +455,6 @@ class CWLJob(Job):
                                                 cwltool.stdfsaccess.StdFsAccess(outdir),
                                                 recursive=True))
 
-        def make_dir_literal(obj):
-            if "location" in obj and obj["location"].startswith("file:"):
-                obj["location"] = "_:" + str(uuid.uuid4())
-
-        adjustDirObjs(output, make_dir_literal)
-
         adjustFileObjs(output, functools.partial(uploadFile,
                                                  functools.partial(writeGlobalFileWrapper, fileStore),
                                                  index, existing))
