@@ -29,7 +29,7 @@ from libcloud.compute.providers import get_driver
 
 from toil import applianceSelf
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners import (NoSuchClusterException)
+from toil.provisioners import (Node, NoSuchClusterException)
 
 import logging
 logger = logging.getLogger(__name__)
@@ -69,6 +69,7 @@ logger = logging.getLogger(__name__)
 # * AWS credentials
 #   - can I assume only gs access from Google?
 #   - is there a way to create a credentials folder?
+# - other functions: remainingBillingInterval, terminate nodes, getProvisionedWokers
 # - preemptable
 # - security (sse) keys
 #   - test encryption
@@ -77,7 +78,6 @@ logger = logging.getLogger(__name__)
 # - check changes outside of this class (e.g. rsync call)
 #       git diff master
 # - test vpc-subnet
-# - other functions: remainingBillingInterval, terminate nodes, getProvisionedWokers
 # - advanced
 #   - other disks
 #   - RAID
@@ -228,6 +228,7 @@ class GCEProvisioner(AbstractProvisioner):
             metadata_flavor = {'Metadata-Flavor' : 'Google'}
             self.clusterName = requests.get(metadata_server + 'name', headers = metadata_flavor).text
             self.zone = requests.get(metadata_server + 'zone', headers = metadata_flavor).text
+            self.zone = self.zone.split('/')[-1]
 
             project_metadata_server = "http://metadata/computeMetadata/v1/project/"
             self.projectId = requests.get(project_metadata_server + 'project-id', headers = metadata_flavor).text
@@ -237,14 +238,18 @@ class GCEProvisioner(AbstractProvisioner):
             tags = json.loads(self.tags)
             self.keyName = tags['Owner']
 
+            self.leaderIP = leader.private_ips[0]  # this is PRIVATE IP
+            self.masterPublicKey = self._setSSH()
+
             print "GOT================================"
             print "clusterName=", self.clusterName
             print "zone=", self.zone
             print "keyName=", self.keyName
-            print "projectId", self.projectId
+            print "projectId=", self.projectId
+            print "leaderIP=", self.leaderIP
+            print "masterPublicKey=", self.masterPublicKey
 
-            self.leaderIP = leader.private_ips  # this is PRIVATE IP
-            self.masterPublicKey = self._setSSH()
+
             self.nodeStorage = config.nodeStorage
             spotBids = []
             self.nonPreemptableNodeTypes = []
@@ -375,7 +380,7 @@ class GCEProvisioner(AbstractProvisioner):
         #self.subnetID = leader.subnet_id
 
         self._copySshKeys(leader.public_ips[0], keyName)
-        self._waitForNode(leader.public_ips[0], role='toil_leader')
+        self._waitForNode(leader.public_ips[0], 'toil_leader')
 
 
         # NOT NECESSARY? http://libcloud.readthedocs.io/en/latest/compute/drivers/gce.html
@@ -422,6 +427,10 @@ class GCEProvisioner(AbstractProvisioner):
     @staticmethod
     def retryPredicate(e):
         return GCEProvisioner._throttlePredicate(e)
+
+    @staticmethod
+    def _throttlePredicate(e):
+        return False
 
     def destroyCluster(self, clusterName, zone=None):
         def expectedShutdownErrors(e):
@@ -484,7 +493,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     def remainingBillingInterval(self, node):
         #TODO - does this exist in GCE?
-        return awsRemainingBillingInterval(node)
+        return 1 #awsRemainingBillingInterval(node)
 
     def terminateNodes(self, nodes):
         #TODO This takes a set of node ids as input, which might not be compatible with _terminateNodes
@@ -569,12 +578,12 @@ class GCEProvisioner(AbstractProvisioner):
         for instance in instancesLaunched:
             self._copySshKeys(instance.public_ips[0], self.keyName)
             if self.config and self.config.sseKey or botoExists:
-                self._waitForNode(instance.public_ips[0], self.keyName, role='toil_worker')
+                self._waitForNode(instance.public_ips[0], 'toil_worker')
                 if self.config and self.config.sseKey:
-                    self._rsyncNode(ipAddress, [botoDir, ':' + self.config.sseKey],
+                    self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
                                     applianceName='toil_worker')
                 if botoExists:
-                    self._rsyncNode(ipAddress, [self.config.sseKey, ':/root'],
+                    self._rsyncNode(instance.public_ips[0], [botoDir, ':/root'],
                                     applianceName='toil_worker')
                 # TODO: check if this is necessary - shouldn't be
                 # copy google application credentials to leader so that it can access the Google jobStore
@@ -586,15 +595,15 @@ class GCEProvisioner(AbstractProvisioner):
         return len(instancesLaunched)
 
     def getProvisionedWorkers(self, nodeType, preemptable):
-        entireCluster = self._getNodesInCluster(ctx=self.ctx, clusterName=self.clusterName, both=True, nodeType=nodeType)
+        entireCluster = self._getNodesInCluster(clusterName=self.clusterName, both=True, nodeType=nodeType)
         logger.debug('All nodes in cluster: %s', entireCluster)
-        workerInstances = [i for i in entireCluster if i.private_ip_address != self.leaderIP]
+        workerInstances = [i for i in entireCluster if i.private_ips[0] != self.leaderIP]
         logger.debug('All workers found in cluster: %s', workerInstances)
-        workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
-        logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
-        workerInstances = awsFilterImpairedNodes(workerInstances, self.ctx.ec2)
-        return [Node(publicIP=i.ip_address, privateIP=i.private_ip_address,
-                     name=i.id, launchTime=i.launch_time, nodeType=i.instance_type,
+        # TODO: get spot workers
+        #workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
+        #logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
+        return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
+                     name=i.name, launchTime=i.created_at, nodeType=i.size,
                      preemptable=preemptable)
                 for i in workerInstances]
 
@@ -654,6 +663,9 @@ class GCEProvisioner(AbstractProvisioner):
         """ Copies ssh keys to the core users so that ssh and rsync will work."""
         # returns the node's IP
         #cls._waitForSSHPort(instanceIP)
+
+        if keyName == 'core':
+            return
 
         cls._waitForSSHKeys(instanceIP, keyName=keyName)
 
