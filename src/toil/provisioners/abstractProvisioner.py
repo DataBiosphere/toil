@@ -23,7 +23,7 @@ import subprocess
 from future.utils import with_metaclass
 
 from bd2k.util.retry import never
-from toil.lib.ec2 import a_short_time
+a_short_time = 5
 
 log = logging.getLogger(__name__)
 
