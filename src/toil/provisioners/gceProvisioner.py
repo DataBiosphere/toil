@@ -54,29 +54,29 @@ logger = logging.getLogger(__name__)
 #   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
 
-# 2. copy credentials and test autoscaling
-# 3. gce jobstore
-# 4. commit
-# 5. spot instances
+# - fix worker delay
+# - get working with full sort.py
+
+# - make boto an option
+# - Todo list
+#   - other functions: remainingBillingInterval, getProvisionedWokers
+# - instructions (on github?)
+# - tests working
+# - gce jobStore
+# - check changes outside of this class (e.g. rsync call)
+#       git diff master
 
 # TODO
-# * gce bug that doesn't allow multi nodes
+# - preemptable
+# - libcloud ex_create_multiple_nodes bug that doesn't allow multi nodes
 #   - submit issue
-# * revisit ssh keys
+# - revisit ssh keys
 #   - cloud config?
 #   - This error: Failed Units: 1 coreos-metadata-sshkeys@core.service
 #   - try passing keyName to coreSSH instead; then no need to copy authorized keys
-# * AWS credentials
-#   - can I assume only gs access from Google?
-#   - is there a way to create a credentials folder?
-# - other functions: remainingBillingInterval, terminate nodes, getProvisionedWokers
-# - preemptable
 # - security (sse) keys
 #   - test encryption
 #   - keyName is needed to copy ssh key
-# - ex_create_multiple_nodes bug
-# - check changes outside of this class (e.g. rsync call)
-#       git diff master
 # - test vpc-subnet
 # - advanced
 #   - other disks
@@ -201,9 +201,8 @@ coreos:
             -collector.sysfs /host/sys \
             -collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
 """
-#ssh_authorized_keys:
-#    - "ssh-rsa {sshKey}"
-#"""
+
+
 
 class GCEProvisioner(AbstractProvisioner):
 
@@ -236,19 +235,14 @@ class GCEProvisioner(AbstractProvisioner):
             leader = self._getLeader(self.clusterName)
             self.tags = leader.extra['description']
             tags = json.loads(self.tags)
-            self.keyName = tags['Owner']
+            self.keyName = 'core'
 
             self.leaderIP = leader.private_ips[0]  # this is PRIVATE IP
             self.masterPublicKey = self._setSSH()
-
-            print "GOT================================"
-            print "clusterName=", self.clusterName
-            print "zone=", self.zone
-            print "keyName=", self.keyName
-            print "projectId=", self.projectId
-            print "leaderIP=", self.leaderIP
-            print "masterPublicKey=", self.masterPublicKey
-
+            self.gceUserDataWorker = gceUserData + """
+ssh_authorized_keys:
+    - "ssh-rsa {sshKey}"
+"""
 
             self.nodeStorage = config.nodeStorage
             spotBids = []
@@ -268,7 +262,6 @@ class GCEProvisioner(AbstractProvisioner):
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
-
         else:
             self.clusterName = None
             self.instanceMetaData = None
@@ -277,7 +270,7 @@ class GCEProvisioner(AbstractProvisioner):
             self.tags = None
             self.masterPublicKey = None
             self.nodeStorage = None
-
+            self.gceUserDataWorker = gceUserData
 
             # TODO: This is not necessary for ssh and rsync. Remove?
             if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
@@ -315,18 +308,13 @@ class GCEProvisioner(AbstractProvisioner):
         self.tags = json.dumps(tags)
 
         # TODO
-        # - profileARN: what is this for? access policies?
         # - security group: just for a cluster identifier?
-        # - bdm (just for RAID?)
         # - what if cluster already exists? Is this checked in ARN or security group creation?
         #       - test this with AWS
-        #profileARN = self._getProfileARN(ctx)
-        #leaderInstanceType = ec2_instance_types[leaderNodeType]
-        self.masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
+
         leaderData = dict(role='leader',
                           image=applianceSelf(),
                           entrypoint='mesos-master',
-                          sshKey=self.masterPublicKey,
                           args=leaderArgs.format(name=clusterName))
         userData = gceUserData.format(**leaderData)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
@@ -339,11 +327,8 @@ class GCEProvisioner(AbstractProvisioner):
             leader = self._getLeader(clusterName, zone=zone)
         elif not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
-
             disk = {}
             disk['initializeParams'] = {
-                #'diskName': clusterName,
-                #'diskType': bytes('https://www.googleapis.com/compute/v1/projects/curoverse-production/zones/us-central1-a/diskTypes/local-ssd'),
                 'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
                 'diskSizeGb' : leaderStorage }
             disk.update({'boot': True,
@@ -376,17 +361,11 @@ class GCEProvisioner(AbstractProvisioner):
         if spotBids:
             self.spotBids = dict(zip(preemptableNodeTypes, spotBids))
 
-        #TODO: get subnetID - what is this used for?
+        #TODO: get subnetID
         #self.subnetID = leader.subnet_id
 
         self._copySshKeys(leader.public_ips[0], keyName)
         self._waitForNode(leader.public_ips[0], 'toil_leader')
-
-
-        # NOT NECESSARY? http://libcloud.readthedocs.io/en/latest/compute/drivers/gce.html
-        # copy google application credentials to leader so that it can create instances and access
-        # the Google jobStore
-        #self._rsyncNode(leader.public_ips[0], [self.googleJson, ':/root/' + self.googleCredentialsFile])
 
 
         # assuming that if the leader was launched without a spotbid then all workers
@@ -496,21 +475,34 @@ class GCEProvisioner(AbstractProvisioner):
         return 1 #awsRemainingBillingInterval(node)
 
     def terminateNodes(self, nodes):
-        #TODO This takes a set of node ids as input, which might not be compatible with _terminateNodes
-        self._terminateNodes(nodes)
+        nodeNames = [n.name for n in nodes]
+        instances = self._getNodesInCluster(self.clusterName)
+        instancesToKill = [i for i in instances if i.name in nodeNames]
+        self._terminateInstances(instancesToKill)
+
 
     def addNodes(self, nodeType, numNodes, preemptable):
-        #instanceType = ec2_instance_types[nodeType]
-        #bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
-        #arn = self._getProfileARN(self.ctx)
-        keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
-        entryPoint = 'mesos-slave' if not self.config or not self.config.sseKey else "waitForKey.sh"
+        # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
+        # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
+        # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
+        # set to keyPath.
+        keyPath = ''
+        entryPoint = 'mesos-slave'
+        botoPath = "/root/.boto"
+        botoExists = os.path.exists(botoPath)
+        if botoExists:
+            entryPoint = "waitForKey.sh"
+            keyPath = botoPath
+        elif self.config and self.config.sseKey:
+            entryPoint = "waitForKey.sh"
+            keyPath = self.config.sseKey
+
         workerData = dict(role='worker',
                           image=applianceSelf(),
                           entrypoint=entryPoint,
                           sshKey=self.masterPublicKey,
                           args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable, keyPath=keyPath))
-        userData = gceUserData.format(**workerData)
+
         #sgs = [sg for sg in self.ctx.ec2.get_all_security_groups() if sg.name == self.clusterName]
         #kwargs = {'key_name': self.keyName,
         #          'security_group_ids': [sg.id for sg in sgs],
@@ -521,7 +513,7 @@ class GCEProvisioner(AbstractProvisioner):
         #          'placement': getCurrentAWSZone()}
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
 
-        userData = gceUserData.format(**workerData)
+        userData = self.gceUserDataWorker.format(**workerData)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
 
         imageType = 'coreos-stable'
@@ -535,8 +527,6 @@ class GCEProvisioner(AbstractProvisioner):
             logger.info('Launching %s non-preemptable nodes', numNodes)
             disk = {}
             disk['initializeParams'] = {
-                #'diskName': clusterName,
-                #'diskType': bytes('https://www.googleapis.com/compute/v1/projects/curoverse-production/zones/us-central1-a/diskTypes/local-ssd'),
                 'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
                 'diskSizeGb' : self.nodeStorage }
             disk.update({'boot': True,
@@ -572,9 +562,6 @@ class GCEProvisioner(AbstractProvisioner):
         #    with attempt:
         #        wait_instances_running(self.ctx.ec2, instancesLaunched)
 
-
-        botoDir = "/root/.boto"
-        botoExists = os.path.exists(botoDir)
         for instance in instancesLaunched:
             self._copySshKeys(instance.public_ips[0], self.keyName)
             if self.config and self.config.sseKey or botoExists:
@@ -583,14 +570,8 @@ class GCEProvisioner(AbstractProvisioner):
                     self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
                                     applianceName='toil_worker')
                 if botoExists:
-                    self._rsyncNode(instance.public_ips[0], [botoDir, ':/root'],
+                    self._rsyncNode(instance.public_ips[0], [botoPath, ':/root'],
                                     applianceName='toil_worker')
-                # TODO: check if this is necessary - shouldn't be
-                # copy google application credentials to leader so that it can access the Google jobStore
-                #self._rsyncNode(instance.public_ips[0], [self.googleJson, ':/root/' + self.googleCredentialsFile],
-                #            applianceName='toil_worker')
-
-
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
@@ -611,11 +592,6 @@ class GCEProvisioner(AbstractProvisioner):
         if zone is not None:
             self.zone = zone
         instances = self._getNodesInCluster(clusterName, nodeType=None, both=True)
-        #for x in instances:
-            #print x
-            #dir(x)
-            #print dir(x)
-            #print x.extra
 
         instances.sort(key=lambda x: x.created_at)
         try:
@@ -649,10 +625,7 @@ class GCEProvisioner(AbstractProvisioner):
             return [x for x in instances.union(set(runningInstances))]
 
     def _getDriver(self):
-        #GCE_JSON = "/Users/ejacox/toil-dev-41fd0135b44d.json"
-        #GCE_CLIENT_EMAIL = "100104111990-compute@developer.gserviceaccount.com"
         driverCls = get_driver(Provider.GCE)
-        #return driverCls(GCE_CLIENT_EMAIL, GCE_JSON, project='toil-dev', datacenter=self.zone)
         return driverCls(self.clientEmail,
                          self.googleJson,
                          project=self.projectId,
@@ -660,16 +633,11 @@ class GCEProvisioner(AbstractProvisioner):
 
     @classmethod
     def _copySshKeys(cls, instanceIP, keyName):
-        """ Copies ssh keys to the core users so that ssh and rsync will work."""
-        # returns the node's IP
-        #cls._waitForSSHPort(instanceIP)
-
         if keyName == 'core':
             return
 
         cls._waitForSSHKeys(instanceIP, keyName=keyName)
 
-        # TODO: test if this is necessary - yes
         # TODO: Check if there is another way to ssh to a GCE instance with Google credentials
         # copy keys to core user so that the ssh calls will work
         # - normal mechanism failed unless public key was in the google-ssh format
@@ -751,7 +719,6 @@ class GCEProvisioner(AbstractProvisioner):
         logger.info('... Waiting for instance(s) to shut down...')
         for t in threads:
             t.join()
-
 
     DEFAULT_TASK_COMPLETION_TIMEOUT = 180
     def ex_create_multiple_nodes(
