@@ -54,20 +54,23 @@ logger = logging.getLogger(__name__)
 #   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
 
-# - fix worker delay
-# - get working with full sort.py
 
-# - make boto an option
-# - Todo list
-#   - other functions: remainingBillingInterval, getProvisionedWokers
-# - instructions (on github?)
+# - Rename works
+#   - Is there a way to cluster in GCE?
+#   - TEST BY ADDING NODES TWICE FROM LAUNCH CLUSTER
+#   - SOLUTION
+#      1. Use unmanaged instance groups: add, get all, delete all
+#      2. Add uuid for workers (still use create-multiple)
 # - tests working
-# - gce jobStore
 # - check changes outside of this class (e.g. rsync call)
 #       git diff master
+# - instructions (on github?)
+# - gce jobStore
+# - set and test vpc-subnet
+# - preemptable
+
 
 # TODO
-# - preemptable
 # - libcloud ex_create_multiple_nodes bug that doesn't allow multi nodes
 #   - submit issue
 # - revisit ssh keys
@@ -77,17 +80,15 @@ logger = logging.getLogger(__name__)
 # - security (sse) keys
 #   - test encryption
 #   - keyName is needed to copy ssh key
-# - test vpc-subnet
 # - advanced
 #   - other disks
 #   - RAID
+
 logger = logging.getLogger(__name__)
 
-# TODO: Where should this go?
 logDir = '--log_dir=/var/lib/mesos'
-leaderArgs = logDir + ' --registry=in_memory --cluster={name}'
-workerArgs = '{keyPath} --work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} ' + logDir
-
+leaderDockerArgs = logDir + ' --registry=in_memory --cluster={name}'
+workerDockerArgs = '{keyPath} --work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} ' + logDir
 gceUserData = """#cloud-config
 
 write_files:
@@ -176,8 +177,8 @@ coreos:
             -v /var/lib/cwl:/var/lib/cwl \
             -v /tmp:/tmp \
             --name=toil_{role} \
-            {image} \
-            {args}
+            {dockerImage} \
+            {dockerArgs}
     - name: "node-exporter.service"
       command: "start"
       content: |
@@ -202,11 +203,14 @@ coreos:
             -collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
 """
 
+gceUserDataWithSsh = gceUserData + """
+ssh_authorized_keys:
+    - "ssh-rsa {sshKey}"
+"""
 
+nodeBotoPath = "/root/.boto"
 
 class GCEProvisioner(AbstractProvisioner):
-
-    googleCredentialsFile = 'googleApplicationCredentials.json'
 
     def __init__(self, config=None):
         """
@@ -235,14 +239,12 @@ class GCEProvisioner(AbstractProvisioner):
             leader = self._getLeader(self.clusterName)
             self.tags = leader.extra['description']
             tags = json.loads(self.tags)
-            self.keyName = 'core'
-
             self.leaderIP = leader.private_ips[0]  # this is PRIVATE IP
             self.masterPublicKey = self._setSSH()
-            self.gceUserDataWorker = gceUserData + """
-ssh_authorized_keys:
-    - "ssh-rsa {sshKey}"
-"""
+
+            self.botoPath = nodeBotoPath
+            self.keyName = 'core'
+            self.gceUserDataWorker = gceUserDataWithSsh
 
             self.nodeStorage = config.nodeStorage
             spotBids = []
@@ -271,8 +273,9 @@ ssh_authorized_keys:
             self.masterPublicKey = None
             self.nodeStorage = None
             self.gceUserDataWorker = gceUserData
+            self.botoPath = None
 
-            # TODO: This is not necessary for ssh and rsync. Remove?
+            # TODO: This is not necessary for ssh and rsync.
             if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
                 self.googleJson = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
             else:
@@ -291,31 +294,32 @@ ssh_authorized_keys:
 
 
     def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
-            clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None, vpcSubnet=None, leaderStorage=50, nodeStorage=50):
+            clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None,
+            vpcSubnet=None, leaderStorage=50, nodeStorage=50,
+            botoPath=None):
         if self.config is None:
             self.nodeStorage = nodeStorage
         if userTags is None:
             userTags = {}
         self.zone = zone
         self.clusterName = clusterName
-
+        self.botoPath = botoPath
         self.keyName = keyName
 
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
-        # Dumping tags into the description.
+        # Therefore, umping tags into the description.
         tags = {'Owner': keyName}
         tags.update(userTags)
         self.tags = json.dumps(tags)
 
         # TODO
         # - security group: just for a cluster identifier?
-        # - what if cluster already exists? Is this checked in ARN or security group creation?
-        #       - test this with AWS
+        # - Error thrown if cluster exists. Add an explicit check for an existing cluster? Racey though.
 
         leaderData = dict(role='leader',
-                          image=applianceSelf(),
+                          dockerImage=applianceSelf(),
                           entrypoint='mesos-master',
-                          args=leaderArgs.format(name=clusterName))
+                          dockerArgs=leaderDockerArgs.format(name=clusterName))
         userData = gceUserData.format(**leaderData)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
 
@@ -324,6 +328,7 @@ ssh_authorized_keys:
 
         driver = self._getDriver()
         if False:
+            # TODO: remove this - for testing only
             leader = self._getLeader(clusterName, zone=zone)
         elif not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
@@ -333,8 +338,8 @@ ssh_authorized_keys:
                 'diskSizeGb' : leaderStorage }
             disk.update({'boot': True,
                  #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
-            #     'mode': 'READ_WRITE',
-            #     'deviceName': clusterName,
+                 #'mode': 'READ_WRITE',
+                 #'deviceName': clusterName,
                  'autoDelete': True })
             leader = driver.create_node(clusterName, leaderNodeType, imageType,
                                     location=zone,
@@ -352,10 +357,9 @@ ssh_authorized_keys:
                                        spec=kwargs,
                                        num_instances=1))
 
-
         logger.info('... toil_leader is running')
 
-        # if we running launch cluster we need to save this data as it won't be generated
+        # if we are running launch cluster we need to save this data as it won't be generated
         # from the metadata. This data is needed to launch worker nodes.
         self.leaderIP = leader.private_ips[0]
         if spotBids:
@@ -367,6 +371,9 @@ ssh_authorized_keys:
         self._copySshKeys(leader.public_ips[0], keyName)
         self._waitForNode(leader.public_ips[0], 'toil_leader')
 
+        if self.botoPath:
+            self._rsyncNode(leader.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
+                            applianceName='toil_leader')
 
         # assuming that if the leader was launched without a spotbid then all workers
         # will be non-preemptable
@@ -385,7 +392,6 @@ ssh_authorized_keys:
         assert len(sizes) == 1
         instanceType = sizes[0]
 
-        # TODO: When is self.nodeStorage ever not used?
         disk = 0 #instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
@@ -393,7 +399,7 @@ ssh_authorized_keys:
             # the root volume
             disk = self.nodeStorage * 2 ** 30
 
-        # TODO: check ram units - google returns M. Is G expected here?
+        # Ram is in M.
         #Underestimate memory by 100M to prevent autoscaler from disagreeing with
         #mesos about whether a job can run on a particular node type
         memory = (instanceType.ram/1000 - 0.1) * 2** 30
@@ -412,52 +418,16 @@ ssh_authorized_keys:
         return False
 
     def destroyCluster(self, clusterName, zone=None):
-        def expectedShutdownErrors(e):
-            return e.status == 400 and 'dependent object' in e.body
-
-        if zone is not None:
-            self.zone = zone
-
-        instances = self._getNodesInCluster(clusterName, nodeType=None, both=True)
-
-        #TODO: anything for this
+        #TODO: anything like this with Google?
         #spotIDs = self._getSpotRequestIDs(ctx, clusterName)
         #if spotIDs:
         #    ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
 
-        #TODO: this works with env TOIL_AWS_NODE_DEBUG
-        #instances = awsFilterImpairedNodes(instances, ctx.ec2)
-        instancesToTerminate = instances
-        vpcId = None
+        if zone is not None:
+            self.zone = zone
+        instancesToTerminate = self._getNodesInCluster(clusterName)
         if instancesToTerminate:
-            #vpcId = instancesToTerminate[0].vpc_id
-           # self._deleteIAMProfiles(instances=instancesToTerminate, ctx=ctx)
             self._terminateInstances(instances=instancesToTerminate)
-        return
-        # TODO: any cleanup?
-        if len(instances) == len(instancesToTerminate):
-            logger.info('Deleting security group...')
-            removed = False
-            for attempt in retry(timeout=300, predicate=expectedShutdownErrors):
-                with attempt:
-                    for sg in ctx.ec2.get_all_security_groups():
-                        if sg.name == clusterName and vpcId and sg.vpc_id == vpcId:
-                            try:
-                                ctx.ec2.delete_security_group(group_id=sg.id)
-                                removed = True
-                            except BotoServerError as e:
-                                if e.error_code == 'InvalidGroup.NotFound':
-                                    pass
-                                else:
-                                    raise
-            if removed:
-                logger.info('... Succesfully deleted security group')
-        else:
-            assert len(instances) > len(instancesToTerminate)
-            # the security group can't be deleted until all nodes are terminated
-            logger.warning('The TOIL_AWS_NODE_DEBUG environment variable is set and some nodes '
-                           'have failed health checks. As a result, the security group & IAM '
-                           'roles will not be deleted.')
 
     def sshLeader(self, clusterName, args=None, zone=None, **kwargs):
         leader = self._getLeader(clusterName, zone=zone)
@@ -480,7 +450,6 @@ ssh_authorized_keys:
         instancesToKill = [i for i in instances if i.name in nodeNames]
         self._terminateInstances(instancesToKill)
 
-
     def addNodes(self, nodeType, numNodes, preemptable):
         # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
@@ -488,29 +457,20 @@ ssh_authorized_keys:
         # set to keyPath.
         keyPath = ''
         entryPoint = 'mesos-slave'
-        botoPath = "/root/.boto"
-        botoExists = os.path.exists(botoPath)
+        botoExists = os.path.exists(self.botoPath)
         if botoExists:
             entryPoint = "waitForKey.sh"
-            keyPath = botoPath
+            keyPath = nodeBotoPath
         elif self.config and self.config.sseKey:
             entryPoint = "waitForKey.sh"
             keyPath = self.config.sseKey
 
         workerData = dict(role='worker',
-                          image=applianceSelf(),
+                          dockerImage=applianceSelf(),
                           entrypoint=entryPoint,
                           sshKey=self.masterPublicKey,
-                          args=workerArgs.format(ip=self.leaderIP, preemptable=preemptable, keyPath=keyPath))
+                          dockerArgs=workerDockerArgs.format(ip=self.leaderIP, preemptable=preemptable, keyPath=keyPath))
 
-        #sgs = [sg for sg in self.ctx.ec2.get_all_security_groups() if sg.name == self.clusterName]
-        #kwargs = {'key_name': self.keyName,
-        #          'security_group_ids': [sg.id for sg in sgs],
-        #          'instance_type': instanceType.name,
-        #          'user_data': userData,
-        #          'block_device_map': bdm,
-        #          'instance_profile_arn': arn,
-        #          'placement': getCurrentAWSZone()}
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
 
         userData = self.gceUserDataWorker.format(**workerData)
@@ -553,14 +513,9 @@ ssh_authorized_keys:
                                                            tags={'clusterName': self.clusterName},
                                                            spec=kwargs,
                                                            num_instances=numNodes,
-                                                           tentative=True)
-                                     )
+                                                           tentative=True))
             # flatten the list
             instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
-
-        #for attempt in retry(predicate=LibCloudProvisioner._throttlePredicate):
-        #    with attempt:
-        #        wait_instances_running(self.ctx.ec2, instancesLaunched)
 
         for instance in instancesLaunched:
             self._copySshKeys(instance.public_ips[0], self.keyName)
@@ -570,13 +525,13 @@ ssh_authorized_keys:
                     self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
                                     applianceName='toil_worker')
                 if botoExists:
-                    self._rsyncNode(instance.public_ips[0], [botoPath, ':/root'],
+                    self._rsyncNode(instance.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
                                     applianceName='toil_worker')
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
     def getProvisionedWorkers(self, nodeType, preemptable):
-        entireCluster = self._getNodesInCluster(clusterName=self.clusterName, both=True, nodeType=nodeType)
+        entireCluster = self._getNodesInCluster(clusterName=self.clusterName, nodeType=nodeType)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ips[0] != self.leaderIP]
         logger.debug('All workers found in cluster: %s', workerInstances)
@@ -591,7 +546,7 @@ ssh_authorized_keys:
     def _getLeader(self, clusterName, zone=None):
         if zone is not None:
             self.zone = zone
-        instances = self._getNodesInCluster(clusterName, nodeType=None, both=True)
+        instances = self._getNodesInCluster(clusterName)
 
         instances.sort(key=lambda x: x.created_at)
         try:
@@ -600,29 +555,12 @@ ssh_authorized_keys:
             raise NoSuchClusterException(clusterName)
         return leader
 
-    def _getNodesInCluster(self, clusterName, nodeType=None, preemptable=False, both=False):
-
-        driver = self._getDriver()
-
-        #TODO:
-        # - filter by clusterName
-        # - finish this
-        return  driver.list_nodes() #zone=zone)
-
-        pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                                        'instance-state-name': 'pending'})
-        runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                                       'instance-state-name': 'running'})
+    def _getNodesInCluster(self, clusterName, nodeType=None):
+        allInstances = self._getDriver().list_nodes(ex_zone=self.zone)
+        instances = [instance for instance in allInstances if instance.name.startswith(clusterName)]
         if nodeType:
-            pendingInstances = [instance for instance in pendingInstances if instance.instance_type == nodeType]
-            runningInstances = [instance for instance in runningInstances if instance.instance_type == nodeType]
-        instances = set(pendingInstances)
-        if not preemptable and not both:
-            return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is None]
-        elif preemptable and not both:
-            return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is not None]
-        elif both:
-            return [x for x in instances.union(set(runningInstances))]
+            instances = [instance for instance in instances if instance.size == nodeType]
+        return instances
 
     def _getDriver(self):
         driverCls = get_driver(Provider.GCE)
@@ -633,12 +571,15 @@ ssh_authorized_keys:
 
     @classmethod
     def _copySshKeys(cls, instanceIP, keyName):
+        """ Copy authorized_keys file to the core user from the keyName user."""
         if keyName == 'core':
             return
 
+        # Make sure that keys are there.
         cls._waitForSSHKeys(instanceIP, keyName=keyName)
 
         # TODO: Check if there is another way to ssh to a GCE instance with Google credentials
+
         # copy keys to core user so that the ssh calls will work
         # - normal mechanism failed unless public key was in the google-ssh format
         # - even so, the key wasn't copied correctly to the core account
@@ -648,6 +589,7 @@ ssh_authorized_keys:
 
     def _waitForNode(self, instanceIP, role):
         # wait here so docker commands can be used reliably afterwards
+        # TODO: make this more robust, e.g. If applicance doesn't exist, then this waits forever.
         self._waitForSSHKeys(instanceIP, keyName=self.keyName)
         self._waitForDockerDaemon(instanceIP, keyName=self.keyName)
         self._waitForAppliance(instanceIP, role=role, keyName=self.keyName)
@@ -818,7 +760,7 @@ ssh_authorized_keys:
         return node_list
 
 
-## UNCHANGED CLASSES
+    ## UNCHANGED CLASSES
 
     @classmethod
     def _waitForSSHKeys(cls, instanceIP, keyName='core'):

@@ -35,7 +35,10 @@ def main():
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
-                        help="The name of the AWS key pair to include on the instance")
+                        help="The name of the AWS or ssh key pair to include on the instance")
+    parser.add_argument("--boto", dest='botoPath',
+                        help="The path to the boto credentials directory. This is transferred to all "
+                             " nodes in order to access the AWS jobStore from non-AWS instances.")
     parser.add_argument("-t", "--tag", metavar='NAME=VALUE', dest='tags', default=[], action='append',
                         help="Tags are added to the AWS cluster for this node and all of its "
                              "children. Tags are of the form:\n"
@@ -134,6 +137,7 @@ def main():
                               numWorkers=numNodes,
                               numPreemptableWorkers = numPreemptableNodes,
                               keyName=config.keyPairName,
+                              botoPath=config.botoPath,
                               clusterName=config.clusterName,
                               spotBids=spotBids,
                               userTags=tagsDict,
