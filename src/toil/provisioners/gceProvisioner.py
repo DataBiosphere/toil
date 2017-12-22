@@ -23,6 +23,7 @@ import time
 import threading
 import json
 import requests
+import re
 
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
@@ -55,22 +56,20 @@ logger = logging.getLogger(__name__)
 
 
 
-# - Rename works
-#   - Is there a way to cluster in GCE?
-#   - TEST BY ADDING NODES TWICE FROM LAUNCH CLUSTER
-#   - SOLUTION
-#      1. Use unmanaged instance groups: add, get all, delete all
-#      2. Add uuid for workers (still use create-multiple)
 # - tests working
-# - check changes outside of this class (e.g. rsync call)
-#       git diff master
 # - instructions (on github?)
 # - gce jobStore
 # - set and test vpc-subnet
 # - preemptable
+# - Use unmanaged instance groups: add, get all, delete all
 
 
 # TODO
+# -refactor
+#  - zone is hard-code for AWS
+#  - rysnc, ... should be instance methods
+#  - replace launchCluster with a normal consructor
+#   - launchCluster doesn't need to be abstract
 # - libcloud ex_create_multiple_nodes bug that doesn't allow multi nodes
 #   - submit issue
 # - revisit ssh keys
@@ -224,6 +223,7 @@ class GCEProvisioner(AbstractProvisioner):
         # From a GCE instance, these values can be blank. Only the projectId is needed
         self.googleJson = ''
         self.clientEmail = ''
+        self.clusterInc = None
 
         if config:
             # https://cloud.google.com/compute/docs/storing-retrieving-metadata
@@ -236,7 +236,7 @@ class GCEProvisioner(AbstractProvisioner):
             project_metadata_server = "http://metadata/computeMetadata/v1/project/"
             self.projectId = requests.get(project_metadata_server + 'project-id', headers = metadata_flavor).text
 
-            leader = self._getLeader(self.clusterName)
+            leader = self._getLeader()
             self.tags = leader.extra['description']
             tags = json.loads(self.tags)
             self.leaderIP = leader.private_ips[0]  # this is PRIVATE IP
@@ -423,21 +423,28 @@ class GCEProvisioner(AbstractProvisioner):
         #if spotIDs:
         #    ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
 
+        self.clusterName = clusterName
         if zone is not None:
             self.zone = zone
-        instancesToTerminate = self._getNodesInCluster(clusterName)
+        instancesToTerminate = self._getNodesInCluster()
         if instancesToTerminate:
             self._terminateInstances(instances=instancesToTerminate)
 
     def sshLeader(self, clusterName, args=None, zone=None, **kwargs):
-        leader = self._getLeader(clusterName, zone=zone)
+        self.clusterName = clusterName
+        if zone is not None:
+            self.zone = zone
+        leader = self._getLeader()
         logger.info('SSH ready')
         kwargs['tty'] = sys.stdin.isatty()
         command = args if args else ['bash']
         self._sshAppliance(leader.public_ips[0], *command, **kwargs)
 
     def rsyncLeader(self, clusterName, args, zone=None, **kwargs):
-        leader = self._getLeader(clusterName, zone=zone)
+        self.clusterName = clusterName
+        if zone is not None:
+            self.zone = zone
+        leader = self._getLeader()
         self._rsyncNode(leader.public_ips[0], args, **kwargs)
 
     def remainingBillingInterval(self, node):
@@ -446,7 +453,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     def terminateNodes(self, nodes):
         nodeNames = [n.name for n in nodes]
-        instances = self._getNodesInCluster(self.clusterName)
+        instances = self._getNodesInCluster()
         instancesToKill = [i for i in instances if i.name in nodeNames]
         self._terminateInstances(instancesToKill)
 
@@ -457,10 +464,11 @@ class GCEProvisioner(AbstractProvisioner):
         # set to keyPath.
         keyPath = ''
         entryPoint = 'mesos-slave'
-        botoExists = os.path.exists(self.botoPath)
-        if botoExists:
+        botoExists = False
+        if self.botoPath is not None and os.path.exists(self.botoPath):
             entryPoint = "waitForKey.sh"
             keyPath = nodeBotoPath
+            botoExists = True
         elif self.config and self.config.sseKey:
             entryPoint = "waitForKey.sh"
             keyPath = self.config.sseKey
@@ -479,9 +487,21 @@ class GCEProvisioner(AbstractProvisioner):
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
 
+        # Create a unique base name for adding nodes.
+        # UUIDs don't work. The limit on hostnames seems to be 65 characters.
+        # Add a 'node increment' integer after the cluster name, which is incremented
+        # each time this method is called.
+        if not self.clusterInc:
+            # Not set, so find it in the list of instances.
+            self.clusterInc = self._getNodeIncrement()
+        self.clusterInc += 1
+        baseName = self.clusterName + "-" + bytes(self.clusterInc)
+
         # TODO:
-        #    - node/volume naming: clusterName-???, How to increment across restarts?
-        #    - bug in gce.py for ex_create_multiple_nodes (erroneously, doesn't allow image and disk to specified)
+        #  - bug in gce.py for ex_create_multiple_nodes (erroneously, doesn't allow image and disk to specified)
+        #  - ex_create_multiple_nodes is limited to 1000 nodes
+        #    - use a different function
+        #    - or write a loop over the rest of this function, with 1K nodes max on each iteration
         driver = self._getDriver()
         if not preemptable:
             logger.info('Launching %s non-preemptable nodes', numNodes)
@@ -496,7 +516,7 @@ class GCEProvisioner(AbstractProvisioner):
                  'autoDelete': True })
             #instancesLaunched = driver.ex_create_multiple_nodes(
             instancesLaunched = self.ex_create_multiple_nodes(
-                                    self.clusterName, nodeType, imageType, numNodes,
+                                    baseName, nodeType, imageType, numNodes,
                                     location=self.zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
@@ -531,7 +551,7 @@ class GCEProvisioner(AbstractProvisioner):
         return len(instancesLaunched)
 
     def getProvisionedWorkers(self, nodeType, preemptable):
-        entireCluster = self._getNodesInCluster(clusterName=self.clusterName, nodeType=nodeType)
+        entireCluster = self._getNodesInCluster(nodeType=nodeType)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = [i for i in entireCluster if i.private_ips[0] != self.leaderIP]
         logger.debug('All workers found in cluster: %s', workerInstances)
@@ -543,21 +563,30 @@ class GCEProvisioner(AbstractProvisioner):
                      preemptable=preemptable)
                 for i in workerInstances]
 
-    def _getLeader(self, clusterName, zone=None):
-        if zone is not None:
-            self.zone = zone
-        instances = self._getNodesInCluster(clusterName)
+    def _getNodeIncrement(self):
+        """
+        Find the max node increment, which is the integer between dashes after the clusterName.
+        """
+        instances = self._getNodesInCluster()
+        regex=re.compile("^"+self.clusterName + "-(\d+)-.*")
+        incs = [int(m.group(1)) for i in instances for m in [regex.search(i.name)] if m]
+        if len(incs) == 0:
+            return 0
+        else:
+            return max(incs)
 
+    def _getLeader(self):
+        instances = self._getNodesInCluster()
         instances.sort(key=lambda x: x.created_at)
         try:
             leader = instances[0]  # assume leader was launched first
         except IndexError:
-            raise NoSuchClusterException(clusterName)
+            raise NoSuchClusterException(self.clusterName)
         return leader
 
-    def _getNodesInCluster(self, clusterName, nodeType=None):
+    def _getNodesInCluster(self, nodeType=None):
         allInstances = self._getDriver().list_nodes(ex_zone=self.zone)
-        instances = [instance for instance in allInstances if instance.name.startswith(clusterName)]
+        instances = [instance for instance in allInstances if instance.name.startswith(self.clusterName)]
         if nodeType:
             instances = [instance for instance in instances if instance.size == nodeType]
         return instances

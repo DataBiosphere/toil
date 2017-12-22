@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 def addBasicProvisionerOptions(parser):
     parser.add_argument("--version", action='version', version=version)
-    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws', 'libcloud', 'gce'], required=False, default="aws",
+    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws', 'gce'], required=False, default="aws",
                         help="The provisioner for cluster auto-scaling. Only aws is currently "
                              "supported")
     try:

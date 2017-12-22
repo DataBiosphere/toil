@@ -144,8 +144,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def rsyncLeader(self, clusterName, args, **kwargs):
+    def rsyncLeader(cls, clusterName, args, **kwargs):
         """
         Rsyncs to the leader of the cluster with the specified name. The arguments are passed directly to
         Rsync.
@@ -161,21 +162,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def launchCluster(self, instanceType, keyName, clusterName, spotBid=None):
-        """
-        Launches a cluster with the specified instance type for the leader with the specified name.
-
-        :param instanceType: desired type of the leader instance
-        :param keyName: name of the ssh key pair to launch the instance with
-        :param clusterName: desired identifier of the cluster
-        :param spotBid: how much to bid for the leader instance. If none, use on demand pricing.
-        :return:
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def sshLeader(self, clusterName, args, **kwargs):
+    def sshLeader(cls, clusterName, args, **kwargs):
         """
         SSH into the leader instance of the specified cluster with the specified arguments to SSH.
         :param clusterName: name of the cluster to target
@@ -184,8 +173,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
+    @classmethod
     @abstractmethod
-    def destroyCluster(self, clusterName):
+    def destroyCluster(cls, clusterName):
         """
         Terminates all nodes in the specified cluster and cleans up all resources associated with the
         cluser.
