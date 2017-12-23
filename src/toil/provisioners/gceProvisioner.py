@@ -55,13 +55,18 @@ logger = logging.getLogger(__name__)
 #   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
 
-
+# - Use unmanaged instance groups: add, get all, delete all
+#   - to get around instance name length restrictions
+#       - instance names are uuids
+#       - get leader as first created in the group
+#       - keep monkey patch code
 # - tests working
+
 # - instructions (on github?)
 # - gce jobStore
 # - set and test vpc-subnet
 # - preemptable
-# - Use unmanaged instance groups: add, get all, delete all
+
 
 
 # TODO
