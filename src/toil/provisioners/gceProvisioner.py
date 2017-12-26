@@ -55,17 +55,14 @@ logger = logging.getLogger(__name__)
 #   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
 
-# - Use unmanaged instance groups: add, get all, delete all
-#   - to get around instance name length restrictions
-#       - instance names are uuids
-#       - get leader as first created in the group
-#       - keep monkey patch code
-# - tests working
 
-# - preemptable
 # - instructions (on github?)
+#   - tmp example while waiting for jobstore
+#   - env: GOOGLE_APPLICATION_CREDENTIALS, TOIL_BOTO_DIR, TOIL_KEYNAME
+# - Jenkins
 # - gce jobStore
 # - set and test vpc-subnet
+# - review TODOs
 
 
 
@@ -73,8 +70,7 @@ logger = logging.getLogger(__name__)
 # -refactor
 #  - zone is hard-coded for AWS
 #  - rysnc, ... should be instance methods
-#  - replace launchCluster with a normal consructor
-#   - launchCluster doesn't need to be abstract
+#  - replace launchCluster with a normal constructor
 # - libcloud ex_create_multiple_nodes bug that doesn't allow multi nodes
 #   - submit issue
 #   - Or just keep class with machine name as uuid?
@@ -335,37 +331,36 @@ class GCEProvisioner(AbstractProvisioner):
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
 
         driver = self._getDriver()
-        if False:
-            # TODO: remove this - for testing only
-            leader = self._getLeader(clusterName, zone=zone)
-        elif not leaderSpotBid:
-            logger.info('Launching non-preemptable leader')
-            disk = {}
-            disk['initializeParams'] = {
-                'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
-                'diskSizeGb' : leaderStorage }
-            disk.update({'boot': True,
-                 #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
-                 #'mode': 'READ_WRITE',
-                 #'deviceName': clusterName,
-                 'autoDelete': True })
-            name= 'l' + bytes(uuid.uuid4())
-            leader = driver.create_node(name, leaderNodeType, imageType,
-                                    location=zone,
-                                    ex_service_accounts=sa_scopes,
-                                    ex_metadata=metadata,
-                                    ex_subnetwork=vpcSubnet,
-                                    ex_disks_gce_struct = [disk],
-                                    description=self.tags)
-        else:
-            logger.info('Launching preemptable leader')
-            # force generator to evaluate
-            list(create_spot_instances(ec2=ctx.ec2,
-                                       price=leaderSpotBid,
-                                       image_id=self._discoverAMI(ctx),
-                                       spec=kwargs,
-                                       num_instances=1))
+
+        # Throws an error if cluster exists
         self.instanceGroup = driver.ex_create_instancegroup(clusterName, zone)
+
+        preemptible = False
+        if leaderSpotBid:
+            logger.info('Launching preemptable leader')
+            preemptible = True
+        else:
+            logger.info('Launching non-preemptable leader')
+
+        disk = {}
+        disk['initializeParams'] = {
+            'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
+            'diskSizeGb' : leaderStorage }
+        disk.update({'boot': True,
+             #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
+             #'mode': 'READ_WRITE',
+             #'deviceName': clusterName,
+             'autoDelete': True })
+        name= 'l' + bytes(uuid.uuid4())
+        leader = driver.create_node(name, leaderNodeType, imageType,
+                                location=zone,
+                                ex_service_accounts=sa_scopes,
+                                ex_metadata=metadata,
+                                ex_subnetwork=vpcSubnet,
+                                ex_disks_gce_struct = [disk],
+                                description=self.tags,
+                                ex_preemptible=preemptible)
+
         self.instanceGroup.add_instances([leader])
 
         logger.info('... toil_leader is running')
@@ -504,41 +499,31 @@ class GCEProvisioner(AbstractProvisioner):
         #  - ex_create_multiple_nodes is limited to 1000 nodes
         #    - use a different function
         #    - or write a loop over the rest of this function, with 1K nodes max on each iteration
-        driver = self._getDriver()
+
         if not preemptable:
             logger.info('Launching %s non-preemptable nodes', numNodes)
-            disk = {}
-            disk['initializeParams'] = {
-                'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
-                'diskSizeGb' : self.nodeStorage }
-            disk.update({'boot': True,
-                 #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
-            #     'mode': 'READ_WRITE',
-            #     'deviceName': clusterName,
-                 'autoDelete': True })
-            #instancesLaunched = driver.ex_create_multiple_nodes(
-            instancesLaunched = self.ex_create_multiple_nodes(
-                                    '', nodeType, imageType, numNodes,
-                                    location=self.zone,
-                                    ex_service_accounts=sa_scopes,
-                                    ex_metadata=metadata,
-                                    ex_disks_gce_struct = [disk],
-                                    description=self.tags
-                                    )
         else:
             logger.info('Launching %s preemptable nodes', numNodes)
-            kwargs['placement'] = getSpotZone(self.spotBids[nodeType], instanceType.name, self.ctx)
-            # force generator to evaluate
-            instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
-                                                           price=self.spotBids[nodeType],
-                                                           image_id=self._discoverAMI(self.ctx),
-                                                           tags={'clusterName': self.clusterName},
-                                                           spec=kwargs,
-                                                           num_instances=numNodes,
-                                                           tentative=True))
-            # flatten the list
-            instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
 
+        disk = {}
+        disk['initializeParams'] = {
+            'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
+            'diskSizeGb' : self.nodeStorage }
+        disk.update({'boot': True,
+             #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
+        #     'mode': 'READ_WRITE',
+        #     'deviceName': clusterName,
+             'autoDelete': True })
+        #instancesLaunched = driver.ex_create_multiple_nodes(
+        instancesLaunched = self.ex_create_multiple_nodes(
+                                '', nodeType, imageType, numNodes,
+                                location=self.zone,
+                                ex_service_accounts=sa_scopes,
+                                ex_metadata=metadata,
+                                ex_disks_gce_struct = [disk],
+                                description=self.tags,
+                                ex_preemptible = preemptable
+                                )
         self.instanceGroup.add_instances(instancesLaunched)
         for instance in instancesLaunched:
             self._copySshKeys(instance.public_ips[0], self.keyName)
