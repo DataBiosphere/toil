@@ -39,10 +39,10 @@ from toil.test import needs_aws, needs_google, integrative, ToilTest, needs_appl
 log = logging.getLogger(__name__)
 
 
-@needs_aws
 @integrative
 @needs_appliance
 @slow
+@pytest.mark.timeout(1200)
 class AbstractProvisionerTest(ToilTest):
 
     def __init__(self, methodName):
@@ -52,6 +52,7 @@ class AbstractProvisionerTest(ToilTest):
         self.spotBid = 0.15
         self.zone = None
         self.launchArgs = []
+        self.static = False
 
     def sshUtil(self, command):
         baseCommand = ['toil', 'ssh-cluster', '--insecure', '-p=%s' % self.provisionerType]
@@ -74,17 +75,13 @@ class AbstractProvisionerTest(ToilTest):
         callCommand += [self.clusterName]
         subprocess.check_call(callCommand)
 
-    def createClusterUtil(self, args=None):
-        if args is None:
-            args = []
+    def createClusterUtil(self):
         callCommand = ['toil', 'launch-cluster', '-p=%s' % self.provisionerType, '--keyPairName=%s' % self.keyName,
                        '--leaderNodeType=%s' % self.leaderInstanceType]
         if self.zone is not None:
             callCommand += ['--zone=%s' % self.zone]
         callCommand += self.launchArgs
         callCommand += [self.clusterName]
-        if args:
-            callCommand += args
         subprocess.check_call(callCommand)
 
     def cleanJobStoreUtil(self):
@@ -134,8 +131,6 @@ class AbstractProvisionerTest(ToilTest):
 
         self.preTest()
 
-        assert self.isRunning()
-
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = ['virtualenv', '--system-site-packages', '--never-download',
                         '/home/venv']
@@ -159,22 +154,25 @@ class AbstractProvisionerTest(ToilTest):
                        '--logFile=/home/sort.log',
                        '--provisioner=%s' % self.provisionerType]
 
-        toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
-                            '--maxNodes=%s' % ",".join(self.numWorkers)])
+        if not self.static:
+            toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
+                                '--maxNodes=%s' % ",".join(self.numWorkers)])
         if preemptableJobs:
             toilOptions.extend(['--defaultPreemptable'])
 
         self._runScript(toilOptions)
 
+        # TODO: replace this with an rysync to get json file and do the test locally?
+        # This would confirm that is running and the test successful.
         assert self.isRunning()
-
         checkStatsCommand = ['/home/venv/bin/python', '-c',
                              'import json; import os; '
                              'json.load(open("/home/" + [f for f in os.listdir("/home/") '
                                                    'if f.endswith(".json")].pop()))'
                              ]
-
         self.sshUtil(checkStatsCommand)
+
+
 
         self.postTest()
 
@@ -192,7 +190,6 @@ class AutoscaleTest(AbstractProvisionerTest):
         self.clusterName = 'provisioner-test-' + str(uuid4())
         self.requestedLeaderStorage = 80
         self.launchArgs += ['--leaderStorage=%s' % self.requestedLeaderStorage]
-
 
     def _getScript(self):
         fileToSort = os.path.join(os.getcwd(), str(uuid4()))
@@ -241,6 +238,22 @@ class AWSAutoscaleTest(AutoscaleTest):
         self.leader = AWSProvisioner._getLeader(wait=False, clusterName=self.clusterName)
         self.ctx = AWSProvisioner._buildContext(self.clusterName)
 
+        if self.static:
+            nodes = AWSProvisioner._getNodesInCluster(self.ctx, self.clusterName, both=True)
+            nodes.sort(key=lambda x: x.launch_time)
+            # assuming that leader is first
+            workers = nodes[1:]
+            # test that two worker nodes were created
+            self.assertEqual(2, len(workers))
+            # test that workers have expected storage size
+            # just use the first worker
+            worker = workers[0]
+            worker = next(wait_instances_running(self.ctx.ec2, [worker]))
+            rootBlockDevice = worker.block_device_mapping["/dev/xvda"]
+            self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
+            rootVolume = self.ctx.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
+            self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
+
     def postTest(self):
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
@@ -267,6 +280,24 @@ class AWSAutoscaleTest(AutoscaleTest):
 
     def testAutoScale(self):
         self._test()
+
+    def testSpotAutoScale(self):
+        self.instanceTypes = ["m3.large:%f" % self.spotBid]
+        self._test(preemptableJobs=True)
+
+
+
+class AWSStaticAutoscaleTest(AWSAutoscaleTest):
+    """
+    Runs the tests on a statically provisioned cluster with autoscaling enabled.
+    """
+    def __init__(self, name):
+        super(AWSStaticAutoscaleTest, self).__init__(name)
+        self.requestedNodeStorage = 20
+        self.static = True
+        self.launchArgs += ['--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers),
+                            '--nodeStorage', str(self.requestedLeaderStorage)]
+
 
 # TODO: require google service account, and keyname
 @needs_google
@@ -301,3 +332,17 @@ class GoogleAutoscaleTest(AutoscaleTest):
 
     def testAutoScale(self):
         self._test()
+
+    # TODO: pre-emptable test
+
+
+class GoogleStaticAutoscaleTest(GoogleAutoscaleTest):
+    """
+    Runs the tests on a statically provisioned cluster with autoscaling enabled.
+    """
+    def __init__(self, name):
+        super(GoogleStaticAutoscaleTest, self).__init__(name)
+        self.requestedNodeStorage = 20
+        self.static = True
+        self.launchArgs += ['--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers),
+                            '--nodeStorage', str(self.requestedLeaderStorage)]
