@@ -18,16 +18,8 @@ import logging
 import os
 import subprocess
 from abc import abstractmethod
-from inspect import getsource
-from textwrap import dedent
-
-import time
 
 import pytest
-
-
-from toil.provisioners.gceProvisioner import GCEProvisioner
-
 from uuid import uuid4
 
 
@@ -309,33 +301,18 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
         self.clusterName = 'restart-test-' + bytes(uuid4())
 
     def setUp(self):
-        super(AWSRestartTest, self).setUp()
+        super(GCERestartTest, self).setUp()
         self.instanceTypes = ['n1-standard-1']
         self.numWorkers = ['1']
         self.scriptName = "/home/restartScript.py"
-        zone = 'us-west-2'  # TODO: replace this with a google job store
+        # TODO: replace this with a google job store
+        zone = 'us-west-2'
         self.jobStore = 'aws:%s:restart-%s' % (zone, uuid4())
 
     def _getScript(self):
-        def restartScript():
-            from toil.job import Job
-            import argparse
-            import os
+        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/provisioners/restartScript.py'),
+                        ':'+self.scriptName)
 
-            def f0(job):
-                if 'FAIL' in os.environ:
-                    raise RuntimeError('failed on purpose')
-
-            if __name__ == '__main__':
-                parser = argparse.ArgumentParser()
-                Job.Runner.addToilOptions(parser)
-                options = parser.parse_args()
-                rootJob = Job.wrapJobFn(f0, cores=0.5, memory='50 M', disk='50 M')
-                Job.Runner.startToil(rootJob, options)
-
-        script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
-        # use appliance ssh method instead of sshutil so we can specify input param
-        GCEProvisioner._sshAppliance(self.leader.ip_address, 'tee', self.scriptName, input=script)
 
     def _runScript(self, toilOptions):
         # clean = onSuccess
@@ -359,53 +336,3 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
     def testAutoScaledCluster(self):
         self._test()
 
-@pytest.mark.timeout(1200)
-class PreemptableDeficitCompensationTest(AbstractGCEAutoscaleTest):
-
-    def __init__(self, name):
-        super(PreemptableDeficitCompensationTest, self).__init__(name)
-        self.clusterName = 'deficit-test-' + bytes(uuid4())
-
-    def setUp(self):
-        super(PreemptableDeficitCompensationTest, self).setUp()
-        self.instanceTypes = ['m3.large:0.01', "m3.large"] # instance needs to be available on the spot market
-        self.numWorkers = ['1','1']
-        zone = 'us-west-2'  # TODO: replace this with a google job store
-        self.jobStore = 'aws:%s:deficit-%s' % (zone, uuid4())
-
-    def test(self):
-        self._test(preemptableJobs=True)
-
-    def _getScript(self):
-        def userScript():
-            from toil.job import Job
-            from toil.common import Toil
-
-            # Because this is the only job in the pipeline and because it is preemptable,
-            # there will be no non-preemptable jobs. The non-preemptable scaler will therefore
-            # not request any nodes initially. And since we made it impossible for the
-            # preemptable scaler to allocate any nodes (using an abnormally low spot bid),
-            # we will observe a deficit of preemptable nodes that the non-preemptable scaler will
-            # compensate for by spinning up non-preemptable nodes instead.
-            #
-            def job(job, disk='10M', cores=1, memory='10M', preemptable=True):
-                pass
-
-            if __name__ == '__main__':
-                options = Job.Runner.getDefaultArgumentParser().parse_args()
-                with Toil(options) as toil:
-                    if toil.config.restart:
-                        toil.restart()
-                    else:
-                        toil.start(Job.wrapJobFn(job))
-
-        script = dedent('\n'.join(getsource(userScript).split('\n')[1:]))
-        # use appliance ssh method instead of sshutil so we can specify input param
-        GCEProvisioner._sshAppliance(self.leader.ip_address, 'tee', '/home/userScript.py', input=script)
-
-    def _runScript(self, toilOptions):
-        toilOptions.extend([
-            '--preemptableCompensation=1.0'])
-        command = ['/home/venv/bin/python', '/home/userScript.py']
-        command.extend(toilOptions)
-        self.sshUtil(command)
