@@ -23,7 +23,7 @@ import time
 import threading
 import json
 import requests
-import re
+import uuid
 
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 #   - Add keys to the service account on the Google console
 #   - Automatically inserted into the instance (root).
 #   - the keyName input parameter indicates which key this is
-#   - It is not copied to the core user in the appliance (TODO: Why not)
+#   - It is not copied to the core user in the appliance (TODO: Why not?)
 #       - copy expressly in _copySshKeys()
 #   - Used in waitForNode (ssh commands), ssh and rysnc
 #   - TODO: can I change this to ssh with the SA account?
@@ -62,21 +62,22 @@ logger = logging.getLogger(__name__)
 #       - keep monkey patch code
 # - tests working
 
+# - preemptable
 # - instructions (on github?)
 # - gce jobStore
 # - set and test vpc-subnet
-# - preemptable
 
 
 
 # TODO
 # -refactor
-#  - zone is hard-code for AWS
+#  - zone is hard-coded for AWS
 #  - rysnc, ... should be instance methods
 #  - replace launchCluster with a normal consructor
 #   - launchCluster doesn't need to be abstract
 # - libcloud ex_create_multiple_nodes bug that doesn't allow multi nodes
 #   - submit issue
+#   - Or just keep class with machine name as uuid?
 # - revisit ssh keys
 #   - cloud config?
 #   - This error: Failed Units: 1 coreos-metadata-sshkeys@core.service
@@ -234,16 +235,18 @@ class GCEProvisioner(AbstractProvisioner):
             # https://cloud.google.com/compute/docs/storing-retrieving-metadata
             metadata_server = "http://metadata/computeMetadata/v1/instance/"
             metadata_flavor = {'Metadata-Flavor' : 'Google'}
-            self.clusterName = requests.get(metadata_server + 'name', headers = metadata_flavor).text
             self.zone = requests.get(metadata_server + 'zone', headers = metadata_flavor).text
             self.zone = self.zone.split('/')[-1]
 
             project_metadata_server = "http://metadata/computeMetadata/v1/project/"
             self.projectId = requests.get(project_metadata_server + 'project-id', headers = metadata_flavor).text
 
-            leader = self._getLeader()
-            self.tags = leader.extra['description']
+            self.tags = requests.get(metadata_server + 'description', headers = metadata_flavor).text
             tags = json.loads(self.tags)
+            self.clusterName = tags['clusterName']
+            self.instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
+
+            leader = self._getLeader()
             self.leaderIP = leader.private_ips[0]  # this is PRIVATE IP
             self.masterPublicKey = self._setSSH()
 
@@ -312,8 +315,8 @@ class GCEProvisioner(AbstractProvisioner):
         self.keyName = keyName
 
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
-        # Therefore, umping tags into the description.
-        tags = {'Owner': keyName}
+        # Therefore, dumping tags into the description.
+        tags = {'Owner': keyName, 'clusterName': self.clusterName}
         tags.update(userTags)
         self.tags = json.dumps(tags)
 
@@ -346,7 +349,8 @@ class GCEProvisioner(AbstractProvisioner):
                  #'mode': 'READ_WRITE',
                  #'deviceName': clusterName,
                  'autoDelete': True })
-            leader = driver.create_node(clusterName, leaderNodeType, imageType,
+            name= 'l' + bytes(uuid.uuid4())
+            leader = driver.create_node(name, leaderNodeType, imageType,
                                     location=zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
@@ -361,6 +365,8 @@ class GCEProvisioner(AbstractProvisioner):
                                        image_id=self._discoverAMI(ctx),
                                        spec=kwargs,
                                        num_instances=1))
+        self.instanceGroup = driver.ex_create_instancegroup(clusterName, zone)
+        self.instanceGroup.add_instances([leader])
 
         logger.info('... toil_leader is running')
 
@@ -427,13 +433,14 @@ class GCEProvisioner(AbstractProvisioner):
         #spotIDs = self._getSpotRequestIDs(ctx, clusterName)
         #if spotIDs:
         #    ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
-
         self.clusterName = clusterName
         if zone is not None:
             self.zone = zone
         instancesToTerminate = self._getNodesInCluster()
         if instancesToTerminate:
             self._terminateInstances(instances=instancesToTerminate)
+        instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
+        instanceGroup.destroy()
 
     def sshLeader(self, clusterName, args=None, zone=None, **kwargs):
         self.clusterName = clusterName
@@ -492,16 +499,6 @@ class GCEProvisioner(AbstractProvisioner):
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
 
-        # Create a unique base name for adding nodes.
-        # UUIDs don't work. The limit on hostnames seems to be 65 characters.
-        # Add a 'node increment' integer after the cluster name, which is incremented
-        # each time this method is called.
-        if not self.clusterInc:
-            # Not set, so find it in the list of instances.
-            self.clusterInc = self._getNodeIncrement()
-        self.clusterInc += 1
-        baseName = self.clusterName + "-" + bytes(self.clusterInc)
-
         # TODO:
         #  - bug in gce.py for ex_create_multiple_nodes (erroneously, doesn't allow image and disk to specified)
         #  - ex_create_multiple_nodes is limited to 1000 nodes
@@ -521,7 +518,7 @@ class GCEProvisioner(AbstractProvisioner):
                  'autoDelete': True })
             #instancesLaunched = driver.ex_create_multiple_nodes(
             instancesLaunched = self.ex_create_multiple_nodes(
-                                    baseName, nodeType, imageType, numNodes,
+                                    '', nodeType, imageType, numNodes,
                                     location=self.zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
@@ -542,6 +539,7 @@ class GCEProvisioner(AbstractProvisioner):
             # flatten the list
             instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
 
+        self.instanceGroup.add_instances(instancesLaunched)
         for instance in instancesLaunched:
             self._copySshKeys(instance.public_ips[0], self.keyName)
             if self.config and self.config.sseKey or botoExists:
@@ -568,18 +566,6 @@ class GCEProvisioner(AbstractProvisioner):
                      preemptable=preemptable)
                 for i in workerInstances]
 
-    def _getNodeIncrement(self):
-        """
-        Find the max node increment, which is the integer between dashes after the clusterName.
-        """
-        instances = self._getNodesInCluster()
-        regex=re.compile("^"+self.clusterName + "-(\d+)-.*")
-        incs = [int(m.group(1)) for i in instances for m in [regex.search(i.name)] if m]
-        if len(incs) == 0:
-            return 0
-        else:
-            return max(incs)
-
     def _getLeader(self):
         instances = self._getNodesInCluster()
         instances.sort(key=lambda x: x.created_at)
@@ -590,8 +576,8 @@ class GCEProvisioner(AbstractProvisioner):
         return leader
 
     def _getNodesInCluster(self, nodeType=None):
-        allInstances = self._getDriver().list_nodes(ex_zone=self.zone)
-        instances = [instance for instance in allInstances if instance.name.startswith(self.clusterName)]
+        instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
+        instances = instanceGroup.list_instances()
         if nodeType:
             instances = [instance for instance in instances if instance.size == nodeType]
         return instances
@@ -710,6 +696,7 @@ class GCEProvisioner(AbstractProvisioner):
             ex_preemptible=None):
         """
          Monkey patch to gce.py in libcloud to allow disk and images to be specified.
+         Also changed name to a uuid below.
         """
         # if image and ex_disks_gce_struct:
         #    raise ValueError("Cannot specify both 'image' and "
@@ -763,7 +750,7 @@ class GCEProvisioner(AbstractProvisioner):
         status_list = []
 
         for i in range(number):
-            name = '%s-%03d' % (base_name, i)
+            name = 'w' + bytes(uuid.uuid4()) #'%s-%03d' % (base_name, i)
             status = {'name': name, 'node_response': None, 'node': None}
             status_list.append(status)
 
