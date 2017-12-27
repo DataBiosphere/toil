@@ -78,6 +78,7 @@ logger = logging.getLogger(__name__)
 #   - cloud config?
 #   - This error: Failed Units: 1 coreos-metadata-sshkeys@core.service
 #   - try passing keyName to coreSSH instead; then no need to copy authorized keys
+#   - possible fix: I needed to use this format: ssh-rsa [KEY_VALUE] google-ssh {"userName":"[USERNAME]","expireOn":"[EXPIRE_TIME]"}
 # - security (sse) keys
 #   - test encryption
 #   - keyName is needed to copy ssh key
