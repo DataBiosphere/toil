@@ -51,7 +51,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
     def createClusterUtil(self, args=None):
         if args is None:
             args = []
-        callCommand = ['toil', 'launch-cluster', self.clusterName, '-p=gce', '--logDebug', ''--keyPairName=%s' % self.keyName,
+        callCommand = ['toil', 'launch-cluster', self.clusterName, '-p=gce', '--logDebug', '--keyPairName=%s' % self.keyName,
                        '--leaderNodeType=%s' % self.leaderInstanceType, '--zone=%s' % self.googleZone]
         if self.botoDir is not None:
             callCommand += ['--boto=%s' % self.botoDir]
