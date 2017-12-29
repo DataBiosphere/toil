@@ -55,13 +55,10 @@ logger = logging.getLogger(__name__)
 #   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
 
-# -ssh into leader (from my machine, from slave)
-#   - what is jenkins key?
-# - .boto is a file, not a directory
-# - add google setup to installationpage
-# - Jenkins
+# - add google setup to installation page
 # - gce jobStore
 # - set and test vpc-subnet
+# - find aws credentials for jenkins .boto file
 # - review TODOs
 
 
