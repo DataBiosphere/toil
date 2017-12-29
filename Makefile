@@ -87,7 +87,7 @@ help:
 SHELL=bash
 python=python2.7
 pip=pip2.7
-tests=src/toil/test/provisioners/gceProvisionerTest.py
+tests=src/toil/test/provisioners/
 tests_local=src/toil/test
 # do slightly less than travis timeout of 10 min.
 pytest_args_local=-vv --timeout=530
