@@ -896,12 +896,9 @@ def main(args=None, stdout=sys.stdout):
             options.job_order = options.cwljob
             options.tool_help = None
             options.debug = options.logLevel == "DEBUG"
-            job = cwltool.main.load_job_order(options, t, sys.stdin)
-
-            if type(job) == int:
-                return job
-
-            job, options.basedir = job
+            job, options.basedir, loader = cwltool.main.load_job_order(
+                options, sys.stdin, None, [], options.job_order)
+            job = cwltool.main.init_job_order(job, options, t, loader=loader)
 
             fillInDefaults(t.tool["inputs"], job)
 
