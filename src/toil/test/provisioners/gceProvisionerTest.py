@@ -46,12 +46,12 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
     def destroyClusterUtil(self):
         callCommand = ['toil', 'destroy-cluster', '-p=gce', self.clusterName]
-        #subprocess.check_call(callCommand)
+        subprocess.check_call(callCommand)
 
     def createClusterUtil(self, args=None):
         if args is None:
             args = []
-        callCommand = ['toil', 'launch-cluster', self.clusterName, '-p=gce', '--logDebug', '--keyPairName=%s' % self.keyName,
+        callCommand = ['toil', 'launch-cluster', self.clusterName, '-p=gce', '--keyPairName=%s' % self.keyName,
                        '--leaderNodeType=%s' % self.leaderInstanceType, '--zone=%s' % self.googleZone]
         if self.botoDir is not None:
             callCommand += ['--boto=%s' % self.botoDir]
