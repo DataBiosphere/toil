@@ -27,6 +27,9 @@ from toil.utils.toilDebugFile import printContentsOfJobStore
 
 logger = logging.getLogger( __name__ )
 
+def print_successor_jobs():
+    pass
+
 def main():
     parser = getBasicOptionParser()
 
@@ -53,7 +56,7 @@ def main():
 
     # TODO: Option to print list of successor jobs
     # TODO: Option to run job within python debugger, allowing step through of arguments
-    # idea would be to have option to import pdb and set breakpoint at the start of the users code
+    # idea would be to have option to import pdb and set breakpoint at the start of the user's code
 
     # Run the job locally
     jobID = options.jobID[0]

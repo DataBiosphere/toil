@@ -84,13 +84,15 @@ def printContentsOfJobStore(jobStorePath, nameOfJob=None):
         logFile = "jobstore_files.txt"
         nameOfJob = ""
 
-    list_of_files = recursiveGlob(directoryname=jobStore, glob_pattern=glob)
-    for gfile in list_of_files:
-        logger.info(nameOfJob + "File: %s", gfile)
-        with open(logFile, "w") as f:
-            f.write(gfile)
-            f.write("\n")
-
+    list_of_files = recursiveGlob(directoryname=jobStorePath, glob_pattern=glob)
+    if os.path.exists(logFile):
+        os.remove(logFile)
+    for gfile in sorted(list_of_files):
+        if not gfile.endswith('.new'):
+            logger.info(nameOfJob + "File: %s", os.path.basename(gfile))
+            with open(logFile, "a+") as f:
+                    f.write(os.path.basename(gfile))
+                    f.write("\n")
 
 def main():
     parser = getBasicOptionParser()
@@ -99,7 +101,7 @@ def main():
                         type=str,
                         help="The location of the job store used by the workflow." +
                         jobStoreLocatorHelp)
-    parser.add_argument("localFilePath",
+    parser.add_argument("--localFilePath",
                         nargs=1,
                         help="Location to which to copy job store files.")
     parser.add_argument("--fetchTheseJobStoreFiles",

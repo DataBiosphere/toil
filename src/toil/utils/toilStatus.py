@@ -28,23 +28,21 @@ import logging
 import sys
 
 # toil imports
-from toil.lib.bioio import logStream
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
-from toil.leader import ToilState
 from toil.job import JobException
 from toil.version import version
 
 logger = logging.getLogger( __name__ )
 
 def main():
-    """Reports the state of the toil.
+    """Reports the state of toil.
     """
     
     ##########################################
     #Construct the arguments.
-    ##########################################  
+    ##########################################
     
     parser = getBasicOptionParser()
     
