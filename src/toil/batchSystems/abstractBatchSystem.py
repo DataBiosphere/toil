@@ -181,14 +181,6 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @classmethod
-    def getRescueBatchJobFrequency(cls):
-        """
-        Gets the period of time to wait (floating point, in seconds) between checking for
-        missing/overlong jobs.
-        """
-        raise NotImplementedError()
-
-    @classmethod
     def setOptions(cls, setOption):
         """
         Process command line or configuration options relevant to this batch system.
@@ -287,17 +279,6 @@ class BatchSystemSupport(AbstractBatchSystem):
             except KeyError:
                 raise RuntimeError("%s does not exist in current environment", name)
         self.environment[name] = value
-
-    @classmethod
-    def getRescueBatchJobFrequency(cls):
-        """
-        Gets the period of time to wait (floating point, in seconds) between checking for
-        missing/overlong jobs.
-
-        :return: time in seconds to wait in between checking for lost jobs
-        :rtype: float
-        """
-        raise NotImplementedError()
 
     def _getResultsFileName(self, toilPath):
         """

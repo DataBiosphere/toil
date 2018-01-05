@@ -291,16 +291,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         return jobID, exitValue, wallTime
 
     @classmethod
-    def getRescueBatchJobFrequency(cls):
-        """
-        This should not really occur, wihtout an error. To exercise the system we allow it every 90 minutes.
-        """
-        return 5400
-
-    @classmethod
     def setOptions(cls, setOption):
         setOption("scale", default=1)
-        
+
 class Info(object):
     # Can't use namedtuple here since killIntended needs to be mutable
     def __init__(self, startTime, popen, killIntended):

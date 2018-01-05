@@ -267,10 +267,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         return self.reconciliationPeriod
 
-    @classmethod
-    def getRescueBatchJobFrequency(cls):
-        return 30 * 60  # Half an hour
-
     def _buildExecutor(self):
         """
         Creates and returns an ExecutorInfo instance representing our executor implementation.

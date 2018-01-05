@@ -280,14 +280,6 @@ class ParasolBatchSystem(BatchSystemSupport):
             else:
                 return jobID, status, wallTime
 
-    @classmethod
-    def getRescueBatchJobFrequency(cls):
-        """
-        Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
-        making it expensive.
-        """
-        return 5400  # Once every 90 minutes
-
     def updatedJobWorker(self):
         """
         We use the parasol results to update the status of jobs, adding them

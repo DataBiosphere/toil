@@ -218,9 +218,6 @@ class hidden(object):
                                   memory=10, cores=None, disk=1000)
                 checkResourceRequest(memory=10, cores=1, disk=100)
 
-        def testGetRescueJobFrequency(self):
-            self.assertTrue(self.batchSystem.getRescueBatchJobFrequency() > 0)
-
         def testScalableBatchSystem(self):
             # If instance of scalable batch system
             pass

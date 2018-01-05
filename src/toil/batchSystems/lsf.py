@@ -269,17 +269,9 @@ class LSFBatchSystem(BatchSystemLocalSupport):
             return jobID, retcode, None
 
     def getWaitDuration(self):
-        """We give parasol a second to catch its breath (in seconds)
+        """We give LSF a second to catch its breath (in seconds)
         """
-        #return 0.0
         return 15
-
-    @classmethod
-    def getRescueBatchJobFrequency(cls):
-        """Parasol leaks jobs, but rescuing jobs involves calls to parasol list jobs and pstat2,
-        making it expensive. We allow this every 10 minutes..
-        """
-        return 1800
 
     def obtainSystemConstants(self):
         p = subprocess.Popen(["lshosts"], stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
