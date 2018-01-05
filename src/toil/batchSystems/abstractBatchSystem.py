@@ -351,8 +351,8 @@ class BatchSystemLocalSupport(BatchSystemSupport):
             return None
 
     def killLocalJobs(self, jobIDs):
-	"""
-	To be called by killBatchJobs. Will kill all local jobs that match the
+        """
+        To be called by killBatchJobs. Will kill all local jobs that match the
         provided jobIDs.
         """
         self.localBatch.killBatchJobs(jobIDs)
@@ -362,27 +362,27 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         return self.localBatch.getIssuedBatchJobIDs()
 
     def getRunningLocalJobIDs(self):
-	"""To be called by getRunningBatchJobIDs()."""
-	return self.localBatch.getRunningBatchJobIDs()
+        """To be called by getRunningBatchJobIDs()."""
+        return self.localBatch.getRunningBatchJobIDs()
 
     def getUpdatedLocalJob(self, maxWait):
-	# type: (int) -> Optional[Tuple[int, int, int]]
-	"""To be called by getUpdatedBatchJob()"""
-	return self.localBatch.getUpdatedBatchJob()
+        # type: (int) -> Optional[Tuple[int, int, int]]
+        """To be called by getUpdatedBatchJob()"""
+        return self.localBatch.getUpdatedBatchJob(maxWait)
 
     def getNextJobID(self):  # type: () -> int
         """
         Must be used to get job IDs so that the local and batch jobs do not
         conflict.
         """
-	with self.localBatch.jobIndexLock:
-		jobID = self.localBatch.jobIndex
-		self.localBatch.jobIndex += 1
-	return jobID
+        with self.localBatch.jobIndexLock:
+            jobID = self.localBatch.jobIndex
+            self.localBatch.jobIndex += 1
+        return jobID
 
     def shutdownLocal(self):  # type: () -> None
-	"""To be called from shutdown()"""
-	self.localBatch.shutdown()
+        """To be called from shutdown()"""
+        self.localBatch.shutdown()
 
 
 class NodeInfo(object):
