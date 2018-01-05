@@ -368,7 +368,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
     def getUpdatedLocalJob(self, maxWait):
 	# type: (int) -> Optional[Tuple[int, int, int]]
 	"""To be called by getUpdatedBatchJob()"""
-	return self.localBatch.getUpdateBatchJob()
+	return self.localBatch.getUpdatedBatchJob()
 
     def getNextJobID(self):  # type: () -> int
         """
@@ -471,7 +471,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     def ignoreNode(self, nodeAddress):
         """
         Stop sending jobs to this node. Used in autoscaling
-        when the autoscaler is ready to terminate a node, but 
+        when the autoscaler is ready to terminate a node, but
         jobs are still running. This allows the node to be terminated
         after the current jobs have finished.
 
@@ -488,6 +488,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         possibility of a new node having the same address as a terminated one.
         """
         raise NotImplementedError()
+
 
 class InsufficientSystemResources(Exception):
     """
