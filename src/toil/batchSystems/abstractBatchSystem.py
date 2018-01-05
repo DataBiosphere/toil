@@ -333,7 +333,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
     """
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(BatchSystemLocalSupport, self).__init__()
+        super(BatchSystemLocalSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.localBatch = registry.batchSystemFactoryFor(
             registry.defaultBatchSystem())()(
                 config, maxCores, maxMemory, maxDisk)
