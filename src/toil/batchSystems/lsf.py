@@ -33,7 +33,7 @@ import os
 from six.moves.queue import Empty, Queue
 
 from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport
 from toil.batchSystems.lsfHelper import parse_memory, per_core_reservation
 
 logger = logging.getLogger( __name__ )
@@ -149,7 +149,7 @@ class Worker(Thread):
 
             time.sleep(10)
 
-class LSFBatchSystem(BatchSystemSupport):
+class LSFBatchSystem(BatchSystemLocalSupport):
     """
     The interface for running jobs on lsf, runs all the jobs you give it as they come in,
     but in parallel.
