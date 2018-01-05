@@ -40,7 +40,6 @@ from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
-                                                   AbstractBatchSystem,
                                                    BatchSystemSupport)
 from toil.job import Job, JobNode
 from toil.test import (ToilTest,
@@ -179,7 +178,6 @@ class hidden(object):
             #  '...' or python -c '...'. The safest thing to do here is to script the test and
             # invoke that script rather than inline the test via -c.
             def assertEnv():
-                import os, sys
                 sys.exit(0 if os.getenv('FOO') == 'bar' else 42)
 
             script_body = dedent('\n'.join(getsource(assertEnv).split('\n')[1:]))
@@ -323,6 +321,7 @@ class hidden(object):
             self.assertTrue(locator.startswith('file:'))
             self.assertEqual(locator[len('file:'):], filePath)
 
+
 @slow
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
@@ -362,9 +361,8 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         self.assertEqual(set(issuedID), {job})
 
         runningJobIDs = self._waitForJobsToStart(1)
-        #Make sure job is NOT running
+        # Make sure job is NOT running
         self.assertEqual(set(runningJobIDs), set({}))
-
 
 
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
@@ -379,10 +377,11 @@ class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
         return SingleMachineBatchSystem(config=self.config,
                                         maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
+
 @slow
 class MaxCoresSingleMachineBatchSystemTest(ToilTest):
     """
-    This test ensures that single machine batch system doesn't exceed the configured number of
+    This test ensures that single machine batch system doesn't exceed the configured number
     cores
     """
 
@@ -411,7 +410,6 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         self.counterPath = writeTempFile('0,0')
 
         def script():
-            import os, sys, fcntl, time
             def count(delta):
                 """
                 Adjust the first integer value in a file by the given amount. If the result
@@ -502,7 +500,6 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         self.assertEquals(maxConcurrentTasks, expectedMaxConcurrentTasks)
                         resetCounters(self.counterPath)
 
-
     @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')
     def testServices(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -552,6 +549,7 @@ class Service(Job.Service):
     def stop(self, fileStore):
         subprocess.check_call(self.cmd + ' -1', shell=True)
 
+
 @slow
 @needs_parasol
 class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport):
@@ -571,7 +569,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def createBatchSystem(self):
         memory = int(3e9)
         self._startParasol(numCores=numCores, memory=memory)
-        
+
         return ParasolBatchSystem(config=self.config,
                                   maxCores=numCores,
                                   maxMemory=memory,
@@ -614,7 +612,6 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         memPattern = re.compile("(\d+\.\d+)([kgmbt])")
         items = batchString.split()
         batchInfo["cores"] = int(items[7])
-        name = str(items[11])
         memMatch = memPattern.match(items[8])
         ramValue = float(memMatch.group(1))
         ramUnits = memMatch.group(2)
@@ -648,6 +645,7 @@ class GridEngineBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         for f in glob('toil_job*.o*'):
             os.unlink(f)
 
+
 @slow
 @needs_slurm
 class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
@@ -666,6 +664,7 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         from glob import glob
         for f in glob('slurm-*.out'):
             os.unlink(f)
+
 
 @slow
 @needs_torque
@@ -691,6 +690,7 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         from glob import glob
         for f in glob('toil_job_*.[oe]*'):
             os.unlink(f)
+
 
 class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     """

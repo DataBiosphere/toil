@@ -163,7 +163,7 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         return False
 
     def shutdown(self):
-        pass
+        self.shutdownLocal()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(LSFBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
@@ -175,7 +175,6 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         self.obtainSystemConstants()
         self.jobIDs = dict()
         self.lsfJobIDs = dict()
-        self.nextJobID = 0
 
         self.newJobsQueue = Queue()
         self.updatedJobsQueue = Queue()
@@ -188,8 +187,10 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         self.lsfResultsFileHandle.close() #Close the results file, cos were done.
 
     def issueBatchJob(self, jobNode):
-        jobID = self.nextJobID
-        self.nextJobID += 1
+        localID = self.handleLocalJob(jobNode)
+        if localID:
+            return localID
+        jobID = self.getNextJobID()
         self.currentjobs.add(jobID)
         bsubline = prepareBsub(jobNode.cores, jobNode.memory) + [jobNode.command]
         self.newJobsQueue.put((jobID, bsubline))
@@ -207,14 +208,19 @@ class LSFBatchSystem(BatchSystemLocalSupport):
              return str(job) + "." + str(task)
 
     def killBatchJobs(self, jobIDs):
+        self.killLocalJobs(jobIDs)
         """Kills the given job IDs.
         """
         for jobID in jobIDs:
-            logger.debug("DEL: " + str(self.getLsfID(jobID)))
-            self.currentjobs.remove(jobID)
-            process = subprocess.Popen(["bkill", self.getLsfID(jobID)])
-            del self.jobIDs[self.lsfJobIDs[jobID]]
-            del self.lsfJobIDs[jobID]
+            try:
+                lsfID = self.getLsfID(jobID)
+                logger.debug("DEL: " + str(self.getLsfID(jobID)))
+                self.currentjobs.remove(jobID)
+                process = subprocess.Popen(["bkill", self.getLsfID(jobID)])
+                del self.jobIDs[self.lsfJobIDs[jobID]]
+                del self.lsfJobIDs[jobID]
+            except RuntimeError:
+                jobIDs.remove(jobID)
 
         toKill = set(jobIDs)
         while len(toKill) > 0:
@@ -231,7 +237,7 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
         just waiting).
         """
-        return self.currentjobs
+        return list(self.getIssuedLocalJobIDs()) + list(self.currentJobs)
 
     def getRunningBatchJobIDs(self):
         """Gets a map of jobs (as jobIDs) currently running (not just waiting) 
@@ -255,9 +261,13 @@ class LSFBatchSystem(BatchSystemLocalSupport):
                 jobstart = time.mktime(time.strptime(jobstart,"%b/%d/%Y %H:%M"))
                 jobstart = time.mktime(time.strptime(jobstart,"%m/%d/%Y %H:%M:%S"))
                 times[self.jobIDs[(items[0])]] = time.time() - jobstart
+        times.update(self.getRunningLocalJobIDs())
         return times
 
     def getUpdatedBatchJob(self, maxWait):
+        local_tuple = self.getUpdatedLocalJob(0)
+        if local_tuple:
+            return local_tuple
         try:
             sgeJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
             self.updatedJobsQueue.task_done()
