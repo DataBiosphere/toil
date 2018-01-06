@@ -1,22 +1,22 @@
-#Copyright (C) 2013 by Thomas Keane (tk2@sanger.ac.uk)
+# Copyright (C) 2013 by Thomas Keane (tk2@sanger.ac.uk)
 #
-#Permission is hereby granted, free of charge, to any person obtaining a copy
-#of this software and associated documentation files (the "Software"), to deal
-#in the Software without restriction, including without limitation the rights
-#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-#copies of the Software, and to permit persons to whom the Software is
-#furnished to do so, subject to the following conditions:
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
 #
-#The above copyright notice and this permission notice shall be included in
-#all copies or substantial portions of the Software.
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
 #
-#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-#THE SOFTWARE.
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
 from __future__ import absolute_import
 from __future__ import division
 from builtins import str
@@ -37,7 +37,6 @@ from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport
 from toil.batchSystems.lsfHelper import parse_memory, per_core_reservation
 
 logger = logging.getLogger( __name__ )
-
 
 
 def prepareBsub(cpu, mem):
@@ -65,6 +64,7 @@ def prepareBsub(cpu, mem):
         bsubline.extend(lsfArgs.split())
     return bsubline
 
+
 def bsub(bsubline):
     process = subprocess.Popen(" ".join(bsubline), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
     liney = process.stdout.readline()
@@ -73,10 +73,11 @@ def bsub(bsubline):
     logger.debug("Got the job id: %s" % (str(result)))
     return result
 
+
 def getjobexitcode(lsfJobID):
         job, task = lsfJobID
 
-        #first try bjobs to find out job state
+        # first try bjobs to find out job state
         args = ["bjobs", "-l", str(job)]
         logger.debug("Checking job exit code for job via bjobs: " + str(job))
         process = subprocess.Popen(" ".join(args), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
@@ -101,7 +102,7 @@ def getjobexitcode(lsfJobID):
             logger.debug("bjobs detected job started but not completed: " + str(job))
             return None
 
-        #if not found in bjobs, then try bacct (slower than bjobs)
+        # if not found in bjobs, then try bacct (slower than bjobs)
         logger.debug("bjobs failed to detect job - trying bacct: " + str(job))
 
         args = ["bacct", "-l", str(job)]
@@ -116,6 +117,7 @@ def getjobexitcode(lsfJobID):
                 return 1
         logger.debug("Cant determine exit code for job or job still running: " + str(job))
         return None
+
 
 class Worker(Thread):
     def __init__(self, newJobsQueue, updatedJobsQueue, boss):
@@ -149,6 +151,7 @@ class Worker(Thread):
 
             time.sleep(10)
 
+
 class LSFBatchSystem(BatchSystemLocalSupport):
     """
     The interface for running jobs on lsf, runs all the jobs you give it as they come in,
@@ -168,9 +171,9 @@ class LSFBatchSystem(BatchSystemLocalSupport):
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(LSFBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.lsfResultsFile = self._getResultsFileName(config.jobStore)
-        #Reset the job queue and results (initially, we do this again once we've killed the jobs)
+        # Reset the job queue and results (initially, we do this again once we've killed the jobs)
         self.lsfResultsFileHandle = open(self.lsfResultsFile, 'w')
-        self.lsfResultsFileHandle.close() #We lose any previous state in this file, and ensure the files existence
+        self.lsfResultsFileHandle.close()  # We lose any previous state in this file, and ensure the files existence
         self.currentjobs = set()
         self.obtainSystemConstants()
         self.jobIDs = dict()
@@ -183,8 +186,8 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         self.worker.start()
 
     def __des__(self):
-        #Closes the file handle associated with the results file.
-        self.lsfResultsFileHandle.close() #Close the results file, cos were done.
+        # Closes the file handle associated with the results file.
+        self.lsfResultsFileHandle.close() # Close the results file, cos were done.
 
     def issueBatchJob(self, jobNode):
         localID = self.handleLocalJob(jobNode)
@@ -198,14 +201,14 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         return jobID
 
     def getLsfID(self, jobID):
-        if not jobID in self.lsfJobIDs:
-             RuntimeError("Unknown jobID, could not be converted")
+        if jobID not in self.lsfJobIDs:
+            RuntimeError("Unknown jobID, could not be converted")
 
         (job,task) = self.lsfJobIDs[jobID]
         if task is None:
-             return str(job)
+            return str(job)
         else:
-             return str(job) + "." + str(task)
+            return str(job) + "." + str(task)
 
     def killBatchJobs(self, jobIDs):
         self.killLocalJobs(jobIDs)
@@ -214,9 +217,9 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         for jobID in jobIDs:
             try:
                 lsfID = self.getLsfID(jobID)
-                logger.debug("DEL: " + str(self.getLsfID(jobID)))
+                logger.debug("DEL: " + str(lsfID))
                 self.currentjobs.remove(jobID)
-                process = subprocess.Popen(["bkill", self.getLsfID(jobID)])
+                subprocess.Popen(["bkill", lsfID])
                 del self.jobIDs[self.lsfJobIDs[jobID]]
                 del self.lsfJobIDs[jobID]
             except RuntimeError:
@@ -237,7 +240,7 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         """A list of jobs (as jobIDs) currently issued (may be running, or maybe 
         just waiting).
         """
-        return list(self.getIssuedLocalJobIDs()) + list(self.currentJobs)
+        return list(self.getIssuedLocalJobIDs()) + list(self.currentjobs)
 
     def getRunningBatchJobIDs(self):
         """Gets a map of jobs (as jobIDs) currently running (not just waiting) 
@@ -249,7 +252,7 @@ class LSFBatchSystem(BatchSystemLocalSupport):
             if x in self.lsfJobIDs:
                 currentjobs.add(self.lsfJobIDs[x])
             else:
-                #not yet started
+                # not yet started
                 pass
         process = subprocess.Popen(["bjobs"], stdout = subprocess.PIPE)
 
