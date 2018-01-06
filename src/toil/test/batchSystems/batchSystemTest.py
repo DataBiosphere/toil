@@ -178,6 +178,7 @@ class hidden(object):
             #  '...' or python -c '...'. The safest thing to do here is to script the test and
             # invoke that script rather than inline the test via -c.
             def assertEnv():
+                import os, sys
                 sys.exit(0 if os.getenv('FOO') == 'bar' else 42)
 
             script_body = dedent('\n'.join(getsource(assertEnv).split('\n')[1:]))
@@ -410,6 +411,7 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         self.counterPath = writeTempFile('0,0')
 
         def script():
+            import os, sys, fcntl, time
             def count(delta):
                 """
                 Adjust the first integer value in a file by the given amount. If the result
