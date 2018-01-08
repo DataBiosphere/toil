@@ -821,6 +821,10 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
+    parser.add_argument("--user-space-docker-cmd",
+                        help="(Linux/OS X only) Specify a user space docker "
+                        "command (like udocker or dx-docker) that will be "
+                        "used to call 'pull' and 'run'")
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
                     metavar=("VAR1 VAR2"),
