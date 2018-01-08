@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import ConfigParser
 import logging
 import os.path
 import sys
@@ -18,8 +19,13 @@ import tempfile
 import uuid
 
 from toil import applianceSelf
+from toil.provisioners import Node
+from toil.provisioners.abstractProvisioner import Shape
 from toil.provisioners.ansibleDriver import AnsibleDriver
 from toil.provisioners.aws import leaderArgs
+
+from azure.common.credentials import ServicePrincipalCredentials
+from azure.mgmt.compute import ComputeManagementClient
 
 logger = logging.getLogger(__name__)
 
@@ -32,20 +38,21 @@ class AzureProvisioner(AnsibleDriver):
                                "letters.")
 
         self.clusterName = clusterName
+        self.region = config.region
         self.playbook = {
             'create': 'create-azure-vm.yml',
             'delete': 'delete-azure-vm.yml',
         }
         playbooks = os.path.dirname(os.path.realpath(__file__))
-        inventory = "azure_rm.py"
-        super(AzureProvisioner, self).__init__(playbooks, inventory, config)
+        super(AzureProvisioner, self).__init__(playbooks, "azure_rm.py", config)
 
     def launchCluster(self, instanceType, keyName, spotBid=None, **kwargs):
         if spotBid:
             raise NotImplementedError("Ansible does not support provisioning spot instances")
 
         # Generate instance name (cluster name followed by a random identifier)
-        instanceName = self.clusterName + "-" + str(uuid.uuid1()).split("-")[-1]
+        # fixme: length
+        instanceName = self.clusterName + str(uuid.uuid1()).split("-")[-1][1:4]
         args = {
             'vmsize': instanceType,
             'vmname': instanceName,
@@ -53,7 +60,7 @@ class AzureProvisioner(AnsibleDriver):
             'role': "leader",
             'image': applianceSelf(),
             'entrypoint': "mesos-master",
-            # This is confusing and should be accompanied by an explanation.
+            # This is unclear and should be accompanied by an explanation.
             'sshKey': 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded',
             '_args': leaderArgs.format(name=self.clusterName),
         }
@@ -91,26 +98,58 @@ class AzureProvisioner(AnsibleDriver):
             # resource group, security group, etc.
             self.callPlaybook(self.playbook['create'], args, tags=['abridged'])
 
-    def getNodeShape(self):
-        raise NotImplementedError
-        # Commented because the current solution that I have seems a little much.
-        # To my knowledge, Azure doesn't provide an easy way to get the specs of
-        # an instance without authenticating, which seems like overkill for
-        # this method. Plus, configparser in Python 2.x is kinda not as cool as
-        # the one in Python 3.x and I don't want to deal with that.
+    def getNodeShape(self, nodeType, preemptable=False):
+        if preemptable:
+            raise NotImplementedError("Ansible does not support provisioning spot instances")
 
-        # from azure.common.credentials import ServicePrincipalCredentials
-        # from azure.mgmt.compute import ComputeManagementClient
-        # import ConfigParser
-        # config = ConfigParser.ConfigParser()
-        # config.read("~/.azure/credentials")
-        # credentials = ServicePrincipalCredentials(**config['default'])
-        # client = ComputeManagementClient(credentials)
-        # Get node type from self._getInventory()
-        # ...
+        # Fetch Azure credentials from the CLI config
+        azureCredentials = ConfigParser.SafeConfigParser()
+        azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
+        client_id = azureCredentials.get("default", "client_id")
+        secret = azureCredentials.get("default", "secret")
+        tenant = azureCredentials.get("default", "tenant")
+        subscription = azureCredentials.get("default", "subscription_id")
 
-    def getProvisionedWorkers(self):
-        raise NotImplementedError("Ansible does not support provisioning spot instances.")
+        # Authenticate to Azure API and fetch list of instance types
+        credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
+        client = ComputeManagementClient(credentials, subscription)
+        instanceTypes = client.virtual_machine_sizes.list(self.region)
+
+        # Data model: https://docs.microsoft.com/en-us/python/api/azure.mgmt.compute.v2017_12_01.models.virtualmachinesize?view=azure-python
+        instanceType = (vmType for vmType in instanceTypes if vmType["name"] == nodeType).next()
+
+        disk = instanceType.max_data_disk_count * instanceType.os_disk_size_in_mb * 2 ** 30
+
+        # Underestimate memory by 100M to prevent autoscaler from disagreeing with
+        # mesos about whether a job can run on a particular node type
+        memory = (instanceType.memory_in_mb - 0.1) * 2 ** 30
+
+        return Shape(wallTime=60 * 60,
+                     memory=memory,
+                     cores=instanceType.number_of_cores,
+                     disk=disk,
+                     preemptable=preemptable)
+
+    def getProvisionedWorkers(self, nodeType, preemptable):
+        # Data model info: https://docs.ansible.com/ansible/latest/guide_azure.html#dynamic-inventory-script
+        allNodes = self._getInventory()
+        workerNodes = filter(lambda x: x['tags']['role'] == "worker", allNodes)
+        healthyNodes = filter(lambda x: x['powerstate'] == "running", allNodes)
+
+        logger.debug('All nodes in cluster: ' + allNodes)
+        logger.debug('All workers found in cluster: ' + workerNodes)
+
+        rv = []
+        for node in healthyNodes:
+            rv.append(Node(
+                publicIP=node['public_ip'],
+                privateIP=node['private_ip'],
+                name=node['name'],
+                launchTime=node['tags']['launchtime'],  # FIXME: Is defining this as a tag enough?
+                nodeType=node['virtual_machine_size'],
+                preemptable=preemptable)
+            )
+        return rv
 
     def remainingBillingInterval(self):
         raise NotImplementedError("Ansible does not support provisioning spot instances.")
