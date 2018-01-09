@@ -51,17 +51,16 @@ def fetchJobStoreFiles(jobStore, options):
     into options.localFilePath.
 
     :param jobStore: A fileJobStore object.
-    :param options.fetchTheseJobStoreFiles: List of file glob patterns to search
+    :param options.fetch: List of file glob patterns to search
         for in the jobStore and copy into options.localFilePath.
     :param options.localFilePath: Local directory to copy files into.
     :param options.jobStore: The path to the jobStore directory.
     """
-    for jobStoreFile in options.fetchTheseJobStoreFiles:
+    for jobStoreFile in options.fetch:
         jobStoreHits = recursiveGlob(directoryname=options.jobStore, glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
-            localFileID = os.path.join(jobStoreFileID, options.localFilePath)
-            logger.info("Copying job store file: %s to %s", jobStoreFileID, localFileID)
-            jobStore.readGlobalFile(jobStoreFileID, localFileID, symlink=options.useSymlinks)
+            logger.info("Copying job store file: %s to %s", jobStoreFileID, options.localFilePath[0])
+            jobStore.readFile(jobStoreFileID, os.path.join(options.localFilePath[0], os.path.basename(jobStoreFileID)), symlink=options.useSymlinks)
 
 def printContentsOfJobStore(jobStorePath, nameOfJob=None):
     """
@@ -104,8 +103,8 @@ def main():
     parser.add_argument("--localFilePath",
                         nargs=1,
                         help="Location to which to copy job store files.")
-    parser.add_argument("--fetchTheseJobStoreFiles",
-                        nargs='+',
+    parser.add_argument("--fetch",
+                        nargs="+",
                         help="List of job-store files to be copied locally."
                         "Use either explicit names (i.e. 'data.txt'), or "
                         "specify glob patterns (i.e. '*.txt')")
@@ -126,13 +125,15 @@ def main():
     jobStore = Toil.resumeJobStore(config.jobStore)
     logger.info("Connected to job store: %s", config.jobStore)
 
-    if options.fetchTheseJobStoreFiles:
+    if options.fetch:
         # Copy only the listed files locally
+        logger.info("Fetching local files: %s", options.fetch)
         fetchJobStoreFiles(jobStore=jobStore, options=options)
 
     elif options.fetchEntireJobStore:
         # Copy all jobStore files locally
-        options.fetchTheseJobStoreFiles = "*"
+        logger.info("Fetching all local files.")
+        options.fetch = "*"
         fetchJobStoreFiles(jobStore=jobStore, options=options)
 
     if options.listFilesInJobStore:

@@ -22,7 +22,7 @@ import os
 import shutil
 import logging
 from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
-import toil.utils.toilDebugFile
+from toil.utils.toilDebugFile import recursiveGlob
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +45,13 @@ class ToilDebugFileTest(ToilTest):
 
         unittest.TestCase.tearDown(self)
 
-    # estimated run time
     @slow
     def testJobStoreContents(self):
-        # toilDebugFile.printContentsOfJobStore()
+        """Test toilDebugFile.printContentsOfJobStore().
+
+        Runs a workflow that imports 'B.txt' and 'mkFile.py' into the
+        jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This checks to
+        make sure these contents are found in the jobStore and printed."""
 
         contents = ['A.txt', 'B.txt', 'C.txt', 'ABC.txt', 'mkFile.py']
 
@@ -69,15 +72,37 @@ class ToilDebugFileTest(ToilTest):
         # C.txt will match twice (once with 'C.txt', and once with 'ABC.txt')
         assert match == 6
 
-
-    # estimated run time
-    @slow
-    def testRecursiveGlob(self):
-        # toilDebugFile.recursiveGlob()
-        pass
-
-    # estimated run time
-    @slow
+    # expected run time = 4s
     def testFetchJobStoreFiles(self):
-        # toilDebugFile.fetchJobStoreFiles()
-        pass
+        """Test toilDebugFile.fetchJobStoreFiles() without using symlinks."""
+        self.fetchFiles(symLink=False)
+
+    # expected run time = 4s
+    def testFetchJobStoreFilesWSymlinks(self):
+        """Test toilDebugFile.fetchJobStoreFiles() using symlinks."""
+        self.fetchFiles(symLink=True)
+
+    def fetchFiles(self, symLink):
+        """
+        Fn for testFetchJobStoreFiles() and testFetchJobStoreFilesWSymlinks().
+
+        Runs a workflow that imports 'B.txt' and 'mkFile.py' into the
+        jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This test then
+        attempts to get a list of these files and copy them over into ./src from
+        the jobStore, confirm that they are present, and then delete them.
+        """
+        contents = ['A.txt', 'B.txt', 'C.txt', 'ABC.txt', 'mkFile.py']
+        outputDir = os.path.abspath('src')
+        cmd = ['python', os.path.abspath('src/toil/utils/toilDebugFile.py'),
+               self.jobStoreDir,
+               '--fetch', '*A.txt', '*B.txt', '*C.txt', '*ABC.txt', '*mkFile.py',
+               '--localFilePath=' + os.path.abspath('src'),
+               '--useSymlinks=' + str(symLink)]
+        subprocess.check_call(cmd)
+        for file in contents:
+            matchingFilesFound = recursiveGlob(outputDir, '*' + file)
+            assert len(matchingFilesFound) >= 1, matchingFilesFound
+            for fileFound in matchingFilesFound:
+                assert fileFound.endswith(file) and os.path.exists(fileFound)
+                if fileFound.endswith('-' + file):
+                    os.remove(fileFound)

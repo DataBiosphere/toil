@@ -351,10 +351,32 @@ Once we're done, we can clean up the job store by running
 
    (venv) $ toil clean file:jobStore
    
-Note, by default if ``--stats`` is not included and the pipeline finishes
-successfully then toil clean is run automatically and the job store is cleaned up.
-This was the case with the above examples. See options to prevent this behavior. 
+Note, by default if ``--stats`` is not included and the pipeline finishes successfully then toil clean is run automatically and the job store is cleaned up.  This was the case with the above examples. See options to prevent this behavior.
 
+Also note, specific to ``--stats`` as well is the optional ``displayName`` variable, which allows the user to give job names an alias that display jobs with a user specified job name when viewing stats.  For example::
+
+    class DiskUsage(Job):
+    """Compute the disk usage for a given path."""
+    def __init__(self, path, *args, **kwargs):
+        """Set the path to run disk usage with"""
+        self.path = path
+        super(DiskUsage, self).__init__(*args, **kwargs)
+    def run(self, fileStore):
+        """Determine the disk usage for a given path."""
+        subprocess.check_call(["du", self.path])
+    sys_du = DiskUsage(path="/", displayName='SystemDiskUsage')
+    user_du = DiskUsage(path="/home/user", displayName='UserDiskUsage')
+    sys_du.addChild(user_du)
+    with Toil(options) as toil:
+        toil.options.stats = True
+        if not toil.options.restart:
+            toil.start(sys_du)
+        else:
+            toil.restart()
+    if __name__ == '__main__':
+        main()
+
+Running this workflow would show two different jobs, named UserDiskUsage and SystemDiskUsage (instead of the default of DiskUsage) respectively when displaying stats.
 
 Launching a Toil Workflow in AWS
 --------------------------------
