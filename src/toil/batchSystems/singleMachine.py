@@ -187,7 +187,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 return
             args = inputQueue.get()
             if args is None:
-                log.debug('Received queue sentinel.')
                 break
             jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
             while True:
@@ -219,7 +218,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         # Wake up sleeping threads
                         self.aquisitionCondition.notifyAll()
                     break
-        log.debug('Exiting worker thread normally.')
 
     def issueBatchJob(self, jobNode):
         """

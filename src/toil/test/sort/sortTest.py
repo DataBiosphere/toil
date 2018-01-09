@@ -42,8 +42,7 @@ from toil.test import (ToilTest,
                        needs_gridengine,
                        needs_torque,
                        needs_google,
-                       slow,
-                       experimental)
+                       slow)
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException, JobStoreExistsException
 from toil.leader import FailedJobsException
 
@@ -207,12 +206,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         finally:
             self._stopMesos()
 
-    @experimental
     @needs_google
     def testGoogleSingle(self):
         self._toilSort(jobStoreLocator=self._googleJobStore(), batchSystem="singleMachine")
 
-    @experimental
     @needs_google
     @needs_mesos
     def testGoogleMesos(self):
@@ -328,7 +325,8 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         return "azure:%s:sort-test-%s" % (accountName, uuid4())
 
     def _googleJobStore(self):
-        return "google:cgc-05-0006:sort-test-%s" % uuid4()
+        projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
+        return 'google:%s:sort-test-%s' % (projectID, str(uuid4()))
 
     def _loadFile(self, path):
         with open(path, 'r') as f:

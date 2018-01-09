@@ -70,7 +70,7 @@ Running CWL workflows using Toil is easy.
 #. First ensure that Toil is installed with the
    ``cwl`` extra (see :ref:`extras`).  ::
 
-       (venv) $ pip install toil[cwl]
+       (venv) $ pip install 'toil[cwl]'
 
    This installs the ``toil-cwl-runner`` and ``cwl-runner`` executables. These are identical -
    ``cwl-runner`` is the portable name for the default system CWL runner.
@@ -453,3 +453,67 @@ the user can run a CWL workflow with Toil on AWS.
 #. Destroy the cluster. ::
 
       	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
+
+
+.. _awscactus:
+
+Running a Workflow with Autoscaling on AWS - Cactus
+---------------------------------------------------
+
+`Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free whole-genome multiple alignment program.
+
+#. Download :download:`pestis.tar.gz <../../src/toil/test/cactus/pestis.tar.gz>`.
+
+#. Launch a leader node in AWS using the :ref:`launchCluster` command. ::
+
+        (venv) $ toil launch-cluster <cluster-name> \
+        --keyPairName <AWS-key-pair-name> \
+        --leaderNodeType t2.medium \
+        --zone us-west-2c
+	(venv) $ export TOIL_AWS_ZONE=us-west-2c
+
+#. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as well as their phylogenetic tree, see `here <https://github.com/ComparativeGenomicsToolkit/cactus#seqfile-the-input-file>`__), organisms' genome sequence files in FASTA format, and configuration files (e.g. blockTrim1.xml, if desired), up to the leader node. ::
+
+	(venv) $ toil rsync-cluster <cluster-name> pestis-short-aws-seqFile.txt :/tmp
+	(venv) $ toil rsync-cluster <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/tmp
+	(venv) $ toil rsync-cluster <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/tmp
+	(venv) $ toil rsync-cluster <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/tmp
+	(venv) $ toil rsync-cluster <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/tmp
+	(venv) $ toil rsync-cluster <cluster-name> setup_leaderNode.sh :/tmp
+	(venv) $ toil rsync-cluster <cluster-name> blockTrim1.xml :/tmp
+	(venv) $ toil rsync-cluster <cluster-name> blockTrim3.xml :/tmp
+
+#. Log into the leader node. ::
+
+	(venv) $ toil ssh-cluster <cluster-name>
+
+#. Set up the environment of the leader node to run Cactus. ::
+
+	$ bash /tmp/setup_leaderNode.sh
+	$ source cact_venv/bin/activate
+	(cact_venv) $ cd cactus
+	(cact_venv) $ pip install --upgrade .
+
+#. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow. ::
+
+	(cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0 cactus --provisioner aws \
+	--nodeTypes c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching \
+	--logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis \
+	/tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
+
+
+   .. note::
+
+    In this example, we specify the version of Toil to be 3.11.0; if the latest one is desired, please eliminate ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0``. The flag ``--maxNodes 2`` creates up to two instances of type `c3.4xlarge` and launches Mesos slave containers inside them. The flag ``--logDebug`` is equal to ``--logLevel DEBUG``. ``--logFile /logFile_pestis3``: Write log in a file named `logFile_pestis3` under ``/`` folder. The ``--configFile`` flag is not required, depending on whether a specific configuration file is intended to run the alignment. Toil creates a bucket in S3 called `aws:us-west-2:cactus-pestis` to store intermediate job files and metadata. The result file, named ``pestis_output3.hal``, is stored under ``/tmp`` folder of the leader node. Use ``cactus --help`` to see all the Cactus and Toil flags available.
+
+#. Log out of the leader node. ::
+
+	(cact_venv) $ exit
+
+#. Download the resulted output to local machine. ::
+
+	(venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
+
+#. Destroy the cluster. ::
+
+      	(venv) $ toil destroy-cluster <cluster-name>

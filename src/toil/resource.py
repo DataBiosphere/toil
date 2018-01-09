@@ -148,9 +148,10 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         """
         pathHash = cls._pathHash(leaderPath)
         try:
-            s = os.environ[cls.resourceEnvNamePrefix + pathHash]
+            path_key = cls.resourceEnvNamePrefix + pathHash
+            s = os.environ[path_key]
         except KeyError:
-            log.warn("Can't find resource for leader path '%s'", leaderPath)
+            log.warn("'%s' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).", str(path_key))
             return None
         else:
             self = cls.unpickle(s)
@@ -486,7 +487,6 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             log.warn('The localize() method should only be invoked on a worker.')
         resource = Resource.lookup(self._resourcePath)
         if resource is None:
-            log.warn("Can't localize module %r", self)
             return self
         else:
             def stash(tmpDirPath):

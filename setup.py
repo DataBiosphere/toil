@@ -52,10 +52,10 @@ def runSetup():
             'encryption': [
                 'pynacl==1.1.2'],
             'google': [
-                'gcs_oauth2_boto_plugin==1.9',
+                'gcs_oauth2_boto_plugin==1.14',
                 botoRequirement],
             'cwl': [
-                'cwltool==1.0.20170822192924',
+                'cwltool==1.0.20180108222053',
                 'schema-salad >= 2.6, < 3',
                 'galaxy-lib==17.9.3',
                 'cwltest>=1.0.20170214185319']},
@@ -74,6 +74,7 @@ def runSetup():
                 'cwltoil = toil.cwl.cwltoil:main [cwl]',
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'cwl-runner = toil.cwl.cwltoil:main [cwl]',
+                'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]']})
 
 
