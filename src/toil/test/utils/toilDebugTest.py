@@ -42,6 +42,9 @@ class ToilDebugFileTest(ToilTest):
         """Default tearDown for unittest."""
 
         shutil.rmtree(self.jobStoreDir)
+        ABC = os.path.abspath('src/toil/test/utils/ABC/ABC.txt')
+        if os.path.exists(ABC):
+            os.remove(ABC)
 
         unittest.TestCase.tearDown(self)
 
@@ -71,6 +74,7 @@ class ToilDebugFileTest(ToilTest):
         logger.info(match)
         # C.txt will match twice (once with 'C.txt', and once with 'ABC.txt')
         assert match == 6
+        os.remove(jobstoreFileContents)
 
     # expected run time = 4s
     def testFetchJobStoreFiles(self):
