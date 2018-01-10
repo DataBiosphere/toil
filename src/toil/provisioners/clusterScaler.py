@@ -31,10 +31,10 @@ from bd2k.util.retry import retry
 from bd2k.util.threading import ExceptionalThread
 from bd2k.util.throttle import throttle
 from itertools import islice
-from six import iteritems
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 from toil.provisioners.abstractProvisioner import Shape
+from toil.job import ServiceJobNode
 
 logger = logging.getLogger(__name__)
 
@@ -310,7 +310,16 @@ class ClusterScaler(object):
         self.stop = True
         self.scaler.join()
                 
-    def getAverageRuntime(self, jobName):
+    def getAverageRuntime(self, jobName, service=False):
+        if service:
+            # We short-circuit service jobs and assume that they will
+            # take a very long time, because if they are assumed to
+            # take a short time, we may try to pack multiple services
+            # into the same core/memory/disk "reservation", one after
+            # the other. That could easily lead to underprovisioning
+            # and a deadlock, because often multiple services need to
+            # be running at once for any actual work to get done.
+            return 3600.0 * 24
         if jobName in self.jobNameToAvgRuntime:
             #Have seen jobs of this type before, so estimate
             #the runtime based on average of previous jobs of this type
@@ -462,9 +471,9 @@ class ScalerThread(ExceptionalThread):
                 with throttle(self.scaler.config.scaleInterval):
                     queuedJobs = self.scaler.leader.getJobs()
                     logger.info("avg runtime dict: %s" % repr(self.scaler.jobNameToAvgRuntime))
-                    for jobName in set(job.jobName for job in queuedJobs):
-                        logger.info("Got avg runtime %s for job %s." % (self.scaler.getAverageRuntime(jobName), jobName))
-                    queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
+                    for job in set(job for job in queuedJobs):
+                        logger.info("Got avg runtime %s for job %s." % (self.scaler.getAverageRuntime(job.jobName, service=isinstance(job, ServiceJobNode)), job.jobName))
+                    queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName, service=isinstance(job, ServiceJobNode)), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
                     logger.info("job shapes: %s" % (repr(set(queuedJobShapes))))
                     nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes)
                     for nodeShape in self.nodeShapes:
