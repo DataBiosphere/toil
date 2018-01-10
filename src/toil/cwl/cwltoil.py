@@ -493,7 +493,7 @@ def makeJob(tool, jobobj, **kwargs):
 
     if tool.tool["class"] == "Workflow":
         options = copy.deepcopy(kwargs)
-        options.update({'tool': tool, 'jobobj': jobobj})
+        options.update({'cwlwf': tool, 'cwljob': jobobj})
         wfjob = CWLWorkflow(**options)
         followOn = ResolveIndirect(wfjob.rv())
         wfjob.addFollowOn(followOn)
