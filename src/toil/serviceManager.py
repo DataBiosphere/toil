@@ -21,6 +21,8 @@ import time
 
 from threading import Thread, Event
 
+from bd2k.util.throttle import throttle
+
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
 
@@ -170,39 +172,74 @@ class ServiceManager( object ):
         """
         Thread used to schedule services.
         """
+        servicesThatAreStarting = set()
+        servicesRemainingToStartForJob = {}
+        serviceToJobGraph = {}
         while True:
-            try:
-                # Get a jobGraph with services to start, waiting a short period
-                jobGraph = jobGraphsWithServicesToStart.get(timeout=1.0)
-            except:
-                # Check if the thread should quit
+            with throttle(1.0):
                 if terminate.is_set():
                     logger.debug('Received signal to quit starting services.')
                     break
-                continue
+                try:
+                    jobGraph = jobGraphsWithServicesToStart.get_nowait()
+                    if len(jobGraph.services) > 1:
+                        # Have to fall back to the old blocking behavior to
+                        # ensure entire service "groups" are issued as a whole.
+                        blockUntilServiceGroupIsStarted(jobGraph,
+                                                        jobGraphsWithServicesThatHaveStarted,
+                                                        serviceJobsToStart, terminate, jobStore)
+                        continue
+                    # Found a new job that needs to schedule its services.
+                    for serviceJob in jobGraph.services[0]:
+                        serviceToJobGraph[serviceJob] = jobGraph
+                    servicesRemainingToStartForJob[jobGraph] = len(jobGraph.services[0])
+                    # Issue the service jobs all at once.
+                    for serviceJob in jobGraph.services[0]:
+                        logger.debug("Service manager is starting service job: %s, start ID: %s", serviceJob, serviceJob.startJobStoreID)
+                        serviceJobsToStart.put(serviceJob)
+                    # We should now start to monitor these services to see if
+                    # they've started yet.
+                    servicesThatAreStarting.update(jobGraph.services[0])
+                except Empty:
+                    # No new jobs that need services scheduled.
+                    pass
 
-            if jobGraph is None: # Nothing was ready, loop again
-                continue
+                for serviceJob in list(servicesThatAreStarting):
+                    if not jobStore.fileExists(serviceJob.startJobStoreID):
+                        # Service has started!
+                        servicesThatAreStarting.remove(serviceJob)
+                        parentJob = serviceToJobGraph[serviceJob]
+                        servicesRemainingToStartForJob[parentJob] -= 1
+                        assert servicesRemainingToStartForJob[parentJob] >= 0
+                        del serviceToJobGraph[serviceJob]
 
-            # Start the service jobs in batches, waiting for each batch
-            # to become established before starting the next batch
-            for serviceJobList in jobGraph.services:
-                for serviceJob in serviceJobList:
-                    logger.debug("Service manager is starting service job: %s, start ID: %s", serviceJob, serviceJob.startJobStoreID)
-                    assert jobStore.fileExists(serviceJob.startJobStoreID)
-                    # At this point the terminateJobStoreID and errorJobStoreID could have been deleted!
-                    serviceJobsToStart.put(serviceJob)
+                # Find if any jobGraphs have had *all* their services started.
+                jobGraphsToRemove = set()
+                for jobGraph, remainingServices in servicesRemainingToStartForJob.items():
+                    if remainingServices == 0:
+                        jobGraphsWithServicesThatHaveStarted.put(jobGraph)
+                        jobGraphsToRemove.add(jobGraph)
+                for jobGraph in jobGraphsToRemove:
+                    del servicesRemainingToStartForJob[jobGraph]
 
-                # Wait until all the services of the batch are running
-                for serviceJob in serviceJobList:
-                    while jobStore.fileExists(serviceJob.startJobStoreID):
-                        # Sleep to avoid thrashing
-                        time.sleep(1.0)
+def blockUntilServiceGroupIsStarted(jobGraph, jobGraphsWithServicesThatHaveStarted, serviceJobsToStart, terminate, jobStore):
+    # Start the service jobs in batches, waiting for each batch
+    # to become established before starting the next batch
+    for serviceJobList in jobGraph.services:
+        for serviceJob in serviceJobList:
+            logger.debug("Service manager is starting service job: %s, start ID: %s", serviceJob, serviceJob.startJobStoreID)
+            assert jobStore.fileExists(serviceJob.startJobStoreID)
+            # At this point the terminateJobStoreID and errorJobStoreID could have been deleted!
+            serviceJobsToStart.put(serviceJob)
+        # Wait until all the services of the batch are running
+        for serviceJob in serviceJobList:
+            while jobStore.fileExists(serviceJob.startJobStoreID):
+                # Sleep to avoid thrashing
+                time.sleep(1.0)
 
-                        # Check if the thread should quit
-                        if terminate.is_set():
-                            logger.debug('Received signal to quit starting services.')
-                            break
+                # Check if the thread should quit
+                if terminate.is_set():
+                    return
 
-            # Add the jobGraph to the output queue of jobs whose services have been started
-            jobGraphsWithServicesThatHaveStarted.put(jobGraph)
+    # Add the jobGraph to the output queue of jobs whose services have been started
+    jobGraphsWithServicesThatHaveStarted.put(jobGraph)
