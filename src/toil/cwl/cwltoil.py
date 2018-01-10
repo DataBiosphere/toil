@@ -38,9 +38,13 @@ import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.draft2tool
-from cwltool.pathmapper import PathMapper, adjustDirObjs, adjustFileObjs, get_listing, MapperEnt, visit_class, normalizeFilesDirs
-from cwltool.process import shortname, fillInDefaults, compute_checksums, collectFilesAndDirs, stageFiles
-from cwltool.software_requirements import DependenciesConfiguration, get_container_from_software_requirements
+from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
+                                get_listing, MapperEnt, visit_class,
+                                normalizeFilesDirs)
+from cwltool.process import (shortname, fillInDefaults, compute_checksums,
+                             collectFilesAndDirs)
+from cwltool.software_requirements import (
+        DependenciesConfiguration, get_container_from_software_requirements)
 from cwltool.utils import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
@@ -51,10 +55,8 @@ import sys
 import logging
 import copy
 import functools
-import uuid
 
 # Python 3 compatibility imports
-from six.moves import xrange
 from six import iteritems, string_types
 import six.moves.urllib.parse as urlparse
 
@@ -74,9 +76,11 @@ CWL_INTERNAL_JOBS = ("CWLJob", "CWLJobWrapper", "CWLWorkflow", "CWLScatter", "CW
 # feed into multiple other steps.  This transformation maps the key in the
 # output object to the correct key of the input object.
 
+
 class IndirectDict(dict):
     """Type tag to indicate a dict is an IndirectDict that needs to resolved."""
     pass
+
 
 class MergeInputs(object):
     """Base type for workflow step inputs that are connected to multiple upstream
@@ -85,8 +89,10 @@ class MergeInputs(object):
     """
     def __init__(self, sources):
         self.sources = sources
+
     def resolve(self):
         raise NotImplementedError()
+
 
 class MergeInputsNested(MergeInputs):
     """Merge workflow step inputs that are connected to multiple upstream inputs
@@ -95,6 +101,7 @@ class MergeInputsNested(MergeInputs):
     """
     def resolve(self):
         return [v[1][v[0]] for v in self.sources]
+
 
 class MergeInputsFlattened(MergeInputs):
     """Merge workflow step inputs that are connected to multiple upstream inputs
@@ -112,6 +119,7 @@ class MergeInputsFlattened(MergeInputs):
                 r.append(v)
         return r
 
+
 class StepValueFrom(object):
     """A workflow step input which has a valueFrom expression attached to it, which
     is evaluated to produce the actual input object for the step.
@@ -126,6 +134,7 @@ class StepValueFrom(object):
     def do_eval(self, inputs, ctx):
         return cwltool.expression.do_eval(self.expr, inputs, self.req,
                                           None, None, {}, context=ctx)
+
 
 def _resolve_indirect_inner(d):
     """Resolve the contents an indirect dictionary (containing promises) to produce
@@ -144,6 +153,7 @@ def _resolve_indirect_inner(d):
         return r
     else:
         return d
+
 
 def resolve_indirect(d):
     """Resolve the contents an indirect dictionary (containing promises) and
@@ -170,6 +180,7 @@ def resolve_indirect(d):
         return ev
     else:
         return res
+
 
 class ToilPathMapper(PathMapper):
     """ToilPathMapper keeps track of a file's symbolic identifier (the Toil
@@ -225,6 +236,7 @@ class ToilCommandLineTool(cwltool.draft2tool.CommandLineTool):
                               separateDirs=kwargs.get("separateDirs", True),
                               get_file=kwargs["toil_get_file"])
 
+
 def toilMakeTool(toolpath_object, **kwargs):
     """Factory function passed to load_tool() which creates instances of the
     custom ToilCommandLineTool.
@@ -234,6 +246,7 @@ def toilMakeTool(toolpath_object, **kwargs):
     if isinstance(toolpath_object, dict) and toolpath_object.get("class") == "CommandLineTool":
         return ToilCommandLineTool(toolpath_object, **kwargs)
     return cwltool.workflow.defaultMakeTool(toolpath_object, **kwargs)
+
 
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """Custom filesystem access class which handles toil filestore references.
@@ -250,6 +263,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         else:
             return super(ToilFsAccess, self)._abs(p)
 
+
 def toilGetFile(fileStore, index, existing, fileStoreID):
     """Get path to input file from Toil jobstore."""
 
@@ -259,6 +273,7 @@ def toilGetFile(fileStore, index, existing, fileStoreID):
     index[srcPath] = fileStoreID
     existing[fileStoreID] = srcPath
     return schema_salad.ref_resolver.file_uri(srcPath)
+
 
 def writeFile(writeFunc, index, existing, x):
     """Write a file into the Toil jobstore.
@@ -289,6 +304,7 @@ def writeFile(writeFunc, index, existing, x):
                 raise
         return index[x]
 
+
 def uploadFile(uploadfunc, fileindex, existing, uf, skip_broken=False):
     """Update a file object so that the location is a reference to the toil file
     store, writing it to the file store if necessary.
@@ -312,9 +328,11 @@ def uploadFile(uploadfunc, fileindex, existing, uf, skip_broken=False):
                                existing,
                                uf["location"])
 
+
 def writeGlobalFileWrapper(fileStore, fileuri):
     """Wrap writeGlobalFile to accepts file:// URIs"""
     return fileStore.writeGlobalFile(schema_salad.ref_resolver.uri_file_path(fileuri))
+
 
 class ResolveIndirect(Job):
     """A helper Job which accepts an indirect dict (containing promises) and
@@ -328,6 +346,7 @@ class ResolveIndirect(Job):
 
     def run(self, fileStore):
         return resolve_indirect(self.cwljob)
+
 
 def toilStageFiles(fileStore, cwljob, outdir, index, existing, export):
     """Copy input files out of the global file store and update location and
@@ -385,7 +404,11 @@ class CWLJobWrapper(Job):
             builder.tmpdir = None
             builder.timeout = 0
             builder.resources = {}
-        realjob = CWLJob(self.cwltool, self.cwljob, builder=builder, **self.kwargs)
+        options = copy.deepcopy(self.kwargs)
+        options.update({'tool': self.cwltool,
+                        'cwljob': self.cwljob,
+                        'builder': builder})
+        realjob = CWLJob(**options)
         self.addChild(realjob)
         return realjob.rv()
 
@@ -437,17 +460,17 @@ class CWLJob(Job):
 
         index = {}
         existing = {}
+        opts.update({'t': self.cwltool, 'job_order_object': cwljob,
+            'basedir': os.getcwd(), 'outdir': outdir,
+            'tmp_outdir_prefix': tmp_outdir_prefix,
+            'tmpdir_prefix': fileStore.getLocalTempDir(),
+            'make_fs_access': functools.partial(ToilFsAccess, fileStore=fileStore),
+            'toil_get_file': functools.partial(toilGetFile, fileStore, index, existing),
+            'no_match_user': False})
+        del opts['job_order']
 
         # Run the tool
-        (output, status) = cwltool.main.single_job_executor(self.cwltool, cwljob,
-                                                            basedir=os.getcwd(),
-                                                            outdir=outdir,
-                                                            tmp_outdir_prefix=tmp_outdir_prefix,
-                                                            tmpdir_prefix=fileStore.getLocalTempDir(),
-                                                            make_fs_access=functools.partial(ToilFsAccess, fileStore=fileStore),
-                                                            toil_get_file=functools.partial(toilGetFile, fileStore, index, existing),
-                                                            no_match_user=False,
-                                                            **opts)
+        (output, status) = cwltool.main.single_job_executor(**opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
 
@@ -469,7 +492,9 @@ def makeJob(tool, jobobj, **kwargs):
     """
 
     if tool.tool["class"] == "Workflow":
-        wfjob = CWLWorkflow(tool, jobobj, **kwargs)
+        options = copy.deepcopy(kwargs)
+        options.update({'cwlwf': tool, 'cwljob': jobobj})
+        wfjob = CWLWorkflow(**options)
         followOn = ResolveIndirect(wfjob.rv())
         wfjob.addFollowOn(followOn)
         return (wfjob, followOn)
@@ -478,14 +503,21 @@ def makeJob(tool, jobobj, **kwargs):
         resourceReq, _ = tool.get_requirement("ResourceRequirement")
         if resourceReq:
             for req in ("coresMin", "coresMax", "ramMin", "ramMax",
-                         "tmpdirMin", "tmpdirMax", "outdirMin", "outdirMax"):
+                        "tmpdirMin", "tmpdirMax", "outdirMin", "outdirMax"):
                 r = resourceReq.get(req)
                 if isinstance(r, string_types) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper.
-                    job = CWLJobWrapper(tool, jobobj, **kwargs)
+                    options = copy.deepcopy(kwargs)
+                    options.update({
+                        'tool': tool,
+                        'jobobj': jobobj})
+                    job = CWLJobWrapper(**options)
                     return (job, job)
-
-        job = CWLJob(tool, jobobj, **kwargs)
+        options = copy.deepcopy(kwargs)
+        options.update({
+            'tool': tool,
+            'cwljob': jobobj})
+        job = CWLJob(**options)
         return (job, job)
 
 
@@ -503,8 +535,7 @@ class CWLScatter(Job):
 
     def flat_crossproduct_scatter(self, joborder, scatter_keys, outputs, postScatterEval):
         scatter_key = shortname(scatter_keys[0])
-        l = len(joborder[scatter_key])
-        for n in range(0, l):
+        for n in range(0, len(joborder[scatter_key])):
             jo = copy.copy(joborder)
             jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
@@ -517,9 +548,8 @@ class CWLScatter(Job):
 
     def nested_crossproduct_scatter(self, joborder, scatter_keys, postScatterEval):
         scatter_key = shortname(scatter_keys[0])
-        l = len(joborder[scatter_key])
         outputs = []
-        for n in range(0, l):
+        for n in range(0, len(joborder[scatter_key])):
             jo = copy.copy(joborder)
             jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
@@ -545,10 +575,12 @@ class CWLScatter(Job):
         outputs = []
 
         valueFrom = {shortname(i["id"]): i["valueFrom"] for i in self.step.tool["inputs"] if "valueFrom" in i}
+
         def postScatterEval(io):
             shortio = {shortname(k): v for k, v in iteritems(io)}
             for k in valueFrom:
                 io.setdefault(k, None)
+
             def valueFromFunc(k, v):
                 if k in valueFrom:
                     return cwltool.expression.do_eval(
@@ -556,7 +588,7 @@ class CWLScatter(Job):
                             None, None, {}, context=v)
                 else:
                     return v
-            return {k: valueFromFunc(k, v) for k,v in list(io.items())}
+            return {k: valueFromFunc(k, v) for k, v in list(io.items())}
 
         if scatterMethod == "dotproduct":
             for i in range(0, len(cwljob[shortname(scatter[0])])):
@@ -643,6 +675,7 @@ class SelfJob(object):
     def hasChild(self, c):
         return self.j.hasChild(c)
 
+
 def remove_pickle_problems(obj):
     """doc_loader does not pickle correctly, causing Toil errors, remove from objects.
     """
@@ -653,6 +686,7 @@ def remove_pickle_problems(obj):
     if hasattr(obj, "steps"):
         obj.steps = [remove_pickle_problems(s) for s in obj.steps]
     return obj
+
 
 class CWLWorkflow(Job):
     """Traverse a CWL workflow graph and create a Toil job graph with appropriate
@@ -722,8 +756,8 @@ class CWLWorkflow(Job):
                                         raise validate.ValidationException(
                                             "Unsupported linkMerge '%s'", linkMerge)
                                 else:
-                                    jobobj[key] = (
-                                    shortname(inp["source"]), promises[inp["source"]].rv())
+                                    jobobj[key] = (shortname(inp["source"]),
+                                                   promises[inp["source"]].rv())
                             elif "default" in inp:
                                 d = copy.copy(inp["default"])
                                 jobobj[key] = ("default", {"default": d})
@@ -795,16 +829,19 @@ cwltool.process.supportedProcessRequirements = ("DockerRequirement",
                                                 "StepInputExpressionRequirement",
                                                 "ResourceRequirement")
 
+
 def unsupportedRequirementsCheck(requirements):
     """Check for specific requirement cases we don't support.
     """
     pass
+
 
 def visitSteps(t, op):
     if isinstance(t, cwltool.workflow.Workflow):
         for s in t.steps:
             op(s.tool)
             visitSteps(s.embedded_tool, op)
+
 
 def main(args=None, stdout=sys.stdout):
     parser = argparse.ArgumentParser()
@@ -821,6 +858,10 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
+    parser.add_argument("--user-space-docker-cmd",
+                        help="(Linux/OS X only) Specify a user space docker "
+                        "command (like udocker or dx-docker) that will be "
+                        "used to call 'pull' and 'run'")
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
                     metavar=("VAR1 VAR2"),
@@ -937,12 +978,14 @@ def main(args=None, stdout=sys.stdout):
             importFiles(job)
             visitSteps(t, importFiles)
 
-            make_fs_access = functools.partial(ToilFsAccess, fileStore=toil)
             try:
-                (wf1, wf2) = makeJob(t, {}, use_container=use_container,
-                                     preserve_environment=options.preserve_environment,
-                                     tmpdir=os.path.realpath(outdir), workdir=options.workDir,
-                                     job_script_provider=job_script_provider)
+                make_opts = copy.deepcopy(vars(options))
+                make_opts.update({'tool': t, 'jobobj': {},
+                    'use_container': use_container,
+                    'tmpdir': os.path.realpath(outdir),
+                    'job_script_provider': job_script_provider})
+
+                (wf1, wf2) = makeJob(**make_opts)
             except cwltool.process.UnsupportedRequirement as e:
                 logging.error(e)
                 return 33
