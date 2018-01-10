@@ -36,7 +36,7 @@ except ImportError:
     import pickle
 
 from abc import ABCMeta, abstractmethod
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from contextlib import contextmanager
 from io import BytesIO
 
@@ -726,7 +726,7 @@ class Job(JobLikeObject):
             :returns: The argument parser used by a toil workflow with added Toil options.
             :rtype: :class:`argparse.ArgumentParser`
             """
-            parser = ArgumentParser()
+            parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
             Job.Runner.addToilOptions(parser)
             return parser
 

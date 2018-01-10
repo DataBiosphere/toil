@@ -38,9 +38,14 @@ import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.draft2tool
-from cwltool.pathmapper import PathMapper, adjustDirObjs, adjustFileObjs, get_listing, MapperEnt, visit_class, normalizeFilesDirs
-from cwltool.process import shortname, fillInDefaults, compute_checksums, collectFilesAndDirs
-from cwltool.software_requirements import DependenciesConfiguration, get_container_from_software_requirements
+
+from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
+                                get_listing, MapperEnt, visit_class,
+                                normalizeFilesDirs)
+from cwltool.process import (shortname, fillInDefaults, compute_checksums,
+                             collectFilesAndDirs)
+from cwltool.software_requirements import (
+        DependenciesConfiguration, get_container_from_software_requirements)
 from cwltool.utils import aslist
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
@@ -52,6 +57,7 @@ import logging
 import copy
 import functools
 from typing import Text
+
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -397,7 +403,11 @@ class CWLJobWrapper(Job):
             builder.tmpdir = None
             builder.timeout = 0
             builder.resources = {}
-        realjob = CWLJob(self.cwltool, self.cwljob, builder=builder, **self.kwargs)
+        options = copy.deepcopy(self.kwargs)
+        options.update({'tool': self.cwltool,
+                        'cwljob': self.cwljob,
+                        'builder': builder})
+        realjob = CWLJob(**options)
         self.addChild(realjob)
         return realjob.rv()
 
@@ -449,17 +459,17 @@ class CWLJob(Job):
 
         index = {}
         existing = {}
+        opts.update({'t': self.cwltool, 'job_order_object': cwljob,
+            'basedir': os.getcwd(), 'outdir': outdir,
+            'tmp_outdir_prefix': tmp_outdir_prefix,
+            'tmpdir_prefix': fileStore.getLocalTempDir(),
+            'make_fs_access': functools.partial(ToilFsAccess, fileStore=fileStore),
+            'toil_get_file': functools.partial(toilGetFile, fileStore, index, existing),
+            'no_match_user': False})
+        del opts['job_order']
 
         # Run the tool
-        (output, status) = cwltool.main.single_job_executor(self.cwltool, cwljob,
-                                                            basedir=os.getcwd(),
-                                                            outdir=outdir,
-                                                            tmp_outdir_prefix=tmp_outdir_prefix,
-                                                            tmpdir_prefix=fileStore.getLocalTempDir(),
-                                                            make_fs_access=functools.partial(ToilFsAccess, fileStore=fileStore),
-                                                            toil_get_file=functools.partial(toilGetFile, fileStore, index, existing),
-                                                            no_match_user=False,
-                                                            **opts)
+        (output, status) = cwltool.main.single_job_executor(**opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
 
@@ -481,7 +491,9 @@ def makeJob(tool, jobobj, **kwargs):
     """
 
     if tool.tool["class"] == "Workflow":
-        wfjob = CWLWorkflow(tool, jobobj, **kwargs)
+        options = copy.deepcopy(kwargs)
+        options.update({'cwlwf': tool, 'cwljob': jobobj})
+        wfjob = CWLWorkflow(**options)
         followOn = ResolveIndirect(wfjob.rv())
         wfjob.addFollowOn(followOn)
         return (wfjob, followOn)
@@ -490,14 +502,21 @@ def makeJob(tool, jobobj, **kwargs):
         resourceReq, _ = tool.get_requirement("ResourceRequirement")
         if resourceReq:
             for req in ("coresMin", "coresMax", "ramMin", "ramMax",
-                         "tmpdirMin", "tmpdirMax", "outdirMin", "outdirMax"):
+                        "tmpdirMin", "tmpdirMax", "outdirMin", "outdirMax"):
                 r = resourceReq.get(req)
                 if isinstance(r, string_types) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper.
-                    job = CWLJobWrapper(tool, jobobj, **kwargs)
+                    options = copy.deepcopy(kwargs)
+                    options.update({
+                        'tool': tool,
+                        'jobobj': jobobj})
+                    job = CWLJobWrapper(**options)
                     return (job, job)
-
-        job = CWLJob(tool, jobobj, **kwargs)
+        options = copy.deepcopy(kwargs)
+        options.update({
+            'tool': tool,
+            'cwljob': jobobj})
+        job = CWLJob(**options)
         return (job, job)
 
 
@@ -515,8 +534,7 @@ class CWLScatter(Job):
 
     def flat_crossproduct_scatter(self, joborder, scatter_keys, outputs, postScatterEval):
         scatter_key = shortname(scatter_keys[0])
-        l = len(joborder[scatter_key])
-        for n in range(0, l):
+        for n in range(0, len(joborder[scatter_key])):
             jo = copy.copy(joborder)
             jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
@@ -529,9 +547,8 @@ class CWLScatter(Job):
 
     def nested_crossproduct_scatter(self, joborder, scatter_keys, postScatterEval):
         scatter_key = shortname(scatter_keys[0])
-        l = len(joborder[scatter_key])
         outputs = []
-        for n in range(0, l):
+        for n in range(0, len(joborder[scatter_key])):
             jo = copy.copy(joborder)
             jo[scatter_key] = joborder[scatter_key][n]
             if len(scatter_keys) == 1:
@@ -738,9 +755,8 @@ class CWLWorkflow(Job):
                                         raise validate.ValidationException(
                                             "Unsupported linkMerge '%s'", linkMerge)
                                 else:
-                                    jobobj[key] = (
-                                        shortname(inp["source"]),
-                                        promises[inp["source"]].rv())
+                                    jobobj[key] = (shortname(inp["source"]),
+                                                   promises[inp["source"]].rv())
                             elif "default" in inp:
                                 d = copy.copy(inp["default"])
                                 jobobj[key] = ("default", {"default": d})
@@ -841,6 +857,10 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
+    parser.add_argument("--user-space-docker-cmd",
+                        help="(Linux/OS X only) Specify a user space docker "
+                        "command (like udocker or dx-docker) that will be "
+                        "used to call 'pull' and 'run'")
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
                     metavar=("VAR1 VAR2"),
@@ -960,10 +980,13 @@ def main(args=None, stdout=sys.stdout):
             visitSteps(t, importFiles)
 
             try:
-                (wf1, wf2) = makeJob(t, {}, use_container=use_container,
-                                     preserve_environment=options.preserve_environment,
-                                     tmpdir=os.path.realpath(outdir), workdir=options.workDir,
-                                     job_script_provider=job_script_provider)
+                make_opts = copy.deepcopy(vars(options))
+                make_opts.update({'tool': t, 'jobobj': {},
+                    'use_container': use_container,
+                    'tmpdir': os.path.realpath(outdir),
+                    'job_script_provider': job_script_provider})
+
+                (wf1, wf2) = makeJob(**make_opts)
             except cwltool.process.UnsupportedRequirement as e:
                 logging.error(e)
                 return 33
