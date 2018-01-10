@@ -38,6 +38,7 @@ import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.draft2tool
+
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
                                 normalizeFilesDirs)
@@ -55,6 +56,8 @@ import sys
 import logging
 import copy
 import functools
+from typing import Text
+
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -85,7 +88,6 @@ class IndirectDict(dict):
 class MergeInputs(object):
     """Base type for workflow step inputs that are connected to multiple upstream
     inputs that must be merged into a single array.
-
     """
     def __init__(self, sources):
         self.sources = sources
@@ -97,7 +99,6 @@ class MergeInputs(object):
 class MergeInputsNested(MergeInputs):
     """Merge workflow step inputs that are connected to multiple upstream inputs
     based on the merge_nested behavior (as described in the CWL spec).
-
     """
     def resolve(self):
         return [v[1][v[0]] for v in self.sources]
@@ -106,7 +107,6 @@ class MergeInputsNested(MergeInputs):
 class MergeInputsFlattened(MergeInputs):
     """Merge workflow step inputs that are connected to multiple upstream inputs
     based on the merge_flattened behavior (as described in the CWL spec).
-
     """
 
     def resolve(self):
@@ -123,7 +123,6 @@ class MergeInputsFlattened(MergeInputs):
 class StepValueFrom(object):
     """A workflow step input which has a valueFrom expression attached to it, which
     is evaluated to produce the actual input object for the step.
-
     """
 
     def __init__(self, expr, inner, req):
@@ -875,6 +874,8 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--beta-use-biocontainers", default=None, action="store_true")
     # help="Short cut to use Conda to resolve 'SoftwareRequirement' packages."
     parser.add_argument("--beta-conda-dependencies", default=None, action="store_true")
+    parser.add_argument("--tmpdir-prefix", type=Text,
+            help="Path prefix for temporary directories", default="tmp")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
