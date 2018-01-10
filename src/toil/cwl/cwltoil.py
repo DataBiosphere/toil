@@ -467,7 +467,7 @@ class CWLJob(Job):
             'make_fs_access': functools.partial(ToilFsAccess, fileStore=fileStore),
             'toil_get_file': functools.partial(toilGetFile, fileStore, index, existing),
             'no_match_user': False})
-        opts.pop('job_order')
+        del opts['job_order']
 
         # Run the tool
         (output, status) = cwltool.main.single_job_executor(**opts)
@@ -516,7 +516,7 @@ def makeJob(tool, jobobj, **kwargs):
         options = copy.deepcopy(kwargs)
         options.update({
             'tool': tool,
-            'jobobj': jobobj})
+            'cwljob': jobobj})
         job = CWLJob(**options)
         return (job, job)
 
