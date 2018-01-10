@@ -404,7 +404,11 @@ class CWLJobWrapper(Job):
             builder.tmpdir = None
             builder.timeout = 0
             builder.resources = {}
-        realjob = CWLJob(self.cwltool, self.cwljob, builder=builder, **self.kwargs)
+        options = copy.deepcopy(self.kwargs)
+        options.update({'tool': self.cwltool,
+                        'cwljob': self.cwljob,
+                        'builder': builder})
+        realjob = CWLJob(**options)
         self.addChild(realjob)
         return realjob.rv()
 
@@ -456,17 +460,17 @@ class CWLJob(Job):
 
         index = {}
         existing = {}
+        opts.update({'t': self.cwltool, 'job_order_object': cwljob,
+            'basedir': os.getcwd(), 'outdir': outdir,
+            'tmp_outdir_prefix': tmp_outdir_prefix,
+            'tmpdir_prefix': fileStore.getLocalTempDir(),
+            'make_fs_access': functools.partial(ToilFsAccess, fileStore=fileStore),
+            'toil_get_file': functools.partial(toilGetFile, fileStore, index, existing),
+            'no_match_user': False})
+        opts.pop('job_order')
 
         # Run the tool
-        (output, status) = cwltool.main.single_job_executor(self.cwltool, cwljob,
-                                                            basedir=os.getcwd(),
-                                                            outdir=outdir,
-                                                            tmp_outdir_prefix=tmp_outdir_prefix,
-                                                            tmpdir_prefix=fileStore.getLocalTempDir(),
-                                                            make_fs_access=functools.partial(ToilFsAccess, fileStore=fileStore),
-                                                            toil_get_file=functools.partial(toilGetFile, fileStore, index, existing),
-                                                            no_match_user=False,
-                                                            **opts)
+        (output, status) = cwltool.main.single_job_executor(**opts)
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
 
@@ -488,7 +492,9 @@ def makeJob(tool, jobobj, **kwargs):
     """
 
     if tool.tool["class"] == "Workflow":
-        wfjob = CWLWorkflow(tool, jobobj, **kwargs)
+        options = copy.deepcopy(kwargs)
+        options.update({'tool': tool, 'jobobj': jobobj})
+        wfjob = CWLWorkflow(**options)
         followOn = ResolveIndirect(wfjob.rv())
         wfjob.addFollowOn(followOn)
         return (wfjob, followOn)
@@ -501,10 +507,17 @@ def makeJob(tool, jobobj, **kwargs):
                 r = resourceReq.get(req)
                 if isinstance(r, string_types) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper.
-                    job = CWLJobWrapper(tool, jobobj, **kwargs)
+                    options = copy.deepcopy(kwargs)
+                    options.update({
+                        'tool': tool,
+                        'jobobj': jobobj})
+                    job = CWLJobWrapper(**options)
                     return (job, job)
-
-        job = CWLJob(tool, jobobj, **kwargs)
+        options = copy.deepcopy(kwargs)
+        options.update({
+            'tool': tool,
+            'jobobj': jobobj})
+        job = CWLJob(**options)
         return (job, job)
 
 
@@ -966,13 +979,13 @@ def main(args=None, stdout=sys.stdout):
             visitSteps(t, importFiles)
 
             try:
-                (wf1, wf2) = makeJob(
-                        t, {}, use_container=use_container,
-                        preserve_environment=options.preserve_environment,
-                        tmpdir=os.path.realpath(outdir),
-                        workdir=options.workDir,
-                        job_script_provider=job_script_provider,
-                        **vars(options))
+                make_opts = copy.deepcopy(vars(options))
+                make_opts.update({'tool': t, 'jobobj': {},
+                    'use_container': use_container,
+                    'tmpdir': os.path.realpath(outdir),
+                    'job_script_provider': job_script_provider})
+
+                (wf1, wf2) = makeJob(**make_opts)
             except cwltool.process.UnsupportedRequirement as e:
                 logging.error(e)
                 return 33
