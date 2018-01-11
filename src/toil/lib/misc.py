@@ -101,3 +101,13 @@ def partition_seq(seq, size):
         raise ValueError('Size must be greater than 0')
     return (seq[pos:pos + size] for pos in xrange(0, len(seq), size))
 
+
+def truncExpBackoff():
+    # as recommended here https://forums.aws.amazon.com/thread.jspa?messageID=406788#406788
+    yield 0
+    t = 1
+    while t < 1024:
+        yield t
+        t *= 2
+    while True:
+        yield t

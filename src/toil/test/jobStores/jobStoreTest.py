@@ -15,7 +15,11 @@
 from __future__ import absolute_import
 from __future__ import division
 
+from bd2k.util.retry import retry
 from future import standard_library
+from google.api_core.exceptions import GoogleAPICallError
+from toil.lib.misc import truncExpBackoff
+
 standard_library.install_aliases()
 from builtins import next
 from builtins import range
@@ -917,17 +921,30 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         from google.cloud import storage
         bucketName = b"import-export-test-" + bytes(uuid.uuid4())
         storageClient = storage.Client()
-        return storageClient.create_bucket(bucketName)
+        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
+            with attempt:
+                return storageClient.create_bucket(bucketName)
 
     def _cleanUpExternalStore(self, bucket):
         # this is copied from googleJobStore.destroy
-        try:
-            bucket.delete(force=True)
-            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
-        except ValueError:
-            bucket.delete_blobs(bucket.list_blobs)
-            bucket.delete()
+        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
+            with attempt:
+                try:
+                    bucket.delete(force=True)
+                    # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+                except ValueError:
+                    bucket.delete_blobs(bucket.list_blobs)
+                    bucket.delete()
 
+def googleRateLimit(e):
+    """
+    necessary because under heavy load google may throw
+        TooManyRequests: 429
+        The project exceeded the rate limit for creating and deleting buckets.
+    """
+    if isinstance(e, GoogleAPICallError) and e.code == 429:
+        return True
+    return False
 
 @needs_aws
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
