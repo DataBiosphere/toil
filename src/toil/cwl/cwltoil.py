@@ -875,7 +875,11 @@ def main(args=None, stdout=sys.stdout):
     # help="Short cut to use Conda to resolve 'SoftwareRequirement' packages."
     parser.add_argument("--beta-conda-dependencies", default=None, action="store_true")
     parser.add_argument("--tmpdir-prefix", type=Text,
-            help="Path prefix for temporary directories", default="tmp")
+                        help="Path prefix for temporary directories",
+                        default="tmp")
+    parser.add_argument("--tmp-outdir-prefix", type=Text,
+                        help="Path prefix for intermediate output directories",
+                        default="tmp")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
