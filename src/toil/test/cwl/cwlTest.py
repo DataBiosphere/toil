@@ -18,6 +18,7 @@ import os
 import subprocess
 import re
 import shutil
+import pytest
 from future.moves.urllib.request import urlretrieve
 import zipfile
 
@@ -119,6 +120,7 @@ class CWLTest(ToilTest):
             pass
 
     @slow
+    @pytest.mark.timeout(900)
     def test_run_conformance(self):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
