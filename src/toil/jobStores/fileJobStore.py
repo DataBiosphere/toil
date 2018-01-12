@@ -469,6 +469,9 @@ class FileJobStore(AbstractJobStore):
         basename will be used.
         :param jobStoreID: If given, the path returned will be in the jobStore directory.
         Otherwise, the tmp directory will be used.
+        :param sourceFunctionName: This name is the name of the function that
+            generated this file.  Defaults to x if that name was not a normal
+            name.  Used for tracking files.
         :return: The full path with a unique file name.
         """
         fd, absPath = self._getTempFile(jobStoreID)

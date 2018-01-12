@@ -6,11 +6,21 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+'''
+This workflow's purpose is to create files and jobs for viewing using stats, 
+status, and printDot() in toilDebugTest.py.  It's intended for future use in a 
+debugging tutorial containing a broken job.  It is also a minor integration test.
+'''
 
 def initialize_jobs(job):
+    '''
+    Stub function used to start a toil workflow since toil workflows can only
+    start with one job (but afterwards can run many in parallel).
+    '''
     job.fileStore.logToMaster('''initialize_jobs''')
 
 def writeA(job, mkFile):
+    '''Runs a program, and writes a string 'A' into A.txt using mkFile.py.'''
     job.fileStore.logToMaster('''writeA''')
 
     # temp folder for the run
@@ -22,7 +32,7 @@ def writeA(job, mkFile):
     except:
         mkFile_fs = os.path.join(tempDir, mkFile[1])
 
-    # make a file (A.txt) and write 'A' into it using 'mkFile.py'
+    # make a file (A.txt) and writes a string 'A' into it using 'mkFile.py'
     content = 'A'
     cmd = 'python' + ' ' + mkFile_fs + ' ' + 'A.txt' + ' ' + content
     this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
@@ -36,6 +46,10 @@ def writeA(job, mkFile):
     return rvDict
 
 def writeB(job, mkFile, B_file):
+    '''
+    Runs a program, extracts a string 'B' from an existing file, B_file.txt, and
+    writes it into B.txt using mkFile.py.
+    '''
     job.fileStore.logToMaster('''writeB''')
 
     # temp folder for the run
@@ -69,6 +83,7 @@ def writeB(job, mkFile, B_file):
     return rvDict
 
 def writeC(job):
+    '''Creates/writes a file, C.txt, containing the string 'C'.'''
     job.fileStore.logToMaster('''writeC''')
 
     # temp folder for the run
@@ -84,6 +99,7 @@ def writeC(job):
     return rvDict
 
 def writeABC(job, A_dict, B_dict, C_dict, filepath):
+    '''Takes 3 files (specified as dictionaries) and writes their contents to ABC.txt.'''
     job.fileStore.logToMaster('''writeABC''')
 
     # temp folder for the run
@@ -126,10 +142,11 @@ def writeABC(job, A_dict, B_dict, C_dict, filepath):
 
 
 def finalize_jobs(job, num):
+    '''Does nothing but should be recorded in stats, status, and printDot().'''
     job.fileStore.logToMaster('''finalize_jobs''')
 
-
 def broken_job(job, num):
+    '''A job that will always fail.  To be used for a tutorial.'''
     job.fileStore.logToMaster('''broken_job''')
     file = toil.importFile(None)
 
@@ -140,15 +157,15 @@ if __name__=="__main__":
     options.logLevel = "INFO"
     with Toil(options) as toil:
 
-        B_file0 = toil.importFile("file://" + os.path.abspath("src/toil/test/utils/ABC/B_file.txt"))
+        B_file0 = toil.importFile("file://" + os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/B_file.txt"))
         B_file0_preserveThisFilename = "B_file.txt"
         B_file = (B_file0, B_file0_preserveThisFilename)
 
-        file_maker0 = toil.importFile("file://" + os.path.abspath("src/toil/test/utils/ABC/mkFile.py"))
+        file_maker0 = toil.importFile("file://" + os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/mkFile.py"))
         file_maker0_preserveThisFilename = "mkFile.py"
         file_maker = (file_maker0, file_maker0_preserveThisFilename)
 
-        filepath = os.path.abspath("src/toil/test/utils/ABC/ABC.txt")
+        filepath = os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/ABC.txt")
 
         job0 = Job.wrapJobFn(initialize_jobs)
         job1 = Job.wrapJobFn(writeA, file_maker)

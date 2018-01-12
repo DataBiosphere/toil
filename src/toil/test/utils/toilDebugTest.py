@@ -34,7 +34,7 @@ class ToilDebugFileTest(ToilTest):
         Initial set up of variables for the test.
         """
 
-        subprocess.check_call(['python', os.path.abspath('src/toil/test/utils/ABC/debugWorkflow.py')])
+        subprocess.check_call(['python', os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py')])
         self.jobStoreDir = os.path.abspath('toilWorkflowRun')
         self.tempDir = self._createTempDir(purpose='tempDir')
 
@@ -42,7 +42,7 @@ class ToilDebugFileTest(ToilTest):
         """Default tearDown for unittest."""
 
         shutil.rmtree(self.jobStoreDir)
-        ABC = os.path.abspath('src/toil/test/utils/ABC/ABC.txt')
+        ABC = os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/ABC.txt')
         if os.path.exists(ABC):
             os.remove(ABC)
 
@@ -65,9 +65,9 @@ class ToilDebugFileTest(ToilTest):
         with open(jobstoreFileContents, 'r') as f:
             for line in f:
                 files.append(line.strip())
-        for file in files:
+        for xfile in files:
             for expected_file in contents:
-                if file.endswith(expected_file):
+                if xfile.endswith(expected_file):
                     match = match + 1
         logger.info(files)
         logger.info(contents)
@@ -103,10 +103,10 @@ class ToilDebugFileTest(ToilTest):
                '--localFilePath=' + os.path.abspath('src'),
                '--useSymlinks=' + str(symLink)]
         subprocess.check_call(cmd)
-        for file in contents:
-            matchingFilesFound = recursiveGlob(outputDir, '*' + file)
-            assert len(matchingFilesFound) >= 1, matchingFilesFound
+        for xfile in contents:
+            matchingFilesFound = recursiveGlob(outputDir, '*' + xfile)
+            self.assertGreaterEqual(len(matchingFilesFound), 1)
             for fileFound in matchingFilesFound:
-                assert fileFound.endswith(file) and os.path.exists(fileFound)
-                if fileFound.endswith('-' + file):
+                assert fileFound.endswith(xfile) and os.path.exists(fileFound)
+                if fileFound.endswith('-' + xfile):
                     os.remove(fileFound)

@@ -35,8 +35,19 @@ def main():
 
 def loadModules():
     # noinspection PyUnresolvedReferences
-    from toil.utils import toilKill, toilStats, toilStatus, toilClean, toilLaunchCluster, toilDestroyCluster, toilSshCluster, toilRsyncCluster, toilDebugFile, toilDebugJob
-    commandMapping = { "-".join(map(lambda x : x.lower(), re.findall('[A-Z][^A-Z]*', name))) : module for name, module in iteritems(locals())}
+    from toil.utils import (toilKill,
+                            toilStats,
+                            toilStatus,
+                            toilClean,
+                            toilLaunchCluster,
+                            toilDestroyCluster,
+                            toilSshCluster,
+                            toilRsyncCluster,
+                            toilDebugFile,
+                            toilDebugJob)
+    commandMapping = { "-".join(
+                     map(lambda x : x.lower(), re.findall('[A-Z][^A-Z]*', name)
+                     )) : module for name, module in iteritems(locals())}
     return commandMapping
 
 def printHelp(modules):

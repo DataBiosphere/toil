@@ -57,10 +57,16 @@ def fetchJobStoreFiles(jobStore, options):
     :param options.jobStore: The path to the jobStore directory.
     """
     for jobStoreFile in options.fetch:
-        jobStoreHits = recursiveGlob(directoryname=options.jobStore, glob_pattern=jobStoreFile)
+        jobStoreHits = recursiveGlob(directoryname=options.jobStore,
+                                     glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
-            logger.info("Copying job store file: %s to %s", jobStoreFileID, options.localFilePath[0])
-            jobStore.readFile(jobStoreFileID, os.path.join(options.localFilePath[0], os.path.basename(jobStoreFileID)), symlink=options.useSymlinks)
+            logger.info("Copying job store file: %s to %s",
+                        jobStoreFileID,
+                        options.localFilePath[0])
+            jobStore.readFile(jobStoreFileID,
+                              os.path.join(options.localFilePath[0],
+                              os.path.basename(jobStoreFileID)),
+                              symlink=options.useSymlinks)
 
 def printContentsOfJobStore(jobStorePath, nameOfJob=None):
     """
@@ -69,7 +75,7 @@ def printContentsOfJobStore(jobStorePath, nameOfJob=None):
     for that specific job for which it can find a match.  Also creates a logFile
     containing this same record of job files in the working directory.
 
-    :param jobStore: Directory path to recursively look for files.
+    :param jobStorePath: Directory path to recursively look for files.
     :param nameOfJob: Default is None, which prints out all files in the jobStore.
     If specified, it will print all jobStore files that have been written to the
     jobStore by that job.

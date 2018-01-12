@@ -37,6 +37,7 @@ Check out our `website`_ for a comprehensive list of Toil's features and read ou
    running/cwl
    running/wdl
    running/deploying
+   running/debugging
    running/amazon
    running/azure
    running/openstack

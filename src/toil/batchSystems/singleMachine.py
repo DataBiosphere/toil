@@ -142,7 +142,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         debugWorker is True.
         """
         startTime = time.time()  # Time job is started
-        if self.debugWorker and "_toil_worker" in jobCommand: # fork worker
+        if self.debugWorker and "_toil_worker" in jobCommand:
             # Run the worker without forking
             jobName, jobStoreLocator, jobStoreID = jobCommand.split()[1:] # Parse command
             jobStore = Toil.resumeJobStore(jobStoreLocator)

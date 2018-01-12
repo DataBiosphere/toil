@@ -8,6 +8,8 @@ Toil has a number of tools to assist in debugging.  Here we provide help in work
 Introspecting the Jobstore
 --------------------------
 
+Note: Currently these features are only implemented for use locally (single machine) with the fileJobStore.
+
 To view what files currently reside in the jobstore, run the following command::
 
     $ toil-debug file:path-to-jobstore-directory --listFilesInJobStore
@@ -20,6 +22,10 @@ If one wishes to copy any of these files to a local directory, one can run for e
 
     $ toil-debug file:path-to-jobstore --fetch overview.txt *.bam *.fastq --localFilePath=/home/user/localpath
 
-To fetch overview.txt, and all .bam and .fastq files.  This can be used to recover previously used input and output
+To fetch ``overview.txt``, and all ``.bam`` and ``.fastq`` files.  This can be used to recover previously used input and output
 files for debugging or reuse in other workflows, or use in general debugging to ensure that certain outputs were imported
 into the jobStore.
+
+Stats and Status
+----------------
+See :ref:`cli` for more about gathering statistics about job success, runtime, and resource usage from workflows.

@@ -331,52 +331,8 @@ pipeline's completion.
 Collecting Statistics
 ~~~~~~~~~~~~~~~~~~~~~
 
-A Toil pipeline can be run with the ``--stats`` flag to allows collection of
-statistics::
+Please see the :ref:`cli` **Status** section for more on gathering runtime and resource info on jobs.
 
-   (venv) $ python sort.py --stats --overwriteOutput=True
-
-Once the pipeline finishes, the job store will be left behind, allowing us to
-get information on the total runtime and stats pertaining to each job function::
-
-   (venv) $ toil stats file:jobStore
-   ...
-   Batch System: singleMachine
-   Default Cores: 1  Default Memory: 2097152K
-   ...
-
-Once we're done, we can clean up the job store by running
-
-::
-
-   (venv) $ toil clean file:jobStore
-   
-Note, by default if ``--stats`` is not included and the pipeline finishes successfully then toil clean is run automatically and the job store is cleaned up.  This was the case with the above examples. See options to prevent this behavior.
-
-Also note, specific to ``--stats`` as well is the optional ``displayName`` variable, which allows the user to give job names an alias that display jobs with a user specified job name when viewing stats.  For example::
-
-    class DiskUsage(Job):
-    """Compute the disk usage for a given path."""
-    def __init__(self, path, *args, **kwargs):
-        """Set the path to run disk usage with"""
-        self.path = path
-        super(DiskUsage, self).__init__(*args, **kwargs)
-    def run(self, fileStore):
-        """Determine the disk usage for a given path."""
-        subprocess.check_call(["du", self.path])
-    sys_du = DiskUsage(path="/", displayName='SystemDiskUsage')
-    user_du = DiskUsage(path="/home/user", displayName='UserDiskUsage')
-    sys_du.addChild(user_du)
-    with Toil(options) as toil:
-        toil.options.stats = True
-        if not toil.options.restart:
-            toil.start(sys_du)
-        else:
-            toil.restart()
-    if __name__ == '__main__':
-        main()
-
-Running this workflow would show two different jobs, named UserDiskUsage and SystemDiskUsage (instead of the default of DiskUsage) respectively when displaying stats.
 
 Launching a Toil Workflow in AWS
 --------------------------------
@@ -388,33 +344,33 @@ Note that when running in AWS, users can either run the workflow on a single ins
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``, ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
 
        (venv) $ toil launch-cluster <cluster-name> \
-	--keyPairName <AWS-key-pair-name> \
+  --keyPairName <AWS-key-pair-name> \
        --leaderNodeType t2.medium \
-	--zone us-west-2a
+  --zone us-west-2a
 
 
 #. Copy ``helloWorld.py`` to the ``/tmp`` directory on the leader node using the :ref:`rsyncCluster` command. Note that the command requires defining the file to copy as well as the target location on the cluster leader node.::
 
-      	(venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> helloWorld.py :/tmp
+        (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> helloWorld.py :/tmp
 
 #. Login to the cluster leader node using the :ref:`sshCluster` command. Note this command will log you in as the ``root`` user ::
 
-      	(venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
+        (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
 #. Run the Toil script in the cluster.  In this particular case, we create an S3 bucket called ``my-S3-bucket`` in the ``us-west-2`` availability zone to store intermediate job results. ::
 
-      	$ python /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
+        $ python /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
 
    Along with some other ``INFO`` log messages, you should get the following output in your terminal window: ``Hello, world!, here's a message: You did it!``
 
 
 #. Exit from the SSH connection. ::
 
-      	$ exit
+        $ exit
 
 #. Use the :ref:`destroyCluster` command to destroy the cluster. Note this command will destroy the cluster leader node and any resources created to run the job, including the S3 bucket. ::
 
-      	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
+        (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
 
 
@@ -427,22 +383,22 @@ the user can run a CWL workflow with Toil on AWS.
 
 #. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
-    	(venv) $ toil launch-cluster <cluster-name> \
-    	--keyPairName <AWS-key-pair-name> \
-    	--leaderNodeType t2.micro \
-    	--zone us-west-2a
+      (venv) $ toil launch-cluster <cluster-name> \
+      --keyPairName <AWS-key-pair-name> \
+      --leaderNodeType t2.micro \
+      --zone us-west-2a
 
 #. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the :ref:`rsyncCluster` command. ::
 
-     	(venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> \
-	example.cwl example-job.cwl :/tmp
+      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> \
+  example.cwl example-job.cwl :/tmp
 
 #. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
 
-      	(venv) $ toil ssh-cluster --zone us-west-2a <cluster-name> \
-      	toil-cwl-runner \
-      	/tmp/example.cwl \
-      	/tmp/example-job.yml
+        (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name> \
+        toil-cwl-runner \
+        /tmp/example.cwl \
+        /tmp/example-job.yml
 
    ..  tip::
 
@@ -452,7 +408,7 @@ the user can run a CWL workflow with Toil on AWS.
 
 #. Destroy the cluster. ::
 
-      	(venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
+        (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
 
 .. _awscactus:
@@ -470,36 +426,36 @@ Running a Workflow with Autoscaling on AWS - Cactus
         --keyPairName <AWS-key-pair-name> \
         --leaderNodeType t2.medium \
         --zone us-west-2c
-	(venv) $ export TOIL_AWS_ZONE=us-west-2c
+  (venv) $ export TOIL_AWS_ZONE=us-west-2c
 
 #. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as well as their phylogenetic tree, see `here <https://github.com/ComparativeGenomicsToolkit/cactus#seqfile-the-input-file>`__), organisms' genome sequence files in FASTA format, and configuration files (e.g. blockTrim1.xml, if desired), up to the leader node. ::
 
-	(venv) $ toil rsync-cluster <cluster-name> pestis-short-aws-seqFile.txt :/tmp
-	(venv) $ toil rsync-cluster <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/tmp
-	(venv) $ toil rsync-cluster <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/tmp
-	(venv) $ toil rsync-cluster <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/tmp
-	(venv) $ toil rsync-cluster <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/tmp
-	(venv) $ toil rsync-cluster <cluster-name> setup_leaderNode.sh :/tmp
-	(venv) $ toil rsync-cluster <cluster-name> blockTrim1.xml :/tmp
-	(venv) $ toil rsync-cluster <cluster-name> blockTrim3.xml :/tmp
+  (venv) $ toil rsync-cluster <cluster-name> pestis-short-aws-seqFile.txt :/tmp
+  (venv) $ toil rsync-cluster <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/tmp
+  (venv) $ toil rsync-cluster <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/tmp
+  (venv) $ toil rsync-cluster <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/tmp
+  (venv) $ toil rsync-cluster <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/tmp
+  (venv) $ toil rsync-cluster <cluster-name> setup_leaderNode.sh :/tmp
+  (venv) $ toil rsync-cluster <cluster-name> blockTrim1.xml :/tmp
+  (venv) $ toil rsync-cluster <cluster-name> blockTrim3.xml :/tmp
 
 #. Log into the leader node. ::
 
-	(venv) $ toil ssh-cluster <cluster-name>
+  (venv) $ toil ssh-cluster <cluster-name>
 
 #. Set up the environment of the leader node to run Cactus. ::
 
-	$ bash /tmp/setup_leaderNode.sh
-	$ source cact_venv/bin/activate
-	(cact_venv) $ cd cactus
-	(cact_venv) $ pip install --upgrade .
+  $ bash /tmp/setup_leaderNode.sh
+  $ source cact_venv/bin/activate
+  (cact_venv) $ cd cactus
+  (cact_venv) $ pip install --upgrade .
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow. ::
 
-	(cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0 cactus --provisioner aws \
-	--nodeTypes c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching \
-	--logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis \
-	/tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
+  (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0 cactus --provisioner aws \
+  --nodeTypes c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching \
+  --logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis \
+  /tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
 
 
    .. note::
@@ -508,12 +464,12 @@ Running a Workflow with Autoscaling on AWS - Cactus
 
 #. Log out of the leader node. ::
 
-	(cact_venv) $ exit
+  (cact_venv) $ exit
 
 #. Download the resulted output to local machine. ::
 
-	(venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
+  (venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
 
 #. Destroy the cluster. ::
 
-      	(venv) $ toil destroy-cluster <cluster-name>
+        (venv) $ toil destroy-cluster <cluster-name>
