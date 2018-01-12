@@ -18,7 +18,7 @@ When run from the commandline, this should generate a file containing the conten
 displaying a series of log messages to the terminal).  This file is named "jobstore_files.txt" by default and will be
 generated in the current working directory.
 
-If one wishes to copy any of these files to a local directory, one can run for example:
+If one wishes to copy any of these files to a local directory, one can run for example::
 
     $ toil-debug file:path-to-jobstore --fetch overview.txt *.bam *.fastq --localFilePath=/home/user/localpath
 
@@ -28,4 +28,4 @@ into the jobStore.
 
 Stats and Status
 ----------------
-See :ref:`cli` for more about gathering statistics about job success, runtime, and resource usage from workflows.
+See :ref:`cli_status` for more about gathering statistics about job success, runtime, and resource usage from workflows.

@@ -322,7 +322,7 @@ line 30, or remove it, and then run
 
 ::
 
-   (venv) $ python sort.py --restart --overwriteOutput=True
+    (venv) $ python sort.py --restart --overwriteOutput=True
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
@@ -331,12 +331,12 @@ pipeline's completion.
 Collecting Statistics
 ~~~~~~~~~~~~~~~~~~~~~
 
-Please see the :ref:`cli` **Status** section for more on gathering runtime and resource info on jobs.
+Please see the :ref:`cli_status` section for more on gathering runtime and resource info on jobs.
 
 
 Launching a Toil Workflow in AWS
 --------------------------------
-After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.  
+After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.
 
 Note that when running in AWS, users can either run the workflow on a single instance or run it on a cluster (which is running across multiple containers on multliple AWS instances).  For more information on running Toil workflows on a cluster, see :ref:`runningAWS`.
 

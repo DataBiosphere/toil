@@ -7,21 +7,23 @@ Toil Workflow Options and Command Line Interface
 
 The ``toil`` CLI supports the following commands as arguments:
 
-	``status`` - Reports runtime and resource usage for all jobs in a specified jobstore (workflow must have originally been run using the --stats option).
+    ``status`` - Reports runtime and resource usage for all jobs in a specified jobstore (workflow must have originally been run using the --stats option).
 
-	``stats`` - Inspects a job store to see which jobs have failed, run successfully, etc.
+    ``stats`` - Inspects a job store to see which jobs have failed, run successfully, etc.
 
-	``destroy-cluster`` - For autoscaling.  Terminates the specified cluster and associated resources.
+    ``destroy-cluster`` - For autoscaling.  Terminates the specified cluster and associated resources.
 
-	``launch-cluster`` - For autoscaling.  This is used to launch a toil leader instance with the specified provisioner.
+    ``launch-cluster`` - For autoscaling.  This is used to launch a toil leader instance with the specified provisioner.
 
-	``rsync-cluster`` - For autoscaling.  Used to transfer files to a cluster launched with ``toil launch-cluster``.
+    ``rsync-cluster`` - For autoscaling.  Used to transfer files to a cluster launched with ``toil launch-cluster``.
 
-	``ssh-cluster`` - SSHs into the toil appliance container running on the leader of the cluster.
+    ``ssh-cluster`` - SSHs into the toil appliance container running on the leader of the cluster.
 
-	``clean`` - Delete the job store used by a previous Toil workflow invocation.
+    ``clean`` - Delete the job store used by a previous Toil workflow invocation.
 
-	``kill`` - Kills any running jobs in a rogue toil.
+    ``kill`` - Kills any running jobs in a rogue toil.
+
+.. _cli_status:
 
 Status Command
 --------------
@@ -148,7 +150,7 @@ disk space.
 
 Cluster Commands
 ----------------
-``destroy-cluster``, ``launch-cluster``, ``rsync-cluster``, ``ssh-cluster`` are all autoscaling commands and are explained in :ref:`amazon`.
+``destroy-cluster``, ``launch-cluster``, ``rsync-cluster``, ``ssh-cluster`` are all autoscaling commands and are explained in :ref:`clusterRef`.
 
 Kill Command
 ------------
@@ -201,7 +203,6 @@ The following logging options may be used:
 
 If large logfiles are a problem, ``--maxLogFileSize`` (in bytes) can be set as well as ``--rotatingLogging``, which
 prevents logfiles from getting too large.
-  See the logging module for more details.
 
 Restart Option
 --------------
@@ -266,7 +267,7 @@ defined before launching the Job, i.e:
 Running Workflows with Services
 -------------------------------
 
-Toil supports jobs, or clusters of jobs, that run as *services* (see :ref:`serviceDev`) to other
+Toil supports jobs, or clusters of jobs, that run as *services* to other
 *accessor* jobs. Example services include server databases or Apache Spark
 Clusters. As service jobs exist to provide services to accessor jobs their
 runtime is dependent on the concurrent running of their accessor jobs. The dependencies
