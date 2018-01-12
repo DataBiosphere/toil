@@ -33,12 +33,14 @@ logger = logging.getLogger(__name__)
 class AzureProvisioner(AnsibleDriver):
     def __init__(self, clusterName, **config):
         if not self.isValidClusterName(clusterName):
-            raise RuntimeError("Invalid cluster name. Azure instance names must be between"
-                               "3-24 characters and be composed of only numbers and lowercase"
-                               "letters.")
+            raise RuntimeError("Invalid cluster name. See the Azure documentation for information "
+                               "on cluster naming conventions: "
+                               "https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions")
 
         self.clusterName = clusterName
-        self.region = config.region
+        # TODO: --zone must be mandatory for the Azure provisioner, or we need
+        # a way of setting a sane default.
+        self.region = config['zone']
         self.playbook = {
             'create': 'create-azure-vm.yml',
             'delete': 'delete-azure-vm.yml',
@@ -47,34 +49,51 @@ class AzureProvisioner(AnsibleDriver):
         super(AzureProvisioner, self).__init__(playbooks, "azure_rm.py", config)
 
     def launchCluster(self, instanceType, keyName, spotBid=None, **kwargs):
+        """Launches an Azure cluster using Ansible."""
         if spotBid:
             raise NotImplementedError("Ansible does not support provisioning spot instances")
 
-        # Generate instance name (cluster name followed by a random identifier)
-        # fixme: length
-        instanceName = self.clusterName + str(uuid.uuid1()).split("-")[-1][1:4]
+        # Azure VMs must be named, so we need to generate one. Instance names must
+        # be composed of only alphanumeric characters, underscores, and hyphens
+        # (see https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions).
+        # So we take the first 51 characters of the cluster name, add a unique
+        # 12-character alphanumeric identifier, and separate the two with a hyphen.
+        # Adds up to, at most, 64 characters. Go team!
+        instanceName = self.clusterName[:51] + "-" + str(uuid.uuid4()).split("-")[-1]
+
+        # SSH keys aren't managed with Azure, so for now we can just take the path of a public key.
+        with open(os.path.expanduser(keyName), "r") as k:
+            sshKey = k.read().strip().split(" ")[1:]
+
+        # TODO Check to see if resource group already exists?
         args = {
             'vmsize': instanceType,
             'vmname': instanceName,
             'resgrp': self.clusterName,
-            'role': "leader",
+            'region': self.region,
             'image': applianceSelf(),
+            'role': "leader",
             'entrypoint': "mesos-master",
-            # This is unclear and should be accompanied by an explanation.
-            'sshKey': 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded',
+            # TODO: This is unclear and should be accompanied by an explanation.
+            # 'sshKey': 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded',
+            'sshKey': " ".join(sshKey),
+            'keyname': keyName,
             '_args': leaderArgs.format(name=self.clusterName),
         }
+        self._provisionNode(args, preemptable=True)
 
-        # Populate cloud-config file
+    def _provisionNode(self, args, preemptable=False):
+        # Populate cloud-config file and pass it to Ansible
         with open(os.path.join(self.playbooks, "cloud-config"), "r") as f:
             configRaw = f.read()
-
         with tempfile.NamedTemporaryFile(delete=False) as t:
             t.write(configRaw.format(**args))
             args['cloudconfig'] = t.name
 
-        # Start and configure instance with Ansible
-        self.callPlaybook(self.playbook['create'], args)
+        # Launch the cluster with Ansible
+        self.callPlaybook(self.playbook['create'], args, tags=['abridged'] if preemptable else None)
+        # Calling the playbook with `tags=['abridged']` skips creation of
+        # resource group, security group, etc.
 
     def destroyCluster(self, zone):
         # TODO: should destroy entire cluster, then leader
@@ -82,6 +101,7 @@ class AzureProvisioner(AnsibleDriver):
             'vmname': self.clusterName,
             'resgrp': self.clusterName,
         }
+
         self.callPlaybook(self.playbook['delete'], args)
 
     def addNodes(self, nodeType, numNodes, preemptable):
@@ -94,9 +114,7 @@ class AzureProvisioner(AnsibleDriver):
             'role': "worker",
         }
         for i in range(numNodes):
-            # Calling the playbook with `tags=['abridged']` skips creation of
-            # resource group, security group, etc.
-            self.callPlaybook(self.playbook['create'], args, tags=['abridged'])
+            self._provisionNode(args, preemptable=False)
 
     def getNodeShape(self, nodeType, preemptable=False):
         if preemptable:
@@ -162,13 +180,23 @@ class AzureProvisioner(AnsibleDriver):
             }
             self.callPlaybook(self.playbook['delete'], args, tags=['cluster'])
 
+    # TODO: Refactor such that cluster name is LCD of vnet name/storage name/etc
     @staticmethod
     def isValidClusterName(name):
-        """Valid Azure cluster names must be between 3 and 24 characters in
-        length and use numbers and lower-case letters only."""
-        if len(name) > 24 or len(name) < 3:
+        """As Azure resource groups are used to identify instances in the same cluster,
+        cluster names must also be valid Azure resource group names - that is:
+        * Between 1 and 90 characters
+        * Using alphanumeric characters
+        * Using no special characterrs excepts underscores, parantheses, hyphens, and periods
+        * Not ending with a period
+        More info on naming conventions: https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions
+        """
+        acceptedSpecialChars = ('_', '-', '(', ')', '.')
+        if len(name) < 1 or len(name) > 90:
             return False
-        if any(not (c.isdigit() or c.islower()) for c in name):
+        if name.endswith("."):
+            return False
+        if any(not(c.isdigit() or c.islower() or c in acceptedSpecialChars) for c in name):
             return False
         return True
 

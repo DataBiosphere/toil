@@ -26,10 +26,7 @@
       name: '{{ vmname }}'
       state: absent
       # ignore_errors: yes
-      remove_on_absent:
-        - network_interfaces
-        - virtual_storage
-        - public_ips
+      remove_on_absent: all
   - name: Remove storage account
     azure_rm_storageaccount:
       resource_group: '{{ resgrp }}'

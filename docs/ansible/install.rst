@@ -74,23 +74,3 @@ Your output should be similar to the following::
 
    localhost | SUCCESS | rc=0 >>
    hello world
-
-Use an Ansible playbook to create a VM in Azure
------------------------------------------------
-
-#. Download the :download:`create-azure-vm.yml playbook <../../src/toil/test/provisioners/azure/create-azure-vm.yml>`.
-
-
-#. Run the playbook using the Azure cloud resources created earlier in the Azure installation document (TODO reference here)::
-
-      (venv) $ ansible-playbook -v -c local --extra-vars "vmname=mytest2 resgrp=myresourcegroup vnet=myVnet subnet=mySubnet" create-azure-vm.yml
-
-Use an Ansible playbook to delete a VM in Azure
------------------------------------------------
-
-#. Download the :download:`delete-azure-vm.yml playbook <../../src/toil/test/provisioners/azure/delete-azure-vm.yml>`.
-
-
-#. Run the playbook::
-
-      (venv) $ ansible-playbook -v -c local --extra-vars "vmname=mytest2 resgrp=myresourcegroup" delete-azure-vm.yml

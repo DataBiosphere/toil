@@ -69,6 +69,9 @@ class Cluster(object):
         if provisioner == 'aws':
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             self.provisioner = AWSProvisioner
+        elif provisioner == 'azure':
+            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+            self.provisioner = AzureProvisioner
         else:
             assert False, "Invalid provisioner '%s'" % provisioner
 

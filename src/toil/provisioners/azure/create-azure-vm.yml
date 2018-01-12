@@ -1,4 +1,4 @@
-# Copyright (C) 2017 UCSC Computational Genomics Lab
+# Copyright (C) 2018 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,25 +22,27 @@
     ip: "{{ lookup ('dig', '{{ dnsname }}') }}"
 
   tasks:
-  - debug: msg="Public DNS name {{ dnsname }} resolved to IP {{ ip }}. "
+  - debug: msg="Public DNS name {{ dnsname }} resolved to IP {{ ip }}."
 # The following check is disabled so that the playbook does not stop upon existence of DNS name. Otherwise
 # it cannot be re-run after VM creation
 #  - name: Check if DNS is taken
 #    fail: msg="That DNS name seems to be already taken"
 #    when: ip != 'NXDOMAIN'
 
+  # TODO: Authentication error when making new resource groups
   - name: Create a resource group
+    # We use resource groups to identify all instances in a cluster.
     azure_rm_resourcegroup:
-      name: '{{ resgrp }}'
-      location: westus
-      tags:
-          testing: testing
-          delete: never
+      name: "{{ resgrp }}"
+      location: "{{ region }}"
+      state: present
 
   - name: Create security group that allows SSH and HTTP
+    # All instances in a security group can communicate with each other by default,
+    # so we don't have to touch that. All we have to do is open port 22 for SSH.
     azure_rm_securitygroup:
-      resource_group: '{{ resgrp }}'
-      name: '{{ clustername }}'
+      resource_group: "{{ resgrp }}"
+      name: "{{ resgrp }}"
       rules:
         - name: SSH
           protocol: Tcp
@@ -48,80 +50,90 @@
           access: Allow
           priority: 101
           direction: Inbound
-        - name: WEB
-          protocol: Tcp
-          destination_port_range: 80
-          access: Allow
-          priority: 102
-          direction: Inbound
 
   - name: Create a virtual network
     tags:
       - abridged
     azure_rm_virtualnetwork:
-      name: '{{ vmname }}'
+      name: "{{ vmname }}"  # TODO: All instances should share vnet
       resource_group: '{{ resgrp }}'
       address_prefixes: '192.168.0.0/16'
       state: present
 
   - name: Create a subnet
     azure_rm_subnet:
-      name: '{{ vmname }}'
-      virtual_network_name: '{{ vmname }}'
-      resource_group: '{{ resgrp }}'
-      address_prefix: '192.168.0.0/24'
+      name: "{{ vmname }}"
+      virtual_network_name: "{{ vmname }}"
+      resource_group: "{{ resgrp }}"
+      address_prefix: "192.168.0.0/24"
+      security_group_name: "{{ resgrp }}"
       state: present
 
-  - name: Create public IP address
-    register: public_ip
-    azure_rm_publicipaddress:
-      resource_group: '{{ resgrp }}'
-      allocation_method: Static
-      name: '{{ vmname }}'
-      domain_name_label: '{{ vmname }}'
-
-  - name: Create NIC
-    azure_rm_networkinterface:
-      resource_group: '{{ resgrp }}'
-      name: '{{ vmname }}'
-      virtual_network: '{{ vmname }}'
-      subnet: '{{ vmname }}'
-      public_ip_name: '{{ vmname }}'
-      security_group: '{{ clustername }}'
-
   - name: Create VM
+    # We let Ansible take care of setting up details eg the NIC, public IP,
+    # storage account, etc. so we don't need to deal with different naming
+    # conventions and all that jazz.
     azure_rm_virtualmachine:
-      resource_group: '{{ resgrp }}'
-      name: '{{ vmname }}'
-      storage_account: '{{ vmname }}'
-      storage_container: '{{ vmname }}'
-      storage_blob: '{{ vmname }}.vhd'
-      network_interfaces: '{{ vmname }}'
-      vm_size: '{{ vmsize }}'
-      admin_username: test-user
-      admin_password: Microsoft123!
-      ssh_password_enabled: True
-      append_tags: True
+      resource_group: "{{ resgrp }}"
+      name: "{{ vmname }}"
+      vm_size: "{{ vmsize }}"
+      virtual_network_name: "{{ vmname }}"
+      admin_username: core
+      ssh_password_enabled: false
+      public_ip_allocation_method: Static
       tags:
+        # We technically don't need this since all instances are identified by
+        # their resource group, but it's convenient so why not?
         toil-cluster: "{{ resgrp }}"
         role: "{{ role }}"
       image:
         offer: CoreOS
         publisher: CoreOS
         sku: Stable
+        # This is close to - but not exactly - the CoreOS version used by the AWS AMI.
         version: 1235.5.0
+      ssh_public_keys:
+        - { path: "/home/core/.ssh/authorized_keys", key_data: "{{ lookup('file', '{{ keyname }}') }}"}
 
-  - add_host:
-      name: "{{ public_ip.state.ip_address }}"
+  - name: Add VM IP to inventory
+    # Add the public IP of the VM we just spun up to the inventory so we can finish setting things up
+    # Normally, we would just pass the cloud-config file to Azure at VM spin-up time through the custom_data
+    # parameter, but Ansible doesn't support that yet.
+    # One consequence of this approach is that ssh configuration in the cloud-config file needs to be handled by
+    # Ansible, or else bad things happen.
+    add_host:
+      name: "{{ azure_vm.properties.networkProfile.networkInterfaces[0].properties.ipConfigurations[0].properties.publicIPAddress.properties.ipAddress }}"
       groups: new
 
-
-- hosts: new
+- name: Post-config
+  hosts: new
+  remote_user: core
+  connection: ssh
+  gather_facts: false
   tasks:
+  # CoreOS doesn't have Python installed by default, and Ansible doesn't yet support
+  # the custom_data parameter, so we need to manually copy the cloud-config file to the new instance.
+  # To do this, we run the command from the local/host machine
   - name: Copy cloud-config file to the new instance
-    copy:
-      src: "{{ cloudconfig }}"
-      dest: /cloudconfig
+    local_action: command scp -o User=core -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {{ cloudconfig }} {{ inventory_hostname }}:/home/core/userdata
 
-  - name: Configure new instance with coreos-cloudinit using cloud-config file
-    command: coreos-cloudinit --from-file=/cloudconfig
+  # Once the file is on the host, we need to put it where it belongs. This needs to be a separate
+  # step because scp alone can't transfer files where destination privilege escalation is
+  # required. (At least, to my research.)
+  # Pretty messy, but this is really just a monkey patch until ansible/ansible#25924 is merged.
+  - name: Enable cloud-config file on instance (privileged)
+    local_action: command ssh -o User=core -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no {{ inventory_hostname }} "sudo cp /home/core/userdata /var/lib/waagent/CustomData"
+
+# Once all that is done, all we have to do is reboot the instance so that CoreOS
+# detects the new cloud-config file.
+- name: Post-post-config
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  tasks:
+  - name: Restart the instance
+    azure_rm_virtualmachine:
+      name: "{{ vmname }}"
+      resource_group: "{{ resgrp }}"
+      restarted: true
+      state: present
