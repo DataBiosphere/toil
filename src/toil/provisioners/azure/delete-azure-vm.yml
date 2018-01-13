@@ -45,7 +45,7 @@
     - cluster
     azure_rm_securitygroup:
       resource_group: '{{ resgrp }}'
-      name: '{{ resgrp }}'
+      name: '{{ resgrp[:24] }}'
       state: absent
 
   - name: Delete a resource group
