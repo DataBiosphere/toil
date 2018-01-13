@@ -54,8 +54,7 @@ from toil.version import dockerRegistry, dockerTag
 
 logger = logging.getLogger(__name__)
 
-# This constant is set to the default value used on unix for block size (in bytes) when
-# os.stat(<file>).st_blocks is called.
+# This constant is set to the default block size of the system using os.stat('/').st_blksize.
 systemBlockSize = int(os.stat('/').st_blksize / 8)
 
 class Config(object):
