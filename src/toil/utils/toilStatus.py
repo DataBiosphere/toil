@@ -59,34 +59,40 @@ def print_dot_chart(jobsToReport, jobStore_name):
                         jobsToNodeNames[childJob.jobStoreID], level))
     print("}")
 
-def printJobLog(job, jobStore):
-    if job.logJobStoreFileID is not None:
-        msg = "LOG_FILE_OF_JOB:%s LOG: =======>\n" % job
-        with job.getLogFileHandle(jobStore) as fH:
-            msg += fH.read()
-        msg += "<========="
-    else:
-        msg = "LOG_FILE_OF_JOB:%s LOG: Job has no log file" % job
-    print(msg)
+def printJobLog(jobsToReport, jobStore):
+    '''Takes a list of jobs, finds their log files, and prints them to the terminal.'''
+    for job in jobsToReport:
+        if job.logJobStoreFileID is not None:
+            msg = "LOG_FILE_OF_JOB:%s LOG: =======>\n" % job
+            with job.getLogFileHandle(jobStore) as fH:
+                msg += fH.read()
+            msg += "<========="
+        else:
+            msg = "LOG_FILE_OF_JOB:%s LOG: Job has no log file" % job
+        print(msg)
 
-def printJobChildren(job):
-    children = "CHILDREN_OF_JOB:%s " % job
-    for jobList, level in zip(job.stack, xrange(len(job.stack))):
-        for childJob in jobList:
-            children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
-    print(children)
+def printJobChildren(jobsToReport):
+    '''Takes a list of jobs, and prints their successors.'''
+    for job in jobsToReport:
+        children = "CHILDREN_OF_JOB:%s " % job
+        for jobList, level in zip(job.stack, xrange(len(job.stack))):
+            for childJob in jobList:
+                children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
+        print(children)
 
-def printAggregateJobStats(job, properties, childNumber):
-    lf = lambda x: "%s:%s" % (x, str(x in properties))
-    print("\t".join(("JOB:%s" % job,
-                     "LOG_FILE:%s" % job.logJobStoreFileID,
-                     "TRYS_REMAINING:%i" % job.remainingRetryCount,
-                     "CHILD_NUMBER:%s" % childNumber,
-                     lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
-                     lf("HAS_SERVICES"), lf("IS_SERVICE"))))
+def printAggregateJobStats(jobsToReport, properties, childNumber):
+    '''Prints a job's ID, log file, remaining tries, and other properties.'''
+    for job in jobsToReport:
+        lf = lambda x: "%s:%s" % (x, str(x in properties))
+        print("\t".join(("JOB:%s" % job,
+                         "LOG_FILE:%s" % job.logJobStoreFileID,
+                         "TRYS_REMAINING:%i" % job.remainingRetryCount,
+                         "CHILD_NUMBER:%s" % childNumber,
+                         lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
+                         lf("HAS_SERVICES"), lf("IS_SERVICE"))))
 
 def report_on_jobs(jobsToReport, jobStore, options):
-    '''Determines properties for jobs and returns them.'''
+    '''Gathers information about jobs such as its child jobs and status.'''
     hasChildren = []
     readyToRun = []
     zombies = []
@@ -123,19 +129,45 @@ def report_on_jobs(jobsToReport, jobStore, options):
             services.append(job)
             properties.add("IS_SERVICE")
 
-        if options.printPerJobStats:
-            # Print aggregate stats about the jobs
-            printAggregateJobStats(job, properties, childNumber)
+    jobStats = {'hasChildren': hasChildren,
+                'readyToRun': readyToRun,
+                'zombies': zombies,
+                'hasServices': hasServices,
+                'services': services,
+                'hasLogFile': hasLogFile,
+                'properties': properties,
+                'childNumber': childNumber}
 
-        if options.printLogs:
-            # Print any log file
-            printJobLog(job, jobStore)
+    return jobStats
 
-        if options.printChildren:
-            # Print the successors of the job
-            printJobChildren(job)
+def fetchRootJob(jobStore):
+    '''
+    Fetches the root job from the jobStore that provides context for all other jobs.
 
-    return hasChildren, readyToRun, zombies, hasServices, services, hasLogFile
+    Exactly the same as the jobStore.loadRootJob() function, but with a different
+    exit message if the root job is not found (indicating the workflow ran successfully
+    to completion and certain stats cannot be gathered from it meaningfully such
+    as which jobs are left to run).
+    '''
+    try:
+        return jobStore.loadRootJob()
+    except JobException:
+        print('Root job is absent.  The workflow may have completed successfully.', file=sys.stderr)
+        sys.exit(0)
+
+def fetchUserJobs(jobStore, jobs):
+    '''
+    Takes a user input array of jobs, verifies that they are in the jobStore
+    and returns the array of jobsToReport.
+    '''
+    jobsToReport = []
+    for jobID in jobs:
+        try:
+            jobsToReport.append(jobStore.load(jobID))
+        except JobException:
+            print('The job %s could not be found.' % jobID, file=sys.stderr)
+            sys.exit(0)
+    return jobsToReport
 
 def traverseJobGraph(rootJob, jobStore, jobsToReport=None, foundJobStoreIDs=None):
     '''Find all current jobs in the jobStore and return them as an Array.'''
@@ -223,36 +255,42 @@ def main():
 
     # Gather all jobs in the workflow in jobsToReport
     if options.jobs == None:
-        try:
-            rootJob = jobStore.loadRootJob()
-        except JobException:
-            print('Root job is absent.  The workflow may have completed successfully.', file=sys.stderr)
-            sys.exit(0)
-        logger.info('Traversing the job graph to find the jobs.  '
-                    'This may take a couple of minutes.')
+        rootJob = fetchRootJob(jobStore)
+        logger.info('Traversing the job graph gathering jobs. This may take a couple of minutes.')
         jobsToReport = traverseJobGraph(rootJob, jobStore)
 
     # Only gather jobs specified in options.jobs
     else:
-        jobsToReport = []
-        for jobID in options.jobs:
-            try:
-                jobsToReport.append(jobStore.load(jobID))
-            except JobException:
-                print('The job %s could not be found.' % jobID, file=sys.stderr)
-                sys.exit(0)
+        jobsToReport = fetchUserJobs(jobStore, jobs=options.jobs)
 
     ##########################################
     # Report on the jobs
     ##########################################
 
-    hasChildren, readyToRun, zombies, hasServices, services, hasLogFile = report_on_jobs(jobsToReport, jobStore, options)
+    jobStats = report_on_jobs(jobsToReport, jobStore, options)
+
+    hasChildren = jobStats['hasChildren']
+    readyToRun = jobStats['readyToRun']
+    zombies = jobStats['zombies']
+    hasServices = jobStats['hasServices']
+    services = jobStats['services']
+    hasLogFile = jobStats['hasLogFile']
+    properties = jobStats['properties']
+    childNumber = jobStats['childNumber']
+
+    if options.printPerJobStats:
+        printAggregateJobStats(jobsToReport, properties, childNumber)
+
+    if options.printLogs:
+        printJobLog(jobsToReport, jobStore)
+
+    if options.printChildren:
+        printJobChildren(jobsToReport)
 
     if options.printDot:
         print_dot_chart(jobsToReport, jobStore_name=config.jobStore)
 
     if options.stats:
-        # Print aggregate statistics
         print('Of the %i jobs considered, '
            'there are %i jobs with children, '
            '%i jobs ready to run, '
@@ -266,8 +304,3 @@ def main():
     if len(jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)
-
-
-def _test():
-    import doctest
-    return doctest.testmod()
