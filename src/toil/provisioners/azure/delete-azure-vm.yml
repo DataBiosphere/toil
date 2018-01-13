@@ -1,4 +1,4 @@
-# Copyright (C) 2017 UCSC Computational Genomics Lab
+# Copyright (C) 2018 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -27,24 +27,27 @@
       state: absent
       # ignore_errors: yes
       remove_on_absent: all
-  - name: Remove storage account
-    azure_rm_storageaccount:
-      resource_group: '{{ resgrp }}'
-      name:  '{{ vmname }}'
-      state: absent
-      # ignore_errors: yes
+
   - name: Delete virtual network
     azure_rm_virtualnetwork:
-      name: '{{ resgrp }}'
+      name: '{{ vmname }}'
       resource_group: '{{ resgrp }}'
       state: absent
+
+  - name: Delete storage account
+    azure_rm_storageaccount:
+      resource_group: "{{ resgrp }}"
+      name: "{{ vmname }}"
+      state: absent
+
   - name: Remove security group
     tags:
     - cluster
     azure_rm_securitygroup:
       resource_group: '{{ resgrp }}'
-      name: '{{ vmname }}'
+      name: '{{ resgrp }}'
       state: absent
+
   - name: Delete a resource group
     tags:
     - cluster

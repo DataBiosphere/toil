@@ -40,7 +40,7 @@ class AzureProvisioner(AnsibleDriver):
         self.clusterName = clusterName
         # TODO: --zone must be mandatory for the Azure provisioner, or we need
         # a way of setting a sane default.
-        self.region = config['zone']
+        self.region = config.get("zone", None)
         self.playbook = {
             'create': 'create-azure-vm.yml',
             'delete': 'delete-azure-vm.yml',
@@ -56,10 +56,7 @@ class AzureProvisioner(AnsibleDriver):
         # Azure VMs must be named, so we need to generate one. Instance names must
         # be composed of only alphanumeric characters, underscores, and hyphens
         # (see https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions).
-        # So we take the first 51 characters of the cluster name, add a unique
-        # 12-character alphanumeric identifier, and separate the two with a hyphen.
-        # Adds up to, at most, 64 characters. Go team!
-        instanceName = self.clusterName[:51] + "-" + str(uuid.uuid4()).split("-")[-1]
+        instanceName = str(uuid.uuid4())
 
         # SSH keys aren't managed with Azure, so for now we can just take the path of a public key.
         with open(os.path.expanduser(keyName), "r") as k:
@@ -91,18 +88,20 @@ class AzureProvisioner(AnsibleDriver):
             args['cloudconfig'] = t.name
 
         # Launch the cluster with Ansible
-        self.callPlaybook(self.playbook['create'], args, tags=['abridged'] if preemptable else None)
+        self.callPlaybook(self.playbook['create'], args, tags=['abridged'] if not preemptable else None)
         # Calling the playbook with `tags=['abridged']` skips creation of
         # resource group, security group, etc.
 
-    def destroyCluster(self, zone):
-        # TODO: should destroy entire cluster, then leader
-        args = {
-            'vmname': self.clusterName,
-            'resgrp': self.clusterName,
-        }
+    @staticmethod
+    def destroyCluster(clusterName, zone):
+        self = AzureProvisioner(clusterName)
+        self.clusterName = clusterName  # monkey patch fixme
 
-        self.callPlaybook(self.playbook['delete'], args)
+        workers = self.getProvisionedWorkers(None, preemptable=False)
+        self.terminateNodes(workers)
+
+        leader = self.getProvisionedWorkers(None, preemptable=True)
+        self.terminateNodes(leader)
 
     def addNodes(self, nodeType, numNodes, preemptable):
         # TODO: update to configure with cloud-config
@@ -148,22 +147,22 @@ class AzureProvisioner(AnsibleDriver):
                      disk=disk,
                      preemptable=preemptable)
 
+    # TODO: Implement nodeType
     def getProvisionedWorkers(self, nodeType, preemptable):
         # Data model info: https://docs.ansible.com/ansible/latest/guide_azure.html#dynamic-inventory-script
         allNodes = self._getInventory()
-        workerNodes = filter(lambda x: x['tags']['role'] == "worker", allNodes)
-        healthyNodes = filter(lambda x: x['powerstate'] == "running", allNodes)
 
-        logger.debug('All nodes in cluster: ' + allNodes)
-        logger.debug('All workers found in cluster: ' + workerNodes)
+        logger.debug('All nodes in cluster: ' + str(allNodes.get('role_leader', None)))
+        logger.debug('All workers found in cluster: ' + str(allNodes.get('role_worker', None)))
 
         rv = []
-        for node in healthyNodes:
+        for node in allNodes['azure']:
+            node = allNodes['_meta']['hostvars'][node]
             rv.append(Node(
                 publicIP=node['public_ip'],
                 privateIP=node['private_ip'],
                 name=node['name'],
-                launchTime=node['tags']['launchtime'],  # FIXME: Is defining this as a tag enough?
+                launchTime=None,  # FIXME
                 nodeType=node['virtual_machine_size'],
                 preemptable=preemptable)
             )
@@ -172,13 +171,13 @@ class AzureProvisioner(AnsibleDriver):
     def remainingBillingInterval(self):
         raise NotImplementedError("Ansible does not support provisioning spot instances.")
 
-    def terminateNodes(self, nodes):
+    def terminateNodes(self, nodes, preemptable=False):
         for node in nodes:
             args = {
                 'vmname': node.name,
                 'resgrp': self.clusterName,
             }
-            self.callPlaybook(self.playbook['delete'], args, tags=['cluster'])
+            self.callPlaybook(self.playbook['delete'], args, tags=['cluster'] if preemptable else None)
 
     # TODO: Refactor such that cluster name is LCD of vnet name/storage name/etc
     @staticmethod

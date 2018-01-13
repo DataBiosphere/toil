@@ -52,6 +52,7 @@
           direction: Inbound
 
   - name: Create a virtual network
+    # We don't need to run the above two steps if we're adding worker nodes.
     tags:
       - abridged
     azure_rm_virtualnetwork:
@@ -82,9 +83,6 @@
       ssh_password_enabled: false
       public_ip_allocation_method: Static
       tags:
-        # We technically don't need this since all instances are identified by
-        # their resource group, but it's convenient so why not?
-        toil-cluster: "{{ resgrp }}"
         role: "{{ role }}"
       image:
         offer: CoreOS

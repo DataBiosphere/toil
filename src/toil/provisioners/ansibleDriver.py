@@ -14,6 +14,7 @@
 import json
 import logging
 import os
+import subprocess
 
 import pipettor
 
@@ -50,6 +51,6 @@ class AnsibleDriver(AbstractProvisioner):
     def _getInventory(self, tags={}):
         """Lists all nodes in the cluster"""
         # tags = ",".join([":".join(i) for i in tags.items()])
-        command = "python %s --tags toil-cluster:%s" % (os.path.join(self.contrib, self.inventory), self.clusterName)
-        data = pipettor.runlex(command, logger=logger)
+        command = ["python", os.path.join(self.contrib, self.inventory), "--resource-groups", self.clusterName]
+        data = subprocess.check_output(command)
         return json.loads(data)

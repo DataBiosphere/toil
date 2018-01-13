@@ -108,15 +108,18 @@ def main():
                 else:
                     nodeTypes.append(nodeTypeStr)
                     numNodes.append(int(num))
+    elif config.provisioner == 'azure':
+        from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+        provisioner = AzureProvisioner(config.clusterName, zone=config.zone)
     else:
         assert False
 
-    provisioner.launchCluster(leaderNodeType=config.leaderNodeType,
+    provisioner.launchCluster(instanceType=config.leaderNodeType,
                               leaderSpotBid=leaderSpotBid,
                               nodeTypes=nodeTypes,
                               preemptableNodeTypes=preemptableNodeTypes,
                               numWorkers=numNodes,
-                              numPreemptableWorkers = numPreemptableNodes,
+                              numPreemptableWorkers=numPreemptableNodes,
                               keyName=config.keyPairName,
                               clusterName=config.clusterName,
                               spotBids=spotBids,
