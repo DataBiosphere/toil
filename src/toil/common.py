@@ -56,8 +56,7 @@ logger = logging.getLogger(__name__)
 
 # This constant is set to the default value used on unix for block size (in bytes) when
 # os.stat(<file>).st_blocks is called.
-unixBlockSize = 512
-
+systemBlockSize = int(os.stat('/').st_blksize / 8)
 
 class Config(object):
     """
@@ -543,7 +542,7 @@ def _addOptions(addGroupFn, config):
     #Debug options
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
-    addOptionFn("--debug-worker", default=False, action="store_true", dest="debugWorker",
+    addOptionFn("--debugWorker", default=False, action="store_true",
             help="Experimental no forking mode for local debugging."
                  " Specifically, workers are not forked and"
                  " stderr/stdout are not redirected to the log.")
@@ -1276,12 +1275,12 @@ def getDirSizeRecursively(dirPath):
             fileStats = os.stat(fp)
             if fileStats.st_nlink > 1:
                 if fileStats.st_ino not in seenInodes:
-                    folderSize += fileStats.st_blocks * unixBlockSize
+                    folderSize += fileStats.st_blocks * systemBlockSize
                     seenInodes.add(fileStats.st_ino)
                 else:
                     continue
             else:
-                folderSize += fileStats.st_blocks * unixBlockSize
+                folderSize += fileStats.st_blocks * systemBlockSize
         totalSize += folderSize
     return totalSize
 
