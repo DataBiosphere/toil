@@ -337,7 +337,7 @@ class AzureJobStore(AbstractJobStore):
                     if len(buf) == 0:
                         break
 
-    def readFile(self, jobStoreFileID, localFilePath):
+    def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         try:
             with self._downloadStream(jobStoreFileID, self.files) as read_fd:
                 with open(localFilePath, 'w') as write_fd:

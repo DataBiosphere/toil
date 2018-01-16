@@ -543,7 +543,7 @@ def _addOptions(addGroupFn, config):
     #Debug options
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
-    addOptionFn("--debug-worker", default=False, action="store_true", dest="debugWorker",
+    addOptionFn("--debugWorker", default=False, action="store_true",
             help="Experimental no forking mode for local debugging."
                  " Specifically, workers are not forked and"
                  " stderr/stdout are not redirected to the log.")

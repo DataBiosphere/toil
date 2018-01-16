@@ -64,7 +64,7 @@ class JobLikeObject(object):
     If the object doesn't specify explicit requirements, these properties will fall back
     to the configured defaults. If the value cannot be determined, an AttributeError is raised.
     """
-    def __init__(self, requirements, unitName, jobName=None):
+    def __init__(self, requirements, unitName, displayName=None, jobName=None):
         cores = requirements.get('cores')
         memory = requirements.get('memory')
         disk = requirements.get('disk')
@@ -74,6 +74,7 @@ class JobLikeObject(object):
         if jobName is not None:
             assert isinstance(jobName, (str, bytes))
         self.unitName = unitName
+        self.displayName = displayName if displayName is not None else self.__class__.__name__
         self.jobName = jobName if jobName is not None else self.__class__.__name__
         self._cores = self._parseResource('cores', cores)
         self._memory = self._parseResource('memory', memory)
@@ -197,8 +198,8 @@ class JobNode(JobLikeObject):
     This object bridges the job graph, job, and batchsystem classes
     """
     def __init__(self, requirements, jobName, unitName, jobStoreID,
-                 command, predecessorNumber=1):
-        super(JobNode, self).__init__(requirements=requirements, unitName=unitName, jobName=jobName)
+                 command, displayName=None, predecessorNumber=1):
+        super(JobNode, self).__init__(requirements=requirements, displayName=displayName, unitName=unitName, jobName=jobName)
         self.jobStoreID = jobStoreID
         self.predecessorNumber = predecessorNumber
         self.command = command
@@ -235,6 +236,7 @@ class JobNode(JobLikeObject):
                    command=jobGraph.command,
                    jobName=jobGraph.jobName,
                    unitName=jobGraph.unitName,
+                   displayName=jobGraph.displayName,
                    predecessorNumber=jobGraph.predecessorNumber)
 
     @classmethod
@@ -253,14 +255,15 @@ class JobNode(JobLikeObject):
                    command=command,
                    jobName=job.jobName,
                    unitName=job.unitName,
+                   displayName=job.displayName,
                    predecessorNumber=predecessorNumber)
 
 class Job(JobLikeObject):
     """
     Class represents a unit of work in toil.
     """
-    def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None,
-                 checkpoint=False):
+    def __init__(self, memory=None, cores=None, disk=None, preemptable=None,
+                       unitName=None, checkpoint=False, displayName=None):
         """
         This method must be called by any overriding constructor.
 
@@ -280,8 +283,10 @@ class Job(JobLikeObject):
         """
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}
-        super(Job, self).__init__(requirements=requirements, unitName=unitName)
+        super(Job, self).__init__(requirements=requirements, unitName=unitName, displayName=displayName)
         self.checkpoint = checkpoint
+        self.displayName = displayName if displayName is not None else self.__class__.__name__
+
         #Private class variables
 
         #See Job.addChild
@@ -1328,7 +1333,7 @@ class Job(JobLikeObject):
         """
         :rtype : string, used as identifier of the job class in the stats report.
         """
-        return self.__class__.__name__
+        return self.displayName
 
 
 class JobException( Exception ):

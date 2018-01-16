@@ -41,6 +41,7 @@ If using toil for your research, please cite::
    running/cwl
    running/wdl
    running/deploying
+   running/debugging
    running/amazon
    running/azure
    running/openstack

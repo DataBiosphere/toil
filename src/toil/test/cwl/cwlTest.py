@@ -47,7 +47,7 @@ class CWLTest(ToilTest):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
         st = StringIO()
-        cwltoil.main(['--debug-worker', '--outdir', outDir,
+        cwltoil.main(['--debugWorker', '--outdir', outDir,
                      os.path.join(rootDir, cwlfile),
                      os.path.join(rootDir, jobfile)], stdout=st)
         out = json.loads(st.getvalue())
