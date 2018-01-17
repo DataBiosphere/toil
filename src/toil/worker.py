@@ -67,12 +67,17 @@ class AsyncJobStoreWrite(object):
     
     def blockUntilSync(self):
         pass
-
-
-def main(argv=None):
+    
+def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=True):
+    """
+    Worker process script, runs a job. 
+    
+    :param str jobName: The "job name" (a user friendly name) of the job to be run
+    :param str jobStoreLocator: Specifies the job store to use
+    :param str jobStoreID: The job store ID of the job to be run
+    :param bool redirectOutputToLogFile: Redirect standard out and standard error to a log file
+    """
     logging.basicConfig()
-    if argv is None:
-        argv = sys.argv
 
     ##########################################
     #Import necessary modules 
@@ -96,20 +101,6 @@ def main(argv=None):
         # boto is installed, monkey patch it now
         from bd2k.util.ec2.credentials import enable_metadata_credential_caching
         enable_metadata_credential_caching()
-    ##########################################
-    #Input args
-    ##########################################
-
-    listOfJobs = [argv[1]]
-    jobStoreLocator = argv[2]
-    jobStoreID = argv[3]
-
-    ##########################################
-    #Load the jobStore/config file
-    ##########################################
-    
-    jobStore = Toil.resumeJobStore(jobStoreLocator)
-    config = jobStore.config
     
     ##########################################
     #Create the worker killer, if requested
@@ -178,7 +169,7 @@ def main(argv=None):
     #What file do we want to point FDs 1 and 2 to?
     tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")
 
-    if not config.debugWorker:
+    if redirectOutputToLogFile:
         # Save the original stdout and stderr (by opening new file descriptors
         # to the same files)
         origStdOut = os.dup(1)
@@ -213,10 +204,11 @@ def main(argv=None):
     statsDict.workers.logsToMaster = []
     blockFn = lambda : True
     cleanCacheFn = lambda x : True
+    listOfJobs = [jobName]
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
-        print("---TOIL WORKER OUTPUT LOG---")
+        logger.info("---TOIL WORKER OUTPUT LOG---")
         sys.stdout.flush()
         
         #Log the number of open file descriptors so we can tell if we're leaking
@@ -232,15 +224,16 @@ def main(argv=None):
         
         jobGraph = jobStore.load(jobStoreID)
         listOfJobs[0] = str(jobGraph)
-        logger.debug("Parsed jobGraph")
+        logger.debug("Parsed job wrapper")
         
         ##########################################
         #Cleanup from any earlier invocation of the jobGraph
         ##########################################
         
         if jobGraph.command == None:
+            logger.debug("Wrapper has no user job to run.")
             # Cleanup jobs already finished
-            f = lambda jobs : [x for x in [[y for y in x if jobStore.exists(y.jobStoreID)] for x in jobs] if len(x) > 0]
+            f = lambda jobs : [z for z in [[y for y in x if jobStore.exists(y.jobStoreID)] for x in jobs] if len(z) > 0]
             jobGraph.stack = f(jobGraph.stack)
             jobGraph.services = f(jobGraph.services)
             logger.debug("Cleaned up any references to completed successor jobs")
@@ -322,6 +315,7 @@ def main(argv=None):
                 #The command may be none, in which case
                 #the jobGraph is either a shell ready to be deleted or has
                 #been scheduled after a failure to cleanup
+                logger.debug("No user job to run, so finishing")
                 break
             
             if FileStore._terminateEvent.isSet():
@@ -445,7 +439,9 @@ def main(argv=None):
             statsDict.workers.memory = str(totalMemoryUsage)
 
         # log the worker log path here so that if the file is truncated the path can still be found
-        logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localWorkerTempDir)
+        if redirectOutputToLogFile:
+            logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localWorkerTempDir)
+        
         logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
     ##########################################
@@ -480,7 +476,7 @@ def main(argv=None):
     # Flush at the Python level
     sys.stdout.flush()
     sys.stderr.flush()
-    if not config.debugWorker:
+    if redirectOutputToLogFile:
         # Flush at the OS level
         os.fsync(1)
         os.fsync(2)
@@ -516,7 +512,7 @@ def main(argv=None):
                 w.write(f.read())
         jobStore.update(jobGraph)
 
-    elif debugging and not config.debugWorker:  # write log messages
+    elif debugging and redirectOutputToLogFile:  # write log messages
         with open(tempWorkerLogPath, 'r') as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
                 if logFileByteReportLimit > 0:
@@ -539,3 +535,22 @@ def main(argv=None):
     if (not workerFailed) and jobGraph.command == None and len(jobGraph.stack) == 0 and len(jobGraph.services) == 0:
         # We can now safely get rid of the jobGraph
         jobStore.delete(jobGraph.jobStoreID)
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+        
+    # Parse input args
+    jobName = argv[1]
+    jobStoreLocator = argv[2]
+    jobStoreID = argv[3]
+    
+    ##########################################
+    #Load the jobStore/config file
+    ##########################################
+    
+    jobStore = Toil.resumeJobStore(jobStoreLocator)
+    config = jobStore.config
+    
+    # Call the worker
+    workerScript(jobStore, config, jobName, jobStoreID)

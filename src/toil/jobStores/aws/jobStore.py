@@ -550,7 +550,7 @@ class AWSJobStore(AbstractJobStore):
     def fileExists(self, jobStoreFileID):
         return self.FileInfo.exists(jobStoreFileID)
 
-    def readFile(self, jobStoreFileID, localFilePath):
+    def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         log.debug("Reading %r into %r.", info, localFilePath)
         info.download(localFilePath)

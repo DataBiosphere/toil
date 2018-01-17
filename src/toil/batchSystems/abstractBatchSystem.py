@@ -21,18 +21,21 @@ from builtins import object
 import os
 import shutil
 import logging
-import time
 from abc import ABCMeta, abstractmethod
 from collections import namedtuple
-from queue import Queue, Empty
 from contextlib import contextmanager
 
 from bd2k.util.objects import abstractclassmethod
 
+from toil.batchSystems import registry
 from toil.common import Toil, cacheDirName
 from toil.fileStore import shutdownFileStore
 from future.utils import with_metaclass
-
+try:
+    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+except ImportError:
+    # CWL extra not installed
+    CWL_INTERNAL_JOBS = ()
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +47,7 @@ WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
     'workflowID',
     # The value of the cleanWorkDir flag
     'cleanWorkDir'))
+
 
 class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
     """
@@ -177,26 +181,17 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @classmethod
-    def getRescueBatchJobFrequency(cls):
-        """
-        Gets the period of time to wait (floating point, in seconds) between checking for
-        missing/overlong jobs.
-        """
-        raise NotImplementedError()
-
-
-    @classmethod
     def setOptions(cls, setOption):
         """
         Process command line or configuration options relevant to this batch system.
-        The 
-        
+        The
+
         :param setOption: A function with signature setOption(varName, parsingFn=None, checkFn=None, default=None)
            used to update run configuration
         """
         pass
-        
-    
+
+
 class BatchSystemSupport(AbstractBatchSystem):
     """
     Partial implementation of AbstractBatchSystem, support methods.
@@ -255,7 +250,6 @@ class BatchSystemSupport(AbstractBatchSystem):
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk)
 
-
     def setEnv(self, name, value=None):
         """
         Set an environment variable for the worker process before it is launched. The worker
@@ -286,17 +280,6 @@ class BatchSystemSupport(AbstractBatchSystem):
                 raise RuntimeError("%s does not exist in current environment", name)
         self.environment[name] = value
 
-    @classmethod
-    def getRescueBatchJobFrequency(cls):
-        """
-        Gets the period of time to wait (floating point, in seconds) between checking for
-        missing/overlong jobs.
-
-        :return: time in seconds to wait in between checking for lost jobs
-        :rtype: float
-        """
-        raise NotImplementedError()
-
     def _getResultsFileName(self, toilPath):
         """
         Get a path for the batch systems to store results. GridEngine, slurm,
@@ -323,6 +306,65 @@ class BatchSystemSupport(AbstractBatchSystem):
             or info.cleanWorkDir in ('onSuccess', 'onError')
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
             shutil.rmtree(workflowDir)
+
+
+class BatchSystemLocalSupport(BatchSystemSupport):
+    """
+    Adds a local queue for helper jobs, useful for CWL & others
+    """
+
+    def __init__(self, config, maxCores, maxMemory, maxDisk):
+        super(BatchSystemLocalSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
+        self.localBatch = registry.batchSystemFactoryFor(
+            registry.defaultBatchSystem())()(
+                config, maxCores, maxMemory, maxDisk)
+
+    def handleLocalJob(self, jobNode):  # type: (JobNode) -> Optional[int]
+        """
+        To be called by issueBatchJobs.
+
+        Returns the jobID if the jobNode has been submitted to the local queue,
+        otherwise returns None
+        """
+        if jobNode.jobName.startswith(CWL_INTERNAL_JOBS):
+            return self.localBatch.issueBatchJob(jobNode)
+        else:
+            return None
+
+    def killLocalJobs(self, jobIDs):
+        """
+        To be called by killBatchJobs. Will kill all local jobs that match the
+        provided jobIDs.
+        """
+        self.localBatch.killBatchJobs(jobIDs)
+
+    def getIssuedLocalJobIDs(self):
+        """To be called by getIssuedBatchJobIDs"""
+        return self.localBatch.getIssuedBatchJobIDs()
+
+    def getRunningLocalJobIDs(self):
+        """To be called by getRunningBatchJobIDs()."""
+        return self.localBatch.getRunningBatchJobIDs()
+
+    def getUpdatedLocalJob(self, maxWait):
+        # type: (int) -> Optional[Tuple[int, int, int]]
+        """To be called by getUpdatedBatchJob()"""
+        return self.localBatch.getUpdatedBatchJob(maxWait)
+
+    def getNextJobID(self):  # type: () -> int
+        """
+        Must be used to get job IDs so that the local and batch jobs do not
+        conflict.
+        """
+        with self.localBatch.jobIndexLock:
+            jobID = self.localBatch.jobIndex
+            self.localBatch.jobIndex += 1
+        return jobID
+
+    def shutdownLocal(self):  # type: () -> None
+        """To be called from shutdown()"""
+        self.localBatch.shutdown()
+
 
 class NodeInfo(object):
     """
@@ -410,7 +452,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
     def ignoreNode(self, nodeAddress):
         """
         Stop sending jobs to this node. Used in autoscaling
-        when the autoscaler is ready to terminate a node, but 
+        when the autoscaler is ready to terminate a node, but
         jobs are still running. This allows the node to be terminated
         after the current jobs have finished.
 
@@ -427,6 +469,7 @@ class AbstractScalableBatchSystem(AbstractBatchSystem):
         possibility of a new node having the same address as a terminated one.
         """
         raise NotImplementedError()
+
 
 class InsufficientSystemResources(Exception):
     """

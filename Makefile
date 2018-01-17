@@ -274,7 +274,8 @@ prepare: check_venv
 
 
 check_venv:
-	@$(python) -c 'import sys; sys.exit( int( not hasattr(sys, "real_prefix") ) )' \
+
+	@$(python) -c 'import sys; sys.exit( int( not (hasattr(sys, "real_prefix") or ( hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix ) ) ) )' \
 		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
 
 
@@ -285,7 +286,7 @@ check_clean_working_copy:
 	@git diff --cached --exit-code > /dev/null \
 		|| ( printf "$(red)Your index looks dirty.$(normal)\n" ; false )
 	@test -z "$$(git ls-files --other --exclude-standard --directory)" \
-		|| ( printf "$(red)You have are untracked files:$(normal)\n" \
+		|| ( printf "$(red)You have untracked files:$(normal)\n" \
 			; git ls-files --other --exclude-standard --directory \
 			; false )
 

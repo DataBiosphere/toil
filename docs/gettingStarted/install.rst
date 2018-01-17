@@ -237,3 +237,12 @@ To build the docs, run ``make develop`` with all extras followed by
 ::
 
     $ make docs
+
+    
+To run a quick batch of tests (this should take less than 30 minutes)
+
+::
+
+	$ export TOIL_TEST_QUICK=True; make test
+	
+For more information on testing see :ref:`runningTests`.
