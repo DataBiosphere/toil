@@ -34,7 +34,7 @@ from six.moves.queue import Empty, Queue
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport
-from toil.batchSystems.lsfHelper import parse_memory, per_core_reservation
+from toil.batchSystems.lsfHelper import parse_memory_resource, parse_memory_limit, per_core_reservation
 
 logger = logging.getLogger( __name__ )
 
@@ -49,11 +49,15 @@ def prepareBsub(cpu, mem):
     """
     if mem:
         if per_core_reservation():
-            mem = parse_memory(float(mem)/1024**3/int(cpu))
+            mem = float(mem)/1024**3/int(cpu)
+            mem_resource = parse_memory_resource(mem)
+            mem_limit = parse_memory_limit(mem)
         else:
-            mem = parse_memory(old_div(float(mem),1024**3))
-        bsubMem = '-R "select[type==X86_64 && mem > ' + str(mem) + '] '\
-            'rusage[mem=' + str(mem) + ']" -M' + str(mem)
+            mem = old_div(float(mem),1024**3)
+            mem_resource = parse_memory_resource(mem)
+            mem_limit = parse_memory_limit(mem)
+        bsubMem = '-R "select[type==X86_64 && mem > ' + str(mem_resource) + '] '\
+            'rusage[mem=' + str(mem_resource) + ']" -M' + str(mem_limit)
     else:
         bsubMem = ''
     cpuStr = '' if cpu is None else '-n ' + str(int(cpu))
