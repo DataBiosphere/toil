@@ -171,7 +171,7 @@ class GoogleJobStore(AbstractJobStore):
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
-        with self._uploadStream(fileID, update=True) as writable:
+        with self._uploadStream(fileID, update=False) as writable:
             yield writable, fileID
 
     def getEmptyFileStoreID(self, jobStoreID=None):
