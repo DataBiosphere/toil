@@ -14,7 +14,6 @@
 
 from setuptools import find_packages, setup
 
-botoRequirement = 'boto==2.38.0'
 
 
 def runSetup():
@@ -22,6 +21,19 @@ def runSetup():
     Calls setup(). This function exists so the setup() invocation preceded more internal
     functionality. The `version` module is imported dynamically by importVersion() below.
     """
+    boto = 'boto==2.38.0'
+    boto3 = 'boto3==1.4.7'
+    futures = 'futures==3.0.5'
+    pycrypto = 'pycrypto==2.6.1'
+    psutil = 'psutil==3.0.1'
+    azure = 'azure==2.0.0'
+    azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
+    pynacl = 'pynacl==1.1.2'
+    gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
+    cwltool = 'cwltool==1.0.20180108222053'
+    schemaSalad = 'schema-salad >= 2.6, < 3'
+    galaxyLib = 'galaxy-lib==17.9.3'
+    cwltest = 'cwltest>=1.0.20170214185319'
     setup(
         name='toil',
         version=version.distVersion,
@@ -40,25 +52,40 @@ def runSetup():
             'docker==2.5.1'],
         extras_require={
             'mesos': [
-                'psutil==3.0.1'],
+                psutil],
             'aws': [
-                botoRequirement,
-                'boto3==1.4.7',
-                'futures==3.0.5',
-                'pycrypto==2.6.1'],
+                boto,
+                boto3,
+                futures,
+                pycrypto],
             'azure': [
-                'azure==2.0.0',
-                'azure-cosmosdb-table==0.37.1'],
+                azure,
+                azureCosmosdbTable],
             'encryption': [
-                'pynacl==1.1.2'],
+                pynacl],
             'google': [
-                'gcs_oauth2_boto_plugin==1.14',
-                botoRequirement],
+                gcs_oauth2_boto_plugin,
+                boto],
             'cwl': [
-                'cwltool==1.0.20180108222053',
-                'schema-salad >= 2.6, < 3',
-                'galaxy-lib==17.9.3',
-                'cwltest>=1.0.20170214185319']},
+                cwltool,
+                schemaSalad,
+                galaxyLib,
+                cwltest],
+            'all': [
+                psutil,
+                boto,
+                boto3,
+                futures,
+                pycrypto,
+                azure,
+                azureCosmosdbTable,
+                pynacl,
+                gcs_oauth2_boto_plugin,
+                boto,
+                cwltool,
+                schemaSalad,
+                galaxyLib,
+                cwltest]},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
