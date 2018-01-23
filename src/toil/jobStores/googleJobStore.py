@@ -21,12 +21,16 @@ from contextlib import contextmanager
 import uuid
 import logging
 import time
-from google.cloud import storage, exceptions
 
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
+
+from bd2k.util.retry import retry
+from google.cloud import storage, exceptions
+from google.api_core.exceptions import GoogleAPICallError
+from toil.lib.misc import truncExpBackoff
 
 # Python 3 compatibility imports
 from six.moves import StringIO
@@ -47,6 +51,18 @@ GOOGLE_STORAGE = 'gs'
 #   - needed to copy client_id and client_secret to the oauth section
 # - Azure uses bz2 compression with pickling. Is this useful here?
 # - better way to assign job ids? - currently 'job'+uuid
+
+
+def googleRateLimit(e):
+    """
+    necessary because under heavy load google may throw
+        TooManyRequests: 429
+        The project exceeded the rate limit for creating and deleting buckets.
+    """
+    if isinstance(e, GoogleAPICallError) and e.code == 429:
+        return True
+    return False
+
 
 class GoogleJobStore(AbstractJobStore):
 
@@ -77,7 +93,9 @@ class GoogleJobStore(AbstractJobStore):
     def initialize(self, config=None):
         storageClient = storage.Client()
         try:
-            self.bucket = storageClient.create_bucket(self.bucketName)
+            for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
+                with attempt:
+                    self.bucket = storageClient.create_bucket(self.bucketName)
         except exceptions.Conflict:
             raise JobStoreExistsException(self.locator)
         super(GoogleJobStore, self).initialize(config)
@@ -101,13 +119,15 @@ class GoogleJobStore(AbstractJobStore):
         if self.bucket is None:
             return
 
-        try:
-            self.bucket.delete(force=True)
-            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
-        except ValueError:
-            self.bucket.delete_blobs(self.bucket.list_blobs)
-            self.bucket.delete()
-            # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
+        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
+            with attempt:
+                try:
+                    self.bucket.delete(force=True)
+                    # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+                except ValueError:
+                    self.bucket.delete_blobs(self.bucket.list_blobs)
+                    self.bucket.delete()
+                    # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
 
         # google freaks out if we call delete multiple times on the bucket obj, so after success
         # just set to None.

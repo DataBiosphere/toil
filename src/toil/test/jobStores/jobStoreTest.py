@@ -17,7 +17,6 @@ from __future__ import division
 
 from bd2k.util.retry import retry
 from future import standard_library
-from google.api_core.exceptions import GoogleAPICallError
 from toil.lib.misc import truncExpBackoff
 
 standard_library.install_aliases()
@@ -60,6 +59,7 @@ from toil.fileStore import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
+from toil.jobStores.googleJobStore import googleRateLimit
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import (ToilTest,
                        needs_aws,
@@ -936,15 +936,6 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
                     bucket.delete_blobs(bucket.list_blobs)
                     bucket.delete()
 
-def googleRateLimit(e):
-    """
-    necessary because under heavy load google may throw
-        TooManyRequests: 429
-        The project exceeded the rate limit for creating and deleting buckets.
-    """
-    if isinstance(e, GoogleAPICallError) and e.code == 429:
-        return True
-    return False
 
 @needs_aws
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
