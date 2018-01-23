@@ -31,6 +31,8 @@
 
   # TODO: Authentication error when making new resource groups
   - name: Create a resource group
+    tags:
+      - leader
     # We use resource groups to identify all instances in a cluster.
     azure_rm_resourcegroup:
       name: "{{ resgrp }}"
@@ -38,6 +40,8 @@
       state: present
 
   - name: Create security group that allows SSH and HTTP
+    tags:
+      - leader
     # All instances in a security group can communicate with each other by default,
     # so we don't have to touch that. All we have to do is open port 22 for SSH.
     azure_rm_securitygroup:
@@ -52,19 +56,21 @@
           direction: Inbound
 
   - name: Create a virtual network
-    # We don't need to run the above two steps if we're adding worker nodes.
     tags:
-      - abridged
+      - leader
+    # We don't need to run the above two steps if we're adding worker nodes.
     azure_rm_virtualnetwork:
-      name: "{{ vmname }}"  # TODO: All instances should share vnet
+      name: "{{ resgrp }}"
       resource_group: '{{ resgrp }}'
       address_prefixes: '192.168.0.0/16'
       state: present
 
   - name: Create a subnet
+    tags:
+      - leader
     azure_rm_subnet:
       name: "{{ vmname }}"
-      virtual_network_name: "{{ vmname }}"
+      virtual_network_name: "{{ resgrp }}"
       resource_group: "{{ resgrp }}"
       address_prefix: "192.168.0.0/24"
       security_group_name: "{{ resgrp }}"
@@ -78,7 +84,7 @@
       resource_group: "{{ resgrp }}"
       name: "{{ vmname }}"
       vm_size: "{{ vmsize }}"
-      virtual_network_name: "{{ vmname }}"
+      virtual_network_name: "{{ resgrp }}"
       admin_username: core
       ssh_password_enabled: false
       public_ip_allocation_method: Static

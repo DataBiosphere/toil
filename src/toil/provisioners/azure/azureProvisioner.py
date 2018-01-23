@@ -23,6 +23,7 @@ from toil.provisioners import Node
 from toil.provisioners.abstractProvisioner import Shape
 from toil.provisioners.ansibleDriver import AnsibleDriver
 from toil.provisioners.aws import leaderArgs
+from toil.provisioners.aws import workerArgs
 
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.compute import ComputeManagementClient
@@ -44,6 +45,7 @@ class AzureProvisioner(AnsibleDriver):
         self.playbook = {
             'create': 'create-azure-vm.yml',
             'delete': 'delete-azure-vm.yml',
+            'destroy': 'delete-azure-cluster.yml'
         }
         playbooks = os.path.dirname(os.path.realpath(__file__))
         super(AzureProvisioner, self).__init__(playbooks, "azure_rm.py", config)
@@ -53,14 +55,16 @@ class AzureProvisioner(AnsibleDriver):
         if spotBid:
             raise NotImplementedError("Ansible does not support provisioning spot instances")
 
+        self.keyName = keyName
+
         # Azure VMs must be named, so we need to generate one. Instance names must
         # be composed of only alphanumeric characters, underscores, and hyphens
         # (see https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions).
-        instanceName = str(uuid.uuid4())
+        instanceName = 'l' + str(uuid.uuid4())
 
         # SSH keys aren't managed with Azure, so for now we can just take the path of a public key.
         with open(os.path.expanduser(keyName), "r") as k:
-            sshKey = k.read().strip().split(" ")[1:]
+            self.sshKey = k.read().strip().split(" ")[1:]
 
         # TODO Check to see if resource group already exists?
         args = {
@@ -73,13 +77,28 @@ class AzureProvisioner(AnsibleDriver):
             'entrypoint': "mesos-master",
             # TODO: This is unclear and should be accompanied by an explanation.
             # 'sshKey': 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded',
-            'sshKey': " ".join(sshKey),
-            'keyname': keyName,
+            'sshKey': " ".join(self.sshKey),
+            'keyname': self.keyName,
             '_args': leaderArgs.format(name=self.clusterName),
         }
-        self._provisionNode(args, preemptable=True)
+        # Populate cloud-config file and pass it to Ansible
+        with open(os.path.join(self.playbooks, "cloud-config"), "r") as f:
+            configRaw = f.read()
+        with tempfile.NamedTemporaryFile(delete=False) as t:
+            t.write(configRaw.format(**args))
+            args['cloudconfig'] = t.name
+        self.callPlaybook(self.playbook['create'], args)
 
-    def _provisionNode(self, args, preemptable=False):
+        logger.info('Launched non-preemptable leader')
+        self.leaderIP = '192.168.0.4' # leader.private_ips[0]
+
+
+        workersCreated = 0
+        for nodeType, workers in zip(kwargs['nodeTypes'], kwargs['numWorkers']):
+            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers)
+        logger.info('Added %d workers', workersCreated)
+
+    def _provisionNode(self, args):
         # Populate cloud-config file and pass it to Ansible
         with open(os.path.join(self.playbooks, "cloud-config"), "r") as f:
             configRaw = f.read()
@@ -88,36 +107,43 @@ class AzureProvisioner(AnsibleDriver):
             args['cloudconfig'] = t.name
 
         # Launch the cluster with Ansible
-        self.callPlaybook(self.playbook['create'], args, tags=['abridged'] if not preemptable else None)
-        # Calling the playbook with `tags=['abridged']` skips creation of
+        val = self.callPlaybook(self.playbook['create'], args, tags=['untagged'])
+        # Calling the playbook with `tags=['untagged']` skips creation of
         # resource group, security group, etc.
 
     @staticmethod
     def destroyCluster(clusterName, zone):
         self = AzureProvisioner(clusterName)
-        self.clusterName = clusterName  # monkey patch fixme
+        args = {
+            'resgrp': self.clusterName,
+        }
+        self.callPlaybook(self.playbook['destroy'], args)
 
-        workers = self.getProvisionedWorkers(None, preemptable=False)
-        self.terminateNodes(workers)
+    def addNodes(self, nodeType, numNodes):
 
-        leader = self.getProvisionedWorkers(None, preemptable=True)
-        self.terminateNodes(leader)
-
-    def addNodes(self, nodeType, numNodes, preemptable):
         # TODO: update to configure with cloud-config
         args = {
             'vmsize': nodeType,
-            'sshkey': self.sshKey,
-            'vmname': self.clusterName,
+            'vmname': 'wrongName',
             'resgrp': self.clusterName,
+            'region': self.region,
+            'image': applianceSelf(),
             'role': "worker",
+            'entrypoint': "mesos-slave",
+            'sshKey': " ".join(self.sshKey), # self.masterPublicKey
+            'keyname': self.keyName,
+            '_args': workerArgs.format(ip=self.leaderIP, preemptable=False, keyPath='')
         }
-        for i in range(numNodes):
-            self._provisionNode(args, preemptable=False)
 
-    def getNodeShape(self, nodeType, preemptable=False):
-        if preemptable:
-            raise NotImplementedError("Ansible does not support provisioning spot instances")
+
+        for i in range(numNodes):
+            args['vmname'] = 'w' + str(uuid.uuid4())
+            self._provisionNode(args)
+
+        # TODO: check that nodes launched
+        return numNodes
+
+    def getNodeShape(self, nodeType):
 
         # Fetch Azure credentials from the CLI config
         azureCredentials = ConfigParser.SafeConfigParser()
@@ -145,10 +171,10 @@ class AzureProvisioner(AnsibleDriver):
                      memory=memory,
                      cores=instanceType.number_of_cores,
                      disk=disk,
-                     preemptable=preemptable)
+                     preemptable=False)
 
     # TODO: Implement nodeType
-    def getProvisionedWorkers(self, nodeType, preemptable):
+    def getProvisionedWorkers(self, nodeType, preemptable=False):
         # Data model info: https://docs.ansible.com/ansible/latest/guide_azure.html#dynamic-inventory-script
         allNodes = self._getInventory()
 
@@ -164,7 +190,7 @@ class AzureProvisioner(AnsibleDriver):
                 name=node['name'],
                 launchTime=None,  # FIXME
                 nodeType=node['virtual_machine_size'],
-                preemptable=preemptable)
+                preemptable=False)
             )
         return rv
 
@@ -177,7 +203,7 @@ class AzureProvisioner(AnsibleDriver):
                 'vmname': node.name,
                 'resgrp': self.clusterName,
             }
-            self.callPlaybook(self.playbook['delete'], args, tags=['cluster'] if preemptable else None)
+            self.callPlaybook(self.playbook['delete'], args, tags=['cluster'])
 
     # TODO: Refactor such that cluster name is LCD of vnet name/storage name/etc
     @staticmethod

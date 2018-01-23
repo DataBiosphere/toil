@@ -28,29 +28,14 @@
       # ignore_errors: yes
       remove_on_absent: all
 
-  - name: Delete virtual network
-    azure_rm_virtualnetwork:
-      name: '{{ vmname }}'
-      resource_group: '{{ resgrp }}'
-      state: absent
+#  - name: Delete virtual network
+#    azure_rm_virtualnetwork:
+#      name: '{{ vmname }}'
+#      resource_group: '{{ resgrp }}'
+#      state: absent
 
   - name: Delete storage account
     azure_rm_storageaccount:
       resource_group: "{{ resgrp }}"
       name: "{{ vmname }}"
-      state: absent
-
-  - name: Remove security group
-    tags:
-    - cluster
-    azure_rm_securitygroup:
-      resource_group: '{{ resgrp }}'
-      name: '{{ resgrp[:24] }}'
-      state: absent
-
-  - name: Delete a resource group
-    tags:
-    - cluster
-    azure_rm_resourcegroup:
-      name: '{{ resgrp }}'
       state: absent

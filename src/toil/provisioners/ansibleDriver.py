@@ -47,6 +47,9 @@ class AnsibleDriver(AbstractProvisioner):
 
         logger.info("Executing Ansible call `%s`" % command)
         return pipettor.runlex(command, logger=logger)
+        #dr = pipettor.DataReader()
+        #pipettor.runlex(command, stdout=dr)
+        #print dr.data
 
     def _getInventory(self, tags={}):
         """Lists all nodes in the cluster"""
