@@ -34,6 +34,27 @@ def runSetup():
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
     cwltest = 'cwltest>=1.0.20170214185319'
+
+    mesos_reqs = [
+                  psutil]
+    aws_reqs = [
+                  boto,
+                  boto3,
+                  futures,
+                  pycrypto]
+    azure_reqs = [
+                  azure,
+                  azureCosmosdbTable]
+    encryption_reqs = [
+                  pynacl]
+    google_reqs = [
+                  gcs_oauth2_boto_plugin,
+                  boto]
+    cwl_reqs = [
+                  cwltool,
+                  schemaSalad,
+                  galaxyLib,
+                  cwltest]
     setup(
         name='toil',
         version=version.distVersion,
@@ -51,41 +72,18 @@ def runSetup():
             'requests==2.18.4',
             'docker==2.5.1'],
         extras_require={
-            'mesos': [
-                psutil],
-            'aws': [
-                boto,
-                boto3,
-                futures,
-                pycrypto],
-            'azure': [
-                azure,
-                azureCosmosdbTable],
-            'encryption': [
-                pynacl],
-            'google': [
-                gcs_oauth2_boto_plugin,
-                boto],
-            'cwl': [
-                cwltool,
-                schemaSalad,
-                galaxyLib,
-                cwltest],
-            'all': [
-                psutil,
-                boto,
-                boto3,
-                futures,
-                pycrypto,
-                azure,
-                azureCosmosdbTable,
-                pynacl,
-                gcs_oauth2_boto_plugin,
-                boto,
-                cwltool,
-                schemaSalad,
-                galaxyLib,
-                cwltest]},
+            'mesos': mesos_reqs,
+            'aws': aws_reqs,
+            'azure': azure_reqs,
+            'encryption': encryption_reqs,
+            'google': google_reqs,
+            'cwl': cwl_reqs,
+            'all': mesos_reqs +
+                   aws_reqs +
+                   azure_reqs +
+                   encryption_reqs +
+                   google_reqs +
+                   cwl_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
