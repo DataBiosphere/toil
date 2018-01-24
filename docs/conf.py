@@ -26,7 +26,8 @@ import toil.version
 
 # This makes the modules located in docs/vendor available to import
 sys.path.insert(0, os.path.abspath('./vendor'))
-import ..sphinxcontrib.fulltoc
+sys.path.append("..")
+import sphinxcontrib.fulltoc
 
 
 def real_dir_name(p, n=1):
