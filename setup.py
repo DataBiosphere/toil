@@ -36,7 +36,6 @@ def runSetup():
             'dill==0.2.5',
             'six>=1.10.0',
             'future',
-            'sphinxcontrib-fulltoc',
             'requests==2.18.4',
             'docker==2.5.1'],
         extras_require={
