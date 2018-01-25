@@ -48,7 +48,7 @@ envPath = os.path.abspath(toil.version.__file__)
 wdPath_version = fetch_parent_dir(__file__, 2)
 # Expected output: 3.13.0
 
-assert envPath in wdPath_version, \
+assert wdPath_version in envPath, \
     "Another Toil installation seems to have precedence over this working directory."
 toilVersion = toil.version.baseVersion
 
