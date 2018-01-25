@@ -466,8 +466,8 @@ class ScalerThread(ExceptionalThread):
         self.jobShapes.add(shape)
         
     def tryRun(self):
-        try:
-            while not self.scaler.stop:
+        while not self.scaler.stop:
+            try:
                 with throttle(self.scaler.config.scaleInterval):
                     queuedJobs = self.scaler.leader.getJobs()
                     logger.info("avg runtime dict: %s" % repr(self.scaler.jobNameToAvgRuntime))
@@ -539,8 +539,11 @@ class ScalerThread(ExceptionalThread):
 
                     if self.stats:
                         self.stats.checkStats()
-        finally:
-            self.shutDown()
+            except:
+                log.exception("Exception encountered in scaler thread. Making a "
+                              "best-effort attempt to keep going, but things may "
+                              "go wrong from now on.")
+        self.shutDown()
 
     def setNodeCount(self, nodeType, numNodes, preemptable=False, force=False):
         """
