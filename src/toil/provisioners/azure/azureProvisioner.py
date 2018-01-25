@@ -17,6 +17,8 @@ import os.path
 import sys
 import tempfile
 import uuid
+import urllib
+import json
 
 from toil import applianceSelf
 from toil.provisioners import Node
@@ -32,30 +34,68 @@ logger = logging.getLogger(__name__)
 
 
 class AzureProvisioner(AnsibleDriver):
-    def __init__(self, clusterName, **config):
-        if not self.isValidClusterName(clusterName):
-            raise RuntimeError("Invalid cluster name. See the Azure documentation for information "
-                               "on cluster naming conventions: "
-                               "https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions")
+    AnsibleDriver.inventory = 'azure_rm.py'
 
-        self.clusterName = clusterName
-        # TODO: --zone must be mandatory for the Azure provisioner, or we need
-        # a way of setting a sane default.
-        self.region = config.get("zone", None)
+    def __init__(self, config=None):
+
         self.playbook = {
             'create': 'create-azure-vm.yml',
             'delete': 'delete-azure-vm.yml',
             'destroy': 'delete-azure-cluster.yml'
         }
         playbooks = os.path.dirname(os.path.realpath(__file__))
-        super(AzureProvisioner, self).__init__(playbooks, "azure_rm.py", config)
+        super(AzureProvisioner, self).__init__(playbooks, config)
 
-    def launchCluster(self, instanceType, keyName, spotBid=None, **kwargs):
+
+        if config:
+            mdUrl = "http://169.254.169.254/metadata/instance?api-version=2017-04-02"
+            header={'Metadata': 'True'}
+            request = urllib.request.Request(url=mdUrl, headers=header)
+            response = urllib.request.urlopen(request)
+            data = response.read()
+            dataStr = data.decode("utf-8")
+            metadata = json.loads(dataStr)
+
+            self.zone = metadata['compute']['location']
+            self.clusterName = metadata['compute']['resourceGroupName']
+            self.tags = metadata['compute']['tags']
+            #self.leaderIp = metadata['network']['interface'][0]['ipv4']['ipaddress'][0]['privateIpAddress']
+
+            logger.info('****LOADING %s', self.clusterName)
+
+            self.keyName = 'core'
+            self.leaderIP = self._getLeader(self.clusterName)['private_ip']
+            self.masterPublicKey = self._setSSH()
+            self.nodeStorage = config.nodeStorage
+            self.nonPreemptableNodeTypes = []
+            for nodeTypeStr in config.nodeTypes:
+                nodeBidTuple = nodeTypeStr.split(":")
+                if len(nodeBidTuple) != 2:
+                    self.nonPreemptableNodeTypes.append(nodeTypeStr)
+            self.nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False) for nodeType in self.nonPreemptableNodeTypes]
+
+            self.nodeShapes = self.nonPreemptableNodeShapes
+            self.nodeTypes = self.nonPreemptableNodeTypes
+        else:
+            self.clusterName = None
+            self.leaderIP = None
+            self.keyName = None
+            self.tags = None
+            self.masterPublicKey = None
+            self.nodeStorage = None
+
+    def launchCluster(self, instanceType, keyName, clusterName, zone, spotBid=None, **kwargs):
         """Launches an Azure cluster using Ansible."""
         if spotBid:
             raise NotImplementedError("Ansible does not support provisioning spot instances")
 
+        if not self.isValidClusterName(clusterName):
+            raise RuntimeError("Invalid cluster name. See the Azure documentation for information "
+                               "on cluster naming conventions: "
+                               "https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions")
+        self.clusterName = clusterName
         self.keyName = keyName
+        self.region = zone
 
         # Azure VMs must be named, so we need to generate one. Instance names must
         # be composed of only alphanumeric characters, underscores, and hyphens
@@ -66,7 +106,8 @@ class AzureProvisioner(AnsibleDriver):
         with open(os.path.expanduser(keyName), "r") as k:
             self.sshKey = k.read().strip().split(" ")[1:]
 
-        # TODO Check to see if resource group already exists?
+        # TODO Check to see if resource group already exists and throw and error if so.
+
         args = {
             'vmsize': instanceType,
             'vmname': instanceName,
@@ -90,8 +131,9 @@ class AzureProvisioner(AnsibleDriver):
         self.callPlaybook(self.playbook['create'], args)
 
         logger.info('Launched non-preemptable leader')
-        self.leaderIP = '192.168.0.4' # leader.private_ips[0]
 
+
+        self.leaderIP = self._getLeader(self.clusterName)['private_ip']
 
         workersCreated = 0
         for nodeType, workers in zip(kwargs['nodeTypes'], kwargs['numWorkers']):
@@ -107,21 +149,19 @@ class AzureProvisioner(AnsibleDriver):
             args['cloudconfig'] = t.name
 
         # Launch the cluster with Ansible
-        val = self.callPlaybook(self.playbook['create'], args, tags=['untagged'])
+        self.callPlaybook(self.playbook['create'], args, tags=['untagged'])
         # Calling the playbook with `tags=['untagged']` skips creation of
         # resource group, security group, etc.
 
     @staticmethod
     def destroyCluster(clusterName, zone):
-        self = AzureProvisioner(clusterName)
+        self = AzureProvisioner()
         args = {
-            'resgrp': self.clusterName,
+            'resgrp': clusterName,
         }
         self.callPlaybook(self.playbook['destroy'], args)
 
     def addNodes(self, nodeType, numNodes):
-
-        # TODO: update to configure with cloud-config
         args = {
             'vmsize': nodeType,
             'vmname': 'wrongName',
@@ -134,7 +174,6 @@ class AzureProvisioner(AnsibleDriver):
             'keyname': self.keyName,
             '_args': workerArgs.format(ip=self.leaderIP, preemptable=False, keyPath='')
         }
-
 
         for i in range(numNodes):
             args['vmname'] = 'w' + str(uuid.uuid4())
@@ -176,7 +215,7 @@ class AzureProvisioner(AnsibleDriver):
     # TODO: Implement nodeType
     def getProvisionedWorkers(self, nodeType, preemptable=False):
         # Data model info: https://docs.ansible.com/ansible/latest/guide_azure.html#dynamic-inventory-script
-        allNodes = self._getInventory()
+        allNodes = self._getInventory(self.clusterName)
 
         logger.debug('All nodes in cluster: ' + str(allNodes.get('role_leader', None)))
         logger.debug('All workers found in cluster: ' + str(allNodes.get('role_worker', None)))
@@ -225,15 +264,18 @@ class AzureProvisioner(AnsibleDriver):
             return False
         return True
 
-    def _getLeader(self):
-        data = self._getInventory()
+    @classmethod
+    def _getLeader(cls, clusterName):
+        data = cls._getInventory(clusterName)
         return data['_meta']['hostvars'][data['role_leader'][0]]
 
-    def sshLeader(self, clusterName, args=None, zone=None, **kwargs):
+    @classmethod
+    def sshLeader(cls, clusterName, args=None, zone=None, **kwargs):
         logger.info('SSH ready')
         kwargs['tty'] = sys.stdin.isatty()
         command = args if args else ['bash']
-        self._sshAppliance(self._getLeader()['public_ip'], *command, **kwargs)
+        cls._sshAppliance(cls._getLeader(clusterName)['public_ip'], *command, **kwargs)
 
-    def rsyncLeader(self, clusterName, args, zone=None, **kwargs):
-        self._coreRsync(self._getLeader()['public_ip'], args, **kwargs)
+    @classmethod
+    def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
+        cls._coreRsync(cls._getLeader(clusterName)['public_ip'], args, **kwargs)

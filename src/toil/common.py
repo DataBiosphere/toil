@@ -358,9 +358,9 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['aws'],
+    addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'azure'],
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
-                     "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
+                     "'azure' or 'aws'. The default is %s." % config.provisioner)
 
     addOptionFn('--nodeTypes', default=None,
                  help="List of node types separated by commas. The syntax for each node type "
@@ -783,6 +783,10 @@ class Toil(object):
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             enable_metadata_credential_caching()
             self._provisioner = AWSProvisioner(self.config)
+        elif self.config.provisioner == 'azure':
+            logger.info('Using Azure provisioner.')
+            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+            self._provisioner = AzureProvisioner(self.config)
         else:
             # Command line parser shold have checked argument validity already
             assert False, self.config.provisioner

@@ -24,10 +24,11 @@ logger = logging.getLogger(__name__)
 
 
 class AnsibleDriver(AbstractProvisioner):
-    def __init__(self, playbooks, inventory, config=None):
+    contrib = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'contrib')
+    inventory = '' # to be set by child class
+
+    def __init__(self, playbooks, config=None):
         self.playbooks = playbooks
-        self.inventory = inventory
-        self.contrib = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'contrib')
         super(AnsibleDriver, self).__init__(config)
 
     def callPlaybook(self, playbook, args, tags=[]):
@@ -47,13 +48,11 @@ class AnsibleDriver(AbstractProvisioner):
 
         logger.info("Executing Ansible call `%s`" % command)
         return pipettor.runlex(command, logger=logger)
-        #dr = pipettor.DataReader()
-        #pipettor.runlex(command, stdout=dr)
-        #print dr.data
 
-    def _getInventory(self, tags={}):
+    @classmethod
+    def _getInventory(cls, clusterName):
         """Lists all nodes in the cluster"""
         # tags = ",".join([":".join(i) for i in tags.items()])
-        command = ["python", os.path.join(self.contrib, self.inventory), "--resource-groups", self.clusterName]
+        command = ["python", os.path.join(cls.contrib, cls.inventory), "--resource-groups", clusterName]
         data = subprocess.check_output(command)
         return json.loads(data)

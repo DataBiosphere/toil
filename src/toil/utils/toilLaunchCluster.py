@@ -85,7 +85,7 @@ def main():
         provisioner = AWSProvisioner()
     elif config.provisioner == 'azure':
         from toil.provisioners.azure.azureProvisioner import AzureProvisioner
-        provisioner = AzureProvisioner(config.clusterName, zone=config.zone)
+        provisioner = AzureProvisioner()
     else:
         assert False
 

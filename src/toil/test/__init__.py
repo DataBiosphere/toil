@@ -351,11 +351,17 @@ def needs_azure(test_item):
     except:
         raise
     else:
+        # check for the credentials file
         from toil.jobStores.azureJobStore import credential_file_path
         full_credential_file_path = os.path.expanduser(credential_file_path)
         if not os.path.exists(full_credential_file_path):
-            return unittest.skip("Configure %s with the access key for the 'toiltest' storage "
-                                 "account." % credential_file_path)(test_item)
+            # no file, check for environment variables
+            try:
+                from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+                _fetchAzureAccountKey('toiltest')
+            except:
+                 return unittest.skip("Configure %s with the access key for the 'toiltest' storage "
+                                     "account." % credential_file_path)(test_item)
         return test_item
 
 

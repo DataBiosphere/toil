@@ -48,7 +48,9 @@ def runSetup():
                 'pycrypto==2.6.1'],
             'azure': [
                 'azure-cosmosdb-table==0.37.1',
-                'ansible[azure]==2.4.3.0',
+                'ansible[azure]', #==2.4.3.0',
+                'azure-storage==0.35.1',
+                'msrest==0.4.25',
                 'dnspython==1.15.0',
                 'pipettor==0.2.0'],
             'encryption': [
