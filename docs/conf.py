@@ -41,15 +41,14 @@ path_to_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Example of toil.version.__file__ on sphinx:
 # /home/docs/checkouts/readthedocs.org/user_builds/toil/envs/3.13.0/local/lib/python2.7/site-packages/toil-3.13.0a1-py2.7.egg/toil/version.pyc
-envPath = fetch_parent_dir(toil.version.__file__, 6)
-# Expected output: 3.13.0
+envPath = os.path.abspath(toil.version.__file__)
 
 # Example of __file__ on sphinx:
 # /home/docs/checkouts/readthedocs.org/user_builds/toil/checkouts/3.13.0/docs/conf.py
-wdPath = fetch_parent_dir(__file__, 2)
+wdPath_version = fetch_parent_dir(__file__, 2)
 # Expected output: 3.13.0
 
-assert wdPath == envPath, \
+assert envPath in wdPath_version, \
     "Another Toil installation seems to have precedence over this working directory."
 toilVersion = toil.version.baseVersion
 
