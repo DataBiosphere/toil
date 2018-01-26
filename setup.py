@@ -68,6 +68,9 @@ def runSetup():
                                # Note that we intentionally include the top-level `test` package for
                                # functionality like the @experimental and @integrative decoratorss:
                                exclude=['*.test.*']),
+        package_data = {
+            '': ['*.yml', 'contrib/azure_rm.py'],
+        },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
         # easy to search for.

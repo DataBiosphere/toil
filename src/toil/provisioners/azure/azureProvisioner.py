@@ -19,6 +19,7 @@ import tempfile
 import uuid
 import urllib
 import json
+import subprocess
 
 from toil import applianceSelf
 from toil.provisioners import Node
@@ -48,7 +49,7 @@ class AzureProvisioner(AnsibleDriver):
 
 
         if config:
-            mdUrl = "http://169.254.169.254/metadata/instance?api-version=2017-04-02"
+            mdUrl = "http://169.254.169.254/metadata/instance?api-version=2017-08-01"
             header={'Metadata': 'True'}
             request = urllib.request.Request(url=mdUrl, headers=header)
             response = urllib.request.urlopen(request)
@@ -279,3 +280,18 @@ class AzureProvisioner(AnsibleDriver):
     @classmethod
     def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
         cls._coreRsync(cls._getLeader(clusterName)['public_ip'], args, **kwargs)
+
+
+    def _setSSH(self):
+         if not os.path.exists('/root/.sshSuccess'):
+             subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
+             with open('/root/.sshSuccess', 'w') as f:
+                 f.write('written here because of restrictive permissions on .ssh dir')
+         os.chmod('/root/.ssh', 0o700)
+         subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
+         with open('/root/.ssh/id_rsa.pub') as f:
+             masterPublicKey = f.read()
+         masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
+         # confirm it really is an RSA public key
+         assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
+         return masterPublicKey
