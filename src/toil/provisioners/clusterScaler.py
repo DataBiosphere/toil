@@ -540,9 +540,9 @@ class ScalerThread(ExceptionalThread):
                     if self.stats:
                         self.stats.checkStats()
             except:
-                log.exception("Exception encountered in scaler thread. Making a "
-                              "best-effort attempt to keep going, but things may "
-                              "go wrong from now on.")
+                logger.exception("Exception encountered in scaler thread. Making a "
+                                 "best-effort attempt to keep going, but things may "
+                                 "go wrong from now on.")
         self.shutDown()
 
     def setNodeCount(self, nodeType, numNodes, preemptable=False, force=False):
