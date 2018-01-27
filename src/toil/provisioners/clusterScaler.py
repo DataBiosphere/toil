@@ -470,9 +470,6 @@ class ScalerThread(ExceptionalThread):
             try:
                 with throttle(self.scaler.config.scaleInterval):
                     queuedJobs = self.scaler.leader.getJobs()
-                    logger.info("avg runtime dict: %s" % repr(self.scaler.jobNameToAvgRuntime))
-                    for job in set(job for job in queuedJobs):
-                        logger.info("Got avg runtime %s for job %s." % (self.scaler.getAverageRuntime(job.jobName, service=isinstance(job, ServiceJobNode)), job.jobName))
                     queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName, service=isinstance(job, ServiceJobNode)), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
                     logger.info("job shapes: %s" % (repr(set(queuedJobShapes))))
                     nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes)
