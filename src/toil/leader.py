@@ -762,15 +762,16 @@ class Leader(object):
         return len( self.reissueMissingJobs_missingHash ) == 0 #We use this to inform
         #if there are missing jobs
 
+    def processRemovedJob(self, issuedJob, resultStatus):
+        if resultStatus != 0:
+            logger.warn("Despite the batch system claiming failure the "
+                        "job %s seems to have finished and been removed", issuedJob)
+        self._updatePredecessorStatus(issuedJob.jobStoreID)
+
     def processFinishedJob(self, batchSystemID, resultStatus, wallTime=None):
         """
-        Function reads a processed jobGraph file and updates it state.
+        Function reads a processed jobGraph file and updates its state.
         """
-        def processRemovedJob(issuedJob):
-            if resultStatus != 0:
-                logger.warn("Despite the batch system claiming failure the "
-                            "job %s seems to have finished and been removed", issuedJob)
-            self._updatePredecessorStatus(issuedJob.jobStoreID)
         jobNode = self.removeJob(batchSystemID)
         jobStoreID = jobNode.jobStoreID
         if wallTime is not None and self.clusterScaler is not None:
@@ -788,7 +789,7 @@ class Leader(object):
                     # This is a temporary work around until https://github.com/BD2KGenomics/toil/issues/1091
                     # is completed
                     logger.warn('Got a stale read from SDB for job %s', jobNode)
-                    processRemovedJob(jobNode)
+                    self.processRemovedJob(jobNode, resultStatus)
                     return
                 else:
                     raise
@@ -818,7 +819,7 @@ class Leader(object):
             #jobGraph is done we can add it to the list of updated jobGraph files
             logger.debug("Added job: %s to active jobs", jobGraph)
         else:  #The jobGraph is done
-            processRemovedJob(jobNode)
+            self.processRemovedJob(jobNode, resultStatus)
 
     @staticmethod
     def getSuccessors(jobGraph, alreadySeenSuccessors, jobStore):

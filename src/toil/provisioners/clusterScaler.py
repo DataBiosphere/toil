@@ -471,7 +471,7 @@ class ScalerThread(ExceptionalThread):
                 with throttle(self.scaler.config.scaleInterval):
                     queuedJobs = self.scaler.leader.getJobs()
                     queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName, service=isinstance(job, ServiceJobNode)), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
-                    logger.info("job shapes: %s" % (repr(set(queuedJobShapes))))
+                    logger.debug("job shapes: %s" % (repr(set(queuedJobShapes))))
                     nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes)
                     for nodeShape in self.nodeShapes:
                         nodeType = self.nodeShapeToType[nodeShape]
