@@ -54,8 +54,10 @@ from toil.version import dockerRegistry, dockerTag
 
 logger = logging.getLogger(__name__)
 
-# This constant is set to the default block size of the system using os.stat('/').st_blksize.
-systemBlockSize = int(os.stat('/').st_blksize / 8)
+# This constant is set to the default value used on unix for block size (in bytes) when
+# os.stat(<file>).st_blocks is called.
+unixBlockSize = 512
+
 
 class Config(object):
     """
@@ -541,7 +543,7 @@ def _addOptions(addGroupFn, config):
     #Debug options
     #
     addOptionFn = addGroupFn("toil debug options", "Debug options")
-    addOptionFn("--debug-worker", default=False, action="store_true", dest="debugWorker",
+    addOptionFn("--debugWorker", default=False, action="store_true",
             help="Experimental no forking mode for local debugging."
                  " Specifically, workers are not forked and"
                  " stderr/stdout are not redirected to the log.")
@@ -1255,33 +1257,26 @@ def cacheDirName(workflowID):
 
 def getDirSizeRecursively(dirPath):
     """
-    This method will walk through a directory and return the cumulative filesize in bytes of all
-    the files in the directory and its subdirectories.
+    This method will return the cumulative filesize in bytes of all of the files
+    in the directory and its subdirectories using 'du'.
 
-    :param dirPath: Path to a directory.
-    :return: cumulative size in bytes of all files in the directory.
-    :rtype: int
+    This method will return a 'subprocess.CalledProcessError' if it is unable to
+    access a folder or file because of permissions.  Therefore this method should
+    only be called on the jobStore, and will alert the user if some portion is
+    inaccessible.  Everything in the jobStore should have appropriate permissions
+    as there is no way to read the filesize without permissions.
+
+    du is often faster than using os.lstat(), sometimes significantly so.
+
+    The call: 'du -c /some/path' should give the number of 512-byte blocks
+    allocated with the environment variable: BLOCKSIZE='512' set, and we
+    multiply this by 512 to return the filesize in bytes.
+
+    :param str dirPath: A valid path to a directory or file.
+    :return: Size, in bytes, of dirPath, and recursively everything within it.
     """
-    totalSize = 0
-    # The value from running stat on each linked file is equal. To prevent the same file
-    # from being counted multiple times, we save the inodes of files that have more than one
-    # nlink associated with them.
-    seenInodes = set()
-    for dirPath, dirNames, fileNames in os.walk(dirPath):
-        folderSize = 0
-        for f in fileNames:
-            fp = os.path.join(dirPath, f)
-            fileStats = os.stat(fp)
-            if fileStats.st_nlink > 1:
-                if fileStats.st_ino not in seenInodes:
-                    folderSize += fileStats.st_blocks * systemBlockSize
-                    seenInodes.add(fileStats.st_ino)
-                else:
-                    continue
-            else:
-                folderSize += fileStats.st_blocks * systemBlockSize
-        totalSize += folderSize
-    return totalSize
+    return int(subprocess.check_output(['du', '-s', dirPath],
+               env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode('utf-8')) * 512
 
 
 def getFileSystemSize(dirPath):
