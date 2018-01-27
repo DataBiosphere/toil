@@ -20,6 +20,7 @@ import uuid
 import urllib
 import json
 import subprocess
+import time
 
 from toil import applianceSelf
 from toil.provisioners import Node
@@ -59,10 +60,9 @@ class AzureProvisioner(AnsibleDriver):
 
             self.zone = metadata['compute']['location']
             self.clusterName = metadata['compute']['resourceGroupName']
-            self.tags = metadata['compute']['tags']
+            tagsStr = metadata['compute']['tags']
+            self.vmTags = json.loads(tagsStr)
             #self.leaderIp = metadata['network']['interface'][0]['ipv4']['ipaddress'][0]['privateIpAddress']
-
-            logger.info('****LOADING %s', self.clusterName)
 
             self.keyName = 'core'
             self.leaderIP = self._getLeader(self.clusterName)['private_ip']
@@ -81,11 +81,11 @@ class AzureProvisioner(AnsibleDriver):
             self.clusterName = None
             self.leaderIP = None
             self.keyName = None
-            self.tags = None
+            self.vmTags = None
             self.masterPublicKey = None
             self.nodeStorage = None
 
-    def launchCluster(self, instanceType, keyName, clusterName, zone, spotBid=None, **kwargs):
+    def launchCluster(self, instanceType, keyName, clusterName, zone, leaderStorage=50, nodeStorage=50, spotBid=None, **kwargs):
         """Launches an Azure cluster using Ansible."""
         if spotBid:
             raise NotImplementedError("Ansible does not support provisioning spot instances")
@@ -97,6 +97,7 @@ class AzureProvisioner(AnsibleDriver):
         self.clusterName = clusterName
         self.keyName = keyName
         self.region = zone
+        self.nodeStorage = nodeStorage
 
         # Azure VMs must be named, so we need to generate one. Instance names must
         # be composed of only alphanumeric characters, underscores, and hyphens
@@ -109,79 +110,101 @@ class AzureProvisioner(AnsibleDriver):
 
         # TODO Check to see if resource group already exists and throw and error if so.
 
-        args = {
+        cloudConfigArgs = {
+            'image': applianceSelf(),
+            'role': "leader",
+            'entrypoint': "mesos-master",
+            'sshKey': " ".join(self.sshKey), # self.masterPublicKey
+            '_args': leaderArgs.format(name=self.clusterName),
+        }
+        ansibleArgs = {
             'vmsize': instanceType,
             'vmname': instanceName,
             'resgrp': self.clusterName,
             'region': self.region,
-            'image': applianceSelf(),
             'role': "leader",
-            'entrypoint': "mesos-master",
-            # TODO: This is unclear and should be accompanied by an explanation.
-            # 'sshKey': 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded',
-            'sshKey': " ".join(self.sshKey),
+            'owner': self.keyName,
+            'diskSize': str(leaderStorage),
             'keyname': self.keyName,
-            '_args': leaderArgs.format(name=self.clusterName),
         }
-        # Populate cloud-config file and pass it to Ansible
-        with open(os.path.join(self.playbooks, "cloud-config"), "r") as f:
-            configRaw = f.read()
-        with tempfile.NamedTemporaryFile(delete=False) as t:
-            t.write(configRaw.format(**args))
-            args['cloudconfig'] = t.name
-        self.callPlaybook(self.playbook['create'], args)
+        ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
+        self.callPlaybook(self.playbook['create'], ansibleArgs, wait=True)
 
         logger.info('Launched non-preemptable leader')
 
+        leader = self._getLeader(self.clusterName)
+        self.leaderIP = leader['private_ip']
 
-        self.leaderIP = self._getLeader(self.clusterName)['private_ip']
-
-        workersCreated = 0
+        workersCreated = []
         for nodeType, workers in zip(kwargs['nodeTypes'], kwargs['numWorkers']):
             workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers)
-        logger.info('Added %d workers', workersCreated)
 
-    def _provisionNode(self, args):
+        # TODO: Should waiting for container to start be before worker creation?
+        self._waitForNode(leader['public_ip'], 'toil_leader')
+
+        # check that nodes launched
+        # TODO: this won't be accurate if workers are created in threads,
+        # Either update this list or add to workersCreated as threads finish.
+        allInstances = self.getProvisionedWorkers(None)
+        instancesIndex = dict((x.name,x) for x in allInstances)
+        workersLaunched = 0
+        for vmName in workersCreated:
+            if vmName in instancesIndex:
+                self._waitForNode(instancesIndex[vmName].publicIP, 'toil_worker')
+                workersLaunched += 1
+                print "LAUNCHED*******", vmName
+            else:
+                logger.debug("Instance %s failed to launch", vmName)
+        logger.info('Added %d workers', workersLaunched)
+
+    def _cloudConfig(self, args):
         # Populate cloud-config file and pass it to Ansible
         with open(os.path.join(self.playbooks, "cloud-config"), "r") as f:
             configRaw = f.read()
         with tempfile.NamedTemporaryFile(delete=False) as t:
             t.write(configRaw.format(**args))
-            args['cloudconfig'] = t.name
+            return t.name
 
-        # Launch the cluster with Ansible
-        self.callPlaybook(self.playbook['create'], args, tags=['untagged'])
-        # Calling the playbook with `tags=['untagged']` skips creation of
-        # resource group, security group, etc.
+
 
     @staticmethod
     def destroyCluster(clusterName, zone):
         self = AzureProvisioner()
-        args = {
+        ansibleArgs = {
             'resgrp': clusterName,
         }
-        self.callPlaybook(self.playbook['destroy'], args)
+        self.callPlaybook(self.playbook['destroy'], ansibleArgs)
 
     def addNodes(self, nodeType, numNodes):
-        args = {
-            'vmsize': nodeType,
-            'vmname': 'wrongName',
-            'resgrp': self.clusterName,
-            'region': self.region,
+
+        cloudConfigArgs = {
             'image': applianceSelf(),
             'role': "worker",
             'entrypoint': "mesos-slave",
             'sshKey': " ".join(self.sshKey), # self.masterPublicKey
-            'keyname': self.keyName,
             '_args': workerArgs.format(ip=self.leaderIP, preemptable=False, keyPath='')
         }
 
-        for i in range(numNodes):
-            args['vmname'] = 'w' + str(uuid.uuid4())
-            self._provisionNode(args)
+        ansibleArgs = dict(vmsize=nodeType,
+                    resgrp=self.clusterName,
+                    region=self.region,
+                    diskSize=str(self.nodeStorage),
+                    owner=self.keyName,
+                    role="worker",
+                    keyname=self.keyName)
+        ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
 
-        # TODO: check that nodes launched
-        return numNodes
+        instances = []
+        for i in range(numNodes):
+            name = 'w' + str(uuid.uuid4())
+            ansibleArgs['vmname'] = name
+            instances.append(name)
+            # Launch the cluster with Ansible
+            # Calling the playbook with `tags=['untagged']` skips creation of
+            # resource group, security group, etc.
+            self.callPlaybook(self.playbook['create'], ansibleArgs, wait=False, tags=['untagged'])
+
+        return instances
 
     def getNodeShape(self, nodeType):
 
@@ -218,20 +241,21 @@ class AzureProvisioner(AnsibleDriver):
         # Data model info: https://docs.ansible.com/ansible/latest/guide_azure.html#dynamic-inventory-script
         allNodes = self._getInventory(self.clusterName)
 
-        logger.debug('All nodes in cluster: ' + str(allNodes.get('role_leader', None)))
+        logger.debug('All leaders in cluster: ' + str(allNodes.get('role_leader', None)))
         logger.debug('All workers found in cluster: ' + str(allNodes.get('role_worker', None)))
 
         rv = []
         for node in allNodes['azure']:
             node = allNodes['_meta']['hostvars'][node]
-            rv.append(Node(
-                publicIP=node['public_ip'],
-                privateIP=node['private_ip'],
-                name=node['name'],
-                launchTime=None,  # FIXME
-                nodeType=node['virtual_machine_size'],
-                preemptable=False)
-            )
+            if nodeType is None or nodeType == node['virtual_machine_size']:
+                rv.append(Node(
+                    publicIP=node['public_ip'],
+                    privateIP=node['private_ip'],
+                    name=node['name'],
+                    launchTime=None,  # FIXME
+                    nodeType=node['virtual_machine_size'],
+                    preemptable=False)
+                )
         return rv
 
     def remainingBillingInterval(self):
@@ -239,11 +263,11 @@ class AzureProvisioner(AnsibleDriver):
 
     def terminateNodes(self, nodes, preemptable=False):
         for node in nodes:
-            args = {
+            ansibleArgs = {
                 'vmname': node.name,
                 'resgrp': self.clusterName,
             }
-            self.callPlaybook(self.playbook['delete'], args, tags=['cluster'])
+            self.callPlaybook(self.playbook['delete'], ansibleArgs, tags=['cluster'])
 
     # TODO: Refactor such that cluster name is LCD of vnet name/storage name/etc
     @staticmethod
@@ -295,3 +319,52 @@ class AzureProvisioner(AnsibleDriver):
          # confirm it really is an RSA public key
          assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
          return masterPublicKey
+
+    def _waitForNode(self, instanceIP, role):
+         # wait here so docker commands can be used reliably afterwards
+         # TODO: make this more robust, e.g. If applicance doesn't exist, then this waits forever.
+         self._waitForSSHKeys(instanceIP)
+         self._waitForDockerDaemon(instanceIP)
+         self._waitForAppliance(instanceIP, role)
+
+    @classmethod
+    def _waitForSSHKeys(cls, instanceIP):
+        # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
+        # the keys are propagated and the instance can be SSH into
+        while True:
+            try:
+                logger.info('Attempting to establish SSH connection...')
+                cls._sshInstance(instanceIP, 'ps', sshOptions=['-oBatchMode=yes'])
+            except RuntimeError:
+                logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
+                time.sleep(10)
+            else:
+                logger.info('...SSH connection established.')
+                # ssh succeeded
+                return
+
+    @classmethod
+    def _waitForDockerDaemon(cls, ip_address):
+        logger.info('Waiting for docker on %s to start...', ip_address)
+        while True:
+            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'auxww')
+            time.sleep(5)
+            if 'dockerd' in output:
+                # docker daemon has started
+                logger.info('...Docker daemon started')
+                break
+            else:
+                logger.info('... Still waiting...')
+        logger.info('Docker daemon running')
+
+    @classmethod
+    def _waitForAppliance(cls, ip_address, role):
+        logger.info('Waiting for %s Toil appliance to start...', role)
+        while True:
+            output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps')
+            if role in output:
+                logger.info('...Toil appliance started')
+                break
+            else:
+                logger.info('...Still waiting, trying again in 10sec...')
+                time.sleep(10)

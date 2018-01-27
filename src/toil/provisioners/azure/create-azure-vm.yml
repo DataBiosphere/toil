@@ -88,8 +88,13 @@
       admin_username: core
       ssh_password_enabled: false
       public_ip_allocation_method: Static
+      #data_disks:
+      #  - lun: 0
+      #    disk_size_gb: "{{ diskSize }}"
+      #    managed_disk_type: Standard_LRS
       tags:
         role: "{{ role }}"
+        owner: "{{ owner }}"
       image:
         offer: CoreOS
         publisher: CoreOS
