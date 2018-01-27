@@ -1257,26 +1257,29 @@ def cacheDirName(workflowID):
 
 def getDirSizeRecursively(dirPath):
     """
-    This method will return the cumulative filesize in bytes of all of the files
-    in the directory and its subdirectories using 'du'.
+    This method will return the cumulative number of bytes occupied by the files 
+    on disk in the directory and its subdirectories.
 
-    This method will return a 'subprocess.CalledProcessError' if it is unable to
-    access a folder or file because of permissions.  Therefore this method should
-    only be called on the jobStore, and will alert the user if some portion is
-    inaccessible.  Everything in the jobStore should have appropriate permissions
-    as there is no way to read the filesize without permissions.
-
-    du is often faster than using os.lstat(), sometimes significantly so.
-
-    The call: 'du -s /some/path' should give the number of 512-byte blocks
-    allocated with the environment variable: BLOCKSIZE='512' set, and we
-    multiply this by 512 to return the filesize in bytes.
+    This method will raise a 'subprocess.CalledProcessError' if it is unable to
+    access a folder or file because of insufficient permissions.  Therefore this 
+    method should only be called on the jobStore, and will alert the user if some 
+    portion is inaccessible.  Everything in the jobStore should have appropriate 
+    permissions as there is no way to read the filesize without permissions.
+    
+    The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
+    --block-size=1 because Apple can't handle it.
 
     :param str dirPath: A valid path to a directory or file.
-    :return: Size, in bytes, of dirPath, and recursively everything within it.
+    :return: Total size, in bytes, of the file or directory at dirPath.
     """
+    
+    # du is often faster than using os.lstat(), sometimes significantly so.
+    
+    # The call: 'du -s /some/path' should give the number of 512-byte blocks
+    # allocated with the environment variable: BLOCKSIZE='512' set, and we
+    # multiply this by 512 to return the filesize in bytes.
     return int(subprocess.check_output(['du', '-s', dirPath],
-               env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode('utf-8')) * 512
+               env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode('ascii')) * 512
 
 
 def getFileSystemSize(dirPath):
