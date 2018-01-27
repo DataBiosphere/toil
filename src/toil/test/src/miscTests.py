@@ -42,7 +42,7 @@ class MiscTests(ToilTest):
         Disk space allocation varies from system to system.  The computed value
         should always be equal to or slightly greater than the creation value.
         This test generates a number of random directories and randomly sized
-        files to test this using getDirSizeRecursively, which calls 'du'.
+        files to test this using getDirSizeRecursively.
         '''
         from toil.common import getDirSizeRecursively
         # a list of the directories used in the test
