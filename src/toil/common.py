@@ -1268,7 +1268,7 @@ def getDirSizeRecursively(dirPath):
 
     du is often faster than using os.lstat(), sometimes significantly so.
 
-    The call: 'du -c /some/path' should give the number of 512-byte blocks
+    The call: 'du -s /some/path' should give the number of 512-byte blocks
     allocated with the environment variable: BLOCKSIZE='512' set, and we
     multiply this by 512 to return the filesize in bytes.
 
