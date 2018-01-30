@@ -14,7 +14,6 @@
 
 from setuptools import find_packages, setup
 
-botoRequirement = 'boto==2.38.0'
 
 
 def runSetup():
@@ -22,6 +21,39 @@ def runSetup():
     Calls setup(). This function exists so the setup() invocation preceded more internal
     functionality. The `version` module is imported dynamically by importVersion() below.
     """
+    boto = 'boto==2.38.0'
+    boto3 = 'boto3==1.4.7'
+    futures = 'futures==3.0.5'
+    pycrypto = 'pycrypto==2.6.1'
+    psutil = 'psutil==3.0.1'
+    azure = 'azure==2.0.0'
+    azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
+    pynacl = 'pynacl==1.1.2'
+    gcs = 'google-cloud-storage==1.6.0'
+    cwltool = 'cwltool==1.0.20180108222053'
+    schemaSalad = 'schema-salad >= 2.6, < 3'
+    galaxyLib = 'galaxy-lib==17.9.3'
+    cwltest = 'cwltest>=1.0.20170214185319'
+
+    mesos_reqs = [
+                  psutil]
+    aws_reqs = [
+                  boto,
+                  boto3,
+                  futures,
+                  pycrypto]
+    azure_reqs = [
+                  azure,
+                  azureCosmosdbTable]
+    encryption_reqs = [
+                  pynacl]
+    google_reqs = [
+                  gcs]
+    cwl_reqs = [
+                  cwltool,
+                  schemaSalad,
+                  galaxyLib,
+                  cwltest]
     setup(
         name='toil',
         version=version.distVersion,
@@ -39,25 +71,18 @@ def runSetup():
             'requests==2.18.4',
             'docker==2.5.1'],
         extras_require={
-            'mesos': [
-                'psutil==3.0.1'],
-            'aws': [
-                botoRequirement,
-                'boto3==1.4.7',
-                'futures==3.0.5',
-                'pycrypto==2.6.1'],
-            'azure': [
-                'azure==2.0.0',
-                'azure-cosmosdb-table==0.37.1'],
-            'encryption': [
-                'pynacl==1.1.2'],
-            'google': [
-                'google-cloud-storage==1.6.0'],
-            'cwl': [
-                'cwltool==1.0.20180108222053',
-                'schema-salad >= 2.6, < 3',
-                'galaxy-lib==17.9.3',
-                'cwltest>=1.0.20170214185319']},
+            'mesos': mesos_reqs,
+            'aws': aws_reqs,
+            'azure': azure_reqs,
+            'encryption': encryption_reqs,
+            'google': google_reqs,
+            'cwl': cwl_reqs,
+            'all': mesos_reqs +
+                   aws_reqs +
+                   azure_reqs +
+                   encryption_reqs +
+                   google_reqs +
+                   cwl_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for

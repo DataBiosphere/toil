@@ -190,8 +190,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         # TODO: round all elements of resources
 
-        self.jobQueues.insertJob(job, jobType)
         self.taskResources[jobID] = job.resources
+        self.jobQueues.insertJob(job, jobType)
         log.debug("... queued")
         return jobID
 
