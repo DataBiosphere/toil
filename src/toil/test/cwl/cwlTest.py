@@ -124,7 +124,7 @@ class CWLTest(ToilTest):
     def test_run_conformance(self):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
-        testhash = "97173a98a46e23b59700daf01a84f8dd16cee4e4"
+        testhash = "91f108df4d4ca567e567fc65f61feb0674467a84"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(cwlSpec):
             urlretrieve(url, "spec.zip")
