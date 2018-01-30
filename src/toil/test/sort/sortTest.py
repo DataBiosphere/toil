@@ -30,6 +30,7 @@ from six.moves import xrange
 from toil import resolveEntryPoint
 
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
+from toil.common import Toil
 from toil.job import Job, JobException
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
@@ -171,6 +172,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                         totalTrys += 1
             finally:
                 subprocess.check_call([resolveEntryPoint('toil'), 'clean', jobStoreLocator])
+                # final test to make sure the jobStore was actually deleted
+                self.assertRaises(NoSuchJobStoreException, Toil.resumeJobStore, jobStoreLocator)
+
+
 
     @needs_aws
     def testAwsSingle(self):
