@@ -18,7 +18,7 @@ from builtins import str
 from datetime import datetime
 import logging
 import time
-from threading import Thread
+from threading import Thread, Lock
 from abc import ABCMeta, abstractmethod
 
 # Python 3 compatibility imports
@@ -60,6 +60,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             self.killedJobsQueue = killedJobsQueue
             self.waitingJobs = list()
             self.runningJobs = set()
+            self.runningJobsLock = Lock()
             self.boss = boss
             self.allocatedCpus = dict()
             self.batchJobIDs = dict()
@@ -90,7 +91,8 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
             :param: string jobID: toil job ID
             """
-            self.runningJobs.remove(jobID)
+            with self.runningJobsLock:
+                self.runningJobs.remove(jobID)
             del self.allocatedCpus[jobID]
             del self.batchJobIDs[jobID]
 
@@ -126,7 +128,8 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 self.batchJobIDs[jobID] = (batchJobID, None)
 
                 # Add to queue of running jobs
-                self.runningJobs.add(jobID)
+                with self.runningJobsLock:
+                    self.runningJobs.add(jobID)
 
                 # Add to allocated resources
                 self.allocatedCpus[jobID] = cpu

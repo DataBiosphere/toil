@@ -43,7 +43,8 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
         """
         def getRunningJobIDs(self):
             times = {}
-            currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
+            with self.runningJobsLock:
+                currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
             process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
