@@ -47,7 +47,7 @@ class CWLTest(ToilTest):
         from toil.cwl import cwltoil
         rootDir = self._projectRootPath()
         st = StringIO()
-        cwltoil.main(['--debug-worker', '--outdir', outDir,
+        cwltoil.main(['--debugWorker', '--outdir', outDir,
                      os.path.join(rootDir, cwlfile),
                      os.path.join(rootDir, jobfile)], stdout=st)
         out = json.loads(st.getvalue())
@@ -122,7 +122,7 @@ class CWLTest(ToilTest):
     def test_run_conformance(self):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
-        testhash = "7f510ec768b424601beb8c86700343afe722ac76"
+        testhash = "97173a98a46e23b59700daf01a84f8dd16cee4e4"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(cwlSpec):
             urlretrieve(url, "spec.zip")

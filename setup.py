@@ -14,7 +14,6 @@
 
 from setuptools import find_packages, setup
 
-botoRequirement = 'boto==2.38.0'
 
 
 def runSetup():
@@ -22,6 +21,50 @@ def runSetup():
     Calls setup(). This function exists so the setup() invocation preceded more internal
     functionality. The `version` module is imported dynamically by importVersion() below.
     """
+    boto = 'boto==2.38.0'
+    boto3 = 'boto3==1.4.7'
+    futures = 'futures==3.0.5'
+    pycrypto = 'pycrypto==2.6.1'
+    psutil = 'psutil==3.0.1'
+    azure = 'azure==2.0.0'
+    azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
+    azureAnsible = 'ansible[azure]', #==2.4.3.0'
+    azureStorage = 'azure-storage==0.35.1'
+    msRest = 'msrest==0.4.25'
+    dnsPython = 'dnspython==1.15.0'
+    pipettor = 'pipettor==0.2.0'
+    pynacl = 'pynacl==1.1.2'
+    gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
+    cwltool = 'cwltool==1.0.20180108222053'
+    schemaSalad = 'schema-salad >= 2.6, < 3'
+    galaxyLib = 'galaxy-lib==17.9.3'
+    cwltest = 'cwltest>=1.0.20170214185319'
+
+    mesos_reqs = [
+                  psutil]
+    aws_reqs = [
+                  boto,
+                  boto3,
+                  futures,
+                  pycrypto]
+    azure_reqs = [
+                  azure,
+                  azureCosmosdbTable,
+                  azureAnsible,
+                  azureStorage,
+                  msRest,
+                  dnsPython,
+                  pipettor]
+    encryption_reqs = [
+                  pynacl]
+    google_reqs = [
+                  gcs_oauth2_boto_plugin,
+                  boto]
+    cwl_reqs = [
+                  cwltool,
+                  schemaSalad,
+                  galaxyLib,
+                  cwltest]
     setup(
         name='toil',
         version=version.distVersion,
@@ -39,30 +82,18 @@ def runSetup():
             'requests==2.18.4',
             'docker==2.5.1'],
         extras_require={
-            'mesos': [
-                'psutil==3.0.1'],
-            'aws': [
-                botoRequirement,
-                'boto3==1.4.7',
-                'futures==3.0.5',
-                'pycrypto==2.6.1'],
-            'azure': [
-                'azure-cosmosdb-table==0.37.1',
-                'ansible[azure]', #==2.4.3.0',
-                'azure-storage==0.35.1',
-                'msrest==0.4.25',
-                'dnspython==1.15.0',
-                'pipettor==0.2.0'],
-            'encryption': [
-                'pynacl==1.1.2'],
-            'google': [
-                'gcs_oauth2_boto_plugin==1.14',
-                botoRequirement],
-            'cwl': [
-                'cwltool==1.0.20170822192924',
-                'schema-salad >= 2.6, < 3',
-                'galaxy-lib==17.9.3',
-                'cwltest>=1.0.20170214185319']},
+            'mesos': mesos_reqs,
+            'aws': aws_reqs,
+            'azure': azure_reqs,
+            'encryption': encryption_reqs,
+            'google': google_reqs,
+            'cwl': cwl_reqs,
+            'all': mesos_reqs +
+                   aws_reqs +
+                   azure_reqs +
+                   encryption_reqs +
+                   google_reqs +
+                   cwl_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
@@ -80,7 +111,7 @@ def runSetup():
                 '_toil_worker = toil.worker:main',
                 'cwltoil = toil.cwl.cwltoil:main [cwl]',
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
-                'cwl-runner = toil.cwl.cwltoil:main [cwl]',
+                'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]']})
 
 

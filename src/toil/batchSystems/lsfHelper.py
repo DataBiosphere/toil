@@ -140,11 +140,23 @@ def get_lsf_units(resource=False):
     else:
         return DEFAULT_LSF_UNITS
 
-def parse_memory(mem):
+def parse_memory_resource(mem):
+    """
+    Parse memory parameter for -R
+    """
+    return parse_memory(mem, True)
+
+def parse_memory_limit(mem):
+    """
+    Parse memory parameter for -M
+    """
+    return parse_memory(mem, False)
+
+def parse_memory(mem, resource):
     """
     Parse memory parameter
     """
-    lsf_unit = get_lsf_units(resource=True)
+    lsf_unit = get_lsf_units(resource=resource)
     return convert_mb(float(mem) * 1024, lsf_unit)
 
 

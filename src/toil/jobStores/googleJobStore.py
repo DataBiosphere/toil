@@ -245,7 +245,7 @@ class GoogleJobStore(AbstractJobStore):
         self._writeFile(fileID, StringIO(""))
         return fileID
 
-    def readFile(self, jobStoreFileID, localFilePath):
+    def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         # used on non-shared files which will be encrypted if avaliable
         headers = self.encryptedHeaders
         # checking for JobStoreID existance

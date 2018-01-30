@@ -837,7 +837,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
-    def readFile(self, jobStoreFileID, localFilePath):
+    def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         """
         Copies the file referenced by jobStoreFileID to the given local file path. The version
         will be consistent with the last copy of the file written/updated.

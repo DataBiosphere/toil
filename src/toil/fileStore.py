@@ -201,7 +201,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
         return self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID)
 
     @abstractmethod
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False):
+    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
         """
         Makes the file associated with fileStoreID available locally. If mutable is True,
         then a copy of the file will be created locally so that the original is not modified
@@ -595,7 +595,7 @@ class CachingFileStore(FileStore):
         # TODO: Make this work with caching
         return super(CachingFileStore, self).writeGlobalFileStream(cleanup)
 
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False):
+    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
         """
         Downloads a file described by fileStoreID from the file store to the local directory.
         The function first looks for the file in the cache and if found, it hardlinks to the
@@ -1648,7 +1648,7 @@ class NonCachingFileStore(FileStore):
         self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
 
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False):
+    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
@@ -1656,7 +1656,7 @@ class NonCachingFileStore(FileStore):
         else:
             localFilePath = self.getLocalTempFileName()
 
-        self.jobStore.readFile(fileStoreID, localFilePath)
+        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
         self.localFileMap[fileStoreID].append(localFilePath)
         return localFilePath
 

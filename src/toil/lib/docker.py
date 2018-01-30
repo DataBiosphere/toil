@@ -61,6 +61,7 @@ def subprocessDockerCall(job,
                          dockerParameters=None,
                          checkOutput=True,
                          outfile=None,
+                         errfile=None,
                          defer=None):
     """
     Deprecated.  Calls Docker using subprocess.check_output().
@@ -92,6 +93,7 @@ def subprocessDockerCall(job,
              These defaults are removed if docker_parmaters is passed,
              so be sure to pass them if they are desired.
     :param file outfile: Pipe output of Docker call to file handle
+    :param file errfile: Pipe standard error of Docker call to file handle
     :param int defer: What action should be taken on the container upon job
                       completion?
            FORGO (0) will leave the container untouched.
@@ -166,6 +168,8 @@ def subprocessDockerCall(job,
     params = {}
     if outfile:
         params['stdout'] = outfile
+    if errfile:
+        params['stderr'] = errfile
     if checkOutput:
         callMethod = subprocess.check_output
     else:

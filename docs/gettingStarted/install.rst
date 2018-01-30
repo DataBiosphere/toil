@@ -67,11 +67,17 @@ install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then
 
     $ pip install toil[aws,mesos,azure,google,encryption,cwl]
 
+or::
+
+    $ pip install toil[all]
+
 Here's what each extra provides:
 
 +----------------+------------------------------------------------------------+
 | Extra          | Description                                                |
 +================+============================================================+
+| ``all``        | Installs all extras.                                       |
++----------------+------------------------------------------------------------+
 | ``aws``        | Provides support for managing a cluster on Amazon Web      |
 |                | Service (`AWS`_) using Toil's built in :ref:`clusterRef`.  |
 |                | Clusters can scale up and down automatically.              |
@@ -237,3 +243,12 @@ To build the docs, run ``make develop`` with all extras followed by
 ::
 
     $ make docs
+
+    
+To run a quick batch of tests (this should take less than 30 minutes)
+
+::
+
+	$ export TOIL_TEST_QUICK=True; make test
+	
+For more information on testing see :ref:`runningTests`.
