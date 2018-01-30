@@ -107,16 +107,19 @@ class GoogleJobStore(AbstractJobStore):
                 assert len(self.sseKey) == 32
 
     def resume(self):
-        storage_client = storage.Client()
+        storageClient = storage.Client()
         try:
-            self.bucket = storage_client.get_bucket(self.bucketName)
+            self.bucket = storageClient.get_bucket(self.bucketName)
         except exceptions.NotFound:
             raise NoSuchJobStoreException(self.locator)
         super(GoogleJobStore, self).resume()
 
     def destroy(self):
-        # just return if not connect to physical storage. Needed for idempotency
-        if self.bucket is None:
+        storageClient = storage.Client()
+        try:
+            self.bucket = storageClient.get_bucket(self.bucketName)
+        except exceptions.NotFound:
+            # just return if not connect to physical storage. Needed for idempotency
             return
 
         for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
