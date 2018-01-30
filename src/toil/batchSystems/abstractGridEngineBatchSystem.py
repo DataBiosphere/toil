@@ -77,7 +77,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             :param: string jobID: toil job ID
             """
             if jobID not in self.batchJobIDs:
-                RuntimeError("Unknown jobID, could not be converted")
+                raise RuntimeError("Unknown jobID, could not be converted")
 
             (job, task) = self.batchJobIDs[jobID]
             if task is None:
