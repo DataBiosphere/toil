@@ -30,10 +30,10 @@ def runSetup():
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     pynacl = 'pynacl==1.1.2'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
-    cwltool = 'cwltool==1.0.20180108222053'
+    cwltool = 'cwltool==1.0.20180130110340'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
-    cwltest = 'cwltest>=1.0.20170214185319'
+    cwltest = 'cwltest>=1.0.20180130081614'
 
     mesos_reqs = [
                   psutil]
