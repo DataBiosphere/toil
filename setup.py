@@ -34,6 +34,7 @@ def runSetup():
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
     cwltest = 'cwltest>=1.0.20180130081614'
+    htcondor = 'htcondor>=8.6.0'
 
     mesos_reqs = [
                   psutil]
@@ -55,6 +56,8 @@ def runSetup():
                   schemaSalad,
                   galaxyLib,
                   cwltest]
+    htcondor_reqs = [
+                  htcondor]
     setup(
         name='toil',
         version=version.distVersion,
@@ -78,12 +81,14 @@ def runSetup():
             'encryption': encryption_reqs,
             'google': google_reqs,
             'cwl': cwl_reqs,
+            'htcondor': htcondor_reqs,
             'all': mesos_reqs +
                    aws_reqs +
                    azure_reqs +
                    encryption_reqs +
                    google_reqs +
-                   cwl_reqs},
+                   cwl_reqs +
+                   htcondor},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
