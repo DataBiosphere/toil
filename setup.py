@@ -88,7 +88,7 @@ def runSetup():
                    encryption_reqs +
                    google_reqs +
                    cwl_reqs +
-                   htcondor},
+                   htcondor_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
