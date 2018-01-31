@@ -11,35 +11,44 @@
 # All configuration values have a default; values that are commented out
 # serve to show the default.
 
+from __future__ import absolute_import
 import sys
 import os
 import inspect
 import re
 from datetime import datetime
-
-# If extensions (or modules to document with autodoc) are in another directory,
-# add these directories to sys.path here. If the directory is relative to the
-# documentation root, use os.path.abspath to make it absolute, like shown here.
-sys.path.insert(0, os.path.abspath('../src'))
-
 import toil.version
 
-# This makes the modules located in docs/vendor available to import
-sys.path.insert(0, os.path.abspath('./vendor'))
-import sphinxcontrib.fulltoc
+# This makes the modules located in docs/vendor/sphinxcontrib available to import
+sphinxPath = os.path.abspath(os.path.join(os.path.pardir, os.path.dirname('docs/vendor/sphinxcontrib/')))
+sys.path.append(sphinxPath)
+import fulltoc
 
 
-def real_dir_name(p, n=1):
-    p = os.path.realpath(p)
+def fetch_parent_dir(filepath, n=1):
+    '''Returns a parent directory, n places above the input filepath.
+
+    Equivalent to something like: '/home/user/dir'.split('/')[-2] if n=2.
+    '''
+    filepath = os.path.realpath(filepath)
     for i in range(n):
-        p = os.path.dirname(p)
-    return p
+        filepath = os.path.dirname(filepath)
+    return os.path.basename(filepath)
 
 if not hasattr(sys, 'real_prefix'):
     raise RuntimeError('A virtualenv must be active and Sphinx must be installed in it')
 path_to_dir = os.path.dirname(os.path.abspath(__file__))
 
-assert real_dir_name(__file__, 2) == real_dir_name(toil.version.__file__, 3), \
+# Example of toil.version.__file__ on sphinx:
+# /home/docs/checkouts/readthedocs.org/user_builds/toil/envs/3.13.0/local/lib/python2.7/site-packages/toil-3.13.0a1-py2.7.egg/toil/version.pyc
+envPath = os.path.abspath(toil.version.__file__)
+
+# Example of __file__ on sphinx:
+# /home/docs/checkouts/readthedocs.org/user_builds/toil/checkouts/3.13.0/docs/conf.py
+wdPath_version = fetch_parent_dir(__file__, 2)
+# Expected output: 3.13.0
+
+assert wdPath_version in envPath, \
     "Another Toil installation seems to have precedence over this working directory."
 toilVersion = toil.version.baseVersion
 
@@ -48,9 +57,8 @@ toilVersion = toil.version.baseVersion
 # If your documentation needs a minimal Sphinx version, state it here.
 #needs_sphinx = '1.0'
 
-# Add any Sphinx extension module names here, as strings. They can be
-# extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
-# ones.
+# Add any Sphinx extension module names here, as strings. They can be extensions
+# coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.doctest',
@@ -58,15 +66,12 @@ extensions = [
     'sphinx.ext.coverage',
     'sphinx.ext.viewcode',
     'sphinx.ext.intersphinx',
-    'sphinxcontrib.fulltoc',
+    'fulltoc',
 ]
 
-intersphinx_mapping = {
-    'python': ('https://docs.python.org/2', None),
-}
+intersphinx_mapping = {'python': ('https://docs.python.org/2', None),}
 
-# Make these link definitions available everywhere so we don't need to keep
-# repeating ourselves.
+# Link definitions available everywhere so we don't need to keep repeating ourselves.
 rst_epilog = """
 .. _Common Workflow Language: http://www.commonwl.org/
 .. _CGCloud: https://github.com/BD2KGenomics/cgcloud
@@ -77,17 +82,14 @@ def skip(app, what, name, obj, skip, options):
                                    or inspect.isclass(obj)
                                    or name.startswith('_') and not inspect.ismodule(obj))
 
-
 def setup(app):
     app.connect('autodoc-skip-member', skip)
-
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
-# The suffix(es) of source filenames.
-# You can specify multiple suffix as a list of string:
-# source_suffix = ['.rst', '.md']
+# The suffix(es) of source filenames.  Specify multiple suffix as list of string:
+# Example: source_suffix = ['.rst', '.md']
 source_suffix = '.rst'
 
 # The encoding of source files.
@@ -151,7 +153,7 @@ pygments_style = 'sphinx'
 # If true, keep warnings as "system message" paragraphs in the built documents.
 #keep_warnings = False
 
-# If true, `todo` and `todoList` produce output, else they produce nothing.
+# If true, 2do and 2doList produce output, else they produce nothing.
 todo_include_todos = True
 
 # Include doc string for __init__ method in the documentation
