@@ -34,12 +34,15 @@ from six.moves.queue import Empty, Queue
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport
-from toil.batchSystems.lsfHelper import parse_memory_resource, parse_memory_limit, per_core_reservation
+from toil.batchSystems.lsfHelper import (parse_memory_resource,
+                                         parse_memory_limit,
+                                         per_core_reservation,
+                                         parallel_sched_by_slot)
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
-def prepareBsub(cpu, mem):
+def prepareBsub(cpuMin, cpuMax, memMin, memMax, tmpdirMin, tmpdirMax):
     """
     Make a bsub commandline to execute.
 
@@ -47,22 +50,40 @@ def prepareBsub(cpu, mem):
       cpu: number of cores needed
       mem: number of bytes of memory needed
     """
-    if mem:
+    bsubMem = ''
+    if memMin or memMax:
+        if memMax and not memMin:
+            mem = memMax
+        else:
+            mem = memMin
         if per_core_reservation():
-            mem = float(mem)/1024**3/int(cpu)
+            mem = float(mem)/1024**3/int(cpuMin)
             mem_resource = parse_memory_resource(mem)
             mem_limit = parse_memory_limit(mem)
         else:
-            mem = old_div(float(mem),1024**3)
+            mem = old_div(float(mem), 1024**3)
             mem_resource = parse_memory_resource(mem)
             mem_limit = parse_memory_limit(mem)
-        bsubMem = '-R "select[type==X86_64 && mem > ' + str(mem_resource) + '] '\
-            'rusage[mem=' + str(mem_resource) + ']" -M' + str(mem_limit)
-    else:
-        bsubMem = ''
-    cpuStr = '' if cpu is None else '-n ' + str(int(cpu))
-    bsubline = ["bsub", bsubMem, cpuStr,"-cwd", ".", "-o", "/dev/null", "-e",
-        "/dev/null"]
+        bsubMem = '-R "select[type==X86_64 && mem > ' + str(mem_resource) + \
+            '] rusage[mem=' + str(mem_resource) + ']" -M' + str(mem_limit)
+    bsubCpu = ''
+    if cpuMin or cpuMax:
+        if cpuMin and not cpuMax:
+            bsubCpu = '-n %d' % cpuMin
+        elif not cpuMin and cpuMax:
+            bsubCpu = '-n 1,%d' % cpuMax
+        else:
+            bsubCpu = '-n %d,%d' % cpuMin, cpuMax
+    bsubTmpdir = ''
+    if tmpdirMin or tmpdirMax:
+        if tmpdirMax and not tmpdirMin:
+            bsubTmpdir = '-R "rusage[tmp=%d]"' % tmpdirMax
+        else:
+            bsubTmpdir = '-R "rusage[tmp=%d]"' % tmpdirMin
+    bsubline = ["bsub", bsubMem, bsubCpu, bsubTmpdir, "-cwd", ".", "-o",
+                "/dev/null", "-e", "/dev/null"]
+    if not parallel_sched_by_slot():
+        bsubline.append('-R "span[hosts=1]"')
     lsfArgs = os.getenv('TOIL_LSF_ARGS')
     if lsfArgs:
         bsubline.extend(lsfArgs.split())
@@ -70,7 +91,9 @@ def prepareBsub(cpu, mem):
 
 
 def bsub(bsubline):
-    process = subprocess.Popen(" ".join(bsubline), shell=True, stdout = subprocess.PIPE, stderr = subprocess.STDOUT)
+    process = subprocess.Popen(" ".join(bsubline), shell=True,
+                               stdout=subprocess.PIPE,
+                               stderr=subprocess.STDOUT)
     liney = process.stdout.readline()
     logger.debug("BSUB: " + liney)
     result = int(liney.strip().split()[1].strip('<>'))
@@ -199,9 +222,12 @@ class LSFBatchSystem(BatchSystemLocalSupport):
             return localID
         jobID = self.getNextJobID()
         self.currentjobs.add(jobID)
-        bsubline = prepareBsub(jobNode.cores, jobNode.memory) + [jobNode.command]
+        bsubline = prepareBsub(jobNode.cores, jobNode.coresMin, jobNode.memory,
+                               jobNode.memoryMin, jobNode.tmpdirMin,
+                               jobNode.tmpdirMax) + [jobNode.command]
         self.newJobsQueue.put((jobID, bsubline))
-        logger.debug("Issued the job command: %s with job id: %s " % (jobNode.command, str(jobID)))
+        logger.debug("Issued the job command: %s with job id: %s " %
+                     (jobNode.command, str(jobID)))
         return jobID
 
     def getLsfID(self, jobID):

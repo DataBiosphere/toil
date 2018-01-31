@@ -36,6 +36,7 @@ LSF_CONF_ENV = ["LSF_CONFDIR", "LSF_ENVDIR"]
 DEFAULT_LSF_UNITS = "KB"
 DEFAULT_RESOURCE_UNITS = "MB"
 
+
 def find(basedir, string):
     """
     walk basedir and return all files matching string
@@ -46,6 +47,7 @@ def find(basedir, string):
             matches.append(os.path.join(root, filename))
     return matches
 
+
 def find_first_match(basedir, string):
     """
     return the first file that matches string starting from basedir
@@ -53,12 +55,14 @@ def find_first_match(basedir, string):
     matches = find(basedir, string)
     return matches[0] if matches else matches
 
+
 def get_conf_file(filename, env):
     conf_path = os.environ.get(env)
     if not conf_path:
         return None
     conf_file = find_first_match(conf_path, filename)
     return conf_file
+
 
 def apply_conf_file(fn, conf_filename):
     for env in LSF_CONF_ENV:
@@ -70,17 +74,27 @@ def apply_conf_file(fn, conf_filename):
                 return value
     return None
 
+
 def per_core_reserve_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
         if k == "RESOURCE_RESERVE_PER_SLOT":
             return v.upper()
     return None
 
+
 def get_lsf_units_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
         if k == "LSF_UNIT_FOR_LIMITS":
             return v
     return None
+
+
+def parallel_sched_by_slot_from_stream(stream):
+    for k, v in tokenize_conf_stream(stream):
+        if k == "PARALLEL_SCHED_BY_SLOT":
+            return v.upper()
+    return None
+
 
 def tokenize_conf_stream(conf_handle):
     """
@@ -94,6 +108,7 @@ def tokenize_conf_stream(conf_handle):
             continue
         yield (tokens[0].strip(), tokens[1].strip())
 
+
 def apply_bparams(fn):
     """
     apply fn to each line of bparams, returning the result
@@ -104,6 +119,7 @@ def apply_bparams(fn):
     except:
         return None
     return fn(output.split("\n"))
+
 
 def apply_lsadmin(fn):
     """
@@ -140,17 +156,20 @@ def get_lsf_units(resource=False):
     else:
         return DEFAULT_LSF_UNITS
 
+
 def parse_memory_resource(mem):
     """
     Parse memory parameter for -R
     """
     return parse_memory(mem, True)
 
+
 def parse_memory_limit(mem):
     """
     Parse memory parameter for -M
     """
     return parse_memory(mem, False)
+
 
 def parse_memory(mem, resource):
     """
@@ -167,24 +186,52 @@ def per_core_reservation():
     """
     per_core = apply_bparams(per_core_reserve_from_stream)
     if per_core:
-        if per_core.upper() == "Y":
+        if per_core == "Y":
             return True
         else:
             return False
 
     per_core = apply_lsadmin(per_core_reserve_from_stream)
     if per_core:
-        if per_core.upper() == "Y":
+        if per_core == "Y":
             return True
         else:
             return False
 
     per_core = apply_conf_file(per_core_reserve_from_stream, LSB_PARAMS_FILENAME)
-    if per_core and per_core.upper() == "Y":
+    if per_core and per_core == "Y":
         return True
-    else:
-        return False
+
     return False
+
+
+def parallel_sched_by_slot():
+    """
+    returns True if the cluster is configured for span[] to control number of
+        job slots
+    False if span[] is per processor (the default)
+    """
+    parallel_sched_by_slot = apply_bparams(parallel_sched_by_slot_from_stream)
+    if parallel_sched_by_slot:
+        if parallel_sched_by_slot == "Y":
+            return True
+        else:
+            return False
+
+    parallel_sched_by_slot = apply_lsadmin(parallel_sched_by_slot_from_stream)
+    if parallel_sched_by_slot:
+        if parallel_sched_by_slot == "Y":
+            return True
+        else:
+            return False
+
+    parallel_sched_by_slot = apply_conf_file(
+            parallel_sched_by_slot_from_stream, LSB_PARAMS_FILENAME)
+    if parallel_sched_by_slot and parallel_sched_by_slot == "Y":
+            return True
+
+    return False
+
 
 def convert_mb(kb, unit):
     UNITS = {"B": -2,
@@ -195,7 +242,6 @@ def convert_mb(kb, unit):
     assert unit in UNITS, ("%s not a valid unit, valid units are %s."
                            % (unit, list(UNITS.keys())))
     return int(old_div(float(kb), float(math.pow(1024, UNITS[unit]))))
-
 
 
 if __name__ == "__main__":
