@@ -1,3 +1,5 @@
+import random
+
 from math import sqrt
 
 
@@ -104,10 +106,12 @@ def partition_seq(seq, size):
 
 def truncExpBackoff():
     # as recommended here https://forums.aws.amazon.com/thread.jspa?messageID=406788#406788
+    # and here https://cloud.google.com/storage/docs/xml-api/reference-status
     yield 0
     t = 1
     while t < 1024:
-        yield t
+        # google suggests this dither
+        yield t + random.random()
         t *= 2
     while True:
         yield t

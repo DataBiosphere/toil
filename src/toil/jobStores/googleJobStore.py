@@ -29,7 +29,7 @@ except ImportError:
 
 from bd2k.util.retry import retry
 from google.cloud import storage, exceptions
-from google.api_core.exceptions import GoogleAPICallError
+from google.api_core.exceptions import GoogleAPICallError, InternalServerError, ServiceUnavailable
 from toil.lib.misc import truncExpBackoff
 
 # Python 3 compatibility imports
@@ -53,13 +53,15 @@ GOOGLE_STORAGE = 'gs'
 # - better way to assign job ids? - currently 'job'+uuid
 
 
-def googleRateLimit(e):
+def googleRetryPredicate(e):
     """
     necessary because under heavy load google may throw
         TooManyRequests: 429
         The project exceeded the rate limit for creating and deleting buckets.
     """
     if isinstance(e, GoogleAPICallError) and e.code == 429:
+        return True
+    if isinstance(e, InternalServerError) or isinstance(e, ServiceUnavailable):
         return True
     return False
 
@@ -93,7 +95,7 @@ class GoogleJobStore(AbstractJobStore):
     def initialize(self, config=None):
         storageClient = storage.Client()
         try:
-            for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
+            for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRetryPredicate):
                 with attempt:
                     self.bucket = storageClient.create_bucket(self.bucketName)
         except exceptions.Conflict:
@@ -122,7 +124,7 @@ class GoogleJobStore(AbstractJobStore):
             # just return if not connect to physical storage. Needed for idempotency
             return
 
-        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
+        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRetryPredicate):
             with attempt:
                 try:
                     self.bucket.delete(force=True)

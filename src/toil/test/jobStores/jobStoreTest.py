@@ -59,7 +59,7 @@ from toil.fileStore import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
-from toil.jobStores.googleJobStore import googleRateLimit
+from toil.jobStores.googleJobStore import googleRetryPredicate
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import (ToilTest,
                        needs_aws,
@@ -921,13 +921,13 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         from google.cloud import storage
         bucketName = b"import-export-test-" + bytes(uuid.uuid4())
         storageClient = storage.Client()
-        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
+        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRetryPredicate):
             with attempt:
                 return storageClient.create_bucket(bucketName)
 
     def _cleanUpExternalStore(self, bucket):
         # this is copied from googleJobStore.destroy
-        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRateLimit):
+        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRetryPredicate):
             with attempt:
                 try:
                     bucket.delete(force=True)
