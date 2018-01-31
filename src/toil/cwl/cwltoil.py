@@ -426,15 +426,22 @@ class CWLJob(Job):
             builder.tmpdir = None
             builder.timeout = 0
             builder.resources = {}
-        req = tool.evalResources(builder, {})
+
+        def dummy_selector(request):
+            return request
+        req = tool.evalResources(builder, {"select_resource": dummy_selector})
         self.cwltool = remove_pickle_problems(tool)
         # pass the default of None if basecommand is empty
         unitName = self.cwltool.tool.get("baseCommand", None)
         if isinstance(unitName, (list, tuple)):
             unitName = ' '.join(unitName)
-        super(CWLJob, self).__init__(cores=req["cores"],
-                                     memory=(req["ram"]*(2**20)),
-                                     disk=((req["tmpdirSize"]*(2**20)) + (req["outdirSize"]*(2**20))),
+        super(CWLJob, self).__init__(cores=req["coresMax"],
+                                     coresMin=req["coresMin"],
+                                     memory=req["ramMax"]*(2**20),
+                                     memoryMin=req["ramMin"]*(2**20),
+                                     disk=req["outdirMin"]*(2**20),
+                                     tmpdirMin=req["tmpdirMin"]*(2**20),
+                                     tmpdirMax=req["tmpdirMax"]*(2**20),
                                      unitName=unitName)
 
         self.cwljob = cwljob
