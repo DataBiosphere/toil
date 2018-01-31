@@ -429,7 +429,7 @@ class CWLJob(Job):
 
         def dummy_selector(request):
             return request
-        req = tool.evalResources(builder, {"select_resource": dummy_selector})
+        req = tool.evalResources(builder, {"select_resources": dummy_selector})
         self.cwltool = remove_pickle_problems(tool)
         # pass the default of None if basecommand is empty
         unitName = self.cwltool.tool.get("baseCommand", None)
