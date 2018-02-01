@@ -78,8 +78,8 @@ class JobQueue(object):
 
 @total_ordering
 class ResourceRequirement(object):
-    def __init__(self, memory, cores, disk, preemptable, memoryMin, coresMin,
-            tmpdirMin, tmpdirMax):
+    def __init__(self, memory, cores, disk, preemptable, memoryMin=None,
+                 coresMin=None, tmpdirMin=None, tmpdirMax=None):
         # Number of bytes (!) needed for a task
         self.memory = memory
         # Number of CPU cores needed for a task
