@@ -932,7 +932,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             # throws ValueError if bucket has more than 256 objects. Then we must delete manually
         except ValueError:
             bucket.delete_blobs(bucket.list_blobs)
-        bucket.delete()
+            bucket.delete()
 
 
 @needs_aws
