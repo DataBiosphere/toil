@@ -59,7 +59,7 @@ from toil.fileStore import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
-from toil.jobStores.googleJobStore import googleRetryPredicate
+from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import (ToilTest,
                        needs_aws,
@@ -917,24 +917,22 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         contents = GoogleJobStore._getBlobFromURL(urlparse.urlparse(url)).download_as_string()
         return hashlib.md5(contents).hexdigest()
 
+    @googleRetry
     def _createExternalStore(self):
         from google.cloud import storage
         bucketName = b"import-export-test-" + bytes(uuid.uuid4())
         storageClient = storage.Client()
-        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRetryPredicate):
-            with attempt:
-                return storageClient.create_bucket(bucketName)
+        return storageClient.create_bucket(bucketName)
 
+    @googleRetry
     def _cleanUpExternalStore(self, bucket):
         # this is copied from googleJobStore.destroy
-        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRetryPredicate):
-            with attempt:
-                try:
-                    bucket.delete(force=True)
-                    # throws ValueError if bucket has more than 256 objects. Then we must delete manually
-                except ValueError:
-                    bucket.delete_blobs(bucket.list_blobs)
-                    bucket.delete()
+        try:
+            bucket.delete(force=True)
+            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+        except ValueError:
+            bucket.delete_blobs(bucket.list_blobs)
+        bucket.delete()
 
 
 @needs_aws

@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import
 
+from functools import wraps
+
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
@@ -58,12 +60,31 @@ def googleRetryPredicate(e):
     necessary because under heavy load google may throw
         TooManyRequests: 429
         The project exceeded the rate limit for creating and deleting buckets.
+
+    or numerous other server errors which need to be retried.
     """
     if isinstance(e, GoogleAPICallError) and e.code == 429:
         return True
     if isinstance(e, InternalServerError) or isinstance(e, ServiceUnavailable):
         return True
     return False
+
+
+def googleRetry(f):
+    """
+    This decorator retries the wrapped function if google throws any angry service
+    errors.
+
+    It should wrap any function that makes use of the Google Client API
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        for attempt in retry(delays=truncExpBackoff(),
+                             timeout=300,
+                             predicate=googleRetryPredicate):
+            with attempt:
+                return f(*args, **kwargs)
+    return wrapper
 
 
 class GoogleJobStore(AbstractJobStore):
@@ -91,13 +112,12 @@ class GoogleJobStore(AbstractJobStore):
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
         self.sseKey = None
+        self.storageClient = storage.Client()
 
+    @googleRetry
     def initialize(self, config=None):
-        storageClient = storage.Client()
         try:
-            for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRetryPredicate):
-                with attempt:
-                    self.bucket = storageClient.create_bucket(self.bucketName)
+            self.bucket = self.storageClient.create_bucket(self.bucketName)
         except exceptions.Conflict:
             raise JobStoreExistsException(self.locator)
         super(GoogleJobStore, self).initialize(config)
@@ -108,31 +128,29 @@ class GoogleJobStore(AbstractJobStore):
                 self.sseKey = bytes(f.read())
                 assert len(self.sseKey) == 32
 
+    @googleRetry
     def resume(self):
-        storageClient = storage.Client()
         try:
-            self.bucket = storageClient.get_bucket(self.bucketName)
+            self.bucket = self.storageClient.get_bucket(self.bucketName)
         except exceptions.NotFound:
             raise NoSuchJobStoreException(self.locator)
         super(GoogleJobStore, self).resume()
 
+    @googleRetry
     def destroy(self):
-        storageClient = storage.Client()
         try:
-            self.bucket = storageClient.get_bucket(self.bucketName)
+            self.bucket = self.storageClient.get_bucket(self.bucketName)
+
         except exceptions.NotFound:
             # just return if not connect to physical storage. Needed for idempotency
             return
-
-        for attempt in retry(delays=truncExpBackoff(), timeout=300, predicate=googleRetryPredicate):
-            with attempt:
-                try:
-                    self.bucket.delete(force=True)
-                    # throws ValueError if bucket has more than 256 objects. Then we must delete manually
-                except ValueError:
-                    self.bucket.delete_blobs(self.bucket.list_blobs)
-                    self.bucket.delete()
-                    # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
+        try:
+            self.bucket.delete(force=True)
+            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+        except ValueError:
+            self.bucket.delete_blobs(self.bucket.list_blobs)
+            self.bucket.delete()
+            # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
 
         # google freaks out if we call delete multiple times on the bucket obj, so after success
         # just set to None.
@@ -152,9 +170,11 @@ class GoogleJobStore(AbstractJobStore):
     def _newJobID(self):
         return "job"+str(uuid.uuid4())
 
+    @googleRetry
     def exists(self, jobStoreID):
         return self.bucket.blob(bytes(jobStoreID), encryption_key=self.sseKey).exists()
 
+    @googleRetry
     def getPublicUrl(self, fileName):
         blob = self.bucket.get_blob(bytes(fileName), encryption_key=self.sseKey)
         if blob is None:
@@ -174,6 +194,7 @@ class GoogleJobStore(AbstractJobStore):
     def update(self, job):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)
 
+    @googleRetry
     def delete(self, jobStoreID):
         self._delete(jobStoreID)
 
@@ -181,6 +202,7 @@ class GoogleJobStore(AbstractJobStore):
         for blob in self.bucket.list_blobs(prefix=bytes(jobStoreID)):
             self._delete(blob.name)
 
+    @googleRetry
     def jobs(self):
         for blob in self.bucket.list_blobs(prefix=b'job'):
             jobStoreID = blob.name
@@ -204,6 +226,7 @@ class GoogleJobStore(AbstractJobStore):
         self._writeFile(fileID, StringIO(""))
         return fileID
 
+    @googleRetry
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         # used on non-shared files which will be encrypted if available
         # checking for JobStoreID existence
@@ -221,6 +244,7 @@ class GoogleJobStore(AbstractJobStore):
     def deleteFile(self, jobStoreFileID):
         self._delete(jobStoreFileID)
 
+    @googleRetry
     def fileExists(self, jobStoreFileID):
         return self.bucket.blob(bytes(jobStoreFileID), encryption_key=self.sseKey).exists()
 
@@ -244,6 +268,7 @@ class GoogleJobStore(AbstractJobStore):
             yield readable
 
     @classmethod
+    @googleRetry
     def _getBlobFromURL(cls, url, exists=False):
         """
         Gets the blob specified by the url.
@@ -296,6 +321,7 @@ class GoogleJobStore(AbstractJobStore):
         with self._uploadStream(statsID, encrypt=False, update=False) as f:
             f.write(statsAndLoggingString)
 
+    @googleRetry
     def readStatsAndLogging(self, callback, readAll=False):
         prefix = self.readStatsBaseID if readAll else self.statsBaseID
         filesRead = 0
@@ -349,12 +375,14 @@ class GoogleJobStore(AbstractJobStore):
         else:  # job id
             return "job"+str(uuid.uuid4())
 
+    @googleRetry
     def _delete(self, jobStoreFileID):
         if self.fileExists(jobStoreFileID):
             self.bucket.get_blob(bytes(jobStoreFileID)).delete()
         # remember, this is supposed to be idempotent, so we don't do anything
         # if the file doesn't exist
 
+    @googleRetry
     def _readContents(self, jobStoreID):
         """
         To be used on files representing jobs only. Which will be encrypted if possible.
@@ -368,6 +396,7 @@ class GoogleJobStore(AbstractJobStore):
             raise NoSuchJobException(jobStoreID)
         return job.download_as_string()
 
+    @googleRetry
     def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
         blob = self.bucket.blob(bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
@@ -382,6 +411,7 @@ class GoogleJobStore(AbstractJobStore):
         self._writeFile(jobStoreID, StringIO(stringToUpload), **kwarg)
 
     @contextmanager
+    @googleRetry
     def _uploadStream(self, fileName, update=False, encrypt=True):
         """
         Yields a context manager that can be used to write to the bucket
@@ -411,6 +441,7 @@ class GoogleJobStore(AbstractJobStore):
             yield writable
 
     @contextmanager
+    @googleRetry
     def _downloadStream(self, fileName, encrypt=True):
         """
         Yields a context manager that can be used to read from the bucket
