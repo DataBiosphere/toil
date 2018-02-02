@@ -432,6 +432,8 @@ def needs_htcondor(test_item):
         return unittest.skip("Install the HTCondor Python bindings to include this test.")(test_item)
     except IOError:
         return unittest.skip("HTCondor must be running to include this test.")(test_item)
+    except RuntimeError:
+        return unittest.skip("HTCondor must be installed and configured to include this test.")(test_item)
     else:
         return test_item
 
