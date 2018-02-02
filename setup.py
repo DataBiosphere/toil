@@ -34,11 +34,11 @@ def runSetup():
     dnsPython = 'dnspython==1.15.0'
     pipettor = 'pipettor==0.2.0'
     pynacl = 'pynacl==1.1.2'
-    gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
-    cwltool = 'cwltool==1.0.20180108222053'
+    gcs = 'google-cloud-storage==1.6.0'
+    cwltool = 'cwltool==1.0.20180130110340'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
-    cwltest = 'cwltest>=1.0.20170214185319'
+    cwltest = 'cwltest>=1.0.20180130081614'
 
     mesos_reqs = [
                   psutil]
@@ -58,8 +58,7 @@ def runSetup():
     encryption_reqs = [
                   pynacl]
     google_reqs = [
-                  gcs_oauth2_boto_plugin,
-                  boto]
+                  gcs]
     cwl_reqs = [
                   cwltool,
                   schemaSalad,

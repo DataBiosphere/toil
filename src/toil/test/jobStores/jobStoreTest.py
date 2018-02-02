@@ -15,11 +15,14 @@
 from __future__ import absolute_import
 from __future__ import division
 
+from bd2k.util.retry import retry
 from future import standard_library
+from toil.lib.misc import truncExpBackoff
+
 standard_library.install_aliases()
 from builtins import next
-from builtins import str
 from builtins import range
+from builtins import str
 from past.utils import old_div
 from builtins import object
 import socketserver
@@ -40,7 +43,7 @@ from unittest import skip
 
 # Python 3 compatibility imports
 from six.moves.queue import Queue
-from six.moves import SimpleHTTPServer
+from six.moves import SimpleHTTPServer, StringIO
 from six import iteritems
 import six.moves.urllib.parse as urlparse
 from six.moves.urllib.request import urlopen, Request
@@ -56,6 +59,7 @@ from toil.fileStore import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
+from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import (ToilTest,
                        needs_aws,
@@ -385,7 +389,7 @@ class AbstractJobStoreTest(object):
         def _prepareTestFile(self, store, size=None):
             """
             Generates a URL that can be used to point at a test file in the storage mechanism
-            used by the job store under test by this class. Optionaly creates a file at that URL.
+            used by the job store under test by this class. Optionally creates a file at that URL.
 
             :param: store: an object referencing the store, same type as _createExternalStore's
                     return value
@@ -898,53 +902,37 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         pass
 
     def _prepareTestFile(self, bucket, size=None):
-        import boto
-        import gcs_oauth2_boto_plugin # needed to import authentication handler
+        from toil.jobStores.googleJobStore import GoogleJobStore
         fileName = 'testfile_%s' % uuid.uuid4()
         url = 'gs://%s/%s' % (bucket.name, fileName)
         if size is None:
             return url
         with open('/dev/urandom', 'r') as readable:
             contents = readable.read(size)
-            boto.storage_uri(url).set_contents_from_string(contents)
+        GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
         return url, hashlib.md5(contents).hexdigest()
 
     def _hashTestFile(self, url):
-        import boto
-        import gcs_oauth2_boto_plugin # needed to import authentication handler
         from toil.jobStores.googleJobStore import GoogleJobStore
-        uri = GoogleJobStore._getResources(urlparse.urlparse(url))
-        uri = boto.storage_uri(uri)
-        contents = uri.get_contents_as_string(headers=self.headers)
+        contents = GoogleJobStore._getBlobFromURL(urlparse.urlparse(url)).download_as_string()
         return hashlib.md5(contents).hexdigest()
 
+    @googleRetry
     def _createExternalStore(self):
-        import boto
-        import gcs_oauth2_boto_plugin # needed to import authentication handler
-        from toil.jobStores.googleJobStore import GoogleJobStore
-        uriString = "gs://import-export-test-%s" % str(uuid.uuid4())
-        uri = boto.storage_uri(uriString)
-        return GoogleJobStore._retryCreateBucket(uri=uri, headers=self.headers)
+        from google.cloud import storage
+        bucketName = b"import-export-test-" + bytes(uuid.uuid4())
+        storageClient = storage.Client()
+        return storageClient.create_bucket(bucketName)
 
+    @googleRetry
     def _cleanUpExternalStore(self, bucket):
-        import boto
-        import gcs_oauth2_boto_plugin # needed to import authentication handler
-        while True:
-            try:
-                for key in bucket.list():
-                    try:
-                        key.delete()
-                    except boto.exception.GSResponseError as e:
-                        if e.status == 404:
-                            pass
-                        else:
-                            raise
-                bucket.delete()
-            except boto.exception.GSResponseError as e:
-                if e.status == 404:
-                    break
-                else:
-                    continue
+        # this is copied from googleJobStore.destroy
+        try:
+            bucket.delete(force=True)
+            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+        except ValueError:
+            bucket.delete_blobs(bucket.list_blobs)
+            bucket.delete()
 
 
 @needs_aws
@@ -955,7 +943,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         partSize = self._partSize()
         for encrypted in (True, False):
             self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
-        return AWSJobStore(self.awsRegion()+ ':' + self.namePrefix, partSize=partSize)
+        return AWSJobStore(self.awsRegion() + ':' + self.namePrefix, partSize=partSize)
 
     def _corruptJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

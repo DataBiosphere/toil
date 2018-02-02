@@ -18,6 +18,7 @@ import os
 import subprocess
 import re
 import shutil
+import pytest
 from future.moves.urllib.request import urlretrieve
 import zipfile
 
@@ -119,10 +120,11 @@ class CWLTest(ToilTest):
             pass
 
     @slow
+    @pytest.mark.timeout(900)
     def test_run_conformance(self):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
-        testhash = "97173a98a46e23b59700daf01a84f8dd16cee4e4"
+        testhash = "91f108df4d4ca567e567fc65f61feb0674467a84"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(cwlSpec):
             urlretrieve(url, "spec.zip")
@@ -131,8 +133,8 @@ class CWLTest(ToilTest):
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
         try:
-            subprocess.check_output(["bash", "run_test.sh", "RUNNER=toil-cwl-runner", "DRAFT=v1.0"], cwd=cwlSpec,
-                                    stderr=subprocess.STDOUT)
+            subprocess.check_output(["bash", "run_test.sh", "RUNNER=toil-cwl-runner", "DRAFT=v1.0"],
+                                    cwd=cwlSpec, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
             # check output -- if we failed but only have unsupported features, we're okay

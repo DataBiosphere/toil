@@ -524,8 +524,8 @@ def _addOptions(addGroupFn, config):
                 help="Enable real-time logging from workers to masters")
 
     addOptionFn("--sseKey", dest="sseKey", default=None,
-            help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
-                 "not be used if this flag is not passed.")
+            help="Path to file containing 32 character key to be used for server-side encryption on "
+                 "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
     addOptionFn("--cseKey", dest="cseKey", default=None,
                 help="Path to file containing 256-bit key to be used for client-side encryption on "
                 "azureJobStore. By default, no encryption is used.")
@@ -1261,33 +1261,29 @@ def cacheDirName(workflowID):
 
 def getDirSizeRecursively(dirPath):
     """
-    This method will walk through a directory and return the cumulative filesize in bytes of all
-    the files in the directory and its subdirectories.
+    This method will return the cumulative number of bytes occupied by the files 
+    on disk in the directory and its subdirectories.
 
-    :param dirPath: Path to a directory.
-    :return: cumulative size in bytes of all files in the directory.
-    :rtype: int
+    This method will raise a 'subprocess.CalledProcessError' if it is unable to
+    access a folder or file because of insufficient permissions.  Therefore this 
+    method should only be called on the jobStore, and will alert the user if some 
+    portion is inaccessible.  Everything in the jobStore should have appropriate 
+    permissions as there is no way to read the filesize without permissions.
+    
+    The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
+    --block-size=1 because Apple can't handle it.
+
+    :param str dirPath: A valid path to a directory or file.
+    :return: Total size, in bytes, of the file or directory at dirPath.
     """
-    totalSize = 0
-    # The value from running stat on each linked file is equal. To prevent the same file
-    # from being counted multiple times, we save the inodes of files that have more than one
-    # nlink associated with them.
-    seenInodes = set()
-    for dirPath, dirNames, fileNames in os.walk(dirPath):
-        folderSize = 0
-        for f in fileNames:
-            fp = os.path.join(dirPath, f)
-            fileStats = os.stat(fp)
-            if fileStats.st_nlink > 1:
-                if fileStats.st_ino not in seenInodes:
-                    folderSize += fileStats.st_blocks * unixBlockSize
-                    seenInodes.add(fileStats.st_ino)
-                else:
-                    continue
-            else:
-                folderSize += fileStats.st_blocks * unixBlockSize
-        totalSize += folderSize
-    return totalSize
+    
+    # du is often faster than using os.lstat(), sometimes significantly so.
+    
+    # The call: 'du -s /some/path' should give the number of 512-byte blocks
+    # allocated with the environment variable: BLOCKSIZE='512' set, and we
+    # multiply this by 512 to return the filesize in bytes.
+    return int(subprocess.check_output(['du', '-s', dirPath],
+               env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode('ascii')) * 512
 
 
 def getFileSystemSize(dirPath):
