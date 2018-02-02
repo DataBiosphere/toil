@@ -486,3 +486,4 @@ program.
 #. Destroy the cluster. ::
 
         (venv) $ toil destroy-cluster <cluster-name>
+
