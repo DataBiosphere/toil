@@ -32,6 +32,7 @@ from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_inst
                           create_spot_instances, wait_instances_running, wait_transition)
 
 from toil import applianceSelf
+from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from toil.lib.context import Context
@@ -688,16 +689,6 @@ class AWSProvisioner(AbstractProvisioner):
 
         def throttleError(e):
             return isinstance(e, BotoServerError) and e.status == 400 and e.error_code == 'Throttling'
-
-        def truncExpBackoff():
-            # as recommended here https://forums.aws.amazon.com/thread.jspa?messageID=406788#406788
-            yield 0
-            t = 1
-            while t < 1024:
-                yield t
-                t *= 2
-            while True:
-                yield t
 
         for attempt in retry(delays=truncExpBackoff(), predicate=throttleError):
             with attempt:

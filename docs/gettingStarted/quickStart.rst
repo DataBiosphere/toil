@@ -56,7 +56,7 @@ Toil is totally customizable! Run ``python helloWorld.py --help`` to see a compl
 
 For something beyond a "Hello, world!" example, refer to :ref:`runningDetail`.
 
-.. _Apache Mesos: https://mesos.apache.org/gettingstarted/
+.. _Apache Mesos: https://mesos.apache.org/getting-started/
 
 .. _cwlquickstart:
 

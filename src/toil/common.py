@@ -524,8 +524,8 @@ def _addOptions(addGroupFn, config):
                 help="Enable real-time logging from workers to masters")
 
     addOptionFn("--sseKey", dest="sseKey", default=None,
-            help="Path to file containing 32 character key to be used for server-side encryption on awsJobStore. SSE will "
-                 "not be used if this flag is not passed.")
+            help="Path to file containing 32 character key to be used for server-side encryption on "
+                 "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
     addOptionFn("--cseKey", dest="cseKey", default=None,
                 help="Path to file containing 256-bit key to be used for client-side encryption on "
                 "azureJobStore. By default, no encryption is used.")
