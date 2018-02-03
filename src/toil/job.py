@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import, print_function
 
 from future import standard_library
@@ -25,9 +24,7 @@ import importlib
 import inspect
 import logging
 import os
-import sys
 import time
-import uuid
 import dill
 
 try:
@@ -55,7 +52,7 @@ from toil.lib.bioio import (setLoggingFromOptions,
 from toil.resource import ModuleDescriptor
 from future.utils import with_metaclass
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 class JobLikeObject(object):
@@ -66,9 +63,13 @@ class JobLikeObject(object):
     """
     def __init__(self, requirements, unitName, displayName=None, jobName=None):
         cores = requirements.get('cores')
+        coresMin = requirements.get('coresMin')
         memory = requirements.get('memory')
+        memoryMin = requirements.get('memoryMin')
         disk = requirements.get('disk')
         preemptable = requirements.get('preemptable')
+        tmpdirMin = requirements.get('tmpdirMin')
+        tmpdirMax = requirements.get('tmpdirMax')
         if unitName is not None:
             assert isinstance(unitName, (str, bytes))
         if jobName is not None:
@@ -77,8 +78,12 @@ class JobLikeObject(object):
         self.displayName = displayName if displayName is not None else self.__class__.__name__
         self.jobName = jobName if jobName is not None else self.__class__.__name__
         self._cores = self._parseResource('cores', cores)
+        self._coresMin = self._parseResource('cores', coresMin)
         self._memory = self._parseResource('memory', memory)
+        self._memoryMin = self._parseResource('memory', memoryMin)
         self._disk = self._parseResource('disk', disk)
+        self._tmpdirMin = self._parseResource('disk', tmpdirMin)
+        self._tmpdirMax = self._parseResource('disk', tmpdirMax)
         self._preemptable = preemptable
         self._config = None
 
@@ -95,6 +100,30 @@ class JobLikeObject(object):
             raise AttributeError("Default value for 'disk' cannot be determined")
 
     @property
+    def tmpdirMin(self):
+        """
+        The minimum number of bytes of temporary disk the job will require to run.
+        """
+        if self._tmpdirMin is not None:
+            return self._tmpdirMin
+        elif self._config is not None:
+            return self._config.defaultTmpdirMin
+        else:
+            raise AttributeError("Default value for 'tmpdirMin' cannot be determined")
+
+    @property
+    def tmpdirMax(self):
+        """
+        The maximum number of bytes of temporary disk the job will require to run.
+        """
+        if self._tmpdirMax is not None:
+            return self._tmpdirMax
+        elif self._config is not None:
+            return self._config.defaultTmpdirMax
+        else:
+            raise AttributeError("Default value for 'tmpdirMax' cannot be determined")
+
+    @property
     def memory(self):
         """
         The maximum number of bytes of memory the job will require to run.
@@ -107,6 +136,18 @@ class JobLikeObject(object):
             raise AttributeError("Default value for 'memory' cannot be determined")
 
     @property
+    def memoryMin(self):
+        """
+        The minimum number of bytes of memory the job will require to run.
+        """
+        if self._memoryMin is not None:
+            return self._memoryMin
+        elif self._config is not None:
+            return self._config.defaultMemoryMin
+        else:
+            raise AttributeError("Default value for 'memoryMin' cannot be determined")
+
+    @property
     def cores(self):
         """
         The number of CPU cores required.
@@ -117,6 +158,18 @@ class JobLikeObject(object):
             return self._config.defaultCores
         else:
             raise AttributeError("Default value for 'cores' cannot be determined")
+
+    @property
+    def coresMin(self):
+        """
+        The number of CPU cores required.
+        """
+        if self._coresMin is not None:
+            return self._coresMin
+        elif self._config is not None:
+            return self._config.defaultCoresMin
+        else:
+            raise AttributeError("Default value for 'coresMin' cannot be determined")
 
     @property
     def preemptable(self):
@@ -138,7 +191,12 @@ class JobLikeObject(object):
         return {'memory': getattr(self, 'memory', None),
                 'cores': getattr(self, 'cores', None),
                 'disk': getattr(self, 'disk', None),
-                'preemptable': getattr(self, 'preemptable', None)}
+                'preemptable': getattr(self, 'preemptable', None),
+                'memoryMin': getattr(self, 'memoryMin', None),
+                'coresMin': getattr(self, 'coresMin', None),
+                'tmpdirMin': getattr(self, 'tmpdirMin', None),
+                'tmpdirMax': getattr(self, 'tmpdirMax', None),
+                }
 
     @staticmethod
     def _parseResource(name, value):
@@ -258,12 +316,15 @@ class JobNode(JobLikeObject):
                    displayName=job.displayName,
                    predecessorNumber=predecessorNumber)
 
+
 class Job(JobLikeObject):
     """
     Class represents a unit of work in toil.
     """
     def __init__(self, memory=None, cores=None, disk=None, preemptable=None,
-                       unitName=None, checkpoint=False, displayName=None):
+                       unitName=None, checkpoint=False, displayName=None,
+                       memoryMin=None, coresMin=None, tmpdirMin=None,
+                       tmpdirMax=None):
         """
         This method must be called by any overriding constructor.
 
@@ -282,7 +343,8 @@ class Job(JobLikeObject):
         :type memory: int or string convertable by bd2k.util.humanize.human2bytes to an int
         """
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
-                        'preemptable': preemptable}
+                'preemptable': preemptable, 'memoryMin': memoryMin, 'coresMin':
+                coresMin, 'tmpdirMin': tmpdirMin, 'tmpdirMax': tmpdirMax}
         super(Job, self).__init__(requirements=requirements, unitName=unitName, displayName=displayName)
         self.checkpoint = checkpoint
         self.displayName = displayName if displayName is not None else self.__class__.__name__

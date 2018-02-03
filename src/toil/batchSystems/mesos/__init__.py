@@ -78,7 +78,8 @@ class JobQueue(object):
 
 @total_ordering
 class ResourceRequirement(object):
-    def __init__(self, memory, cores, disk, preemptable):
+    def __init__(self, memory, cores, disk, preemptable, memoryMin=None,
+                 coresMin=None, tmpdirMin=None, tmpdirMax=None):
         # Number of bytes (!) needed for a task
         self.memory = memory
         # Number of CPU cores needed for a task
@@ -93,7 +94,6 @@ class ResourceRequirement(object):
         The scalar size of an offer. Can be used to compare offers.
         """
         return self.cores
-
 
     def __gt__(self, other):
         """
