@@ -93,28 +93,28 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                                        stderr=subprocess.STDOUT)
             started = 0
             for line in process.stdout:
-                if line.find("Done successfully") > -1:
+                if "Done successfully" in line:
                     logger.debug("bjobs detected job completed for job: "
                                  "{}".format(job))
                     return 0
-                elif line.find("Completed <exit>") > -1:
-                    logger.debug("bjobs detected job failed for job: "
-                                 "{}".format(job))
-                    return 1
-                elif line.find("New job is waiting for scheduling") > -1:
+                elif "New job is waiting for scheduling" in line:
                     logger.debug("bjobs detected job pending scheduling for "
-                                 "job: %d" % job)
+                                 "job: {}".format(job))
                     return None
-                elif line.find("PENDING REASONS") > -1:
-                    logger.debug("bjobs detected job pending for job: %d"
-                                 % job)
+                elif "PENDING REASONS" in line:
+                    logger.debug("bjobs detected job pending for job: "
+                                 "{}".format(job))
                     return None
-                elif line.find("Exited with exit code") > -1:
-                    exit = int(line[
-                            line.find("Exited with exit code "):].split()[0])
+                elif "Exited with exit code" in line:
+                    exit = int(line[line.find("Exited with exit code "):]
+                               .split()[0])
                     logger.debug("bjobs detected job exit code: "
                                  "{}".format(exit))
                     return exit
+                elif "Completed <exit>" in line:
+                    logger.debug("bjobs detected job failed for job: "
+                                 "{}".format(job))
+                    return 1
                 elif line.find("Started on ") > -1:
                     started = 1
 
