@@ -27,8 +27,15 @@ from __future__ import division
 from past.utils import old_div
 import math
 import os
-import subprocess
 import fnmatch
+import sys
+
+# subprocess32 is a backport of python3's subprocess module for use on Python2,
+# and includes many reliability bug fixes relevant on POSIX platforms.
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"

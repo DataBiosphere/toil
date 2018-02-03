@@ -4,10 +4,18 @@ import logging
 import tempfile
 import threading
 import time
-import subprocess
+import sys
 import multiprocessing
 import signal
 import os
+
+# subprocess32 is a backport of python3's subprocess module for use on Python2,
+# and includes many reliability bug fixes relevant on POSIX platforms.
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
+
 from bd2k.util.files import rm_f
 from bd2k.util.objects import InnerClass
 
