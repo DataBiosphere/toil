@@ -69,7 +69,8 @@ def runSetup():
             'six>=1.10.0',
             'future',
             'requests==2.18.4',
-            'docker==2.5.1'],
+            'docker==2.5.1',
+            'python-dateutil'],
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,
