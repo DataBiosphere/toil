@@ -109,6 +109,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.debug("bjobs detected job pending for job: "
                                  "{}".format(job))
                     return None
+                elif line.find("Exited with exit code") > -1:
+                    exit = int(line[
+                            line.find("Exited with exit code "):].split()[0])
+                    logger.debug("bjobs detected job exit code: "
+                                 "{}".format(exit))
+                    return exit
                 elif line.find("Started on ") > -1:
                     started = 1
 
