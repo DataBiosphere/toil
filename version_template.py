@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,8 +26,8 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
 baseVersion = '3.14.0a1'
-
-cgcloudVersion = '1.6.0a1.dev393'
+dockerRegistry = 'quay.io/ucsc_cgl'
+dockerName = 'toil'
 
 
 def version():
@@ -93,11 +93,6 @@ def dockerMinimalTag():
     return distVersion()
 
 
-dockerRegistry = 'quay.io/ucsc_cgl'
-
-dockerName = 'toil'
-
-
 def buildNumber():
     """
     The Jenkins build number, if defined, else None.
@@ -107,14 +102,32 @@ def buildNumber():
 
 
 def currentCommit():
-    from subprocess import check_output
-    return check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0]
+    import os
+    import sys
+    if os.name == 'posix' and sys.version_info[0] < 3:
+        import subprocess32 as subprocess
+    else:
+        import subprocess
+    return subprocess.check_output(['git', 'log', '--pretty=oneline', '-n', '1', os.getcwd()]).split()[0]
 
 
 def dirty():
+    """
+    Returns True if the code has uncommitted diffs.
+
+    :return: bool
+    """
     from subprocess import call
-    return 0 != call('(git diff --exit-code '
-                     '&& git diff --cached --exit-code) > /dev/null', shell=True)
+    import os
+
+    with open(os.devnull, 'w')  as FNULL:
+        # return code is 1 if there are still changes relative to the index
+        # otherwise return code is 0
+        retcode1 = call(['git', 'diff', '--exit-code'], stdout=FNULL)
+    # return code is 1 if there are still changes staged for the next commit relative to HEAD
+    # otherwise return code is 0
+    retcode2 = call(['git', 'diff', '--cached', '--exit-code'])
+    return 0 != (retcode1 + retcode2)
 
 
 def expand_(name=None):
