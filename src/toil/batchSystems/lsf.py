@@ -68,8 +68,10 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             return self.prepareBsub(cpu, memory, jobID) + [command]
 
         def submitJob(self, subLine):
+            combinedEnv = self.boss.environment
+            combinedEnv.update(os.environ)
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE,
-                                       env=self.boss.environment)
+                                       env=combinedEnv)
             line = process.stdout.readline()
             logger.debug("BSUB: " + line)
             result = int(line.strip().split()[1].strip('<>'))
