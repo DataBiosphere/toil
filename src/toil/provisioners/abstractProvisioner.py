@@ -330,7 +330,7 @@ coreos:
     LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
     # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
     # Mesos attempts to contact systemd but can't find its run file)
-    WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-systemd_enable_support'
+    WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
     def _getCloudConfigUserData(self, role, masterPublicKey=None, keyPath=None, preemptable=False):
         if role == 'leader':
             entryPoint = 'mesos-master'
