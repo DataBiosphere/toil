@@ -312,18 +312,6 @@ class hidden(object):
             config.jobStore = 'file:' + self._createTempDir('jobStore')
             return config
 
-        def testResultFile(self):
-            """
-            Tests that the result file name is formatted properly
-            """
-            # noinspection PyUnresolvedReferences
-            fileName = self.batchSystem._getResultsFileName(self.config.jobStore)
-            filePath, _ = os.path.split(fileName)  # removes file so dir matches config.jobStore
-            locator = self.config.jobStore
-            self.assertTrue(locator.startswith('file:'))
-            self.assertEqual(locator[len('file:'):], filePath)
-
-
 @slow
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
