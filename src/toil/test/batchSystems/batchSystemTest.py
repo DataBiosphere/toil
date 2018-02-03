@@ -166,6 +166,8 @@ class hidden(object):
                 self.assertTrue(wallTime > 0)
             else:
                 self.assertIsNone(wallTime)
+            if not os.path.exists(testPath):
+                time.sleep(20)
             self.assertTrue(os.path.exists(testPath))
             self.assertFalse(self.batchSystem.getUpdatedBatchJob(0))
 
@@ -180,7 +182,7 @@ class hidden(object):
             # invoke that script rather than inline the test via -c.
             def assertEnv():
                 import os, sys
-                sys.exit(0 if os.getenv('FOO') == 'bar' else 42)
+                sys.exit(23 if os.getenv('FOO') == 'bar' else 42)
 
             script_body = dedent('\n'.join(getsource(assertEnv).split('\n')[1:]))
             with tempFileContaining(script_body, suffix='.py') as script_path:
@@ -198,7 +200,7 @@ class hidden(object):
                                    jobStoreID='5', requirements=defaultRequirements)
                 job5 = self.batchSystem.issueBatchJob(jobNode5)
                 jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-                self.assertEqual(exitStatus, 0)
+                self.assertEqual(exitStatus, 23)
                 self.assertEqual(jobID, job5)
 
         def testCheckResourceRequest(self):
