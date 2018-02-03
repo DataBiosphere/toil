@@ -43,6 +43,7 @@ from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    BatchSystemSupport)
 from toil.job import Job, JobNode
 from toil.test import (ToilTest,
+                       needs_lsf,
                        needs_mesos,
                        needs_parasol,
                        needs_gridengine,
@@ -667,6 +668,18 @@ class SlurmBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         from glob import glob
         for f in glob('slurm-*.out'):
             os.unlink(f)
+
+
+@slow
+@needs_lsf
+class LSFBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
+    """
+    Tests against the LSF batch system
+    """
+    def createBatchSystem(self):
+        from toil.batchSystems.lsf import LSFBatchSystem
+        return LSFBatchSystem(config=self.config, maxCores=numCores,
+                              maxMemory=1000e9, maxDisk=1e9)
 
 
 @slow
