@@ -280,16 +280,6 @@ class BatchSystemSupport(AbstractBatchSystem):
                 raise RuntimeError("%s does not exist in current environment", name)
         self.environment[name] = value
 
-    def _getResultsFileName(self, toilPath):
-        """
-        Get a path for the batch systems to store results. GridEngine, slurm,
-        and LSF currently use this and only work if locator is file.
-        """
-        # Use  parser to extract the path and type
-        locator, filePath = Toil.parseLocator(toilPath)
-        assert locator == "file"
-        return os.path.join(filePath, "results.txt")
-
     @staticmethod
     def workerCleanup(info):
         """
