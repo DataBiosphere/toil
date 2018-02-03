@@ -26,16 +26,21 @@ import sys
 import tempfile
 import time
 import uuid
-import subprocess
 import requests
 from argparse import ArgumentParser
 
+# subprocess32 is a backport of python3's subprocess module for use on Python2,
+# and includes many reliability bug fixes relevant on POSIX platforms.
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
+
+# Python 3 compatibility imports
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
-
-# Python 3 compatibility imports
 from six import iteritems
 
 from bd2k.util.exceptions import require

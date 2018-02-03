@@ -28,7 +28,13 @@ import math
 import shutil
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
-import subprocess
+
+# subprocess32 is a backport of python3's subprocess module for use on Python2,
+# and includes many reliability bug fixes relevant on POSIX platforms.
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 # Python 3 compatibility imports
 from six.moves import xrange
