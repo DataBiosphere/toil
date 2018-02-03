@@ -69,7 +69,6 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         def submitJob(self, subLine):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT,
                                        env=self.boss.environment)
             line = process.stdout.readline()
             logger.debug("BSUB: " + line)
@@ -214,6 +213,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         if maxCPU is 0 or maxMEM is 0:
                 RuntimeError("lshosts returns null ncpus or maxmem info")
-        logger.debug("Got the maxCPU: {}".format(maxMEM))
+        logger.debug("Got the maxMEM: {}".format(maxMEM))
+        logger.debug("Got the maxCPU: {}".format(maxCPU))
 
         return maxCPU, maxMEM
