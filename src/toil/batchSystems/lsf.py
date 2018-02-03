@@ -52,9 +52,9 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             process = subprocess.Popen(
                     ["bjobs", "-o", "jobid stat start_time delimiter='|'"],
                     stdout=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+            stdout, _ = process.communicate()
 
-            for curline in process.stdout:
+            for curline in stdout:
                 items = curline.strip().split('|')
                 if items[0] in currentjobs and items[1] == 'RUN':
                     jobstart = parse(items[2], default=datetime.now(tzlocal()))
