@@ -24,9 +24,11 @@ from builtins import range
 from past.utils import old_div
 import logging
 from toil import subprocess
-import time
-from datetime import date
 import os
+
+from dateutil.parser import parse
+from dateutil.tz import tzlocal
+from datetime import datetime
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import \
@@ -55,10 +57,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             for curline in process.stdout:
                 items = curline.strip().split(chr(30))
                 if items[0] in currentjobs and items[1] == 'RUN':
-                    jobstart = time.strptime("%s %s %s" % items[2].split(),
-                                             str(date.today().year),
-                                             "%b %d %H:%M")
-                    times[currentjobs[items[0]]] = time.time() - jobstart
+                    jobstart = parse(items[2], default=datetime.now(tzlocal()))
+                    times[currentjobs[items[0]]] = datetime.now() - jobstart
             return times
 
         def killJob(self, jobID):
@@ -74,7 +74,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             line = process.stdout.readline()
             logger.debug("BSUB: " + line)
             result = int(line.strip().split()[1].strip('<>'))
-            logger.debug("Got the job id: %s" % (str(result)))
+            logger.debug("Got the job id: {}".format(result))
             return result
 
         def getJobExitCode(self, lsfJobID):
@@ -85,18 +85,19 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
             # first try bjobs to find out job state
             args = ["bjobs", "-l", str(job)]
-            logger.debug("Checking job exit code for job via bjobs: %d" % job)
+            logger.debug("Checking job exit code for job via bjobs: "
+                         "{}".format(job))
             process = subprocess.Popen(args, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT)
             started = 0
             for line in process.stdout:
                 if line.find("Done successfully") > -1:
-                    logger.debug("bjobs detected job completed for job: %d"
-                                 % job)
+                    logger.debug("bjobs detected job completed for job: "
+                                 "{}".format(job))
                     return 0
                 elif line.find("Completed <exit>") > -1:
-                    logger.debug("bjobs detected job failed for job: %d"
-                                 % job)
+                    logger.debug("bjobs detected job failed for job: "
+                                 "{}".format(job))
                     return 1
                 elif line.find("New job is waiting for scheduling") > -1:
                     logger.debug("bjobs detected job pending scheduling for "
@@ -110,25 +111,28 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     started = 1
 
             if started == 1:
-                logger.debug("bjobs detected job started but not completed: %d"
-                             % job)
+                logger.debug("bjobs detected job started but not completed: "
+                             "{}".format(job))
                 return None
 
             # if not found in bjobs, then try bacct (slower than bjobs)
-            logger.debug("bjobs failed to detect job - trying bacct: %d" % job)
+            logger.debug("bjobs failed to detect job - trying bacct: "
+                         "{}".format(job))
 
             args = ["bacct", "-l", str(job)]
             process = subprocess.Popen(args, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT)
             for line in process.stdout:
                 if line.find("Completed <done>") > -1:
-                    logger.debug("Detected job completed for job: %d" % job)
+                    logger.debug("Detected job completed for job: "
+                                 "{}".format(job))
                     return 0
                 elif line.find("Completed <exit>") > -1:
-                    logger.debug("Detected job failed for job: %d" % job)
+                    logger.debug("Detected job failed for job: "
+                                 "{}".format(job))
                     return 1
             logger.debug("Can't determine exit code for job or job still "
-                         "running: %d" % job)
+                         "running: {}".format(job))
             return None
 
         """
@@ -153,14 +157,14 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     mem = old_div(float(mem), 1024**3)
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
-                bsubMem = ['-R', 'select[type==X86_64 && mem > %d] '
-                           'rusage[mem=%d]' % mem_resource, mem_resource,
+                bsubMem = ['-R', 'select[type==X86_64 && mem > {m}] '
+                           'rusage[mem={m}]'.format(m=mem_resource),
                            '-M', str(mem_limit)]
             else:
                 bsubMem = []
             bsubCpu = [] if cpu is None else ['-n', str(int(cpu))]
             bsubline = ["bsub", "-cwd", ".", "-o", "/dev/null",
-                        "-e", "/dev/null", "-J", "toil_job_%d" % jobID]
+                        "-e", "/dev/null", "-J", "toil_job_{}".format(jobID)]
             bsubline.extend(bsubMem)
             bsubline.extend(bsubCpu)
             lsfArgs = os.getenv('TOIL_LSF_ARGS')
@@ -210,6 +214,6 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
         if maxCPU is 0 or maxMEM is 0:
                 RuntimeError("lshosts returns null ncpus or maxmem info")
-        logger.debug("Got the maxCPU: %s" % (maxMEM))
+        logger.debug("Got the maxCPU: {}".format(maxMEM))
 
         return maxCPU, maxMEM
