@@ -56,6 +56,39 @@ Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 
 .. _extras:
 
+Installing Toil as a Non-Root User
+----------------------------------
+
+Sometimes you may not have the root access needed to install a virtualenv for toil, such 
+as when one is on a local university cluster.  These steps will allow you to install and 
+run toil without root privileges.
+
+One needs root access to pip install things on a system's main python installation, but one 
+does not need root in order to pip install in a virtualenv.  Therefore, here we provide a way 
+to fetch the virtualenv, activate it, and thereby pip install toil.::
+
+First, download virtualenv (here, we use version 15.1.0)::
+
+    $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
+
+Decompress the file::
+
+    $ tar xvfz virtualenv-15.1.tar.gz
+
+Enter the folder and create a virtualenv named "toil-venv"::
+
+    $ cd virtualenv-15.1
+    $ python virtualenv.py ~/toil-venv
+
+Activate the virtualenv::
+
+    $ source ~/toil-venv/bin/activate
+
+Now pip installations may be run without root.  Here we install toil with all extras (see the 
+next section for more about toil's extras).::
+
+    (toil-venv) $ pip install toil[aws,mesos,azure,google,encryption,cwl]
+
 Installing Toil with extra features
 -----------------------------------
 
