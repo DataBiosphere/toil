@@ -103,12 +103,9 @@ def buildNumber():
 
 def currentCommit():
     import os
-    import sys
-    if os.name == 'posix' and sys.version_info[0] < 3:
-        import subprocess32 as subprocess
-    else:
-        import subprocess
-    return subprocess.check_output(['git', 'log', '--pretty=oneline', '-n', '1', os.getcwd()]).split()[0]
+    from subprocess import check_output
+
+    return check_output(['git', 'log', '--pretty=oneline', '-n', '1', os.getcwd()]).split()[0]
 
 
 def dirty():

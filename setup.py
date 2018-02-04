@@ -70,7 +70,7 @@ def runSetup():
             'future',
             'requests==2.18.4',
             'docker==2.5.1',
-            'subprocess32'],
+            'subprocess32==3.5.0rc1'],
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,
