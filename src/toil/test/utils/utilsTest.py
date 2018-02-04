@@ -13,16 +13,21 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-
 from builtins import str
+
 import os
 import sys
 import uuid
 import shutil
-from subprocess import CalledProcessError, check_call
 import tempfile
-
 import pytest
+
+# subprocess32 is a backport of python3's subprocess module for use on Python2,
+# and includes many reliability bug fixes relevant on POSIX platforms.
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 import toil
 import logging
@@ -206,7 +211,7 @@ class UtilsTest(ToilTest):
                        '--badWorker=0.5',
                        '--badWorkerFailInterval=0.05']
         # Try restarting it to check that a JobStoreException is thrown
-        self.assertRaises(CalledProcessError, system, toilCommand + ['--restart'])
+        self.assertRaises(subprocess.CalledProcessError, system, toilCommand + ['--restart'])
         # Check that trying to run it in restart mode does not create the jobStore
         self.assertFalse(os.path.exists(self.toilDir))
 
@@ -215,14 +220,14 @@ class UtilsTest(ToilTest):
         try:
             system(toilCommand)
             finished = True
-        except CalledProcessError:  # This happens when the script fails due to having unfinished jobs
+        except subprocess.CalledProcessError:  # This happens when the script fails due to having unfinished jobs
             system(self.statusCommand())
-            self.assertRaises(CalledProcessError, system, self.statusCommand(failIfNotComplete=True))
+            self.assertRaises(subprocess.CalledProcessError, system, self.statusCommand(failIfNotComplete=True))
             finished = False
         self.assertTrue(os.path.exists(self.toilDir))
 
         # Try running it without restart and check an exception is thrown
-        self.assertRaises(CalledProcessError, system, toilCommand)
+        self.assertRaises(subprocess.CalledProcessError, system, toilCommand)
 
         # Now restart it until done
         totalTrys = 1
@@ -230,9 +235,9 @@ class UtilsTest(ToilTest):
             try:
                 system(toilCommand + ['--restart'])
                 finished = True
-            except CalledProcessError:  # This happens when the script fails due to having unfinished jobs
+            except subprocess.CalledProcessError:  # This happens when the script fails due to having unfinished jobs
                 system(self.statusCommand())
-                self.assertRaises(CalledProcessError, system, self.statusCommand(failIfNotComplete=True))
+                self.assertRaises(subprocess.CalledProcessError, system, self.statusCommand(failIfNotComplete=True))
                 if totalTrys > 16:
                     self.fail()  # Exceeded a reasonable number of restarts
                 totalTrys += 1
@@ -314,7 +319,7 @@ def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of
     # Python encoding issues. To work around this we print in a separate Python process. See
     # http://stackoverflow.com/questions/492483/setting-the-correct-encoding-when-piping-stdout-in-python
-    check_call([sys.executable, '-c', "print '\\xc3\\xbc'"])
+    subprocess.check_call([sys.executable, '-c', "print '\\xc3\\xbc'"])
 
 class RunTwoJobsPerWorker(Job):
     """

@@ -24,23 +24,19 @@ import os
 import re
 import sys
 import tempfile
+import json
 import time
 import uuid
+import subprocess
 import requests
 from argparse import ArgumentParser
 
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-# Python 3 compatibility imports
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
+
+# Python 3 compatibility imports
 from six import iteritems
 
 from bd2k.util.exceptions import require
@@ -188,6 +184,7 @@ class Config(object):
 
         #Core options
         setOption("jobStore", parsingFn=parseJobStore)
+        setOption("restart")
         #TODO: LOG LEVEL STRING
         setOption("workDir")
         if self.workDir is not None:
@@ -207,10 +204,6 @@ class Config(object):
             self.clean = "never"
         elif self.clean is None:
             self.clean = "onSuccess"
-        setOption('clusterStats')
-
-        #Restarting the workflow options
-        setOption("restart")
 
         #Batch system options
         setOption("batchSystem")
@@ -221,7 +214,6 @@ class Config(object):
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
         setOption("linkImports")
-
         setOption("environment", parseSetEnv)
 
         #Autoscaling options
@@ -239,6 +231,7 @@ class Config(object):
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
         setOption("nodeStorage", int)
+        setOption('clusterStats')
 
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
@@ -349,7 +342,6 @@ def _addOptions(addGroupFn, config):
     #
     #Batch system options
     #
-
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the "
                              "batch system/big batch system (see below).")
@@ -951,20 +943,20 @@ class Toil(object):
 
     def _serialiseEnv(self):
         """
-        Puts the environment in a globally accessible pickle file.
+        Puts the environment in a globally accessible json file.
         """
-        # Dump out the environment of this process in the environment pickle file.
-        with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
-            pickle.dump(os.environ, fileHandle, pickle.HIGHEST_PROTOCOL)
-        logger.info("Written the environment for the jobs to the environment file")
+        # Dump out the environment of this process in the environment json file.
+        with self._jobStore.writeSharedFileStream("environment.json") as fileHandle:
+            json.dump(dict(os.environ), fileHandle)
+        logger.debug("Written the environment for the jobs to the environment file")
 
     def _cacheAllJobs(self):
         """
         Downloads all jobs in the current job store into self.jobCache.
         """
-        logger.info('Caching all jobs in job store')
+        logger.debug('Caching all jobs in job store')
         self._jobCache = {jobGraph.jobStoreID: jobGraph for jobGraph in self._jobStore.jobs()}
-        logger.info('{} jobs downloaded.'.format(len(self._jobCache)))
+        logger.debug('{} jobs downloaded.'.format(len(self._jobCache)))
 
     def _cacheJob(self, job):
         """

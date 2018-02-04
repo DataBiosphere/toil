@@ -70,8 +70,14 @@ class AsyncJobStoreWrite(object):
     
 def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=True):
     """
-    Worker process script, runs a job. 
-    
+    Worker process script, runs a job.
+
+    :param object jobStore: A jobStore class object instance.  See:
+        toil.jobStores.fileJobStore.FileJobStore
+        toil.jobStores.aws.jobStore.AWSJobStore
+        toil.jobStores.azureJobStore.AzureJobStore
+        toil.jobStores.googleJobStore.GoogleJobStore
+    :param object config: A config class object.  See: toil.common.Config
     :param str jobName: The "job name" (a user friendly name) of the job to be run
     :param str jobStoreLocator: Specifies the job store to use
     :param str jobStoreID: The job store ID of the job to be run
@@ -101,18 +107,15 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         # boto is installed, monkey patch it now
         from bd2k.util.ec2.credentials import enable_metadata_credential_caching
         enable_metadata_credential_caching()
-    
-    ##########################################
-    #Create the worker killer, if requested
-    ##########################################
 
     logFileByteReportLimit = config.maxLogFileSize
 
+    # badWorker is an option that randomly kills jobs for testing purposes
     if config.badWorker > 0 and random.random() < config.badWorker:
         def badWorker():
             #This will randomly kill the worker process at a random time 
             time.sleep(config.badWorkerFailInterval * random.random())
-            os.kill(os.getpid(), signal.SIGKILL) #signal.SIGINT)
+            os.kill(os.getpid(), signal.SIGKILL)
             #TODO: FIX OCCASIONAL DEADLOCK WITH SIGINT (tested on single machine)
         t = Thread(target=badWorker)
         # Ideally this would be a daemon thread but that causes an intermittent (but benign)
@@ -130,8 +133,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
     
     #First load the environment for the jobGraph.
-    with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
-        environment = pickle.load(fileHandle)
+    with jobStore.readSharedFileStream("environment.json") as fileHandle:
+        environment = json.loads(fileHandle.read().decode('utf8'))
     for i in environment:
         if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
             os.environ[i] = environment[i]
@@ -145,10 +148,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
     toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
 
-    ##########################################
-    #Setup the temporary directories.
-    ##########################################
-        
     # Dir to put all this worker's temp files in.
     localWorkerTempDir = tempfile.mkdtemp(dir=toilWorkflowDir)
     os.chmod(localWorkerTempDir, 0o755)
@@ -203,28 +202,29 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     statsDict.jobs = []
     statsDict.workers.logsToMaster = []
     blockFn = lambda : True
-    cleanCacheFn = lambda x : True
     listOfJobs = [jobName]
     try:
-
         #Put a message at the top of the log, just to make sure it's working.
         logger.info("---TOIL WORKER OUTPUT LOG---")
         sys.stdout.flush()
         
-        #Log the number of open file descriptors so we can tell if we're leaking
-        #them.
-        logger.debug("Next available file descriptor: {}".format(
-            nextOpenDescriptor()))
+        #Log the # of open file descriptors so we can tell if we're leaking them.
+        logger.debug("Next available file descriptor: {}".format(nextOpenDescriptor()))
 
         logProcessContext(config)
 
         ##########################################
         #Load the jobGraph
         ##########################################
-        
+
+        # jobStoreID is the path to the job.pickle file
+        # Type: <class 'toil.jobGraph.JobGraph'>
         jobGraph = jobStore.load(jobStoreID)
+
+        # space separated tuple (fileHandle, fileStoreID)
+        # created in job.py with: _serialiseJob
+        # example: 'jobName88' 6/h/jobXbypfA
         listOfJobs[0] = str(jobGraph)
-        logger.debug("Parsed job wrapper")
         
         ##########################################
         #Cleanup from any earlier invocation of the jobGraph
