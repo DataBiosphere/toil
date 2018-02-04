@@ -73,11 +73,11 @@ First, download virtualenv (here, we use version 15.1.0)::
 
 Decompress the file::
 
-    $ tar xvfz virtualenv-15.1.tar.gz
+    $ tar xvfz virtualenv-15.1.0.tar.gz
 
 Enter the folder and create a virtualenv named "toil-venv"::
 
-    $ cd virtualenv-15.1
+    $ cd virtualenv-15.1.0
     $ python virtualenv.py ~/toil-venv
 
 Activate the virtualenv::
