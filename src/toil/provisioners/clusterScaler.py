@@ -510,14 +510,10 @@ class ScalerThread(ExceptionalThread):
                             estimatedNodes = self.maxNodes[nodeShape]
                         elif estimatedNodes < self.minNodes[nodeShape]:
                             logger.info('Raising the estimated number of necessary %s (%s) to the '
-                                        'configured mininimum (%s).', nodeType, estimatedNodes, self.minNodes[nodeShape])
+                                        'configured minimum (%s).', nodeType, estimatedNodes, self.minNodes[nodeShape])
                             estimatedNodes = self.minNodes[nodeShape]
 
-                        if estimatedNodes != self.totalNodes[nodeShape]:
-                            logger.info('Changing the number of %s from %s to %s.', nodeType, self.totalNodes[nodeShape],
-                                        estimatedNodes)
-                            self.totalNodes[nodeShape] = self.setNodeCount(nodeType=nodeType, numNodes=estimatedNodes, preemptable=nodeShape.preemptable)
-
+                        self.totalNodes[nodeShape] = self.setNodeCount(nodeType=nodeType, numNodes=estimatedNodes, preemptable=nodeShape.preemptable)
 
                         # If we were scaling up a preemptable node type and failed to meet
                         # our target, we will attempt to compensate for the deficit while scaling
@@ -571,10 +567,24 @@ class ScalerThread(ExceptionalThread):
                 logger.info("Cluster contains %i instances" % len(workerInstances))
                 #Reduce to nodes of the correct type
                 workerInstances = {node:workerInstances[node] for node in workerInstances if node.nodeType == nodeType}
-                logger.info("Cluster contains %i instances of type %s" % (len(workerInstances), nodeType))
+                ignoredNodes = [node for node in workerInstances if node.privateIP in self.ignoredNodes]
+                numIgnoredNodes = len(ignoredNodes)
                 numCurrentNodes = len(workerInstances)
-                delta = numNodes - numCurrentNodes
+                logger.info("Cluster contains %i instances of type %s (%i ignored and draining jobs until "
+                            "they can be safely terminated)" % (numCurrentNodes, nodeType, numIgnoredNodes))
+                if not force:
+                    delta = numNodes - (numCurrentNodes - numIgnoredNodes)
+                else:
+                    delta = numNodes - numCurrentNodes
                 if delta > 0:
+                    if numIgnoredNodes > 0:
+                        # We can un-ignore a few nodes to compensate for the additional nodes we want.
+                        numNodesToUnignore = min(delta, numIgnoredNodes)
+                        logger.info('Unignoring %i nodes because we want to scale back up again.' % numNodesToUnignore)
+                        delta -= numNodesToUnignore
+                        for node in ignoredNodes[:numNodesToUnignore]:
+                            self.ignoredNodes.remove(node.privateIP)
+                            self.scaler.leader.batchSystem.unignoreNode(node.privateIP)
                     logger.info('Adding %i %s nodes to get to desired cluster size of %i.', delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
                     numNodes = numCurrentNodes + self._addNodes(nodeType, numNodes=delta,
                                                                 preemptable=preemptable)
@@ -586,7 +596,7 @@ class ScalerThread(ExceptionalThread):
                                                                    preemptable=preemptable,
                                                                    force=force)
                 else:
-                    logger.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
+                    logger.info('Cluster (minus ignored nodes) already at desired size of %i. Nothing to do.', numNodes)
         return numNodes
 
     def _addNodes(self, nodeType, numNodes, preemptable):
@@ -630,6 +640,10 @@ class ScalerThread(ExceptionalThread):
             nodeToNodeInfo = [instance for instance in islice(nodeToNodeInfo, numNodes)]
         logger.info('Terminating %i instance(s).', len(nodeToNodeInfo))
         if nodeToNodeInfo:
+            for node in nodeToNodeInfo:
+                if node in self.ignoredNodes:
+                    self.ignoredNodes.remove(node.privateIP)
+                    self.scaler.leader.batchSystem.unignoreNode(node.privateIP)
             self.scaler.provisioner.terminateNodes(nodeToNodeInfo)
         return len(nodeToNodeInfo)
 
