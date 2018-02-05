@@ -26,6 +26,7 @@ def runSetup():
     futures = 'futures==3.0.5'
     pycrypto = 'pycrypto==2.6.1'
     psutil = 'psutil==3.0.1'
+    protobuf = 'protobuf==3.5.1'
     azure = 'azure==2.0.0'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     pynacl = 'pynacl==1.1.2'
@@ -37,7 +38,8 @@ def runSetup():
     htcondor = 'htcondor>=8.6.0'
 
     mesos_reqs = [
-                  psutil]
+                  psutil,
+                  protobuf]
     aws_reqs = [
                   boto,
                   boto3,
