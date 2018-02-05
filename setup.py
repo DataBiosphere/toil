@@ -32,7 +32,6 @@ def runSetup():
     azureStorage = 'azure-storage==0.35.1'
     msRest = 'msrest==0.4.25'
     dnsPython = 'dnspython==1.15.0'
-    pipettor = 'pipettor==0.2.0'
     pynacl = 'pynacl==1.1.2'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     cwltool = 'cwltool==1.0.20180108222053'
@@ -53,8 +52,7 @@ def runSetup():
                   azureAnsible,
                   azureStorage,
                   msRest,
-                  dnsPython,
-                  pipettor]
+                  dnsPython]
     encryption_reqs = [
                   pynacl]
     google_reqs = [
