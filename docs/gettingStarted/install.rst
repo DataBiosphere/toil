@@ -5,7 +5,7 @@
 Installation
 ============
 
-This document describes how to prepare for and install the Toil software. Note that we recommend running all the Toil commands inside a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided below.
+This document describes how to prepare for and install the Toil software. Note that Toil requires that the user run all commands inside of a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided below.
 
 .. _virtualenv: https://virtualenv.pypa.io/en/stable/
 
