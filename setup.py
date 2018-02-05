@@ -15,7 +15,6 @@
 from setuptools import find_packages, setup
 
 
-
 def runSetup():
     """
     Calls setup(). This function exists so the setup() invocation preceded more internal
@@ -28,11 +27,10 @@ def runSetup():
     psutil = 'psutil==3.0.1'
     azure = 'azure==2.0.0'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
-    azureAnsible = 'ansible[azure]', #==2.4.3.0'
+    azureAnsible = 'ansible[azure]==2.5.0a1'
     azureStorage = 'azure-storage==0.35.1'
     msRest = 'msrest==0.4.25'
     dnsPython = 'dnspython==1.15.0'
-    pipettor = 'pipettor==0.2.0'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
     cwltool = 'cwltool==1.0.20180130110340'
@@ -53,8 +51,7 @@ def runSetup():
                   azureAnsible,
                   azureStorage,
                   msRest,
-                  dnsPython,
-                  pipettor]
+                  dnsPython]
     encryption_reqs = [
                   pynacl]
     google_reqs = [

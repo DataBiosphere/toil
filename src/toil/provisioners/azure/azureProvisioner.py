@@ -173,8 +173,6 @@ class AzureProvisioner(AnsibleDriver):
             t.write(configRaw.format(**args))
             return t.name
 
-
-
     @staticmethod
     def destroyCluster(clusterName, zone):
         self = AzureProvisioner()

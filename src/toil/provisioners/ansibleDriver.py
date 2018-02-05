@@ -15,9 +15,6 @@ import json
 import logging
 import os
 import subprocess
-import shlex
-
-import pipettor
 
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 
@@ -26,33 +23,24 @@ logger = logging.getLogger(__name__)
 
 class AnsibleDriver(AbstractProvisioner):
     contrib = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'contrib')
-    inventory = '' # to be set by child class
+    inventory = ''  # to be set by child class
 
     def __init__(self, playbooks, config=None):
         self.playbooks = playbooks
         super(AnsibleDriver, self).__init__(config)
 
-    def callPlaybook(self, playbook, ansibleArgs, wait=True, tags=[]):
-        # playbook: path to playbook being executed
-        playbook = os.path.join(self.playbooks, playbook)
-        # extravar: variables being passed to Ansible
-        extravar = " ".join(["=".join(i) for i in ansibleArgs.items()])  # Arguments being passed to Ansible
-        # ssh_args:  since we need to manually provide the cloud-config file over ssh under a set of
-        # special circumstances (i.e. we can't take advantage of the full ansible featureset) we have
-        # to disable host key checking
-        ssh_args = "--ssh-extra-args '-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no'"
-        if tags:
-            tags = "--tags '" + ",".join(tags) + "'"
-        else:
-            tags = ""
-        command = "ansible-playbook -v %s %s --extra-vars '%s' %s" % (tags, ssh_args, extravar, playbook)
+    def callPlaybook(self, playbook, ansibleArgs, wait=True, tags=["all"]):
+        playbook = os.path.join(self.playbooks, playbook)  # Path to playbook being executed
+        command = ["ansible-playbook", "-v", "--tags", ",".join(tags), "--extra-vars"]
+        command.append(" ".join(["=".join(i) for i in ansibleArgs.items()]))  # Arguments being passed to playbook
+        command.append(playbook)
 
-        logger.info("Executing Ansible call `%s`" % command)
+        logger.info("Executing Ansible call `%s`", " ".join(command))
+        p = subprocess.Popen(command)
         if wait:
-            return pipettor.runlex(command, logger=logger)
-        else:
-            popenArgs = shlex.split(command)
-            subprocess.Popen(popenArgs)
+            p.wait()
+            if p.returncode != 0:
+                raise RuntimeError("Ansible reported an error when executing playbook %s" % playbook)
 
     @classmethod
     def _getInventory(cls, clusterName):
