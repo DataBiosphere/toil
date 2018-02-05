@@ -53,9 +53,15 @@ class FileJobStore(AbstractJobStore):
     distributed batch systems, that file system must be shared by all worker nodes.
     """
 
-    # Parameters controlling the creation of temporary files
+    # Valid chars for the creation of temporary directories
     validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    # Depth of temporary subdirectories created
     levels = 2
+    
+    # 1Gb RAM chunks when reading/writing files to avoid overloading RAM capacity
+    BUFFER_SIZE = 1073741824 # 1Gb
+    # Files under SMALL_FILE_SIZE_THRESHOLD will be fully read into memory, else use a buffer
+    SMALL_FILE_SIZE_THRESHOLD = 1073741824 # 1Gb
 
     def __init__(self, path):
         """
@@ -215,17 +221,21 @@ class FileJobStore(AbstractJobStore):
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        """Writes the contents of a file to a source (writes url to writable).
+        """
+        Writes the contents of a file to a source (writes url to writable).
 
         Uses a buffer of 1Gb if file is larger than 1Gb, else
         read the entire file into memory for writing.
+
+        :param str url: A path as a string of the file to be read from.
+        :param object writable: An open file object to write to.
         """
         file_path = cls._extractPathFromUrl(url)
         with open(file_path, 'r') as f:
-            if os.path.getsize(file_path) > 1073741824:
+        	# using a buffer is slower (tested), so we only want to use it on large files
+            if os.path.getsize(file_path) > cls.SMALL_FILE_SIZE_THRESHOLD:
                 while True:
-                    buffer_size = 1073741824 # 1Gb RAM buffer
-                    data = f.read(buffer_size)
+                    data = f.read(cls.BUFFER_SIZE)
                     if not data:
                         break
                     writable.write(data)
@@ -234,17 +244,21 @@ class FileJobStore(AbstractJobStore):
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        """Writes the contents of a file to a source (writes readable to url).
+        """
+        Writes the contents of a file to a source (writes readable to url).
 
         Uses a buffer of 1Gb if file is larger than 1Gb, else
         read the entire file into memory for writing.
+
+        :param str url: A path as a string of the file to be written to.
+        :param object readable: An open file object to read from.
         """
         file_path = cls._extractPathFromUrl(url)
         with open(file_path, 'w') as f:
-            if os.fstat(readable.fileno()).st_size > 1073741824:
+        	# using a buffer is slower (tested), so we only want to use it on large files
+            if os.fstat(readable.fileno()).st_size > cls.SMALL_FILE_SIZE_THRESHOLD:
                 while True:
-                    buffer_size = 1073741824 # 1Gb RAM buffer
-                    data = readable.read(buffer_size)
+                    data = readable.read(cls.BUFFER_SIZE)
                     if not data:
                         break
                     f.write(data)
