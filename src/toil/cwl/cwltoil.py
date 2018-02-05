@@ -498,8 +498,9 @@ def makeJob(tool, jobobj, **kwargs):
                     # Found a dynamic resource requirement so use a job wrapper.
                     options = copy.deepcopy(kwargs)
                     options.update({
-                        'jobob': jobobj})
-                    job = CWLJobWrapper(tool, jobobj, **options)
+                        'tool': tool,
+                        'cwljob': jobobj})
+                    job = CWLJobWrapper(**options)
                     return (job, job)
         options = copy.deepcopy(kwargs)
         options.update({
