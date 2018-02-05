@@ -232,17 +232,17 @@ class FileJobStore(AbstractJobStore):
         """
         file_path = cls._extractPathFromUrl(url)
         with open(file_path, 'rb') as f:
-            # We use a buffer here because otherwise the system attempts to read the
-            # entire file into RAM, and if the file is larger than the available RAM,
-            # it causes a MemoryError.
             if os.path.getsize(file_path) > cls.SMALL_FILE_SIZE_THRESHOLD:
+                # We use a buffer here because otherwise the system attempts to read the
+                # entire file into RAM, and if the file is larger than the available RAM,
+                # it causes a MemoryError.
                 while True:
                     data = f.read(cls.BUFFER_SIZE)
                     if not data:
                         break
                     writable.write(data)
-            # Using a buffer is slower (tested), so we only want to use it on large files
             else:
+                # Using a buffer is slower (tested), so we only want to use it on large files
                 writable.write(f.read())
 
     @classmethod
@@ -258,17 +258,17 @@ class FileJobStore(AbstractJobStore):
         """
         file_path = cls._extractPathFromUrl(url)
         with open(file_path, 'wb') as f:
-            # We use a buffer here because otherwise the system attempts to read the
-            # entire file into RAM, and if the file is larger than the available RAM,
-            # it causes a MemoryError.
             if os.fstat(readable.fileno()).st_size > cls.SMALL_FILE_SIZE_THRESHOLD:
+                # We use a buffer here because otherwise the system attempts to read the
+                # entire file into RAM, and if the file is larger than the available RAM,
+                # it causes a MemoryError.
                 while True:
                     data = readable.read(cls.BUFFER_SIZE)
                     if not data:
                         break
                     f.write(data)
-            # Using a buffer is slower (tested), so we only want to use it on large files
             else:
+                # Using a buffer is slower (tested), so we only want to use it on large files
                 f.write(readable.read())
 
     @staticmethod
