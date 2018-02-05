@@ -16,6 +16,7 @@ from __future__ import print_function
 import json
 import os
 from toil import subprocess
+import unittest
 import re
 import shutil
 import pytest
@@ -177,31 +178,37 @@ class CWLTest(ToilTest):
 
     @slow
     @needs_lsf
+    @unittest.skip
     def test_lsf_cwl_conformance(self):
         return self.test_run_conformance("LSF")
 
     @slow
     @needs_slurm
+    @unittest.skip
     def test_slurm_cwl_conformance(self):
         return self.test_run_conformance("Slurm")
 
     @slow
     @needs_torque
+    @unittest.skip
     def test_torque_cwl_conformance(self):
         return self.test_run_conformance("Torque")
 
     @slow
     @needs_gridengine
+    @unittest.skip
     def test_gridengine_cwl_conformance(self):
         return self.test_run_conformance("gridEngine")
 
     @slow
     @needs_mesos
+    @unittest.skip
     def test_mesos_cwl_conformance(self):
         return self.test_run_conformance("mesos")
 
     @slow
     @needs_parasol
+    @unittest.skip
     def test_parasol_cwl_conformance(self):
         return self.test_run_conformance("parasol")
 
