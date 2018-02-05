@@ -241,7 +241,7 @@ class FileJobStore(AbstractJobStore):
         """
         file_path = cls._extractPathFromUrl(url)
         with open(file_path, 'w') as f:
-            if os.path.getsize(file_path) > 1073741824:
+            if os.fstat(readable.fileno()).st_size > 1073741824:
                 while True:
                     buffer_size = 1073741824 # 1Gb RAM buffer
                     data = readable.read(buffer_size)
