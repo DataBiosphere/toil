@@ -215,18 +215,41 @@ class FileJobStore(AbstractJobStore):
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        with open(cls._extractPathFromUrl(url), 'r') as f:
-            writable.write(f.read())
+        """Writes the contents of a file to a source (writes url to writable).
+
+        Uses a buffer of 1Gb if file is larger than 1Gb, else
+        read the entire file into memory for writing.
+        """
+        file_path = cls._extractPathFromUrl(url)
+        with open(file_path, 'r') as f:
+            if os.path.getsize(file_path) > 1073741824:
+                while True:
+                    buffer_size = 1073741824 # 1Gb RAM buffer
+                    data = f.read(buffer_size)
+                    if not data:
+                        break
+                    writable.write(data)
+            else:
+                writable.write(f.read())
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        with open(cls._extractPathFromUrl(url), 'w') as f:
-            while True:
-                buffer_size = 1073741824 # 1Gb RAM buffer
-                data = readable.read(buffer_size)
-                if not data:
-                    break
-                f.write(data)
+        """Writes the contents of a file to a source (writes readable to url).
+
+        Uses a buffer of 1Gb if file is larger than 1Gb, else
+        read the entire file into memory for writing.
+        """
+        file_path = cls._extractPathFromUrl(url)
+        with open(file_path, 'w') as f:
+            if os.path.getsize(file_path) > 1073741824:
+                while True:
+                    buffer_size = 1073741824 # 1Gb RAM buffer
+                    data = readable.read(buffer_size)
+                    if not data:
+                        break
+                    f.write(data)
+            else:
+                f.write(readable.read())
 
     @staticmethod
     def _extractPathFromUrl(url):
