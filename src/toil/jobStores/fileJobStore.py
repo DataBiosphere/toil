@@ -57,7 +57,7 @@ class FileJobStore(AbstractJobStore):
     validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     # Depth of temporary subdirectories created
     levels = 2
-    
+
     # 1Gb RAM chunks when reading/writing files to avoid overloading RAM capacity
     BUFFER_SIZE = 1073741824 # 1Gb
     # Files under SMALL_FILE_SIZE_THRESHOLD will be fully read into memory, else use a buffer
@@ -231,14 +231,17 @@ class FileJobStore(AbstractJobStore):
         :param object writable: An open file object to write to.
         """
         file_path = cls._extractPathFromUrl(url)
-        with open(file_path, 'r') as f:
-        	# using a buffer is slower (tested), so we only want to use it on large files
+        with open(file_path, 'rb') as f:
+            # We use a buffer here because otherwise the system attempts to read the
+            # entire file into RAM, and if the file is larger than the available RAM,
+            # it causes a MemoryError.
             if os.path.getsize(file_path) > cls.SMALL_FILE_SIZE_THRESHOLD:
                 while True:
                     data = f.read(cls.BUFFER_SIZE)
                     if not data:
                         break
                     writable.write(data)
+            # Using a buffer is slower (tested), so we only want to use it on large files
             else:
                 writable.write(f.read())
 
@@ -254,14 +257,17 @@ class FileJobStore(AbstractJobStore):
         :param object readable: An open file object to read from.
         """
         file_path = cls._extractPathFromUrl(url)
-        with open(file_path, 'w') as f:
-        	# using a buffer is slower (tested), so we only want to use it on large files
+        with open(file_path, 'wb') as f:
+            # We use a buffer here because otherwise the system attempts to read the
+            # entire file into RAM, and if the file is larger than the available RAM,
+            # it causes a MemoryError.
             if os.fstat(readable.fileno()).st_size > cls.SMALL_FILE_SIZE_THRESHOLD:
                 while True:
                     data = readable.read(cls.BUFFER_SIZE)
                     if not data:
                         break
                     f.write(data)
+            # Using a buffer is slower (tested), so we only want to use it on large files
             else:
                 f.write(readable.read())
 
