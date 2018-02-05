@@ -16,7 +16,7 @@ Preparing Your Python Runtime Environment
 
 Toil currently supports only Python 2.7 and requires a virtualenv to be active to install.
 
-First, install the latest Python ``virtualenv`` using pip_.
+If not already present, please install the latest Python ``virtualenv`` using pip_.
 ::
 
     $ sudo pip install virtualenv
