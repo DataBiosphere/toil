@@ -385,29 +385,19 @@ class CWLJobWrapper(Job):
     def __init__(self, tool, cwljob, **kwargs):
         super(CWLJobWrapper, self).__init__(cores=1,
                                             memory=1024*1024,
-                                            disk=1)
+                                            disk=8*1024)
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
         self.kwargs = kwargs
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
-
-        if 'builder' in self.kwargs:
-            builder = self.kwargs["builder"]
-        else:
-            builder = cwltool.builder.Builder()
-            builder.job = cwljob
-            builder.requirements = []
-            builder.outdir = None
-            builder.tmpdir = None
-            builder.timeout = 0
-            builder.resources = {}
         options = copy.deepcopy(self.kwargs)
-        options.update({'tool': self.cwltool,
-                        'cwljob': self.cwljob,
-                        'builder': builder})
-        realjob = CWLJob(**options)
+        options['jobobj'] = cwljob
+        realjob = CWLJob(self.cwltool, cwljob, **options)
+        for child in self._children:
+            cwllogger.debug("CWLJobWrapper child: {}".format(child))
+            realjob.addFollowOn(child)
         self.addChild(realjob)
         return realjob.rv()
 
@@ -420,11 +410,11 @@ class CWLJob(Job):
             builder = kwargs["builder"]
         else:
             builder = cwltool.builder.Builder()
-            builder.job = {}
+            builder.job = cwljob
             builder.requirements = []
             builder.outdir = None
             builder.tmpdir = None
-            builder.timeout = 0
+            builder.timeout = kwargs.get('eval_timeout')
             builder.resources = {}
         req = tool.evalResources(builder, {})
         self.cwltool = remove_pickle_problems(tool)
@@ -508,9 +498,8 @@ def makeJob(tool, jobobj, **kwargs):
                     # Found a dynamic resource requirement so use a job wrapper.
                     options = copy.deepcopy(kwargs)
                     options.update({
-                        'tool': tool,
-                        'jobobj': jobobj})
-                    job = CWLJobWrapper(**options)
+                        'jobob': jobobj})
+                    job = CWLJobWrapper(tool, jobobj, **options)
                     return (job, job)
         options = copy.deepcopy(kwargs)
         options.update({
