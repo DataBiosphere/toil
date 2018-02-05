@@ -5,40 +5,36 @@
 Installation
 ============
 
-This document describes how to prepare for and install the Toil software. Note that we recommend running all the Toil
-commands inside a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are
-provided below.
+This document describes how to prepare for and install the Toil software. Note that we recommend running all the Toil commands inside a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided below.
 
 .. _virtualenv: https://virtualenv.pypa.io/en/stable/
 
 .. _venvPrep:
 
-Preparing your Python runtime environment
+Preparing Your Python Runtime Environment
 -----------------------------------------
 
-Toil currently  supports only Python 2.7.  If you don't satisfy this requirement, consider using anaconda_ to create
-an alternate Python 2.7 installation.
+Toil currently supports only Python 2.7 and requires a virtualenv to be active to install.
 
-.. _anaconda: https://conda.io/docs/py2or3.html 
-
-Install Python ``virtualenv`` using pip_.
+First, install the latest Python ``virtualenv`` using pip_.
 ::
 
     $ sudo pip install virtualenv
 
-.. _pip: https://pip.readthedocs.io/en/latest/installing/
-
-Create a virtual environment called ``venv`` in your home directory.
+And create a virtual environment called ``venv`` in your home directory.
 ::
 
     $ virtualenv ~/venv
+.. _pip: https://pip.readthedocs.io/en/latest/installing/
 
-Or, if using an `Apache Mesos`_ cluster (see ``mesos`` in the Extras section below).
-::
+If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
 
-    $ virtualenv ~/venv --system-site-packages
+    $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
+    $ tar xvfz virtualenv-15.1.0.tar.gz
+    $ cd virtualenv-15.1.0
+    $ python virtualenv.py ~/venv
 
-Activate your virtual environment.
+Now that you've created your virtualenv, activate your virtual environment.
 ::
 
     $ source ~/venv/bin/activate
@@ -55,39 +51,6 @@ Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 (If you need any of the extra features don't do this yet and instead skip to the next section.)
 
 .. _extras:
-
-Installing Toil as a Non-Root User
-----------------------------------
-
-Sometimes you may not have the root access needed to install a virtualenv for toil, such 
-as when one is on a local university cluster.  These steps will allow you to install and 
-run toil without root privileges.
-
-One needs root access to pip install things on a system's main python installation, but one 
-does not need root in order to pip install in a virtualenv.  Therefore, here we provide a way 
-to fetch the virtualenv, activate it, and thereby pip install toil.::
-
-First, download virtualenv (here, we use version 15.1.0)::
-
-    $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
-
-Decompress the file::
-
-    $ tar xvfz virtualenv-15.1.0.tar.gz
-
-Enter the folder and create a virtualenv named "toil-venv"::
-
-    $ cd virtualenv-15.1.0
-    $ python virtualenv.py ~/toil-venv
-
-Activate the virtualenv::
-
-    $ source ~/toil-venv/bin/activate
-
-Now pip installations may be run without root.  Here we install toil with all extras (see the 
-next section for more about toil's extras).::
-
-    (toil-venv) $ pip install toil[aws,mesos,azure,google,encryption,cwl]
 
 Installing Toil with extra features
 -----------------------------------
