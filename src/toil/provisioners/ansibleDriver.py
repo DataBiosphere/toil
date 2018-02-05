@@ -44,6 +44,8 @@ class AnsibleDriver(AbstractProvisioner):
         p = subprocess.Popen(command)
         if wait:
             p.wait()
+            if p.returncode != 0:
+                raise RuntimeError("Ansible reported an error when executing playbook %s" % playbook)
 
     @classmethod
     def _getInventory(cls, clusterName):
