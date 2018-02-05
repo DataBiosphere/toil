@@ -5,40 +5,36 @@
 Installation
 ============
 
-This document describes how to prepare for and install the Toil software. Note that we recommend running all the Toil
-commands inside a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are
-provided below.
+This document describes how to prepare for and install the Toil software. Note that Toil requires that the user run all commands inside of a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided below.
 
 .. _virtualenv: https://virtualenv.pypa.io/en/stable/
 
 .. _venvPrep:
 
-Preparing your Python runtime environment
+Preparing Your Python Runtime Environment
 -----------------------------------------
 
-Toil currently  supports only Python 2.7.  If you don't satisfy this requirement, consider using anaconda_ to create
-an alternate Python 2.7 installation.
+Toil currently supports only Python 2.7 and requires a virtualenv to be active to install.
 
-.. _anaconda: https://conda.io/docs/py2or3.html 
-
-Install Python ``virtualenv`` using pip_.
+If not already present, please install the latest Python ``virtualenv`` using pip_.
 ::
 
     $ sudo pip install virtualenv
 
-.. _pip: https://pip.readthedocs.io/en/latest/installing/
-
-Create a virtual environment called ``venv`` in your home directory.
+And create a virtual environment called ``venv`` in your home directory.
 ::
 
     $ virtualenv ~/venv
+.. _pip: https://pip.readthedocs.io/en/latest/installing/
 
-Or, if using an `Apache Mesos`_ cluster (see ``mesos`` in the Extras section below).
-::
+If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
 
-    $ virtualenv ~/venv --system-site-packages
+    $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
+    $ tar xvfz virtualenv-15.1.0.tar.gz
+    $ cd virtualenv-15.1.0
+    $ python virtualenv.py ~/venv
 
-Activate your virtual environment.
+Now that you've created your virtualenv, activate your virtual environment.
 ::
 
     $ source ~/venv/bin/activate
