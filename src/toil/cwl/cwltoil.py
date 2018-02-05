@@ -917,6 +917,7 @@ def main(args=None, stdout=sys.stdout):
         if options.restart:
             outobj = toil.restart()
         else:
+            toil.config.linkImports = False
             useStrict = not options.not_strict
             make_tool_kwargs["hints"] = [{
                 "class": "ResourceRequirement",
