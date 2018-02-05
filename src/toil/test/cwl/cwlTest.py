@@ -138,7 +138,7 @@ class CWLTest(ToilTest):
             os.remove("spec.zip")
         try:
             cmd = ["bash", "run_test.sh", "RUNNER=toil-cwl-runner",
-                   "DRAFT=v1.0", "-j4"]
+                   "DRAFT=v1.0", "-j2"]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
             subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
