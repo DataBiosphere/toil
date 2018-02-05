@@ -33,9 +33,9 @@
 #      name: '{{ vmname }}'
 #      resource_group: '{{ resgrp }}'
 #      state: absent
-
-  - name: Delete storage account
-    azure_rm_storageaccount:
-      resource_group: "{{ resgrp }}"
-      name: "{{ vmname }}"
-      state: absent
+#
+#  - name: Delete storage account
+#    azure_rm_storageaccount:
+#      resource_group: "{{ resgrp }}"
+#      name: "{{ vmname }}"
+#      state: absent

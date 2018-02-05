@@ -34,6 +34,10 @@ from azure.mgmt.compute import ComputeManagementClient
 
 logger = logging.getLogger(__name__)
 
+# Credentials:
+# sshKey - needed for ssh and rsync access to the VM
+# .azure for creating VM with Ansible
+# .toilAzureCredentials for accessing jobStore
 
 class AzureProvisioner(AnsibleDriver):
     AnsibleDriver.inventory = 'azure_rm.py'
@@ -50,6 +54,7 @@ class AzureProvisioner(AnsibleDriver):
 
 
         if config:
+            # get the leader metadata
             mdUrl = "http://169.254.169.254/metadata/instance?api-version=2017-08-01"
             header={'Metadata': 'True'}
             request = urllib.request.Request(url=mdUrl, headers=header)
@@ -58,15 +63,18 @@ class AzureProvisioner(AnsibleDriver):
             dataStr = data.decode("utf-8")
             metadata = json.loads(dataStr)
 
+            # set values from the leader meta-data
             self.zone = metadata['compute']['location']
             self.clusterName = metadata['compute']['resourceGroupName']
             tagsStr = metadata['compute']['tags']
-            self.vmTags = json.loads(tagsStr)
+            self.vmTags = None #json.loads(tagsStr)
             #self.leaderIp = metadata['network']['interface'][0]['ipv4']['ipaddress'][0]['privateIpAddress']
 
             self.keyName = 'core'
             self.leaderIP = self._getLeader(self.clusterName)['private_ip']
-            self.masterPublicKey = self._setSSH()
+            self.masterPublicKey = self._setSSH() # to enable ssh access to workers
+
+            # read given configuration parameters
             self.nodeStorage = config.nodeStorage
             self.nonPreemptableNodeTypes = []
             for nodeTypeStr in config.nodeTypes:
@@ -74,7 +82,6 @@ class AzureProvisioner(AnsibleDriver):
                 if len(nodeBidTuple) != 2:
                     self.nonPreemptableNodeTypes.append(nodeTypeStr)
             self.nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False) for nodeType in self.nonPreemptableNodeTypes]
-
             self.nodeShapes = self.nonPreemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes
         else:
@@ -132,6 +139,7 @@ class AzureProvisioner(AnsibleDriver):
 
         logger.info('Launched non-preemptable leader')
 
+        # IP available as soon as the playbook finishes
         leader = self._getLeader(self.clusterName)
         self.leaderIP = leader['private_ip']
 
