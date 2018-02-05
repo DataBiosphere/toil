@@ -221,7 +221,12 @@ class FileJobStore(AbstractJobStore):
     @classmethod
     def _writeToUrl(cls, readable, url):
         with open(cls._extractPathFromUrl(url), 'w') as f:
-            f.write(readable.read())
+            while True:
+                buffer_size = 1073741824 # 1Gb RAM buffer
+                data = readable.read(buffer_size)
+                if not data:
+                    break
+                f.write(data)
 
     @staticmethod
     def _extractPathFromUrl(url):
