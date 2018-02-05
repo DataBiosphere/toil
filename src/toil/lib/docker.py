@@ -7,13 +7,7 @@ import docker
 import base64
 import time
 import requests
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
+import subprocess
 
 from docker.errors import create_api_error_from_http_exception
 from docker.errors import ContainerError
