@@ -8,11 +8,11 @@ Quickstart Examples
 Running a basic workflow
 ------------------------
 
-A Toil workflow can be run with just three steps.
+A Toil workflow can be run with just three steps:
 
 1. Install Toil (see :ref:`installation-ref`)
 
-2. Copy and paste the following code block into ``helloWorld.py``:
+2. Copy and paste the following code block into a new file called ``helloWorld.py``:
 
    .. code-block:: python
 
@@ -29,7 +29,8 @@ A Toil workflow can be run with just three steps.
               output = toil.start(Job.wrapFn(helloWorld, "You did it!"))
           print output
 
-3. Specify a job store and run the workflow like so::
+
+3. Specify the name of the :ref: `job store <>` and run the workflow::
 
        (venv) $ python helloWorld.py file:my-job-store
 
@@ -38,19 +39,15 @@ A Toil workflow can be run with just three steps.
    Don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
    they should have their :ref:`virtual environment <venvPrep>` running.
 
-Congratulations! You've run your first Toil workflow on the ``singleMachine`` batch system (the default) using the
-``file`` job store.
+Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`, ``singleMachine``.
+using the ``file`` job store.
 
-The batch system is what schedules the jobs Toil creates. Toil supports many different kinds of batch systems
-(such as `Apache Mesos`_ and Grid Engine) which makes it easy to run your workflow in all kinds of places.
-The ``singleMachine`` batch system is primarily used to prepare and debug workflows on the
-local machine. Once ready, they can be run on a full-fledged batch system (see :ref:`batchsysteminterface`).
+Toil uses batch systems to manage the jobs it creates.
 
-Usually, a workflow will generate files, and Toil
-needs a place to keep track of things. The job store is where Toil keeps all of the intermediate files shared
-between jobs. The argument you passed in to your script ``file:my-job-store`` indicated where. The ``file:``
-part just tells Toil you are using the ``file`` job store, which means everything is kept in a temporary directory
-called ``my-job-store``. (Read more about :ref:`jobStoreInterface`.)
+The ``singleMachine`` batch system is primarily used to prepare and debug workflows on a
+local machine. Once validated, try running them on a full-fledged batch system (see :ref:`batchsysteminterface`).
+Toil supports many different batch systems such as `Apache Mesos`_ and Grid Engine; its versatility makes it
+easy to run your workflow in all kinds of places.
 
 Toil is totally customizable! Run ``python helloWorld.py --help`` to see a complete list of available options.
 
@@ -340,8 +337,8 @@ After having installed the ``aws`` extra for Toil during the :ref:`installation-
 (see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`)
 on a VM in AWS just by modifying the run command.
 
-Note that when running in AWS, users can either run the workflow on a single instance or run it on a i
-cluster (which is running across multiple containers on multliple AWS instances).  For more information
+Note that when running in AWS, users can either run the workflow on a single instance or run it on a
+cluster (which is running across multiple containers on multiple AWS instances).  For more information
 on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
 
@@ -448,22 +445,22 @@ program.
 
         $ bash /tmp/setup_leaderNode.sh
         $ source cact_venv/bin/activate
-        (venv) $ cd cactus
-        (venv) $ pip install --upgrade .
+        (cact_venv) $ cd cactus
+        (cact_venv) $ pip install --upgrade .
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow. ::
 
-       (venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0 cactus --provisioner aws -nodeType c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching -logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
+       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 cactus --provisioner aws --nodeType c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis /tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
 
    .. note::
 
-      In this example, we specify the version of Toil to be 3.11.0; if the latest one is desired, please eliminate
-      ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0``.
+      In this example, we specify the version of Toil to be 3.12.0; if the latest one is desired, please eliminate
+      ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0``.
 
-      The flag ``--maxNodes 2`` creates up to two instances of type `c3.4xlarge` and launches Mesos slave containers
+      The flag ``--maxNodes 2`` creates up to two instances of type `c3.4xlarge` and launches Mesos worker containers
       inside them.
 
-      The flag ``--logDebug`` is equal to ``--logLevel DEBUG``.
+      The flag ``--logDebug`` is equivalent to ``--logLevel DEBUG``.
 
       ``--logFile /logFile_pestis3``: Write log in a file named `logFile_pestis3` under ``/`` folder.
 
@@ -477,7 +474,7 @@ program.
 
 #. Log out of the leader node. ::
 
-        (venv) $ exit
+        (cact_venv) $ exit
 
 #. Download the resulted output to local machine. ::
 
@@ -487,3 +484,5 @@ program.
 
         (venv) $ toil destroy-cluster <cluster-name>
 
+
+For other examples and Toil resources see https://toilpipelines.wordpress.com/
