@@ -8,20 +8,33 @@ import docker
 import sys
 from threading import Thread
 from docker.errors import ContainerError
-import subprocess
+
+# subprocess32 is a backport of python3's subprocess module for use on Python2,
+# and includes many reliability bug fixes relevant on POSIX platforms.
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 from bd2k.util.files import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, needs_appliance
-from toil.lib import FORGO, STOP, RM
-from toil.lib.docker import dockerCall, dockerCheckOutput, apiDockerCall, containerIsRunning, dockerKill
+from toil.test import (ToilTest,
+                       slow,
+                       needs_appliance)
+from toil.lib import (FORGO,
+                      STOP,
+                      RM,
+                      dockerPredicate)
+from toil.lib.docker import (dockerCall,
+                             dockerCheckOutput,
+                             apiDockerCall,
+                             containerIsRunning,
+                             dockerKill)
 
 # only needed for subprocessDockerCall tests
-from subprocess import CalledProcessError
 from pwd import getpwuid
 from bd2k.util.retry import retry
-from toil.lib import dockerPredicate
 
 
 logger = logging.getLogger(__name__)
@@ -513,7 +526,7 @@ def _testSubprocessDockerPipeChainErrorFn(job):
     parameters = [ ['exit', '1'], ['wc', '-l'] ]
     try:
         return dockerCheckOutput(job, tool='quay.io/ucsc_cgl/spooky_test', parameters=parameters)
-    except CalledProcessError:
+    except subprocess.CalledProcessError:
         return True
     return False
 
