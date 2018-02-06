@@ -403,18 +403,18 @@ class CWLJob(Job):
     """Execute a CWL tool using cwltool.main.single_job_executor"""
 
     def __init__(self, tool, cwljob, **kwargs):
+        self.cwltool = remove_pickle_problems(tool)
         if 'builder' in kwargs:
             builder = kwargs["builder"]
         else:
             builder = cwltool.builder.Builder()
             builder.job = cwljob
-            builder.requirements = []
+            builder.requirements = self.cwltool.requirements
             builder.outdir = None
             builder.tmpdir = None
             builder.timeout = kwargs.get('eval_timeout')
             builder.resources = {}
         req = tool.evalResources(builder, {})
-        self.cwltool = remove_pickle_problems(tool)
         # pass the default of None if basecommand is empty
         unitName = self.cwltool.tool.get("baseCommand", None)
         if isinstance(unitName, (list, tuple)):
