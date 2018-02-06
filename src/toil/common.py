@@ -137,6 +137,9 @@ class Config(object):
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
+        # CWL
+        self.cwl = False
+
     def setOptions(self, options):
         """
         Creates a config object from the options object.
