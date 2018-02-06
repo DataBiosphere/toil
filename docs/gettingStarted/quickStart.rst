@@ -386,7 +386,6 @@ on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
 Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
-
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``,
    ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
 
@@ -527,11 +526,11 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Download the resulted output to local machine. ::
 
-        (venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
+        (cact_venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
 
 #. Destroy the cluster. ::
 
-        (venv) $ toil destroy-cluster <cluster-name>
+        (cact_venv) $ toil destroy-cluster <cluster-name>
 
 
 For other examples and Toil resources see https://toilpipelines.wordpress.com/
