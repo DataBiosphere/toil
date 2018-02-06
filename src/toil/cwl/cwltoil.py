@@ -66,7 +66,7 @@ import six.moves.urllib.parse as urlparse
 cwllogger = logging.getLogger("cwltool")
 
 # Define internal jobs we should avoid submitting to batch systems and logging
-CWL_INTERNAL_JOBS = ("CWLJob", "CWLJobWrapper", "CWLWorkflow", "CWLScatter", "CWLGather",
+CWL_INTERNAL_JOBS = ("CWLJobWrapper", "CWLWorkflow", "CWLScatter", "CWLGather",
                      "ResolveIndirect")
 
 # The job object passed into CWLJob and CWLWorkflow
@@ -395,9 +395,6 @@ class CWLJobWrapper(Job):
         options = copy.deepcopy(self.kwargs)
         options['jobobj'] = cwljob
         realjob = CWLJob(self.cwltool, cwljob, **options)
-        for child in self._children:
-            cwllogger.debug("CWLJobWrapper child: {}".format(child))
-            realjob.addFollowOn(child)
         self.addChild(realjob)
         return realjob.rv()
 
@@ -776,7 +773,10 @@ class CWLWorkflow(Job):
                         for inp in step.tool["inputs"]:
                             for s in aslist(inp.get("source", [])):
                                 if not promises[s].hasChild(wfjob):
-                                    promises[s].addChild(wfjob)
+                                    if isinstance(promises[s], CWLJobWrapper):
+                                        promises[s].addFollowOn(wfjob)
+                                    else:
+                                        promises[s].addChild(wfjob)
                                     connected = True
                         if not connected:
                             # workflow step has default inputs only, isn't connected to other jobs,
