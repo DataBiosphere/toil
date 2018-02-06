@@ -64,8 +64,8 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
     def __init__(self, methodName):
         super(AbstractGCEAutoscaleTest, self).__init__(methodName=methodName)
-        # TODO: add TOIL_KEYNAME to needs_google or ssh with SA account
-        self.keyName = os.getenv('TOIL_KEYNAME')
+        # TODO: add TOIL_GOOGLE_KEYNAME to needs_google or ssh with SA account
+        self.keyName = os.getenv('TOIL_GOOGLE_KEYNAME')
         # TODO: remove this when switching to google jobstore
         self.botoDir = os.getenv('TOIL_BOTO_DIR')
         # TODO: get this from SA account or add an environment variable
