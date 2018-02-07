@@ -77,12 +77,15 @@ def runSetup():
             'docker==2.5.1'],
         extras_require={
             'mesos': mesos_reqs,
-            'aws': aws_reqs,
-            'azure': azure_reqs,
-            'encryption': encryption_reqs,
-            'google': google_reqs,
-            'cwl': cwl_reqs,
             'htcondor': htcondor_reqs,
+            'aws': aws_reqs + 
+                   mesos_reqs,
+            'azure': azure_reqs + 
+                     mesos_reqs,
+            'google': google_reqs + 
+                      mesos_reqs,
+            'encryption': encryption_reqs,
+            'cwl': cwl_reqs,
             'all': mesos_reqs +
                    aws_reqs +
                    azure_reqs +
