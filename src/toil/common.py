@@ -943,11 +943,11 @@ class Toil(object):
 
     def _serialiseEnv(self):
         """
-        Puts the environment in a globally accessible json file.
+        Puts the environment in a globally accessible pickle file.
         """
-        # Dump out the environment of this process in the environment json file.
-        with self._jobStore.writeSharedFileStream("environment.json") as fileHandle:
-            json.dump(dict(os.environ), fileHandle)
+        # Dump out the environment of this process in the environment pickle file.
+        with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
+            pickle.dump(os.environ, fileHandle, pickle.HIGHEST_PROTOCOL)
         logger.debug("Written the environment for the jobs to the environment file")
 
     def _cacheAllJobs(self):

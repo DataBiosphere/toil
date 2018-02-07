@@ -128,16 +128,11 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         # daemon
         t.start()
 
-    ##########################################
-    #Load the environment for the jobGraph
-    ##########################################
-    
     #First load the environment for the jobGraph.
-    with jobStore.readSharedFileStream("environment.json") as fileHandle:
-        environment = json.loads(fileHandle.read().decode('utf8'))
-    for i in environment:
-        if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
-            os.environ[i] = environment[i]
+    with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
+        environment = pickle.load(fileHandle)
+    if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
+        os.environ[i] = environment[i]
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
         for e in environment["PYTHONPATH"].split(':'):

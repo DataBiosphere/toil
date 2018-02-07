@@ -117,14 +117,19 @@ def dirty():
     from subprocess import call
     import os
 
+    # pipe stdout to devnull since git diff can generate unnecessary output, and we only want return codes
     with open(os.devnull, 'w')  as FNULL:
-        # return code is 1 if there are still changes relative to the index
+        # return code is non-zero if there are still changes relative to the index
         # otherwise return code is 0
         retcode1 = call(['git', 'diff', '--exit-code'], stdout=FNULL)
-    # return code is 1 if there are still changes staged for the next commit relative to HEAD
-    # otherwise return code is 0
-    retcode2 = call(['git', 'diff', '--cached', '--exit-code'])
-    return 0 != (retcode1 + retcode2)
+        if (0 == retcode1):
+            # return code is non-zero if there are still changes staged for the next commit relative to HEAD
+            # otherwise return code is 0
+            retcode2 = call(['git', 'diff', '--cached', '--exit-code'], stdout=FNULL)
+            if (0 == retcode2):
+                # both returned 0 and so the code is clean (dirty = False)
+                return False
+    return True
 
 
 def expand_(name=None):
