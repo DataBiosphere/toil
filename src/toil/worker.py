@@ -131,8 +131,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     #First load the environment for the jobGraph.
     with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
         environment = pickle.load(fileHandle)
-    if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
-        os.environ[i] = environment[i]
+    for i in environment:
+        if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
+            os.environ[i] = environment[i]
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
         for e in environment["PYTHONPATH"].split(':'):
@@ -197,6 +198,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     statsDict.jobs = []
     statsDict.workers.logsToMaster = []
     blockFn = lambda : True
+    cleanCacheFn = lambda x : True
     listOfJobs = [jobName]
     try:
         #Put a message at the top of the log, just to make sure it's working.
