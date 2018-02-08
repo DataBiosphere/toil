@@ -58,10 +58,8 @@ class FileJobStore(AbstractJobStore):
     # Depth of temporary subdirectories created
     levels = 2
 
-    # 1Gb RAM chunks when reading/writing files to avoid overloading RAM capacity
-    BUFFER_SIZE = 1073741824 # 1Gb
-    # Files under SMALL_FILE_SIZE_THRESHOLD will be fully read into memory, else use a buffer
-    SMALL_FILE_SIZE_THRESHOLD = 1073741824 # 1Gb
+    # 10Mb RAM chunks when reading/writing files
+    BUFFER_SIZE = 10485760 # 10Mb
 
     def __init__(self, path):
         """
@@ -222,54 +220,28 @@ class FileJobStore(AbstractJobStore):
     @classmethod
     def _readFromUrl(cls, url, writable):
         """
-        Writes the contents of a file to a source (writes url to writable).
-
-        Uses a buffer of 1Gb if file is larger than 1Gb, else
-        read the entire file into memory for writing.
+        Writes the contents of a file to a source (writes url to writable)
+        using a ~10Mb buffer.
 
         :param str url: A path as a string of the file to be read from.
         :param object writable: An open file object to write to.
         """
-        file_path = cls._extractPathFromUrl(url)
-        with open(file_path, 'rb') as f:
-            if os.path.getsize(file_path) > cls.SMALL_FILE_SIZE_THRESHOLD:
-                # We use a buffer here because otherwise the system attempts to read the
-                # entire file into RAM, and if the file is larger than the available RAM,
-                # it causes a MemoryError.
-                while True:
-                    data = f.read(cls.BUFFER_SIZE)
-                    if not data:
-                        break
-                    writable.write(data)
-            else:
-                # Using a buffer is slower (tested), so we only want to use it on large files
-                writable.write(f.read())
+        # we use a ~10Mb buffer to improve speed
+        with open(cls._extractPathFromUrl(url), 'rb') as readable:
+            shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
 
     @classmethod
     def _writeToUrl(cls, readable, url):
         """
-        Writes the contents of a file to a source (writes readable to url).
-
-        Uses a buffer of 1Gb if file is larger than 1Gb, else
-        read the entire file into memory for writing.
+        Writes the contents of a file to a source (writes readable to url)
+        using a ~10Mb buffer.
 
         :param str url: A path as a string of the file to be written to.
         :param object readable: An open file object to read from.
         """
-        file_path = cls._extractPathFromUrl(url)
-        with open(file_path, 'wb') as f:
-            if os.fstat(readable.fileno()).st_size > cls.SMALL_FILE_SIZE_THRESHOLD:
-                # We use a buffer here because otherwise the system attempts to read the
-                # entire file into RAM, and if the file is larger than the available RAM,
-                # it causes a MemoryError.
-                while True:
-                    data = readable.read(cls.BUFFER_SIZE)
-                    if not data:
-                        break
-                    f.write(data)
-            else:
-                # Using a buffer is slower (tested), so we only want to use it on large files
-                f.write(readable.read())
+        # we use a ~10Mb buffer to improve speed
+        with open(cls._extractPathFromUrl(url), 'wb') as writable:
+            shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
 
     @staticmethod
     def _extractPathFromUrl(url):
