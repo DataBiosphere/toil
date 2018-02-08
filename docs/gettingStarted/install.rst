@@ -78,13 +78,11 @@ Here's what each extra provides:
 |                | Service (`AWS`_) using Toil's built in :ref:`clusterRef`.  |
 |                | Clusters can scale up and down automatically.              |
 |                | It also supports storing workflow state.                   |
-|                | This extra has no native dependencies.                     |
 +----------------+------------------------------------------------------------+
 | ``google``     | Experimental. Stores workflow state in `Google Cloud       |
-|                | Storage`_. This extra has no native dependencies.          |
+|                | Storage`_.                                                 |
 +----------------+------------------------------------------------------------+
-| ``azure``      | Stores workflow state in `Microsoft Azure`_. This          |
-|                | extra has no native dependencies.                          |
+| ``azure``      | Stores workflow state in `Microsoft Azure`_.               |
 +----------------+------------------------------------------------------------+
 | ``mesos``      | Provides support for running Toil on an `Apache Mesos`_    |
 |                | cluster. Note that running Toil on other batch systems     |
@@ -116,8 +114,7 @@ Here's what each extra provides:
 |                | * :ref:`libffi headers and library <libffi-dev>`           |
 +----------------+------------------------------------------------------------+
 | ``cwl``        | Provides support for running workflows written using the   |
-|                | `Common Workflow Language`_. This extra has no native      |
-|                | dependencies.                                              |
+|                | `Common Workflow Language`_.                               |
 +----------------+------------------------------------------------------------+
 
 .. _AWS: https://aws.amazon.com/
@@ -128,7 +125,7 @@ Here's what each extra provides:
 .. _python-dev:
 .. topic:: Python headers and static libraries
 
-   Only needed for the ``mesos`` and ``encryption`` extras.
+   Needed for the ``mesos``, ``aws``, ``google``, ``azure``, and ``encryption`` extras.
 
    On Ubuntu::
 
@@ -233,6 +230,10 @@ source code will immediately affect the virtualenv)::
 Or, to install with support for all optional :ref:`extras`::
 
     $ make develop extras=[aws,mesos,azure,google,encryption,cwl]
+
+or::
+
+    $ make develop extras=[all]
 
 To build the docs, run ``make develop`` with all extras followed by
 
