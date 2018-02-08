@@ -27,7 +27,7 @@ def runSetup():
     psutil = 'psutil==3.0.1'
     azure = 'azure==2.0.0'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
-    azureAnsible = 'ansible[azure]==2.5.0a1'
+    azureAnsible = 'ansible[azure]==2.4.2.0'
     azureStorage = 'azure-storage==0.35.1'
     msRest = 'msrest==0.4.25'
     dnsPython = 'dnspython==1.15.0'

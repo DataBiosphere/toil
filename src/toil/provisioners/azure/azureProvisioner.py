@@ -190,14 +190,18 @@ class AzureProvisioner(AnsibleDriver):
         ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
 
         instances = []
+        wait = False
         for i in range(numNodes):
+            # Wait for the last one so that getProvisionedWorkers will see it
+            if i == numNodes-1:
+                wait = True
             name = 'w' + str(uuid.uuid4())
             ansibleArgs['vmname'] = name
             instances.append(name)
             # Launch the cluster with Ansible
             # Calling the playbook with `tags=['untagged']` skips creation of
             # resource group, security group, etc.
-            self.callPlaybook(self.playbook['create'], ansibleArgs, wait=False, tags=['untagged'])
+            self.callPlaybook(self.playbook['create'], ansibleArgs, wait=wait, tags=['untagged'])
 
         # Wait for nodes
         allInstances = self.getProvisionedWorkers(None)
