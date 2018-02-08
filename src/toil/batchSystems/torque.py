@@ -67,7 +67,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         """
         def getRunningJobIDs(self):
             times = {}
-            currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
+            with self.runningJobsLock:
+                currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
             logger.debug("getRunningJobIDs current jobs are: " + str(currentjobs))
             # Skip running qstat if we don't have any current jobs
             if not currentjobs:
