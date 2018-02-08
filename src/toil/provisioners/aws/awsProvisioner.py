@@ -63,7 +63,7 @@ class AWSProvisioner(AbstractProvisioner):
         This is due to the fact that the provisioner is used both in Toil runs to manage
         autoscaling as well as outside of Toil runs to launch clusters and manage statically
         provisioned nodes. Static provisioned nodes are those that the user explicitly adds into
-        the cluster via `launch-cluster -workers n`, which will launch a cluster with n statically
+        the cluster via `launch-cluster --workers n`, which will launch a cluster with n statically
         provisioned nodes.
 
         :param config: Optional config object from common.py
@@ -642,13 +642,17 @@ class AWSProvisioner(AbstractProvisioner):
         if nodeType:
             pendingInstances = [instance for instance in pendingInstances if instance.instance_type == nodeType]
             runningInstances = [instance for instance in runningInstances if instance.instance_type == nodeType]
-        instances = set(pendingInstances)
+        # combine lists of instances by checking id for uniqueness to prevent a lucky
+        # instance from making it into both lists and being double counted.
+        pendingDict = {instance.id: instance for instance in pendingInstances}
+        uniquePendingInstances = [pendingDict[id_] for id_ in pendingDict if id_ not in runningInstances]
+        allInstances = set(runningInstances).union(set(uniquePendingInstances))
         if not preemptable and not both:
-            return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is None]
+            return [x for x in allInstances if x.spot_instance_request_id is None]
         elif preemptable and not both:
-            return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is not None]
+            return [x for x in allInstances if x.spot_instance_request_id is not None]
         elif both:
-            return [x for x in instances.union(set(runningInstances))]
+            return allInstances
 
     @classmethod
     def _getSpotRequestIDs(cls, ctx, clusterName):
