@@ -234,7 +234,7 @@ Toil supports using the `Google Cloud Platform`_. Setting this up is easy!
    blank
 
    .. warning::
-This command could overwrite an old ssh key you may be using.
+      This command could overwrite an old ssh key you may be using.
       If you have an existing ssh key you would like to use, it will need to be called id_rsa and it
       needs to have no password set.
 
@@ -245,12 +245,11 @@ This command could overwrite an old ssh key you may be using.
 #. Add your newly formated public key to google. To do this, log into your Google Cloud account
    and go to `metadata`_ section under the Compute tab.
 
-   .. image:: googleScreenShot.png
-
+   .. image:: ./googleScreenShot.png
 
    Near the top of the screen click on 'SSH Keys', then edit, add item, and paste the key. Then save.
 
-   .. image:: googleScreenShot2.png
+   .. image:: ./googleScreenShot2.png
 
 For more details look at Google's instructions for `adding SSH keys`_
 

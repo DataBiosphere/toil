@@ -30,7 +30,7 @@ A Toil workflow can be run with just three steps:
           print output
 
 
-3. Specify the name of the job store and run the workflow::
+3. Specify the name of the :ref:`job store <jobStoreOverview>` and run the workflow::
 
        (venv) $ python helloWorld.py file:my-job-store
 
