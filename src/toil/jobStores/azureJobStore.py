@@ -12,13 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import range
 from builtins import object
+from six.moves.http_client import HTTPException
+from six.moves.configparser import RawConfigParser, NoOptionError
+
 import bz2
 import inspect
 import logging
@@ -29,15 +32,6 @@ import uuid
 from collections import namedtuple
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-# Python 3 compatibility imports
-from six.moves.http_client import HTTPException
-from six.moves.configparser import RawConfigParser, NoOptionError
 
 from azure.common import AzureMissingResourceHttpError, AzureException
 from azure.storage.blob.blockblobservice import BlockBlobService
@@ -51,6 +45,7 @@ from bd2k.util import strict_bool, memoize
 from bd2k.util.exceptions import panic
 from bd2k.util.retry import retry
 
+from toil import pickle # py2/3 compatible cPickle
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 from toil.jobStores.abstractJobStore import (AbstractJobStore,

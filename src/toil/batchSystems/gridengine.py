@@ -12,12 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import map
 from builtins import str
 from builtins import range
 from past.utils import old_div
+from six.moves.queue import Empty, Queue
+from six import iteritems
+
 import logging
 import os
 from pipes import quote
@@ -25,17 +29,7 @@ import time
 import math
 import sys
 
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six import iteritems
-
+from toil import subprocess # subprocess32 backport
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 

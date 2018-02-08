@@ -11,11 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 """
 SSHs into the toil appliance container running on the leader of the cluster
 """
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
+
 import argparse
 import logging
+
 from toil.provisioners import Cluster
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions

@@ -17,11 +17,16 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
+
+
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import str
 from builtins import range
 from past.utils import old_div
+from six.moves.queue import Empty, Queue
+
 import logging
 import time
 from threading import Thread
@@ -29,16 +34,7 @@ from datetime import date
 import os
 import sys
 
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-
+from toil import subprocess # subprocess32 backport
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport
 from toil.batchSystems.lsfHelper import parse_memory_resource, parse_memory_limit, per_core_reservation

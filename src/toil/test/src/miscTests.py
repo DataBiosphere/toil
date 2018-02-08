@@ -12,18 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
 from builtins import range
-from toil.test import ToilTest, slow
-from uuid import uuid4
+from six.moves import xrange
 
-import math
+from uuid import uuid4
 import os
 import random
 import tempfile
 
-# Python 3 compatibility imports
-from six.moves import xrange
+from toil.test import ToilTest, slow
+
 
 class MiscTests(ToilTest):
     """

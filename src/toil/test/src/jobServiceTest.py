@@ -11,28 +11,31 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
 from builtins import zip
 from builtins import map
 from builtins import range
-import os
-import random
-import unittest
-
-# Python 3 compatibility imports
 from six.moves import xrange
 
-from toil.lib.bioio import getTempFile
-from toil.job import Job
-from toil.test import ToilTest, slow
+import os
+import random
 import time
 import sys
 from threading import Thread, Event
 import logging
-logger = logging.getLogger( __name__ )
+import unittest
 from unittest import skipIf
+
+from toil.lib.bioio import getTempFile
+from toil.job import Job
+from toil.test import ToilTest, slow
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.leader import FailedJobsException, DeadlockException
+
+logger = logging.getLogger( __name__ )
+
 
 class JobServiceTest(ToilTest):
     """

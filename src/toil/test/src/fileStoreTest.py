@@ -12,12 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
-
 from builtins import str
 from builtins import range
 from builtins import object
+from six.moves import xrange
+from future.utils import with_metaclass
+
+import collections
+import inspect
+import os
+import random
+import signal
+import time
+import pytest
 import filecmp
 from abc import abstractmethod, ABCMeta
 from struct import pack, unpack
@@ -29,18 +39,6 @@ from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.fileStore import CacheUnbalancedError
-
-import collections
-import inspect
-import os
-import random
-import signal
-import time
-import pytest
-
-# Python 3 compatibility imports
-from six.moves import xrange
-from future.utils import with_metaclass
 
 # Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.

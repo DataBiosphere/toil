@@ -15,24 +15,21 @@
 """
 The leader script (of the leader/worker pair) for running jobs.
 """
+
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
-
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import object
 from past.utils import old_div
+
 import logging
 import gzip
 import os
 import time
 from collections import namedtuple
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
 
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import bytes2human

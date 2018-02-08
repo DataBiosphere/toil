@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
+
 import os
 import random
 import socket
@@ -24,28 +26,20 @@ import sys
 import threading
 import logging
 import traceback
+import psutil
+from struct import pack
 from time import sleep, time
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-import psutil
 import mesos.interface
-from bd2k.util.expando import Expando
 from mesos.interface import mesos_pb2
 import mesos.native
-from struct import pack
+
+from bd2k.util.expando import Expando
+
+from toil import subprocess # subprocess32 backport
+from toil import pickle # py2/3 compatible cPickle
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.resource import Resource
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
 
 log = logging.getLogger(__name__)
 

@@ -12,37 +12,31 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
-from functools import wraps
-
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
+from six.moves import StringIO
+
+from functools import wraps
 from contextlib import contextmanager
 import uuid
 import logging
 import time
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
 from bd2k.util.retry import retry
 from google.cloud import storage, exceptions
 from google.api_core.exceptions import GoogleAPICallError, InternalServerError, ServiceUnavailable
+
+from toil import pickle # py2/3 compatible cPickle
 from toil.lib.misc import truncExpBackoff
-
-# Python 3 compatibility imports
-from six.moves import StringIO
-
+from toil.jobStores.utils import WritablePipe, ReadablePipe
+from toil.jobGraph import JobGraph
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException, NoSuchJobStoreException,
                                              JobStoreExistsException,
                                              ConcurrentFileModificationException)
-from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobGraph import JobGraph
 log = logging.getLogger(__name__)
 
 GOOGLE_STORAGE = 'gs'

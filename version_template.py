@@ -25,6 +25,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import at module level unless you want the imported value to be included in the output
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
+
 baseVersion = '3.14.0a1'
 dockerRegistry = 'quay.io/ucsc_cgl'
 dockerName = 'toil'
@@ -110,23 +111,22 @@ def currentCommit():
 
 def dirty():
     """
-    Returns True if the code has uncommitted diffs.
+    Returns True if the project source has uncommitted diffs.
 
     :return: bool
     """
     from subprocess import call
     import os
 
-    # pipe stdout to devnull since git diff can generate unnecessary output, and we only want return codes
+    # pipe stdout to devnull since git diff can generate unnecessary output,
+    # and we only want return codes
     with open(os.devnull, 'w')  as FNULL:
-        # return code is non-zero if there are still changes relative to the index
-        # otherwise return code is 0
-        retcode1 = call(['git', 'diff', '--exit-code'], stdout=FNULL)
-        if (0 == retcode1):
-            # return code is non-zero if there are still changes staged for the next commit relative to HEAD
-            # otherwise return code is 0
-            retcode2 = call(['git', 'diff', '--cached', '--exit-code'], stdout=FNULL)
-            if (0 == retcode2):
+        # return code is non-zero if there are still changes relative
+        # to the index, otherwise return code is 0
+        if 0 == call(['git', 'diff', '--exit-code'], stdout=FNULL):
+            # return code is non-zero if there are still changes staged for
+            # the next commit relative to HEAD, otherwise return code is 0
+            if 0 == call(['git', 'diff', '--cached', '--exit-code'], stdout=FNULL):
                 # both returned 0 and so the code is clean (dirty = False)
                 return False
     return True

@@ -18,17 +18,21 @@
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
 
+# Python 3 compatibility imports
+from __future__ import absolute_import
 from future import standard_library
 standard_library.install_aliases()
+from six import iteritems, string_types
+import six.moves.urllib.parse as urlparse
 from builtins import str
 from builtins import range
 from builtins import object
+
 from toil.job import Job
 from toil.common import Toil
 from toil.version import baseVersion
 from toil.lib.bioio import setLoggingFromOptions
 
-import argparse
 import cwltool.errors
 import cwltool.load_tool
 import cwltool.main
@@ -38,7 +42,6 @@ import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.draft2tool
-
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
                                 normalizeFilesDirs)
@@ -47,6 +50,7 @@ from cwltool.process import (shortname, fillInDefaults, compute_checksums,
 from cwltool.software_requirements import (
         DependenciesConfiguration, get_container_from_software_requirements)
 from cwltool.utils import aslist
+
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
 import os
@@ -56,12 +60,8 @@ import sys
 import logging
 import copy
 import functools
+import argparse
 from typing import Text
-
-
-# Python 3 compatibility imports
-from six import iteritems, string_types
-import six.moves.urllib.parse as urlparse
 
 cwllogger = logging.getLogger("cwltool")
 

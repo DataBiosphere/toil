@@ -12,20 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
+from future.utils import with_metaclass
 from future import standard_library
 standard_library.install_aliases()
 from builtins import map
 from builtins import str
 from builtins import range
 from builtins import object
-from abc import abstractmethod, ABCMeta
-
-from bd2k.util.objects import abstractclassmethod
+from six.moves.queue import Empty, Queue
+from six.moves import xrange
 
 import base64
 from collections import namedtuple, defaultdict
-
 import dill
 import errno
 import logging
@@ -35,22 +35,19 @@ import stat
 import tempfile
 import time
 import uuid
-
 from contextlib import contextmanager
 from fcntl import flock, LOCK_EX, LOCK_UN
 from functools import partial
 from hashlib import sha1
 from threading import Thread, Semaphore, Event
+from abc import abstractmethod, ABCMeta
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six.moves import xrange
-
+from bd2k.util.objects import abstractclassmethod
 from bd2k.util.humanize import bytes2human
+
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
-from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
 

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
 from future import standard_library
 standard_library.install_aliases()
@@ -19,12 +20,12 @@ from builtins import str
 from builtins import map
 from builtins import filter
 from builtins import object
+
 import os
 import sys
 import copy
 import random
 import json
-
 import tempfile
 import traceback
 import time
@@ -32,17 +33,14 @@ import socket
 import logging
 import shutil
 from threading import Thread
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+import signal
 
 from bd2k.util.expando import MagicExpando
+
+from toil import pickle # py2/3 compatible cPickle
 from toil.common import Toil
 from toil.fileStore import FileStore
 from toil import logProcessContext
-import signal
 
 logger = logging.getLogger(__name__)
 

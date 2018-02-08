@@ -12,10 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from past.builtins import cmp
 from builtins import str
 from builtins import object
+
 import sys
 
 if sys.version_info >= (3, 0):

@@ -11,29 +11,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
+from six.moves import StringIO
+from six import u as str
+from future.moves.urllib.request import urlretrieve
+
 import json
 import os
-import sys
 import re
 import shutil
 import pytest
-from future.moves.urllib.request import urlretrieve
 import zipfile
 
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-# Python 3 compatibility imports
-from six.moves import StringIO
-from six import u as str
-
+from toil import subprocess # subprocess32 backport
 from toil.test import ToilTest, needs_cwl, slow
+
 
 @needs_cwl
 class CWLTest(ToilTest):

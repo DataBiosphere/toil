@@ -12,19 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
-# python 2/3 compatibility imports
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
 # TODO: change functions to support python 3 str and map
 # from builtins import map
 # from builtins import str
 
-# standard library
 import logging
 import sys
 
-# toil imports
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
@@ -32,6 +29,7 @@ from toil.job import JobException
 from toil.version import version
 
 logger = logging.getLogger(__name__)
+
 
 def print_dot_chart(jobsToReport, jobStore_name):
     '''Print a dot output graph representing the workflow.'''

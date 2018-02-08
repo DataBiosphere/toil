@@ -12,18 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
+from six.moves.queue import Empty, Queue
+from future.utils import with_metaclass
 from builtins import str
+
 from datetime import datetime
 import logging
 import time
 from threading import Thread
 from abc import ABCMeta, abstractmethod
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from future.utils import with_metaclass
 
 from bd2k.util.objects import abstractclassmethod
 

@@ -12,27 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
-
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import map
 from past.utils import old_div
 from builtins import object
+
 import json
 import logging
 import os
+import sys
 from collections import deque, defaultdict
 from threading import Lock
-
 import time
+from itertools import islice
+
 from bd2k.util.exceptions import require
 from bd2k.util.retry import retry
 from bd2k.util.threading import ExceptionalThread
 from bd2k.util.throttle import throttle
-from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 from toil.provisioners.abstractProvisioner import Shape
@@ -40,7 +42,6 @@ from toil.provisioners.abstractProvisioner import Shape
 logger = logging.getLogger(__name__)
 
 logger.setLevel(logging.DEBUG)
-import sys
 
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)

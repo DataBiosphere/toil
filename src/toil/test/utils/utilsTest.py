@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from builtins import str
 
@@ -21,16 +22,10 @@ import uuid
 import shutil
 import tempfile
 import pytest
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
+import logging
 
 import toil
-import logging
+from toil import subprocess # subprocess32 backport
 import toil.test.sort.sort
 from toil import resolveEntryPoint
 from toil.job import Job
@@ -39,7 +34,6 @@ from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
-
 
 logger = logging.getLogger(__name__)
 

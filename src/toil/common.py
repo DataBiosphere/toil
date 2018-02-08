@@ -12,44 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
 from future import standard_library
 standard_library.install_aliases()
+from six import iteritems
 from builtins import str
 from builtins import range
 from builtins import object
+
 import logging
 import os
 import re
 import sys
 import tempfile
-import json
 import time
 import uuid
-import subprocess
 import requests
 from argparse import ArgumentParser
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-# Python 3 compatibility imports
-from six import iteritems
 
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 from bd2k.util.retry import retry
 
 from toil import logProcessContext
+from toil import subprocess # subprocess32 backport
+from toil import pickle # py2/3 compatible cPickle
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
-
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 

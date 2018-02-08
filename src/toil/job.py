@@ -12,14 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
-
+from future.utils import with_metaclass
 from future import standard_library
 standard_library.install_aliases()
+from six import iteritems, string_types
 from builtins import zip
 from builtins import map
 from builtins import str
 from builtins import object
+
 import collections
 import importlib
 import inspect
@@ -29,31 +32,22 @@ import sys
 import time
 import uuid
 import dill
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
 from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from contextlib import contextmanager
 from io import BytesIO
 
-# Python 3 compatibility imports
-from six import iteritems, string_types
-
 from bd2k.util.exceptions import require
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 
+from toil import pickle # py2/3 compatible cPickle
+from toil.resource import ModuleDescriptor
 from toil.common import Toil, addOptions
 from toil.fileStore import DeferredFunction
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
                             getTotalCpuTime)
-from toil.resource import ModuleDescriptor
-from future.utils import with_metaclass
 
 logger = logging.getLogger( __name__ )
 

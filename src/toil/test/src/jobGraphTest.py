@@ -12,9 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
+
 import os
 from argparse import ArgumentParser
+
 from toil.common import Toil
 from toil.job import Job
 from toil.test import ToilTest

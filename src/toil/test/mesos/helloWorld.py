@@ -15,14 +15,17 @@
 A simple user script for Toil
 """
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
+
 import argparse
-import os
+
 from toil.common import Toil
 from toil.job import Job
 
 childMessage = "The child job is now running!"
 parentMessage = "The parent job is now running!"
+
 
 def hello_world(job):
 

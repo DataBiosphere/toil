@@ -11,40 +11,34 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
 
+# Python 3 compatibility imports
+from __future__ import absolute_import
+from six import itervalues
+from six.moves.urllib.request import urlopen
+import six.moves.urllib.parse as urlparse
 from future import standard_library
+from future.utils import with_metaclass
 standard_library.install_aliases()
 from builtins import str
 from builtins import map
 from builtins import object
-import shutil
 
+import shutil
 import re
+import logging
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager, closing
 from datetime import timedelta
 from uuid import uuid4
 
-# Python 3 compatibility imports
-from six import itervalues
-from six.moves.urllib.request import urlopen
-import six.moves.urllib.parse as urlparse
-
 from bd2k.util.retry import retry_http
-
-from toil.fileStore import FileID
-from toil.job import JobException
 from bd2k.util import memoize
 from bd2k.util.objects import abstractclassmethod
-from future.utils import with_metaclass
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-import logging
+from toil import pickle # py2/3 compatible cPickle
+from toil.fileStore import FileID
+from toil.job import JobException
 
 logger = logging.getLogger(__name__)
 

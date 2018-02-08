@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
 from builtins import str
 from builtins import object
+
 import gzip
 import json
 import logging
@@ -24,6 +25,7 @@ import time
 from threading import Thread, Event
 
 from bd2k.util.expando import Expando
+
 from toil.lib.bioio import getTotalCpuTime
 
 logger = logging.getLogger( __name__ )

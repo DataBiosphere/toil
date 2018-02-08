@@ -11,15 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from builtins import str
 from builtins import object
+
 import datetime
 import logging
 import os
 
 from bd2k.util import parse_iso_utc, less_strict_bool
-
 
 logger = logging.getLogger(__name__)
 

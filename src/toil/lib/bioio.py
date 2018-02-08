@@ -12,10 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
+from six.moves import xrange
+from six import string_types
 from builtins import range
 from builtins import object
+
 import socket
 import sys
 import os
@@ -28,20 +31,10 @@ import math
 import shutil
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-# Python 3 compatibility imports
-from six.moves import xrange
-from six import string_types
-
 import xml.etree.cElementTree as ET
 from xml.dom import minidom  # For making stuff pretty
+
+from toil import subprocess # subprocess32 backport
 
 defaultLogLevel = logging.INFO
 logger = logging.getLogger(__name__)

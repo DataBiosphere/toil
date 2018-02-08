@@ -11,42 +11,36 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
 from builtins import str
 from builtins import range
+from six import iteritems
+
 import logging
 import time
 import os
 import sys
 import string
-
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-# Python 3 compatibility imports
 from _ssl import SSLError
-
-from six import iteritems
-
-from bd2k.util import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
-                          create_spot_instances, wait_instances_running, wait_transition)
+from boto.utils import get_instance_metadata
 
+from bd2k.util import memoize
+from bd2k.util.retry import retry
+
+from toil import subprocess # subprocess32 backport
 from toil import applianceSelf
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from toil.lib.context import Context
-from boto.utils import get_instance_metadata
-from bd2k.util.retry import retry
 from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
                                Node, NoSuchClusterException)
+from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
+                          create_spot_instances, wait_instances_running, wait_transition)
 
 logger = logging.getLogger(__name__)
 

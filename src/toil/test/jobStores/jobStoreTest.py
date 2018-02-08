@@ -12,19 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
-
-from bd2k.util.retry import retry
+from future.utils import with_metaclass
 from future import standard_library
-from toil.lib.misc import truncExpBackoff
-
 standard_library.install_aliases()
 from builtins import next
 from builtins import range
 from builtins import str
 from past.utils import old_div
 from builtins import object
+from six.moves.queue import Queue
+from six.moves import SimpleHTTPServer, StringIO
+from six import iteritems
+import six.moves.urllib.parse as urlparse
+from six.moves.urllib.request import urlopen, Request
+
+# noinspection PyPackageRequirements
+# (installed by `make prepare`)
+from mock import patch
 import socketserver
 import pytest
 import hashlib
@@ -37,22 +44,13 @@ import time
 import uuid
 from stubserver import FTPStubServer
 from abc import abstractmethod, ABCMeta
-from itertools import chain, islice, count
+from itertools import chain, islice
 from threading import Thread
 from unittest import skip
 
-# Python 3 compatibility imports
-from six.moves.queue import Queue
-from six.moves import SimpleHTTPServer, StringIO
-from six import iteritems
-import six.moves.urllib.parse as urlparse
-from six.moves.urllib.request import urlopen, Request
-
+from bd2k.util.retry import retry
 from bd2k.util import memoize
 from bd2k.util.exceptions import panic
-# noinspection PyPackageRequirements
-# (installed by `make prepare`)
-from mock import patch
 
 from toil.common import Config, Toil
 from toil.fileStore import FileID
@@ -68,7 +66,6 @@ from toil.test import (ToilTest,
                        make_tests,
                        needs_google,
                        slow)
-from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
 

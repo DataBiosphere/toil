@@ -12,16 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
 from __future__ import division
 from builtins import range
 from builtins import object
 from past.utils import old_div
+
 import os
 import logging
 import time
-import toil.test.batchSystems.batchSystemTest as batchSystemTest
 
+import toil.test.batchSystems.batchSystemTest as batchSystemTest
 from toil.job import Job
 from toil.job import PromisedRequirement
 from toil.test import needs_mesos, slow

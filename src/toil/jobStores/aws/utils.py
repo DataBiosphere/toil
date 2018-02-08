@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import str
@@ -20,30 +21,26 @@ from builtins import next
 from builtins import range
 from past.utils import old_div
 from builtins import object
+from six import iteritems
+
 import base64
 import bz2
 import os
 import socket
 import logging
 import types
-
 import errno
 from ssl import SSLError
-
-# Python 3 compatibility imports
 import itertools
-
-
-from bd2k.util.exceptions import panic
-from six import iteritems
-
-from bd2k.util.retry import retry
+import boto3
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
                             S3CreateError,
                             S3CopyError)
-import boto3
+
+from bd2k.util.exceptions import panic
+from bd2k.util.retry import retry
 
 log = logging.getLogger(__name__)
 

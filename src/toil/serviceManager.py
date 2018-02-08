@@ -12,17 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
 from builtins import map
 from builtins import object
+from six.moves.queue import Empty, Queue
+
 import logging
 import time
-
 from threading import Thread, Event
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
 
 logger = logging.getLogger( __name__ )
 

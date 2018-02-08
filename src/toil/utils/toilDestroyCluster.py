@@ -14,11 +14,15 @@
 """
 Terminates the specified cluster and associated resources
 """
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
+
 import logging
+
 from toil.provisioners import Cluster
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
-
 
 logger = logging.getLogger(__name__)
 

@@ -15,7 +15,9 @@
 """Debug tool for copying files contained in a toil jobStore.
 """
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
+
 import logging
 import fnmatch
 import os.path

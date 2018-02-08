@@ -16,10 +16,14 @@
 Implements a real-time UDP-based logging system that user scripts can use for debugging.
 """
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
+from future.utils import with_metaclass
 from future import standard_library
 standard_library.install_aliases()
 from builtins import object
+from six.moves import socketserver as SocketServer
+
 import os
 import os.path
 import json
@@ -27,13 +31,8 @@ import logging
 import logging.handlers
 import threading
 
-# Python 3 compatibility imports
-from six.moves import socketserver as SocketServer
-
 import toil.lib.bioio
 from toil.batchSystems.options import getPublicIP
-
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 

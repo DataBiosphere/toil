@@ -14,7 +14,10 @@
 
 """Kills any running jobs trees in a rogue toil.
 """
+
+# Python 3 compatibility imports
 from __future__ import absolute_import
+
 import logging
 
 from toil.lib.bioio import getBasicOptionParser

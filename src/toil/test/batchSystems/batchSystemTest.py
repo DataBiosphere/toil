@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import map
@@ -19,6 +20,8 @@ from builtins import str
 from builtins import range
 from builtins import object
 from past.utils import old_div
+from future.utils import with_metaclass
+
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from inspect import getsource
@@ -33,13 +36,7 @@ import multiprocessing
 import sys
 from unittest import skipIf
 
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
+from toil import subprocess # subprocess32 backport
 from toil.common import Config
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
@@ -56,7 +53,6 @@ from toil.test import (ToilTest,
                        needs_torque,
                        slow,
                        tempFileContaining)
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
