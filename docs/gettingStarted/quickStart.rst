@@ -30,7 +30,7 @@ A Toil workflow can be run with just three steps:
           print output
 
 
-3. Specify the name of the :ref:`job store <>` and run the workflow::
+3. Specify the name of the job store and run the workflow::
 
        (venv) $ python helloWorld.py file:my-job-store
 
@@ -69,8 +69,7 @@ Running CWL workflows using Toil is easy.
 
        (venv) $ pip install 'toil[cwl]'
 
-   This installs the ``toil-cwl-runner`` and ``cwl-runner`` executables. These are identical -
-   ``cwl-runner`` is the portable name for the default system CWL runner.
+   This installs the ``toil-cwl-runner`` and ``cwltoil`` executables.
 
 #. Copy and paste the following code block into ``example.cwl``:
 
@@ -112,6 +111,52 @@ To run this workflow on an AWS cluster have a look at :ref:`awscwl`.
 For information on using CWL with Toil see the section :ref:`cwl`
 
 .. _CWL User Guide: http://www.commonwl.org/v1.0/UserGuide.html
+
+Running a basic WDL workflow
+----------------------------
+
+The `Workflow Description Language`_ (WDL) is another emerging language for writing workflows that are portable across multiple workflow engines and platforms.
+Running WDL workflows using Toil is still in alpha, and currently experimental.  Toil currently supports basic workflow syntax (see :ref:`wdlSupport` for more details and examples).  Here we go over running a basic WDL helloworld workflow.
+
+#. First ensure that Toil is installed with the
+   ``wdl`` extra (see :ref:`extras`).  ::
+
+        (venv) $ pip install 'toil[wdl]'
+
+   This installs the ``toil-wdl-runner`` executable.
+
+#. Copy and paste the following code block into ``wdl-helloworld.wdl``:
+
+::
+
+        workflow write_simple_file {
+          call write_file
+        }
+        task write_file {
+          String message
+          command { echo ${message} > wdl-helloworld-output.txt }
+          output { File test = "wdl-helloworld-output.txt" }
+        }
+
+   and this code into ``wdl-helloworld.json``::
+
+        {
+          "write_simple_file.write_file.message": "Hello world!"
+        }
+
+#. To run the workflow simply enter ::
+
+        (venv) $ toil-wdl-runner wdl-helloworld.wdl wdl-helloworld.json
+
+   Your output will be in ``wdl-helloworld-output.txt`` ::
+
+        (venv) $ cat output.txt
+        Hello world!
+
+To learn more about WDL, see the main `WDL website`_ .
+
+.. _WDL website: https://software.broadinstitute.org/wdl/
+.. _Workflow Description Language: https://software.broadinstitute.org/wdl/
 
 .. _runningDetail:
 
@@ -341,6 +386,8 @@ Note that when running in AWS, users can either run the workflow on a single ins
 cluster (which is running across multiple containers on multiple AWS instances).  For more information
 on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
+
 
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``,
    ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
@@ -381,12 +428,14 @@ on running Toil workflows on a cluster, see :ref:`runningAWS`.
 Running a CWL Workflow on AWS
 -----------------------------
 After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS
-(see :ref:`prepare_aws-ref`),
-the user can run a CWL workflow with Toil on AWS.
+(see :ref:`prepare_aws-ref`), the user can run a CWL workflow with Toil on AWS.
+
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
+
 
 #. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
-      (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.micro --zone us-west-2a
+      (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
 
 #. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using
    the :ref:`rsyncCluster` command. ::
@@ -415,6 +464,8 @@ Running a Workflow with Autoscaling on AWS - Cactus
 
 `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free whole-genome multiple alignment
 program.
+
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
 #. Download :download:`pestis.tar.gz <../../src/toil/test/cactus/pestis.tar.gz>`.
 

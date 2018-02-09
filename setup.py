@@ -57,6 +57,7 @@ def runSetup():
                   schemaSalad,
                   galaxyLib,
                   cwltest]
+    wdl_reqs = []
     htcondor_reqs = [
                   htcondor]
     setup(
@@ -82,6 +83,7 @@ def runSetup():
             'encryption': encryption_reqs,
             'google': google_reqs,
             'cwl': cwl_reqs,
+            'wdl': wdl_reqs,
             'htcondor': htcondor_reqs,
             'all': mesos_reqs +
                    aws_reqs +
