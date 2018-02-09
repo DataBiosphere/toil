@@ -125,9 +125,7 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
 
    This installs the ``toil-wdl-runner`` executable.
 
-#. Copy and paste the following code block into ``wdl-helloworld.wdl``:
-
-::
+#. Copy and paste the following code block into ``wdl-helloworld.wdl``::
 
         workflow write_simple_file {
           call write_file
@@ -138,7 +136,7 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
           output { File test = "wdl-helloworld-output.txt" }
         }
 
-   and this code into ``wdl-helloworld.json``::
+#. and this code into ``wdl-helloworld.json``::
 
         {
           "write_simple_file.write_file.message": "Hello world!"
@@ -150,7 +148,7 @@ Running WDL workflows using Toil is still in alpha, and currently experimental. 
 
    Your output will be in ``wdl-helloworld-output.txt`` ::
 
-        (venv) $ cat output.txt
+        (venv) $ cat wdl-helloworld-output.txt
         Hello world!
 
 To learn more about WDL, see the main `WDL website`_ .
