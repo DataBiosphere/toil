@@ -147,7 +147,7 @@ Autoscaling is a feature of running Toil in a cloud whereby additional cloud ins
 
         (venv) $ toil launch-cluster <cluster-name> \
         --keyPairName <AWS-key-pair-name> \
-        --leaderNodeType t2.micro \
+        --leaderNodeType t2.medium \
         --zone us-west-2a
 
 #. Copy the `sort.py` script up to the leader node. ::
