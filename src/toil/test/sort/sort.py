@@ -14,10 +14,13 @@
 
 """A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
 """
+
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import range
 from past.utils import old_div
+
 from argparse import ArgumentParser
 import os
 import random
@@ -211,9 +214,9 @@ def main(options=None):
         # make the file ourselves
         fileName = 'fileToSort.txt'
         if os.path.exists(fileName):
-            print "Sorting existing file", fileName
+            print ("Sorting existing file: %s" % fileName)
         else:
-            print 'No sort file specified. Generating one automatically called %s.' % fileName
+            print("No sort file specified. Generating one automatically called %s." % fileName)
             makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
     else:
         if not os.path.exists(options.fileToSort):

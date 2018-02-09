@@ -12,26 +12,27 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
 from builtins import str
 from builtins import range
+from six.moves import xrange
+
 import unittest
 import os
 import random
 from contextlib import contextmanager
 from uuid import uuid4
 import logging
-import subprocess
-
-# Python 3 compatibility imports
 import errno
-from six.moves import xrange
 
+from toil import subprocess # subprocess32 backport
 from toil import resolveEntryPoint
-
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
+from toil.jobStores.abstractJobStore import NoSuchJobStoreException, JobStoreExistsException
+from toil.leader import FailedJobsException
 from toil.common import Toil
-from toil.job import Job, JobException
+from toil.job import Job
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.sort import merge, sort, copySubRangeOfFile, getMidPoint, makeFileToSort, main
@@ -44,8 +45,6 @@ from toil.test import (ToilTest,
                        needs_torque,
                        needs_google,
                        slow)
-from toil.jobStores.abstractJobStore import NoSuchJobStoreException, JobStoreExistsException
-from toil.leader import FailedJobsException
 
 log = logging.getLogger(__name__)
 

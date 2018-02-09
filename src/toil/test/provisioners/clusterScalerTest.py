@@ -12,12 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import map
 from builtins import range
 from builtins import object
 from past.utils import old_div
+from six.moves.queue import Empty, Queue
+from six.moves import xrange
+from six import iteritems
+
 import time
 from contextlib import contextmanager
 from threading import Thread, Event
@@ -25,24 +30,15 @@ import logging
 import random
 import uuid
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six.moves import xrange
-from six import iteritems
-
-from bd2k.util.objects import InnerClass
-
-from toil.job import JobNode, Job
-
-from toil.test import ToilTest, slow
-from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
-                                                   NodeInfo,
-                                                   AbstractBatchSystem)
 from toil.provisioners import Node
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.clusterScaler import ClusterScaler, binPacking
 from toil.common import Config
-
+from toil.job import JobNode, Job
+from toil.test import ToilTest, slow
+from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
+                                                   NodeInfo,
+                                                   AbstractBatchSystem)
 
 logger = logging.getLogger(__name__)
 

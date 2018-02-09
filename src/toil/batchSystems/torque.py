@@ -12,14 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import str
 from past.utils import old_div
+
 import logging
 import os
 from pipes import quote
-import subprocess
 import time
 import math
 import sys
@@ -27,6 +28,7 @@ import shlex
 import xml.etree.ElementTree as ET
 import tempfile
 
+from toil import subprocess # subprocess32 backport
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 

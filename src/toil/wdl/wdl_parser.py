@@ -42,6 +42,10 @@
 # See the Hermes repository: http://github.com/scottfrazer/hermes
 #
 ################################################################################
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
+
 import sys
 import os
 import re

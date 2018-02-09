@@ -1,4 +1,21 @@
 # coding=utf-8
+# Copyright (C) 2015-2016 Regents of the University of California
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
+
 import hashlib
 from contextlib import contextmanager
 import json
@@ -18,9 +35,10 @@ from boto.sns.connection import SNSConnection
 from boto.vpc import VPCConnection
 from boto.iam.connection import IAMConnection
 from boto.ec2.keypair import KeyPair
+from boto.utils import get_instance_metadata
+
 from bd2k.util import fnmatch
 from bd2k.util import memoize
-from boto.utils import get_instance_metadata
 
 from toil.lib.message import Message
 from toil.lib.ec2 import ec2_keypair_fingerprint, UserError

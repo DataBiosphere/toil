@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import map
@@ -19,6 +20,8 @@ from builtins import str
 from builtins import range
 from builtins import object
 from past.utils import old_div
+from future.utils import with_metaclass
+
 from abc import ABCMeta, abstractmethod
 from fractions import Fraction
 from inspect import getsource
@@ -31,9 +34,9 @@ from textwrap import dedent
 import time
 import multiprocessing
 import sys
-import subprocess
 from unittest import skipIf
 
+from toil import subprocess # subprocess32 backport
 from toil.common import Config
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
@@ -51,7 +54,6 @@ from toil.test import (ToilTest,
                        needs_htcondor,
                        slow,
                        tempFileContaining)
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 

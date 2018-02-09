@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# python 2/3 compatibility
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from builtins import range
 from six.moves import xrange
@@ -28,21 +28,18 @@ import tempfile
 import stat
 import errno
 import traceback
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
 
-# toil and bd2k dependencies
 from bd2k.util.exceptions import require
+
+from toil import pickle # py2/3 compatible cPickle
 from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath
+from toil.jobGraph import JobGraph
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchFileException,
                                              JobStoreExistsException,
                                              NoSuchJobStoreException)
-from toil.jobGraph import JobGraph
 
 logger = logging.getLogger( __name__ )
 

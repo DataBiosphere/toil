@@ -12,11 +12,15 @@ from __future__ import print_function
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
+
 import mimetypes
-import subprocess
 import sys
 import os
 
+from toil import subprocess # subprocess32 backport
 from toil.test import ToilTest, slow
 from toil.test.mesos import helloWorld
 

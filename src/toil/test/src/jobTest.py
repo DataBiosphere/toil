@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
 from __future__ import division
 from builtins import chr
@@ -18,13 +20,12 @@ from builtins import map
 from builtins import str
 from builtins import range
 from past.utils import old_div
+from six.moves import xrange
+
 import unittest
 import logging
 import os
 import random
-
-# Python 3 compatibility imports
-from six.moves import xrange
 
 from toil.common import Toil
 from toil.leader import FailedJobsException
@@ -33,6 +34,7 @@ from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
 from toil.test import ToilTest, slow
 
 logger = logging.getLogger(__name__)
+
 
 class JobTest(ToilTest):
     """

@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
 from future import standard_library
 standard_library.install_aliases()
+from six import iteritems
 from builtins import str
 from builtins import range
 from builtins import object
+
 import logging
 import os
 import re
@@ -26,29 +28,21 @@ import sys
 import tempfile
 import time
 import uuid
-import subprocess
 import requests
 from argparse import ArgumentParser
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-# Python 3 compatibility imports
-from six import iteritems
 
 from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 from bd2k.util.retry import retry
 
 from toil import logProcessContext
+from toil import subprocess # subprocess32 backport
+from toil import pickle # py2/3 compatible cPickle
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
-
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
@@ -183,6 +177,7 @@ class Config(object):
 
         #Core options
         setOption("jobStore", parsingFn=parseJobStore)
+        setOption("restart")
         #TODO: LOG LEVEL STRING
         setOption("workDir")
         if self.workDir is not None:
@@ -202,10 +197,6 @@ class Config(object):
             self.clean = "never"
         elif self.clean is None:
             self.clean = "onSuccess"
-        setOption('clusterStats')
-
-        #Restarting the workflow options
-        setOption("restart")
 
         #Batch system options
         setOption("batchSystem")
@@ -216,7 +207,6 @@ class Config(object):
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
         setOption("linkImports")
-
         setOption("environment", parseSetEnv)
 
         #Autoscaling options
@@ -234,6 +224,7 @@ class Config(object):
                 '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
                 self.preemptableCompensation)
         setOption("nodeStorage", int)
+        setOption('clusterStats')
 
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
@@ -344,7 +335,6 @@ def _addOptions(addGroupFn, config):
     #
     #Batch system options
     #
-
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the "
                              "batch system/big batch system (see below).")
@@ -951,15 +941,15 @@ class Toil(object):
         # Dump out the environment of this process in the environment pickle file.
         with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
             pickle.dump(os.environ, fileHandle, pickle.HIGHEST_PROTOCOL)
-        logger.info("Written the environment for the jobs to the environment file")
+        logger.debug("Written the environment for the jobs to the environment file")
 
     def _cacheAllJobs(self):
         """
         Downloads all jobs in the current job store into self.jobCache.
         """
-        logger.info('Caching all jobs in job store')
+        logger.debug('Caching all jobs in job store')
         self._jobCache = {jobGraph.jobStoreID: jobGraph for jobGraph in self._jobStore.jobs()}
-        logger.info('{} jobs downloaded.'.format(len(self._jobCache)))
+        logger.debug('{} jobs downloaded.'.format(len(self._jobCache)))
 
     def _cacheJob(self, job):
         """

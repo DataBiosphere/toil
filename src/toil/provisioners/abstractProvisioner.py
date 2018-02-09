@@ -11,18 +11,25 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from abc import ABCMeta, abstractmethod
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
+from future.utils import with_metaclass
 from builtins import object
+
+from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from itertools import count
 import logging
 import pipes
 import socket
-import subprocess
-
-from future.utils import with_metaclass
+import os
+import sys
 
 from bd2k.util.retry import never
+
+from toil import subprocess # subprocess32 backport
+
 a_short_time = 5
 
 log = logging.getLogger(__name__)

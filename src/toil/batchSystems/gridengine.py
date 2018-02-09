@@ -12,23 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import map
 from builtins import str
 from builtins import range
 from past.utils import old_div
-import logging
-import os
-from pipes import quote
-import subprocess
-import time
-import math
-
-# Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
 from six import iteritems
 
+import logging
+import os
+from pipes import quote
+import time
+import math
+import sys
+
+from toil import subprocess # subprocess32 backport
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
 

@@ -12,11 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
 from builtins import filter
 from builtins import str
 from builtins import object
+from six.moves.queue import Empty, Queue
+from six import iteritems, itervalues
+
 import ast
 import logging
 import os
@@ -27,21 +30,13 @@ import sys
 from contextlib import contextmanager
 from struct import unpack
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six import iteritems, itervalues
-
 import mesos.interface
 import mesos.native
-from bd2k.util import strict_bool
 from mesos.interface import mesos_pb2
 
+from bd2k.util import strict_bool
+
+from toil import pickle # py2/3 compatible cPickle
 from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchSystemLocalSupport,

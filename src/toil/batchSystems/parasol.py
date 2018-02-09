@@ -12,28 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from builtins import next
 from builtins import str
 from past.utils import old_div
 from future.utils import listitems
+from six.moves.queue import Empty, Queue
+from six import itervalues
+
 import logging
 import os
 import re
 import sys
-import subprocess
 import tempfile
 import time
 from threading import Thread
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six import itervalues
-
 from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 
+from toil import subprocess # subprocess32 backport
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.bioio import getTempFile
 from toil.common import Toil

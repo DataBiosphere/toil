@@ -11,35 +11,36 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from builtins import str
-from builtins import range
-import logging
-import time
-import subprocess
-import sys
-import string
 
 # Python 3 compatibility imports
-from _ssl import SSLError
-
+from builtins import str
+from builtins import range
 from six import iteritems
 
-from bd2k.util import memoize
+import logging
+import time
+import os
+import sys
+import string
+from _ssl import SSLError
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
-                          create_spot_instances, wait_instances_running, wait_transition)
+from boto.utils import get_instance_metadata
 
+from bd2k.util import memoize
+from bd2k.util.retry import retry
+
+from toil import subprocess # subprocess32 backport
 from toil import applianceSelf
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from toil.lib.context import Context
-from boto.utils import get_instance_metadata
-from bd2k.util.retry import retry
 from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
                                Node, NoSuchClusterException)
+from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
+                          create_spot_instances, wait_instances_running, wait_transition)
 
 logger = logging.getLogger(__name__)
 

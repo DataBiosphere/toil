@@ -11,13 +11,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
+
 import logging
 import os
 from collections import namedtuple
 from operator import attrgetter
 import datetime
-from toil.lib.misc import std_dev, mean
 
+from toil.lib.misc import std_dev, mean
 from toil.test import runningOnEC2
 
 logger = logging.getLogger(__name__)

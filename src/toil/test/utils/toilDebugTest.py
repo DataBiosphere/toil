@@ -12,19 +12,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+# Python 3 compatibility imports
 from __future__ import absolute_import
-# from builtins import str
 
 import unittest
-import subprocess
+import sys
 import os
 import shutil
 import logging
+
+from toil import subprocess # subprocess32 backport
 from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
 from toil.utils.toilDebugFile import recursiveGlob
 
 logger = logging.getLogger(__name__)
+
 
 class ToilDebugFileTest(ToilTest):
     """A set of test cases for toilwdl.py"""

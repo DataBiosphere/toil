@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
@@ -23,11 +23,12 @@ import json
 import csv
 import os
 import collections
-import subprocess
+import sys
 import logging
 import textwrap
 
 import toil.wdl.wdl_parser as wdl_parser
+from toil import subprocess # subprocess32 backport
 
 wdllogger = logging.getLogger(__name__)
 

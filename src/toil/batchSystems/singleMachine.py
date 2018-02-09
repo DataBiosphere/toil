@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
 from __future__ import division
 from future import standard_library
@@ -20,20 +21,20 @@ from builtins import str
 from builtins import range
 from builtins import object
 from past.utils import old_div
+from six.moves.queue import Empty, Queue
+
 from contextlib import contextmanager
 import logging
 import multiprocessing
 import os
-import subprocess
+import sys
 import time
 import math
 from threading import Thread
 from threading import Lock, Condition
 
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-
 import toil
+from toil import subprocess # subprocess32 backport
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil import worker as toil_worker
 from toil.common import Toil

@@ -11,29 +11,27 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
 from builtins import next
 from builtins import str
 from builtins import range
+
 import logging
 import os
-import subprocess
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
-
 import time
-
 import pytest
 from boto.ec2.blockdevicemapping import BlockDeviceType
 from boto.exception import EC2ResponseError
-from toil.lib.ec2 import wait_instances_running
-
-
-from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-
 from uuid import uuid4
 
-
+from toil.lib.ec2 import wait_instances_running
+from toil import subprocess # subprocess32 backport
+from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.test import needs_aws, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)

@@ -1,12 +1,29 @@
 # coding=utf-8
+# Copyright (C) 2015-2016 Regents of the University of California
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
 from builtins import str
 from builtins import object
+
 import logging
 from contextlib import contextmanager
-from subprocess import CalledProcessError
 
 from bd2k.util.iterables import concat
 
+from toil import subprocess # subprocess32 backport
 from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow
 
 log = logging.getLogger(__name__)
@@ -78,7 +95,7 @@ class HotDeploymentTest(ApplianceTestSupport):
                         '--defaultMemory=10M',
                         '/data/jobstore']
             command = concat(pythonArgs, toilArgs)
-            self.assertRaises(CalledProcessError, leader.runOnAppliance, *command)
+            self.assertRaises(subprocess.CalledProcessError, leader.runOnAppliance, *command)
 
             # Deploy an updated version of the script ...
             userScript = userScript.replace('assert False', 'assert True')
@@ -138,7 +155,7 @@ class HotDeploymentTest(ApplianceTestSupport):
             # Assert that output file isn't there
             worker.runOnAppliance('test', '!', '-f', '/data/foo.txt')
             # Just being paranoid
-            self.assertRaises(CalledProcessError,
+            self.assertRaises(subprocess.CalledProcessError,
                               worker.runOnAppliance, 'test', '-f', '/data/foo.txt')
             leader.runOnAppliance('venv/bin/python',
                                   '-m', 'toil_script.bar',

@@ -12,8 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# https://pytest.org/latest/example/pythoncollection.html
+# Python 3 compatibility imports
+from __future__ import absolute_import
 
+# https://pytest.org/latest/example/pythoncollection.html
 collect_ignore = []
 
 try:

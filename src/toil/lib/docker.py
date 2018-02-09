@@ -1,8 +1,24 @@
+# Copyright (C) 2015-2016 Regents of the University of California
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Python 3 compatibility imports
 from __future__ import absolute_import
+
 import logging
 import os
 import pipes
-import subprocess
+import sys
 import docker
 import base64
 import time
@@ -16,11 +32,12 @@ from docker.errors import NotFound
 from docker.errors import DockerException
 from docker.utils.types import LogConfig
 from docker.api.container import ContainerApiMixin
+from docker import client
 
 from bd2k.util.retry import retry
-from docker import client
 from pwd import getpwuid
 
+from toil import subprocess # subprocess32 backport
 from toil.lib import dockerPredicate
 from toil.lib import FORGO
 from toil.lib import STOP

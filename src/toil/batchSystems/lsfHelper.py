@@ -22,13 +22,17 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# Python 3 compatibility imports
 from __future__ import print_function
 from __future__ import division
 from past.utils import old_div
+
 import math
 import os
-import subprocess
 import fnmatch
+import sys
+
+from toil import subprocess # subprocess32 backport
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"

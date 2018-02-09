@@ -12,20 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
 
+# Python 3 compatibility imports
+from __future__ import absolute_import
 from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import range
+from six.moves import StringIO, reprlib
+from six import iteritems
+
 from contextlib import contextmanager, closing
 import logging
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
 import re
 import uuid
 import base64
@@ -33,20 +31,20 @@ import hashlib
 import itertools
 import urllib.parse
 import urllib.request, urllib.parse, urllib.error
-
-# Python 3 compatibility imports
-from six.moves import StringIO, reprlib
-from six import iteritems
-
-from bd2k.util import strict_bool
-from bd2k.util.exceptions import panic
-from bd2k.util.objects import InnerClass
 import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 
+from bd2k.util import strict_bool
+from bd2k.util.exceptions import panic
+from bd2k.util.objects import InnerClass
+
+from toil import pickle # py2/3 compatible cPickle
 from toil.fileStore import FileID
+from toil.jobStores.utils import WritablePipe, ReadablePipe
+from toil.jobGraph import JobGraph
+import toil.lib.encryption as encryption
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              ConcurrentFileModificationException,
@@ -62,9 +60,6 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
                                       uploadFromPath, chunkedFileUpload, fileSizeAndTime)
-from toil.jobStores.utils import WritablePipe, ReadablePipe
-from toil.jobGraph import JobGraph
-import toil.lib.encryption as encryption
 
 log = logging.getLogger(__name__)
 

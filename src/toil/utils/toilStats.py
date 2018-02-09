@@ -16,20 +16,24 @@
 Reports statistical data about a given Toil workflow.
 """
 
+# Python 3 compatibility imports
 from __future__ import absolute_import, print_function
 from __future__ import division
 from builtins import str
 from builtins import range
 from past.utils import old_div
 from builtins import object
+
 from functools import partial
 import logging
 import json
+
+from bd2k.util.expando import Expando
+
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
 from toil.version import version
-from bd2k.util.expando import Expando
 
 logger = logging.getLogger( __name__ )
 

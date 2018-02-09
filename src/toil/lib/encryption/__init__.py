@@ -1,4 +1,3 @@
-from __future__ import absolute_import
 # Copyright (C) 2015-2016 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,6 +11,9 @@ from __future__ import absolute_import
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Python 3 compatibility imports
+from __future__ import absolute_import
 
 try:
     from ._nacl import *

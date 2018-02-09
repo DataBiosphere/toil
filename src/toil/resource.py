@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Python 3 compatibility imports
 from __future__ import absolute_import
-
 from future import standard_library
 standard_library.install_aliases()
 from builtins import map
+from six.moves.urllib.request import urlopen
+
 import errno
 import hashlib
 import importlib
@@ -33,10 +35,7 @@ from tempfile import mkdtemp
 from urllib.error import HTTPError
 from zipfile import ZipFile
 
-# Python 3 compatibility imports
 from bd2k.util.retry import retry
-from six.moves.urllib.request import urlopen
-
 from bd2k.util import strict_bool
 from bd2k.util.iterables import concat
 from bd2k.util.exceptions import require
