@@ -439,9 +439,18 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _addTags(cls, instances, tags):
+        def tagThrottlePredicate(e):
+            """Check for common retriable issues when creating tags."""
+            if isinstance(e, BotoServerError) and e.status == 400 \
+               and 'NotFound' in e.body:
+                # EC2 can take a while to propagate instance IDs to all servers.
+                return True
+            else:
+                return cls._throttlePredicate
+
         for instance in instances:
             for key, value in iteritems(tags):
-                for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+                for attempt in retry(predicate=tagThrottlePredicate):
                     with attempt:
                         instance.add_tag(key, value)
 
