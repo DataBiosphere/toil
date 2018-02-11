@@ -136,18 +136,19 @@ class AWSProvisioner(AbstractProvisioner):
             kwargs["subnet_id"] = vpcSubnet
         if not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
-            create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
-                                      spec=kwargs, num_instances=1)
+            instances = create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
+                                                  spec=kwargs, num_instances=1)
+            leader = instances[0]
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
-            list(create_spot_instances(ec2=ctx.ec2,
-                                       price=leaderSpotBid,
-                                       image_id=self._discoverAMI(ctx),
-                                       tags={'clusterName': clusterName},
-                                       spec=kwargs,
-                                       num_instances=1))
-        leader = self._getLeader(clusterName=clusterName, wait=True, zone=zone)
+            instances = list(create_spot_instances(ec2=ctx.ec2,
+                                                   price=leaderSpotBid,
+                                                   image_id=self._discoverAMI(ctx),
+                                                   tags={'clusterName': clusterName},
+                                                   spec=kwargs,
+                                                   num_instances=1))[0]
+            leader = instances[0]
 
         defaultTags = {'Name': clusterName, 'Owner': keyName}
         defaultTags.update(userTags)
