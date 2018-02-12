@@ -11,6 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from functools import wraps
+
 from builtins import str
 from builtins import range
 import logging
@@ -42,6 +44,38 @@ from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNod
                                Node, NoSuchClusterException)
 
 logger = logging.getLogger(__name__)
+
+
+def awsRetryPredicate(e):
+    if not isinstance(e, BotoServerError):
+        return False
+    # boto/AWS gives multiple messages for the same error...
+    if e.status == 503 and 'Request limit exceeded' in e.body:
+        return True
+    elif e.status == 400 and 'Rate exceeded' in e.body:
+        return True
+    elif e.status == 400 and 'NotFound' in e.body:
+        # EC2 can take a while to propagate instance IDs to all servers.
+        return True
+    elif e.status == 400 and e.error_code == 'Throttling':
+        return True
+    return False
+
+
+def awsRetry(f):
+    """
+    This decorator retries the wrapped function if aws throws unexpected errors
+    errors.
+    It should wrap any function that makes use of boto
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        for attempt in retry(delays=truncExpBackoff(),
+                             timeout=300,
+                             predicate=awsRetryPredicate):
+            with attempt:
+                return f(*args, **kwargs)
+    return wrapper
 
 
 class AWSProvisioner(AbstractProvisioner):
@@ -199,7 +233,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     @staticmethod
     def retryPredicate(e):
-        return AWSProvisioner._throttlePredicate(e)
+        return awsRetryPredicate(e)
 
     @classmethod
     def destroyCluster(cls, clusterName, zone=None):
@@ -284,7 +318,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         instancesLaunched = []
 
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
                 # after we start launching instances we want to insure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
@@ -308,7 +342,7 @@ class AWSProvisioner(AbstractProvisioner):
                     # flatten the list
                     instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
 
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
                 wait_instances_running(self.ctx.ec2, instancesLaunched)
 
@@ -338,24 +372,12 @@ class AWSProvisioner(AbstractProvisioner):
         instance = self._getClusterInstance(md)
         return str(instance.tags["Name"])
 
+    @awsRetry
     def _getClusterInstance(self, md):
         zone = getCurrentAWSZone()
         region = Context.availability_zone_re.match(zone).group(1)
         conn = boto.ec2.connect_to_region(region)
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
-            with attempt:
-                return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
-
-    @staticmethod
-    def _throttlePredicate(e):
-        if not isinstance(e, BotoServerError):
-            return False
-        # boto/AWS gives multiple messages for the same error...
-        if e.status == 503 and 'Request limit exceeded' in e.body:
-            return True
-        elif e.status == 400 and 'Rate exceeded' in e.body:
-            return True
-        return False
+        return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
     def _setSSH(self):
         if not os.path.exists('/root/.sshSuccess'):
@@ -442,21 +464,23 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     @classmethod
+    @awsRetry
     def _addTags(cls, instances, tags):
         def tagThrottlePredicate(e):
             """Check for common retriable issues when creating tags."""
-            if isinstance(e, BotoServerError) and e.status == 400 \
-               and 'NotFound' in e.body:
-                # EC2 can take a while to propagate instance IDs to all servers.
                 return True
             else:
                 return cls._throttlePredicate
 
         for instance in instances:
             for key, value in iteritems(tags):
+<<<<<<< HEAD
                 for attempt in retry(predicate=tagThrottlePredicate):
                     with attempt:
                         instance.add_tag(key, value)
+=======
+                instance.add_tag(key, value)
+>>>>>>> Refactor and improve AWS retry
 
     @classmethod
     def _waitForNode(cls, instance, role):
@@ -541,11 +565,10 @@ class AWSProvisioner(AbstractProvisioner):
         logger.info('Instance(s) terminated.')
 
     @classmethod
+    @awsRetry
     def _terminateIDs(cls, instanceIDs, ctx):
         logger.info('Terminating instance(s): %s', instanceIDs)
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
-            with attempt:
-                ctx.ec2.terminate_instances(instance_ids=instanceIDs)
+        ctx.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
     @classmethod
@@ -602,11 +625,12 @@ class AWSProvisioner(AbstractProvisioner):
                 else:
                     raise
 
+    @awsRetry
     def _propagateKey(self, instances):
         if not self.config or not self.config.sseKey:
             return
         for node in instances:
-            for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+            for attempt in retry(predicate=awsRetryPredicate):
                 with attempt:
                     # since we're going to be rsyncing into the appliance we need the appliance to be running first
                     ipAddress = self._waitForNode(node, 'toil_worker')
@@ -631,11 +655,11 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     def _getNodesInCluster(cls, ctx, clusterName, nodeType=None, preemptable=False, both=False):
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
                 pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
                                                                        'instance-state-name': 'pending'})
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
                 runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
                                                                        'instance-state-name': 'running'})
@@ -703,11 +727,7 @@ class AWSProvisioner(AbstractProvisioner):
     def _getProfileARN(cls, ctx):
         def addRoleErrors(e):
             return e.status == 404
-
-        def throttleError(e):
-            return isinstance(e, BotoServerError) and e.status == 400 and e.error_code == 'Throttling'
-
-        for attempt in retry(delays=truncExpBackoff(), predicate=throttleError):
+        for attempt in retry(delays=truncExpBackoff(), predicate=awsRetryPredicate):
             with attempt:
                 roleName = 'toil'
                 policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
