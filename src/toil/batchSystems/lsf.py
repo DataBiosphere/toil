@@ -124,7 +124,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 return None
 
             # if not found in bjobs, then try bacct (slower than bjobs)
-            logger.debug("bjobs failed to detect job - trying bacct: "
+            logger.error("bjobs failed to detect job - trying bacct: "
                          "{}".format(job))
 
             args = ["bacct", "-l", str(job)]
@@ -136,7 +136,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                                  "{}".format(job))
                     return 0
                 elif line.find("Completed <exit>") > -1:
-                    logger.debug("Detected job failed for job: "
+                    logger.error("Detected job failed for job: "
                                  "{}".format(job))
                     return 1
             logger.debug("Can't determine exit code for job or job still "
