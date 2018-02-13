@@ -465,22 +465,14 @@ class AWSProvisioner(AbstractProvisioner):
 
     @classmethod
     @awsRetry
-    def _addTags(cls, instances, tags):
-        def tagThrottlePredicate(e):
-            """Check for common retriable issues when creating tags."""
-                return True
-            else:
-                return cls._throttlePredicate
+    def _addTag(cls, instance, key, value):
+        instance.add_tag(key, value)
 
+    @classmethod
+    def _addTags(cls, instances, tags):
         for instance in instances:
             for key, value in iteritems(tags):
-<<<<<<< HEAD
-                for attempt in retry(predicate=tagThrottlePredicate):
-                    with attempt:
-                        instance.add_tag(key, value)
-=======
-                instance.add_tag(key, value)
->>>>>>> Refactor and improve AWS retry
+                cls._addTag(instance, key, value)
 
     @classmethod
     def _waitForNode(cls, instance, role):
