@@ -31,7 +31,7 @@ class AnsibleDriver(AbstractProvisioner):
 
     def callPlaybook(self, playbook, ansibleArgs, wait=True, tags=["all"]):
         playbook = os.path.join(self.playbooks, playbook)  # Path to playbook being executed
-        command = ["ansible-playbook", "-v", "--tags", ",".join(tags), "--extra-vars"]
+        command = ["ansible-playbook", "-vvvvv", "--tags", ",".join(tags), "--extra-vars"]
         command.append(" ".join(["=".join(i) for i in ansibleArgs.items()]))  # Arguments being passed to playbook
         command.append(playbook)
 
@@ -40,7 +40,7 @@ class AnsibleDriver(AbstractProvisioner):
         if wait:
             p.wait()
             if p.returncode != 0:
-                raise RuntimeError("Ansible reported an error when executing playbook %s" % playbook)
+                logger.error("Ansible reported an error when executing playbook %s" % playbook)
 
     @classmethod
     def _getInventory(cls, clusterName):

@@ -110,8 +110,3 @@ coreos:
             -collector.procfs /host/proc \
             -collector.sysfs /host/sys \
             -collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
-
-# Because of the implementation of the Azure API in Ansible, ssh key propagation
-# needs to be handled with Ansible for the time being.
-#ssh_authorized_keys:
-#    - "ssh-rsa {sshKey}"

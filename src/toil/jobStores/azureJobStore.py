@@ -64,6 +64,8 @@ import toil.lib.encryption as encryption
 
 logger = logging.getLogger(__name__)
 logging.getLogger("azure.cosmosdb.common.storageclient").setLevel(logging.WARNING)
+logging.getLogger("azure.cosmosdb.common._auth").setLevel(logging.WARNING)
+logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
 credential_file_path = '~/.toilAzureCredentials'
 

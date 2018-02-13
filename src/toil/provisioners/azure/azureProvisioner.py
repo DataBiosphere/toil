@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 # Credentials:
 # sshKey - needed for ssh and rsync access to the VM
-# .azure for creating VM with Ansible
+# .azure/credentials for creating VM with Ansible
 # .toilAzureCredentials for accessing jobStore
 
 class AzureProvisioner(AnsibleDriver):
@@ -45,6 +45,7 @@ class AzureProvisioner(AnsibleDriver):
     def __init__(self, config=None):
 
         self.playbook = {
+            'create-cluster': 'create-azure-resourcegroup.yml',
             'create': 'create-azure-vm.yml',
             'delete': 'delete-azure-vm.yml',
             'destroy': 'delete-azure-cluster.yml'
@@ -67,12 +68,14 @@ class AzureProvisioner(AnsibleDriver):
             self.region = metadata['compute']['location']
             self.clusterName = metadata['compute']['resourceGroupName']
             tagsStr = metadata['compute']['tags']
-            self.vmTags = None #json.loads(tagsStr)
+            tags = dict(item.split(":") for item in tagsStr.split(";"))
+            self.vmTags = None
             #self.leaderIp = metadata['network']['interface'][0]['ipv4']['ipaddress'][0]['privateIpAddress']
 
-            self.keyName = '~/.ssh/id_rsa.pub'
+            self.keyName = tags.get('owner', 'no-owner')
             self.leaderIP = self._getLeader(self.clusterName)['private_ip']
-            self.masterPublicKey = self._setSSH() # to enable ssh access to workers
+            self._setSSH() # create id_rsa.pub file on the leader if it is not there
+            self.masterPublicKeyFile = '/root/.ssh/id_rsa.pub'
 
             # read given configuration parameters
             self.nodeStorage = config.nodeStorage
@@ -89,7 +92,7 @@ class AzureProvisioner(AnsibleDriver):
             self.leaderIP = None
             self.keyName = None
             self.vmTags = None
-            self.masterPublicKey = None
+            self.masterPublicKeyFile = None
             self.nodeStorage = None
 
     def launchCluster(self, instanceType, keyName, clusterName, zone,
@@ -106,35 +109,42 @@ class AzureProvisioner(AnsibleDriver):
         self.keyName = keyName
         self.region = zone
         self.nodeStorage = nodeStorage
+        self.masterPublicKeyFile = kwargs['publicKeyFile']
+
+        # Try deleting the resource group. This will fail if it exists.
+        ansibleArgs = {
+            'resgrp': self.clusterName,
+            'region': self.region
+        }
+        try:
+            self.callPlaybook(self.playbook['create-cluster'], ansibleArgs, wait=True)
+        except RuntimeError:
+            logger.info("The cluster could not be created. Try deleting the cluster if it already exits.")
+            raise
 
         # Azure VMs must be named, so we need to generate one. Instance names must
         # be composed of only alphanumeric characters, underscores, and hyphens
         # (see https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions).
         instanceName = 'l' + str(uuid.uuid4())
 
-        # SSH keys aren't managed with Azure, so for now we can just take the path of a public key.
-        with open(os.path.expanduser(keyName), "r") as k:
-            self.sshKey = k.read().strip().split(" ")[1:]
 
-        self.masterPublicKey = self.sshKey
-        # TODO Check to see if resource group already exists and throw and error if so.
 
         cloudConfigArgs = {
             'image': applianceSelf(),
             'role': "leader",
             'entrypoint': "mesos-master",
-            'sshKey': " ".join(self.sshKey), # self.masterPublicKey
             '_args': leaderArgs.format(name=self.clusterName),
         }
         ansibleArgs = {
             'vmsize': instanceType,
             'vmname': instanceName,
+            'storagename': instanceName.replace('-', '')[:24],
             'resgrp': self.clusterName,
             'region': self.region,
             'role': "leader",
             'owner': self.keyName,
             'diskSize': str(leaderStorage),
-            'keyname': self.keyName,
+            'publickeyfile': self.masterPublicKeyFile
         }
         ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
         self.callPlaybook(self.playbook['create'], ansibleArgs, wait=True)
@@ -145,13 +155,28 @@ class AzureProvisioner(AnsibleDriver):
         leader = self._getLeader(self.clusterName)
         self.leaderIP = leader['private_ip']
 
+        # Make sure leader container is up.
+        self._waitForNode(leader['public_ip'], 'toil_leader')
+
+        containerUserPath = '/root/'
+
+        storageCredentials = kwargs['azureStorageCredentials']
+        if storageCredentials is not None:
+            fullPathCredentials = os.path.expanduser(storageCredentials)
+            if os.path.isfile(fullPathCredentials):
+                self._rsyncNode(leader['public_ip'], [fullPathCredentials, ':' + containerUserPath],
+                                applianceName='toil_leader')
+
+        ansibleCredentials = '.azure/credentials'
+        fullPathAnsibleCredentials = os.path.expanduser('~/.azure/credentials')
+        if os.path.isfile(fullPathAnsibleCredentials):
+            self._sshAppliance(leader['public_ip'], 'mkdir', '-p', containerUserPath + '.azure')
+            self._rsyncNode(leader['public_ip'],
+                            [fullPathAnsibleCredentials, ':' + containerUserPath + ansibleCredentials],
+                            applianceName='toil_leader')
         workersCreated = 0
         for nodeType, workers in zip(kwargs['nodeTypes'], kwargs['numWorkers']):
             workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers)
-
-        # TODO: Should waiting for container to start be before worker creation?
-        self._waitForNode(leader['public_ip'], 'toil_leader')
-
         logger.info('Added %d workers', workersCreated)
 
     def _cloudConfig(self, args):
@@ -176,7 +201,6 @@ class AzureProvisioner(AnsibleDriver):
             'image': applianceSelf(),
             'role': "worker",
             'entrypoint': "mesos-slave",
-            'sshKey': " ".join(self.masterPublicKey), # self.masterPublicKey
             '_args': workerArgs.format(ip=self.leaderIP, preemptable=False, keyPath='')
         }
 
@@ -186,7 +210,7 @@ class AzureProvisioner(AnsibleDriver):
                     diskSize=str(self.nodeStorage),
                     owner=self.keyName,
                     role="worker",
-                    keyname=self.keyName)
+                    publickeyfile=self.masterPublicKeyFile)
         ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
 
         instances = []
@@ -197,6 +221,8 @@ class AzureProvisioner(AnsibleDriver):
                 wait = True
             name = 'w' + str(uuid.uuid4())
             ansibleArgs['vmname'] = name
+            storageName = name
+            ansibleArgs['storagename'] = storageName.replace('-', '')[:24]
             instances.append(name)
             # Launch the cluster with Ansible
             # Calling the playbook with `tags=['untagged']` skips creation of
@@ -274,8 +300,10 @@ class AzureProvisioner(AnsibleDriver):
             ansibleArgs = {
                 'vmname': node.name,
                 'resgrp': self.clusterName,
+                'storagename': node.name.replace('-', '')[:24]
             }
-            self.callPlaybook(self.playbook['delete'], ansibleArgs)
+            wait = True #if node == nodes[-1] else False
+            self.callPlaybook(self.playbook['delete'], ansibleArgs, wait=wait)
 
     # TODO: Refactor such that cluster name is LCD of vnet name/storage name/etc
     @staticmethod
@@ -376,3 +404,27 @@ class AzureProvisioner(AnsibleDriver):
             else:
                 logger.info('...Still waiting, trying again in 10sec...')
                 time.sleep(10)
+
+    @classmethod
+    def _rsyncNode(cls, ip, args, applianceName='toil_leader', **kwargs):
+        remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
+        parsedArgs = []
+        sshCommand = "ssh"
+        strict = kwargs.pop('strict', False)
+        if not strict:
+            sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
+        hostInserted = False
+        # Insert remote host address
+        for i in args:
+            if i.startswith(":") and not hostInserted:
+                i = ("core@%s" % ip) + i
+                hostInserted = True
+            elif i.startswith(":") and hostInserted:
+                raise ValueError("Cannot rsync between two remote hosts")
+            parsedArgs.append(i)
+        if not hostInserted:
+            raise ValueError("No remote host found in argument list")
+        command = ['rsync', '-e', sshCommand, '--rsync-path', remoteRsync]
+        logger.debug("Running %r.", command + parsedArgs)
+
+        return subprocess.check_call(command + parsedArgs)

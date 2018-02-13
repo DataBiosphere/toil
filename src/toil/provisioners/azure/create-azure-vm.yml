@@ -29,7 +29,6 @@
 #    fail: msg="That DNS name seems to be already taken"
 #    when: ip != 'NXDOMAIN'
 
-  # TODO: Authentication error when making new resource groups
   - name: Create a resource group
     tags:
       - leader
@@ -69,11 +68,28 @@
     tags:
       - leader
     azure_rm_subnet:
-      name: "{{ vmname }}"
+      name: "{{ resgrp }}"
       virtual_network_name: "{{ resgrp }}"
       resource_group: "{{ resgrp }}"
       address_prefix: "192.168.0.0/24"
       security_group_name: "{{ resgrp }}"
+      state: present
+
+  - name: Create NIC
+    azure_rm_networkinterface:
+      resource_group: "{{ resgrp }}"
+      name: "{{ vmname }}"
+      virtual_network: "{{ resgrp }}"
+      subnet: "{{ resgrp }}"
+      public_ip_name: "{{ vmname }}"
+      security_group: "{{ resgrp }}"
+      public_ip_allocation_method: Static
+
+  - name: Create storage account
+    azure_rm_storageaccount:
+      account_type: 'Standard_LRS'
+      resource_group: '{{ resgrp }}'
+      name: '{{ storagename }}'
       state: present
 
   - name: Create VM
@@ -84,10 +100,13 @@
       resource_group: "{{ resgrp }}"
       name: "{{ vmname }}"
       vm_size: "{{ vmsize }}"
-      virtual_network_name: "{{ resgrp }}"
+      #virtual_network_name: "{{ resgrp }}"
+      #subnet_name: "{{ resgrp }}"
+      storage_account_name: "{{ storagename }}"
       admin_username: core
       ssh_password_enabled: false
-      public_ip_allocation_method: Static
+      network_interfaces: "{{ vmname }}"
+      #public_ip_allocation_method: Static
       #data_disks:
       #  - lun: 0
       #    disk_size_gb: "{{ diskSize }}"
@@ -102,5 +121,5 @@
         # This is close to - but not exactly - the CoreOS version used by the AWS AMI.
         version: 1235.5.0
       ssh_public_keys:
-        - { path: "/home/core/.ssh/authorized_keys", key_data: "{{ lookup('file', '{{ keyname }}') }}"}
+        - { path: "/home/core/.ssh/authorized_keys", key_data: "{{ lookup('file', '{{ publickeyfile }}') }}"}
       custom_data: "{{ lookup('file', cloudconfig) }}"

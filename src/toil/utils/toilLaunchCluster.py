@@ -17,6 +17,7 @@ Launches a toil leader instance with the specified provisioner
 import logging
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
+from toil.jobStores.azureJobStore import credential_file_path
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,11 @@ def main():
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
-                        help="The name of the AWS key pair to include on the instance")
+                        help="On AWS, the name of the AWS key pair to include on the instance."
+                        " On Azure, this will be used as the owner tag.")
+    parser.add_argument("--publicKeyFile", dest='publicKeyFile', default="~/.ssh/id_rsa.pub",
+                        help="On Azure, the file"
+                        " containing the key pairs (the first key pair will be used).")
     parser.add_argument("-t", "--tag", metavar='NAME=VALUE', dest='tags', default=[], action='append',
                         help="Tags are added to the AWS cluster for this node and all of its "
                              "children. Tags are of the form:\n"
@@ -67,6 +72,11 @@ def main():
     parser.add_argument("--nodeStorage", dest='nodeStorage', type=int, default=50,
                         help="Specify the size (in gigabytes) of the root volume for any worker instances "
                              "created when using the -w flag. This is an EBS volume.")
+    parser.add_argument("--azureStorageCredentials", dest='azureStorageCredentials', type=str,
+                        default=credential_file_path,
+                        help="The location of the file containing the Azure storage credentials. If not specified,"
+                             " the default file is used with Azure provisioning. Use 'None' to disable"
+                             " the transfer of credentials.")
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
 
@@ -122,10 +132,12 @@ def main():
                               numWorkers=numNodes,
                               numPreemptableWorkers=numPreemptableNodes,
                               keyName=config.keyPairName,
+                              publicKeyFile=config.publicKeyFile,
                               clusterName=config.clusterName,
                               spotBids=spotBids,
                               userTags=tagsDict,
                               zone=config.zone,
                               leaderStorage=config.leaderStorage,
                               nodeStorage=config.nodeStorage,
-                              vpcSubnet=config.vpcSubnet)
+                              vpcSubnet=config.vpcSubnet,
+                              azureStorageCredentials=config.azureStorageCredentials)
