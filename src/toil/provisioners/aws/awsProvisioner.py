@@ -618,15 +618,16 @@ class AWSProvisioner(AbstractProvisioner):
                     raise
 
     @awsRetry
+    def _propagateToNode(self, node):
+        # since we're going to be rsyncing into the appliance we need the appliance to be running first
+        ipAddress = self._waitForNode(node, 'toil_worker')
+        self._coreRsync(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
+
     def _propagateKey(self, instances):
         if not self.config or not self.config.sseKey:
             return
         for node in instances:
-            for attempt in retry(predicate=awsRetryPredicate):
-                with attempt:
-                    # since we're going to be rsyncing into the appliance we need the appliance to be running first
-                    ipAddress = self._waitForNode(node, 'toil_worker')
-                    self._coreRsync(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
+            self._propagateToNode(node)
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
@@ -716,39 +717,38 @@ class AWSProvisioner(AbstractProvisioner):
         return out
 
     @classmethod
+    @awsRetry
     def _getProfileARN(cls, ctx):
         def addRoleErrors(e):
             return e.status == 404
-        for attempt in retry(delays=truncExpBackoff(), predicate=awsRetryPredicate):
+        roleName = 'toil'
+        policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
+                      s3_full=s3FullPolicy, sbd_full=sdbFullPolicy)
+        iamRoleName = ctx.setup_iam_ec2_role(role_name=roleName, policies=policy)
+
+        try:
+            profile = ctx.iam.get_instance_profile(iamRoleName)
+        except BotoServerError as e:
+            if e.status == 404:
+                profile = ctx.iam.create_instance_profile(iamRoleName)
+                profile = profile.create_instance_profile_response.create_instance_profile_result
+            else:
+                raise
+        else:
+            profile = profile.get_instance_profile_response.get_instance_profile_result
+        profile = profile.instance_profile
+        profile_arn = profile.arn
+
+        if len(profile.roles) > 1:
+                raise RuntimeError('Did not expect profile to contain more than one role')
+        elif len(profile.roles) == 1:
+            # this should be profile.roles[0].role_name
+            if profile.roles.member.role_name == iamRoleName:
+                return profile_arn
+            else:
+                ctx.iam.remove_role_from_instance_profile(iamRoleName,
+                                                          profile.roles.member.role_name)
+        for attempt in retry(predicate=addRoleErrors):
             with attempt:
-                roleName = 'toil'
-                policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
-                              s3_full=s3FullPolicy, sbd_full=sdbFullPolicy)
-                iamRoleName = ctx.setup_iam_ec2_role(role_name=roleName, policies=policy)
-
-                try:
-                    profile = ctx.iam.get_instance_profile(iamRoleName)
-                except BotoServerError as e:
-                    if e.status == 404:
-                        profile = ctx.iam.create_instance_profile(iamRoleName)
-                        profile = profile.create_instance_profile_response.create_instance_profile_result
-                    else:
-                        raise
-                else:
-                    profile = profile.get_instance_profile_response.get_instance_profile_result
-                profile = profile.instance_profile
-                profile_arn = profile.arn
-
-                if len(profile.roles) > 1:
-                        raise RuntimeError('Did not expect profile to contain more than one role')
-                elif len(profile.roles) == 1:
-                    # this should be profile.roles[0].role_name
-                    if profile.roles.member.role_name == iamRoleName:
-                        return profile_arn
-                    else:
-                        ctx.iam.remove_role_from_instance_profile(iamRoleName,
-                                                                  profile.roles.member.role_name)
-                for attempt in retry(predicate=addRoleErrors):
-                    with attempt:
-                        ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
+                ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn
