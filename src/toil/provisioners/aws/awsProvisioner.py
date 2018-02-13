@@ -150,6 +150,9 @@ class AWSProvisioner(AbstractProvisioner):
                                                    num_instances=1))[0]
             leader = instances[0]
 
+        wait_instances_running(ctx.ec2, [leader])
+        self._waitForNode(leader, 'toil_leader')
+
         defaultTags = {'Name': clusterName, 'Owner': keyName}
         defaultTags.update(userTags)
 
