@@ -75,10 +75,7 @@ to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a
 
 ::
 
-    	(venv) $ toil launch-cluster my-cluster \
-	--leaderNodeType t2.medium \
-       	--zone us-west-2a \
-	--keyPairName <your-AWS-key-pair-name>
+    	(venv) $ toil launch-cluster my-cluster --leaderNodeType t2.medium --zone us-west-2a --keyPairName <your-AWS-key-pair-name>
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. In addition, the Toil provisioner will

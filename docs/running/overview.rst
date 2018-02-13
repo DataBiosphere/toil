@@ -8,11 +8,9 @@ This section describes how to run Toil in various environments, including :ref:`
 Toil is built in a modular way so that it can be used on lots of different systems and with different configurations.
 The three configurable pieces are the
 
- - :ref:`jobStoreOverview`
- - :ref:`batchsystemOverview` and
- - :ref:`provisionerOverview`
-
-Specifically, the running Toil section documents detail for the following:
+ - :ref:`jobStoreOverview`,
+ - :ref:`batchsystemOverview`, and
+ - :ref:`provisionerOverview`.
 
 .. _jobStoreOverview:
 
@@ -38,15 +36,13 @@ For an example that uses the file job store, see :ref:`quickstart`.
 Cloud Job Stores
 ~~~~~~~~~~~~~~~~
 
-Toil also supports using different cloud storage systems as the job store. Currently
+Toil currently supports the following cloud storage systems as job stores:
 
- - :ref:`awsJobStore`
- - :ref:`azureJobStore` and
- - Google are supported
+ - :ref:`awsJobStore`,
+ - :ref:`azureJobStore`, and
+ - :ref:`googleJobStore`.
 
-.. FIXME, ADD LINK TO GOOG JOBSTORE INSTRUCTIONS
-
-are supported. These use cloud buckets to house all of the files. This is useful if there are several different
+These use cloud buckets to house all of the files. This is useful if there are several different
 worker machines all running jobs that need to access the job store.
 
 .. _batchSystemOverview:
