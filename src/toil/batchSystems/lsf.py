@@ -124,7 +124,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 return None
 
             # if not found in bjobs, then try bacct (slower than bjobs)
-            logger.error("bjobs failed to detect job - trying bacct: "
+            logger.debug("bjobs failed to detect job - trying bacct: "
                          "{}".format(job))
 
             args = ["bacct", "-l", str(job)]
