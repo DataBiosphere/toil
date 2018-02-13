@@ -383,7 +383,7 @@ class AWSProvisioner(AbstractProvisioner):
     @memoize
     def _discoverAMI(cls, ctx):
         def descriptionMatches(ami):
-            return ami.description is not None and 'stable 1235.4.0' in ami.description
+            return ami.description is not None and 'stable 1632.2.1' in ami.description
         coreOSAMI = os.environ.get('TOIL_AWS_AMI')
         if coreOSAMI is not None:
             return coreOSAMI
