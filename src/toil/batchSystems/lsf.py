@@ -136,7 +136,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                                  "{}".format(job))
                     return 0
                 elif line.find("Completed <exit>") > -1:
-                    logger.debug("Detected job failed for job: "
+                    logger.error("Detected job failed for job: "
                                  "{}".format(job))
                     return 1
             logger.debug("Can't determine exit code for job or job still "
