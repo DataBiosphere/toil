@@ -33,6 +33,8 @@ from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.compute import ComputeManagementClient
 
 logger = logging.getLogger(__name__)
+logging.getLogger("msrest.http_logger").setLevel(logging.WARNING)
+logging.getLogger("msrest.pipeline").setLevel(logging.WARNING)
 
 # Credentials:
 # sshKey - needed for ssh and rsync access to the VM
@@ -55,6 +57,8 @@ class AzureProvisioner(AnsibleDriver):
 
 
         if config:
+            # This is called when running on the leader.
+
             # get the leader metadata
             mdUrl = "http://169.254.169.254/metadata/instance?api-version=2017-08-01"
             header={'Metadata': 'True'}
@@ -88,6 +92,7 @@ class AzureProvisioner(AnsibleDriver):
             self.nodeShapes = self.nonPreemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes
         else:
+            # This is called when using launchCluster
             self.clusterName = None
             self.leaderIP = None
             self.keyName = None
@@ -97,7 +102,13 @@ class AzureProvisioner(AnsibleDriver):
 
     def launchCluster(self, instanceType, keyName, clusterName, zone,
                       leaderStorage=50, nodeStorage=50, spotBid=None, **kwargs):
-        """Launches an Azure cluster using Ansible."""
+        """
+        Launches an Azure cluster using Ansible.
+        A resource group is created for the cluster. All the virtual machines are created within this
+        resource group.
+
+        Cloud-config is called during vm creation to create directories and launch the appliance.
+        """
         if spotBid:
             raise NotImplementedError("Ansible does not support provisioning spot instances")
 
@@ -128,7 +139,6 @@ class AzureProvisioner(AnsibleDriver):
         instanceName = 'l' + str(uuid.uuid4())
 
 
-
         cloudConfigArgs = {
             'image': applianceSelf(),
             'role': "leader",
@@ -138,13 +148,13 @@ class AzureProvisioner(AnsibleDriver):
         ansibleArgs = {
             'vmsize': instanceType,
             'vmname': instanceName,
-            'storagename': instanceName.replace('-', '')[:24],
-            'resgrp': self.clusterName,
+            'storagename': instanceName.replace('-', '')[:24],  # Azure limits the name to 24 characters, no dashes.
+            'resgrp': self.clusterName, # The resource group, which represents the cluster.
             'region': self.region,
             'role': "leader",
-            'owner': self.keyName,
-            'diskSize': str(leaderStorage),
-            'publickeyfile': self.masterPublicKeyFile
+            'owner': self.keyName, # Just a tag.
+            'diskSize': str(leaderStorage), # TODO: not implemented
+            'publickeyfile': self.masterPublicKeyFile   # The users public key to be added to authorized_keys
         }
         ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
         self.callPlaybook(self.playbook['create'], ansibleArgs, wait=True)
@@ -158,8 +168,8 @@ class AzureProvisioner(AnsibleDriver):
         # Make sure leader container is up.
         self._waitForNode(leader['public_ip'], 'toil_leader')
 
+        # Transfer credentials
         containerUserPath = '/root/'
-
         storageCredentials = kwargs['azureStorageCredentials']
         if storageCredentials is not None:
             fullPathCredentials = os.path.expanduser(storageCredentials)
@@ -174,6 +184,7 @@ class AzureProvisioner(AnsibleDriver):
             self._rsyncNode(leader['public_ip'],
                             [fullPathAnsibleCredentials, ':' + containerUserPath + ansibleCredentials],
                             applianceName='toil_leader')
+        # Add workers
         workersCreated = 0
         for nodeType, workers in zip(kwargs['nodeTypes'], kwargs['numWorkers']):
             workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers)
@@ -224,9 +235,6 @@ class AzureProvisioner(AnsibleDriver):
             storageName = name
             ansibleArgs['storagename'] = storageName.replace('-', '')[:24]
             instances.append(name)
-            # Launch the cluster with Ansible
-            # Calling the playbook with `tags=['untagged']` skips creation of
-            # resource group, security group, etc.
             self.callPlaybook(self.playbook['create'], ansibleArgs, wait=wait, tags=['untagged'])
 
         # Wait for nodes
@@ -242,7 +250,6 @@ class AzureProvisioner(AnsibleDriver):
         return len(instances)
 
     def getNodeShape(self, nodeType=None, preemptable=False):
-
         # Fetch Azure credentials from the CLI config
         azureCredentials = ConfigParser.SafeConfigParser()
         azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
@@ -296,16 +303,15 @@ class AzureProvisioner(AnsibleDriver):
         return 1
 
     def terminateNodes(self, nodes, preemptable=False):
-        for node in nodes:
+        for counter, node in enumerate(nodes):
             ansibleArgs = {
                 'vmname': node.name,
                 'resgrp': self.clusterName,
                 'storagename': node.name.replace('-', '')[:24]
             }
-            wait = True #if node == nodes[-1] else False
+            wait = True if counter == len(nodes)-1 else False
             self.callPlaybook(self.playbook['delete'], ansibleArgs, wait=wait)
 
-    # TODO: Refactor such that cluster name is LCD of vnet name/storage name/etc
     @staticmethod
     def isValidClusterName(name):
         """As Azure resource groups are used to identify instances in the same cluster,

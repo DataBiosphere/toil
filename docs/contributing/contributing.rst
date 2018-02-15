@@ -112,7 +112,9 @@ Test environment variables
 +------------------------+----------------------------------------------------+
 | TOIL_AZURE_KEYNAME     | An Azure account keyname (see                      |
 |                        | :ref:`prepare_azure-ref`),                         |
-|                        | which is required to run the AWS tests.            |
+|                        | which is required to run the Azure tests.          |
++------------------------+----------------------------------------------------+
+| TOIL_AZURE_ZONE        | The region in which to run the Azure tests.        |
 +------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |
 |                        | (see :ref:`runningGCE`), which is required to      |
