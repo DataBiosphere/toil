@@ -669,7 +669,7 @@ class AWSProvisioner(AbstractProvisioner):
         elif preemptable and not both:
             return [x for x in allInstances if x.spot_instance_request_id is not None]
         elif both:
-            return allInstances
+            return list(allInstances)
 
     @classmethod
     def _getSpotRequestIDs(cls, ctx, clusterName):
