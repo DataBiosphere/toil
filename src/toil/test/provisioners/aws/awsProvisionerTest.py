@@ -728,7 +728,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(3000)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
