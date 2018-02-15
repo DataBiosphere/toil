@@ -153,7 +153,7 @@ class AbstractAzureAutoscaleTest(ToilTest):
 
 
 
-@pytest.mark.timeout(1600)
+@pytest.mark.timeout(3000)
 class AzureAutoscaleTest(AbstractAzureAutoscaleTest):
 
     def __init__(self, name):
@@ -192,7 +192,7 @@ class AzureAutoscaleTest(AbstractAzureAutoscaleTest):
         self._test()
 
 
-@pytest.mark.timeout(1600)
+@pytest.mark.timeout(3000)
 class AzureStaticAutoscaleTest(AzureAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
