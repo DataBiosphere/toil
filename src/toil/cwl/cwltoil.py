@@ -953,6 +953,7 @@ def main(args=None, stdout=sys.stdout):
     if args is None:
         args = sys.argv[1:]
 
+    #we use workdir as jobStore:
     options = parser.parse_args([workdir] + args)
 
     use_container = not options.no_container
@@ -961,6 +962,9 @@ def main(args=None, stdout=sys.stdout):
         cwllogger.setLevel(options.logLevel)
 
     outdir = os.path.abspath(options.outdir)
+    tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
+    tmpdir_prefix = os.path.abspath(options.tmpdir_prefix)
+
     fileindex = {}
     existing = {}
     make_tool_kwargs = {}
@@ -1049,7 +1053,8 @@ def main(args=None, stdout=sys.stdout):
                 make_opts = copy.deepcopy(vars(options))
                 make_opts.update({'tool': t, 'jobobj': {},
                     'use_container': use_container,
-                    'tmpdir': os.path.realpath(outdir),
+                    'tmpdir': os.path.realpath(tmpdir_prefix),
+                    'tmp_outdir_prefix' : os.path.realpath(tmp_outdir_prefix),
                     'job_script_provider': job_script_provider})
 
                 (wf1, wf2) = makeJob(**make_opts)
