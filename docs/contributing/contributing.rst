@@ -116,6 +116,9 @@ Test environment variables
 +------------------------+----------------------------------------------------+
 | TOIL_AZURE_ZONE        | The region in which to run the Azure tests.        |
 +------------------------+----------------------------------------------------+
+| PUBLIC_KEY_FILE        | For Azure provisioner tests, the path to the       |
+|                        | public key file if not ~/.ssh/id_rsa.pub           |
++------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |
 |                        | (see :ref:`runningGCE`), which is required to      |
 |                        | to run the Google Cloud tests.                     |

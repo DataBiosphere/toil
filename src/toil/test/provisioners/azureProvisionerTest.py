@@ -53,6 +53,8 @@ class AbstractAzureAutoscaleTest(ToilTest):
             args = []
         callCommand = ['toil', 'launch-cluster', self.clusterName, '-p=azure', '--keyPairName=%s' % self.keyName,
                        '--leaderNodeType=%s' % self.leaderInstanceType, '--zone=%s' % self.azureZone]
+        if self.publicKeyFile:
+            callCommand += ['--publicKeyFile=%s' % self.publicKeyFile]
         callCommand = callCommand + args if args else callCommand
         subprocess.check_call(callCommand)
 
@@ -63,6 +65,7 @@ class AbstractAzureAutoscaleTest(ToilTest):
     def __init__(self, methodName):
         super(AbstractAzureAutoscaleTest, self).__init__(methodName=methodName)
         self.keyName = os.getenv('TOIL_AZURE_KEYNAME')
+        self.publicKeyFile = os.getenv('PUBLIC_KEY_FILE')
         self.azureZone = os.getenv('TOIL_AZURE_ZONE')
 
         self.leaderInstanceType = 'Standard_A2'
