@@ -329,7 +329,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             #Establish if we can run another jobGraph within the worker
             ##########################################
             successorJobGraph = nextChainableJobGraph(jobGraph, jobStore)
-            if successorJobGraph is None:
+            if successorJobGraph is None or config.disableChaining:
                 # Can't chain any more jobs.
                 break
 
