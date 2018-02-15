@@ -31,7 +31,8 @@ class AnsibleDriver(AbstractProvisioner):
 
     def callPlaybook(self, playbook, ansibleArgs, wait=True, tags=["all"]):
         playbook = os.path.join(self.playbooks, playbook)  # Path to playbook being executed
-        command = ["ansible-playbook", "-vvvvv", "--tags", ",".join(tags), "--extra-vars"]
+        verbosity = "-vvvvv" if logger.isEnabledFor(logging.DEBUG) else "-v"
+        command = ["ansible-playbook", verbosity, "--tags", ",".join(tags), "--extra-vars"]
         command.append(" ".join(["=".join(i) for i in ansibleArgs.items()]))  # Arguments being passed to playbook
         command.append(playbook)
 

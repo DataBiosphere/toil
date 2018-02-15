@@ -36,7 +36,10 @@ test_suites = {
         'PreemptableDeficitCompensationTest',
         'UtilsTest and testAWSProvisionerUtils',
         'AWSAutoscaleTest',
-        'AWSStaticAutoscaleTest'
+        'AWSStaticAutoscaleTest',
+        'AzureRestartTest',
+        'AzureAutoscaleTest',
+        'AzureStaticAutoscaleTest'
     ]}
 
 pytest_errors = ['All tests were collected and passed successfully.',

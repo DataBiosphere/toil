@@ -125,7 +125,7 @@ def main():
                 numNodes.append(int(num))
 
 
-    provisioner.launchCluster(instanceType=config.leaderNodeType,
+    provisioner.launchCluster(leaderNodeType=config.leaderNodeType,
                               leaderSpotBid=leaderSpotBid,
                               nodeTypes=nodeTypes,
                               preemptableNodeTypes=preemptableNodeTypes,

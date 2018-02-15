@@ -100,7 +100,7 @@ class AzureProvisioner(AnsibleDriver):
             self.masterPublicKeyFile = None
             self.nodeStorage = None
 
-    def launchCluster(self, instanceType, keyName, clusterName, zone,
+    def launchCluster(self, leaderNodeType, keyName, clusterName, zone,
                       leaderStorage=50, nodeStorage=50, spotBid=None, **kwargs):
         """
         Launches an Azure cluster using Ansible.
@@ -146,7 +146,7 @@ class AzureProvisioner(AnsibleDriver):
             '_args': leaderArgs.format(name=self.clusterName),
         }
         ansibleArgs = {
-            'vmsize': instanceType,
+            'vmsize': leaderNodeType,
             'vmname': instanceName,
             'storagename': instanceName.replace('-', '')[:24],  # Azure limits the name to 24 characters, no dashes.
             'resgrp': self.clusterName, # The resource group, which represents the cluster.
