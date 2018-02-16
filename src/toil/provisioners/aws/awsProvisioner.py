@@ -618,7 +618,7 @@ class AWSProvisioner(AbstractProvisioner):
                     raise
 
     @awsRetry
-    def _propagateToNode(self, node):
+    def _propagateKeyToNode(self, node):
         # since we're going to be rsyncing into the appliance we need the appliance to be running first
         ipAddress = self._waitForNode(node, 'toil_worker')
         self._coreRsync(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
@@ -627,7 +627,7 @@ class AWSProvisioner(AbstractProvisioner):
         if not self.config or not self.config.sseKey:
             return
         for node in instances:
-            self._propagateToNode(node)
+            self._propagateKeyToNode(node)
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
@@ -647,29 +647,21 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm
 
     @classmethod
+    @awsRetry
     def _getNodesInCluster(cls, ctx, clusterName, nodeType=None, preemptable=False, both=False):
-        for attempt in retry(predicate=awsRetryPredicate):
-            with attempt:
-                pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                                       'instance-state-name': 'pending'})
-        for attempt in retry(predicate=awsRetryPredicate):
-            with attempt:
-                runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                                       'instance-state-name': 'running'})
-        if nodeType:
-            pendingInstances = [instance for instance in pendingInstances if instance.instance_type == nodeType]
-            runningInstances = [instance for instance in runningInstances if instance.instance_type == nodeType]
-        # combine lists of instances by checking id for uniqueness to prevent a lucky
-        # instance from making it into both lists and being double counted.
-        pendingDict = {instance.id: instance for instance in pendingInstances}
-        uniquePendingInstances = [pendingDict[id_] for id_ in pendingDict if id_ not in runningInstances]
-        allInstances = set(runningInstances).union(set(uniquePendingInstances))
+        allInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName})
+        def instanceFilter(i):
+            # filter by type only if nodeType is true
+            rightType = not nodeType or i.instance_type == nodeType
+            rightState = i.state == 'running' or i.state == 'pending'
+            return rightType and rightState
+        filteredInstances = [i for i in allInstances if instanceFilter(i)]
         if not preemptable and not both:
-            return [x for x in allInstances if x.spot_instance_request_id is None]
+            return [i for i in filteredInstances if i.spot_instance_request_id is None]
         elif preemptable and not both:
-            return [x for x in allInstances if x.spot_instance_request_id is not None]
+            return [i for i in filteredInstances if i.spot_instance_request_id is not None]
         elif both:
-            return list(allInstances)
+            return filteredInstances
 
     @classmethod
     def _getSpotRequestIDs(cls, ctx, clusterName):
