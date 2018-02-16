@@ -213,7 +213,7 @@ write_files:
         ephemeral_count=0
         drives=""
         directories="toil mesos docker"
-        for drive in /dev/xvd{{b..z}}; do
+        for drive in /dev/xvd{{b..z}} /dev/nvme*n*; do
             echo checking for $drive
             if [ -b $drive ]; then
                 echo found it

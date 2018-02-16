@@ -137,6 +137,9 @@ class Config(object):
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
+        # CWL
+        self.cwl = False
+
     def setOptions(self, options):
         """
         Creates a config object from the options object.
@@ -348,7 +351,7 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the "
                              "batch system/big batch system (see below).")
-    addBatchOptions(addOptionFn)
+    addBatchOptions(addOptionFn, config)
 
     #
     #Auto scaling options
@@ -422,23 +425,24 @@ def _addOptions(addGroupFn, config):
                 default=False, action="store_true",
                 help=("Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, queue size, "
                       "and issued jobs."))
-    
+
     #        
     # Parameters to limit service jobs / detect service deadlocks
     #
-    addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
-                             "Allows the specification of the maximum number of service jobs "
-                             "in a cluster. By keeping this limited "
-                             " we can avoid all the nodes being occupied with services, so causing a deadlock")
-    addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None,
-                help=("The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
-    addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
-                help=("The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
-    addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
-                help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
-    addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
-                help=("Time, in seconds, to wait before doing a scheduler query for job state. "
-                      "Return cached results if within the waiting period."))
+    if not config.cwl:
+        addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
+                                 "Allows the specification of the maximum number of service jobs "
+                                 "in a cluster. By keeping this limited "
+                                 " we can avoid all the nodes being occupied with services, so causing a deadlock")
+        addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None,
+                    help=("The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
+        addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
+                    help=("The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
+        addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
+                    help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
+        addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
+                    help=("Time, in seconds, to wait before doing a scheduler query for job state. "
+                          "Return cached results if within the waiting period."))
 
     #
     #Resource requirements

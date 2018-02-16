@@ -26,6 +26,10 @@ export GOOGLE_APPLICATION_CREDENTIALS=/home/jenkins/builds/toil-dev-41fd0135b44d
 export TOIL_KEYNAME=jenkins
 export TOIL_BOTO_DIR=/home/jenkins/.boto
 
+# Needed for google provisioner tests
+export TOIL_GOOGLE_KEYNAME=jenkins
+export TOIL_BOTO_DIR=/home/jenkins/.boto
+
 TMPDIR=/mnt/ephemeral/tmp
 # Run rm "as root" so we can clean up files left over by rogue containers
 docker run -v $(dirname $TMPDIR):$(dirname $TMPDIR) busybox rm -rf $TMPDIR

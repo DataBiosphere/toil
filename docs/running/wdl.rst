@@ -1,3 +1,5 @@
+.. _wdlSupport:
+
 WDL Support in Toil
 *******************
 

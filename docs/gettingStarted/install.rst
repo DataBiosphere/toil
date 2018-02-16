@@ -25,6 +25,7 @@ And create a virtual environment called ``venv`` in your home directory.
 ::
 
     $ virtualenv ~/venv
+
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
 
 If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
@@ -119,11 +120,16 @@ Here's what each extra provides:
 |                | `Common Workflow Language`_. This extra has no native      |
 |                | dependencies.                                              |
 +----------------+------------------------------------------------------------+
+| ``wdl``        | Provides support for running workflows written using the   |
+|                | `Workflow Description Language`_. This extra has no native |
+|                | dependencies.                                              |
++----------------+------------------------------------------------------------+
 
 .. _AWS: https://aws.amazon.com/
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 .. _Google Cloud Storage: https://cloud.google.com/storage/
 .. _Microsoft Azure: https://azure.microsoft.com/
+.. _Workflow Description Language: https://software.broadinstitute.org/wdl/
 
 .. _python-dev:
 .. topic:: Python headers and static libraries
@@ -168,11 +174,7 @@ during the computation of a workflow, first set up and configure an account with
 
 #. If necessary, create and activate an `AWS account`_
 
-#. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
-
-#. Follow `Amazon's instructions`_ to create an SSH key and import it into EC2.
-
-#. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
+#. Create a key pair, install boto, install awscli, and configure your credentials using our `blog instructions`_ .
 
 
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
@@ -180,6 +182,7 @@ during the computation of a workflow, first set up and configure an account with
 .. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
 .. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
 .. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
+.. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 
 
 .. _prepare_azure-ref:
@@ -189,15 +192,71 @@ Preparing your Azure environment
 
 Follow the steps below to prepare your Azure environment for running a Toil workflow.
 
-#. Create an `Azure account`_.
+#. Create an `Azure account`_ and to use the job store make an `Azure storage account`_.
 
+#. Locate your Azure storage account key and then store it in one of the following locations:
+    - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
+    - ``AZURE_ACCOUNT_KEY`` environment variable
+    - or finally in ``~/.toilAzureCredentials.`` with the format format ::
+
+         [AzureStorageCredentials]
+         accountName1=ACCOUNTKEY1==
+         accountName2=ACCOUNTKEY2==
+
+   These locations are searched in the order above, which can be useful if you work with multiple
+   accounts.
 
 #. Make sure you have an SSH RSA public key, usually stored in
    ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
    one.
 
 .. _Azure account: https://azure.microsoft.com/en-us/free/
+.. _Azure storage account: https://docs.microsoft.com/en-us/azure/storage/common/storage-quickstart-create-account?tabs=portal
 
+.. _prepareGoogle:
+
+Preparing your Google environment
+---------------------------------
+
+Toil supports using the `Google Cloud Platform`_. Setting this up is easy!
+
+#. Make sure that the ``google`` extra (:ref:`extras`) is installed.
+
+#. Follow `Google's Instructions`_ to download credentials and set the
+   ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable.
+
+#. Create a new ssh key with the proper format.
+   To create a new ssh key run the command ::
+
+      ssh-keygen -t rsa -f ~/.ssh/id_rsa -C [USERNAME]
+
+   where ``[USERNAME]`` is something like ``jane@example.com``. Make sure to leave your password
+   blank
+
+   .. warning::
+      This command could overwrite an old ssh key you may be using.
+      If you have an existing ssh key you would like to use, it will need to be called id_rsa and it
+      needs to have no password set.
+
+   Make sure only you can read the SSH keys ::
+
+      $ chmod 400 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
+
+#. Add your newly formated public key to google. To do this, log into your Google Cloud account
+   and go to `metadata`_ section under the Compute tab.
+
+   .. image:: ./googleScreenShot.png
+
+   Near the top of the screen click on 'SSH Keys', then edit, add item, and paste the key. Then save.
+
+   .. image:: ./googleScreenShot2.png
+
+For more details look at Google's instructions for `adding SSH keys`_
+
+.. _Google Cloud Platform: https://cloud.google.com/storage/
+.. _adding SSH keys: https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys
+.. _metadata: https://console.cloud.google.com/compute/metadata
+.. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
 
 .. _building_from_source-ref:
 

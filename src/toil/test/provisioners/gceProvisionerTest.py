@@ -64,8 +64,8 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
     def __init__(self, methodName):
         super(AbstractGCEAutoscaleTest, self).__init__(methodName=methodName)
-        # TODO: add TOIL_KEYNAME to needs_google or ssh with SA account
-        self.keyName = os.getenv('TOIL_KEYNAME')
+        # TODO: add TOIL_GOOGLE_KEYNAME to needs_google or ssh with SA account
+        self.keyName = os.getenv('TOIL_GOOGLE_KEYNAME')
         # TODO: remove this when switching to google jobstore
         self.botoDir = os.getenv('TOIL_BOTO_DIR')
         # TODO: get this from SA account or add an environment variable
@@ -171,7 +171,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(3000)
 class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
@@ -219,7 +219,7 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
         self._test(preemptableJobs=True)
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(3000)
 class GCEStaticAutoscaleTest(GCEAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
@@ -254,7 +254,8 @@ class GCEStaticAutoscaleTest(GCEAutoscaleTest):
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
-@pytest.mark.timeout(1200)
+
+@pytest.mark.timeout(3000)
 class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
