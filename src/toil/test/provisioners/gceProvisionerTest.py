@@ -171,7 +171,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
 
 
-@pytest.mark.timeout(3000)
+@pytest.mark.timeout(1200)
 class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
@@ -195,7 +195,8 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
         os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        #'--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
@@ -219,7 +220,7 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
         self._test(preemptableJobs=True)
 
 
-@pytest.mark.timeout(3000)
+@pytest.mark.timeout(1200)
 class GCEStaticAutoscaleTest(GCEAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
@@ -255,7 +256,7 @@ class GCEStaticAutoscaleTest(GCEAutoscaleTest):
         self.sshUtil(runCommand)
 
 
-@pytest.mark.timeout(3000)
+@pytest.mark.timeout(1800)
 class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
@@ -291,7 +292,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         self.numWorkers = ['2','1']
         self._test()
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1800)
 class GCERestartTest(AbstractGCEAutoscaleTest):
     """
     This test insures autoscaling works on a restarted Toil run
@@ -328,7 +329,7 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
             pass
         else:
             self.fail('Command succeeded when we expected failure')
-        with timeLimit(600):
+        with timeLimit(1200):
             command = ['/home/venv/bin/python', self.scriptName, '--restart', '--defaultMemory=50000000']
             command.extend(toilOptions)
             self.sshUtil(command)
