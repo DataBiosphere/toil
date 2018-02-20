@@ -17,7 +17,7 @@ from builtins import str
 from builtins import range
 import logging
 import time
-import subprocess
+from toil import subprocess
 import sys
 import string
 

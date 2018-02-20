@@ -21,7 +21,7 @@ import random
 from contextlib import contextmanager
 from uuid import uuid4
 import logging
-import subprocess
+from toil import subprocess
 
 # Python 3 compatibility imports
 import errno

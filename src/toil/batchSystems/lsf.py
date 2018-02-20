@@ -23,7 +23,7 @@ from builtins import str
 from builtins import range
 from past.utils import old_div
 import logging
-import subprocess
+from toil import subprocess
 import time
 from threading import Thread
 from datetime import date

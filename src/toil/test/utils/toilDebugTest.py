@@ -17,7 +17,7 @@ from __future__ import absolute_import
 # from builtins import str
 
 import unittest
-import subprocess
+from toil import subprocess
 import os
 import shutil
 import logging

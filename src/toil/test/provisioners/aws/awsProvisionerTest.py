@@ -16,7 +16,7 @@ from builtins import str
 from builtins import range
 import logging
 import os
-import subprocess
+from toil import subprocess
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent

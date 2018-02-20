@@ -3,10 +3,10 @@ from builtins import str
 from builtins import object
 import logging
 from contextlib import contextmanager
-from subprocess import CalledProcessError
 
 from bd2k.util.iterables import concat
 
+from toil import subprocess
 from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow
 
 log = logging.getLogger(__name__)
@@ -78,7 +78,7 @@ class HotDeploymentTest(ApplianceTestSupport):
                         '--defaultMemory=10M',
                         '/data/jobstore']
             command = concat(pythonArgs, toilArgs)
-            self.assertRaises(CalledProcessError, leader.runOnAppliance, *command)
+            self.assertRaises(subprocess.CalledProcessError, leader.runOnAppliance, *command)
 
             # Deploy an updated version of the script ...
             userScript = userScript.replace('assert False', 'assert True')
@@ -138,7 +138,7 @@ class HotDeploymentTest(ApplianceTestSupport):
             # Assert that output file isn't there
             worker.runOnAppliance('test', '!', '-f', '/data/foo.txt')
             # Just being paranoid
-            self.assertRaises(CalledProcessError,
+            self.assertRaises(subprocess.CalledProcessError,
                               worker.runOnAppliance, 'test', '-f', '/data/foo.txt')
             leader.runOnAppliance('venv/bin/python',
                                   '-m', 'toil_script.bar',
