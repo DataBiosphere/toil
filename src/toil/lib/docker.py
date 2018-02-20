@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import logging
 import os
 import pipes
-import subprocess
+from toil import subprocess
 import docker
 import base64
 import time

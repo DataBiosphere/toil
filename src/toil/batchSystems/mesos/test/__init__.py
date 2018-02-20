@@ -5,7 +5,7 @@ from abc import ABCMeta, abstractmethod
 import logging
 import shutil
 import threading
-import subprocess
+from toil import subprocess
 import multiprocessing
 
 from bd2k.util.processes import which

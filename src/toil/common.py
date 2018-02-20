@@ -26,7 +26,7 @@ import sys
 import tempfile
 import time
 import uuid
-import subprocess
+from toil import subprocess
 import requests
 from argparse import ArgumentParser
 

@@ -19,7 +19,7 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import subprocess
+from toil import subprocess
 import time
 import math
 

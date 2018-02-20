@@ -23,7 +23,7 @@ import signal
 import sys
 import threading
 import logging
-import subprocess
+from toil import subprocess
 import traceback
 from time import sleep, time
 

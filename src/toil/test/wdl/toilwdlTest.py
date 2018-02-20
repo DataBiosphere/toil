@@ -1,7 +1,7 @@
 from __future__ import absolute_import
 import unittest
 import os
-import subprocess
+from toil import subprocess
 from toil.wdl.toilwdl import ToilWDL
 from toil.test import ToilTest, slow
 import zipfile

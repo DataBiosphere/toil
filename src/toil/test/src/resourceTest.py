@@ -19,13 +19,13 @@ import os
 import sys
 from inspect import getsource
 from io import BytesIO
-from subprocess import check_call, Popen, PIPE
 from textwrap import dedent
 from zipfile import ZipFile
 
 from bd2k.util.files import mkdir_p
 from mock import MagicMock, patch
 
+from toil import subprocess
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
 from toil.test import ToilTest, tempFileContaining
@@ -68,7 +68,7 @@ class ResourceTest(ToilTest):
         if virtualenv:
             self.assertTrue(inVirtualEnv())
             # --never-download prevents silent upgrades to pip, wheel and setuptools
-            check_call(['virtualenv', '--never-download', dirPath])
+            subprocess.check_call(['virtualenv', '--never-download', dirPath])
             sitePackages = os.path.join(dirPath, 'lib', 'python2.7', 'site-packages')
             # tuple assignment is necessary to make this line immediately precede the try:
             oldPrefix, sys.prefix, dirPath = sys.prefix, dirPath, sitePackages
@@ -213,7 +213,7 @@ class ResourceTest(ToilTest):
             self.assertFalse(scriptPath.endswith(('.py', '.pyc')))
             os.chmod(scriptPath, 0o755)
             jobStorePath = scriptPath + '.jobStore'
-            process = Popen([scriptPath, jobStorePath], stderr=PIPE)
+            process = subprocess.Popen([scriptPath, jobStorePath], stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
             self.assertTrue('The name of a user script/module must end in .py or .pyc.' in stderr)
             self.assertNotEquals(0, process.returncode)

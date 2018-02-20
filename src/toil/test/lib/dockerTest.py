@@ -5,7 +5,7 @@ import time
 import os
 import uuid
 import docker
-import subprocess
+from toil import subprocess
 from threading import Thread
 from docker.errors import ContainerError
 
@@ -17,7 +17,6 @@ from toil.lib import FORGO, STOP, RM
 from toil.lib.docker import dockerCall, dockerCheckOutput, apiDockerCall, containerIsRunning, dockerKill
 
 # only needed for subprocessDockerCall tests
-from subprocess import CalledProcessError
 from pwd import getpwuid
 from bd2k.util.retry import retry
 from toil.lib import dockerPredicate
@@ -512,7 +511,7 @@ def _testSubprocessDockerPipeChainErrorFn(job):
     parameters = [ ['exit', '1'], ['wc', '-l'] ]
     try:
         return dockerCheckOutput(job, tool='quay.io/ucsc_cgl/spooky_test', parameters=parameters)
-    except CalledProcessError:
+    except subprocess.CalledProcessError:
         return True
     return False
 
