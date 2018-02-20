@@ -73,7 +73,8 @@ Here's what each extra provides:
 +----------------+------------------------------------------------------------+
 | Extra          | Description                                                |
 +================+============================================================+
-| ``all``        | Installs all extras except htcondor.                       |
+| ``all``        | Installs all extras (though htcondor is linux-only and     |
+|                | will be skipped if not on a linux computer).               |
 +----------------+------------------------------------------------------------+
 | ``aws``        | Provides support for managing a cluster on Amazon Web      |
 |                | Service (`AWS`_) using Toil's built in :ref:`clusterRef`.  |
@@ -107,9 +108,8 @@ Here's what each extra provides:
 |                |        ImportError: No module named mesos.native           |
 |                |                                                            |
 +----------------+------------------------------------------------------------+
-| ``htcondor``   | Support for the htcondor batch system.  This is linux only |
-|                | with no apple support currently and is therefore not in    |
-|                | the ``all`` extra and must be included separately.         |
+| ``htcondor``   | Support for the htcondor batch system.  This currently is  |
+|                | a linux only extra.                                        |
 +----------------+------------------------------------------------------------+
 | ``encryption`` | Provides client-side encryption for files stored in the    |
 |                | Azure and AWS job stores. This extra requires the          |
