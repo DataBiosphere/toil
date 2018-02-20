@@ -13,7 +13,7 @@
 # limitations under the License.
 
 from setuptools import find_packages, setup
-
+import sys
 
 
 def runSetup():
@@ -38,28 +38,42 @@ def runSetup():
     htcondor = 'htcondor>=8.6.0'
 
     mesos_reqs = [
-                  psutil,
-                  protobuf]
+        psutil,
+        protobuf]
     aws_reqs = [
-                  boto,
-                  boto3,
-                  futures,
-                  pycrypto]
+        boto,
+        boto3,
+        futures,
+        pycrypto]
     azure_reqs = [
-                  azure,
-                  azureCosmosdbTable]
+        azure,
+        azureCosmosdbTable]
     encryption_reqs = [
-                  pynacl]
+        pynacl]
     google_reqs = [
-                  gcs]
+        gcs]
     cwl_reqs = [
-                  cwltool,
-                  schemaSalad,
-                  galaxyLib,
-                  cwltest]
+        cwltool,
+        schemaSalad,
+        galaxyLib,
+        cwltest]
     wdl_reqs = []
     htcondor_reqs = [
-                  htcondor]
+        htcondor]
+
+    all_reqs = \
+        mesos_reqs + \
+        aws_reqs + \
+        azure_reqs + \
+        encryption_reqs + \
+        google_reqs + \
+        cwl_reqs + \
+        htcondor_reqs
+
+    # htcondor is not supported by apple
+    if sys.platform != 'linux' or 'linux2':
+        all_reqs.remove(htcondor)
+
     setup(
         name='toil',
         version=version.distVersion,
@@ -86,13 +100,7 @@ def runSetup():
             'cwl': cwl_reqs,
             'wdl': wdl_reqs,
             'htcondor': htcondor_reqs,
-            'all': mesos_reqs +
-                   aws_reqs +
-                   azure_reqs +
-                   encryption_reqs +
-                   google_reqs +
-                   cwl_reqs +
-                   htcondor_reqs},
+            'all': all_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
