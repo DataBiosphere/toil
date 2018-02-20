@@ -22,7 +22,7 @@ import logging
 import os
 import re
 import sys
-import subprocess
+from toil import subprocess
 import tempfile
 import time
 from threading import Thread

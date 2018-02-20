@@ -18,15 +18,12 @@
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
 
-from future import standard_library
-standard_library.install_aliases()
 from builtins import str
 from builtins import range
 from builtins import object
 from toil.job import Job
-from toil.common import Toil
+from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
-from toil.lib.bioio import setLoggingFromOptions
 
 import argparse
 import cwltool.errors
@@ -833,8 +830,10 @@ def visitSteps(t, op):
 
 
 def main(args=None, stdout=sys.stdout):
+    config = Config()
+    config.cwl = True
     parser = argparse.ArgumentParser()
-    Job.Runner.addToilOptions(parser)
+    addOptions(parser, config)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
 
@@ -885,7 +884,6 @@ def main(args=None, stdout=sys.stdout):
 
     use_container = not options.no_container
 
-    setLoggingFromOptions(options)
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
@@ -907,7 +905,6 @@ def main(args=None, stdout=sys.stdout):
         if options.restart:
             outobj = toil.restart()
         else:
-            toil.config.linkImports = False
             useStrict = not options.not_strict
             make_tool_kwargs["hints"] = [{
                 "class": "ResourceRequirement",

@@ -57,6 +57,7 @@ def runSetup():
                   schemaSalad,
                   galaxyLib,
                   cwltest]
+    wdl_reqs = []
     htcondor_reqs = [
                   htcondor]
     setup(
@@ -74,7 +75,8 @@ def runSetup():
             'six>=1.10.0',
             'future',
             'requests==2.18.4',
-            'docker==2.5.1'],
+            'docker==2.5.1',
+            'subprocess32==3.5.0rc1'],
         extras_require={
             'mesos': mesos_reqs,
             'htcondor': htcondor_reqs,
@@ -86,6 +88,7 @@ def runSetup():
                       mesos_reqs,
             'encryption': encryption_reqs,
             'cwl': cwl_reqs,
+            'wdl': wdl_reqs,
             'all': mesos_reqs +
                    aws_reqs +
                    azure_reqs +

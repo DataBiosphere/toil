@@ -22,7 +22,7 @@ import os
 import re
 import shutil
 import signal
-import subprocess
+from toil import subprocess
 import tempfile
 import threading
 import time
@@ -31,7 +31,6 @@ import uuid
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
-from subprocess import PIPE, Popen, CalledProcessError, check_output
 from textwrap import dedent
 from unittest.util import strclass
 
@@ -45,6 +44,7 @@ from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 from bd2k.util.threading import ExceptionalThread
 
+from toil import subprocess
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
 from future.utils import with_metaclass
@@ -218,14 +218,14 @@ class ToilTest(unittest.TestCase):
         capture = kwargs.pop('capture', False)
         _input = kwargs.pop('input', None)
         if capture:
-            kwargs['stdout'] = PIPE
+            kwargs['stdout'] = subprocess.PIPE
         if _input is not None:
-            kwargs['stdin'] = PIPE
-        popen = Popen(args, **kwargs)
+            kwargs['stdin'] = subprocess.PIPE
+        popen = subprocess.Popen(args, **kwargs)
         stdout, stderr = popen.communicate(input=_input)
         assert stderr is None
         if popen.returncode != 0:
-            raise CalledProcessError(popen.returncode, args)
+            raise subprocess.CalledProcessError(popen.returncode, args)
         if capture:
             return stdout
 
@@ -261,7 +261,7 @@ def needs_rsync3(test_item):
     test_item = _mark_test('rsync', test_item)
     try:
         versionInfo = subprocess.check_output(['rsync', '--version'])
-    except CalledProcessError:
+    except subprocess.CalledProcessError:
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
     else:
         # version output looks like: 'rsync  version 2.6.9 ...'
@@ -481,8 +481,8 @@ def needs_appliance(test_item):
     if next(which('docker'), None):
         image = applianceSelf()
         try:
-            images = check_output(['docker', 'inspect', image])
-        except CalledProcessError:
+            images = subprocess.check_output(['docker', 'inspect', image])
+        except subprocess.CalledProcessError:
             images = []
         else:
             images = {i['Id'] for i in json.loads(images) if image in i['RepoTags']}
@@ -800,7 +800,7 @@ class ApplianceTestSupport(ToilTest):
                                    image,
                                    self._containerCommand()))
                 log.info('Running %r', args)
-                self.popen = Popen(args)
+                self.popen = subprocess.Popen(args)
             self.start()
             self.__wait_running()
             return self
@@ -827,7 +827,7 @@ class ApplianceTestSupport(ToilTest):
                                               '--format={{ .State.Running }}',
                                               self.containerName,
                                               capture=True).strip()
-                except CalledProcessError:
+                except subprocess.CalledProcessError:
                     pass
                 else:
                     if 'true' == running:

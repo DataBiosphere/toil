@@ -25,6 +25,7 @@ And create a virtual environment called ``venv`` in your home directory.
 ::
 
     $ virtualenv ~/venv
+
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
 
 If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
@@ -120,11 +121,16 @@ Here's what each extra provides:
 | ``cwl``        | Provides support for running workflows written using the   |
 |                | `Common Workflow Language`_.                               |
 +----------------+------------------------------------------------------------+
+| ``wdl``        | Provides support for running workflows written using the   |
+|                | `Workflow Description Language`_. This extra has no native |
+|                | dependencies.                                              |
++----------------+------------------------------------------------------------+
 
 .. _AWS: https://aws.amazon.com/
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 .. _Google Cloud Storage: https://cloud.google.com/storage/
 .. _Microsoft Azure: https://azure.microsoft.com/
+.. _Workflow Description Language: https://software.broadinstitute.org/wdl/
 
 .. _python-dev:
 .. topic:: Python headers and static libraries
@@ -169,11 +175,7 @@ during the computation of a workflow, first set up and configure an account with
 
 #. If necessary, create and activate an `AWS account`_
 
-#. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
-
-#. Follow `Amazon's instructions`_ to create an SSH key and import it into EC2.
-
-#. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
+#. Create a key pair, install boto, install awscli, and configure your credentials using our `blog instructions`_ .
 
 
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
@@ -181,6 +183,7 @@ during the computation of a workflow, first set up and configure an account with
 .. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
 .. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
 .. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
+.. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 
 
 .. _prepare_azure-ref:
@@ -191,7 +194,6 @@ Preparing your Azure environment
 Follow the steps below to prepare your Azure environment for running a Toil workflow.
 
 #. Create an `Azure account`_.
-
 
 #. Make sure you have an SSH RSA public key, usually stored in
    ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create

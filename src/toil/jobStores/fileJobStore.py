@@ -53,9 +53,13 @@ class FileJobStore(AbstractJobStore):
     distributed batch systems, that file system must be shared by all worker nodes.
     """
 
-    # Parameters controlling the creation of temporary files
+    # Valid chars for the creation of temporary directories
     validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    # Depth of temporary subdirectories created
     levels = 2
+
+    # 10Mb RAM chunks when reading/writing files
+    BUFFER_SIZE = 10485760 # 10Mb
 
     def __init__(self, path):
         """
@@ -215,13 +219,29 @@ class FileJobStore(AbstractJobStore):
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        with open(cls._extractPathFromUrl(url), 'r') as f:
-            writable.write(f.read())
+        """
+        Writes the contents of a file to a source (writes url to writable)
+        using a ~10Mb buffer.
+
+        :param str url: A path as a string of the file to be read from.
+        :param object writable: An open file object to write to.
+        """
+        # we use a ~10Mb buffer to improve speed
+        with open(cls._extractPathFromUrl(url), 'rb') as readable:
+            shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        with open(cls._extractPathFromUrl(url), 'w') as f:
-            f.write(readable.read())
+        """
+        Writes the contents of a file to a source (writes readable to url)
+        using a ~10Mb buffer.
+
+        :param str url: A path as a string of the file to be written to.
+        :param object readable: An open file object to read from.
+        """
+        # we use a ~10Mb buffer to improve speed
+        with open(cls._extractPathFromUrl(url), 'wb') as writable:
+            shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
 
     @staticmethod
     def _extractPathFromUrl(url):
