@@ -41,6 +41,7 @@ logging.getLogger("msrest.pipeline").setLevel(logging.WARNING)
 # .azure/credentials for creating VM with Ansible
 # .toilAzureCredentials for accessing jobStore
 
+
 class AzureProvisioner(AnsibleDriver):
     AnsibleDriver.inventory = 'azure_rm.py'
 
@@ -55,13 +56,12 @@ class AzureProvisioner(AnsibleDriver):
         playbooks = os.path.dirname(os.path.realpath(__file__))
         super(AzureProvisioner, self).__init__(playbooks, config)
 
-
         if config:
             # This is called when running on the leader.
 
             # get the leader metadata
             mdUrl = "http://169.254.169.254/metadata/instance?api-version=2017-08-01"
-            header={'Metadata': 'True'}
+            header = {'Metadata': 'True'}
             request = urllib.request.Request(url=mdUrl, headers=header)
             response = urllib.request.urlopen(request)
             data = response.read()
@@ -78,7 +78,7 @@ class AzureProvisioner(AnsibleDriver):
 
             self.keyName = tags.get('owner', 'no-owner')
             self.leaderIP = self._getLeader(self.clusterName)['private_ip']
-            self._setSSH() # create id_rsa.pub file on the leader if it is not there
+            self._setSSH()  # create id_rsa.pub file on the leader if it is not there
             self.masterPublicKeyFile = '/root/.ssh/id_rsa.pub'
 
             # read given configuration parameters
@@ -138,7 +138,6 @@ class AzureProvisioner(AnsibleDriver):
         # (see https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions).
         instanceName = 'l' + str(uuid.uuid4())
 
-
         cloudConfigArgs = {
             'image': applianceSelf(),
             'role': "leader",
@@ -149,11 +148,11 @@ class AzureProvisioner(AnsibleDriver):
             'vmsize': leaderNodeType,
             'vmname': instanceName,
             'storagename': instanceName.replace('-', '')[:24],  # Azure limits the name to 24 characters, no dashes.
-            'resgrp': self.clusterName, # The resource group, which represents the cluster.
+            'resgrp': self.clusterName,  # The resource group, which represents the cluster.
             'region': self.region,
             'role': "leader",
-            'owner': self.keyName, # Just a tag.
-            'diskSize': str(leaderStorage), # TODO: not implemented
+            'owner': self.keyName,  # Just a tag.
+            'diskSize': str(leaderStorage),  # TODO: not implemented
             'publickeyfile': self.masterPublicKeyFile   # The users public key to be added to authorized_keys
         }
         ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
@@ -216,19 +215,19 @@ class AzureProvisioner(AnsibleDriver):
         }
 
         ansibleArgs = dict(vmsize=nodeType,
-                    resgrp=self.clusterName,
-                    region=self.region,
-                    diskSize=str(self.nodeStorage),
-                    owner=self.keyName,
-                    role="worker",
-                    publickeyfile=self.masterPublicKeyFile)
+                           resgrp=self.clusterName,
+                           region=self.region,
+                           diskSize=str(self.nodeStorage),
+                           owner=self.keyName,
+                           role="worker",
+                           publickeyfile=self.masterPublicKeyFile)
         ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
 
         instances = []
         wait = False
         for i in range(numNodes):
             # Wait for the last one so that getProvisionedWorkers will see it
-            if i == numNodes-1:
+            if i == numNodes - 1:
                 wait = True
             name = 'w' + str(uuid.uuid4())
             ansibleArgs['vmname'] = name
@@ -239,7 +238,7 @@ class AzureProvisioner(AnsibleDriver):
 
         # Wait for nodes
         allInstances = self.getProvisionedWorkers(None)
-        instancesIndex = dict((x.name,x) for x in allInstances)
+        instancesIndex = dict((x.name, x) for x in allInstances)
         for vmName in instances:
             if vmName in instancesIndex:
                 self._waitForNode(instancesIndex[vmName].publicIP, 'toil_worker')
@@ -309,7 +308,7 @@ class AzureProvisioner(AnsibleDriver):
                 'resgrp': self.clusterName,
                 'storagename': node.name.replace('-', '')[:24]
             }
-            wait = True if counter == len(nodes)-1 else False
+            wait = True if counter == len(nodes) - 1 else False
             self.callPlaybook(self.playbook['delete'], ansibleArgs, wait=wait)
 
     @staticmethod
@@ -347,27 +346,26 @@ class AzureProvisioner(AnsibleDriver):
     def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
         cls._coreRsync(cls._getLeader(clusterName)['public_ip'], args, **kwargs)
 
-
     def _setSSH(self):
-         if not os.path.exists('/root/.sshSuccess'):
-             subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
-             with open('/root/.sshSuccess', 'w') as f:
-                 f.write('written here because of restrictive permissions on .ssh dir')
-         os.chmod('/root/.ssh', 0o700)
-         subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
-         with open('/root/.ssh/id_rsa.pub') as f:
-             masterPublicKey = f.read()
-         masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
-         # confirm it really is an RSA public key
-         assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
-         return masterPublicKey
+        if not os.path.exists('/root/.sshSuccess'):
+            subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
+            with open('/root/.sshSuccess', 'w') as f:
+                f.write('written here because of restrictive permissions on .ssh dir')
+        os.chmod('/root/.ssh', 0o700)
+        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
+        with open('/root/.ssh/id_rsa.pub') as f:
+            masterPublicKey = f.read()
+        masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
+        # confirm it really is an RSA public key
+        assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
+        return masterPublicKey
 
     def _waitForNode(self, instanceIP, role):
-         # wait here so docker commands can be used reliably afterwards
-         # TODO: make this more robust, e.g. If applicance doesn't exist, then this waits forever.
-         self._waitForSSHKeys(instanceIP)
-         self._waitForDockerDaemon(instanceIP)
-         self._waitForAppliance(instanceIP, role)
+        # wait here so docker commands can be used reliably afterwards
+        # TODO: make this more robust, e.g. If applicance doesn't exist, then this waits forever.
+        self._waitForSSHKeys(instanceIP)
+        self._waitForDockerDaemon(instanceIP)
+        self._waitForAppliance(instanceIP, role)
 
     @classmethod
     def _waitForSSHKeys(cls, instanceIP):
