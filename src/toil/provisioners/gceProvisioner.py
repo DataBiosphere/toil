@@ -34,6 +34,8 @@ from toil.provisioners import (Node, NoSuchClusterException)
 
 import logging
 logger = logging.getLogger(__name__)
+logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
+
 
 ## SECURITY
 # 1. Google Service Account (json file)
@@ -83,8 +85,6 @@ logger = logging.getLogger(__name__)
 #   - other disks
 #   - RAID
 
-logger = logging.getLogger(__name__)
-logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
 logDir = '--log_dir=/var/lib/mesos'
 leaderDockerArgs = logDir + ' --registry=in_memory --cluster={name}'
@@ -529,12 +529,22 @@ class GCEProvisioner(AbstractProvisioner):
             self._copySshKeys(instance.public_ips[0], self.keyName)
             if self.config and self.config.sseKey or botoExists:
                 self._waitForNode(instance.public_ips[0], 'toil_worker')
-                if self.config and self.config.sseKey:
-                    self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
-                                    applianceName='toil_worker')
-                if botoExists:
-                    self._rsyncNode(instance.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
-                                    applianceName='toil_worker')
+                retries = 0
+                while True:
+                    try:
+                        if self.config and self.config.sseKey:
+                            self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
+                                            applianceName='toil_worker')
+                        if botoExists:
+                            self._rsyncNode(instance.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
+                                            applianceName='toil_worker')
+                        break
+                    except:
+                        if retries == 5:
+                            raise # givup
+                        else:
+                            logger.debug("Rsync to new nodes failed, trying again")
+                            retries += 1
         logger.info('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
@@ -645,7 +655,7 @@ class GCEProvisioner(AbstractProvisioner):
         # at this point the process has already exited, no need for a timeout
         resultValue = popen.wait()
         # ssh has been throwing random 255 errors - why?
-        if resultValue != 0 and resultValue != 255:
+        if resultValue != 0:
             raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
                                'exit code %s with stdout %s and stderr %s' % (' '.join(args), resultValue, stdout, stderr))
         assert stderr is None
@@ -788,27 +798,44 @@ class GCEProvisioner(AbstractProvisioner):
     @classmethod
     def _waitForDockerDaemon(cls, ip_address, keyName='core'):
         logger.info('Waiting for docker on %s to start...', ip_address)
+        retries = 0
         while True:
-            output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
-            time.sleep(5)
-            if 'dockerd' in output:
-                # docker daemon has started
-                break
-            else:
-                logger.info('... Still waiting...')
+            try:
+                output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
+                time.sleep(5)
+                if 'dockerd' in output:
+                    # docker daemon has started
+                    break
+                else:
+                    logger.info('... Still waiting...')
+            except:
+                if retries == 5:
+                    raise # givup
+                else:
+                    logger.debug("Wait for docker daemon failed ssh, trying again.")
+                    retries += 1
         logger.info('Docker daemon running')
 
     @classmethod
     def _waitForAppliance(cls, ip_address, role, keyName='core'):
         logger.info('Waiting for %s Toil appliance to start...', role)
+        retries = 0
         while True:
-            output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps', sshOptions=['-oBatchMode=yes'], user=keyName)
-            if role in output:
-                logger.info('...Toil appliance started')
-                break
-            else:
-                logger.info('...Still waiting, trying again in 10sec...')
-                time.sleep(10)
+            try:
+                output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps',
+                                          sshOptions=['-oBatchMode=yes'], user=keyName)
+                if role in output:
+                    logger.info('...Toil appliance started')
+                    break
+                else:
+                    logger.info('...Still waiting, trying again in 10sec...')
+                    time.sleep(10)
+            except:
+                if retries == 5:
+                    raise # givup
+                else:
+                    logger.debug("Wait for appliance failed ssh, trying again.")
+                    retries += 1
 
     @classmethod
     def _rsyncNode(cls, ip, args, applianceName='toil_leader', **kwargs):
