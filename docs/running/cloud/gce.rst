@@ -19,7 +19,7 @@ Then to run the sort example with the Google job store you would type ::
     $ python sort.py google:my-project-id:my-google-sort-jobstore
 
 Running a Workflow with Autoscaling
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------------------
 
 The steps to run a GCE workflow are similar to those of AWS (:ref:`Autoscaling`), except you will
 need to explicitly specify the ``--provisioner gce`` option which otherwise defaults to ``aws``.
@@ -28,8 +28,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
 #. Launch the leader node in GCE using the :ref:`launchCluster` command. ::
 
-    (venv) $ toil launch-cluster gce-sort --provisioner gce --leaderNodeType n1-standard-1 \
-              --keyPairName <ssh-keyName> --boto <botoDir> --zone us-west1-a
+    (venv) $ toil launch-cluster <cluster-name> --provisioner gce --leaderNodeType n1-standard-1 --keyPairName <ssh-keyName> --boto <botoPath> --zone us-west1-a
 
    The ``--boto`` option is necessary only if using an AWS jobstore. It also requires that your aws credentials
    are actually saved in your ``.boto`` file.
@@ -40,8 +39,8 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
 #. Upload the sort example and ssh into the leader. ::
 
-    (venv) $ toil rsync-cluster --provisioner gce gce-sort sort.py :/root
-    (venv) $ toil ssh-cluster --provisioner gce gce-sort
+    (venv) $ toil rsync-cluster --provisioner gce <cluster-name> sort.py :/root
+    (venv) $ toil ssh-cluster --provisioner gce <cluster-name>
 
 #. Run the workflow. ::
 
@@ -50,7 +49,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 #. Cleanup ::
 
     $ exit
-    (venv) $ toil destory-cluster --provisioner gce gce-sort
+    (venv) $ toil destory-cluster --provisioner gce <cluster-name>
 
 .. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
 
