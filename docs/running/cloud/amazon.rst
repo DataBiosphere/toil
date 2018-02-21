@@ -28,7 +28,7 @@ AWS Job Store
 -------------
 
 Using the AWS jobstore is straightforward after you've finished :ref:`prepare_aws-ref`,
-all you need to do is specify prefix the jobstore name.
+all you need to do is specify the prefix of the jobstore name.
 
 To run the sort example with the AWS job store you would type ::
 
