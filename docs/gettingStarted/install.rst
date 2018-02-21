@@ -73,19 +73,18 @@ Here's what each extra provides:
 +----------------+------------------------------------------------------------+
 | Extra          | Description                                                |
 +================+============================================================+
-| ``all``        | Installs all extras.                                       |
+| ``all``        | Installs all extras (though htcondor is linux-only and     |
+|                | will be skipped if not on a linux computer).               |
 +----------------+------------------------------------------------------------+
 | ``aws``        | Provides support for managing a cluster on Amazon Web      |
 |                | Service (`AWS`_) using Toil's built in :ref:`clusterRef`.  |
 |                | Clusters can scale up and down automatically.              |
 |                | It also supports storing workflow state.                   |
-|                | This extra has no native dependencies.                     |
 +----------------+------------------------------------------------------------+
 | ``google``     | Experimental. Stores workflow state in `Google Cloud       |
-|                | Storage`_. This extra has no native dependencies.          |
+|                | Storage`_.                                                 |
 +----------------+------------------------------------------------------------+
-| ``azure``      | Stores workflow state in `Microsoft Azure`_. This          |
-|                | extra has no native dependencies.                          |
+| ``azure``      | Stores workflow state in `Microsoft Azure`_.               |
 +----------------+------------------------------------------------------------+
 | ``mesos``      | Provides support for running Toil on an `Apache Mesos`_    |
 |                | cluster. Note that running Toil on other batch systems     |
@@ -109,6 +108,9 @@ Here's what each extra provides:
 |                |        ImportError: No module named mesos.native           |
 |                |                                                            |
 +----------------+------------------------------------------------------------+
+| ``htcondor``   | Support for the htcondor batch system.  This currently is  |
+|                | a linux only extra.                                        |
++----------------+------------------------------------------------------------+
 | ``encryption`` | Provides client-side encryption for files stored in the    |
 |                | Azure and AWS job stores. This extra requires the          |
 |                | following native dependencies:                             |
@@ -117,8 +119,7 @@ Here's what each extra provides:
 |                | * :ref:`libffi headers and library <libffi-dev>`           |
 +----------------+------------------------------------------------------------+
 | ``cwl``        | Provides support for running workflows written using the   |
-|                | `Common Workflow Language`_. This extra has no native      |
-|                | dependencies.                                              |
+|                | `Common Workflow Language`_.                               |
 +----------------+------------------------------------------------------------+
 | ``wdl``        | Provides support for running workflows written using the   |
 |                | `Workflow Description Language`_. This extra has no native |
@@ -134,7 +135,7 @@ Here's what each extra provides:
 .. _python-dev:
 .. topic:: Python headers and static libraries
 
-   Only needed for the ``mesos`` and ``encryption`` extras.
+   Needed for the ``mesos``, ``aws``, ``google``, ``azure``, and ``encryption`` extras.
 
    On Ubuntu::
 
@@ -292,6 +293,10 @@ source code will immediately affect the virtualenv)::
 Or, to install with support for all optional :ref:`extras`::
 
     $ make develop extras=[aws,mesos,azure,google,encryption,cwl]
+
+or::
+
+    $ make develop extras=[all]
 
 To build the docs, run ``make develop`` with all extras followed by
 

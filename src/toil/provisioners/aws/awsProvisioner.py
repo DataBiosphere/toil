@@ -11,11 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from functools import wraps
+
 from builtins import str
 from builtins import range
 import logging
 import time
-import subprocess
+from toil import subprocess
 import sys
 import string
 
@@ -44,6 +46,38 @@ from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNod
 logger = logging.getLogger(__name__)
 
 
+def awsRetryPredicate(e):
+    if not isinstance(e, BotoServerError):
+        return False
+    # boto/AWS gives multiple messages for the same error...
+    if e.status == 503 and 'Request limit exceeded' in e.body:
+        return True
+    elif e.status == 400 and 'Rate exceeded' in e.body:
+        return True
+    elif e.status == 400 and 'NotFound' in e.body:
+        # EC2 can take a while to propagate instance IDs to all servers.
+        return True
+    elif e.status == 400 and e.error_code == 'Throttling':
+        return True
+    return False
+
+
+def awsRetry(f):
+    """
+    This decorator retries the wrapped function if aws throws unexpected errors
+    errors.
+    It should wrap any function that makes use of boto
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        for attempt in retry(delays=truncExpBackoff(),
+                             timeout=300,
+                             predicate=awsRetryPredicate):
+            with attempt:
+                return f(*args, **kwargs)
+    return wrapper
+
+
 class AWSProvisioner(AbstractProvisioner):
 
     def __init__(self, config=None):
@@ -63,7 +97,7 @@ class AWSProvisioner(AbstractProvisioner):
         This is due to the fact that the provisioner is used both in Toil runs to manage
         autoscaling as well as outside of Toil runs to launch clusters and manage statically
         provisioned nodes. Static provisioned nodes are those that the user explicitly adds into
-        the cluster via `launch-cluster -workers n`, which will launch a cluster with n statically
+        the cluster via `launch-cluster --workers n`, which will launch a cluster with n statically
         provisioned nodes.
 
         :param config: Optional config object from common.py
@@ -138,18 +172,22 @@ class AWSProvisioner(AbstractProvisioner):
             kwargs["subnet_id"] = vpcSubnet
         if not leaderSpotBid:
             logger.info('Launching non-preemptable leader')
-            create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
-                                      spec=kwargs, num_instances=1)
+            instances = create_ondemand_instances(ctx.ec2, image_id=self._discoverAMI(ctx),
+                                                  spec=kwargs, num_instances=1)
+            leader = instances[0]
         else:
             logger.info('Launching preemptable leader')
             # force generator to evaluate
-            list(create_spot_instances(ec2=ctx.ec2,
-                                       price=leaderSpotBid,
-                                       image_id=self._discoverAMI(ctx),
-                                       tags={'clusterName': clusterName},
-                                       spec=kwargs,
-                                       num_instances=1))
-        leader = self._getLeader(clusterName=clusterName, wait=True, zone=zone)
+            instances = list(create_spot_instances(ec2=ctx.ec2,
+                                                   price=leaderSpotBid,
+                                                   image_id=self._discoverAMI(ctx),
+                                                   tags={'clusterName': clusterName},
+                                                   spec=kwargs,
+                                                   num_instances=1))[0]
+            leader = instances[0]
+
+        wait_instances_running(ctx.ec2, [leader])
+        self._waitForNode(leader, 'toil_leader')
 
         defaultTags = {'Name': clusterName, 'Owner': keyName}
         defaultTags.update(userTags)
@@ -197,7 +235,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     @staticmethod
     def retryPredicate(e):
-        return AWSProvisioner._throttlePredicate(e)
+        return awsRetryPredicate(e)
 
     @classmethod
     def destroyCluster(cls, clusterName, zone=None):
@@ -282,7 +320,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         instancesLaunched = []
 
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
                 # after we start launching instances we want to insure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
@@ -306,7 +344,7 @@ class AWSProvisioner(AbstractProvisioner):
                     # flatten the list
                     instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
 
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
+        for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
                 wait_instances_running(self.ctx.ec2, instancesLaunched)
 
@@ -336,24 +374,12 @@ class AWSProvisioner(AbstractProvisioner):
         instance = self._getClusterInstance(md)
         return str(instance.tags["Name"])
 
+    @awsRetry
     def _getClusterInstance(self, md):
         zone = getCurrentAWSZone()
         region = Context.availability_zone_re.match(zone).group(1)
         conn = boto.ec2.connect_to_region(region)
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
-            with attempt:
-                return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
-
-    @staticmethod
-    def _throttlePredicate(e):
-        if not isinstance(e, BotoServerError):
-            return False
-        # boto/AWS gives multiple messages for the same error...
-        if e.status == 503 and 'Request limit exceeded' in e.body:
-            return True
-        elif e.status == 400 and 'Rate exceeded' in e.body:
-            return True
-        return False
+        return conn.get_all_instances(instance_ids=[md["instance-id"]])[0].instances[0]
 
     def _setSSH(self):
         if not os.path.exists('/root/.sshSuccess'):
@@ -440,12 +466,15 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     @classmethod
+    @awsRetry
+    def _addTag(cls, instance, key, value):
+        instance.add_tag(key, value)
+
+    @classmethod
     def _addTags(cls, instances, tags):
         for instance in instances:
             for key, value in iteritems(tags):
-                for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
-                    with attempt:
-                        instance.add_tag(key, value)
+                cls._addTag(instance, key, value)
 
     @classmethod
     def _waitForNode(cls, instance, role):
@@ -530,11 +559,10 @@ class AWSProvisioner(AbstractProvisioner):
         logger.info('Instance(s) terminated.')
 
     @classmethod
+    @awsRetry
     def _terminateIDs(cls, instanceIDs, ctx):
         logger.info('Terminating instance(s): %s', instanceIDs)
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
-            with attempt:
-                ctx.ec2.terminate_instances(instance_ids=instanceIDs)
+        ctx.ec2.terminate_instances(instance_ids=instanceIDs)
         logger.info('Instance(s) terminated.')
 
     @classmethod
@@ -591,15 +619,17 @@ class AWSProvisioner(AbstractProvisioner):
                 else:
                     raise
 
+    @awsRetry
+    def _propagateKeyToNode(self, node):
+        # since we're going to be rsyncing into the appliance we need the appliance to be running first
+        ipAddress = self._waitForNode(node, 'toil_worker')
+        self._coreRsync(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
+
     def _propagateKey(self, instances):
         if not self.config or not self.config.sseKey:
             return
         for node in instances:
-            for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
-                with attempt:
-                    # since we're going to be rsyncing into the appliance we need the appliance to be running first
-                    ipAddress = self._waitForNode(node, 'toil_worker')
-                    self._coreRsync(ipAddress, [self.config.sseKey, ':' + self.config.sseKey], applianceName='toil_worker')
+            self._propagateKeyToNode(node)
 
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
@@ -619,25 +649,21 @@ class AWSProvisioner(AbstractProvisioner):
         return bdm
 
     @classmethod
+    @awsRetry
     def _getNodesInCluster(cls, ctx, clusterName, nodeType=None, preemptable=False, both=False):
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
-            with attempt:
-                pendingInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                                       'instance-state-name': 'pending'})
-        for attempt in retry(predicate=AWSProvisioner._throttlePredicate):
-            with attempt:
-                runningInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName,
-                                                                       'instance-state-name': 'running'})
-        if nodeType:
-            pendingInstances = [instance for instance in pendingInstances if instance.instance_type == nodeType]
-            runningInstances = [instance for instance in runningInstances if instance.instance_type == nodeType]
-        instances = set(pendingInstances)
+        allInstances = ctx.ec2.get_only_instances(filters={'instance.group-name': clusterName})
+        def instanceFilter(i):
+            # filter by type only if nodeType is true
+            rightType = not nodeType or i.instance_type == nodeType
+            rightState = i.state == 'running' or i.state == 'pending'
+            return rightType and rightState
+        filteredInstances = [i for i in allInstances if instanceFilter(i)]
         if not preemptable and not both:
-            return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is None]
+            return [i for i in filteredInstances if i.spot_instance_request_id is None]
         elif preemptable and not both:
-            return [x for x in instances.union(set(runningInstances)) if x.spot_instance_request_id is not None]
+            return [i for i in filteredInstances if i.spot_instance_request_id is not None]
         elif both:
-            return [x for x in instances.union(set(runningInstances))]
+            return filteredInstances
 
     @classmethod
     def _getSpotRequestIDs(cls, ctx, clusterName):
@@ -685,43 +711,38 @@ class AWSProvisioner(AbstractProvisioner):
         return out
 
     @classmethod
+    @awsRetry
     def _getProfileARN(cls, ctx):
         def addRoleErrors(e):
             return e.status == 404
+        roleName = 'toil'
+        policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
+                      s3_full=s3FullPolicy, sbd_full=sdbFullPolicy)
+        iamRoleName = ctx.setup_iam_ec2_role(role_name=roleName, policies=policy)
 
-        def throttleError(e):
-            return isinstance(e, BotoServerError) and e.status == 400 and e.error_code == 'Throttling'
+        try:
+            profile = ctx.iam.get_instance_profile(iamRoleName)
+        except BotoServerError as e:
+            if e.status == 404:
+                profile = ctx.iam.create_instance_profile(iamRoleName)
+                profile = profile.create_instance_profile_response.create_instance_profile_result
+            else:
+                raise
+        else:
+            profile = profile.get_instance_profile_response.get_instance_profile_result
+        profile = profile.instance_profile
+        profile_arn = profile.arn
 
-        for attempt in retry(delays=truncExpBackoff(), predicate=throttleError):
+        if len(profile.roles) > 1:
+                raise RuntimeError('Did not expect profile to contain more than one role')
+        elif len(profile.roles) == 1:
+            # this should be profile.roles[0].role_name
+            if profile.roles.member.role_name == iamRoleName:
+                return profile_arn
+            else:
+                ctx.iam.remove_role_from_instance_profile(iamRoleName,
+                                                          profile.roles.member.role_name)
+        for attempt in retry(predicate=addRoleErrors):
             with attempt:
-                roleName = 'toil'
-                policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
-                              s3_full=s3FullPolicy, sbd_full=sdbFullPolicy)
-                iamRoleName = ctx.setup_iam_ec2_role(role_name=roleName, policies=policy)
-
-                try:
-                    profile = ctx.iam.get_instance_profile(iamRoleName)
-                except BotoServerError as e:
-                    if e.status == 404:
-                        profile = ctx.iam.create_instance_profile(iamRoleName)
-                        profile = profile.create_instance_profile_response.create_instance_profile_result
-                    else:
-                        raise
-                else:
-                    profile = profile.get_instance_profile_response.get_instance_profile_result
-                profile = profile.instance_profile
-                profile_arn = profile.arn
-
-                if len(profile.roles) > 1:
-                        raise RuntimeError('Did not expect profile to contain more than one role')
-                elif len(profile.roles) == 1:
-                    # this should be profile.roles[0].role_name
-                    if profile.roles.member.role_name == iamRoleName:
-                        return profile_arn
-                    else:
-                        ctx.iam.remove_role_from_instance_profile(iamRoleName,
-                                                                  profile.roles.member.role_name)
-                for attempt in retry(predicate=addRoleErrors):
-                    with attempt:
-                        ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
+                ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn

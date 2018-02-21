@@ -18,9 +18,14 @@ import logging
 import os
 import sys
 
-from subprocess import check_output
-
 from bd2k.util import memoize
+
+# subprocess32 is a backport of python3's subprocess module for use on Python2,
+# and includes many reliability bug fixes relevant on POSIX platforms.
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 log = logging.getLogger(__name__)
 
@@ -79,7 +84,7 @@ def physicalMemory():
     try:
         return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
     except ValueError:
-        return int(check_output(['sysctl', '-n', 'hw.memsize']).strip())
+        return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).strip())
 
 
 def physicalDisk(config, toilWorkflowDir=None):

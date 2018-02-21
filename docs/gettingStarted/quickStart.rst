@@ -434,14 +434,32 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
       (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
 
-#. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using
+#. Copy ``example.cwl`` and ``example-job.yaml`` from the :ref:`CWL example <cwlquickstart>` to the node using
    the :ref:`rsyncCluster` command. ::
 
-      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example.cwl example-job.cwl :/tmp
+      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example.cwl :/tmp
+      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example-job.yaml :/tmp
 
-#. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
+#. SSH into the cluster's leader node using the :ref:`sshCluster` utility. ::
 
-      (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name> toil-cwl-runner /tmp/example.cwl /tmp/example-job.yml
+      (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
+
+#. Once on the leader node, it's a good idea to update and install the following::
+
+    sudo apt-get update
+    sudo apt-get -y upgrade
+    sudo apt-get -y dist-upgrade
+    sudo apt-get -y install git
+    sudo pip install mesos.cli
+
+#. Now create a new ``virtualenv`` with the ``--system-site-packages`` option and activate::
+
+    virtualenv --system-site-packages venv
+    source venv/bin/activate
+
+#. Now run the CWL workflow::
+
+      (venv) $ toil-cwl-runner /tmp/example.cwl /tmp/example-job.yaml
 
    ..  tip::
 
@@ -449,7 +467,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
       local file system or in S3 buckets using ``s3://`` URI references. Final output
       files will be copied to the local file system of the leader node.
 
-#. Destroy the cluster. ::
+#. Finally, log out of the leader node and from your local computer, destroy the cluster. ::
 
       (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
