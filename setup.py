@@ -30,7 +30,6 @@ def runSetup():
     azureAnsible = 'ansible[azure]==2.5.0a1'
     azureStorage = 'azure-storage==0.35.1'
     msRest = 'msrest==0.4.25'
-    dnsPython = 'dnspython==1.15.0'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
     cwltool = 'cwltool==1.0.20180130110340'
@@ -50,8 +49,7 @@ def runSetup():
                   azureCosmosdbTable,
                   azureAnsible,
                   azureStorage,
-                  msRest,
-                  dnsPython]
+                  msRest]
     encryption_reqs = [
                   pynacl]
     google_reqs = [
