@@ -288,7 +288,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
     @integrative
     @needs_google
     def testAutoScale(self):
-        self.instanceTypes = ["n1-standard-1", "n1-standard-2"]
+        self.instanceTypes = ["n1-standard-2", "n1-standard-4"]
         self.numWorkers = ['2','1']
         self._test()
 

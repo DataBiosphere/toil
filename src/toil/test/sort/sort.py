@@ -29,7 +29,7 @@ from toil.job import Job
 
 defaultLines = 1000
 defaultLineLen = 50
-sortMemory = '500M'
+sortMemory = '1000M'
 
 
 def setup(job, inputFile, N, downCheckpoints, options):
@@ -43,7 +43,7 @@ def setup(job, inputFile, N, downCheckpoints, options):
                              downCheckpoints,
                              options = options,
                              preemptable=True,
-                             memory='500M').rv()
+                             memory='1000M').rv()
 
 
 def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):

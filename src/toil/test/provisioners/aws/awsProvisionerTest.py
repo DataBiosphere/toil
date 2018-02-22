@@ -198,7 +198,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         assert len(self.getMatchingRoles(self.clusterName)) == 0
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1600)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
@@ -291,7 +291,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1600)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):

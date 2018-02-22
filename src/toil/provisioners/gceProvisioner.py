@@ -646,6 +646,7 @@ class GCEProvisioner(AbstractProvisioner):
         collectStdout = kwargs.pop('collectStdout', None)
         if collectStdout:
             kwargs['stdout'] = subprocess.PIPE
+        kwargs['stderr'] = subprocess.PIPE
         logger.debug('Node %s: %s', nodeIP, ' '.join(args))
         args = list(map(pipes.quote, args))
         commandTokens += args
@@ -656,9 +657,10 @@ class GCEProvisioner(AbstractProvisioner):
         resultValue = popen.wait()
         # ssh has been throwing random 255 errors - why?
         if resultValue != 0:
+            logger.info('SSH Error (%s) %s' % (resultValue, stderr))
             raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
-                               'exit code %s with stdout %s and stderr %s' % (' '.join(args), resultValue, stdout, stderr))
-        assert stderr is None
+                               'exit code %s with stdout %s and stderr %s'
+                               % (' '.join(args), resultValue, stdout, stderr))
         return stdout
 
 
