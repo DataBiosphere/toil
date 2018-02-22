@@ -212,6 +212,8 @@ nodeBotoPath = "/root/.boto"
 
 class GCEProvisioner(AbstractProvisioner):
 
+    maxWaitTime = 5*60
+
     def __init__(self, config=None):
         """
         :param config: Optional config object from common.py
@@ -373,8 +375,9 @@ class GCEProvisioner(AbstractProvisioner):
         #TODO: get subnetID
         #self.subnetID = leader.subnet_id
 
-        self._copySshKeys(leader.public_ips[0], keyName)
-        self._waitForNode(leader.public_ips[0], 'toil_leader')
+        if not self._copySshKeys(leader.public_ips[0], keyName) \
+           or not self._waitForNode(leader.public_ips[0], 'toil_leader'):
+            raise RuntimeError("Failed to start leader")
 
         if self.botoPath:
             self._rsyncNode(leader.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
@@ -525,10 +528,13 @@ class GCEProvisioner(AbstractProvisioner):
                                 ex_preemptible = preemptable
                                 )
         self.instanceGroup.add_instances(instancesLaunched)
+        workersCreated = 0
         for instance in instancesLaunched:
-            self._copySshKeys(instance.public_ips[0], self.keyName)
+            if not self._copySshKeys(instance.public_ips[0], self.keyName):
+                continue
             if self.config and self.config.sseKey or botoExists:
-                self._waitForNode(instance.public_ips[0], 'toil_worker')
+                if not self._waitForNode(instance.public_ips[0], 'toil_worker'):
+                    continue
                 retries = 0
                 while True:
                     try:
@@ -539,14 +545,20 @@ class GCEProvisioner(AbstractProvisioner):
                             self._rsyncNode(instance.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
                                             applianceName='toil_worker')
                         break
-                    except:
+                    except e:
                         if retries == 5:
-                            raise # givup
+                            log.error("Failed to rysnc keys to worker with ip" % instance.public_ips[0])
+                            log.error('Exception %s', e)
+                            continue # givup
                         else:
                             logger.debug("Rsync to new nodes failed, trying again")
                             retries += 1
+                            time.sleep(20*retries)
+            workersCreated += 1
         logger.info('Launched %s new instance(s)', numNodes)
-        return len(instancesLaunched)
+        if len(instancesLaunched) != workersCreated:
+            log.error("Failed to launch %d workers", len(instancesLaunched-workersCreated))
+        return workersCreated
 
     def getProvisionedWorkers(self, nodeType, preemptable):
         entireCluster = self._getNodesInCluster(nodeType=nodeType)
@@ -591,7 +603,8 @@ class GCEProvisioner(AbstractProvisioner):
             return
 
         # Make sure that keys are there.
-        cls._waitForSSHKeys(instanceIP, keyName=keyName)
+        if not cls._waitForSSHKeys(instanceIP, keyName=keyName):
+            return False
 
         # TODO: Check if there is another way to ssh to a GCE instance with Google credentials
 
@@ -600,14 +613,19 @@ class GCEProvisioner(AbstractProvisioner):
         # - even so, the key wasn't copied correctly to the core account
         keyFile = '/home/%s/.ssh/authorized_keys' % keyName
         cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/cp', keyFile, '/home/core/.ssh', user=keyName)
-        cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/chown', 'core', '/home/core/.ssh/authorized_keys', user=keyName)
+        cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/chown', 'core',
+                         '/home/core/.ssh/authorized_keys', user=keyName)
+
+        return True
 
     def _waitForNode(self, instanceIP, role):
         # wait here so docker commands can be used reliably afterwards
         # TODO: make this more robust, e.g. If applicance doesn't exist, then this waits forever.
-        self._waitForSSHKeys(instanceIP, keyName=self.keyName)
-        self._waitForDockerDaemon(instanceIP, keyName=self.keyName)
-        self._waitForAppliance(instanceIP, role=role, keyName=self.keyName)
+        if not self._waitForSSHKeys(instanceIP, keyName=self.keyName):
+            return False
+        if not self._waitForDockerDaemon(instanceIP, keyName=self.keyName):
+            return False
+        return self._waitForAppliance(instanceIP, role=role, keyName=self.keyName)
 
     @classmethod
     def _coreSSH(cls, nodeIP, *args, **kwargs):
@@ -623,7 +641,8 @@ class GCEProvisioner(AbstractProvisioner):
         commandTokens = ['ssh', '-t']
         strict = kwargs.pop('strict', False)
         if not strict:
-            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get('sshOptions', [])
+            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] \
+                                 + kwargs.get('sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
         #Forward port 3000 for grafana dashboard
         commandTokens.extend(['-L', '3000:localhost:3000', '-L', '9090:localhost:9090'])
@@ -785,7 +804,11 @@ class GCEProvisioner(AbstractProvisioner):
     def _waitForSSHKeys(cls, instanceIP, keyName='core'):
         # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
         # the keys are propagated and the instance can be SSH into
+        startTime = time.time()
         while True:
+            if time.time() - startTime > cls.maxWaitTime:
+                loggerError("Key propagation failed on machine with ip" % instanceIP)
+                return False
             try:
                 logger.info('Attempting to establish SSH connection...')
                 cls._sshInstance(instanceIP, 'ps', sshOptions=['-oBatchMode=yes'], user=keyName)
@@ -795,34 +818,46 @@ class GCEProvisioner(AbstractProvisioner):
             else:
                 logger.info('...SSH connection established.')
                 # ssh succeeded
-                return
+                return True
 
     @classmethod
     def _waitForDockerDaemon(cls, ip_address, keyName='core'):
         logger.info('Waiting for docker on %s to start...', ip_address)
         retries = 0
+        sleepTime = 10
+        startTime = time.time()
         while True:
+            if time.time() - startTime > cls.maxWaitTime:
+                loggerError("Docker daemon failed to start on machine with ip" % ip_address)
+                return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
-                time.sleep(5)
                 if 'dockerd' in output:
                     # docker daemon has started
+                    logger.info('Docker daemon running')
                     break
                 else:
-                    logger.info('... Still waiting...')
+                    logger.info('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
+                    time.sleep(sleepTime)
             except:
                 if retries == 5:
                     raise # givup
                 else:
                     logger.debug("Wait for docker daemon failed ssh, trying again.")
                     retries += 1
-        logger.info('Docker daemon running')
+                    sleepTime += 20
+        return True
 
     @classmethod
     def _waitForAppliance(cls, ip_address, role, keyName='core'):
         logger.info('Waiting for %s Toil appliance to start...', role)
         retries = 0
+        sleepTime = 10
+        startTime = time.time()
         while True:
+            if time.time() - startTime > cls.maxWaitTime:
+                loggerError("Appliance failed to start on machine with ip" % ip_address)
+                return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps',
                                           sshOptions=['-oBatchMode=yes'], user=keyName)
@@ -830,14 +865,16 @@ class GCEProvisioner(AbstractProvisioner):
                     logger.info('...Toil appliance started')
                     break
                 else:
-                    logger.info('...Still waiting, trying again in 10sec...')
-                    time.sleep(10)
+                    logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
+                    time.sleep(sleepTime)
             except:
                 if retries == 5:
                     raise # givup
                 else:
                     logger.debug("Wait for appliance failed ssh, trying again.")
                     retries += 1
+                    sleepTime += 20
+        return True
 
     @classmethod
     def _rsyncNode(cls, ip, args, applianceName='toil_leader', **kwargs):
