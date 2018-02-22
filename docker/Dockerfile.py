@@ -117,7 +117,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN pip install {sdistName}[aws,mesos,encryption,cwl,azure]
+    RUN pip install {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect

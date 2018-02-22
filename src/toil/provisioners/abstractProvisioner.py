@@ -18,7 +18,7 @@ from itertools import count
 import logging
 import pipes
 import socket
-import subprocess
+from toil import subprocess
 
 from future.utils import with_metaclass
 

@@ -18,6 +18,7 @@ from .registry import batchSystemFactoryFor, defaultBatchSystem, uniqueNames
 import socket
 from contextlib import closing
 
+
 def getPublicIP():
     """Get the IP that this machine uses to contact the internet.
 
@@ -38,7 +39,8 @@ def getPublicIP():
         # to provide a default argument
         return '127.0.0.1'
 
-def _parasolOptions(addOptionFn):
+
+def _parasolOptions(addOptionFn, config=None):
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
                       help="The name or path of the parasol program. Will be looked up on PATH "
                            "unless it starts with a slashdefault=%s" % 'parasol')
@@ -48,17 +50,32 @@ def _parasolOptions(addOptionFn):
                      "default=%i" % 1000)
 
 
-def _singleMachineOptions(addOptionFn):
+def _singleMachineOptions(addOptionFn, config):
     addOptionFn("--scale", dest="scale", default=None,
-                help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
-                      "Used in singleMachine batch system. default=%s" % 1))
-    addOptionFn("--linkImports", dest="linkImports", default=False, action='store_true',
-                help=("When using Toil's importFile function for staging, input files are copied to the job store. "
-                      "Specifying this option saves space by sym-linking imported files. As long as caching is "
-                      "enabled Toil will protect the file automatically by changing the permissions to read-only."))
+                help=("A scaling factor to change the value of all submitted "
+                      "tasks's submitted cores. Used in singleMachine batch "
+                      "system. default=%s" % 1))
+    if config.cwl:
+        addOptionFn(
+            "--noLinkImports", dest="linkImports", default=True,
+            action='store_false', help="When using a filesystem based job "
+            "store, CWL input files are by default symlinked in. "
+            "Specifying this option instead copies the files into the job "
+            "store, which may protect them from being modified externally. "
+            "When not specified and as long as caching is enabled, Toil will "
+            "protect the file automatically by changing the permissions to "
+            "read-only.")
+    else:
+        addOptionFn(
+            "--linkImports", dest="linkImports", default=False,
+            action='store_true', help="When using Toil's importFile function "
+            "for staging, input files are copied to the job store. Specifying "
+            "this option saves space by sym-linking imported files. As long "
+            "as caching is enabled Toil will protect the file "
+            "automatically by changing the permissions to read-only.")
 
 
-def _mesosOptions(addOptionFn):
+def _mesosOptions(addOptionFn, config=None):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP() + ':5050',
                 help=("The host and port of the Mesos master separated by colon. (default: %(default)s)"))
 
@@ -85,7 +102,7 @@ def setOptions(config, setOption):
     batchSystem.setOptions(setOption)
 
 
-def addOptions(addOptionFn):
+def addOptions(addOptionFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
                 help=("The type of batch system to run the job(s) with, currently can be one "
                       "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
@@ -95,7 +112,7 @@ def addOptions(addOptionFn):
                       "default=false"))
 
     for o in _options:
-        o(addOptionFn)
+        o(addOptionFn, config)
 
 def setDefaultOptions(config):
     """

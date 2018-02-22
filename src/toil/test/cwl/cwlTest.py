@@ -15,7 +15,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 import json
 import os
-import subprocess
+from toil import subprocess
 import re
 import shutil
 import pytest

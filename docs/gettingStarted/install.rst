@@ -5,40 +5,37 @@
 Installation
 ============
 
-This document describes how to prepare for and install the Toil software. Note that we recommend running all the Toil
-commands inside a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are
-provided below.
+This document describes how to prepare for and install the Toil software. Note that Toil requires that the user run all commands inside of a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided below.
 
 .. _virtualenv: https://virtualenv.pypa.io/en/stable/
 
 .. _venvPrep:
 
-Preparing your Python runtime environment
+Preparing Your Python Runtime Environment
 -----------------------------------------
 
-Toil currently  supports only Python 2.7.  If you don't satisfy this requirement, consider using anaconda_ to create
-an alternate Python 2.7 installation.
+Toil currently supports only Python 2.7 and requires a virtualenv to be active to install.
 
-.. _anaconda: https://conda.io/docs/py2or3.html 
-
-Install Python ``virtualenv`` using pip_.
+If not already present, please install the latest Python ``virtualenv`` using pip_.
 ::
 
     $ sudo pip install virtualenv
 
-.. _pip: https://pip.readthedocs.io/en/latest/installing/
-
-Create a virtual environment called ``venv`` in your home directory.
+And create a virtual environment called ``venv`` in your home directory.
 ::
 
     $ virtualenv ~/venv
 
-Or, if using an `Apache Mesos`_ cluster (see ``mesos`` in the Extras section below).
-::
+.. _pip: https://pip.readthedocs.io/en/latest/installing/
 
-    $ virtualenv ~/venv --system-site-packages
+If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
 
-Activate your virtual environment.
+    $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
+    $ tar xvfz virtualenv-15.1.0.tar.gz
+    $ cd virtualenv-15.1.0
+    $ python virtualenv.py ~/venv
+
+Now that you've created your virtualenv, activate your virtual environment.
 ::
 
     $ source ~/venv/bin/activate
@@ -76,19 +73,18 @@ Here's what each extra provides:
 +----------------+------------------------------------------------------------+
 | Extra          | Description                                                |
 +================+============================================================+
-| ``all``        | Installs all extras.                                       |
+| ``all``        | Installs all extras (though htcondor is linux-only and     |
+|                | will be skipped if not on a linux computer).               |
 +----------------+------------------------------------------------------------+
 | ``aws``        | Provides support for managing a cluster on Amazon Web      |
 |                | Service (`AWS`_) using Toil's built in :ref:`clusterRef`.  |
 |                | Clusters can scale up and down automatically.              |
 |                | It also supports storing workflow state.                   |
-|                | This extra has no native dependencies.                     |
 +----------------+------------------------------------------------------------+
 | ``google``     | Experimental. Stores workflow state in `Google Cloud       |
-|                | Storage`_. This extra has no native dependencies.          |
+|                | Storage`_.                                                 |
 +----------------+------------------------------------------------------------+
-| ``azure``      | Stores workflow state in `Microsoft Azure`_. This          |
-|                | extra has no native dependencies.                          |
+| ``azure``      | Stores workflow state in `Microsoft Azure`_.               |
 +----------------+------------------------------------------------------------+
 | ``mesos``      | Provides support for running Toil on an `Apache Mesos`_    |
 |                | cluster. Note that running Toil on other batch systems     |
@@ -112,6 +108,9 @@ Here's what each extra provides:
 |                |        ImportError: No module named mesos.native           |
 |                |                                                            |
 +----------------+------------------------------------------------------------+
+| ``htcondor``   | Support for the htcondor batch system.  This currently is  |
+|                | a linux only extra.                                        |
++----------------+------------------------------------------------------------+
 | ``encryption`` | Provides client-side encryption for files stored in the    |
 |                | Azure and AWS job stores. This extra requires the          |
 |                | following native dependencies:                             |
@@ -120,7 +119,10 @@ Here's what each extra provides:
 |                | * :ref:`libffi headers and library <libffi-dev>`           |
 +----------------+------------------------------------------------------------+
 | ``cwl``        | Provides support for running workflows written using the   |
-|                | `Common Workflow Language`_. This extra has no native      |
+|                | `Common Workflow Language`_.                               |
++----------------+------------------------------------------------------------+
+| ``wdl``        | Provides support for running workflows written using the   |
+|                | `Workflow Description Language`_. This extra has no native |
 |                | dependencies.                                              |
 +----------------+------------------------------------------------------------+
 
@@ -128,11 +130,12 @@ Here's what each extra provides:
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 .. _Google Cloud Storage: https://cloud.google.com/storage/
 .. _Microsoft Azure: https://azure.microsoft.com/
+.. _Workflow Description Language: https://software.broadinstitute.org/wdl/
 
 .. _python-dev:
 .. topic:: Python headers and static libraries
 
-   Only needed for the ``mesos`` and ``encryption`` extras.
+   Needed for the ``mesos``, ``aws``, ``google``, ``azure``, and ``encryption`` extras.
 
    On Ubuntu::
 
@@ -172,11 +175,7 @@ during the computation of a workflow, first set up and configure an account with
 
 #. If necessary, create and activate an `AWS account`_
 
-#. Create a `key pair`_ in the availability zone of your choice (our examples use ``us-west-2a``).
-
-#. Follow `Amazon's instructions`_ to create an SSH key and import it into EC2.
-
-#. Finally, you will need to `install`_ and `configure`_ the AWS Command Line Interface (CLI).
+#. Create a key pair, install boto, install awscli, and configure your credentials using our `blog instructions`_ .
 
 
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
@@ -184,6 +183,7 @@ during the computation of a workflow, first set up and configure an account with
 .. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
 .. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
 .. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
+.. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 
 
 .. _prepare_azure-ref:
@@ -194,7 +194,6 @@ Preparing your Azure environment
 Follow the steps below to prepare your Azure environment for running a Toil workflow.
 
 #. Create an `Azure account`_.
-
 
 #. Make sure you have an SSH RSA public key, usually stored in
    ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
@@ -237,6 +236,10 @@ source code will immediately affect the virtualenv)::
 Or, to install with support for all optional :ref:`extras`::
 
     $ make develop extras=[aws,mesos,azure,google,encryption,cwl]
+
+or::
+
+    $ make develop extras=[all]
 
 To build the docs, run ``make develop`` with all extras followed by
 

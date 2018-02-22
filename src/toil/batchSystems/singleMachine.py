@@ -24,7 +24,7 @@ from contextlib import contextmanager
 import logging
 import multiprocessing
 import os
-import subprocess
+from toil import subprocess
 import time
 import math
 from threading import Thread

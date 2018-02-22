@@ -8,11 +8,11 @@ Quickstart Examples
 Running a basic workflow
 ------------------------
 
-A Toil workflow can be run with just three steps.
- 
+A Toil workflow can be run with just three steps:
+
 1. Install Toil (see :ref:`installation-ref`)
 
-2. Copy and paste the following code block into ``helloWorld.py``:
+2. Copy and paste the following code block into a new file called ``helloWorld.py``:
 
    .. code-block:: python
 
@@ -29,7 +29,8 @@ A Toil workflow can be run with just three steps.
               output = toil.start(Job.wrapFn(helloWorld, "You did it!"))
           print output
 
-3. Specify a job store and run the workflow like so::
+
+3. Specify the name of the job store and run the workflow::
 
        (venv) $ python helloWorld.py file:my-job-store
 
@@ -38,19 +39,15 @@ A Toil workflow can be run with just three steps.
    Don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
    they should have their :ref:`virtual environment <venvPrep>` running.
 
-Congratulations! You've run your first Toil workflow on the ``singleMachine`` batch system (the default) using the
-``file`` job store.
+Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`, ``singleMachine``.
+using the ``file`` job store.
 
-The batch system is what schedules the jobs Toil creates. Toil supports many different kinds of batch systems
-(such as `Apache Mesos`_ and Grid Engine) which makes it easy to run your workflow in all kinds of places.
-The ``singleMachine`` batch system is primarily used to prepare and debug workflows on the
-local machine. Once ready, they can be run on a full-fledged batch system (see :ref:`batchsysteminterface`).
+Toil uses batch systems to manage the jobs it creates.
 
-Usually, a workflow will generate files, and Toil
-needs a place to keep track of things. The job store is where Toil keeps all of the intermediate files shared
-between jobs. The argument you passed in to your script ``file:my-job-store`` indicated where. The ``file:``
-part just tells Toil you are using the ``file`` job store, which means everything is kept in a temporary directory
-called ``my-job-store``. (Read more about :ref:`jobStoreInterface`.)
+The ``singleMachine`` batch system is primarily used to prepare and debug workflows on a
+local machine. Once validated, try running them on a full-fledged batch system (see :ref:`batchsysteminterface`).
+Toil supports many different batch systems such as `Apache Mesos`_ and Grid Engine; its versatility makes it
+easy to run your workflow in all kinds of places.
 
 Toil is totally customizable! Run ``python helloWorld.py --help`` to see a complete list of available options.
 
@@ -72,8 +69,7 @@ Running CWL workflows using Toil is easy.
 
        (venv) $ pip install 'toil[cwl]'
 
-   This installs the ``toil-cwl-runner`` and ``cwl-runner`` executables. These are identical -
-   ``cwl-runner`` is the portable name for the default system CWL runner.
+   This installs the ``toil-cwl-runner`` and ``cwltoil`` executables.
 
 #. Copy and paste the following code block into ``example.cwl``:
 
@@ -116,13 +112,57 @@ For information on using CWL with Toil see the section :ref:`cwl`
 
 .. _CWL User Guide: http://www.commonwl.org/v1.0/UserGuide.html
 
+Running a basic WDL workflow
+----------------------------
+
+The `Workflow Description Language`_ (WDL) is another emerging language for writing workflows that are portable across multiple workflow engines and platforms.
+Running WDL workflows using Toil is still in alpha, and currently experimental.  Toil currently supports basic workflow syntax (see :ref:`wdlSupport` for more details and examples).  Here we go over running a basic WDL helloworld workflow.
+
+#. First ensure that Toil is installed with the
+   ``wdl`` extra (see :ref:`extras`).  ::
+
+        (venv) $ pip install 'toil[wdl]'
+
+   This installs the ``toil-wdl-runner`` executable.
+
+#. Copy and paste the following code block into ``wdl-helloworld.wdl``::
+
+        workflow write_simple_file {
+          call write_file
+        }
+        task write_file {
+          String message
+          command { echo ${message} > wdl-helloworld-output.txt }
+          output { File test = "wdl-helloworld-output.txt" }
+        }
+
+#. and this code into ``wdl-helloworld.json``::
+
+        {
+          "write_simple_file.write_file.message": "Hello world!"
+        }
+
+#. To run the workflow simply enter ::
+
+        (venv) $ toil-wdl-runner wdl-helloworld.wdl wdl-helloworld.json
+
+   Your output will be in ``wdl-helloworld-output.txt`` ::
+
+        (venv) $ cat wdl-helloworld-output.txt
+        Hello world!
+
+To learn more about WDL, see the main `WDL website`_ .
+
+.. _WDL website: https://software.broadinstitute.org/wdl/
+.. _Workflow Description Language: https://software.broadinstitute.org/wdl/
+
 .. _runningDetail:
 
 A (more) real-world example
 ---------------------------
 
 For a more detailed example and explanation, we've developed a sample pipeline
-that merge-sorts a temporary file. This is not supposed to be an efficient 
+that merge-sorts a temporary file. This is not supposed to be an efficient
 sorting program, rather a more fully worked example of what Toil is capable of.
 
 Running the example
@@ -225,7 +265,7 @@ the :ref:`api`.
 
 .. _argparse: https://docs.python.org/2.7/library/argparse.html
 
-At the end of the script the lines: 
+At the end of the script the lines:
 
 .. code-block:: python
 
@@ -234,9 +274,9 @@ At the end of the script the lines:
 
 are included to ensure that the main function is only run once in the '__main__' process
 invoked by you, the user.
-In Toil terms, by invoking the script you created the *leader process* 
-in which the ``main()`` 
-function is run. A *worker process* is a separate process whose sole purpose 
+In Toil terms, by invoking the script you created the *leader process*
+in which the ``main()``
+function is run. A *worker process* is a separate process whose sole purpose
 is to host the execution of one or more jobs defined in that script. In any Toil
 workflow there is always one leader process, and potentially many worker processes.
 
@@ -336,69 +376,91 @@ Please see the :ref:`cli_status` section for more on gathering runtime and resou
 
 Launching a Toil Workflow in AWS
 --------------------------------
-After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`) on a VM in AWS just by modifying the run command.
+After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS
+(see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`)
+on a VM in AWS just by modifying the run command.
 
-Note that when running in AWS, users can either run the workflow on a single instance or run it on a cluster (which is running across multiple containers on multliple AWS instances).  For more information on running Toil workflows on a cluster, see :ref:`runningAWS`.
+Note that when running in AWS, users can either run the workflow on a single instance or run it on a
+cluster (which is running across multiple containers on multiple AWS instances).  For more information
+on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
-
-#. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``, ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
-
-       (venv) $ toil launch-cluster <cluster-name> \
-  --keyPairName <AWS-key-pair-name> \
-       --leaderNodeType t2.medium \
-  --zone us-west-2a
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
 
-#. Copy ``helloWorld.py`` to the ``/tmp`` directory on the leader node using the :ref:`rsyncCluster` command. Note that the command requires defining the file to copy as well as the target location on the cluster leader node.::
+#. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``,
+   ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
+
+        (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
+
+#. Copy ``helloWorld.py`` to the ``/tmp`` directory on the leader node using the :ref:`rsyncCluster` command.
+   Note that the command requires defining the file to copy as well as the target location on the cluster leader node.::
 
         (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> helloWorld.py :/tmp
 
-#. Login to the cluster leader node using the :ref:`sshCluster` command. Note this command will log you in as the ``root`` user ::
+#. Login to the cluster leader node using the :ref:`sshCluster` command. Note this command will log you in as the
+   ``root`` user ::
 
         (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
-#. Run the Toil script in the cluster.  In this particular case, we create an S3 bucket called ``my-S3-bucket`` in the ``us-west-2`` availability zone to store intermediate job results. ::
+#. Run the Toil script in the cluster.  In this particular case, we create an S3 bucket called ``my-S3-bucket`` in
+   the ``us-west-2`` availability zone to store intermediate job results. ::
 
         $ python /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
 
-   Along with some other ``INFO`` log messages, you should get the following output in your terminal window: ``Hello, world!, here's a message: You did it!``
+   Along with some other ``INFO`` log messages, you should get the following output in your terminal window:
+   ``Hello, world!, here's a message: You did it!``
 
 
 #. Exit from the SSH connection. ::
 
         $ exit
 
-#. Use the :ref:`destroyCluster` command to destroy the cluster. Note this command will destroy the cluster leader node and any resources created to run the job, including the S3 bucket. ::
+#. Use the :ref:`destroyCluster` command to destroy the cluster. Note this command will destroy the cluster leader
+   node and any resources created to run the job, including the S3 bucket. ::
 
         (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
-
 
 
 .. _awscwl:
 
 Running a CWL Workflow on AWS
 -----------------------------
-After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS (see :ref:`prepare_aws-ref`),
-the user can run a CWL workflow with Toil on AWS.
+After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS
+(see :ref:`prepare_aws-ref`), the user can run a CWL workflow with Toil on AWS.
+
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
+
 
 #. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
-      (venv) $ toil launch-cluster <cluster-name> \
-      --keyPairName <AWS-key-pair-name> \
-      --leaderNodeType t2.micro \
-      --zone us-west-2a
+      (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
 
-#. Copy ``example.cwl`` and ``example-job.cwl`` from the :ref:`CWL example <cwlquickstart>` to the node using the :ref:`rsyncCluster` command. ::
+#. Copy ``example.cwl`` and ``example-job.yaml`` from the :ref:`CWL example <cwlquickstart>` to the node using
+   the :ref:`rsyncCluster` command. ::
 
-      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> \
-  example.cwl example-job.cwl :/tmp
+      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example.cwl :/tmp
+      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example-job.yaml :/tmp
 
-#. Launch the CWL workflow using the :ref:`sshCluster` utility. ::
+#. SSH into the cluster's leader node using the :ref:`sshCluster` utility. ::
 
-        (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name> \
-        toil-cwl-runner \
-        /tmp/example.cwl \
-        /tmp/example-job.yml
+      (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
+
+#. Once on the leader node, it's a good idea to update and install the following::
+
+    sudo apt-get update
+    sudo apt-get -y upgrade
+    sudo apt-get -y dist-upgrade
+    sudo apt-get -y install git
+    sudo pip install mesos.cli
+
+#. Now create a new ``virtualenv`` with the ``--system-site-packages`` option and activate::
+
+    virtualenv --system-site-packages venv
+    source venv/bin/activate
+
+#. Now run the CWL workflow::
+
+      (venv) $ toil-cwl-runner /tmp/example.cwl /tmp/example-job.yaml
 
    ..  tip::
 
@@ -406,9 +468,9 @@ the user can run a CWL workflow with Toil on AWS.
       local file system or in S3 buckets using ``s3://`` URI references. Final output
       files will be copied to the local file system of the leader node.
 
-#. Destroy the cluster. ::
+#. Finally, log out of the leader node and from your local computer, destroy the cluster. ::
 
-        (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
+      (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
 
 .. _awscactus:
@@ -416,60 +478,78 @@ the user can run a CWL workflow with Toil on AWS.
 Running a Workflow with Autoscaling on AWS - Cactus
 ---------------------------------------------------
 
-`Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free whole-genome multiple alignment program.
+`Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free whole-genome multiple alignment
+program.
+
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
 #. Download :download:`pestis.tar.gz <../../src/toil/test/cactus/pestis.tar.gz>`.
 
 #. Launch a leader node in AWS using the :ref:`launchCluster` command. ::
 
-        (venv) $ toil launch-cluster <cluster-name> \
-        --keyPairName <AWS-key-pair-name> \
-        --leaderNodeType t2.medium \
-        --zone us-west-2c
-  (venv) $ export TOIL_AWS_ZONE=us-west-2c
+        (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2c
+        (venv) $ export TOIL_AWS_ZONE=us-west-2c
 
-#. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as well as their phylogenetic tree, see `here <https://github.com/ComparativeGenomicsToolkit/cactus#seqfile-the-input-file>`__), organisms' genome sequence files in FASTA format, and configuration files (e.g. blockTrim1.xml, if desired), up to the leader node. ::
+#. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as
+   well as their phylogenetic tree, see
+   `here <https://github.com/ComparativeGenomicsToolkit/cactus#seqfile-the-input-file>`__), organisms' genome sequence
+   files in FASTA format, and configuration files (e.g. blockTrim1.xml, if desired), up to the leader node. ::
 
-  (venv) $ toil rsync-cluster <cluster-name> pestis-short-aws-seqFile.txt :/tmp
-  (venv) $ toil rsync-cluster <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/tmp
-  (venv) $ toil rsync-cluster <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/tmp
-  (venv) $ toil rsync-cluster <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/tmp
-  (venv) $ toil rsync-cluster <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/tmp
-  (venv) $ toil rsync-cluster <cluster-name> setup_leaderNode.sh :/tmp
-  (venv) $ toil rsync-cluster <cluster-name> blockTrim1.xml :/tmp
-  (venv) $ toil rsync-cluster <cluster-name> blockTrim3.xml :/tmp
+      (venv) $ toil rsync-cluster <cluster-name> pestis-short-aws-seqFile.txt :/tmp
+      (venv) $ toil rsync-cluster <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/tmp
+      (venv) $ toil rsync-cluster <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/tmp
+      (venv) $ toil rsync-cluster <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/tmp
+      (venv) $ toil rsync-cluster <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/tmp
+      (venv) $ toil rsync-cluster <cluster-name> setup_leaderNode.sh :/tmp
+      (venv) $ toil rsync-cluster <cluster-name> blockTrim1.xml :/tmp
+      (venv) $ toil rsync-cluster <cluster-name> blockTrim3.xml :/tmp
 
 #. Log into the leader node. ::
 
-  (venv) $ toil ssh-cluster <cluster-name>
+        (venv) $ toil ssh-cluster <cluster-name>
 
 #. Set up the environment of the leader node to run Cactus. ::
 
-  $ bash /tmp/setup_leaderNode.sh
-  $ source cact_venv/bin/activate
-  (cact_venv) $ cd cactus
-  (cact_venv) $ pip install --upgrade .
+        $ bash /tmp/setup_leaderNode.sh
+        $ source cact_venv/bin/activate
+        (cact_venv) $ cd cactus
+        (cact_venv) $ pip install --upgrade .
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow. ::
 
-  (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0 cactus --provisioner aws \
-  --nodeTypes c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching \
-  --logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis \
-  /tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
-
+       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 cactus --provisioner aws --nodeType c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis /tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
 
    .. note::
 
-    In this example, we specify the version of Toil to be 3.11.0; if the latest one is desired, please eliminate ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.11.0``. The flag ``--maxNodes 2`` creates up to two instances of type `c3.4xlarge` and launches Mesos slave containers inside them. The flag ``--logDebug`` is equal to ``--logLevel DEBUG``. ``--logFile /logFile_pestis3``: Write log in a file named `logFile_pestis3` under ``/`` folder. The ``--configFile`` flag is not required, depending on whether a specific configuration file is intended to run the alignment. Toil creates a bucket in S3 called `aws:us-west-2:cactus-pestis` to store intermediate job files and metadata. The result file, named ``pestis_output3.hal``, is stored under ``/tmp`` folder of the leader node. Use ``cactus --help`` to see all the Cactus and Toil flags available.
+      In this example, we specify the version of Toil to be 3.12.0; if the latest one is desired, please eliminate
+      ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0``.
+
+      The flag ``--maxNodes 2`` creates up to two instances of type `c3.4xlarge` and launches Mesos worker containers
+      inside them.
+
+      The flag ``--logDebug`` is equivalent to ``--logLevel DEBUG``.
+
+      ``--logFile /logFile_pestis3``: Write log in a file named `logFile_pestis3` under ``/`` folder.
+
+      The ``--configFile`` flag is not required, depending on whether a specific configuration file is intended to run
+      the alignment.
+
+      Toil creates a bucket in S3 called `aws:us-west-2:cactus-pestis` to store intermediate job files and metadata.
+      The result file, named ``pestis_output3.hal``, is stored under ``/tmp`` folder of the leader node.
+
+      Use ``cactus --help`` to see all the Cactus and Toil flags available.
 
 #. Log out of the leader node. ::
 
-  (cact_venv) $ exit
+        (cact_venv) $ exit
 
 #. Download the resulted output to local machine. ::
 
-  (venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
+        (venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
 
 #. Destroy the cluster. ::
 
         (venv) $ toil destroy-cluster <cluster-name>
+
+
+For other examples and Toil resources see https://toilpipelines.wordpress.com/

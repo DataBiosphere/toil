@@ -19,7 +19,7 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import subprocess
+from toil import subprocess
 import time
 import math
 
@@ -39,7 +39,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         def getRunningJobIDs(self):
             # Should return a dictionary of Job IDs and number of seconds
             times = {}
-            currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
+            with self.runningJobsLock:
+                currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
             # currentjobs is a dictionary that maps a slurm job id (string) to our own internal job id
             # squeue arguments:
             # -h for no header
