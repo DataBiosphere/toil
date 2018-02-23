@@ -59,4 +59,4 @@ def printHelp(modules):
     print(usage.format(
         name=os.path.basename(sys.argv[0]),
         commands='|'.join(iterkeys(modules)),
-        descriptions='\n'.join("%s - %s" % (n, m.__doc__.strip()) for n, m in iteritems(modules))))
+        descriptions='\n'.join("%s - %s" % (n, m.__doc__.strip()) for n, m in iteritems(modules) if m is not None)))
