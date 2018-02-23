@@ -107,7 +107,7 @@ class AzureJobStore(AbstractJobStore):
     # URLs where the may interfere with the certificate common name. We use a double underscore
     # as a separator instead.
     #
-    containerNameRe = re.compile(r'^[a-z0-9](-?[a-z0-9]+)+[a-z0-9]$')
+    containerNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
 
     # See https://msdn.microsoft.com/en-us/library/azure/dd135715.aspx
     #
