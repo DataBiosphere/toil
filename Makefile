@@ -74,7 +74,7 @@ requires the TOIL_DOCKER_REGISTRY variable to be set to a value other than the d
 accidentally pushing to the official Docker registry for Toil.
 
 The TOIL_DOCKER_NAME environment variable can be set to customize the appliance image name that
-is created by the 'docker' target and pushed by the 'push_docker' target. The Toil team's
+is created by the 'docker' target and pushed by the 'push_docker' target. The Toil team\'s
 continuous integration system overrides this variable to avoid conflicts between concurrently
 executing builds for the same revision, e.g. toil-pr and toil-it.
 
