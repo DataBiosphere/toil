@@ -557,7 +557,7 @@ class GCEProvisioner(AbstractProvisioner):
             workersCreated += 1
         logger.info('Launched %s new instance(s)', numNodes)
         if len(instancesLaunched) != workersCreated:
-            logger.error("Failed to launch %d workers", len(instancesLaunched-workersCreated))
+            logger.error("Failed to launch %d workers", len(instancesLaunched)-workersCreated)
         return workersCreated
 
     def getProvisionedWorkers(self, nodeType, preemptable):
