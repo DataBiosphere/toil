@@ -545,7 +545,7 @@ class GCEProvisioner(AbstractProvisioner):
                             self._rsyncNode(instance.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
                                             applianceName='toil_worker')
                         break
-                    except e:
+                    except Exception as e:
                         if retries == 5:
                             log.error("Failed to rysnc keys to worker with ip" % instance.public_ips[0])
                             log.error('Exception %s', e)
@@ -600,7 +600,7 @@ class GCEProvisioner(AbstractProvisioner):
     def _copySshKeys(cls, instanceIP, keyName):
         """ Copy authorized_keys file to the core user from the keyName user."""
         if keyName == 'core':
-            return
+            return True
 
         # Make sure that keys are there.
         if not cls._waitForSSHKeys(instanceIP, keyName=keyName):
@@ -807,7 +807,7 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                loggerError("Key propagation failed on machine with ip" % instanceIP)
+                logger.error("Key propagation failed on machine with ip" % instanceIP)
                 return False
             try:
                 logger.info('Attempting to establish SSH connection...')
@@ -828,7 +828,7 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                loggerError("Docker daemon failed to start on machine with ip" % ip_address)
+                logger.error("Docker daemon failed to start on machine with ip" % ip_address)
                 return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
@@ -856,7 +856,7 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                loggerError("Appliance failed to start on machine with ip" % ip_address)
+                logger.error("Appliance failed to start on machine with ip" % ip_address)
                 return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps',

@@ -56,7 +56,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
         if self.botoDir is not None:
             callCommand += ['--boto=%s' % self.botoDir]
         callCommand = callCommand + args if args else callCommand
-        log.info("createClusterUtil:", ''.join(callCommand))
+        log.info("createClusterUtil: %s" % ''.join(callCommand))
         subprocess.check_call(callCommand)
 
     def cleanJobStoreUtil(self):
@@ -199,7 +199,7 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
         #'--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
-        log.info("_runScript:", ''.join(runCommand))
+        log.info("_runScript: %s" % ''.join(runCommand))
         self.sshUtil(runCommand)
 
     def launchCluster(self):
@@ -255,7 +255,7 @@ class GCEStaticAutoscaleTest(GCEAutoscaleTest):
     def _runScript(self, toilOptions):
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
         runCommand.extend(toilOptions)
-        log.info("_runScript:", ''.join(runCommand))
+        log.info("_runScript: %s" % ''.join(runCommand))
         self.sshUtil(runCommand)
 
 
@@ -286,7 +286,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=1.0G', '--mergeMemory=3.0G']
         runCommand.extend(toilOptions)
         runCommand.append('--sseKey=/home/keyFile')
-        log.info("_runScript:", ''.join(runCommand))
+        log.info("_runScript: %s" % ''.join(runCommand))
         self.sshUtil(runCommand)
 
     @integrative
