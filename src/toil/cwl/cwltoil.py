@@ -34,7 +34,7 @@ import cwltool.expression
 import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
-import cwltool.draft2tool
+import cwltool.command_line_tool
 
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
@@ -221,7 +221,7 @@ class ToilPathMapper(PathMapper):
                 self.visitlisting(obj.get("secondaryFiles", []), stagedir, basedir, copy=copy, staged=staged)
 
 
-class ToilCommandLineTool(cwltool.draft2tool.CommandLineTool):
+class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom
     Toil.PathMapper.
 
