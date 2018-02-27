@@ -30,7 +30,7 @@ from toil import physicalMemory
 log = logging.getLogger(__name__)
 
 def rm_f(path):
-    """The equivalent of mkdir -p."""
+    """Remove the file at the given path with os.remove(), ignoring errors caused by the file's absence."""
     try:
         os.remove(path)
     except OSError as e:
