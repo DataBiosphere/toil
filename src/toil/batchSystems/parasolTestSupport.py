@@ -29,6 +29,15 @@ from toil import physicalMemory
 
 log = logging.getLogger(__name__)
 
+def rm_f(path):
+    """The equivalent of mkdir -p."""
+    try:
+        os.remove(path)
+    except OSError as e:
+        if e.errno == errno.ENOENT:
+            pass
+        else:
+            raise
 
 class ParasolTestSupport(object):
     """
@@ -56,13 +65,7 @@ class ParasolTestSupport(object):
         self.leader.popen.kill()
         self.leader.join()
         for path in ('para.results', 'parasol.jid'):
-            try:
-                os.remove(path)
-            except OSError as e:
-                if e.errno == errno.ENOENT:
-                    pass
-                else:
-                    raise
+            rm_f(path)
 
     class ParasolThread(threading.Thread):
 
