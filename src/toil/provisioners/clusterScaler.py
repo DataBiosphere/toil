@@ -28,7 +28,6 @@ from collections import deque, defaultdict
 from threading import Lock
 
 import time
-from bd2k.util.exceptions import require
 from bd2k.util.retry import retry
 from bd2k.util.threading import ExceptionalThread
 from bd2k.util.throttle import throttle
@@ -251,7 +250,7 @@ class ClusterScaler(object):
         self.totalJobsCompleted = 0
         
 
-        require(sum(config.maxNodes) > 0, 'Not configured to create nodes of any type.')
+        assert sum(config.maxNodes) > 0, 'Not configured to create nodes of any type.'
         
         self.scaler = ScalerThread(scaler=self)
 

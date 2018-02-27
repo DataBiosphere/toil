@@ -34,7 +34,6 @@ except ImportError:
     import pickle
 
 # toil and bd2k dependencies
-from bd2k.util.exceptions import require
 from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
@@ -87,7 +86,7 @@ class FileJobStore(AbstractJobStore):
     def resume(self):
         if not os.path.exists(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
-        require( os.path.isdir, "'%s' is not a directory", self.jobStoreDir)
+        assert os.path.isdir, "'%s' is not a directory" % self.jobStoreDir
         super(FileJobStore, self).resume()
 
     def destroy(self):
