@@ -707,7 +707,8 @@ class Job(JobLikeObject):
 
         :param dict kwargs: The keyword arguments to the function
         """
-        assert self._fileStore is not None, 'A deferred function may only be registered with a job while that job is running.'
+        if self._fileStore is None:
+            raise Exception('A deferred function may only be registered with a job while that job is running.')
         self._fileStore._registerDeferredFunction(DeferredFunction.create(function, *args, **kwargs))
 
 

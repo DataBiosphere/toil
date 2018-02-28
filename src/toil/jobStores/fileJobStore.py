@@ -86,7 +86,8 @@ class FileJobStore(AbstractJobStore):
     def resume(self):
         if not os.path.exists(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
-        assert os.path.isdir, "'%s' is not a directory" % self.jobStoreDir
+        if not os.path.isdir:
+            raise Exception("'%s' is not a directory" % self.jobStoreDir)
         super(FileJobStore, self).resume()
 
     def destroy(self):

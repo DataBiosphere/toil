@@ -232,7 +232,8 @@ class Config(object):
         setOption("scaleInterval", float)
         setOption("metrics")
         setOption("preemptableCompensation", float)
-        assert 0.0 <= self.preemptableCompensation <= 1.0, '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0' % self.preemptableCompensation
+        if not 0.0 <= self.preemptableCompensation <= 1.0:
+            raise Exception('--preemptableCompensation (%f) must be >= 0.0 and <= 1.0.' % self.preemptableCompensation)
         setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks
