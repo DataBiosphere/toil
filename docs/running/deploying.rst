@@ -4,6 +4,8 @@ Deploying a Workflow
 ====================
 You can deploy a workflow locally (on a single machine) or remotely (i.e. distributed on a cluster), as described below.
 
+Currently, it's recommended that users do not run their scripts from system folders (``/var``, ``/``, or ``/tmp`` for example.).
+
 .. _localDeploying:
 
 Deploying a Local Workflow
@@ -54,7 +56,6 @@ a look at :ref:`deploying Toil <deploying_toil>`, which, as we'll see shortly
 cannot be remotely deployed. Lastly we'll deal with the issue of declaring
 :ref:`Toil as a dependency <depending_on_toil>` of a workflow that is packaged
 as a setuptools distribution.
-
 
 Toil can be easily deployed to a remote host, given that both Python and Toil
 are present. The first order of business after copying your workflow to each

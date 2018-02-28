@@ -21,6 +21,8 @@ that will dynamically scale depending on the workflow's needs.
 The :ref:`StaticProvisioning` section explains how a static cluster (one that
 won't automatically change in size) can be created and provisioned (grown, shrunk, destroyed, etc.).
 
+Currently, it's recommended that users do not run their scripts from system folders (``/var``, ``/``, or ``/tmp`` for example.).
+
 
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 

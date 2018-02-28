@@ -185,7 +185,7 @@ Running the example
 
 #. Run with custom options::
 
-      (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/ --overwriteOutput=True
+      (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/working --overwriteOutput=True
 
    Here we see that we can add our own options to a Toil script. The first two
    options determine the number of lines and how many characters are in each line.
@@ -384,28 +384,43 @@ Note that when running in AWS, users can either run the workflow on a single ins
 cluster (which is running across multiple containers on multiple AWS instances).  For more information
 on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
+Currently, it's recommended that users do not run their scripts from system folders (``/var``, ``/``, or ``/tmp`` for example.).
+That is why we create a new folder ``/tmp/working`` within ``/tmp`` as our working directory.
+
 Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
 
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``,
    ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
 
-        (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
+    (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
 
-#. Copy ``helloWorld.py`` to the ``/tmp`` directory on the leader node using the :ref:`rsyncCluster` command.
+#. Log into the leader node. ::
+
+    (venv) $ toil ssh-cluster <cluster-name>
+
+#. Create a working directory in tmp.  ::
+
+    $ mkdir /tmp/working
+
+#. Log out of the leader.  ::
+
+    $ exit
+
+#. Copy ``helloWorld.py`` to the ``/tmp/working`` directory on the leader node using the :ref:`rsyncCluster` command.
    Note that the command requires defining the file to copy as well as the target location on the cluster leader node.::
 
-        (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> helloWorld.py :/tmp
+    (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> helloWorld.py :/tmp/working
 
-#. Login to the cluster leader node using the :ref:`sshCluster` command. Note this command will log you in as the
+#. Login back into the cluster leader node using the :ref:`sshCluster` command. Note this command will log you in as the
    ``root`` user ::
 
-        (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
+    (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
 #. Run the Toil script in the cluster.  In this particular case, we create an S3 bucket called ``my-S3-bucket`` in
    the ``us-west-2`` availability zone to store intermediate job results. ::
 
-        $ python /tmp/helloWorld.py aws:us-west-2:my-S3-bucket
+    $ python /tmp/working/helloWorld.py aws:us-west-2:my-S3-bucket
 
    Along with some other ``INFO`` log messages, you should get the following output in your terminal window:
    ``Hello, world!, here's a message: You did it!``
@@ -413,12 +428,12 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Exit from the SSH connection. ::
 
-        $ exit
+    $ exit
 
 #. Use the :ref:`destroyCluster` command to destroy the cluster. Note this command will destroy the cluster leader
    node and any resources created to run the job, including the S3 bucket. ::
 
-        (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
+    (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
 
 .. _awscwl:
@@ -428,22 +443,37 @@ Running a CWL Workflow on AWS
 After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS
 (see :ref:`prepare_aws-ref`), the user can run a CWL workflow with Toil on AWS.
 
+Currently, it's recommended that users do not run their scripts from system folders (``/var``, ``/``, or ``/tmp`` for example.).
+That is why we create a new folder ``/tmp/working`` within ``/tmp`` as our working directory.
+
 Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
 
 #. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
-      (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
+    (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
+
+#. Log into the leader node. ::
+
+    (venv) $ toil ssh-cluster <cluster-name>
+
+#. Create a working directory in tmp.  ::
+
+    $ mkdir /tmp/working
+
+#. Log out of the leader.  ::
+
+    $ exit
 
 #. Copy ``example.cwl`` and ``example-job.yaml`` from the :ref:`CWL example <cwlquickstart>` to the node using
    the :ref:`rsyncCluster` command. ::
 
-      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example.cwl :/tmp
-      (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example-job.yaml :/tmp
+    (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example.cwl :/tmp/working
+    (venv) $ toil rsync-cluster --zone us-west-2a <cluster-name> example-job.yaml :/tmp/working
 
 #. SSH into the cluster's leader node using the :ref:`sshCluster` utility. ::
 
-      (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
+    (venv) $ toil ssh-cluster --zone us-west-2a <cluster-name>
 
 #. Once on the leader node, it's a good idea to update and install the following::
 
@@ -460,7 +490,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Now run the CWL workflow::
 
-      (venv) $ toil-cwl-runner /tmp/example.cwl /tmp/example-job.yaml
+    (venv) $ toil-cwl-runner /tmp/example.cwl /tmp/example-job.yaml
 
    ..  tip::
 
@@ -481,43 +511,58 @@ Running a Workflow with Autoscaling on AWS - Cactus
 `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free whole-genome multiple alignment
 program.
 
+Currently, it's recommended that users do not run their scripts from system folders (``/var``, ``/``, or ``/tmp`` for example.).
+That is why we create a new folder ``/tmp/working`` within ``/tmp`` as our working directory.
+
 Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
 #. Download :download:`pestis.tar.gz <../../src/toil/test/cactus/pestis.tar.gz>`.
 
 #. Launch a leader node in AWS using the :ref:`launchCluster` command. ::
 
-        (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2c
-        (venv) $ export TOIL_AWS_ZONE=us-west-2c
+    (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2c
+    (venv) $ export TOIL_AWS_ZONE=us-west-2c
+
+#. Log into the leader node. ::
+
+    (venv) $ toil ssh-cluster <cluster-name>
+
+#. Create a working directory in tmp.  ::
+
+    $ mkdir /tmp/working
+
+#. Log out of the leader.  ::
+
+    $ exit
 
 #. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as
    well as their phylogenetic tree, see
    `here <https://github.com/ComparativeGenomicsToolkit/cactus#seqfile-the-input-file>`__), organisms' genome sequence
    files in FASTA format, and configuration files (e.g. blockTrim1.xml, if desired), up to the leader node. ::
 
-      (venv) $ toil rsync-cluster <cluster-name> pestis-short-aws-seqFile.txt :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> setup_leaderNode.sh :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> blockTrim1.xml :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> blockTrim3.xml :/tmp
+    (venv) $ toil rsync-cluster <cluster-name> pestis-short-aws-seqFile.txt :/tmp/working
+    (venv) $ toil rsync-cluster <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/tmp/working
+    (venv) $ toil rsync-cluster <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/tmp/working
+    (venv) $ toil rsync-cluster <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/tmp/working
+    (venv) $ toil rsync-cluster <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/tmp/working
+    (venv) $ toil rsync-cluster <cluster-name> setup_leaderNode.sh :/tmp/working
+    (venv) $ toil rsync-cluster <cluster-name> blockTrim1.xml :/tmp/working
+    (venv) $ toil rsync-cluster <cluster-name> blockTrim3.xml :/tmp/working
 
-#. Log into the leader node. ::
+#. Log back into the leader node. ::
 
-        (venv) $ toil ssh-cluster <cluster-name>
+    (venv) $ toil ssh-cluster <cluster-name>
 
 #. Set up the environment of the leader node to run Cactus. ::
 
-        $ bash /tmp/setup_leaderNode.sh
-        $ source cact_venv/bin/activate
-        (cact_venv) $ cd cactus
-        (cact_venv) $ pip install --upgrade .
+    $ bash /tmp/working/setup_leaderNode.sh
+    $ source cact_venv/bin/activate
+    (cact_venv) $ cd cactus
+    (cact_venv) $ pip install --upgrade .
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow. ::
 
-       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 cactus --provisioner aws --nodeType c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis /tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
+    (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 cactus --provisioner aws --nodeType c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /tmp/working/blockTrim3.xml aws:us-west-2:cactus-pestis /tmp/working/pestis-short-aws-seqFile.txt /tmp/working/pestis_output3.hal
 
    .. note::
 
@@ -535,21 +580,20 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
       the alignment.
 
       Toil creates a bucket in S3 called `aws:us-west-2:cactus-pestis` to store intermediate job files and metadata.
-      The result file, named ``pestis_output3.hal``, is stored under ``/tmp`` folder of the leader node.
+      The result file, named ``pestis_output3.hal``, is stored under the ``/tmp/working`` folder of the leader node.
 
       Use ``cactus --help`` to see all the Cactus and Toil flags available.
 
 #. Log out of the leader node. ::
 
-        (cact_venv) $ exit
+    (cact_venv) $ exit
 
 #. Download the resulted output to local machine. ::
 
-        (venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
+    (venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
 
 #. Destroy the cluster. ::
 
-        (venv) $ toil destroy-cluster <cluster-name>
-
+    (venv) $ toil destroy-cluster <cluster-name>
 
 For other examples and Toil resources see https://toilpipelines.wordpress.com/
