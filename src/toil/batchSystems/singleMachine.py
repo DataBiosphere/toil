@@ -48,7 +48,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     """
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsRemoteDeployment(cls):
         return False
 
     @classmethod

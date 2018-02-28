@@ -66,7 +66,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     """
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsRemoteDeployment(cls):
         return True
 
     @classmethod
@@ -84,7 +84,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(MesosBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
-        # The hot-deployed resource representing the user script. Will be passed along in every
+        # The remote-deployed resource representing the user script. Will be passed along in every
         # Mesos task. Also see setUserScript().
         self.userScript = None
         """

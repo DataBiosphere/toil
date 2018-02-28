@@ -166,7 +166,7 @@ class LSFBatchSystem(BatchSystemLocalSupport):
         return False
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsRemoteDeployment(cls):
         return False
 
     def shutdown(self):

@@ -106,10 +106,10 @@ def addOptions(addOptionFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
                 help=("The type of batch system to run the job(s) with, currently can be one "
                       "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
-    addOptionFn("--disableHotDeployment", dest="disableHotDeployment", action='store_true', default=None,
-                help=("Should hot-deployment of the user script be deactivated? If True, the user "
-                      "script/package should be present at the same location on all workers. "
-                      "default=false"))
+    addOptionFn("--disableRemoteDeployment", "--disableHotDeployment", dest="disableRemoteDeployment",
+                action='store_true', default=None,
+                help=("Remote-deployment=True copies the toil virtualenv and user script to the same location "
+                "on all workers automatically.  The default is False."))
 
     for o in _options:
         o(addOptionFn, config)
@@ -120,7 +120,7 @@ def setDefaultOptions(config):
     object is not constructed from an Options object.
     """
     config.batchSystem = "singleMachine"
-    config.disableHotDeployment = False
+    config.disableRemoteDeployment = False
     config.environment = {}
     config.statePollingWait = 1 # seconds
 

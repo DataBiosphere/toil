@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
-    standard HPC cluster. By default worker cleanup and hot deployment are not
+    standard HPC cluster. By default worker cleanup and remote-deployment are not
     implemented.
     """
 
@@ -314,7 +314,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         return False
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsRemoteDeployment(cls):
         return False
 
     def issueBatchJob(self, jobNode):

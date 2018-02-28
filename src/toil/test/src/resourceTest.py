@@ -185,7 +185,7 @@ class ResourceTest(ToilTest):
     def testNonPyStandAlone(self):
         """
         Asserts that Toil enforces the user script to have a .py or .pyc extension because that's
-        the only way hot deployment can re-import the module on a worker. See
+        the only way remote-deployment can re-import the module on a worker. See
 
         https://github.com/BD2KGenomics/toil/issues/631 and
         https://github.com/BD2KGenomics/toil/issues/858
