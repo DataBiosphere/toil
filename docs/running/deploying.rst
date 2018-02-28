@@ -40,7 +40,7 @@ The script can have dependencies, as long as those are installed on the machine,
 either globally, in a user-specific location or in a virtualenv. In the latter
 case, the virtualenv must of course be active when you run the user script.
 
-.. _remoteDeploying:
+.. _hotDeploying:
 
 Deploying a Remote Workflow
 ---------------------------
@@ -49,15 +49,15 @@ multiple worker machines, either in the cloud or on a bare-metal cluster, your
 script needs to be made available to those other machines. If your script
 imports other modules, those modules also need to be made available on the
 workers. Toil can automatically do that for you, with a little help on your
-part. We call this feature *remote-deployment* of a workflow.
+part. We call this feature *hot-deployment* of a workflow.
 
-Let's first examine various scenarios of remote-deploying a workflow and then take
+Let's first examine various scenarios of hot-deploying a workflow and then take
 a look at :ref:`deploying Toil <deploying_toil>`, which, as we'll see shortly
-cannot be remotely deployed. Lastly we'll deal with the issue of declaring
+cannot be hot-deployed. Lastly we'll deal with the issue of declaring
 :ref:`Toil as a dependency <depending_on_toil>` of a workflow that is packaged
 as a setuptools distribution.
 
-Toil can be easily deployed to a remote host, given that both Python and Toil
+Toil can be easily hot-deployed to a remote host, given that both Python and Toil
 are present. The first order of business after copying your workflow to each
 host is to create and activate a virtualenv::
 
@@ -82,7 +82,7 @@ From here, you can install your project and its dependencies::
        └── main.py
 
    3 directories, 5 files
-   $ pip install fairydust
+   $ pip install matplotlib
    $ cp -R workflow util venv/lib/python2.7/site-packages
 
 Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which
@@ -108,7 +108,7 @@ Or, if your project has been published to PyPI::
    $ pip install my-project
 
 In each case, we have created a virtualenv with the ``--system-site-packages``
-flag in the ``venv`` subdirectory then installed the ``fairydust`` distribution
+flag in the ``venv`` subdirectory then installed the ``matplotlib`` distribution
 from PyPI along with the two packages that our project consists of. (Again, both
 Python and Toil are assumed to be present on the leader and all worker nodes.)
 We can now run our workflow::
@@ -124,7 +124,7 @@ We can now run our workflow::
 
    Neither ``python setup.py develop`` nor ``pip install -e .`` can be used in
    this process as, instead of copying the source files, they create ``.egg-link``
-   files that Toil can't remotely-deploy. Similarly, ``python setup.py install``
+   files that Toil can't hot-deploy. Similarly, ``python setup.py install``
    doesn't work either as it installs the project as a Python ``.egg`` which is
    also not currently supported by Toil (though it `could be`_ in the future).
 
@@ -137,7 +137,7 @@ We can now run our workflow::
 .. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
-Remote deployment with sibling modules
+Hot deployment with sibling modules
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This scenario applies if the user script imports modules that are its siblings::
@@ -150,15 +150,15 @@ This scenario applies if the user script imports modules that are its siblings::
 Here ``userScript.py`` imports additional functionality from ``utilities.py``.
 Toil detects that ``userScript.py`` has sibling modules and copies them to the
 workers, alongside the user script. Note that sibling modules will be
-remotely-deployed regardless of whether they are actually imported by the user
+hot-deployed regardless of whether they are actually imported by the user
 script–all .py files residing in the same directory as the user script will
-automatically be remotely-deployed.
+automatically be hot-deployed.
 
 Sibling modules are a suitable method of organizing the source code of
 reasonably complicated workflows.
 
 
-Remotely deploying a package hierarchy
+Hot deploying a package hierarchy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Recall that in Python, a `package`_ is a directory containing one or more
 ``.py`` files—one of which must be called ``__init__.py``—and optionally other

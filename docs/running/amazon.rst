@@ -130,7 +130,7 @@ look like::
 
 .. note::
 
-    If your toil workflow has dependencies have a look at the :ref:`remoteDeploying`
+    If your toil workflow has dependencies have a look at the :ref:`hotDeploying`
     section for a detailed explanation on how to include them.
 
 
