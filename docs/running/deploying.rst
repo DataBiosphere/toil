@@ -84,7 +84,7 @@ From here, you can install your project and its dependencies::
        └── main.py
 
    3 directories, 5 files
-   $ pip install fairydust
+   $ pip install matplotlib
    $ cp -R workflow util venv/lib/python2.7/site-packages
 
 Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which
@@ -110,7 +110,7 @@ Or, if your project has been published to PyPI::
    $ pip install my-project
 
 In each case, we have created a virtualenv with the ``--system-site-packages``
-flag in the ``venv`` subdirectory then installed the ``fairydust`` distribution
+flag in the ``venv`` subdirectory then installed the ``matplotlib`` distribution
 from PyPI along with the two packages that our project consists of. (Again, both
 Python and Toil are assumed to be present on the leader and all worker nodes.)
 We can now run our workflow::
