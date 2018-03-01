@@ -198,7 +198,7 @@ Follow the steps below to prepare your Azure environment for running a Toil work
 #. Locate your Azure storage account key and then store it in one of the following locations:
     - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
     - ``AZURE_ACCOUNT_KEY`` environment variable
-    - or finally in ``~/.toilAzureCredentials.`` with the format format ::
+    - or finally in ``~/.toilAzureCredentials.`` with the format ::
 
          [AzureStorageCredentials]
          accountName1=ACCOUNTKEY1==
