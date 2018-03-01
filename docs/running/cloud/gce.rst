@@ -35,7 +35,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
     (venv) $ toil launch-cluster gce-sort --provisioner gce --leaderNodeType n1-standard-1 \
               --keyPairName <ssh-keyName> --boto <botoDir> --zone us-west1-a
 
-   The ``--boto`` option is necessary only if using an AWS jobstore. It also requires that your aws credentials
+   The ``--boto`` option is necessary to talk to an AWS jobstore. This also requires that your aws credentials
    are actually saved in your ``.boto`` file.
    (the Google jobStore will be ready with issue #1948).
 
