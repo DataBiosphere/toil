@@ -108,13 +108,21 @@ def buildNumber():
 
 def currentCommit():
     from subprocess import check_output
-    return check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0]
+    try:
+        output = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0]
+    except:
+        # Return this we are not in a git environment.
+        return '000'
+    return output
 
 
 def dirty():
     from subprocess import call
-    return 0 != call('(git diff --exit-code '
-                     '&& git diff --cached --exit-code) > /dev/null', shell=True)
+    try:
+        return 0 != call('(git diff --exit-code '
+                         '&& git diff --cached --exit-code) > /dev/null', shell=True)
+    except:
+        return False # In case the git call fails.
 
 
 def expand_(name=None):
