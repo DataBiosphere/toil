@@ -30,7 +30,7 @@ A Toil workflow can be run with just three steps:
           print output
 
 
-3. Specify the name of the :ref:`job store <jobStoreOverview>` and run the workflow::
+3. Specify the name of the job store and run the workflow::
 
        (venv) $ python helloWorld.py file:my-job-store
 
@@ -386,6 +386,7 @@ on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
 Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
+
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``,
    ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
 
@@ -487,8 +488,6 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Launch a leader node in AWS using the :ref:`launchCluster` command. ::
 
         (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2c
-
-   Setting the environment variable ``TOIL_AWS_ZONE`` eliminates having to do this for each later command.
         (venv) $ export TOIL_AWS_ZONE=us-west-2c
 
 #. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as

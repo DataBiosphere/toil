@@ -384,7 +384,6 @@ class GCEProvisioner(AbstractProvisioner):
         if self.botoPath:
             self._rsyncNode(leader.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
                             applianceName='toil_leader')
-        # TODO: should we print a warning here if botoPath is None, but jobstore is AWS?
 
         # assuming that if the leader was launched without a spotbid then all workers
         # will be non-preemptable

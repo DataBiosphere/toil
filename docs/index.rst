@@ -3,14 +3,11 @@ Toil Documentation
 
 Toil is an open-source pure-Python workflow engine that lets people write better pipelines.
 
-Check out our `website`_ for a comprehensive list of Toil's features and read our `paper`_ to learn what Toil can do
-in the real world.  Feel free to also join us on `GitHub`_ and `Gitter`_.
+Check out our `website`_ for a comprehensive list of Toil's features and read our `paper`_ to learn what Toil can do in the real world.  Feel free to also join us on `GitHub`_ and `Gitter`_.
 
-If using Toil for your research, please cite
+If using toil for your research, please cite::
 
-     Vivian, J., Rao, A. A., Nothaft, F. A., Ketchum, C., Armstrong, J., Novak, A., … Paten, B. (2017).
-     Toil enables reproducible, open source, big biomedical data analyses. Nature Biotechnology, 35(4), 314–316.
-     http://doi.org/10.1038/nbt.3772
+    Vivian, J., Rao, A. A., Nothaft, F. A., Ketchum, C., Armstrong, J., Novak, A., … Paten, B. (2017). Toil enables reproducible, open source, big biomedical data analyses. Nature Biotechnology, 35(4), 314–316. http://doi.org/10.1038/nbt.3772
 
 .. _website: http://toil.ucsc-cgl.org/
 .. _GridEngine: http://gridscheduler.sourceforge.net/
@@ -45,13 +42,16 @@ If using Toil for your research, please cite
    running/wdl
    running/deploying
    running/debugging
-   running/cloud/cloud
+   running/amazon
+   running/azure
+   running/openstack
+   running/gce
    running/hpcEnvironments
 
 .. toctree::
    :caption: Developing Toil Workflows
    :maxdepth: 2
-
+ 
    developingWorkflows/overview
    developingWorkflows/developing
    developingWorkflows/toilAPI

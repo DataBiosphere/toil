@@ -21,10 +21,14 @@ Then to run the sort example with the Google job store you would type ::
 Running a Workflow with Autoscaling
 -----------------------------------
 
+.. warning::
+   Google Autoscaling is in beta! It is currently only tested with the AWS job store.
+   More work is on the way to fix this.
+
 The steps to run a GCE workflow are similar to those of AWS (:ref:`Autoscaling`), except you will
 need to explicitly specify the ``--provisioner gce`` option which otherwise defaults to ``aws``.
 
-#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`.
+#. Download :download:`sort.py <../../src/toil/test/sort/sort.py>`.
 
 #. Launch the leader node in GCE using the :ref:`launchCluster` command. ::
 
@@ -52,5 +56,3 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
     (venv) $ toil destory-cluster --provisioner gce <cluster-name>
 
 .. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
-
-

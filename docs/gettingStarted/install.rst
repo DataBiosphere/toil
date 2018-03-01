@@ -170,7 +170,7 @@ Here's what each extra provides:
 Preparing your AWS environment
 ------------------------------
 
-To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files 
+To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files
 during the computation of a workflow, first set up and configure an account with AWS.
 
 #. If necessary, create and activate an `AWS account`_
@@ -193,27 +193,13 @@ Preparing your Azure environment
 
 Follow the steps below to prepare your Azure environment for running a Toil workflow.
 
-#. Create an `Azure account`_ and to use the job store make an `Azure storage account`_.
-
-#. Locate your Azure storage account key and then store it in one of the following locations:
-    - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
-    - ``AZURE_ACCOUNT_KEY`` environment variable
-    - or finally in ``~/.toilAzureCredentials.`` with the format format ::
-
-         [AzureStorageCredentials]
-         accountName1=ACCOUNTKEY1==
-         accountName2=ACCOUNTKEY2==
-
-   These locations are searched in the order above, which can be useful if you work with multiple
-   accounts.
+#. Create an `Azure account`_.
 
 #. Make sure you have an SSH RSA public key, usually stored in
    ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
    one.
 
 .. _Azure account: https://azure.microsoft.com/en-us/free/
-.. _Azure storage account: https://docs.microsoft.com/en-us/azure/storage/common/storage-quickstart-create-account?tabs=portal
-
 .. _prepareGoogle:
 
 Preparing your Google environment
@@ -246,11 +232,12 @@ Toil supports using the `Google Cloud Platform`_. Setting this up is easy!
 #. Add your newly formated public key to google. To do this, log into your Google Cloud account
    and go to `metadata`_ section under the Compute tab.
 
-   .. image:: ./googleScreenShot.png
+   .. image:: googleScreenShot.png
+
 
    Near the top of the screen click on 'SSH Keys', then edit, add item, and paste the key. Then save.
 
-   .. image:: ./googleScreenShot2.png
+   .. image:: googleScreenShot2.png
 
 For more details look at Google's instructions for `adding SSH keys`_
 
@@ -304,11 +291,11 @@ To build the docs, run ``make develop`` with all extras followed by
 
     $ make docs
 
-    
+
 To run a quick batch of tests (this should take less than 30 minutes)
 
 ::
 
 	$ export TOIL_TEST_QUICK=True; make test
-	
+
 For more information on testing see :ref:`runningTests`.
