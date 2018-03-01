@@ -57,35 +57,6 @@ logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 #   - copy .boto for AWS (currently done with 'toil rysnc-cluster --workersToo ...'
 
 
-# - add google setup to installation page
-# - gce jobStore
-# - set and test vpc-subnet
-# - find aws credentials for jenkins .boto file
-# - review TODOs
-
-
-
-# TODO
-# -refactor
-#  - zone is hard-coded for AWS
-#  - rysnc, ... should be instance methods
-#  - replace launchCluster with a normal constructor
-# - libcloud ex_create_multiple_nodes bug that doesn't allow multi nodes
-#   - submit issue
-#   - Or just keep class with machine name as uuid?
-# - environment variable to change image
-# - revisit ssh keys
-#   - cloud config?
-#   - This error: Failed Units: 1 coreos-metadata-sshkeys@core.service
-#   - try passing keyName to coreSSH instead; then no need to copy authorized keys
-#   - possible fix: I needed to use this format: ssh-rsa [KEY_VALUE] google-ssh {"userName":"[USERNAME]","expireOn":"[EXPIRE_TIME]"}
-# - security (sse) keys
-#   - test encryption
-#   - keyName is needed to copy ssh key
-# - advanced
-#   - other disks
-#   - RAID
-
 
 logDir = '--log_dir=/var/lib/mesos'
 leaderDockerArgs = logDir + ' --registry=in_memory --cluster={name}'
@@ -212,7 +183,10 @@ ssh_authorized_keys:
 nodeBotoPath = "/root/.boto"
 
 class GCEProvisioner(AbstractProvisioner):
-    """ Implments a Google Compute Engine Provisioner """
+    """ Implements a Google Compute Engine Provisioner
+        This is a beta version. Changes should not be made to this class, but
+        rather in a provisioner refactor.
+    """
 
     maxWaitTime = 5*60
 
@@ -619,7 +593,6 @@ class GCEProvisioner(AbstractProvisioner):
 
     def _waitForNode(self, instanceIP, role):
         # wait here so docker commands can be used reliably afterwards
-        # TODO: make this more robust, e.g. If applicance doesn't exist, then this waits forever.
         if not self._waitForSSHKeys(instanceIP, keyName=self.keyName):
             return False
         if not self._waitForDockerDaemon(instanceIP, keyName=self.keyName):
