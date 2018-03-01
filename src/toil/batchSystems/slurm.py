@@ -43,10 +43,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
             # currentjobs is a dictionary that maps a slurm job id (string) to our own internal job id
             # squeue arguments:
-            # -h for no header
+            # --noheader for no header
             # --format to get jobid i, state %t and time days-hours:minutes:seconds
-
-            lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).split('\n')
+           
+            lines = subprocess.check_output(['squeue', '--noheader', '--format="%i %t %M"']).split('\n')
             for line in lines:
                 values = line.split()
                 if len(values) < 3:
