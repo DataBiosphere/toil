@@ -1,52 +1,58 @@
 .. _runningGCE:
 
 Running in Google Compute Engine (GCE)
-==============
-After setting up Toil on :ref:`installation-ref`, Toil scripts
-can be run just by designating a job store location as shown in
-:ref:`quickstart`.
+======================================
 
-Toil supports using the `Google Cloud Platform`_.
-Setting this up is easy! just
+Toil supports a provisioner with Google, and a :ref:`googleJobStore`. To get started, follow instructions
+for :ref:`prepareGoogle`.
 
-#. make sure that the ``google`` extra (:ref:`extras`) is installed and
+.. _googleJobStore:
 
-#. follow `Google's Instructions`_ to download credentials and set the
-   ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable.
+Google Job Store
+----------------
 
-#. add your ssh keys to the google account `Adding SSH Keys`_
+To use the Google Job Store you will need to set the
+``GOOGLE_APPLICATION_CREDENTIALS`` environment variable by following `Google's instructions`_.
+
+Then to run the sort example with the Google job store you would type ::
+
+    $ python sort.py google:my-project-id:my-google-sort-jobstore
 
 Running a Workflow with Autoscaling
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+-----------------------------------
 
-The steps to run a GCE workflow are similar to those of AWS (:ref:`Autoscaling`).
+.. warning::
+   Google Autoscaling is in beta! It is currently only tested with the AWS job store.
+   More work is on the way to fix this.
+
+The steps to run a GCE workflow are similar to those of AWS (:ref:`Autoscaling`), except you will
+need to explicitly specify the ``--provisioner gce`` option which otherwise defaults to ``aws``.
 
 #. Download :download:`sort.py <../../src/toil/test/sort/sort.py>`.
 
 #. Launch the leader node in GCE using the :ref:`launchCluster` command. ::
 
-    (venv) $ toil launch-cluster gce-sort --provisioner gce --leaderNodeType n1-standard-1 \
-              --keyPairName <ssh-keyName> --boto <botoDirL> --zone us-west1-a
+    (venv) $ toil launch-cluster <cluster-name> --provisioner gce --leaderNodeType n1-standard-1 --keyPairName <ssh-keyName> --boto <botoPath> --zone us-west1-a
 
-The ``boto`` option is necessary to talk to an AWS jobstore (the Google jobStore will be ready with issue #1948).
+   The ``--boto`` option is necessary only if using an AWS jobstore. It also requires that your aws credentials
+   are actually saved in your ``.boto`` file.
+   (the Google jobStore will be ready with issue #1948).
 
-The ``keyPairName`` option is for an SSH key that was added to the Google account.
+   The ``--keyPairName`` option is for an SSH key that was added to the Google account. If your ssh
+   key ``[USERNAME]`` was ``jane@example.com``, then your key pair name will be just ``jane``.
 
-#. Upload the sort example and ssh into the leader.
-    (venv) $ toil rsync-cluster --provisioner gce gce-sort sort.py :/root
-    (venv) $ toil ssh-cluster --provisioner gce gce-sort
+#. Upload the sort example and ssh into the leader. ::
 
-#. Run the workflow.
-    $ python /root/sort.py  aws:us-west-2:gce-sort-jobstore --provisioner gce --batchSystem mesos \
-       --mesosMaster <leader-private-ip>:5050 --nodeTypes n1-standard-2 --maxNodes 2
+    (venv) $ toil rsync-cluster --provisioner gce <cluster-name> sort.py :/root
+    (venv) $ toil ssh-cluster --provisioner gce <cluster-name>
 
-#. Cleanup
+#. Run the workflow. ::
+
+    $ python /root/sort.py  aws:us-west-2:gce-sort-jobstore --provisioner gce --batchSystem mesos --nodeTypes n1-standard-2 --maxNodes 2
+
+#. Cleanup ::
+
     $ exit
-    (venv) $toil destory-cluster --provisioner gce gce-sort
+    (venv) $ toil destory-cluster --provisioner gce <cluster-name>
 
-
-.. _Google's Instructions: https://developers.google.com/identity/protocols/application-default-credentials#howtheywork
-
-.. _Google Cloud Platform: https://cloud.google.com/storage/
-
-.. _Adding SSH Keys: https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys
+.. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
