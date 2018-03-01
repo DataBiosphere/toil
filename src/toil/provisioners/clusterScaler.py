@@ -33,6 +33,7 @@ from bd2k.util.retry import retry
 from bd2k.util.threading import ExceptionalThread
 from bd2k.util.throttle import throttle
 from itertools import islice
+from six import iteritems
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 from toil.provisioners.abstractProvisioner import Shape
@@ -84,150 +85,180 @@ class RecentJobShapes(object):
         with self.lock:
             return list(self.jobShapes)
 
-
-def binPacking(jobShapes, nodeShapes):
+class BinPackedFit(object):
     """
-    Use a first fit decreasing (FFD) bin packing like algorithm to calculate an approximate
-    minimum number of nodes that will fit the given list of jobs.
-    :param Shape nodeShape: The properties of an atomic node allocation, in terms of wall-time,
-           memory, cores and local disk.
-    :param list[Shape] jobShapes: A list of shapes, each representing a job.
-    Let a *node reservation* be an interval of time that a node is reserved for, it is defined by
-    an integer number of node-allocations.
-    For a node reservation its *jobs* are the set of jobs that will be run within the node
-    reservation.
-    A minimal node reservation has time equal to one atomic node allocation, or the minimum
-    number node allocations to run the longest running job in its jobs.
-    :rtype: int
-    :returns: The minimum number of minimal node allocations estimated to be required to run all
-              the jobs in jobShapes.
+    Use a first fit decreasing (FFD) bin packing like algorithm to
+    calculate an approximate minimum number of nodes that will fit the
+    given list of jobs. To run the bin-packing algorithm, use the
+    binPack method on a list of job shapes, and use getRequiredNodes
+    to get how many nodes it thinks are required.
+
+    :param list nodeShapes: A list of possible types of nodes that can be launched (as "Shape"s).
+    :param targetTime: The time before which all jobs should at least be started.
     """
-    logger.debug('Running bin packing for node shapes %s and %s job(s).', nodeShapes, len(jobShapes))
-    # Sort in descending order from largest to smallest. The FFD like-strategy will pack the jobs in order from longest
-    # to shortest.
-    jobShapes.sort()
-    jobShapes.reverse()
+    def __init__(self, nodeShapes, targetTime=3600):
+        self.nodeShapes = nodeShapes
+        self.targetTime = targetTime
+        # Prioritize preemptable node shapes with the lowest memory
+        self.nodeShapes.sort(key=lambda nS: not nS.preemptable)
+        self.nodeShapes.sort(key=lambda nS: nS.memory)
+        self.nodeReservations = {nodeShape:[] for nodeShape in nodeShapes}  # The list of node reservations
 
+    def binPack(self, jobShapes):
+        """Pack a list of jobShapes into the fewest nodes reasonable. Can be run multiple times."""
+        logger.debug('Running bin packing for node shapes %s and %s job(s).', self.nodeShapes, len(jobShapes))
+        # Sort in descending order from largest to smallest. The FFD like-strategy will pack the jobs in order from longest
+        # to shortest.
+        jobShapes.sort()
+        jobShapes.reverse()
+        assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
+        for jS in jobShapes:
+            self.addJobShape(jS)
 
-    #Prioritize preemptable node shapes with the lowest memory
-    nodeShapes.sort(key=lambda nS: not nS.preemptable)
-    nodeShapes.sort(key=lambda nS: nS.memory)
-    
-    assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
-
-    class NodeReservation(object):
+    def addJobShape(self, jobShape):
         """
-        Represents a node reservation. To represent the resources available in a reservation a
-        node reservation is represented as a sequence of Shapes, each giving the resources free
-        within the given interval of time
+        Function adds the job to the first node reservation in which it will fit (this
+        is the bin-packing aspect)
         """
+        for nodeShape, nodeReservations in iteritems(self.nodeReservations):
+            for nodeReservation in nodeReservations:
+                if nodeReservation.attemptToAddJob(jobShape, nodeShape, self.targetTime):
+                    # We succeeded adding the job to this node reservation. Now we're done.
+                    return
 
-        def __init__(self, shape):
-            # The wall-time and resource available
-            self.shape = shape
-            # The next portion of the reservation
-            self.nReservation = None
+        # If we get here, the job didn't fit into any existing node
+        # reservations. Assign to the smallest node shape that will
+        # fit this job, prioritizing preemptable nodes
+        consideredNodes = [nodeShape for nodeShape in self.nodeShapes if nodeShape.cores >= jobShape.cores and nodeShape.memory >= jobShape.memory and nodeShape.disk >= jobShape.disk and (jobShape.preemptable or not nodeShape.preemptable)]
+        if len(consideredNodes) == 0:
+            return
+        nodeShape = consideredNodes[0]
+        reservation = NodeReservation(nodeShape)
+        t = nodeShape.wallTime
+        adjustEndingReservationForJob(reservation, jobShape, 0)
+        self.nodeReservations[nodeShape].append(reservation)
 
-    nodeReservations = {nodeShape:[] for nodeShape in nodeShapes}  # The list of node reservations
+        # Extend the reservation if necessary to cover the job's entire runtime.
+        while t < jobShape.wallTime:
+            y = NodeReservation(reservation.shape)
+            t += nodeShape.wallTime
+            reservation.nReservation = y
+            reservation = y
 
-    for jS in jobShapes:
-        def addToReservation():
-            """
-            Function adds the job, jS, to the first node reservation in which it will fit (this
-            is the bin-packing aspect)
-            """
+    def getRequiredNodes(self):
+        """
+        Returns a dict from node shape to number of nodes required to run the packed jobs.
+        """
+        return {nodeShape:len(self.nodeReservations[nodeShape]) for nodeShape in self.nodeShapes}
 
-            def fits(nodeShape, jobShape):
-                """
-                Check if a job shape's resource requirements will fit within a given node allocation
-                """
-                return jobShape.memory <= nodeShape.memory and jobShape.cores <= nodeShape.cores and jobShape.disk <= nodeShape.disk and (jobShape.preemptable or not nodeShape.preemptable)
+class NodeReservation(object):
+    """
+    Represents a node reservation. To represent the resources available in a reservation a
+    node reservation is represented as a sequence of Shapes, each giving the resources free
+    within the given interval of time
+    """
+    def __init__(self, shape):
+        # The wall-time and resource available
+        self.shape = shape
+        # The next portion of the reservation
+        self.nReservation = None
 
-            def subtract(nodeShape, jobShape):
-                """
-                Adjust available resources of a node allocation as a job is scheduled within it.
-                """
-                return Shape(nodeShape.wallTime, nodeShape.memory - jobShape.memory, nodeShape.cores - jobShape.cores, nodeShape.disk - jobShape.disk, nodeShape.preemptable)
+    def fits(self, jobShape):
+        """Check if a job shape's resource requirements will fit within this allocation."""
+        return jobShape.memory <= self.shape.memory and jobShape.cores <= self.shape.cores and jobShape.disk <= self.shape.disk and (jobShape.preemptable or not self.shape.preemptable)
 
-            def split(nodeShape, jobShape, t):
-                """
-                Partition a node allocation into two
-                """
-                return (Shape(t, nodeShape.memory - jobShape.memory, nodeShape.cores - jobShape.cores, nodeShape.disk - jobShape.disk, nodeShape.preemptable),
-                        NodeReservation(Shape(nodeShape.wallTime - t, nodeShape.memory, nodeShape.cores, nodeShape.disk, nodeShape.preemptable)))
+    def shapes(self):
+        """Get all time-slice shapes, in order, from this reservation on."""
+        shapes = []
+        curRes = self
+        while curRes is not None:
+            shapes.append(curRes.shape)
+            curRes = curRes.nReservation
+        return shapes
 
-            for nodeShape in nodeShapes:
-                for nodeReservation in nodeReservations[nodeShape]:
-                    # Attempt to add the job to node reservation
+    def subtract(self, jobShape):
+        """
+        Adjust available resources of a node allocation as a job is scheduled within it.
+        """
+        self.shape = Shape(self.shape.wallTime, self.shape.memory - jobShape.memory, self.shape.cores - jobShape.cores, self.shape.disk - jobShape.disk, self.shape.preemptable)
 
-                    # We work with "reservations": just slices
-                    # of time and the amount of memory, cpu,
-                    # etc. still unreserved during that time slice.
+    def attemptToAddJob(self, jobShape, nodeShape, targetTime):
+        """Attempt to pack a job into this reservation timeslice and/or the reservations after it.
 
-                    # starting slice of time that we can fit in so far
-                    startingReservation = nodeReservation
-                    # current end of the slices we can fit in so far
-                    endingReservation = startingReservation
+        jobShape is the Shape of the job requirements, nodeShape is the Shape of the node this
+        is a reservation for, and targetTime is the maximum time to wait before starting this job.
+        """
+        # starting slice of time that we can fit in so far
+        startingReservation = self
+        # current end of the slices we can fit in so far
+        endingReservation = startingReservation
+        # the amount of runtime of the job currently covered by slices
+        jobTimeSoFar = 0
+        # total time from when the instance started up to startingReservation
+        startingReservationTime = 0
+
+        while True:
+            # Considering a new ending reservation.
+            if endingReservation.fits(jobShape):
+                jobTimeSoFar += endingReservation.shape.wallTime
+
+                if jobTimeSoFar >= jobShape.wallTime:
+                    # The job fits into all the slices between startingReservation and endingReservation.
                     t = 0
+                    # Update all the slices, reserving the amount of resources that this job needs.
+                    while startingReservation != endingReservation:
+                        startingReservation.subtract(jobShape)
+                        t += startingReservation.shape.wallTime
+                        startingReservation = startingReservation.nReservation
+                    assert startingReservation == endingReservation
+                    assert jobShape.wallTime - t <= startingReservation.shape.wallTime
+                    adjustEndingReservationForJob(endingReservation, jobShape, t)
+                    # Packed the job.
+                    return True
 
-                    while True:
-                        if fits(endingReservation.shape, jS):
-                            t += endingReservation.shape.wallTime
+                # If the job would fit, but is longer than the total node allocation
+                # extend the node allocation
+                elif endingReservation.nReservation == None and startingReservation == self:
+                    # Extend the node reservation to accommodate jobShape
+                    endingReservation.nReservation = NodeReservation(nodeShape)
+            else:
+                if startingReservationTime + jobTimeSoFar <= targetTime:
+                    startingReservation = endingReservation.nReservation
+                    startingReservationTime += jobTimeSoFar + endingReservation.shape.wallTime
+                    jobTimeSoFar = 0
+                else:
+                    break
 
-                            if t >= jS.wallTime:
-                                # The job fits into all the slices between startingReservation and endingReservation.
-                                t = 0
-                                # Update all the slices, reserving the amount of resources that this job needs.
-                                while startingReservation != endingReservation:
-                                    startingReservation.shape = subtract(startingReservation.shape, jS)
-                                    t += startingReservation.shape.wallTime
-                                    startingReservation = startingReservation.nReservation
-                                assert startingReservation == endingReservation
-                                assert jS.wallTime - t <= startingReservation.shape.wallTime
+            endingReservation = endingReservation.nReservation
+            if endingReservation is None:
+                # Reached the end of the reservation without success so stop trying to
+                # add to reservation
+                break
+        # Couldn't pack the job.
+        return False
 
-                                if jS.wallTime - t < startingReservation.shape.wallTime:
-                                    # This job only partially fills one of the slices. Create a new slice.
-                                    startingReservation.shape, nS = split(startingReservation.shape, jS, jS.wallTime - t)
-                                    nS.nReservation = startingReservation.nReservation
-                                    startingReservation.nReservation = nS
-                                else:
-                                    # This job perfectly fits within the boundaries of the slices.
-                                    assert jS.wallTime - t == startingReservation.shape.wallTime
-                                    startingReservation.shape = subtract(startingReservation.shape, jS)
-                                return
 
-                            # If the job would fit, but is longer than the total node allocation
-                            # extend the node allocation
-                            elif endingReservation.nReservation == None and startingReservation == nodeReservation:
-                                # Extend the node reservation to accommodate jS
-                                endingReservation.nReservation = NodeReservation(nodeShape)
-                        else: # Does not fit, reset
-                            startingReservation = endingReservation.nReservation
-                            t = 0
+def adjustEndingReservationForJob(reservation, jobShape, t):
+    if jobShape.wallTime - t < reservation.shape.wallTime:
+        # This job only partially fills one of the slices. Create a new slice.
+        reservation.shape, nS = split(reservation.shape, jobShape, jobShape.wallTime - t)
+        nS.nReservation = reservation.nReservation
+        reservation.nReservation = nS
+    else:
+        # This job perfectly fits within the boundaries of the slices.
+        reservation.subtract(jobShape)
 
-                        endingReservation = endingReservation.nReservation
-                        if endingReservation is None:
-                            # Reached the end of the reservation without success so stop trying to
-                            # add to reservation
-                            break
-            # Case a new node reservation is required. Assign to the smallest node shape
-            # that will fit this job, prioritizing preemptable nodes
-            consideredNodes = [nodeShape for nodeShape in nodeShapes if nodeShape.cores >= jS.cores and nodeShape.memory >= jS.memory and nodeShape.disk >= jS.disk and (jS.preemptable or not nodeShape.preemptable)]
-            if len(consideredNodes) == 0:
-                return
-            nodeShape = consideredNodes[0]
-            x = NodeReservation(subtract(nodeShape, jS))
-            nodeReservations[nodeShape].append(x)
-            t = nodeShape.wallTime
-            while t < jS.wallTime:
-                y = NodeReservation(x.shape)
-                t += nodeShape.wallTime
-                x.nReservation = y
-                x = y
+def split(nodeShape, jobShape, t):
+    """
+    Partition a node allocation into two
+    """
+    return (Shape(t, nodeShape.memory - jobShape.memory, nodeShape.cores - jobShape.cores, nodeShape.disk - jobShape.disk, nodeShape.preemptable),
+            NodeReservation(Shape(nodeShape.wallTime - t, nodeShape.memory, nodeShape.cores, nodeShape.disk, nodeShape.preemptable)))
 
-        addToReservation()
-    return {nodeShape:len(nodeReservations[nodeShape]) for nodeShape in nodeShapes}
-
+def binPacking(nodeShapes, jobShapes):
+    bpf = BinPackedFit(nodeShapes)
+    bpf.binPack(jobShapes)
+    return bpf.getRequiredNodes()
 
 class ClusterScaler(object):
     def __init__(self, provisioner, leader, config):
@@ -409,6 +440,9 @@ class ScalerThread(ExceptionalThread):
                 recentJobShapes = self.jobShapes.get()
                 queuedJobs = self.scaler.leader.getJobs()
                 logger.info("Detected %i queued jobs." % len(queuedJobs))
+                logger.info("avg runtime dict: %s" % repr(self.scaler.jobNameToAvgRuntime))
+                for jobName in set(job.jobName for job in queuedJobs):
+                    logger.info("Got avg runtime %s for job %s." % (self.scaler.getAverageRuntime(jobName), jobName))
                 queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
                 nodesToRunRecentJobs = binPacking(jobShapes=recentJobShapes, nodeShapes=self.nodeShapes)
                 nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes)

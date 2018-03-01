@@ -30,8 +30,6 @@ from six.moves.queue import Empty, Queue
 from six.moves import xrange
 from six import iteritems
 
-from bd2k.util.objects import InnerClass
-
 from toil.job import JobNode, Job
 
 from toil.test import ToilTest, slow
@@ -40,7 +38,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    AbstractBatchSystem)
 from toil.provisioners import Node
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import ClusterScaler, binPacking
+from toil.provisioners.clusterScaler import ClusterScaler, binPacking, BinPackedFit, NodeReservation
 from toil.common import Config
 
 
@@ -58,6 +56,47 @@ if False:
     ch.setFormatter(formatter)
     logging.getLogger().addHandler(ch)
 
+class BinPackingTest(ToilTest):
+    def setUp(self):
+        # simplified preemptable c4.8xlarge
+        self.c4_8xlarge = Shape(wallTime=3600, memory=60000000000, cores=36, disk=100000000000, preemptable=True)
+        # simplified r3.8xlarge
+        self.r3_8xlarge = Shape(wallTime=3600, memory=260000000000, cores=32, disk=600000000000, preemptable=False)
+        self.nodeShapes = [self.c4_8xlarge, self.r3_8xlarge]
+        self.bpf = BinPackedFit(self.nodeShapes)
+
+    def testPackingOneShape(self):
+        """Pack one shape and check that the resulting reservations look sane."""
+        self.bpf.nodeReservations[self.c4_8xlarge] = [NodeReservation(self.c4_8xlarge)]
+        self.bpf.addJobShape(Shape(wallTime=1000, cores=2, memory=1000000000, disk=2000000000, preemptable=True))
+        self.assertEqual(self.bpf.nodeReservations[self.r3_8xlarge], [])
+        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[self.c4_8xlarge]],
+                         [[Shape(wallTime=1000, memory=59000000000, cores=34, disk=98000000000, preemptable=True),
+                           Shape(wallTime=2600, memory=60000000000, cores=36, disk=100000000000, preemptable=True)]])
+
+    def testAddingInitialNode(self):
+        """Pack one shape when no nodes are available and confirm that we fit one node properly."""
+        self.bpf.addJobShape(Shape(wallTime=1000, cores=2, memory=1000000000, disk=2000000000, preemptable=True))
+        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[self.c4_8xlarge]],
+                         [[Shape(wallTime=1000, memory=59000000000, cores=34, disk=98000000000, preemptable=True),
+                           Shape(wallTime=2600, memory=60000000000, cores=36, disk=100000000000, preemptable=True)]])
+
+    def testPathologicalCase(self):
+        """Test a pathological case where only one node can be requested to fit months' worth of jobs.
+
+        If the reservation is extended to fit a long job, and the
+        bin-packer naively searches through all the reservation slices
+        to find the first slice that fits, it will happily assign the
+        first slot that fits the job, even if that slot occurs days in
+        the future.
+        """
+        # Add one job that partially fills an r3.8xlarge for 1000 hours
+        self.bpf.addJobShape(Shape(wallTime=3600000, memory=10000000000, cores=0, disk=10000000000, preemptable=False))
+        for _ in xrange(500):
+            # Add 500 CPU-hours worth of jobs that fill an r3.8xlarge
+            self.bpf.addJobShape(Shape(wallTime=3600, memory=26000000000, cores=32, disk=60000000000, preemptable=False))
+        # Hopefully we didn't assign just one node to cover all those jobs.
+        self.assertNotEqual(self.bpf.getRequiredNodes(), {self.r3_8xlarge: 1, self.c4_8xlarge: 0})
 
 class ClusterScalerTest(ToilTest):
 
@@ -77,11 +116,9 @@ class ClusterScalerTest(ToilTest):
                                              cores=random.choice(list(range(1, x.cores + 1))),
                                              disk=random.choice(list(range(1, x.disk + 1))),
                                              preemptable=False)
-            randomJobShapes = []
-            for nodeShape in nodeShapes:
-                numberOfJobs = random.choice(list(range(1, 1000)))
-                randomJobShapes.extend([randomJobShape(nodeShape) for i in range(numberOfJobs)])
-            startTime = time.time()
+
+            numberOfJobs = random.choice(list(range(1, 1000)))
+            randomJobShapes = [randomJobShape(random.choice(nodeShapes)) for i in range(numberOfJobs)]
             numberOfBins = binPacking(jobShapes=randomJobShapes, nodeShapes=nodeShapes)
             logger.info("Made the following node reservations: %s" % numberOfBins)
 
