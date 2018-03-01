@@ -487,8 +487,6 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Launch a leader node in AWS using the :ref:`launchCluster` command. ::
 
         (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2c
-
-   Setting the environment variable ``TOIL_AWS_ZONE`` eliminates having to do this for each later command.
         (venv) $ export TOIL_AWS_ZONE=us-west-2c
 
 #. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as
@@ -546,11 +544,11 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Download the resulted output to local machine. ::
 
-        (venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
+        (cact_venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
 
 #. Destroy the cluster. ::
 
-        (venv) $ toil destroy-cluster <cluster-name>
+        (cact_venv) $ toil destroy-cluster <cluster-name>
 
 
 For other examples and Toil resources see https://toilpipelines.wordpress.com/
