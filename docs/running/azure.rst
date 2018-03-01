@@ -2,24 +2,12 @@
 
 Running in Azure
 ================
-This section describes how to deploy a leader node in Azure and launch a Toil cluster from the leader node to run
-workflows.  You'll need an account in Azure prior to executing the steps in the document.  To setup Azure, see
-:ref:`prepare_azure-ref`.
+This section describes how to deploy a leader node in Azure and launch a Toil cluster from the leader node to run workflows.  You'll need an account in Azure prior to executing the steps in the document.  To setup Azure, see :ref:`prepare_azure-ref`.
 
 .. note::
 
    Azure is available in Toil for experimental purposes.  Only AWS is currently supported in Toil. 
 
-.. _azureJobStore:
-
-Azure Job Store
----------------
-
-After :ref:`prepare_azure-ref` all you will need to do is specify the job store name prefix for Azure.
-
-For example to run the sort example with Azure job store you would run ::
-
-    $ python sort.py azure:<my-azure-account-name>:my-azure-jobstore
 
 Launch a leader node in Azure
 -------------------------------
@@ -236,8 +224,7 @@ Launch a Toil Mesos Cluster
    Storage account in a different Resource Group, any information kept in the 
    job stores and file stores you were using will be retained.
 
-For more information about how your new cluster is organized, for information on how to access the Mesos Web UI, or for
-troubleshooting advice, please see `the template documentation <https://github.com/BD2KGenomics/toil/blob/master/contrib/azure/README.md>`_.
+For more information about how your new cluster is organized, for information on how to access the Mesos Web UI, or for troubleshooting advice, please see `the template documentation <https://github.com/BD2KGenomics/toil/blob/master/contrib/azure/README.md>`_.
 
 .. _cluster template: https://github.com/BD2KGenomics/toil/blob/master/contrib/azure/README.md
 .. _deploy link: https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FBD2KGenomics%2Ftoil%2Fmaster%2Fcontrib%2Fazure%2Fazuredeploy.json
