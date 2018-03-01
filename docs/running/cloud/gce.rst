@@ -49,7 +49,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
 #. Run the workflow. ::
 
-    $ python /root/sort.py  aws:us-west-2:gce-sort-jobstore --provisioner gce --batchSystem mesos --nodeTypes n1-standard-2 --maxNodes 2
+    # python /root/sort.py  aws:us-west-2:gce-sort-jobstore --provisioner gce --batchSystem mesos --nodeTypes n1-standard-2 --maxNodes 2
 
 #. Cleanup ::
 
