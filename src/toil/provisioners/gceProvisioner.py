@@ -73,6 +73,7 @@ logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 # - libcloud ex_create_multiple_nodes bug that doesn't allow multi nodes
 #   - submit issue
 #   - Or just keep class with machine name as uuid?
+# - environment variable to change image
 # - revisit ssh keys
 #   - cloud config?
 #   - This error: Failed Units: 1 coreos-metadata-sshkeys@core.service
@@ -211,6 +212,7 @@ ssh_authorized_keys:
 nodeBotoPath = "/root/.boto"
 
 class GCEProvisioner(AbstractProvisioner):
+    """ Implments a Google Compute Engine Provisioner """
 
     maxWaitTime = 5*60
 
@@ -420,10 +422,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     @staticmethod
     def retryPredicate(e):
-        return GCEProvisioner._throttlePredicate(e)
-
-    @staticmethod
-    def _throttlePredicate(e):
+        """ Not used by GCE """
         return False
 
     def destroyCluster(self, clusterName, zone=None):
@@ -590,6 +589,7 @@ class GCEProvisioner(AbstractProvisioner):
         return instances
 
     def _getDriver(self):
+        """  Connect to GCE """
         driverCls = get_driver(Provider.GCE)
         return driverCls(self.clientEmail,
                          self.googleJson,
