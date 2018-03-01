@@ -31,6 +31,7 @@ def runSetup():
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
+    gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     cwltool = 'cwltool==1.0.20180130110340'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
