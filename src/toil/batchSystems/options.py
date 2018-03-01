@@ -106,10 +106,14 @@ def addOptions(addOptionFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
                 help=("The type of batch system to run the job(s) with, currently can be one "
                       "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
-    addOptionFn("--disableRemoteDeployment", "--disableHotDeployment", dest="disableRemoteDeployment",
+    addOptionFn("--disableHotDeployment", dest="disableRemoteDeployment",
                 action='store_true', default=None,
-                help=("Remote-deployment=True copies the toil virtualenv and user script to the same location "
-                "on all workers automatically.  The default is False."))
+                help=("Deprecated, use --disableRemoteDeployment instead.  Hot-Deployment is the old phrase for "
+                "Remote-Deployment and has been left as a deprecated option for backwards compatibility."))
+    addOptionFn("--disableRemoteDeployment", dest="disableRemoteDeployment",
+                action='store_true', default=None,
+                help=("--disableRemoteDeployment=False copies the toil virtualenv and user script to the same location "
+                      "on all workers automatically.  The default is False."))
 
     for o in _options:
         o(addOptionFn, config)
