@@ -84,7 +84,7 @@ class FileJobStore(AbstractJobStore):
         super(FileJobStore, self).initialize(config)
 
     def resume(self):
-        if not os.path.exists(self.jobStoreDir):
+        if not os.path.isdir(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
         super(FileJobStore, self).resume()
 
