@@ -23,6 +23,7 @@ from builtins import str
 from builtins import range
 from past.utils import old_div
 import logging
+import math
 from toil import subprocess
 import time
 from threading import Thread
@@ -49,7 +50,7 @@ def prepareBsub(cpu, mem):
     """
     if mem:
         if per_core_reservation():
-            mem = float(mem)/1024**3/int(cpu)
+            mem = float(mem)/1024**3/math.ceil(cpu)
             mem_resource = parse_memory_resource(mem)
             mem_limit = parse_memory_limit(mem)
         else:
@@ -60,7 +61,7 @@ def prepareBsub(cpu, mem):
             'rusage[mem=' + str(mem_resource) + ']" -M' + str(mem_limit)
     else:
         bsubMem = ''
-    cpuStr = '' if cpu is None else '-n ' + str(int(cpu))
+    cpuStr = '' if cpu is None else '-n ' + str(math.ceil(cpu))
     bsubline = ["bsub", bsubMem, cpuStr,"-cwd", ".", "-o", "/dev/null", "-e",
         "/dev/null"]
     lsfArgs = os.getenv('TOIL_LSF_ARGS')
