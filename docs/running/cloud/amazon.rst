@@ -20,17 +20,17 @@ won't automatically change in size) can be created and provisioned (grown, shrun
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 
 
-To setup AWS, see :ref:`prepare_aws-ref`.
+To setup AWS, see :ref:`prepareAWS`.
 
 .. _awsJobStore:
 
 AWS Job Store
 -------------
 
-Using the AWS jobstore is straightforward after you've finished :ref:`prepare_aws-ref`,
-all you need to do is specify prefix the jobstore name.
+Using the AWS job store is straightforward after you've finished :ref:`prepareAWS`,
+all you need to do is specify the prefix for the job store name.
 
-To run the sort example with the AWS job store you would type ::
+To run the sort example :ref:`sort example <sortExample>` with the AWS job store you would type ::
 
 	$ python sort.py aws:us-west-2:my-aws-sort-jobstore
 
@@ -93,8 +93,7 @@ a geographical area like ``us-west-2 (Oregon)``, and availability zones are part
 
 For more information on options try::
 
-    	(venv) $ toil launch-cluster --help
-
+        (venv) $ toil launch-cluster --help
 
 .. _StaticProvisioning:
 
@@ -107,22 +106,14 @@ change. This is in contrast with :ref:`Autoscaling`.
 
 To launch worker nodes alongside the leader we use the ``-w`` option.::
 
-	(venv) $ toil launch-cluster my-cluster --leaderNodeType t2.small \
-	-z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4
+    (venv) $ toil launch-cluster my-cluster --leaderNodeType t2.small -z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4
 
 This will spin up a leader node of type t2.small with five additional workers - one m3.large instance and four t2.micro.
 
 Currently static provisioning is only possible during the cluster's creation.
 The ability to add new nodes and remove existing nodes via the native provisioner is
-in development, but can also be achieved through CGCloud_. Of course the cluster can
-always be deleted with the :ref:`destroyCluster` utility.
-
-.. note::
-
-    CGCloud_ also can do static provisioning for an AWS cluster, however it is being phased out in favor of the Toil
-    provisioner.
-
-.. _CGCloud: https://github.com/BD2KGenomics/cgcloud
+in development. Of course the cluster can always be deleted with the
+:ref:`destroyCluster` utility.
 
 Uploading Workflows
 ^^^^^^^^^^^^^^^^^^^
@@ -131,13 +122,12 @@ Now that our cluster is launched, we use the :ref:`rsyncCluster` utility to copy
 the workflow to the leader. For a simple workflow in a single file this might
 look like::
 
-    	(venv) $ toil rsync-cluster -z us-west-2a my-cluster toil-workflow.py :/
+        (venv) $ toil rsync-cluster -z us-west-2a my-cluster toil-workflow.py :/
 
 .. note::
 
     If your toil workflow has dependencies have a look at the :ref:`remoteDeploying`
     section for a detailed explanation on how to include them.
-
 
 .. _Autoscaling:
 
@@ -147,18 +137,17 @@ Running a Workflow with Autoscaling
 Autoscaling is a feature of running Toil in a cloud whereby additional cloud instances are launched to run the workflow.
 Autoscaling leverages Mesos containers to provide an execution environment for these workflows.
 
+.. note::
 
+   Make sure you've done the AWS setup in :ref:`prepareAWS`.
 
 #. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`.
 
 #. Launch the leader node in AWS using the :ref:`launchCluster` command. ::
 
-        (venv) $ toil launch-cluster <cluster-name> \
-        --keyPairName <AWS-key-pair-name> \
-        --leaderNodeType t2.medium \
-        --zone us-west-2a
+        (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
 
-#. Copy the `sort.py` script up to the leader node. ::
+#. Copy the ``sort.py`` script up to the leader node. ::
 
 	(venv) $ toil rsync-cluster <cluster-name> sort.py :/root
 
@@ -168,11 +157,7 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
 #. Run the script as an autoscaling workflow. ::
 
-	$ python /root/sort.py  \
-	aws:us-west-2:autoscaling-sort-jobstore \
-	--provisioner aws --nodeTypes c3.large --maxNodes 2\
-	--batchSystem mesos --mesosMaster <private-IP>:5050 
-	--logLevel DEBUG
+	$ python /root/sort.py aws:us-west-2:<my-jobstore-name> --provisioner aws --nodeTypes c3.large --maxNodes 2 --batchSystem mesos
 
     In this example, the autoscaling Toil code creates up to two instances of type `c3.large` and launches Mesos
     slave containers inside them. The containers are then available to run jobs defined by the `sort.py` script.
@@ -193,7 +178,7 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
 For more information on other autoscaling (and other) options have a look at :ref:`workflowOptions` and/or run::
 
-    	$ python my-toil-script.py --help
+    $ python my-toil-script.py --help
 
 .. important::
 
@@ -203,33 +188,31 @@ For more information on other autoscaling (and other) options have a look at :re
 Preemptability
 ^^^^^^^^^^^^^^
 
-Toil can run on a heterogeneous cluster of both preemptable and non-preemptable nodes.
-A node type can be specified as preemptable by adding a spot bid to its entry in the list of node types provided with
-the ``--nodeTypes`` flag. While individual jobs can each explicitly specify whether or not they should be run on
-preemptable nodes
+Toil can run on a heterogeneous cluster of both preemptable and non-preemptable nodes. Being preemptable node simply
+means that the node may be shut down at any time, while jobs are running. These jobs can then be restarted later
+somewhere else.
+
+A node type can be specified as preemptable by adding a `spot bid`_ to its entry in the list of node types provided with
+the ``--nodeTypes`` flag. If spot instance prices rise above your bid, the preemptable node whill be shut down.
+
+While individual jobs can each explicitly specify whether or not they should be run on preemptable nodes
 via the boolean ``preemptable`` resource requirement, the ``--defaultPreemptable`` flag will allow jobs without a
 ``preemptable`` requirement to run on preemptable machines.
 
-
 .. admonition:: Specify Preemptability Carefully
 
-	Ensure that your choices for ``--nodeTypes`` and ``--maxNodes <>`` make
-	sense for your workflow and won't cause it to hang. You should make sure the
-	provisioner is able to create nodes large enough to run the largest job
-	in the workflow, and that non-preemptable node types are allowed if there are
-	non-preemptable jobs in the workflow.
+    Ensure that your choices for ``--nodeTypes`` and ``--maxNodes <>`` make
+    sense for your workflow and won't cause it to hang. You should make sure the
+    provisioner is able to create nodes large enough to run the largest job
+    in the workflow, and that non-preemptable node types are allowed if there are
+    non-preemptable jobs in the workflow.
 
 Finally, the ``--preemptableCompensation`` flag can be used to handle cases where preemptable nodes may not be
 available but are required for your workflow. With this flag enabled, the autoscaler will attempt to compensate
 for a shortage of preemptable nodes of a certain type by creating non-preemptable nodes of that type, if
 non-preemptable nodes of that type were specified in ``--nodeTypes``.
 
-.. admonition:: Using Mesos with Toil on AWS
-
-   The mesos master and agent processes bind to the private IP addresses of their
-   EC2 instance, so be sure to use the master's private IP when specifying
-   ``--mesosMaster``. Using the public IP will prevent the nodes from properly
-   discovering each other.
+.. _spot bid: https://aws.amazon.com/ec2/spot/pricing/
 
 Dashboard
 ---------

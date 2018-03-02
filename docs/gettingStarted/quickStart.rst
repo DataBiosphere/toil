@@ -165,6 +165,8 @@ For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file. This is not supposed to be an efficient
 sorting program, rather a more fully worked example of what Toil is capable of.
 
+.. _sortExample:
+
 Running the example
 ~~~~~~~~~~~~~~~~~~~
 
@@ -377,7 +379,7 @@ Please see the :ref:`cli_status` section for more on gathering runtime and resou
 Launching a Toil Workflow in AWS
 --------------------------------
 After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS
-(see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`)
+(see :ref:`prepareAWS`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`)
 on a VM in AWS just by modifying the run command.
 
 Note that when running in AWS, users can either run the workflow on a single instance or run it on a
@@ -425,7 +427,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 Running a CWL Workflow on AWS
 -----------------------------
 After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS
-(see :ref:`prepare_aws-ref`), the user can run a CWL workflow with Toil on AWS.
+(see :ref:`prepareAWS`), the user can run a CWL workflow with Toil on AWS.
 
 Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 

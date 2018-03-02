@@ -4,7 +4,7 @@ Running in Azure
 ================
 This section describes how to deploy a leader node in Azure and launch a Toil cluster from the leader node to run
 workflows.  You'll need an account in Azure prior to executing the steps in the document.  To setup Azure, see
-:ref:`prepare_azure-ref`.
+:ref:`prepareAzure`.
 
 .. note::
 
@@ -15,7 +15,7 @@ workflows.  You'll need an account in Azure prior to executing the steps in the 
 Azure Job Store
 ---------------
 
-After :ref:`prepare_azure-ref` all you will need to do is specify the job store name prefix for Azure.
+After :ref:`prepareAzure` all you will need to do is specify the job store name prefix for Azure.
 
 For example to run the sort example with Azure job store you would run ::
 

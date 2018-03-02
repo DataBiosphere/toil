@@ -28,7 +28,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
 #. Launch the leader node in GCE using the :ref:`launchCluster` command. ::
 
-    (venv) $ toil launch-cluster gce-sort --provisioner gce --leaderNodeType n1-standard-1 \
+    (venv) $ toil launch-cluster <CLUSTER-NAME> --provisioner gce --leaderNodeType n1-standard-1 \
               --keyPairName <ssh-keyName> --boto <botoDir> --zone us-west1-a
 
    The ``--boto`` option is necessary to talk to an AWS jobstore. This also requires that your aws credentials
@@ -40,17 +40,17 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
 #. Upload the sort example and ssh into the leader. ::
 
-    (venv) $ toil rsync-cluster --provisioner gce gce-sort sort.py :/root
-    (venv) $ toil ssh-cluster --provisioner gce gce-sort
+    (venv) $ toil rsync-cluster --provisioner gce <CLUSTER-NAME> sort.py :/root
+    (venv) $ toil ssh-cluster --provisioner gce <CLUSTER-NAME>
 
 #. Run the workflow. ::
 
-    $ python /root/sort.py  aws:us-west-2:gce-sort-jobstore --provisioner gce --batchSystem mesos --nodeTypes n1-standard-2 --maxNodes 2
+    $ python /root/sort.py  aws:us-west-2:<JOBSTORE-NAME> --provisioner gce --batchSystem mesos --nodeTypes n1-standard-2 --maxNodes 2
 
 #. Cleanup ::
 
-    $ exit
-    (venv) $ toil destory-cluster --provisioner gce gce-sort
+    $ exit  # this exits the ssh from the leader node
+    (venv) $ toil destory-cluster --provisioner gce <CLUSTER-NAME>
 
 .. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
 
