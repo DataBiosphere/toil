@@ -4,7 +4,7 @@ import logging
 import tempfile
 import threading
 import time
-import subprocess
+from toil import subprocess
 import multiprocessing
 import signal
 import os

@@ -28,7 +28,7 @@ import math
 import shutil
 from argparse import ArgumentParser
 from optparse import OptionContainer, OptionGroup
-import subprocess
+from toil import subprocess
 
 # Python 3 compatibility imports
 from six.moves import xrange

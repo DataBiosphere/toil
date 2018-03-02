@@ -18,15 +18,12 @@
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
 
-from future import standard_library
-standard_library.install_aliases()
 from builtins import str
 from builtins import range
 from builtins import object
 from toil.job import Job
-from toil.common import Toil
+from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
-from toil.lib.bioio import setLoggingFromOptions
 
 import argparse
 import cwltool.errors
@@ -385,29 +382,19 @@ class CWLJobWrapper(Job):
     def __init__(self, tool, cwljob, **kwargs):
         super(CWLJobWrapper, self).__init__(cores=1,
                                             memory=1024*1024,
-                                            disk=1)
+                                            disk=8*1024)
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
         self.kwargs = kwargs
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
-
-        if 'builder' in self.kwargs:
-            builder = self.kwargs["builder"]
-        else:
-            builder = cwltool.builder.Builder()
-            builder.job = cwljob
-            builder.requirements = []
-            builder.outdir = None
-            builder.tmpdir = None
-            builder.timeout = 0
-            builder.resources = {}
         options = copy.deepcopy(self.kwargs)
-        options.update({'tool': self.cwltool,
-                        'cwljob': self.cwljob,
-                        'builder': builder})
-        realjob = CWLJob(**options)
+        options['jobobj'] = cwljob
+        realjob = CWLJob(self.cwltool, cwljob, **options)
+        for child in self._children:
+            cwllogger.debug("CWLJobWrapper child: {}".format(child))
+            realjob.addFollowOn(child)
         self.addChild(realjob)
         return realjob.rv()
 
@@ -420,11 +407,11 @@ class CWLJob(Job):
             builder = kwargs["builder"]
         else:
             builder = cwltool.builder.Builder()
-            builder.job = {}
+            builder.job = cwljob
             builder.requirements = []
             builder.outdir = None
             builder.tmpdir = None
-            builder.timeout = 0
+            builder.timeout = kwargs.get('eval_timeout')
             builder.resources = {}
         req = tool.evalResources(builder, {})
         self.cwltool = remove_pickle_problems(tool)
@@ -509,7 +496,7 @@ def makeJob(tool, jobobj, **kwargs):
                     options = copy.deepcopy(kwargs)
                     options.update({
                         'tool': tool,
-                        'jobobj': jobobj})
+                        'cwljob': jobobj})
                     job = CWLJobWrapper(**options)
                     return (job, job)
         options = copy.deepcopy(kwargs)
@@ -843,8 +830,10 @@ def visitSteps(t, op):
 
 
 def main(args=None, stdout=sys.stdout):
+    config = Config()
+    config.cwl = True
     parser = argparse.ArgumentParser()
-    Job.Runner.addToilOptions(parser)
+    addOptions(parser, config)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
 
@@ -895,7 +884,6 @@ def main(args=None, stdout=sys.stdout):
 
     use_container = not options.no_container
 
-    setLoggingFromOptions(options)
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 

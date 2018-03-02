@@ -31,7 +31,7 @@ from textwrap import dedent
 import time
 import multiprocessing
 import sys
-import subprocess
+from toil import subprocess
 from unittest import skipIf
 
 from toil.common import Config
@@ -48,6 +48,7 @@ from toil.test import (ToilTest,
                        needs_gridengine,
                        needs_slurm,
                        needs_torque,
+                       needs_htcondor,
                        slow,
                        tempFileContaining)
 from future.utils import with_metaclass
@@ -693,6 +694,20 @@ class TorqueBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
         for f in glob('toil_job_*.[oe]*'):
             os.unlink(f)
 
+@slow
+@needs_htcondor
+class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
+    """
+    Tests against the HTCondor batch system
+    """
+
+    def createBatchSystem(self):
+        from toil.batchSystems.htcondor import HTCondorBatchSystem
+        return HTCondorBatchSystem(config=self.config, maxCores=numCores, maxMemory=1000e9,
+                                       maxDisk=1e9)
+
+    def tearDown(self):
+        super(HTCondorBatchSystemTest, self).tearDown()
 
 class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     """

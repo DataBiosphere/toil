@@ -13,10 +13,10 @@ from __future__ import print_function
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import mimetypes
-import subprocess
 import sys
 import os
 
+from toil import subprocess
 from toil.test import ToilTest, slow
 from toil.test.mesos import helloWorld
 

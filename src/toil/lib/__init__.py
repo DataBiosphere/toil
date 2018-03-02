@@ -13,7 +13,7 @@
 # limitations under the License.
 from __future__ import absolute_import
 
-import subprocess
+from toil import subprocess
 
 FORGO = 0
 STOP = 1

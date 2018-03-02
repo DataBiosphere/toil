@@ -16,19 +16,8 @@
   hosts: localhost
   connection: local
   gather_facts: False
-  vars:
-    dnsname: '{{ vmname }}.westus.cloudapp.azure.com'
-    # The DNS name might not be right depending on your region!!
-    ip: "{{ lookup ('dig', '{{ dnsname }}') }}"
 
   tasks:
-  - debug: msg="Public DNS name {{ dnsname }} resolved to IP {{ ip }}."
-# The following check is disabled so that the playbook does not stop upon existence of DNS name. Otherwise
-# it cannot be re-run after VM creation
-#  - name: Check if DNS is taken
-#    fail: msg="That DNS name seems to be already taken"
-#    when: ip != 'NXDOMAIN'
-
   - name: Create a resource group
     tags:
       - leader
