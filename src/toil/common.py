@@ -94,7 +94,7 @@ class Config(object):
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
-        self.alphaPacking = 0.8
+        self.alphaPacking = 0.0
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
