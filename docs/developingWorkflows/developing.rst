@@ -126,7 +126,7 @@ For example::
 
         with Toil(options) as toil:
             if not toil.options.restart:
-                job = HelloWorld("Smitty Werbenmanjensen, he was #1")
+                job = HelloWorld("Woot!")
                 toil.start(job)
             else:
                 toil.restart()
@@ -167,7 +167,8 @@ parse command line options for a Toil script. For example::
             return "Hello, world!, here's a message: %s" % self.message
 
     if __name__=="__main__":
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+        parser = Job.Runner.getDefaultArgumentParser()
+        options = parser.parse_args()
         options.logLevel = "INFO"
         options.clean = "always"
 
