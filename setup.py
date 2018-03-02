@@ -31,6 +31,8 @@ def runSetup():
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
+    gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
+    apacheLibcloud = 'apache-libcloud==2.2.1'
     cwltool = 'cwltool==1.0.20180130110340'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
@@ -51,6 +53,8 @@ def runSetup():
     encryption_reqs = [
         pynacl]
     google_reqs = [
+        gcs_oauth2_boto_plugin,  # is this being used??
+        apacheLibcloud,
         gcs]
     cwl_reqs = [
         cwltool,
