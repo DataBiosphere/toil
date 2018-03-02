@@ -21,6 +21,8 @@ that will dynamically scale depending on the workflow's needs.
 The :ref:`StaticProvisioning` section explains how a static cluster (one that
 won't automatically change in size) can be created and provisioned (grown, shrunk, destroyed, etc.).
 
+Currently, it's recommended that users do not run their scripts from system folders (``/var``, ``/``, or ``/tmp`` for example.).
+It's recommended to create a new folder such as ``/tmp/working`` as the working directory.
 
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 
@@ -137,7 +139,7 @@ look like::
 Running a Workflow with Autoscaling
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Autoscaling is a feature of running Toil in a cloud whereby additional cloud instances are launched to run the workflow.  Autoscaling leverages Mesos containers to provide an execution environment for these workflows.  
+Autoscaling is a feature of running Toil in a cloud whereby additional cloud instances are launched to run the workflow.  Autoscaling leverages Mesos containers to provide an execution environment for these workflows.
 
 
 

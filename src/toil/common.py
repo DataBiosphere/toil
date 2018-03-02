@@ -213,7 +213,7 @@ class Config(object):
         #Batch system options
         setOption("batchSystem")
         setBatchOptions(self, setOption)
-        setOption("disableHotDeployment")
+        setOption("disableRemoteDeployment")
         setOption("scale", float, fC(0.0))
         setOption("mesosMasterAddress")
         setOption("parasolCommand")
@@ -724,7 +724,7 @@ class Toil(object):
                                        'Toil.restart() to resume it.')
 
         self._batchSystem = self.createBatchSystem(self.config)
-        self._setupHotDeployment(rootJob.getUserScript())
+        self._setupRemoteDeployment(rootJob.getUserScript())
         try:
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
@@ -767,7 +767,7 @@ class Toil(object):
             return self._jobStore.getRootJobReturnValue()
 
         self._batchSystem = self.createBatchSystem(self.config)
-        self._setupHotDeployment()
+        self._setupRemoteDeployment()
         try:
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
@@ -882,10 +882,10 @@ class Toil(object):
 
         return batchSystemClass(**kwargs)
 
-    def _setupHotDeployment(self, userScript=None):
+    def _setupRemoteDeployment(self, userScript=None):
         """
         Determine the user script, save it to the job store and inject a reference to the saved
-        copy into the batch system such that it can hot-deploy the resource on the worker
+        copy into the batch system such that it can remote-deploy the resource on the worker
         nodes.
 
         :param toil.resource.ModuleDescriptor userScript: the module descriptor referencing the
@@ -894,11 +894,11 @@ class Toil(object):
         if userScript is not None:
             # This branch is hit when a workflow is being started
             if userScript.belongsToToil:
-                logger.info('User script %s belongs to Toil. No need to hot-deploy it.', userScript)
+                logger.info('User script %s belongs to Toil. No need to remote-deploy it.', userScript)
                 userScript = None
             else:
-                if (self._batchSystem.supportsHotDeployment() and
-                        not self.config.disableHotDeployment):
+                if (self._batchSystem.supportsRemoteDeployment() and
+                        not self.config.disableRemoteDeployment):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
                     with self._jobStore.writeSharedFileStream('userScript') as f:
@@ -906,7 +906,7 @@ class Toil(object):
                 else:
                     from toil.batchSystems.singleMachine import SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
-                        logger.warn('Batch system does not support hot-deployment. The user '
+                        logger.warn('Batch system does not support remote-deployment. The user '
                                     'script %s will have to be present at the same location on '
                                     'every worker.', userScript)
                     userScript = None
@@ -920,7 +920,7 @@ class Toil(object):
                 logger.info('User script neither set explicitly nor present in the job store.')
                 userScript = None
         if userScript is None:
-            logger.info('No user script to hot-deploy.')
+            logger.info('No user script to remote-deploy.')
         else:
             logger.debug('Saving user script %s as a resource', userScript)
             userScriptResource = userScript.saveAsResourceTo(self._jobStore)

@@ -4,6 +4,9 @@ Deploying a Workflow
 ====================
 You can deploy a workflow locally (on a single machine) or remotely (i.e. distributed on a cluster), as described below.
 
+Currently, it's recommended that users do not run their scripts from system folders (``/var``, ``/``, or ``/tmp`` for example.).
+It's recommended to create a new folder such as ``/tmp/working`` as the working directory.
+
 .. _localDeploying:
 
 Deploying a Local Workflow
@@ -81,7 +84,7 @@ From here, you can install your project and its dependencies::
        └── main.py
 
    3 directories, 5 files
-   $ pip install fairydust
+   $ pip install matplotlib
    $ cp -R workflow util venv/lib/python2.7/site-packages
 
 Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which
@@ -107,7 +110,7 @@ Or, if your project has been published to PyPI::
    $ pip install my-project
 
 In each case, we have created a virtualenv with the ``--system-site-packages``
-flag in the ``venv`` subdirectory then installed the ``fairydust`` distribution
+flag in the ``venv`` subdirectory then installed the ``matplotlib`` distribution
 from PyPI along with the two packages that our project consists of. (Again, both
 Python and Toil are assumed to be present on the leader and all worker nodes.)
 We can now run our workflow::
@@ -240,4 +243,3 @@ Toil comes with the Toil Appliance, a Docker image with Mesos and Toil baked in.
 It's easily deployed, only needs Docker, and allows for workflows to be run in
 single-machine mode and for clusters of VMs to be provisioned. For more
 information, see the :ref:`runningAWS` section.
-

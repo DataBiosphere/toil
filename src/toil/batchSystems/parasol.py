@@ -51,7 +51,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return False
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsRemoteDeployment(cls):
         return False
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):

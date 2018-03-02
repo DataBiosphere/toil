@@ -414,7 +414,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             dirPath = os.path.sep.join(filePath)
         log.debug("Module dir is %s", dirPath)
         require(os.path.isdir(dirPath),
-                'Bad directory path %s for module %s. Note that hot-deployment does not support \
+                'Bad directory path %s for module %s. Note that remote-deployment does not support \
                 .egg-link files yet, or scripts located in the root directory.', dirPath, name)
         fromVirtualEnv = inVirtualEnv() and dirPath.startswith(sys.prefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
@@ -461,7 +461,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
 
     def _getResourceClass(self):
         """
-        Return the concrete subclass of Resource that's appropriate for hot-deploying this module.
+        Return the concrete subclass of Resource that's appropriate for remote-deploying this module.
         """
         if self.fromVirtualEnv:
             subcls = VirtualEnvResource

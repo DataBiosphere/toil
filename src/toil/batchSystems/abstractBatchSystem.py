@@ -57,9 +57,9 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
 
     # noinspection PyMethodParameters
     @abstractclassmethod
-    def supportsHotDeployment(cls):
+    def supportsRemoteDeployment(cls):
         """
-        Whether this batch system supports hot deployment of the user script itself. If it does,
+        Whether this batch system supports remote-deployment of the user script itself. If it does,
         the :meth:`.setUserScript` can be invoked to set the resource object representing the user
         script.
 
@@ -87,7 +87,7 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
     def setUserScript(self, userScript):
         """
         Set the user script for this workflow. This method must be called before the first job is
-        issued to this batch system, and only if :meth:`.supportsHotDeployment` returns True,
+        issued to this batch system, and only if :meth:`.supportsRemoteDeployment` returns True,
         otherwise it will raise an exception.
 
         :param toil.resource.Resource userScript: the resource object representing the user script
