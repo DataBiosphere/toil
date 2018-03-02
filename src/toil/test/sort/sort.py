@@ -29,7 +29,7 @@ from toil.job import Job
 
 defaultLines = 1000
 defaultLineLen = 50
-sortMemory = '1000M'
+sortMemory = '200M'
 
 
 def setup(job, inputFile, N, downCheckpoints, options):
