@@ -17,7 +17,7 @@ def setup(job, input_file_id, n, down_checkpoints):
     return job.addChildJobFn(down,
                              input_file_id, n,
                              down_checkpoints=down_checkpoints,
-                             memory='1000M').rv()
+                             memory='600M').rv()
 
 
 def down(job, input_file_id, n, down_checkpoints):
@@ -45,10 +45,10 @@ def down(job, input_file_id, n, down_checkpoints):
 
         # Call the down function recursively
         return job.addFollowOnJobFn(up, job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), n,
-                                    down_checkpoints=down_checkpoints, memory='1000M').rv(),
+                                    down_checkpoints=down_checkpoints, memory='600M').rv(),
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), n,
                                                       down_checkpoints=down_checkpoints,
-                                                      memory='1000M').rv()).rv()
+                                                      memory='600M').rv()).rv()
     else:
         # We can sort this bit of the file
         job.fileStore.logToMaster("Sorting file: %s of size: %s"
@@ -163,7 +163,7 @@ def main():
         sort_file_url = 'file://' + os.path.abspath('file_to_sort.txt')
         if not toil.options.restart:
             sort_file_id = toil.importFile(sort_file_url)
-            sorted_file_id = toil.start(Job.wrapJobFn(setup, sort_file_id, int(options.N), False, memory='1000M'))
+            sorted_file_id = toil.start(Job.wrapJobFn(setup, sort_file_id, int(options.N), False, memory='600M'))
         else:
             sorted_file_id = toil.restart()
         toil.exportFile(sorted_file_id, sort_file_url)
