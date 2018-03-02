@@ -165,7 +165,7 @@ Here's what each extra provides:
 .. _Homebrew: http://brew.sh/
 
 
-.. _prepare_aws-ref:
+.. _prepareAWS:
 
 Preparing your AWS environment
 ------------------------------
@@ -186,20 +186,35 @@ during the computation of a workflow, first set up and configure an account with
 .. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 
 
-.. _prepare_azure-ref:
+.. _prepareAzure:
 
 Preparing your Azure environment
 --------------------------------
 
 Follow the steps below to prepare your Azure environment for running a Toil workflow.
 
-#. Create an `Azure account`_.
+#. Create an `Azure account`_ and to use the job store make an `Azure storage account`_.
+
+#. Locate your Azure storage account key and then store it in one of the following locations:
+    - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
+    - ``AZURE_ACCOUNT_KEY`` environment variable
+    - or finally in ``~/.toilAzureCredentials.`` with the format ::
+
+         [AzureStorageCredentials]
+         accountName1=ACCOUNTKEY1==
+         accountName2=ACCOUNTKEY2==
+
+   These locations are searched in the order above, which can be useful if you work with multiple
+   accounts.
 
 #. Make sure you have an SSH RSA public key, usually stored in
    ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
    one.
 
 .. _Azure account: https://azure.microsoft.com/en-us/free/
+
+.. _Azure storage account: https://docs.microsoft.com/en-us/azure/storage/common/storage-quickstart-create-account?tabs=portal
+
 .. _prepareGoogle:
 
 Preparing your Google environment
