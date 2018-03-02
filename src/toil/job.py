@@ -762,7 +762,7 @@ class Job(JobLikeObject):
         @staticmethod
         def startToil(job, options):
             """
-            Deprecated by toil.common.Toil.run. Runs the toil workflow using the given options
+            Deprecated by toil.common.Toil.start. Runs the toil workflow using the given options
             (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) starting with this
             job.
             :param toil.job.Job job: root job of the workflow
