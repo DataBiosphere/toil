@@ -28,13 +28,16 @@ Running a Workflow with Autoscaling
 The steps to run a GCE workflow are similar to those of AWS (:ref:`Autoscaling`), except you will
 need to explicitly specify the ``--provisioner gce`` option which otherwise defaults to ``aws``.
 
-#. Download :download:`sort.py <../../src/toil/test/sort/sort.py>`.
+#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`.
 
 #. Launch the leader node in GCE using the :ref:`launchCluster` command. ::
 
-    (venv) $ toil launch-cluster <cluster-name> --provisioner gce --leaderNodeType n1-standard-1 --keyPairName <ssh-keyName> --boto <botoPath> --zone us-west1-a
+    (venv) $ toil launch-cluster <CLUSTER-NAME> --provisioner gce --leaderNodeType n1-standard-1 --keyPairName <SSH-KEYNAME> --boto <botoDir> --zone us-west1-a
 
-   The ``--boto`` option is necessary only if using an AWS jobstore. It also requires that your aws credentials
+   Where ``<SSH-KEYNAME>`` is the first part of ``[USERNAME]`` used when setting up your ssh key (see
+   :ref:`prepareGoogle`). For example if ``[USERNAME]`` was jane@example.com, ``<SSH-KEYNAME>`` should be ``jane``.
+
+   The ``--boto`` option is necessary to talk to an AWS jobstore. This also requires that your aws credentials
    are actually saved in your ``.boto`` file.
    (the Google jobStore will be ready with issue #1948).
 
@@ -43,16 +46,18 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
 #. Upload the sort example and ssh into the leader. ::
 
-    (venv) $ toil rsync-cluster --provisioner gce <cluster-name> sort.py :/root
-    (venv) $ toil ssh-cluster --provisioner gce <cluster-name>
+    (venv) $ toil rsync-cluster --provisioner gce <CLUSTER-NAME> sort.py :/root
+    (venv) $ toil ssh-cluster --provisioner gce <CLUSTER-NAME>
 
 #. Run the workflow. ::
 
-    $ python /root/sort.py  aws:us-west-2:gce-sort-jobstore --provisioner gce --batchSystem mesos --nodeTypes n1-standard-2 --maxNodes 2
+    $ python /root/sort.py  aws:us-west-2:<JOBSTORE-NAME> --provisioner gce --batchSystem mesos --nodeTypes n1-standard-2 --maxNodes 2
 
 #. Cleanup ::
 
-    $ exit
-    (venv) $ toil destory-cluster --provisioner gce <cluster-name>
+    $ exit  # this exits the ssh from the leader node
+    (venv) $ toil destory-cluster --provisioner gce <CLUSTER-NAME>
 
 .. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
+
+

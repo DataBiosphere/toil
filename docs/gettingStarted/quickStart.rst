@@ -30,7 +30,7 @@ A Toil workflow can be run with just three steps:
           print output
 
 
-3. Specify the name of the job store and run the workflow::
+3. Specify the name of the :ref:`job store <jobStoreOverview>` and run the workflow::
 
        (venv) $ python helloWorld.py file:my-job-store
 
@@ -164,6 +164,8 @@ A (more) real-world example
 For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file. This is not supposed to be an efficient
 sorting program, rather a more fully worked example of what Toil is capable of.
+
+.. _sortExample:
 
 Running the example
 ~~~~~~~~~~~~~~~~~~~
@@ -377,7 +379,7 @@ Please see the :ref:`cli_status` section for more on gathering runtime and resou
 Launching a Toil Workflow in AWS
 --------------------------------
 After having installed the ``aws`` extra for Toil during the :ref:`installation-ref` and set up AWS
-(see :ref:`prepare_aws-ref`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`)
+(see :ref:`prepareAWS`), the user can run the basic ``helloWorld.py`` script (:ref:`quickstart`)
 on a VM in AWS just by modifying the run command.
 
 Note that when running in AWS, users can either run the workflow on a single instance or run it on a
@@ -385,7 +387,6 @@ cluster (which is running across multiple containers on multiple AWS instances).
 on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
 Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
-
 
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``,
    ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
@@ -426,7 +427,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 Running a CWL Workflow on AWS
 -----------------------------
 After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS
-(see :ref:`prepare_aws-ref`), the user can run a CWL workflow with Toil on AWS.
+(see :ref:`prepareAWS`), the user can run a CWL workflow with Toil on AWS.
 
 Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
@@ -488,6 +489,8 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Launch a leader node in AWS using the :ref:`launchCluster` command. ::
 
         (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2c
+
+   Setting the environment variable ``TOIL_AWS_ZONE`` eliminates having to do this for each later command.
         (venv) $ export TOIL_AWS_ZONE=us-west-2c
 
 #. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as
