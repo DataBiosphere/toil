@@ -23,6 +23,12 @@ export TOIL_AWS_KEYNAME=jenkins@jenkins-master
 export TOIL_AZURE_KEYNAME=toiltest
 export TOIL_GOOGLE_PROJECTID=toil-dev
 export GOOGLE_APPLICATION_CREDENTIALS=/home/jenkins/builds/toil-dev-41fd0135b44d.json
+export TOIL_KEYNAME=jenkins
+export TOIL_BOTO_DIR=/home/jenkins/.boto
+
+# Needed for google provisioner tests
+export TOIL_GOOGLE_KEYNAME=jenkins
+export TOIL_BOTO_DIR=/home/jenkins/.boto
 
 TMPDIR=/mnt/ephemeral/tmp
 # Run rm "as root" so we can clean up files left over by rogue containers
