@@ -283,7 +283,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         #Set memory requirements so that sort jobs can be run
         # on small instances, but merge jobs must be run on large
         # instances
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=1.0G', '--mergeMemory=3.0G']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=0.6G', '--mergeMemory=3.0G']
         runCommand.extend(toilOptions)
         runCommand.append('--sseKey=/home/keyFile')
         log.info("_runScript: %s" % ''.join(runCommand))
