@@ -250,7 +250,8 @@ class ClusterScaler(object):
         self.totalJobsCompleted = 0
         
 
-        assert sum(config.maxNodes) > 0, 'Not configured to create nodes of any type.'
+        if not sum(config.maxNodes) > 0:
+            raise Exception('Not configured to create nodes of any type.')
         
         self.scaler = ScalerThread(scaler=self)
 
