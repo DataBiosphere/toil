@@ -270,7 +270,7 @@ class ClusterScaler(object):
             self.scaler.join(timeout=0)
         except Exception as e:
             logger.exception(e)
-            raise RuntimeError('The cluster scaler has exited due to an exception')
+            raise
 
     def shutdown(self):
         """

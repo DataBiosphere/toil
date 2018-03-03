@@ -40,6 +40,9 @@ test_suites = {
         'AzureRestartTest',
         'AzureAutoscaleTest',
         'AzureStaticAutoscaleTest'
+        'GCERestartTest',
+        'GCEAutoscaleTest',
+        'GCEStaticAutoscaleTest'
     ]}
 
 pytest_errors = ['All tests were collected and passed successfully.',

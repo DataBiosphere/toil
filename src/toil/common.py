@@ -361,9 +361,15 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
+<<<<<<< HEAD
     addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'azure'],
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
                      "'azure' or 'aws'. The default is %s." % config.provisioner)
+=======
+    addOptionFn("--provisioner", dest="provisioner", choices=['aws','gce'],
+                help="The provisioner for cluster auto-scaling. The currently supported choices are"
+                     "'aws' or 'gce'. The default is %s." % config.provisioner)
+>>>>>>> cdeca31d59e3bad48614ec7ebf9ee0337d57c7b3
 
     addOptionFn('--nodeTypes', default=None,
                  help="List of node types separated by commas. The syntax for each node type "
@@ -791,6 +797,13 @@ class Toil(object):
             logger.info('Using Azure provisioner.')
             from toil.provisioners.azure.azureProvisioner import AzureProvisioner
             self._provisioner = AzureProvisioner(self.config)
+        elif self.config.provisioner == 'gce':
+            logger.info('Using a gce provisioner.')
+            try:
+                from toil.provisioners.gceProvisioner import GCEProvisioner
+            except ImportError:
+                raise RuntimeError('The libCloud extra must be installed to use this provisioner')
+            self._provisioner = GCEProvisioner(self.config)
         else:
             # Command line parser shold have checked argument validity already
             assert False, self.config.provisioner

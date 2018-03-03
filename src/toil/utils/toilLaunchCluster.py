@@ -37,10 +37,14 @@ def main():
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
                         help="On AWS, the name of the AWS key pair to include on the instance."
+                        " On Google/GCE, this is the ssh key pair."
                         " On Azure, this will be used as the owner tag.")
     parser.add_argument("--publicKeyFile", dest='publicKeyFile', default="~/.ssh/id_rsa.pub",
                         help="On Azure, the file"
                         " containing the key pairs (the first key pair will be used).")
+    parser.add_argument("--boto", dest='botoPath',
+                        help="The path to the boto credentials directory. This is transferred to all "
+                             " nodes in order to access the AWS jobStore from non-AWS instances.")
     parser.add_argument("-t", "--tag", metavar='NAME=VALUE', dest='tags', default=[], action='append',
                         help="Tags are added to the AWS cluster for this node and all of its "
                              "children. Tags are of the form:\n"
@@ -96,6 +100,13 @@ def main():
     elif config.provisioner == 'azure':
         from toil.provisioners.azure.azureProvisioner import AzureProvisioner
         provisioner = AzureProvisioner()
+    elif config.provisioner == 'gce':
+        logger.info('Using a gce provisioner.')
+        try:
+            from toil.provisioners.gceProvisioner import GCEProvisioner
+        except ImportError:
+            raise RuntimeError('The libCloud extra must be installed to use this provisioner')
+        provisioner = GCEProvisioner()
     else:
         assert False
 
@@ -133,6 +144,7 @@ def main():
                               numPreemptableWorkers=numPreemptableNodes,
                               keyName=config.keyPairName,
                               publicKeyFile=config.publicKeyFile,
+                              botoPath=config.botoPath,
                               clusterName=config.clusterName,
                               spotBids=spotBids,
                               userTags=tagsDict,

@@ -440,7 +440,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     remainingMemory -= toMiB(jobType.memory)
                     remainingDisk -= toMiB(jobType.disk)
                     nextToLaunchIndex += 1
-                else:
+                if not self.jobQueues.typeEmpty(jobType):
+                    # report that remaining jobs cannot be run with the current resourcesq:
                     log.debug('Offer %(offer)s not suitable to run the tasks with requirements '
                               '%(requirements)r. Mesos offered %(memory)s memory, %(cores)s cores '
                               'and %(disk)s of disk on a %(non)spreemptable slave.',

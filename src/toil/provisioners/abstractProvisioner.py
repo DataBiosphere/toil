@@ -164,20 +164,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
 
     @classmethod
     @abstractmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
-        """
-        Launches a cluster with the specified instance type for the leader with the specified name.
-
-        :param instanceType: desired type of the leader instance
-        :param keyName: name of the ssh key pair to launch the instance with
-        :param clusterName: desired identifier of the cluster
-        :param spotBid: how much to bid for the leader instance. If none, use on demand pricing.
-        :return:
-        """
-        raise NotImplementedError
-
-    @classmethod
-    @abstractmethod
     def sshLeader(cls, clusterName, args, **kwargs):
         """
         SSH into the leader instance of the specified cluster with the specified arguments to SSH.

@@ -44,7 +44,7 @@ from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNod
                                Node, NoSuchClusterException)
 
 logger = logging.getLogger(__name__)
-
+logging.getLogger("boto").setLevel(logging.WARNING)
 
 def awsRetryPredicate(e):
     if not isinstance(e, BotoServerError):
@@ -143,7 +143,9 @@ class AWSProvisioner(AbstractProvisioner):
         self.subnetID = None
 
     def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
-            clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None, vpcSubnet=None, leaderStorage=50, nodeStorage=50, **kwargs):
+            clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None,
+            vpcSubnet=None, leaderStorage=50, nodeStorage=50,
+            botoPath=None):
         if self.config is None:
             self.nodeStorage = nodeStorage
         if userTags is None:
