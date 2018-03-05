@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ import threading
 import time
 import unittest
 import uuid
+import errno
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
@@ -39,7 +40,6 @@ from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
 from bd2k.util import less_strict_bool, memoize
-from bd2k.util.files import mkdir_p
 from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 from bd2k.util.threading import ExceptionalThread
@@ -51,6 +51,18 @@ from future.utils import with_metaclass
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
+
+def mkdir_p(path):
+    """
+    The equivalent of mkdir -p
+    """
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
 
 
 class ToilTest(unittest.TestCase):
