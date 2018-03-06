@@ -35,11 +35,14 @@ def main():
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
-                        help="The name of the AWS key pair to include on the instance")
+                        help="The name of the AWS or ssh key pair to include on the instance")
+    parser.add_argument("--boto", dest='botoPath',
+                        help="The path to the boto credentials directory. This is transferred to all "
+                             " nodes in order to access the AWS jobStore from non-AWS instances.")
     parser.add_argument("-t", "--tag", metavar='NAME=VALUE', dest='tags', default=[], action='append',
                         help="Tags are added to the AWS cluster for this node and all of its "
                              "children. Tags are of the form:\n"
-                             " --t key1=value1 --tag key2=value2\n"
+                             " -t key1=value1 --tag key2=value2\n"
                              "Multiple tags are allowed and each tag needs its own flag. By "
                              "default the cluster is tagged with "
                              " {\n"
@@ -83,33 +86,42 @@ def main():
         except ImportError:
             raise RuntimeError('The aws extra must be installed to use this provisioner')
         provisioner = AWSProvisioner()
-
-        #Parse leader node type and spot bid
-        parsedBid = config.leaderNodeType.split(':', 1)
-        if len(config.leaderNodeType) != len(parsedBid[0]):
-            leaderSpotBid = float(parsedBid[1])
-            config.leaderNodeType = parsedBid[0]
-
-        if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
-            raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
-        if config.nodeTypes:
-            nodeTypesList = config.nodeTypes.split(",")
-            numWorkersList = config.workers.split(",")
-            if not len(nodeTypesList) == len(numWorkersList):
-                raise RuntimeError("List of node types must be same length as list of numbers of workers.")
-            for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
-                parsedBid = nodeTypeStr.split(':', 1)
-                if len(nodeTypeStr) != len(parsedBid[0]):
-                    #Is a preemptable node
-
-                    preemptableNodeTypes.append(parsedBid[0])
-                    spotBids.append(float(parsedBid[1]))
-                    numPreemptableNodes.append(int(num))
-                else:
-                    nodeTypes.append(nodeTypeStr)
-                    numNodes.append(int(num))
+    elif config.provisioner == 'gce':
+        logger.info('Using a gce provisioner.')
+        try:
+            from toil.provisioners.gceProvisioner import GCEProvisioner
+        except ImportError:
+            raise RuntimeError('The libCloud extra must be installed to use this provisioner')
+        provisioner = GCEProvisioner()
     else:
         assert False
+
+
+    #Parse leader node type and spot bid
+    parsedBid = config.leaderNodeType.split(':', 1)
+    if len(config.leaderNodeType) != len(parsedBid[0]):
+        leaderSpotBid = float(parsedBid[1])
+        config.leaderNodeType = parsedBid[0]
+
+    if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
+        raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
+    if config.nodeTypes:
+        nodeTypesList = config.nodeTypes.split(",")
+        numWorkersList = config.workers.split(",")
+        if not len(nodeTypesList) == len(numWorkersList):
+            raise RuntimeError("List of node types must be same length as list of numbers of workers.")
+        for nodeTypeStr, num in zip(nodeTypesList, numWorkersList):
+            parsedBid = nodeTypeStr.split(':', 1)
+            if len(nodeTypeStr) != len(parsedBid[0]):
+                #Is a preemptable node
+
+                preemptableNodeTypes.append(parsedBid[0])
+                spotBids.append(float(parsedBid[1]))
+                numPreemptableNodes.append(int(num))
+            else:
+                nodeTypes.append(nodeTypeStr)
+                numNodes.append(int(num))
+
 
     provisioner.launchCluster(leaderNodeType=config.leaderNodeType,
                               leaderSpotBid=leaderSpotBid,
@@ -118,6 +130,7 @@ def main():
                               numWorkers=numNodes,
                               numPreemptableWorkers = numPreemptableNodes,
                               keyName=config.keyPairName,
+                              botoPath=config.botoPath,
                               clusterName=config.clusterName,
                               spotBids=spotBids,
                               userTags=tagsDict,

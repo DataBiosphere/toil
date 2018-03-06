@@ -107,11 +107,11 @@ Test environment variables
 |                        | source directory via ``make test`` or              |
 |                        | ``make test_parallel``.                            |
 +------------------------+----------------------------------------------------+
-| TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepare_aws-ref`), which |
+| TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepareAWS`), which      |
 |                        | is required to run the AWS tests.                  |
 +------------------------+----------------------------------------------------+
 | TOIL_AZURE_KEYNAME     | An Azure account keyname (see                      |
-|                        | :ref:`prepare_azure-ref`),                         |
+|                        | :ref:`prepareAzure`),                              |
 |                        | which is required to run the AWS tests.            |
 +------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |

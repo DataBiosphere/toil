@@ -165,12 +165,12 @@ Here's what each extra provides:
 .. _Homebrew: http://brew.sh/
 
 
-.. _prepare_aws-ref:
+.. _prepareAWS:
 
 Preparing your AWS environment
 ------------------------------
 
-To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files 
+To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files
 during the computation of a workflow, first set up and configure an account with AWS.
 
 #. If necessary, create and activate an `AWS account`_
@@ -186,14 +186,26 @@ during the computation of a workflow, first set up and configure an account with
 .. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 
 
-.. _prepare_azure-ref:
+.. _prepareAzure:
 
 Preparing your Azure environment
 --------------------------------
 
 Follow the steps below to prepare your Azure environment for running a Toil workflow.
 
-#. Create an `Azure account`_.
+#. Create an `Azure account`_ and to use the job store make an `Azure storage account`_.
+
+#. Locate your Azure storage account key and then store it in one of the following locations:
+    - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
+    - ``AZURE_ACCOUNT_KEY`` environment variable
+    - or finally in ``~/.toilAzureCredentials.`` with the format ::
+
+         [AzureStorageCredentials]
+         accountName1=ACCOUNTKEY1==
+         accountName2=ACCOUNTKEY2==
+
+   These locations are searched in the order above, which can be useful if you work with multiple
+   accounts.
 
 #. Make sure you have an SSH RSA public key, usually stored in
    ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
@@ -201,6 +213,53 @@ Follow the steps below to prepare your Azure environment for running a Toil work
 
 .. _Azure account: https://azure.microsoft.com/en-us/free/
 
+.. _Azure storage account: https://docs.microsoft.com/en-us/azure/storage/common/storage-quickstart-create-account?tabs=portal
+
+.. _prepareGoogle:
+
+Preparing your Google environment
+---------------------------------
+
+Toil supports using the `Google Cloud Platform`_. Setting this up is easy!
+
+#. Make sure that the ``google`` extra (:ref:`extras`) is installed.
+
+#. Follow `Google's Instructions`_ to download credentials and set the
+   ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable.
+
+#. Create a new ssh key with the proper format.
+   To create a new ssh key run the command ::
+
+      ssh-keygen -t rsa -f ~/.ssh/id_rsa -C [USERNAME]
+
+   where ``[USERNAME]`` is something like ``jane@example.com``. Make sure to leave your password
+   blank
+
+   .. warning::
+      This command could overwrite an old ssh key you may be using.
+      If you have an existing ssh key you would like to use, it will need to be called id_rsa and it
+      needs to have no password set.
+
+   Make sure only you can read the SSH keys ::
+
+      $ chmod 400 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
+
+#. Add your newly formated public key to google. To do this, log into your Google Cloud account
+   and go to `metadata`_ section under the Compute tab.
+
+   .. image:: googleScreenShot.png
+
+
+   Near the top of the screen click on 'SSH Keys', then edit, add item, and paste the key. Then save.
+
+   .. image:: googleScreenShot2.png
+
+For more details look at Google's instructions for `adding SSH keys`_
+
+.. _Google Cloud Platform: https://cloud.google.com/storage/
+.. _adding SSH keys: https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys
+.. _metadata: https://console.cloud.google.com/compute/metadata
+.. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
 
 .. _building_from_source-ref:
 
@@ -247,11 +306,11 @@ To build the docs, run ``make develop`` with all extras followed by
 
     $ make docs
 
-    
+
 To run a quick batch of tests (this should take less than 30 minutes)
 
 ::
 
 	$ export TOIL_TEST_QUICK=True; make test
-	
+
 For more information on testing see :ref:`runningTests`.

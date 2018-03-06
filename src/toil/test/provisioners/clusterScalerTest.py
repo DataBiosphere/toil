@@ -170,7 +170,7 @@ class ClusterScalerTest(ToilTest):
         config.maxNodes = [10]
 
         # Algorithm parameters
-        config.alphaPacking = 0.8
+        config.alphaPacking = 0.0
         config.betaInertia = 1.2
         config.scaleInterval = 3
 
@@ -203,7 +203,7 @@ class ClusterScalerTest(ToilTest):
         config.maxNodes = [10, 10] # test expansion of this list
 
         # Algorithm parameters
-        config.alphaPacking = 0.8
+        config.alphaPacking = 0.0
         config.betaInertia = 1.2
         config.scaleInterval = 3
 
@@ -266,7 +266,7 @@ class ClusterScalerTest(ToilTest):
         config.maxNodes = [10,10]
 
         # Algorithm parameters
-        config.alphaPacking = 0.8
+        config.alphaPacking = 0.0
         config.betaInertia = 1.2
         config.scaleInterval = 3
 

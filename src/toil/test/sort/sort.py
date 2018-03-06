@@ -29,7 +29,7 @@ from toil.job import Job
 
 defaultLines = 1000
 defaultLineLen = 50
-sortMemory = '1000M'
+sortMemory = '600M'
 
 
 def setup(job, inputFile, N, downCheckpoints, options):
@@ -42,7 +42,8 @@ def setup(job, inputFile, N, downCheckpoints, options):
                              inputFile, N,
                              downCheckpoints,
                              options = options,
-                             memory='1000M').rv()
+                             preemptable=True,
+                             memory=sortMemory).rv()
 
 
 def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
@@ -72,9 +73,12 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
         # we communicate the dependency without hindering concurrency.
         return job.addFollowOnJobFn(up,
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, options=options, memory=options.sortMemory).rv(),
+                                                      checkpoint=downCheckpoints, options=options,
+                                                      preemptable=True, memory=options.sortMemory).rv(),
                                     job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, options=options, memory=options.mergeMemory).rv(), options=options, memory=options.sortMemory).rv()
+                                                      checkpoint=downCheckpoints, options=options,
+                                                      preemptable=True, memory=options.mergeMemory).rv(),
+                                    preemptable=True, options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
         job.log("Sorting file: %s of size: %s"

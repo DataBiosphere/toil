@@ -38,7 +38,6 @@ except ImportError:
 # Python 3 compatibility imports
 from six import iteritems
 
-from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 from bd2k.util.retry import retry
 
@@ -94,7 +93,7 @@ class Config(object):
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
-        self.alphaPacking = 0.8
+        self.alphaPacking = 0.0
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
@@ -233,9 +232,8 @@ class Config(object):
         setOption("scaleInterval", float)
         setOption("metrics")
         setOption("preemptableCompensation", float)
-        require(0.0 <= self.preemptableCompensation <= 1.0,
-                '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
-                self.preemptableCompensation)
+        if not 0.0 <= self.preemptableCompensation <= 1.0:
+            raise Exception('--preemptableCompensation (%f) must be >= 0.0 and <= 1.0.' % self.preemptableCompensation)
         setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks
@@ -361,9 +359,9 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['aws'],
+    addOptionFn("--provisioner", dest="provisioner", choices=['aws','gce'],
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
-                     "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
+                     "'aws' or 'gce'. The default is %s." % config.provisioner)
 
     addOptionFn('--nodeTypes', default=None,
                  help="List of node types separated by commas. The syntax for each node type "
@@ -787,6 +785,13 @@ class Toil(object):
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             enable_metadata_credential_caching()
             self._provisioner = AWSProvisioner(self.config)
+        elif self.config.provisioner == 'gce':
+            logger.info('Using a gce provisioner.')
+            try:
+                from toil.provisioners.gceProvisioner import GCEProvisioner
+            except ImportError:
+                raise RuntimeError('The libCloud extra must be installed to use this provisioner')
+            self._provisioner = GCEProvisioner(self.config)
         else:
             # Command line parser shold have checked argument validity already
             assert False, self.config.provisioner

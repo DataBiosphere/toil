@@ -796,7 +796,25 @@ class CWLWorkflow(Job):
 
         outobj = {}
         for out in self.cwlwf.tool["outputs"]:
-            outobj[shortname(out["id"])] = (shortname(out["outputSource"]), promises[out["outputSource"]].rv())
+            key = shortname(out["id"])
+            if out.get("linkMerge") or len(aslist(out["outputSource"])) > 1:
+                linkMerge = out.get("linkMerge", "merge_nested")
+                if linkMerge == "merge_nested":
+                    outobj[key] = (
+                            MergeInputsNested([(shortname(s), promises[s].rv())
+                                for s in aslist(out["outputSource"])]))
+                elif linkMerge == "merge_flattened":
+                    outobj[key] = (
+                            MergeInputsFlattened([
+                                (shortname(s), promises[s].rv())
+                                for s in aslist(out["source"])]))
+                else:
+                    raise validate.ValidationException(
+                            "Unsupported linkMerge '{}'".format(linkMerge))
+
+            else:
+                outobj[key] = (shortname(out["outputSource"]),
+                    promises[out["outputSource"]].rv())
 
         return IndirectDict(outobj)
 
