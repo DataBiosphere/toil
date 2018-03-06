@@ -535,11 +535,16 @@ class GCEProvisioner(AbstractProvisioner):
     def getProvisionedWorkers(self, nodeType, preemptable):
         entireCluster = self._getNodesInCluster(nodeType=nodeType)
         logger.debug('All nodes in cluster: %s', entireCluster)
-        workerInstances = [i for i in entireCluster if i.private_ips[0] != self.leaderIP]
+        workerInstances = []
+        for instance in entireCluster:
+            preemtible = False
+            scheduling = instance.extra.get('scheduling', None)
+            if scheduling and scheduling.get('preemptible', False):
+                preemtible = True
+            if instance.private_ips[0] != self.leaderIP and instance.state == 'running' and preemtible == preemptable:
+                workerInstances.append(instance)
+
         logger.debug('All workers found in cluster: %s', workerInstances)
-        # TODO: get spot workers
-        #workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
-        #logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
                      preemptable=preemptable)
@@ -686,6 +691,7 @@ class GCEProvisioner(AbstractProvisioner):
         """
          Monkey patch to gce.py in libcloud to allow disk and images to be specified.
          Also changed name to a uuid below.
+         The prefix 'wp' identifies preemptible nodes and 'wn' non-preemtible nodes.
         """
         # if image and ex_disks_gce_struct:
         #    raise ValueError("Cannot specify both 'image' and "
@@ -739,7 +745,8 @@ class GCEProvisioner(AbstractProvisioner):
         status_list = []
 
         for i in range(number):
-            name = 'w' + bytes(uuid.uuid4()) #'%s-%03d' % (base_name, i)
+            name = 'wp' if ex_preemptible else 'wn'
+            name += bytes(uuid.uuid4()) #'%s-%03d' % (base_name, i)
             status = {'name': name, 'node_response': None, 'node': None}
             status_list.append(status)
 
@@ -769,8 +776,6 @@ class GCEProvisioner(AbstractProvisioner):
             node_list.append(status['node'])
         return node_list
 
-
-    ## UNCHANGED CLASSES
 
     @classmethod
     def _waitForSSHKeys(cls, instanceIP, keyName='core'):
@@ -828,7 +833,8 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Appliance failed to start on machine with ip" % ip_address)
+                logger.error("Appliance failed to start on machine with ip %s" % ip_address)
+                logger.error("Check if the appliance is valid.")
                 return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps',

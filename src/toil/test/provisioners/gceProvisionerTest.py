@@ -172,7 +172,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1600)
 class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
@@ -218,11 +218,11 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
     @needs_google
     def testSpotAutoScale(self):
         self.instanceTypes = ["n1-standard-2:%f" % self.spotBid]
-        self.numWorkers = ['2']
+        self.numWorkers = ['3']
         self._test(preemptableJobs=True)
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1600)
 class GCEStaticAutoscaleTest(GCEAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
