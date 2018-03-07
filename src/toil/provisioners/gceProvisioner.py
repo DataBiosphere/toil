@@ -312,10 +312,10 @@ class GCEProvisioner(AbstractProvisioner):
         # Throws an error if cluster exists
         self.instanceGroup = driver.ex_create_instancegroup(clusterName, zone)
 
-        preemptible = False
+        preemptable = False
         if leaderSpotBid:
             logger.info('Launching preemptable leader')
-            preemptible = True
+            preemptable = True
         else:
             logger.info('Launching non-preemptable leader')
 
@@ -336,7 +336,7 @@ class GCEProvisioner(AbstractProvisioner):
                                 ex_subnetwork=vpcSubnet,
                                 ex_disks_gce_struct = [disk],
                                 description=self.tags,
-                                ex_preemptible=preemptible)
+                                ex_preemptible=preemptable)
 
         self.instanceGroup.add_instances([leader])
 
@@ -537,11 +537,14 @@ class GCEProvisioner(AbstractProvisioner):
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = []
         for instance in entireCluster:
-            preemtible = False
-            scheduling = instance.extra.get('scheduling', None)
-            if scheduling and scheduling.get('preemptible', False):
-                preemtible = True
-            if instance.private_ips[0] != self.leaderIP and instance.state == 'running' and preemtible == preemptable:
+            scheduling = instance.extra.get('scheduling')
+            # If this field is not found in the extra meta-data, assume the node is not preemptable.
+            if scheduling and scheduling.get('preemptible', False) != preemptable:
+                continue
+            for ip in instance.private_ips[0]:
+                if ip == self.leaderIP:
+                    continue # don't include the leader
+            if instance.state == 'running':
                 workerInstances.append(instance)
 
         logger.debug('All workers found in cluster: %s', workerInstances)
@@ -834,7 +837,8 @@ class GCEProvisioner(AbstractProvisioner):
         while True:
             if time.time() - startTime > cls.maxWaitTime:
                 logger.error("Appliance failed to start on machine with ip %s" % ip_address)
-                logger.error("Check if the appliance is valid.")
+                logger.error("Check if the appliance is valid, e.g. check if the environment variable"
+                              " TOIL_APPLIANCE_SELF is set correctly and the container exists.")
                 return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps',

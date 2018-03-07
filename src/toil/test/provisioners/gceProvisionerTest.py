@@ -218,7 +218,9 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
     @needs_google
     def testSpotAutoScale(self):
         self.instanceTypes = ["n1-standard-2:%f" % self.spotBid]
-        self.numWorkers = ['3']
+        # Some spot workers have a stopped state after being started, strangely.
+        # This could be the natural preemption process, but it seems too rapid.
+        self.numWorkers = ['3'] # Try 3 to account for a stopped node.
         self._test(preemptableJobs=True)
 
 
