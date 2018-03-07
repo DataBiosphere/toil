@@ -828,7 +828,7 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Appliance failed to start on machine with ip" % ip_address)
+                logger.error("Appliance failed to start on machine with ip %s", ip_address)
                 return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps',
