@@ -16,6 +16,7 @@ from __future__ import print_function
 import json
 import os
 from toil import subprocess
+import unittest
 import re
 import shutil
 import pytest
@@ -26,7 +27,10 @@ import zipfile
 from six.moves import StringIO
 from six import u as str
 
-from toil.test import ToilTest, needs_cwl, slow
+from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
+                       needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
+                       needs_torque)
+
 
 @needs_cwl
 class CWLTest(ToilTest):
@@ -120,8 +124,8 @@ class CWLTest(ToilTest):
             pass
 
     @slow
-    @pytest.mark.timeout(900)
-    def test_run_conformance(self):
+    @pytest.mark.timeout(1200)
+    def test_run_conformance(self, batchSystem=None):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
         testhash = "91f108df4d4ca567e567fc65f61feb0674467a84"
@@ -133,8 +137,11 @@ class CWLTest(ToilTest):
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
         try:
-            subprocess.check_output(["bash", "run_test.sh", "RUNNER=toil-cwl-runner", "DRAFT=v1.0"],
-                                    cwd=cwlSpec, stderr=subprocess.STDOUT)
+            cmd = ["bash", "run_test.sh", "RUNNER=toil-cwl-runner",
+                   "DRAFT=v1.0", "-j4"]
+            if batchSystem:
+                cmd.extend(["--batchSystem", batchSystem])
+            subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
             # check output -- if we failed but only have unsupported features, we're okay
@@ -159,6 +166,7 @@ class CWLTest(ToilTest):
                      main_args=["--beta-conda-dependencies"],
                      out_name="output1")
 
+    @needs_docker
     def test_biocontainers(self):
         outDir = self._createTempDir()
         self._tester('src/toil/test/cwl/seqtk_seq.cwl',
@@ -167,6 +175,42 @@ class CWLTest(ToilTest):
                      self._expected_seqtk_output(outDir),
                      main_args=["--beta-use-biocontainers"],
                      out_name="output1")
+
+    @slow
+    @needs_lsf
+    @unittest.skip
+    def test_lsf_cwl_conformance(self):
+        return self.test_run_conformance("LSF")
+
+    @slow
+    @needs_slurm
+    @unittest.skip
+    def test_slurm_cwl_conformance(self):
+        return self.test_run_conformance("Slurm")
+
+    @slow
+    @needs_torque
+    @unittest.skip
+    def test_torque_cwl_conformance(self):
+        return self.test_run_conformance("Torque")
+
+    @slow
+    @needs_gridengine
+    @unittest.skip
+    def test_gridengine_cwl_conformance(self):
+        return self.test_run_conformance("gridEngine")
+
+    @slow
+    @needs_mesos
+    @unittest.skip
+    def test_mesos_cwl_conformance(self):
+        return self.test_run_conformance("mesos")
+
+    @slow
+    @needs_parasol
+    @unittest.skip
+    def test_parasol_cwl_conformance(self):
+        return self.test_run_conformance("parasol")
 
     def _expected_seqtk_output(self, outDir):
         return {

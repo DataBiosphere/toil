@@ -450,6 +450,30 @@ def needs_htcondor(test_item):
         return test_item
 
 
+def needs_lsf(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if LSF
+    is installed.
+    """
+    test_item = _mark_test('lsf', test_item)
+    if next(which('bsub'), None):
+        return test_item
+    else:
+        return unittest.skip("Install LSF to include this test.")(test_item)
+
+
+def needs_docker(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    docker is installed.
+    """
+    test_item = _mark_test('docker', test_item)
+    if next(which('docker'), None):
+        return test_item
+    else:
+        return unittest.skip("Install docker to include this test.")(test_item)
+
+
 def needs_encryption(test_item):
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
