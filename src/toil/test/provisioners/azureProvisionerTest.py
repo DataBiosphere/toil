@@ -51,11 +51,12 @@ class AbstractAzureAutoscaleTest(ToilTest):
     def createClusterUtil(self, args=None):
         if args is None:
             args = []
-        callCommand = ['toil', 'launch-cluster', self.clusterName, '-p=azure', '--keyPairName=%s' % self.keyName,
+        callCommand = ['toil', 'launch-cluster', self.clusterName, '-p=azure', '--keyPairName=%s' % self.sshKeyName,
                        '--leaderNodeType=%s' % self.leaderInstanceType, '--zone=%s' % self.azureZone]
         if self.publicKeyFile:
             callCommand += ['--publicKeyFile=%s' % self.publicKeyFile]
         callCommand = callCommand + args if args else callCommand
+        log.info("createClusterUtil: %s" % ' '.join(callCommand))
         subprocess.check_call(callCommand)
 
     def cleanJobStoreUtil(self):
@@ -66,6 +67,7 @@ class AbstractAzureAutoscaleTest(ToilTest):
         super(AbstractAzureAutoscaleTest, self).__init__(methodName=methodName)
         self.keyName = os.getenv('TOIL_AZURE_KEYNAME')
         self.publicKeyFile = os.getenv('PUBLIC_KEY_FILE')
+        self.sshKeyName = os.getenv('TOIL_SSH_KEYNAME')
         self.azureZone = os.getenv('TOIL_AZURE_ZONE')
 
         self.leaderInstanceType = 'Standard_A2'
@@ -175,7 +177,8 @@ class AzureAutoscaleTest(AbstractAzureAutoscaleTest):
         os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
+        #, '--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
@@ -202,22 +205,6 @@ class AzureStaticAutoscaleTest(AzureAutoscaleTest):
 
     def launchCluster(self):
         self.createClusterUtil(args=['--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers)])
-
-        # TODO: check the number of workers and their storage
-        #nodes = AWSProvisioner._getNodesInCluster(ctx, self.clusterName, both=True)
-        #nodes.sort(key=lambda x: x.launch_time)
-        # assuming that leader is first
-        #workers = nodes[1:]
-        # test that two worker nodes were created
-        #self.assertEqual(2, len(workers))
-        # test that workers have expected storage size
-        # just use the first worker
-        #worker = workers[0]
-        #worker = next(wait_instances_running(ctx.ec2, [worker]))
-        #rootBlockDevice = worker.block_device_mapping["/dev/xvda"]
-        #self.assertTrue(isinstance(rootBlockDevice, BlockDeviceType))
-        #rootVolume = ctx.ec2.get_all_volumes(volume_ids=[rootBlockDevice.volume_id])[0]
-        #self.assertGreaterEqual(rootVolume.size, self.requestedNodeStorage)
 
     def _runScript(self, toilOptions):
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile']
@@ -249,7 +236,7 @@ class AzureAutoscaleTestMultipleNodeTypes(AbstractAzureAutoscaleTest):
         # instances
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=1.0G', '--mergeMemory=3.0G']
         runCommand.extend(toilOptions)
-        runCommand.append('--sseKey=/home/keyFile')
+        #runCommand.append('--sseKey=/home/keyFile')
         self.sshUtil(runCommand)
 
     @integrative

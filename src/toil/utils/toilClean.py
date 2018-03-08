@@ -36,5 +36,5 @@ def main():
         jobStore.destroy()
         logger.info("Successfully deleted the job store: %s" % str(jobStore))
     except:
-        logger.info("Failed to delete the job store: %s" % str(jobStore))
+        logger.info("Failed to delete the job store: %s" % config.jobStore)
         raise
