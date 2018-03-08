@@ -789,7 +789,7 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Key propagation failed on machine with ip" % instanceIP)
+                logger.error("Key propagation failed on machine with ip %s" % instanceIP)
                 return False
             try:
                 logger.info('Attempting to establish SSH connection...')
@@ -810,7 +810,7 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Docker daemon failed to start on machine with ip" % ip_address)
+                logger.error("Docker daemon failed to start on machine with ip %s" % ip_address)
                 return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
