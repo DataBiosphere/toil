@@ -541,10 +541,12 @@ class GCEProvisioner(AbstractProvisioner):
             # If this field is not found in the extra meta-data, assume the node is not preemptable.
             if scheduling and scheduling.get('preemptible', False) != preemptable:
                 continue
+            isWorker = True
             for ip in instance.private_ips[0]:
                 if ip == self.leaderIP:
-                    continue # don't include the leader
-            if instance.state == 'running':
+                    isWorker = False
+                    break # don't include the leader
+            if isWorker and instance.state == 'running':
                 workerInstances.append(instance)
 
         logger.debug('All workers found in cluster: %s', workerInstances)
