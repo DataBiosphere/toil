@@ -23,8 +23,7 @@ from builtins import object
 import json
 import logging
 import os
-from collections import deque, defaultdict
-from threading import Lock
+from collections import defaultdict
 
 import time
 from bd2k.util.retry import retry
@@ -46,42 +45,6 @@ ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logging.getLogger().addHandler(ch)
-
-
-class RecentJobShapes(object):
-    """
-    Used to track the 'shapes' of the last N jobs run (see Shape).
-    """
-
-    def __init__(self, config, nodeShape, N=1000):
-        # As a prior we start of with 10 jobs each with the default memory, cores, and disk. To
-        # estimate the running time we use the the default wall time of each node allocation,
-        # so that one job will fill the time per node.
-        self.jobShapes = deque(maxlen=N,
-                               iterable=10 * [Shape(wallTime=nodeShape.wallTime,
-                                                    memory=config.defaultMemory,
-                                                    cores=config.defaultCores,
-                                                    disk=config.defaultDisk,
-                                                    preemptable=True)])
-        # Calls to add and getLastNJobShapes may be concurrent
-        self.lock = Lock()
-        # Number of jobs to average over
-        self.N = N
-
-    def add(self, jobShape):
-        """
-        Adds a job shape as the last completed job.
-        :param Shape jobShape: The memory, core and disk requirements of the completed job
-        """
-        with self.lock:
-            self.jobShapes.append(jobShape)
-
-    def get(self):
-        """
-        Gets the last N job shapes added.
-        """
-        with self.lock:
-            return list(self.jobShapes)
 
 class BinPackedFit(object):
     """
@@ -353,10 +316,6 @@ class ClusterScaler(object):
         self.totalJobsCompleted += 1
         self.totalAvgRuntime = float(self.totalAvgRuntime*(self.totalJobsCompleted - 1) + wallTime)/self.totalJobsCompleted
 
-        s = Shape(wallTime=wallTime, memory=job.memory, cores=job.cores, disk=job.disk,
-                preemptable=job.preemptable)
-        self.scaler.addRecentJobShape(s)
-
     def setStaticNodes(self, nodes, preemptable):
         """
         Used to track statically provisioned nodes. This method must be called
@@ -424,9 +383,6 @@ class ScalerThread(ExceptionalThread):
 
         assert len(self.nodeShapes) > 0
 
-        # Monitors the requirements of the N most recently completed jobs
-        # Start off with 10 jobs with the shape of the smallest node type
-        self.jobShapes = RecentJobShapes(scaler.config, nodeShape=self.nodeShapes[0])
         # Minimum/maximum number of either preemptable or non-preemptable nodes in the cluster
         minNodes = scaler.config.minNodes
         if minNodes is None:
@@ -462,9 +418,6 @@ class ScalerThread(ExceptionalThread):
             self.stats.startStats(preemptable=preemptable)
             logger.debug("...Cluster stats started.")
 
-    def addRecentJobShape(self, shape):
-        self.jobShapes.add(shape)
-        
     def tryRun(self):
         while not self.scaler.stop:
             try:
