@@ -542,7 +542,7 @@ class GCEProvisioner(AbstractProvisioner):
             if scheduling and scheduling.get('preemptible', False) != preemptable:
                 continue
             isWorker = True
-            for ip in instance.private_ips[0]:
+            for ip in instance.private_ips:
                 if ip == self.leaderIP:
                     isWorker = False
                     break # don't include the leader
