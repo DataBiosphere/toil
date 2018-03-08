@@ -3,7 +3,7 @@
 Overview
 ========
 This section describes how to run Toil in various environments, including :ref:`locally <fileJobStore>`,
-:ref:`in the cloud <cloudOverview>`, and using :ref:`CWL <cwl>`.
+:ref:`in the cloud <cloudOverview>` (Amazon Web Services, Google Compute Engine, and Microsoft Azure), and using :ref:`CWL <cwl>`.
 
 Toil is built in a modular way so that it can be used on lots of different systems and with different configurations.
 The three configurable pieces are the
