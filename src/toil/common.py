@@ -94,7 +94,7 @@ class Config(object):
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
-        self.alphaPacking = 0.0
+        self.alphaTime = 1800
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
@@ -230,7 +230,7 @@ class Config(object):
         setOption("nodeOptions")
         setOption("minNodes", parseIntList)
         setOption("maxNodes", parseIntList)
-        setOption("alphaPacking", float)
+        setOption("alphaTime", int)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
         setOption("metrics")
@@ -398,12 +398,11 @@ def _addOptions(addGroupFn, config):
                 "as a default if the list length is less than the number of nodeTypes. "
                 "default=%s" % config.maxNodes[0])
 
-    # TODO: DESCRIBE THE FOLLOWING TWO PARAMETERS
-    addOptionFn("--alphaPacking", dest="alphaPacking", default=None,
-                help=("The total number of nodes estimated to be required to compute the issued "
-                      "jobs is multiplied by the alpha packing parameter to produce the actual "
-                      "number of nodes requested. Values of this coefficient greater than one will "
-                      "tend to over provision and values less than one will under provision. default=%s" % config.alphaPacking))
+    addOptionFn("--alphaTime", dest="alphaTime", default=None,
+                help=("Sets how rapidly you aim to complete jobs. Shorter times mean more "
+                      "aggressive parallelization. The autoscaler attempts to scale up/down "
+                      "so that it expects all queued jobs will complete within alphaTime "
+                      "seconds. default=%s" % config.alphaTime))
     addOptionFn("--betaInertia", dest="betaInertia", default=None,
                 help=("A smoothing parameter to prevent unnecessary oscillations in the "
                       "number of provisioned nodes. If the number of nodes is within the beta "

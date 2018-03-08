@@ -225,8 +225,8 @@ def split(nodeShape, jobShape, t):
     return (Shape(t, nodeShape.memory - jobShape.memory, nodeShape.cores - jobShape.cores, nodeShape.disk - jobShape.disk, nodeShape.preemptable),
             NodeReservation(Shape(nodeShape.wallTime - t, nodeShape.memory, nodeShape.cores, nodeShape.disk, nodeShape.preemptable)))
 
-def binPacking(nodeShapes, jobShapes):
-    bpf = BinPackedFit(nodeShapes)
+def binPacking(nodeShapes, jobShapes, goalTime):
+    bpf = BinPackedFit(nodeShapes, goalTime)
     bpf.binPack(jobShapes)
     return bpf.getRequiredNodes()
 
@@ -251,6 +251,8 @@ class ClusterScaler(object):
         self.jobNameToNumCompleted = {}
         self.totalAvgRuntime = 0.0
         self.totalJobsCompleted = 0
+
+        self.alphaTime = config.alphaTime
 
         if not sum(config.maxNodes) > 0:
             raise RuntimeError('Not configured to create nodes of any type.')
@@ -290,7 +292,7 @@ class ClusterScaler(object):
             # the other. That could easily lead to underprovisioning
             # and a deadlock, because often multiple services need to
             # be running at once for any actual work to get done.
-            return 3600.0 * 24
+            return self.alphaTime * 24
         if jobName in self.jobNameToAvgRuntime:
             #Have seen jobs of this type before, so estimate
             #the runtime based on average of previous jobs of this type
@@ -429,7 +431,7 @@ class ScalerThread(ExceptionalThread):
                 with throttle(self.scaler.config.scaleInterval):
                     queuedJobs = self.scaler.leader.getJobs()
                     queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName, service=isinstance(job, ServiceJobNode)), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
-                    nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes)
+                    nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes, goalTime=self.scaler.alphaTime)
                     for nodeShape in self.nodeShapes:
                         nodeType = self.nodeShapeToType[nodeShape]
                         self.totalNodes[nodeShape] = len(self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=nodeShape.preemptable))
