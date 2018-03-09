@@ -1,6 +1,6 @@
 .. highlight:: bash
 
-.. _batchsysteminterface:
+.. _batchSystemInterface:
 
 Batch System API
 ==========================
