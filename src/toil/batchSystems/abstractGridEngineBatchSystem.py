@@ -282,11 +282,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(AbstractGridEngineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
-        self.resultsFile = self._getResultsFileName(config.jobStore)
-        # Reset the job queue and results (initially, we do this again once we've killed the jobs)
-        self.resultsFileHandle = open(self.resultsFile, 'w')
-        # We lose any previous state in this file, and ensure the files existence
-        self.resultsFileHandle.close()
         self.currentJobs = set()
 
         # NOTE: this may be batch system dependent, maybe move into the worker?
@@ -304,10 +299,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         self.worker.start()
         self._getRunningBatchJobIDsTimestamp = None
         self._getRunningBatchJobIDsCache = {}
-
-    def __des__(self):
-        # Closes the file handle associated with the results file.
-        self.resultsFileHandle.close()
 
     @classmethod
     def supportsWorkerCleanup(cls):

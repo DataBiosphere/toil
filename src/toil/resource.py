@@ -39,7 +39,6 @@ from six.moves.urllib.request import urlopen
 
 from bd2k.util import strict_bool
 from bd2k.util.iterables import concat
-from bd2k.util.exceptions import require
 
 from toil import inVirtualEnv
 
@@ -382,8 +381,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         filePath = os.path.abspath(module.__file__)
         filePath = filePath.split(os.path.sep)
         filePath[-1], extension = os.path.splitext(filePath[-1])
-        require(extension in ('.py', '.pyc'),
-                'The name of a user script/module must end in .py or .pyc.')
+        if not extension in ('.py', '.pyc'):
+            raise Exception('The name of a user script/module must end in .py or .pyc.')
         if name == '__main__':
             log.debug("Discovering real name of module")
             # User script/module was invoked as the main program
@@ -413,9 +412,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 assert dirPathTail == package
             dirPath = os.path.sep.join(filePath)
         log.debug("Module dir is %s", dirPath)
-        require(os.path.isdir(dirPath),
-                'Bad directory path %s for module %s. Note that hot-deployment does not support \
-                .egg-link files yet, or scripts located in the root directory.', dirPath, name)
+        if not os.path.isdir(dirPath):
+            raise Exception('Bad directory path %s for module %s. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.' % (dirPath, name))
         fromVirtualEnv = inVirtualEnv() and dirPath.startswith(sys.prefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 

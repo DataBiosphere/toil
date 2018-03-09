@@ -35,7 +35,7 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20180130110340'
+    cwltool = 'cwltool==1.0.20180306140409'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
     cwltest = 'cwltest>=1.0.20180130081614'
@@ -94,12 +94,13 @@ def runSetup():
         license="Apache License v2.0",
         install_requires=[
             'bd2k-python-lib>=1.14a1.dev35',
-            'dill==0.2.5',
+            'dill==0.2.7.1',
             'six>=1.10.0',
             'future',
             'requests==2.18.4',
             'docker==2.5.1',
-            'subprocess32==3.5.0rc1'],
+            'subprocess32==3.5.0rc1',
+            'python-dateutil'],
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,

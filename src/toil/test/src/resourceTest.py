@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,7 +22,7 @@ from io import BytesIO
 from textwrap import dedent
 from zipfile import ZipFile
 
-from bd2k.util.files import mkdir_p
+from toil.test import mkdir_p
 from mock import MagicMock, patch
 
 from toil import subprocess

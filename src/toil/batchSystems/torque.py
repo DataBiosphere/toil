@@ -184,6 +184,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             if cpu is not None and math.ceil(cpu) > 1:
                 reqline.append('ncpus=' + str(int(math.ceil(cpu))))
+                reqline.append('nodes=1:ppn=' + str(int(math.ceil(cpu))))
 
             # Other resource requirements can be passed through the environment (see man qsub)
             reqlineEnv = os.getenv('TOIL_TORQUE_REQS')

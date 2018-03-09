@@ -38,7 +38,6 @@ except ImportError:
 # Python 3 compatibility imports
 from six import iteritems
 
-from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 from bd2k.util.retry import retry
 
@@ -94,7 +93,7 @@ class Config(object):
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
-        self.alphaPacking = 0.8
+        self.alphaPacking = 0.0
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
@@ -124,6 +123,7 @@ class Config(object):
 
         #Misc
         self.disableCaching = True
+        self.disableChaining = False
         self.maxLogFileSize = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
@@ -233,9 +233,8 @@ class Config(object):
         setOption("scaleInterval", float)
         setOption("metrics")
         setOption("preemptableCompensation", float)
-        require(0.0 <= self.preemptableCompensation <= 1.0,
-                '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
-                self.preemptableCompensation)
+        if not 0.0 <= self.preemptableCompensation <= 1.0:
+            raise Exception('--preemptableCompensation (%f) must be >= 0.0 and <= 1.0.' % self.preemptableCompensation)
         setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks
@@ -261,6 +260,7 @@ class Config(object):
 
         #Misc
         setOption("disableCaching")
+        setOption("disableChaining")
         setOption("maxLogFileSize", h2b, iC(1))
         setOption("writeLogs")
         setOption("writeLogsGzip")
@@ -507,6 +507,9 @@ def _addOptions(addGroupFn, config):
                 help='Disables caching in the file store. This flag must be set to use '
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
                      'LSF, or Slurm')
+    addOptionFn('--disableChaining', dest='disableChaining', action='store_true', default=False,
+                help="Disables chaining of jobs (chaining uses one job's resource allocation "
+                "for its successor job if possible).")
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
                 help=("The maximum size of a job log file to keep (in bytes), log files "
                       "larger than this will be truncated to the last X bytes. Setting "
