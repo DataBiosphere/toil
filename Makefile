@@ -164,7 +164,6 @@ integration_test_local: check_venv check_build_reqs sdist push_docker
 # FIXME when they are removed add check_running_on_jenkins to the jenkins targets
 test_parallel: jenkins_test_parallel
 
-
 integration_test: jenkins_test_integration
 
 # This target is designed only for use on Jenkins
@@ -307,7 +306,7 @@ check_docker_registry:
 check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
 	# https://github.com/BD2KGenomics/toil/issues/1503
-	! find . -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
+	! find src -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
 
 .PHONY: help \
 		prepare \

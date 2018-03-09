@@ -143,7 +143,6 @@ def main():
                               numWorkers=numNodes,
                               numPreemptableWorkers=numPreemptableNodes,
                               keyName=config.keyPairName,
-                              publicKeyFile=config.publicKeyFile,
                               botoPath=config.botoPath,
                               clusterName=config.clusterName,
                               spotBids=spotBids,
@@ -152,4 +151,5 @@ def main():
                               leaderStorage=config.leaderStorage,
                               nodeStorage=config.nodeStorage,
                               vpcSubnet=config.vpcSubnet,
+                              publicKeyFile=config.publicKeyFile,
                               azureStorageCredentials=config.azureStorageCredentials)

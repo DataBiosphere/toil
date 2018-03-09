@@ -386,7 +386,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
     def testAutoScaledCluster(self):
         self._test()
 
-
+@pytest.mark.timeout(1200)
 class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
 
     def __init__(self, name):
