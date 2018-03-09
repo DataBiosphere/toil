@@ -44,7 +44,7 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.provisioners.clusterScaler import ClusterScaler
+from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.job import JobNode, ServiceJobNode
@@ -167,7 +167,7 @@ class Leader(object):
         # Create cluster scaling thread if the provisioner is not None
         self.clusterScaler = None
         if self.provisioner is not None and len(self.provisioner.nodeTypes) > 0:
-            self.clusterScaler = ClusterScaler(self.provisioner, self, self.config)
+            self.clusterScaler = ScalerThread(self.provisioner, self, self.config)
 
         # A service manager thread to start and terminate services
         self.serviceManager = ServiceManager(jobStore, self.toilState)

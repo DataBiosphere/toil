@@ -26,6 +26,8 @@ import logging
 import random
 import uuid
 
+from mock import MagicMock
+
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
 from six.moves import xrange
@@ -39,7 +41,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    AbstractBatchSystem)
 from toil.provisioners.node import Node
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners.clusterScaler import ClusterScaler, binPacking, BinPackedFit, NodeReservation
+from toil.provisioners.clusterScaler import ClusterScaler, ScalerThread, BinPackedFit, NodeReservation
 from toil.common import Config
 
 
@@ -99,32 +101,7 @@ class BinPackingTest(ToilTest):
         # Hopefully we didn't assign just one node to cover all those jobs.
         self.assertNotEqual(self.bpf.getRequiredNodes(), {self.r3_8xlarge: 1, self.c4_8xlarge: 0})
 
-class ClusterScalerTest(ToilTest):
-
-    @slow
-    def testBinPacking(self):
-        """
-        Tests the bin-packing method used by the cluster scaler.
-        """
-        for test in range(50):
-            nodeShapes = [Shape(wallTime=random.choice(list(range(1, 100))),
-                              memory=random.choice(list(range(1, 10))),
-                              cores=random.choice(list(range(1, 10))),
-                              disk=random.choice(list(range(1, 10))),
-                              preemptable=False) for i in range(5)]
-            randomJobShape = lambda x: Shape(wallTime=random.choice(list(range(1, (3 * x.wallTime) + 1))),
-                                             memory=random.choice(list(range(1, x.memory + 1))),
-                                             cores=random.choice(list(range(1, x.cores + 1))),
-                                             disk=random.choice(list(range(1, x.disk + 1))),
-                                             preemptable=False)
-
-            numberOfJobs = random.choice(list(range(1, 1000)))
-            randomJobShapes = [randomJobShape(random.choice(nodeShapes)) for i in range(numberOfJobs)]
-            numberOfBins = binPacking(jobShapes=randomJobShapes, nodeShapes=nodeShapes,
-                                      goalTime=3600)
-            logger.info("Made the following node reservations: %s" % numberOfBins)
-
-
+class ScalerThreadTest(ToilTest):
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):
         """
         Test the ClusterScaler class with different patterns of job creation. Tests ascertain
@@ -138,7 +115,7 @@ class ClusterScalerTest(ToilTest):
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
         mock.start()
-        clusterScaler = ClusterScaler(mock, mock, config)
+        clusterScaler = ScalerThread(mock, mock, config)
         clusterScaler.start()
         try:
             # Add 100 jobs to complete 
@@ -247,7 +224,7 @@ class ClusterScalerTest(ToilTest):
         config.scaleInterval = 3
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
-        clusterScaler = ClusterScaler(mock, mock, config)
+        clusterScaler = ScalerThread(mock, mock, config)
         clusterScaler.start()
         mock.start()
 
