@@ -26,29 +26,16 @@
       resource_group: '{{ resgrp }}'
       name: '{{ vmname }}'
       state: absent
-      # ignore_errors: yes
       remove_on_absent:
          - network_interfaces
          - virtual_storage
          - public_ips
-
- # - name: Delete virtual network
- #   azure_rm_virtualnetwork:
- #     name: '{{ vmname }}'
- #     resource_group: '{{ resgrp }}'
- #     state: absent
 
   - name: Delete security group
     azure_rm_securitygroup:
       resource_group: '{{ resgrp }}'
       name: '{{ vmname }}'
       state: absent
-
- # - name: Delete public ip
- #   azure_rm_publicipaddress:
- #     resource_group: '{{ resgrp }}'
- #     name: '{{ vmname }}'
- #     state: absent
 
   - name: Delete storage account
     azure_rm_storageaccount:

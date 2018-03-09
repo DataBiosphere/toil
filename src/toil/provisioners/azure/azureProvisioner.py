@@ -278,7 +278,6 @@ class AzureProvisioner(AnsibleDriver):
                      preemptable=False)
 
     def getProvisionedWorkers(self, nodeType, preemptable=False):
-        # Data model info: https://docs.ansible.com/ansible/latest/guide_azure.html#dynamic-inventory-script
         allNodes = self._getInventory(self.clusterName)
 
         logger.debug('All leaders in cluster: ' + str(allNodes.get('role_leader', None)))

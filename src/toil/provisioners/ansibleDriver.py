@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 class AnsibleDriver(AbstractProvisioner):
+    """
+    Wrapper class for Ansible calls.
+    """
     contrib = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'contrib')
     inventory = ''  # to be set by child class
 
@@ -30,6 +33,14 @@ class AnsibleDriver(AbstractProvisioner):
         super(AnsibleDriver, self).__init__(config)
 
     def callPlaybook(self, playbook, ansibleArgs, wait=True, tags=["all"]):
+        """
+        Run a playbook.
+
+        :param playbook: An Ansible playbook to run.
+        :param ansibleArgs: Arguments to pass to the playbook.
+        :param wait: Wait for the play to finish if true.
+        :param tags: Control tags for the play.
+        """
         playbook = os.path.join(self.playbooks, playbook)  # Path to playbook being executed
         verbosity = "-vvvvv" if logger.isEnabledFor(logging.DEBUG) else "-v"
         command = ["ansible-playbook", verbosity, "--tags", ",".join(tags), "--extra-vars"]
@@ -45,8 +56,13 @@ class AnsibleDriver(AbstractProvisioner):
 
     @classmethod
     def _getInventory(cls, clusterName):
-        """Lists all nodes in the cluster"""
-        # tags = ",".join([":".join(i) for i in tags.items()])
+        """
+        List all nodes in the cluster.
+        Data model info: https://docs.ansible.com/ansible/latest/guide_azure.html#dynamic-inventory-script.
+
+        :param clusterName: The cluster identified by the name of the resource group.
+        :return: A list of nodes as dictionaries of properties.
+        """
         command = ["python", os.path.join(cls.contrib, cls.inventory), "--resource-groups", clusterName]
         data = subprocess.check_output(command)
         return json.loads(data)

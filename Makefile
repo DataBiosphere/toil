@@ -162,9 +162,8 @@ integration_test_local: check_venv check_build_reqs sdist push_docker
 
 # These two targets are for backwards compatibility but will be removed shortly
 # FIXME when they are removed add check_running_on_jenkins to the jenkins targets
-# test_parallel: jenkins_test_parallel
-test_parallel:
-	exit
+test_parallel: jenkins_test_parallel
+
 
 integration_test: jenkins_test_integration
 

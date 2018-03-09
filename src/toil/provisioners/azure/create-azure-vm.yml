@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Launch a VM. The resource group and network will be created if launching a leader.
+
 - name: Launch Azure VM
   hosts: localhost
   connection: local
@@ -82,20 +84,14 @@
       state: present
 
   - name: Create VM
-    # We let Ansible take care of setting up details eg the NIC, public IP,
-    # storage account, etc. so we don't need to deal with different naming
-    # conventions and all that jazz.
     azure_rm_virtualmachine:
       resource_group: "{{ resgrp }}"
       name: "{{ vmname }}"
       vm_size: "{{ vmsize }}"
-      #virtual_network_name: "{{ resgrp }}"
-      #subnet_name: "{{ resgrp }}"
       storage_account_name: "{{ storagename }}"
       admin_username: core
       ssh_password_enabled: false
       network_interfaces: "{{ vmname }}"
-      #public_ip_allocation_method: Static
       #data_disks:
       #  - lun: 0
       #    disk_size_gb: "{{ diskSize }}"
