@@ -252,13 +252,11 @@ class ClusterScaler(object):
 
         self.alphaTime = config.alphaTime
 
-
         self.nodeTypes = provisioner.nodeTypes
         self.nodeShapes = provisioner.nodeShapes
 
         self.nodeShapeToType = dict(zip(self.nodeShapes, self.nodeTypes))
 
-        self.nodeShapes.sort()
         self.ignoredNodes = set()
 
         # A *deficit* exists when we have more jobs that can run on preemptable
@@ -284,14 +282,15 @@ class ClusterScaler(object):
         self.minNodes = dict(zip(self.nodeShapes, minNodes))
         self.maxNodes = dict(zip(self.nodeShapes, maxNodes))
 
+        self.nodeShapes.sort()
+
         #Node shape to number of currently provisioned nodes
         totalNodes = defaultdict(int)
         if isinstance(leader.batchSystem, AbstractScalableBatchSystem):
             for preemptable in (True, False):
                 nodes = []
-                for nodeType in self.nodeTypes:
+                for nodeShape, nodeType in self.nodeShapeToType.items():
                     nodes_thisType = leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=preemptable)
-                    nodeShape = provisioner.getNodeShape(nodeType, preemptable=preemptable)
                     totalNodes[nodeShape] += len(nodes_thisType)
                     nodes.extend(nodes_thisType)
 
@@ -395,8 +394,8 @@ class ClusterScaler(object):
                 # _not_ allocate) and configuration preference.
                 compensationNodes = int(round(self.preemptableNodeDeficit[nodeType] * compensation))
                 if compensationNodes > 0:
-                    logger.info('Adding %d preemptable nodes of type %s to compensate for a deficit of %d '
-                                'non-preemptable ones.', compensationNodes, nodeType, self.preemptableNodeDeficit[nodeType])
+                    logger.info('Adding %d non-preemptable nodes of type %s to compensate for a deficit of %d '
+                                'preemptable ones.', compensationNodes, nodeType, self.preemptableNodeDeficit[nodeType])
                 estimatedNodeCount += compensationNodes
 
             # Use inertia parameter to stop small fluctuations

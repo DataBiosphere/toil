@@ -26,6 +26,7 @@ import logging
 import random
 import uuid
 
+from collections import defaultdict
 from mock import MagicMock
 
 # Python 3 compatibility imports
@@ -59,28 +60,31 @@ if False:
     ch.setFormatter(formatter)
     logging.getLogger().addHandler(ch)
 
+# simplified preemptable c4.8xlarge
+c4_8xlarge = Shape(wallTime=3600, memory=60000000000, cores=36, disk=100000000000, preemptable=True)
+# simplified non-preemptable c4.8xlarge
+c4_8xlarge_nonpreemptable = Shape(wallTime=3600, memory=60000000000, cores=36, disk=100000000000, preemptable=False)
+# simplified r3.8xlarge
+r3_8xlarge = Shape(wallTime=3600, memory=260000000000, cores=32, disk=600000000000, preemptable=False)
+
 class BinPackingTest(ToilTest):
     def setUp(self):
-        # simplified preemptable c4.8xlarge
-        self.c4_8xlarge = Shape(wallTime=3600, memory=60000000000, cores=36, disk=100000000000, preemptable=True)
-        # simplified r3.8xlarge
-        self.r3_8xlarge = Shape(wallTime=3600, memory=260000000000, cores=32, disk=600000000000, preemptable=False)
-        self.nodeShapes = [self.c4_8xlarge, self.r3_8xlarge]
+        self.nodeShapes = [c4_8xlarge, r3_8xlarge]
         self.bpf = BinPackedFit(self.nodeShapes)
 
     def testPackingOneShape(self):
         """Pack one shape and check that the resulting reservations look sane."""
-        self.bpf.nodeReservations[self.c4_8xlarge] = [NodeReservation(self.c4_8xlarge)]
+        self.bpf.nodeReservations[c4_8xlarge] = [NodeReservation(c4_8xlarge)]
         self.bpf.addJobShape(Shape(wallTime=1000, cores=2, memory=1000000000, disk=2000000000, preemptable=True))
-        self.assertEqual(self.bpf.nodeReservations[self.r3_8xlarge], [])
-        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[self.c4_8xlarge]],
+        self.assertEqual(self.bpf.nodeReservations[r3_8xlarge], [])
+        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge]],
                          [[Shape(wallTime=1000, memory=59000000000, cores=34, disk=98000000000, preemptable=True),
                            Shape(wallTime=2600, memory=60000000000, cores=36, disk=100000000000, preemptable=True)]])
 
     def testAddingInitialNode(self):
         """Pack one shape when no nodes are available and confirm that we fit one node properly."""
         self.bpf.addJobShape(Shape(wallTime=1000, cores=2, memory=1000000000, disk=2000000000, preemptable=True))
-        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[self.c4_8xlarge]],
+        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge]],
                          [[Shape(wallTime=1000, memory=59000000000, cores=34, disk=98000000000, preemptable=True),
                            Shape(wallTime=2600, memory=60000000000, cores=36, disk=100000000000, preemptable=True)]])
 
@@ -99,7 +103,83 @@ class BinPackingTest(ToilTest):
             # Add 500 CPU-hours worth of jobs that fill an r3.8xlarge
             self.bpf.addJobShape(Shape(wallTime=3600, memory=26000000000, cores=32, disk=60000000000, preemptable=False))
         # Hopefully we didn't assign just one node to cover all those jobs.
-        self.assertNotEqual(self.bpf.getRequiredNodes(), {self.r3_8xlarge: 1, self.c4_8xlarge: 0})
+        self.assertNotEqual(self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge: 0})
+
+class ClusterScalerTest(ToilTest):
+    def setUp(self):
+        super(ClusterScalerTest, self).setUp()
+        self.config = Config()
+        self.config.alphaTime = 1800
+        self.config.nodeTypes = ['r3.8xlarge', 'c4.8xlarge:0.6']
+        # Set up a stub provisioner with some nodeTypes and nodeShapes.
+        self.provisioner = object()
+        self.provisioner.nodeTypes = ['r3.8xlarge', 'c4.8xlarge']
+        self.provisioner.nodeShapes = [r3_8xlarge,
+                                       c4_8xlarge]
+        self.provisioner.setStaticNodes = lambda _, __: None
+
+        self.leader = MockBatchSystemAndProvisioner(self.config, 1)
+
+    def testMaxNodes(self):
+        """
+        Set the scaler to be very aggressive, give it a ton of jobs, and
+        make sure it doesn't go over maxNodes.
+        """
+        self.config.alphaTime = 1
+        self.config.betaInertia = 0.0
+        self.config.maxNodes = [2, 3]
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        jobShapes = [Shape(wallTime=3600, cores=2, memory=1000000000, disk=2000000000, preemptable=True)] * 1000
+        jobShapes.extend([Shape(wallTime=3600, cores=2, memory=1000000000, disk=2000000000, preemptable=False)] * 1000)
+        estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
+        self.assertEqual(estimatedNodeCounts[c4_8xlarge], 3)
+
+    def testMinNodes(self):
+        """
+        Without any jobs queued, the scaler should still estimate "minNodes" nodes.
+        """
+        self.config.betaInertia = 0.0
+        self.config.minNodes = [2, 3]
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        jobShapes = []
+        estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
+        self.assertEqual(estimatedNodeCounts[c4_8xlarge], 3)
+
+    def testPreemptableDeficitResponse(self):
+        """
+        When a preemptable deficit was detected by a previous run of the
+        loop, the scaler should add non-preemptable nodes to
+        compensate in proportion to preemptableCompensation.
+        """
+        self.config.alphaTime = 1
+        self.config.betaInertia = 0.0
+        self.config.maxNodes = [10, 10]
+        # This should mean that one non-preemptable node is launched
+        # for every two preemptable nodes "missing".
+        self.config.preemptableCompensation = 0.5
+        # In this case, we want to explicitly set up the config so
+        # that we can have preemptable and non-preemptable nodes of
+        # the same type. That is the only situation where
+        # preemptableCompensation applies.
+        self.config.nodeTypes = ['c4.8xlarge:0.6', 'c4.8xlarge']
+        self.provisioner.nodeTypes = ['c4.8xlarge', 'c4.8xlarge']
+        self.provisioner.nodeShapes = [c4_8xlarge,
+                                       c4_8xlarge_nonpreemptable]
+
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        # Simulate a situation where a previous run caused a
+        # "deficit" of 5 preemptable nodes (e.g. a spot bid was lost)
+        scaler.preemptableNodeDeficit['c4.8xlarge'] = 5
+        # Add a bunch of preemptable jobs (so the bin-packing
+        # estimate for the non-preemptable node should still be 0)
+        jobShapes = [Shape(wallTime=3600, cores=2, memory=1000000000, disk=2000000000, preemptable=True)] * 1000
+        estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
+        # We don't care about the estimated size of the preemptable
+        # nodes. All we want to know is if we responded to the deficit
+        # properly: 0.5 * 5 (preemptableCompensation * the deficit) = 3 (rounded up).
+        self.assertEqual(estimatedNodeCounts[self.provisioner.nodeShapes[1]], 3)
 
 class ScalerThreadTest(ToilTest):
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):

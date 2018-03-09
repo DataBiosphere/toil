@@ -14,6 +14,8 @@
 from abc import ABCMeta, abstractmethod
 from builtins import object
 from collections import namedtuple
+from functools import total_ordering
+from itertools import count
 import logging
 import os.path
 from toil import subprocess
@@ -27,19 +29,39 @@ a_short_time = 5
 
 log = logging.getLogger(__name__)
 
+@total_ordering
+class ShapeOrdering(object):
+    """Provides the sort ordering for Shape. Preemptability is first,
+    followed by memory, etc."""
+    def __eq__(self, other):
+        return self.wallTime == other.wallTime \
+            and self.memory == other.memory \
+            and self.cores == other.cores \
+            and self.disk == other.disk \
+            and self.preemptable == other.preemptable
 
-Shape = namedtuple("_Shape", "wallTime memory cores disk preemptable")
-"""
-Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
-wall-time allocation.
+    def __lt__(self, other):
+        return self.preemptable > other.preemptable or \
+            self.memory < other.memory or \
+            self.cores < other.cores or \
+            self.disk < other.disk or \
+            self.wallTime < other.wallTime
 
-The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
-or 60 for Azure. FIXME: and for jobs?
+# This convoluted multiple-inheritance business is so that
+# ShapeOrdering overrides the default tuple comparison methods without
+# having to manually specify all seven comparison methods.
+class Shape(ShapeOrdering, namedtuple("_Shape", "wallTime memory cores disk preemptable")):
+    """
+    Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
+    wall-time allocation.
 
-The memory and disk attributes store the number of bytes required by a job (or provided by a
-node) in RAM or on disk (SSD or HDD), respectively.
-"""
+    The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
+    or 60 for Azure. FIXME: and for jobs?
 
+    The memory and disk attributes store the number of bytes required by a job (or provided by a
+    node) in RAM or on disk (SSD or HDD), respectively.
+    """
+    pass
 
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
