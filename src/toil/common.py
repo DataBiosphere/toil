@@ -231,6 +231,8 @@ class Config(object):
         setOption("minNodes", parseIntList)
         setOption("maxNodes", parseIntList)
         setOption("alphaTime", int)
+        if self.alphaTime <= 0:
+            raise RuntimeError('alphaTime must be a positive integer (was set to %s)' % self.alphaTime)
         setOption("betaInertia", float)
         setOption("scaleInterval", float)
         setOption("metrics")
