@@ -95,7 +95,7 @@ class Config(object):
         self.minNodes = None
         self.maxNodes = [10]
         self.alphaTime = 1800
-        self.betaInertia = 1.2
+        self.betaInertia = 0.1
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
@@ -234,6 +234,8 @@ class Config(object):
         if self.alphaTime <= 0:
             raise RuntimeError('alphaTime must be a positive integer (was set to %s)' % self.alphaTime)
         setOption("betaInertia", float)
+        if not 0.0 <= self.betaInertia <= 1.0:
+            raise RuntimeError('--betaInertia (%f) must be >= 0.0 and <= 1.0.' % self.betaInertia)
         setOption("scaleInterval", float)
         setOption("metrics")
         setOption("preemptableCompensation", float)
@@ -407,9 +409,10 @@ def _addOptions(addGroupFn, config):
                       "seconds. default=%s" % config.alphaTime))
     addOptionFn("--betaInertia", dest="betaInertia", default=None,
                 help=("A smoothing parameter to prevent unnecessary oscillations in the "
-                      "number of provisioned nodes. If the number of nodes is within the beta "
-                      "inertia of the currently provisioned number of nodes then no change is made "
-                      "to the number of requested nodes. default=%s" % config.betaInertia))
+                      "number of provisioned nodes. This controls an exponentially weighted "
+                      "moving average of the estimated number of nodes. A value of 0.0 "
+                      "disables any smoothing, and a value of 1.0 will smooth so much that "
+                      "no change will ever be made. default=%s" % config.betaInertia))
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))

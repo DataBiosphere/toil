@@ -251,6 +251,7 @@ class ClusterScaler(object):
         self.totalJobsCompleted = 0
 
         self.alphaTime = config.alphaTime
+        self.betaInertia = config.betaInertia
 
         self.nodeTypes = provisioner.nodeTypes
         self.nodeShapes = provisioner.nodeShapes
@@ -269,6 +270,12 @@ class ClusterScaler(object):
         # Then, when provisioning non-preemptable nodes of the same type, we attempt to 
         # make up the deficit.
         self.preemptableNodeDeficit = {nodeType:0 for nodeType in self.nodeTypes}
+
+        # Keeps track of the last raw (i.e. float, not limited by
+        # max/min nodes) estimates of the number of nodes needed for
+        # each node shape. NB: we start with an estimate of 0, so
+        # scaling up is smoothed as well.
+        self.previousWeightedEstimate = {nodeShape:0.0 for nodeShape in self.nodeShapes}
 
         assert len(self.nodeShapes) > 0
 
@@ -368,6 +375,15 @@ class ClusterScaler(object):
         """
         return self.static[preemptable]
 
+    def smoothEstimate(self, nodeShape, estimatedNodeCount):
+        """
+        Smooth out fluctuations in the estimate for this node compared to
+        previous runs. Returns an integer.
+        """
+        weightedEstimate = (1 - self.betaInertia) * estimatedNodeCount + self.betaInertia * self.previousWeightedEstimate[nodeShape]
+        self.previousWeightedEstimate[nodeShape] = weightedEstimate
+        return int(round(weightedEstimate))
+
     def getEstimatedNodeCounts(self, queuedJobShapes, currentNodeCounts):
         """
         Given the resource requirements of queued jobs and the current
@@ -384,6 +400,10 @@ class ClusterScaler(object):
             estimatedNodeCount = 0 if nodesToRunQueuedJobs[nodeShape] == 0 else max(1, int(round(nodesToRunQueuedJobs[nodeShape])))
             logger.info("Estimating %i nodes of shape %s" % (estimatedNodeCount, nodeShape))
 
+            # Use inertia parameter to smooth out fluctuations
+            # according to an exponentially weighted moving average.
+            estimatedNodeCount = self.smoothEstimate(nodeShape, estimatedNodeCount)
+
             # If we're scaling a non-preemptable node type, we need to see if we have a 
             # deficit of preemptable nodes of this type that we should compensate for.
             if not nodeShape.preemptable:
@@ -398,7 +418,6 @@ class ClusterScaler(object):
                                 'preemptable ones.', compensationNodes, nodeType, self.preemptableNodeDeficit[nodeType])
                 estimatedNodeCount += compensationNodes
 
-            # Use inertia parameter to stop small fluctuations
             logger.info("Currently %i nodes of type %s in cluster" % (currentNodeCounts[nodeShape], nodeType))
             if self.leader.toilMetrics:
                 self.leader.toilMetrics.logClusterSize(nodeType=nodeType, currentSize=currentNodeCounts[nodeShape],

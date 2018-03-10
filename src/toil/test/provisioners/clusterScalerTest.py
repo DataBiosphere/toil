@@ -214,6 +214,19 @@ class ClusterScalerTest(ToilTest):
         scaler.updateClusterSize(estimatedNodeCounts)
         self.assertEqual(scaler.preemptableNodeDeficit['c4.8xlarge'], 0)
 
+    def testBetaInertia(self):
+        # This is really high, but makes things easy to calculate.
+        self.config.betaInertia = 0.5
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        # OK, smoothing things this much should get us 50% of the way to 100.
+        self.assertEqual(scaler.smoothEstimate(c4_8xlarge, 100), 50)
+        # Now we should be at 75%.
+        self.assertEqual(scaler.smoothEstimate(c4_8xlarge, 100), 75)
+        # We should eventually converge on our estimate as long as betaInertia is below 1.
+        for _ in range(1000):
+            scaler.smoothEstimate(c4_8xlarge, 100)
+        self.assertEqual(scaler.smoothEstimate(c4_8xlarge, 100), 100)
+
 class ScalerThreadTest(ToilTest):
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):
         """
