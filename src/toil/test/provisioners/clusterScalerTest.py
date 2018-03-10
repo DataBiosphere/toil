@@ -117,6 +117,7 @@ class ClusterScalerTest(ToilTest):
         self.provisioner.nodeShapes = [r3_8xlarge,
                                        c4_8xlarge]
         self.provisioner.setStaticNodes = lambda _, __: None
+        self.provisioner.retryPredicate = lambda _: False
 
         self.leader = MockBatchSystemAndProvisioner(self.config, 1)
 
@@ -180,6 +181,38 @@ class ClusterScalerTest(ToilTest):
         # nodes. All we want to know is if we responded to the deficit
         # properly: 0.5 * 5 (preemptableCompensation * the deficit) = 3 (rounded up).
         self.assertEqual(estimatedNodeCounts[self.provisioner.nodeShapes[1]], 3)
+
+    def testPreemptableDeficitIsSet(self):
+        """
+        Make sure that updateClusterSize sets the preemptable deficit if
+        it can't launch preemptable nodes properly. That way, the
+        deficit can be communicated to the next run of
+        estimateNodeCount.
+        """
+        # Mock out addNodes. We want to pretend it had trouble
+        # launching all 5 nodes, and could only launch 3.
+        self.provisioner.addNodes = MagicMock(return_value=3)
+        # Pretend there are no nodes in the cluster right now
+        self.provisioner.getProvisionedWorkers = MagicMock(return_value=[])
+        # In this case, we want to explicitly set up the config so
+        # that we can have preemptable and non-preemptable nodes of
+        # the same type. That is the only situation where
+        # preemptableCompensation applies.
+        self.config.nodeTypes = ['c4.8xlarge:0.6', 'c4.8xlarge']
+        self.provisioner.nodeTypes = ['c4.8xlarge', 'c4.8xlarge']
+        self.provisioner.nodeShapes = [c4_8xlarge,
+                                       c4_8xlarge_nonpreemptable]
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        estimatedNodeCounts = {c4_8xlarge: 5, c4_8xlarge_nonpreemptable: 0}
+        scaler.updateClusterSize(estimatedNodeCounts)
+        self.assertEqual(scaler.preemptableNodeDeficit['c4.8xlarge'], 2)
+        self.provisioner.addNodes.assert_called_once()
+
+        # OK, now pretend this is a while later, and actually launched
+        # the nodes properly. The deficit should disappear
+        self.provisioner.addNodes = MagicMock(return_value=5)
+        scaler.updateClusterSize(estimatedNodeCounts)
+        self.assertEqual(scaler.preemptableNodeDeficit['c4.8xlarge'], 0)
 
 class ScalerThreadTest(ToilTest):
     def _testClusterScaling(self, config, numJobs, numPreemptableJobs, jobShape):

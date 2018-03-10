@@ -417,7 +417,7 @@ class ClusterScaler(object):
             estimatedNodeCounts[nodeShape] = estimatedNodeCount
         return estimatedNodeCounts
 
-    def updateClusterSize(self, estimatedNodeCounts, currentNodeCounts):
+    def updateClusterSize(self, estimatedNodeCounts):
         """
         Given the desired and current size of the cluster, attempts to
         launch/remove instances to get to the desired size. Also
@@ -743,7 +743,7 @@ class ScalerThread(ExceptionalThread):
                         nodeType = self.scaler.nodeShapeToType[nodeShape]
                         currentNodeCounts[nodeShape] = len(self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=nodeShape.preemptable))
                     estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(queuedJobShapes, currentNodeCounts)
-                    self.scaler.updateClusterSize(estimatedNodeCounts, currentNodeCounts)
+                    self.scaler.updateClusterSize(estimatedNodeCounts)
                     if self.stats:
                         self.stats.checkStats()
             except:
