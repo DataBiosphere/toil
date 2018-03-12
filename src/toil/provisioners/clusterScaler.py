@@ -721,9 +721,9 @@ class ScalerThread(ExceptionalThread):
         self.stats = None
         if config.clusterStats:
             logger.debug("Starting up cluster statistics...")
-            self.stats = ClusterStats(self.leader.config.clusterStats,
-                                      self.leader.batchSystem,
-                                      self.provisioner.clusterName)
+            self.stats = ClusterStats(leader.config.clusterStats,
+                                      leader.batchSystem,
+                                      provisioner.clusterName)
             for preemptable in [True, False]:
                 self.stats.startStats(preemptable=preemptable)
             logger.debug("...Cluster stats started.")
