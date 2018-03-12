@@ -318,10 +318,10 @@ class GCEProvisioner(AbstractProvisioner):
         # Throws an error if cluster exists
         self.instanceGroup = driver.ex_create_instancegroup(clusterName, zone)
 
-        preemptible = False
+        preemptable = False
         if leaderSpotBid:
             logger.info('Launching preemptable leader')
-            preemptible = True
+            preemptable = True
         else:
             logger.info('Launching non-preemptable leader')
 
@@ -342,7 +342,7 @@ class GCEProvisioner(AbstractProvisioner):
                                 ex_subnetwork=vpcSubnet,
                                 ex_disks_gce_struct = [disk],
                                 description=self.tags,
-                                ex_preemptible=preemptible)
+                                ex_preemptible=preemptable)
 
         self.instanceGroup.add_instances([leader])
 
@@ -544,11 +544,21 @@ class GCEProvisioner(AbstractProvisioner):
     def getProvisionedWorkers(self, nodeType, preemptable):
         entireCluster = self._getNodesInCluster(nodeType=nodeType)
         logger.debug('All nodes in cluster: %s', entireCluster)
-        workerInstances = [i for i in entireCluster if i.private_ips[0] != self.leaderIP]
+        workerInstances = []
+        for instance in entireCluster:
+            scheduling = instance.extra.get('scheduling')
+            # If this field is not found in the extra meta-data, assume the node is not preemptable.
+            if scheduling and scheduling.get('preemptible', False) != preemptable:
+                continue
+            isWorker = True
+            for ip in instance.private_ips:
+                if ip == self.leaderIP:
+                    isWorker = False
+                    break # don't include the leader
+            if isWorker and instance.state == 'running':
+                workerInstances.append(instance)
+
         logger.debug('All workers found in cluster: %s', workerInstances)
-        # TODO: get spot workers
-        #workerInstances = [i for i in workerInstances if preemptable != (i.spot_instance_request_id is None)]
-        #logger.debug('%spreemptable workers found in cluster: %s', 'non-' if not preemptable else '', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
                      preemptable=preemptable)
@@ -695,6 +705,7 @@ class GCEProvisioner(AbstractProvisioner):
         """
          Monkey patch to gce.py in libcloud to allow disk and images to be specified.
          Also changed name to a uuid below.
+         The prefix 'wp' identifies preemptible nodes and 'wn' non-preemtible nodes.
         """
         # if image and ex_disks_gce_struct:
         #    raise ValueError("Cannot specify both 'image' and "
@@ -748,7 +759,8 @@ class GCEProvisioner(AbstractProvisioner):
         status_list = []
 
         for i in range(number):
-            name = 'w' + bytes(uuid.uuid4()) #'%s-%03d' % (base_name, i)
+            name = 'wp' if ex_preemptible else 'wn'
+            name += bytes(uuid.uuid4()) #'%s-%03d' % (base_name, i)
             status = {'name': name, 'node_response': None, 'node': None}
             status_list.append(status)
 
@@ -779,8 +791,6 @@ class GCEProvisioner(AbstractProvisioner):
         return node_list
 
 
-    ## UNCHANGED CLASSES
-
     @classmethod
     def _waitForSSHKeys(cls, instanceIP, keyName='core'):
         # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
@@ -788,7 +798,7 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Key propagation failed on machine with ip" % instanceIP)
+                logger.error("Key propagation failed on machine with ip %s" % instanceIP)
                 return False
             try:
                 logger.info('Attempting to establish SSH connection...')
@@ -809,7 +819,7 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Docker daemon failed to start on machine with ip" % ip_address)
+                logger.error("Docker daemon failed to start on machine with ip %s" % ip_address)
                 return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
@@ -837,7 +847,9 @@ class GCEProvisioner(AbstractProvisioner):
         startTime = time.time()
         while True:
             if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Appliance failed to start on machine with ip" % ip_address)
+                logger.error("Appliance failed to start on machine with ip %s" % ip_address)
+                logger.error("Check if the appliance is valid, e.g. check if the environment variable"
+                              " TOIL_APPLIANCE_SELF is set correctly and the container exists.")
                 return False
             try:
                 output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps',
