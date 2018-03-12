@@ -180,7 +180,7 @@ ssh_authorized_keys:
     - "ssh-rsa {sshKey}"
 """
 
-nodeBotoPath = "/root/.boto"
+
 
 class GCEProvisioner(AbstractProvisioner):
     """ Implements a Google Compute Engine Provisioner
@@ -189,6 +189,8 @@ class GCEProvisioner(AbstractProvisioner):
     """
 
     maxWaitTime = 5*60
+    nodeBotoPath = "/root/.boto"
+    nodeCredentialsPath = "/root/googleApplicationCredentials.json"
 
     def __init__(self, config=None):
         """
@@ -223,7 +225,8 @@ class GCEProvisioner(AbstractProvisioner):
             self.leaderIP = leader.private_ips[0]  # this is PRIVATE IP
             self.masterPublicKey = self._setSSH()
 
-            self.botoPath = nodeBotoPath
+            self.botoPath = self.nodeBotoPath
+            self.credentialsPath = self.nodeCredentialsPath
             self.keyName = 'core'
             self.gceUserDataWorker = gceUserDataWithSsh
 
@@ -245,6 +248,8 @@ class GCEProvisioner(AbstractProvisioner):
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
+
+            os.putenv('GOOGLE_APPLICATION_CREDENTIALS', self.nodeCredentialsPath)
         else:
             self.clusterName = None
             self.instanceMetaData = None
@@ -269,6 +274,7 @@ class GCEProvisioner(AbstractProvisioner):
 
             self.projectId = self.googleConnectionParams['project_id']
             self.clientEmail = self.googleConnectionParams['client_email']
+            self.credentialsPath = self.googleJson
 
         self.subnetID = None
 
@@ -356,8 +362,10 @@ class GCEProvisioner(AbstractProvisioner):
             raise RuntimeError("Failed to start leader")
 
         if self.botoPath:
-            self._rsyncNode(leader.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
+            self._rsyncNode(leader.public_ips[0], [self.botoPath, ':' + self.nodeBotoPath],
                             applianceName='toil_leader')
+        self._rsyncNode(leader.public_ips[0], [self.credentialsPath, ':' + self.nodeCredentialsPath],
+                        applianceName='toil_leader')
 
         # assuming that if the leader was launched without a spotbid then all workers
         # will be non-preemptable
@@ -449,7 +457,7 @@ class GCEProvisioner(AbstractProvisioner):
         botoExists = False
         if self.botoPath is not None and os.path.exists(self.botoPath):
             entryPoint = "waitForKey.sh"
-            keyPath = nodeBotoPath
+            keyPath = self.nodeBotoPath
             botoExists = True
         elif self.config and self.config.sseKey:
             entryPoint = "waitForKey.sh"
@@ -504,28 +512,29 @@ class GCEProvisioner(AbstractProvisioner):
         for instance in instancesLaunched:
             if not self._copySshKeys(instance.public_ips[0], self.keyName):
                 continue
-            if self.config and self.config.sseKey or botoExists:
-                if not self._waitForNode(instance.public_ips[0], 'toil_worker'):
-                    continue
-                retries = 0
-                while True:
-                    try:
-                        if self.config and self.config.sseKey:
-                            self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
-                                            applianceName='toil_worker')
-                        if botoExists:
-                            self._rsyncNode(instance.public_ips[0], [self.botoPath, ':' + nodeBotoPath],
-                                            applianceName='toil_worker')
-                        break
-                    except Exception as e:
-                        if retries == 5:
-                            log.error("Failed to rysnc keys to worker with ip" % instance.public_ips[0])
-                            log.error('Exception %s', e)
-                            continue # givup
-                        else:
-                            logger.debug("Rsync to new nodes failed, trying again")
-                            retries += 1
-                            time.sleep(20*retries)
+            if not self._waitForNode(instance.public_ips[0], 'toil_worker'):
+                continue
+            retries = 0
+            while True:
+                try:
+                    self._rsyncNode(instance.public_ips[0], [self.credentialsPath, ':' + self.nodeCredentialsPath],
+                                    applianceName='toil_worker')
+                    if self.config and self.config.sseKey:
+                        self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
+                                        applianceName='toil_worker')
+                    if botoExists:
+                        self._rsyncNode(instance.public_ips[0], [self.botoPath, ':' + self.nodeBotoPath],
+                                        applianceName='toil_worker')
+                    break
+                except Exception as e:
+                    if retries == 5:
+                        log.error("Failed to rysnc keys to worker with ip" % instance.public_ips[0])
+                        log.error('Exception %s', e)
+                        continue # givup
+                    else:
+                        logger.debug("Rsync to new nodes failed, trying again")
+                        retries += 1
+                        time.sleep(20*retries)
             workersCreated += 1
         logger.info('Launched %s new instance(s)', numNodes)
         if len(instancesLaunched) != workersCreated:
