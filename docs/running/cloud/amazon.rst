@@ -16,11 +16,26 @@ that will dynamically scale depending on the workflow's needs.
 The :ref:`StaticProvisioning` section explains how a static cluster (one that
 won't automatically change in size) can be created and provisioned (grown, shrunk, destroyed, etc.).
 
-
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 
+.. _prepareAWS:
 
-To setup AWS, see :ref:`prepareAWS`.
+Preparing your AWS environment
+------------------------------
+
+To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files
+during the computation of a workflow, first set up and configure an account with AWS.
+
+#. If necessary, create and activate an `AWS account`_
+
+#. Create a key pair, install boto, install awscli, and configure your credentials using our `blog instructions`_ .
+
+.. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
+.. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
+.. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
+.. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
+.. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
+.. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 
 .. _awsJobStore:
 
@@ -75,7 +90,7 @@ to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a
 
 ::
 
-    	(venv) $ toil launch-cluster my-cluster --leaderNodeType t2.medium --zone us-west-2a --keyPairName <your-AWS-key-pair-name>
+    (venv) $ toil launch-cluster my-cluster --leaderNodeType t2.medium --zone us-west-2a --keyPairName <your-AWS-key-pair-name>
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. In addition, the Toil provisioner will

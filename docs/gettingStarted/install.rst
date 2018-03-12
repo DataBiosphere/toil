@@ -5,7 +5,9 @@
 Installation
 ============
 
-This document describes how to prepare for and install the Toil software. Note that Toil requires that the user run all commands inside of a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided below.
+This document describes how to prepare for and install Toil. Note that Toil requires that the user run all commands
+inside of a Python `virtualenv`_. Instructions for installing and creating a Python virtual environment are provided
+below.
 
 .. _virtualenv: https://virtualenv.pypa.io/en/stable/
 
@@ -16,27 +18,25 @@ Preparing Your Python Runtime Environment
 
 Toil currently supports only Python 2.7 and requires a virtualenv to be active to install.
 
-If not already present, please install the latest Python ``virtualenv`` using pip_.
-::
+If not already present, please install the latest Python ``virtualenv`` using pip_.::
 
     $ sudo pip install virtualenv
 
-And create a virtual environment called ``venv`` in your home directory.
-::
+And create a virtual environment called ``venv`` in your home directory.::
 
     $ virtualenv ~/venv
 
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
 
-If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
+If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv
+package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
 
     $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
     $ tar xvfz virtualenv-15.1.0.tar.gz
     $ cd virtualenv-15.1.0
     $ python virtualenv.py ~/venv
 
-Now that you've created your virtualenv, activate your virtual environment.
-::
+Now that you've created your virtualenv, activate your virtual environment.::
 
     $ source ~/venv/bin/activate
 
@@ -56,11 +56,37 @@ Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 Installing Toil with extra features
 -----------------------------------
 
+.. _python-dev:
+.. topic:: Python headers and static libraries
+
+   Needed for the ``mesos``, ``aws``, ``google``, ``azure``, and ``encryption`` extras.
+
+   On Ubuntu::
+
+      $ sudo apt-get install build-essential python-dev
+
+   On macOS::
+
+      $ xcode-select --install
+
+.. _libffi-dev:
+.. topic:: Encryption specific headers and library
+
+   Needed for the ``encryption`` extra.
+
+   On Ubuntu::
+
+      $ sudo apt-get install libssl-dev libffi-dev
+
+   On macOS::
+
+      $ brew install libssl libffi
+
+   Or see `Cryptography`_ for other systems.
+
 Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first
-install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run
-
-::
+install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run::
 
     $ pip install toil[aws,mesos,azure,google,encryption,cwl]
 
@@ -95,9 +121,10 @@ Here's what each extra provides:
 |                | * :ref:`Python headers and static libraries <python-dev>`  |
 |                |                                                            |
 |                | .. important::                                             |
-|                |    If you want to install Toil with the ``mesos`` extra    |
-|                |    in a virtualenv, be sure to create that virtualenv with |
-|                |    the ``--system-site-packages`` flag::                   |
+|                |    If launching toil remotely on a mesos instance,         |
+|                |    to install Toil with the ``mesos`` extra in a           |
+|                |    virtualenv, be sure to create that virtualenv with the  |
+|                |    ``--system-site-packages`` flag (only use remotely!)::  |
 |                |                                                            |
 |                |       $ virtualenv ~/venv --system-site-packages           |
 |                |                                                            |
@@ -131,135 +158,8 @@ Here's what each extra provides:
 .. _Google Cloud Storage: https://cloud.google.com/storage/
 .. _Microsoft Azure: https://azure.microsoft.com/
 .. _Workflow Description Language: https://software.broadinstitute.org/wdl/
-
-.. _python-dev:
-.. topic:: Python headers and static libraries
-
-   Needed for the ``mesos``, ``aws``, ``google``, ``azure``, and ``encryption`` extras.
-
-   On Ubuntu::
-
-      $ sudo apt-get install build-essential python-dev
-
-   On macOS::
-
-      $ xcode-select --install
-
-.. _libffi-dev:
-.. topic:: Encryption specific headers and library
-
-   Only needed for the ``encryption`` extra.
-
-   On Ubuntu::
-
-      $ sudo apt-get install libssl-dev libffi-dev
-
-   On macOS::
-
-      $ brew install libssl libffi
-
-   Or see `Cryptography`_ for other systems.
-
 .. _Cryptography: https://cryptography.io/en/latest/installation/
-
 .. _Homebrew: http://brew.sh/
-
-
-.. _prepareAWS:
-
-Preparing your AWS environment
-------------------------------
-
-To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files
-during the computation of a workflow, first set up and configure an account with AWS.
-
-#. If necessary, create and activate an `AWS account`_
-
-#. Create a key pair, install boto, install awscli, and configure your credentials using our `blog instructions`_ .
-
-
-.. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
-.. _key pair: http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html
-.. _Amazon's instructions : http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-key-pairs.html#how-to-generate-your-own-key-and-import-it-to-aws
-.. _install: http://docs.aws.amazon.com/cli/latest/userguide/installing.html
-.. _configure: http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html
-.. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
-
-
-.. _prepareAzure:
-
-Preparing your Azure environment
---------------------------------
-
-Follow the steps below to prepare your Azure environment for running a Toil workflow.
-
-#. Create an `Azure account`_ and to use the job store make an `Azure storage account`_.
-
-#. Locate your Azure storage account key and then store it in one of the following locations:
-    - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
-    - ``AZURE_ACCOUNT_KEY`` environment variable
-    - or finally in ``~/.toilAzureCredentials.`` with the format ::
-
-         [AzureStorageCredentials]
-         accountName1=ACCOUNTKEY1==
-         accountName2=ACCOUNTKEY2==
-
-   These locations are searched in the order above, which can be useful if you work with multiple
-   accounts.
-
-#. Make sure you have an SSH RSA public key, usually stored in
-   ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
-   one.
-
-.. _Azure account: https://azure.microsoft.com/en-us/free/
-
-.. _Azure storage account: https://docs.microsoft.com/en-us/azure/storage/common/storage-quickstart-create-account?tabs=portal
-
-.. _prepareGoogle:
-
-Preparing your Google environment
----------------------------------
-
-Toil supports using the `Google Cloud Platform`_. Setting this up is easy!
-
-#. Make sure that the ``google`` extra (:ref:`extras`) is installed.
-
-#. Follow `Google's Instructions`_ to download credentials and set the
-   ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable.
-
-#. Create a new ssh key with the proper format.
-   To create a new ssh key run the command ::
-
-      ssh-keygen -t rsa -f ~/.ssh/id_rsa -C [USERNAME]
-
-   where ``[USERNAME]`` is something like ``jane@example.com``. Make sure to leave your password
-   blank
-
-   .. warning::
-      This command could overwrite an old ssh key you may be using.
-      If you have an existing ssh key you would like to use, it will need to be called id_rsa and it
-      needs to have no password set.
-
-   Make sure only you can read the SSH keys ::
-
-      $ chmod 400 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
-
-#. Add your newly formated public key to google. To do this, log into your Google Cloud account
-   and go to `metadata`_ section under the Compute tab.
-
-   .. image:: googleScreenShot.png
-
-
-   Near the top of the screen click on 'SSH Keys', then edit, add item, and paste the key. Then save.
-
-   .. image:: googleScreenShot2.png
-
-For more details look at Google's instructions for `adding SSH keys`_
-
-.. _Google Cloud Platform: https://cloud.google.com/storage/
-.. _adding SSH keys: https://cloud.google.com/compute/docs/instances/adding-removing-ssh-keys
-.. _metadata: https://console.cloud.google.com/compute/metadata
-.. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
 
 .. _building_from_source-ref:
 
@@ -281,9 +181,7 @@ Then, create and activate a virtualenv::
 
 From there, you can list all available Make targets by running ``make``.
 First and foremost, we want to install Toil's build requirements. (These are
-additional packages that Toil needs to be tested and built but not to be run.)
-
-::
+additional packages that Toil needs to be tested and built but not to be run.)::
 
     $ make prepare
 
@@ -296,20 +194,15 @@ Or, to install with support for all optional :ref:`extras`::
 
     $ make develop extras=[aws,mesos,azure,google,encryption,cwl]
 
-or::
+Or::
 
     $ make develop extras=[all]
 
-To build the docs, run ``make develop`` with all extras followed by
-
-::
+To build the docs, run ``make develop`` with all extras followed by::
 
     $ make docs
 
-
-To run a quick batch of tests (this should take less than 30 minutes)
-
-::
+To run a quick batch of tests (this should take less than 30 minutes)::
 
 	$ export TOIL_TEST_QUICK=True; make test
 

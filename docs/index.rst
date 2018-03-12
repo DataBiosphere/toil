@@ -31,7 +31,6 @@ If using Toil for your research, please cite
    :caption: Getting Started
    :maxdepth: 2
 
-   gettingStarted/overview
    gettingStarted/install
    gettingStarted/quickStart
 
@@ -41,18 +40,16 @@ If using Toil for your research, please cite
 
    running/overview
    running/cli
-   running/cwl
-   running/wdl
-   running/deploying
    running/debugging
    running/cloud/cloud
    running/hpcEnvironments
+   running/cwl
+   running/wdl
 
 .. toctree::
    :caption: Developing Toil Workflows
    :maxdepth: 2
 
-   developingWorkflows/overview
    developingWorkflows/developing
    developingWorkflows/toilAPI
    developingWorkflows/batchSystem
@@ -62,15 +59,14 @@ If using Toil for your research, please cite
    :caption: Contributing to Toil
    :maxdepth: 2
 
-   contributing/overview
    contributing/contributing
-
 
 .. toctree::
    :caption: Appendices
    :maxdepth: 2
 
    appendices/architecture
+   appendices/deploy
    appendices/environment_vars
 
 * :ref:`genindex`

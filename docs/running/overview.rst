@@ -2,6 +2,7 @@
 
 Introduction
 ============
+
 Toil runs in various environments, including :ref:`locally <fileJobStore>` and :ref:`in the cloud <cloudOverview>`
 (Amazon Web Services, Google Compute Engine, and Microsoft Azure).  Toil also supports two DSLs: :ref:`CWL <cwl>` and
 :ref:`WDL <wdl>` (experimental).

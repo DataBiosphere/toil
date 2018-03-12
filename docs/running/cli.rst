@@ -2,236 +2,21 @@
 
 .. _workflowOptions:
 
-Toil Workflow Options and Command Line Interface
-================================================
+Options
+=======
 
-The ``toil`` CLI supports the following commands as arguments:
+A quick way to see all of Toil's commandline options is by executing the following on a toil script::
 
-    ``status`` - Reports runtime and resource usage for all jobs in a specified jobstore (workflow must have originally been run using the --stats option).
+    $ toil example.py --help
 
-    ``stats`` - Inspects a job store to see which jobs have failed, run successfully, etc.
+For a basic toil workflow, Toil has one mandatory argument, the job store.  All other arguments are optional.
 
-    ``destroy-cluster`` - For autoscaling.  Terminates the specified cluster and associated resources.
-
-    ``launch-cluster`` - For autoscaling.  This is used to launch a toil leader instance with the specified provisioner.
-
-    ``rsync-cluster`` - For autoscaling.  Used to transfer files to a cluster launched with ``toil launch-cluster``.
-
-    ``ssh-cluster`` - SSHs into the toil appliance container running on the leader of the cluster.
-
-    ``clean`` - Delete the job store used by a previous Toil workflow invocation.
-
-    ``kill`` - Kills any running jobs in a rogue toil.
-
-.. _cli_status:
-
-Status Command
---------------
-To use the status command, a workflow must first be run using the ``--stats`` option.  Using this command makes certain
-that toil does not delete the job store, no matter what other options are specified (i.e. normally the option ``--clean=always``
-would delete the job, but ``--stats`` will override this).
-
-An example of this would be running the following::
-
-    toil discoverfiles.py file:my-jobstore --stats
-
-Where ``discoverfiles.py`` is the following:
-
-.. code-block:: python
-
-    import subprocess
-    from toil.common import Toil
-    from toil.job import Job
-
-    class discoverFiles(Job):
-        """Views files at a specified path using ls."""
-        def __init__(self, path, *args, **kwargs):
-            self.path = path
-            super(discoverFiles, self).__init__(*args, **kwargs)
-
-        def run(self, fileStore):
-            subprocess.check_call(["ls", self.path])
-
-    def main():
-        options = Job.Runner.getDefaultArgumentParser().parse_args()
-
-        job1 = discoverFiles(path="/", displayName='sysFiles')
-        job2 = discoverFiles(path="/home/lifeisaboutfishtacos", displayName='userFiles')
-        job3 = discoverFiles(path="/home/andbeeftacos")
-
-        job1.addChild(job2)
-        job2.addChild(job3)
-
-        with Toil(options) as toil:
-            if not toil.options.restart:
-                toil.start(job1)
-            else:
-                toil.restart()
-
-    if __name__ == '__main__':
-        main()
-
-Notice the ``displayName`` key, which can rename a job, giving it an alias when it is finally displayed in stats.
-Running this workflow file should record three job names then: ``sysFiles`` (job1), ``userFiles`` (job2), and ``discoverFiles`` (job3).
-To see the runtime and resources used for each job when it was run, type::
-
-    toil stats file:my-jobstore
-
-This should output the following:
-
-.. code-block:: python
-
-    Batch System: singleMachine
-    Default Cores: 1  Default Memory: 2097152K
-    Max Cores: 9.22337e+18
-    Total Clock: 0.56  Total Runtime: 1.01
-    Worker
-        Count |                                    Time* |                                    Clock |                                     Wait |                                   Memory
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total
-            1 |     0.14    0.14    0.14    0.14    0.14 |     0.13    0.13    0.13    0.13    0.13 |     0.01    0.01    0.01    0.01    0.01 |      76K     76K     76K     76K     76K
-    Job
-     Worker Jobs  |     min    med    ave    max
-                  |       3      3      3      3
-        Count |                                    Time* |                                    Clock |                                     Wait |                                   Memory
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total
-            3 |     0.01    0.06    0.05    0.07    0.14 |     0.00    0.06    0.04    0.07    0.12 |     0.00    0.01    0.00    0.01    0.01 |      76K     76K     76K     76K    229K
-     sysFiles
-        Count |                                    Time* |                                    Clock |                                     Wait |                                   Memory
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total
-            1 |     0.01    0.01    0.01    0.01    0.01 |     0.00    0.00    0.00    0.00    0.00 |     0.01    0.01    0.01    0.01    0.01 |      76K     76K     76K     76K     76K
-     userFiles
-        Count |                                    Time* |                                    Clock |                                     Wait |                                   Memory
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total
-            1 |     0.06    0.06    0.06    0.06    0.06 |     0.06    0.06    0.06    0.06    0.06 |     0.01    0.01    0.01    0.01    0.01 |      76K     76K     76K     76K     76K
-     discoverFiles
-        Count |                                    Time* |                                    Clock |                                     Wait |                                   Memory
-            n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total
-            1 |     0.07    0.07    0.07    0.07    0.07 |     0.07    0.07    0.07    0.07    0.07 |     0.00    0.00    0.00    0.00    0.00 |      76K     76K     76K     76K     76K
-
-Once we're done, we can clean up the job store by running
-
-::
-
-   toil clean file:my-jobstore
-
-Stats Command
+The Job Store
 -------------
-Continuing the example from the status section above, if we ran our workflow with the command::
 
-    toil discoverfiles.py file:my-jobstore --stats
-
-We could interrogate our jobstore with the stats command (which is different than the ``--stats`` option), for example::
-
-    toil stats file:my-jobstore
-
-If the run was successful, this would not return much valuable information, something like::
-
-    2018-01-11 19:31:29,739 - toil.lib.bioio - INFO - Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
-    2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Parsed arguments
-    2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Checking if we have files for Toil
-    The root job of the job store is absent, the workflow completed successfully.
-
-Otherwise, the ``stats`` command should return the following:
-
-    There are ``x`` unfinished jobs, ``y`` parent jobs with children, ``z`` jobs with services, ``a`` services, and ``b`` totally failed jobs currently in  ``c``.
-
-Clean Command
--------------
-If a Toil pipeline didn't finish successfully, or was run using ``--clean=always`` or ``--stats``, the job store will exist
-until it is deleted. ``toil clean <jobStore>`` ensures that all artifacts associated with a job store are removed.
-This is particularly useful for deleting AWS job stores, which reserves an SDB domain as well as an S3 bucket.
-
-The deletion of the job store can be modified by the ``--clean`` argument, and may be set to ``always``, ``onError``,
-``never``, or ``onSuccess`` (default).
-
-Temporary directories where jobs are running can also be saved from deletion using the ``--cleanWorkDir``, which has
-the same options as ``--clean``.  This option should only be run when debugging, as intermediate jobs will fill up
-disk space.
-
-Cluster Commands
-----------------
-``destroy-cluster``, ``launch-cluster``, ``rsync-cluster``, ``ssh-cluster`` are all autoscaling commands and are explained in :ref:`clusterRef`.
-
-Kill Command
-------------
-To kill all currently running jobs for a given jobstore, use the command::
-
-    toil kill file:my-jobstore
-
-CLI Options in Toil
--------------------
-Toil also provides several command line options when running a toil script (see :ref:`running`),
-or using Toil to run a CWL script. Many of these are described below.
-For most Toil scripts, executing::
-
-    $ python MY_TOIL_SCRIPT.py --help
-
-will show this list of options.
-
-It is also possible to set and manipulate the options described when invoking a
-Toil workflow from within Python using :func:`toil.job.Job.Runner.getDefaultOptions`, e.g.
-
-.. code-block:: python
-
-    options = Job.Runner.getDefaultOptions("./toilWorkflow") # Get the options object
-    options.logLevel = "INFO" # Set the log level to the info level.
-    options.clean = "ALWAYS" # Always delete the jobStore after a run
-
-    with Toil(options) as toil:
-        toil.start(Job())  # Run the script
-
-.. _loggingRef:
-
-Logging Options
----------------
-Toil hides stdout and stderr by default except in case of job failure.  Log levels in toil are based on priority from the
-logging module, so:
-
-**DEBUG**: All log statements are shown.
-**INFO**: All log statements are shown, except DEBUG.
-**WARN**: Only WARN, ERROR, and CRITICAL log levels are shown.
-**ERROR**: Only ERROR, and CRITICAL log levels are shown.
-**CRITICAL**: Only CRITICAL log levels are shown.
-
-The following logging options may be used:
-
-    ``--logLevel=`` may be set to: ``OFF`` (or ``CRITICAL``), ``ERROR``, ``WARN`` (or ``WARNING``), ``INFO``, or ``DEBUG``.
-
-    ``--logDebug`` sets the log level to DEBUG.  Equivalent to ``--logLevel=DEBUG``.
-
-    ``--logFile=`` specifies a file path to write the logging output to.
-
-If large logfiles are a problem, ``--maxLogFileSize`` (in bytes) can be set as well as ``--rotatingLogging``, which
-prevents logfiles from getting too large.
-
-Restart Option
---------------
-In the event of failure, Toil can resume the pipeline by adding the argument ``--restart`` and rerunning the
-python script. Toil pipelines can even be edited and resumed which is useful for development or troubleshooting.
-
-Batch System Option
--------------------
-Toil supports several different batch systems using the ``--batchSystem`` argument.
-More information in the :ref:`batchsysteminterface`.
-
-Default Resource Options
--------------------------------
-Toil uses resource requirements to intelligently schedule jobs. The defaults for cores (1), disk (2G), and memory (2G),
-can all be changed using:
-
-    ``--defaultCores`` changes the default number of cores that should be allocated per job.  Normally 1.
-
-    ``--defaultDisk`` changes the default disk space that should be allocated per job.  Normally 2G.
-
-    ``--defaultMemory`` changes the default RAM that should be allocated per job.  Normally 2G.
-
-Standard suffixes like K, Ki, M, Mi, G or Gi are supported.
-
-Job Store
----------
-Running toil scripts has one required positional argument: the job store.  The default job store is just a path
-to where the user would like the job store to be created. To use the :ref:`quick start <quickstart>` example,
-if you're on a node that has a large **/scratch** volume, you can specify the jobstore be created there by
+Running toil scripts requires a filepath or url to a centralizing location for all of the files of the workflow.
+This is Toil's one required positional argument: the job store.  To use the :ref:`quick start <quickstart>` example,
+if you're on a node that has a large **/scratch** volume, you can specify that the jobstore be created there by
 executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
 ``python HelloWorld.py file:/scratch/my-job-store``.
 
@@ -245,24 +30,273 @@ Syntax for specifying different job stores:
 
     Google: ``google:projectID-here:job-store-name``
 
-Different types of job store options can be found in :ref:`jobStoreInterface`.
+Different types of job store options can be found below.
 
-Miscellaneous
--------------
-Here are some additional useful arguments that don't fit into another category.
+.. _optionsRef:
 
-* ``--workDir`` sets the location where temporary directories are created for running jobs.
-* ``--retryCount`` sets the number of times to retry a job in case of failure. Useful for non-systemic failures like HTTP requests.
-* ``--sseKey`` accepts a path to a 32-byte key that is used for server-side encryption when using the AWS job store.
-* ``--cseKey`` accepts a path to a 256-bit key to be used for client-side encryption on Azure job store.
-* ``--setEnv <NAME=VALUE>`` sets an environment variable early on in the worker
+Commandline Options
+-------------------
 
-For implementation-specific flags for schedulers like timelimits, queues, accounts, etc.. An environment variable can be
-defined before launching the Job, i.e:
+**Core Toil Options**
 
-.. code-block:: console
+  --workDir WORKDIR     Absolute path to directory where temporary files
+                        generated during the Toil run should be placed. Temp
+                        files and folders will be placed in a directory
+                        toil-<workflowID> within workDir (The workflowID is
+                        generated by Toil and will be reported in the workflow
+                        logs. Default is determined by the variables (TMPDIR,
+                        TEMP, TMP) via mkdtemp. This directory needs to exist
+                        on all machines running jobs.
+  --stats               Records statistics about the toil workflow to be used
+                        by 'toil stats'.
+  --clean=STATE
+                        Determines the deletion of the jobStore upon
+                        completion of the program. Choices: 'always',
+                        'onError','never', or 'onSuccess'. The --stats option
+                        requires information from the jobStore upon completion
+                        so the jobStore will never be deleted withthat flag.
+                        If you wish to be able to restart the run, choose
+                        'never' or 'onSuccess'. Default is 'never' if stats is
+                        enabled, and 'onSuccess' otherwise
+  --cleanWorkDir STATE
+                        Determines deletion of temporary worker directory upon
+                        completion of a job. Choices: 'always', 'never',
+                        'onSuccess'. Default = always. WARNING: This option
+                        should be changed for debugging only. Running a full
+                        pipeline with this option could fill your disk with
+                        intermediate data.
+  --clusterStats FILEPATH
+                        If enabled, writes out JSON resource usage statistics
+                        to a file. The default location for this file is the
+                        current working directory, but an absolute path can
+                        also be passed to specify where this file should be
+                        written. This options only applies when using scalable
+                        batch systems.
+  --restart             If --restart is specified then will attempt to restart
+                        existing workflow at the location pointed to by the
+                        --jobStore option. Will raise an exception if the
+                        workflow does not exist
 
-    export TOIL_SLURM_ARGS="-t 1:00:00 -q fatq"
+**Logging Options**
+
+Toil hides stdout and stderr by default except in case of job failure.  Log levels in toil are based on priority from
+the logging module, so:
+
+  --logOff
+                        Only CRITICAL log levels are shown.
+                        Equivalent to ``--logLevel=OFF`` or ``--logLevel=CRITICAL``.
+  --logCritical
+                        Only CRITICAL log levels are shown.
+                        Equivalent to ``--logLevel=OFF`` or ``--logLevel=CRITICAL``.
+  --logError
+                        Only ERROR, and CRITICAL log levels are shown.
+                        Equivalent to ``--logLevel=ERROR``.
+  --logWarning
+                        Only WARN, ERROR, and CRITICAL log levels are shown.
+                        Equivalent to ``--logLevel=WARNING``.
+  --logInfo
+                        All log statements are shown, except DEBUG.
+                        Equivalent to ``--logLevel=INFO``.
+  --logDebug
+                        All log statements are shown.
+                        Equivalent to ``--logLevel=DEBUG``.
+  --logLevel=LOGLEVEL
+                        May be set to: ``OFF`` (or ``CRITICAL``),
+                        ``ERROR``, ``WARN`` (or ``WARNING``), ``INFO``, or ``DEBUG``.
+  --logFile FILEPATH
+                        Specifies a file path to write the logging output to.
+  --rotatingLogging
+                        Turn on rotating logging, which prevents log files from
+                        getting too big (set using ``--maxLogFileSize BYTESIZE``).
+  --maxLogFileSize BYTESIZE
+                        Sets the maximum log file size in bytes (``--rotatingLogging`` must be active).
+
+**Batch System Options**
+
+  --batchSystem BATCHSYSTEM
+                        The type of batch system to run the job(s) with,
+                        currently can be one of LSF, Mesos, Slurm, Torque,
+                        HTCondor, singleMachine, parasol, gridEngine'.
+                        default=singleMachine
+  --disableHotDeployment
+                        Should hot-deployment of the user script be
+                        deactivated? If True, the user script/package should
+                        be present at the same location on all workers.
+                        default=false
+  --parasolCommand PARASOLCOMMAND
+                        The name or path of the parasol program. Will be
+                        looked up on PATH unless it starts with a
+                        slashdefault=parasol
+  --parasolMaxBatches PARASOLMAXBATCHES
+                        Maximum number of job batches the Parasol batch is
+                        allowed to create. One batch is created for jobs with
+                        a a unique set of resource requirements. default=1000
+  --scale SCALE         A scaling factor to change the value of all submitted
+                        tasks's submitted cores. Used in singleMachine batch
+                        system. default=1
+  --linkImports         When using Toil's importFile function for staging,
+                        input files are copied to the job store. Specifying
+                        this option saves space by sym-linking imported files.
+                        As long as caching is enabled Toil will protect the
+                        file automatically by changing the permissions to
+                        read-only.
+  --mesosMaster MESOSMASTERADDRESS
+                        The host and port of the Mesos master separated by
+                        colon. (default: 169.233.147.202:5050)
+
+**Autoscaling Options**
+
+  --provisioner CLOUDPROVIDER
+                        The provisioner for cluster auto-scaling. The
+                        currently supported choices are'aws' or 'gce'. The
+                        default is None.
+  --nodeTypes NODETYPES
+                        List of node types separated by commas. The syntax for
+                        each node type depends on the provisioner used. For
+                        the cgcloud and AWS provisioners this is the name of
+                        an EC2 instance type, optionally followed by a colon
+                        and the price in dollars to bid for a spot instance of
+                        that type, for example 'c3.8xlarge:0.42'.If no spot
+                        bid is specified, nodes of this type will be non-
+                        preemptable.It is acceptable to specify an instance as
+                        both preemptable and non-preemptable, including it
+                        twice in the list. In that case,preemptable nodes of
+                        that type will be preferred when creating new nodes
+                        once the maximum number of preemptable-nodes has
+                        beenreached.
+  --nodeOptions NODEOPTIONS
+                        Options for provisioning the nodes. The syntax depends
+                        on the provisioner used. Neither the CGCloud nor the
+                        AWS provisioner support any node options.
+  --minNodes MINNODES   Mininum number of nodes of each type in the cluster,
+                        if using auto-scaling. This should be provided as a
+                        comma-separated list of the same length as the list of
+                        node types. default=0
+  --maxNodes MAXNODES   Maximum number of nodes of each type in the cluster,
+                        if using autoscaling, provided as a comma-separated
+                        list. The first value is used as a default if the list
+                        length is less than the number of nodeTypes.
+                        default=10
+  --preemptableCompensation PREEMPTABLECOMPENSATION
+                        The preference of the autoscaler to replace
+                        preemptable nodes with non-preemptable nodes, when
+                        preemptable nodes cannot be started for some reason.
+                        Defaults to 0.0. This value must be between 0.0 and
+                        1.0, inclusive. A value of 0.0 disables such
+                        compensation, a value of 0.5 compensates two missing
+                        preemptable nodes with a non-preemptable one. A value
+                        of 1.0 replaces every missing pre-emptable node with a
+                        non-preemptable one.
+  --nodeStorage NODESTORAGE
+                        Specify the size of the root volume of worker nodes
+                        when they are launched in gigabytes. You may want to
+                        set this if your jobs require a lot of disk space. The
+                        default value is 50.
+  --metrics             Enable the prometheus/grafana dashboard for monitoring
+                        CPU/RAM usage, queue size, and issued jobs.
+  --defaultMemory INT   The default amount of memory to request for a job.
+                        Only applicable to jobs that do not specify an
+                        explicit value for this requirement. Standard suffixes
+                        like K, Ki, M, Mi, G or Gi are supported. Default is
+                        2.0G
+  --defaultCores FLOAT  The default number of CPU cores to dedicate a job.
+                        Only applicable to jobs that do not specify an
+                        explicit value for this requirement. Fractions of a
+                        core (for example 0.1) are supported on some batch
+                        systems, namely Mesos and singleMachine. Default is
+                        1.0
+  --defaultDisk INT     The default amount of disk space to dedicate a job.
+                        Only applicable to jobs that do not specify an
+                        explicit value for this requirement. Standard suffixes
+                        like K, Ki, M, Mi, G or Gi are supported. Default is
+                        2.0G
+  --maxCores INT        The maximum number of CPU cores to request from the
+                        batch system at any one time. Standard suffixes like
+                        K, Ki, M, Mi, G or Gi are supported.
+  --maxMemory INT       The maximum amount of memory to request from the batch
+                        system at any one time. Standard suffixes like K, Ki,
+                        M, Mi, G or Gi are supported.
+  --maxDisk INT         The maximum amount of disk space to request from the
+                        batch system at any one time. Standard suffixes like
+                        K, Ki, M, Mi, G or Gi are supported.
+  --retryCount RETRYCOUNT
+                        Number of times to retry a failing job before giving
+                        up and labeling job failed. default=1
+  --maxJobDuration MAXJOBDURATION
+                        Maximum runtime of a job (in seconds) before we kill
+                        it (this is a lower bound, and the actual time before
+                        killing the job may be longer).
+  --rescueJobsFrequency RESCUEJOBSFREQUENCY
+                        Period of time to wait (in seconds) between checking
+                        for missing/overlong jobs, that is jobs which get lost
+                        by the batch system.
+  --maxServiceJobs MAXSERVICEJOBS
+                        The maximum number of service jobs that can be run
+                        concurrently, excluding service jobs running on
+                        preemptable nodes. default=9223372036854775807
+  --maxPreemptableServiceJobs MAXPREEMPTABLESERVICEJOBS
+                        The maximum number of service jobs that can run
+                        concurrently on preemptable nodes.
+                        default=9223372036854775807
+  --deadlockWait DEADLOCKWAIT
+                        The minimum number of seconds to observe the cluster
+                        stuck running only the same service jobs before
+                        throwing a deadlock exception. default=60
+  --statePollingWait STATEPOLLINGWAIT
+                        Time, in seconds, to wait before doing a scheduler
+                        query for job state. Return cached results if within
+                        the waiting period.
+
+  **Miscellaneous Options**
+
+  --disableCaching      Disables caching in the file store. This flag must be
+                        set to use a batch system that does not support
+                        caching such as Grid Engine, Parasol, LSF, or Slurm
+  --disableChaining     Disables chaining of jobs (chaining uses one job's
+                        resource allocation for its successor job if
+                        possible).
+  --maxLogFileSize MAXLOGFILESIZE
+                        The maximum size of a job log file to keep (in bytes),
+                        log files larger than this will be truncated to the
+                        last X bytes. Setting this option to zero will prevent
+                        any truncation. Setting this option to a negative
+                        value will truncate from the beginning.Default=62.5 K
+  --writeLogs FILEPATH
+                        Write worker logs received by the leader into their
+                        own files at the specified path. The current working
+                        directory will be used if a path is not specified
+                        explicitly. Note: By default only the logs of failed
+                        jobs are returned to leader. Set log level to 'debug'
+                        to get logs back from successful jobs, and adjust
+                        'maxLogFileSize' to control the truncation limit for
+                        worker logs.
+  --writeLogsGzip FILEPATH
+                        Identical to --writeLogs except the logs files are
+                        gzipped on the leader.
+  --realTimeLogging     Enable real-time logging from workers to masters
+  --sseKey SSEKEY       Path to file containing 32 character key to be used
+                        for server-side encryption on awsJobStore or
+                        googleJobStore. SSE will not be used if this flag is
+                        not passed.
+  --cseKey CSEKEY       Path to file containing 256-bit key to be used for
+                        client-side encryption on azureJobStore. By default,
+                        no encryption is used.
+  --setEnv NAME=VALUE or NAME, -e NAME=VALUE or NAME
+                        Set an environment variable early on in the worker. If
+                        VALUE is omitted, it will be looked up in the current
+                        environment. Independently of this option, the worker
+                        will try to emulate the leader's environment before
+                        running a job. Using this option, a variable can be
+                        injected into the worker process itself before it is
+                        started.
+  --servicePollingInterval SERVICEPOLLINGINTERVAL
+                        Interval of time service jobs wait between polling for
+                        the existence of the keep-alive flag (defailt=60)
+
+Restart Option
+--------------
+In the event of failure, Toil can resume the pipeline by adding the argument ``--restart`` and rerunning the
+python script. Toil pipelines can even be edited and resumed which is useful for development or troubleshooting.
 
 Running Workflows with Services
 -------------------------------
@@ -291,5 +325,51 @@ Toil will detect this situation if it occurs and throw a
 :class:`toil.DeadlockException` exception. Increasing the cluster size
 and these limits will resolve the issue.
 
-.. _clusterRef:
+Setting Options directly with the Toil Script
+---------------------------------------------
 
+It's good to remember that commandline options can be overridden in the Toil script itself.  For example,
+:func:`toil.job.Job.Runner.getDefaultOptions`:: can be used to run toil with all default options, and in this example,
+it will override commandline args to run the default options and always run with the "./toilWorkflow" directory
+specified as the jobstore.
+
+.. code-block:: python
+
+    options = Job.Runner.getDefaultOptions("./toilWorkflow") # Get the options object
+
+    with Toil(options) as toil:
+        toil.start(Job())  # Run the script
+
+However, each option can be explicitly set within the script by supplying arguments (in this example, we are setting
+``logLevel = "DEBUG"`` (all log statements are shown) and ``clean="ALWAYS"`` (always delete the jobstore) like so:
+
+.. code-block:: python
+
+    options = Job.Runner.getDefaultOptions("./toilWorkflow") # Get the options object
+    options.logLevel = "DEBUG" # Set the log level to the debug level.
+    options.clean = "ALWAYS" # Always delete the jobStore after a run
+
+    with Toil(options) as toil:
+        toil.start(Job())  # Run the script
+
+However, the usual incantation is to accept commandline args from the user with the following:
+
+.. code-block:: python
+
+    parser = Job.Runner.getDefaultArgumentParser() # Get the parser
+    options = parser.parse_args() # Parse user args to create the options object
+
+    with Toil(options) as toil:
+        toil.start(Job())  # Run the script
+
+Which can also, of course, then accept script supplied arguments as before (which will overwrite any user supplied args):
+
+.. code-block:: python
+
+    parser = Job.Runner.getDefaultArgumentParser() # Get the parser
+    options = parser.parse_args() # Parse user args to create the options object
+    options.logLevel = "DEBUG" # Set the log level to the debug level.
+    options.clean = "ALWAYS" # Always delete the jobStore after a run
+
+    with Toil(options) as toil:
+        toil.start(Job())  # Run the script

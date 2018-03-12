@@ -158,8 +158,8 @@ To learn more about WDL, see the main `WDL website`_ .
 
 .. _runningDetail:
 
-A (more) real-world example
----------------------------
+Sort Example
+------------
 
 For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file. This is not supposed to be an efficient
@@ -369,12 +369,10 @@ line 30, or remove it, and then run
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
 
-
 Collecting Statistics
 ~~~~~~~~~~~~~~~~~~~~~
 
 Please see the :ref:`cli_status` section for more on gathering runtime and resource info on jobs.
-
 
 Launching a Toil Workflow in AWS
 --------------------------------
@@ -553,6 +551,5 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Destroy the cluster. ::
 
         (venv) $ toil destroy-cluster <cluster-name>
-
 
 For other examples and Toil resources see https://toilpipelines.wordpress.com/

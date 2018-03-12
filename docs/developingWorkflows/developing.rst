@@ -501,7 +501,6 @@ The return value ``l`` of the workflow is a list of all binary strings of
 length 10, computed recursively. Although a toy example, it demonstrates how
 closely Toil workflows can mimic typical programming patterns.
 
-
 Promised Requirements
 ---------------------
 
