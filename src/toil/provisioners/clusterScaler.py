@@ -23,9 +23,10 @@ from builtins import object
 import json
 import logging
 import os
+import sys
+import time
 from collections import defaultdict
 
-import time
 from bd2k.util.retry import retry
 from bd2k.util.threading import ExceptionalThread
 from bd2k.util.throttle import throttle
@@ -36,38 +37,43 @@ from toil.provisioners.abstractProvisioner import Shape
 from toil.job import ServiceJobNode
 
 logger = logging.getLogger(__name__)
-
 logger.setLevel(logging.DEBUG)
-import sys
-
 ch = logging.StreamHandler(sys.stdout)
 ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logging.getLogger().addHandler(ch)
 
+defaultTargetTime = 3600
+
+
 class BinPackedFit(object):
     """
-    Use a first fit decreasing (FFD) bin packing like algorithm to
-    calculate an approximate minimum number of nodes that will fit the
-    given list of jobs. To run the bin-packing algorithm, use the
-    binPack method on a list of job shapes, and use getRequiredNodes
-    to get how many nodes it thinks are required.
+    If jobShapes is a set of tasks with run requirements (mem/disk/cpu), and nodeShapes is a list
+    of available computers to run these jobs on, this function attempts to return a dictionary
+    representing the minimum set of computerNode computers needed to run the tasks in jobShapes.
 
-    :param list nodeShapes: A list of possible types of nodes that can be launched (as "Shape"s).
+    Uses a first fit decreasing (FFD) bin packing like algorithm to calculate an approximate minimum
+    number of nodes that will fit the given list of jobs.
+
+    :param list nodeShapes: The properties of an atomic node allocation, in terms of wall-time,
+                            memory, cores, disk, and whether it is preemptable or not.
     :param targetTime: The time before which all jobs should at least be started.
+
+    :returns: The minimum number of minimal node allocations estimated to be required to run all
+              the jobs in jobShapes.
     """
-    def __init__(self, nodeShapes, targetTime=3600):
+    def __init__(self, nodeShapes, targetTime=defaultTargetTime):
         self.nodeShapes = nodeShapes
         self.targetTime = targetTime
         self.nodeReservations = {nodeShape:[] for nodeShape in nodeShapes}
 
     def binPack(self, jobShapes):
         """Pack a list of jobShapes into the fewest nodes reasonable. Can be run multiple times."""
-        logger.debug('Running bin packing for node shapes %s and %s job(s).', self.nodeShapes, len(jobShapes))
-        # Sort in descending order from largest to smallest. The FFD
-        # like-strategy will pack the jobs in order from longest to
-        # shortest.
+        logger.debug('Running bin packing for node shapes %s and %s job(s).',
+                     self.nodeShapes, len(jobShapes))
+        # Sort in descending order from largest to smallest. The FFD like-strategy will pack the
+        # jobs in order from longest to shortest.
         jobShapes.sort()
         jobShapes.reverse()
         assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
@@ -76,8 +82,8 @@ class BinPackedFit(object):
 
     def addJobShape(self, jobShape):
         """
-        Function adds the job to the first node reservation in which it will fit (this
-        is the bin-packing aspect)
+        Function adds the job to the first node reservation in which it will fit (this is the
+        bin-packing aspect).
         """
         chosenNodeShape = None
         for nodeShape in self.nodeShapes:
@@ -87,7 +93,8 @@ class BinPackedFit(object):
                 break
 
         if chosenNodeShape is None:
-            logger.warning("Couldn't fit job with requirements %r into any nodes in the nodeTypes list." % jobShape)
+            logger.warning("Couldn't fit job with requirements %r into any nodes in the nodeTypes "
+                           "list." % jobShape)
 
         nodeReservations = self.nodeReservations[chosenNodeShape]
         for nodeReservation in nodeReservations:
@@ -96,16 +103,16 @@ class BinPackedFit(object):
                 return
 
         reservation = NodeReservation(chosenNodeShape)
-        t = chosenNodeShape.wallTime
+        currentTimeAllocated = chosenNodeShape.wallTime
         adjustEndingReservationForJob(reservation, jobShape, 0)
         self.nodeReservations[chosenNodeShape].append(reservation)
 
         # Extend the reservation if necessary to cover the job's entire runtime.
-        while t < jobShape.wallTime:
-            y = NodeReservation(reservation.shape)
-            t += chosenNodeShape.wallTime
-            reservation.nReservation = y
-            reservation = y
+        while currentTimeAllocated < jobShape.wallTime:
+            extendThisReservation = NodeReservation(reservation.shape)
+            currentTimeAllocated += chosenNodeShape.wallTime
+            reservation.nReservation = extendThisReservation
+            reservation = extendThisReservation
 
     def getRequiredNodes(self):
         """
@@ -129,7 +136,10 @@ class NodeReservation(object):
 
     def fits(self, jobShape):
         """Check if a job shape's resource requirements will fit within this allocation."""
-        return jobShape.memory <= self.shape.memory and jobShape.cores <= self.shape.cores and jobShape.disk <= self.shape.disk and (jobShape.preemptable or not self.shape.preemptable)
+        return jobShape.memory <= self.shape.memory and \
+               jobShape.cores <= self.shape.cores and \
+               jobShape.disk <= self.shape.disk and \
+               (jobShape.preemptable or not self.shape.preemptable)
 
     def shapes(self):
         """Get all time-slice shapes, in order, from this reservation on."""
@@ -142,9 +152,13 @@ class NodeReservation(object):
 
     def subtract(self, jobShape):
         """
-        Adjust available resources of a node allocation as a job is scheduled within it.
+        Subtracts the resources necessary to run a jobShape from the reservation.
         """
-        self.shape = Shape(self.shape.wallTime, self.shape.memory - jobShape.memory, self.shape.cores - jobShape.cores, self.shape.disk - jobShape.disk, self.shape.preemptable)
+        self.shape = Shape(self.shape.wallTime,
+                           self.shape.memory - jobShape.memory,
+                           self.shape.cores - jobShape.cores,
+                           self.shape.disk - jobShape.disk,
+                           self.shape.preemptable)
 
     def attemptToAddJob(self, jobShape, nodeShape, targetTime):
         """
@@ -168,16 +182,16 @@ class NodeReservation(object):
                 jobTimeSoFar += endingReservation.shape.wallTime
 
                 if jobTimeSoFar >= jobShape.wallTime:
-                    # The job fits into all the slices between startingReservation and endingReservation.
-                    t = 0
+                    # Job fits into all the slices between startingReservation & endingReservation.
+                    timeSlice = 0
                     # Update all the slices, reserving the amount of resources that this job needs.
                     while startingReservation != endingReservation:
                         startingReservation.subtract(jobShape)
-                        t += startingReservation.shape.wallTime
+                        timeSlice += startingReservation.shape.wallTime
                         startingReservation = startingReservation.nReservation
                     assert startingReservation == endingReservation
-                    assert jobShape.wallTime - t <= startingReservation.shape.wallTime
-                    adjustEndingReservationForJob(endingReservation, jobShape, t)
+                    assert jobShape.wallTime - timeSlice <= startingReservation.shape.wallTime
+                    adjustEndingReservationForJob(endingReservation, jobShape, timeSlice)
                     # Packed the job.
                     return True
 
@@ -202,28 +216,36 @@ class NodeReservation(object):
         # Couldn't pack the job.
         return False
 
-def adjustEndingReservationForJob(reservation, jobShape, t):
+def adjustEndingReservationForJob(reservation, jobShape, wallTime):
     """
     Add a job to an ending reservation that ends at time t, splitting
     the reservation if the job doesn't fill the entire timeslice.
     """
-    if jobShape.wallTime - t < reservation.shape.wallTime:
+    if jobShape.wallTime - wallTime < reservation.shape.wallTime:
         # This job only partially fills one of the slices. Create a new slice.
-        reservation.shape, nS = split(reservation.shape, jobShape, jobShape.wallTime - t)
+        reservation.shape, nS = split(reservation.shape, jobShape, jobShape.wallTime - wallTime)
         nS.nReservation = reservation.nReservation
         reservation.nReservation = nS
     else:
         # This job perfectly fits within the boundaries of the slices.
         reservation.subtract(jobShape)
 
-def split(nodeShape, jobShape, t):
+def split(nodeShape, jobShape, wallTime):
     """
     Partition a node allocation into two to fit the job, returning the
     modified shape of the node and a new node reservation for
     the extra time that the job didn't fill.
     """
-    return (Shape(t, nodeShape.memory - jobShape.memory, nodeShape.cores - jobShape.cores, nodeShape.disk - jobShape.disk, nodeShape.preemptable),
-            NodeReservation(Shape(nodeShape.wallTime - t, nodeShape.memory, nodeShape.cores, nodeShape.disk, nodeShape.preemptable)))
+    return (Shape(wallTime,
+                  nodeShape.memory - jobShape.memory,
+                  nodeShape.cores - jobShape.cores,
+                  nodeShape.disk - jobShape.disk,
+                  nodeShape.preemptable),
+            NodeReservation(Shape(nodeShape.wallTime - wallTime,
+                                  nodeShape.memory,
+                                  nodeShape.cores,
+                                  nodeShape.disk,
+                                  nodeShape.preemptable)))
 
 def binPacking(nodeShapes, jobShapes, goalTime):
     bpf = BinPackedFit(nodeShapes, goalTime)
@@ -234,6 +256,7 @@ class ClusterScaler(object):
     def __init__(self, provisioner, leader, config):
         """
         Class manages automatically scaling the number of worker nodes.
+
         :param AbstractProvisioner provisioner: Provisioner instance to scale.
         :param toil.leader.Leader leader:
         :param Config config: Config object from which to draw parameters.
@@ -243,8 +266,8 @@ class ClusterScaler(object):
         self.config = config
         self.static = {}
 
-        #Dictionary of job names to their average runtime, used to estimate wall time
-        #of queued jobs for bin-packing
+        # Dictionary of job names to their average runtime, used to estimate wall time of queued
+        # jobs for bin-packing
         self.jobNameToAvgRuntime = {}
         self.jobNameToNumCompleted = {}
         self.totalAvgRuntime = 0.0
@@ -297,7 +320,8 @@ class ClusterScaler(object):
             for preemptable in (True, False):
                 nodes = []
                 for nodeShape, nodeType in self.nodeShapeToType.items():
-                    nodes_thisType = leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=preemptable)
+                    nodes_thisType = leader.provisioner.getProvisionedWorkers(nodeType=nodeType,
+                                                                              preemptable=preemptable)
                     totalNodes[nodeShape] += len(nodes_thisType)
                     nodes.extend(nodes_thisType)
 
@@ -349,7 +373,8 @@ class ClusterScaler(object):
             self.jobNameToNumCompleted[job.jobName] = 1
 
         self.totalJobsCompleted += 1
-        self.totalAvgRuntime = float(self.totalAvgRuntime*(self.totalJobsCompleted - 1) + wallTime)/self.totalJobsCompleted
+        self.totalAvgRuntime = float(self.totalAvgRuntime * (self.totalJobsCompleted - 1) + \
+                                     wallTime)/self.totalJobsCompleted
 
     def setStaticNodes(self, nodes, preemptable):
         """
@@ -380,28 +405,32 @@ class ClusterScaler(object):
         Smooth out fluctuations in the estimate for this node compared to
         previous runs. Returns an integer.
         """
-        weightedEstimate = (1 - self.betaInertia) * estimatedNodeCount + self.betaInertia * self.previousWeightedEstimate[nodeShape]
+        weightedEstimate = (1 - self.betaInertia) * estimatedNodeCount + \
+                           self.betaInertia * self.previousWeightedEstimate[nodeShape]
         self.previousWeightedEstimate[nodeShape] = weightedEstimate
         return int(round(weightedEstimate))
 
     def getEstimatedNodeCounts(self, queuedJobShapes, currentNodeCounts):
         """
-        Given the resource requirements of queued jobs and the current
-        size of the cluster, returns a dict mapping from nodeShape to
-        the number of nodes we want in the cluster right now.
+        Given the resource requirements of queued jobs and the current size of the cluster, returns
+        a dict mapping from nodeShape to the number of nodes we want in the cluster right now.
         """
-        nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes, nodeShapes=self.nodeShapes, goalTime=self.alphaTime)
+        nodesToRunQueuedJobs = binPacking(jobShapes=queuedJobShapes,
+                                          nodeShapes=self.nodeShapes,
+                                          goalTime=self.alphaTime)
         estimatedNodeCounts = {}
         for nodeShape in self.nodeShapes:
             nodeType = self.nodeShapeToType[nodeShape]
 
-            logger.info("Nodes of type %s to run queued jobs = %s" % (nodeType, nodesToRunQueuedJobs[nodeShape]))
+            logger.info("Nodes of type %s to run queued jobs = "
+                        "%s" % (nodeType, nodesToRunQueuedJobs[nodeShape]))
             # Actual calculation of the estimated number of nodes required
-            estimatedNodeCount = 0 if nodesToRunQueuedJobs[nodeShape] == 0 else max(1, int(round(nodesToRunQueuedJobs[nodeShape])))
+            estimatedNodeCount = 0 if nodesToRunQueuedJobs[nodeShape] == 0 \
+                                   else max(1, int(round(nodesToRunQueuedJobs[nodeShape])))
             logger.info("Estimating %i nodes of shape %s" % (estimatedNodeCount, nodeShape))
 
-            # Use inertia parameter to smooth out fluctuations
-            # according to an exponentially weighted moving average.
+            # Use inertia parameter to smooth out fluctuations according to an exponentially
+            # weighted moving average.
             estimatedNodeCount = self.smoothEstimate(nodeShape, estimatedNodeCount)
 
             # If we're scaling a non-preemptable node type, we need to see if we have a 
@@ -414,25 +443,32 @@ class ClusterScaler(object):
                 # _not_ allocate) and configuration preference.
                 compensationNodes = int(round(self.preemptableNodeDeficit[nodeType] * compensation))
                 if compensationNodes > 0:
-                    logger.info('Adding %d non-preemptable nodes of type %s to compensate for a deficit of %d '
-                                'preemptable ones.', compensationNodes, nodeType, self.preemptableNodeDeficit[nodeType])
+                    logger.info('Adding %d non-preemptable nodes of type %s to compensate for a '
+                                'deficit of %d preemptable ones.', compensationNodes,
+                                                                   nodeType,
+                                                                   self.preemptableNodeDeficit[nodeType])
                 estimatedNodeCount += compensationNodes
 
-            logger.info("Currently %i nodes of type %s in cluster" % (currentNodeCounts[nodeShape], nodeType))
+            logger.info("Currently %i nodes of type %s in cluster" % (currentNodeCounts[nodeShape],
+                                                                      nodeType))
             if self.leader.toilMetrics:
-                self.leader.toilMetrics.logClusterSize(nodeType=nodeType, currentSize=currentNodeCounts[nodeShape],
+                self.leader.toilMetrics.logClusterSize(nodeType=nodeType,
+                                                       currentSize=currentNodeCounts[nodeShape],
                                                        desiredSize=estimatedNodeCount)
 
             # Bound number using the max and min node parameters
             if estimatedNodeCount > self.maxNodes[nodeShape]:
                 logger.debug('Limiting the estimated number of necessary %s (%s) to the '
-                             'configured maximum (%s).', nodeType, estimatedNodeCount, self.maxNodes[nodeShape])
+                             'configured maximum (%s).', nodeType,
+                                                         estimatedNodeCount,
+                                                         self.maxNodes[nodeShape])
                 estimatedNodeCount = self.maxNodes[nodeShape]
             elif estimatedNodeCount < self.minNodes[nodeShape]:
                 logger.info('Raising the estimated number of necessary %s (%s) to the '
-                            'configured minimum (%s).', nodeType, estimatedNodeCount, self.minNodes[nodeShape])
+                            'configured minimum (%s).', nodeType,
+                                                        estimatedNodeCount,
+                                                        self.minNodes[nodeShape])
                 estimatedNodeCount = self.minNodes[nodeShape]
-
             estimatedNodeCounts[nodeShape] = estimatedNodeCount
         return estimatedNodeCounts
 
@@ -756,19 +792,28 @@ class ScalerThread(ExceptionalThread):
             try:
                 with throttle(self.scaler.config.scaleInterval):
                     queuedJobs = self.scaler.leader.getJobs()
-                    queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName, service=isinstance(job, ServiceJobNode)), memory=job.memory, cores=job.cores, disk=job.disk, preemptable=job.preemptable) for job in queuedJobs]
+                    queuedJobShapes = [
+                         Shape(wallTime=self.scaler.getAverageRuntime(
+                                                           jobName=job.jobName,
+                                                           service=isinstance(job, ServiceJobNode)),
+                               memory=job.memory,
+                               cores=job.cores,
+                               disk=job.disk,
+                               preemptable=job.preemptable) for job in queuedJobs]
                     currentNodeCounts = {}
                     for nodeShape in self.scaler.nodeShapes:
                         nodeType = self.scaler.nodeShapeToType[nodeShape]
-                        currentNodeCounts[nodeShape] = len(self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=nodeShape.preemptable))
-                    estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(queuedJobShapes, currentNodeCounts)
+                        currentNodeCounts[nodeShape] = len(
+                            self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType,
+                                                                                 preemptable=nodeShape.preemptable))
+                    estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(queuedJobShapes,
+                                                                             currentNodeCounts)
                     self.scaler.updateClusterSize(estimatedNodeCounts)
                     if self.stats:
                         self.stats.checkStats()
             except:
-                logger.exception("Exception encountered in scaler thread. Making a "
-                                 "best-effort attempt to keep going, but things may "
-                                 "go wrong from now on.")
+                logger.exception("Exception encountered in scaler thread. Making a best-effort "
+                                 "attempt to keep going, but things may go wrong from now on.")
         self.scaler.shutDown()
 
 class ClusterStats(object):
@@ -780,7 +825,8 @@ class ClusterStats(object):
         self.stop = False
         self.clusterName = clusterName
         self.batchSystem = batchSystem
-        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem) if batchSystem else False
+        self.scaleable = isinstance(self.batchSystem, AbstractScalableBatchSystem) \
+                         if batchSystem else False
 
     def shutDownStats(self):
         if self.stop:
@@ -836,8 +882,8 @@ class ClusterStats(object):
                         if nodeStats is not None:
                             nodeStats = toDict(nodeStats)
                             try:
-                                # if the node is already registered update the dictionary with
-                                # the newly reported stats
+                                # if the node is already registered update the dictionary with the
+                                # newly reported stats
                                 stats[nodeIP].append(nodeStats)
                             except KeyError:
                                 # create a new entry for the node
