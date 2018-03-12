@@ -732,7 +732,6 @@ class Toil(object):
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
             self._cacheAllJobs()
-            self._setProvisioner() # run this before jobStore calls to set credentials correctly
 
             # Pickle the promised return value of the root job, then write the pickled promise to
             # a shared file, where we can find and unpickle it at the end of the workflow.
@@ -747,6 +746,7 @@ class Toil(object):
             rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
             self._cacheJob(rootJobGraph)
 
+            self._setProvisioner()
             return self._runMainLoop(rootJobGraph)
         finally:
             self._shutdownBatchSystem()

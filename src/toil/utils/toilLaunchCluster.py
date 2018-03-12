@@ -84,14 +84,16 @@ def main():
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         except ImportError:
-            raise RuntimeError('The aws extra must be installed to use this provisioner')
+            print('The aws extra must be installed to use this provisioner')
+            raise
         provisioner = AWSProvisioner()
     elif config.provisioner == 'gce':
         logger.info('Using a gce provisioner.')
         try:
             from toil.provisioners.gceProvisioner import GCEProvisioner
         except ImportError:
-            raise RuntimeError('The libCloud extra must be installed to use this provisioner')
+            print('The libCloud extra must be installed to use this provisioner')
+            raise
         provisioner = GCEProvisioner()
     else:
         assert False

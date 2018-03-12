@@ -31,6 +31,7 @@ from libcloud.compute.providers import get_driver
 from toil import applianceSelf
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners import (Node, NoSuchClusterException)
+from toil.jobStores.googleJobStore import GoogleJobStore
 
 import logging
 logger = logging.getLogger(__name__)
@@ -190,7 +191,6 @@ class GCEProvisioner(AbstractProvisioner):
 
     maxWaitTime = 5*60
     nodeBotoPath = "/root/.boto"
-    nodeCredentialsPath = "/root/googleApplicationCredentials.json"
 
     def __init__(self, config=None):
         """
@@ -226,7 +226,7 @@ class GCEProvisioner(AbstractProvisioner):
             self.masterPublicKey = self._setSSH()
 
             self.botoPath = self.nodeBotoPath
-            self.credentialsPath = self.nodeCredentialsPath
+            self.credentialsPath = GoogleJobStore.nodeServiceAccountJson
             self.keyName = 'core'
             self.gceUserDataWorker = gceUserDataWithSsh
 
@@ -248,8 +248,6 @@ class GCEProvisioner(AbstractProvisioner):
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
-
-            os.putenv('GOOGLE_APPLICATION_CREDENTIALS', self.nodeCredentialsPath)
         else:
             self.clusterName = None
             self.instanceMetaData = None
@@ -364,7 +362,7 @@ class GCEProvisioner(AbstractProvisioner):
         if self.botoPath:
             self._rsyncNode(leader.public_ips[0], [self.botoPath, ':' + self.nodeBotoPath],
                             applianceName='toil_leader')
-        self._rsyncNode(leader.public_ips[0], [self.credentialsPath, ':' + self.nodeCredentialsPath],
+        self._rsyncNode(leader.public_ips[0], [self.credentialsPath, ':' + GoogleJobStore.nodeServiceAccountJson],
                         applianceName='toil_leader')
 
         # assuming that if the leader was launched without a spotbid then all workers
@@ -517,7 +515,8 @@ class GCEProvisioner(AbstractProvisioner):
             retries = 0
             while True:
                 try:
-                    self._rsyncNode(instance.public_ips[0], [self.credentialsPath, ':' + self.nodeCredentialsPath],
+                    self._rsyncNode(instance.public_ips[0],
+                                    [self.credentialsPath, ':' + GoogleJobStore.nodeServiceAccountJson],
                                     applianceName='toil_worker')
                     if self.config and self.config.sseKey:
                         self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
@@ -528,8 +527,8 @@ class GCEProvisioner(AbstractProvisioner):
                     break
                 except Exception as e:
                     if retries == 5:
-                        log.error("Failed to rysnc keys to worker with ip" % instance.public_ips[0])
-                        log.error('Exception %s', e)
+                        logger.error("Failed to rysnc keys to worker with ip" % instance.public_ips[0])
+                        logger.error('Exception %s', e)
                         continue # givup
                     else:
                         logger.debug("Rsync to new nodes failed, trying again")

@@ -23,6 +23,7 @@ from contextlib import contextmanager
 import uuid
 import logging
 import time
+import os
 
 try:
     import cPickle as pickle
@@ -89,6 +90,7 @@ def googleRetry(f):
 
 class GoogleJobStore(AbstractJobStore):
 
+    nodeServiceAccountJson = '/root/service_account.json'
     def __init__(self, locator):
         super(GoogleJobStore, self).__init__()
 
@@ -112,7 +114,12 @@ class GoogleJobStore(AbstractJobStore):
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
         self.sseKey = None
-        self.storageClient = storage.Client()
+        if os.path.exists(self.nodeServiceAccountJson):
+            # load credentials from a file on GCE nodes
+            self.storageClient = storage.Client.from_service_account_json(self.nodeServiceAccountJson)
+        else:
+            self.storageClient = storage.Client()
+
 
     @googleRetry
     def initialize(self, config=None):

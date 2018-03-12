@@ -33,6 +33,7 @@ log = logging.getLogger(__name__)
 @needs_appliance
 @slow
 class AbstractGCEAutoscaleTest(ToilTest):
+    projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
 
     def sshUtil(self, command):
         baseCommand = ['toil', 'ssh-cluster', '--insecure', '-p=gce', self.clusterName]
@@ -182,8 +183,7 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def setUp(self):
         super(GCEAutoscaleTest, self).setUp()
-        zone = 'us-west-2'  # TODO: replace this with a google job store
-        self.jobStore = 'aws:%s:autoscale-%s' % (zone, uuid4())
+        self.jobStore = 'google:%s:autoscale-%s' % (self.projectID, uuid4())
 
     def _getScript(self):
         # TODO: Isn't this the key file?
@@ -270,8 +270,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
 
     def setUp(self):
         super(GCEAutoscaleTestMultipleNodeTypes, self).setUp()
-        zone = 'us-west-2'  # TODO: replace this with a google job store
-        self.jobStore = 'aws:%s:autoscale-%s' % (zone, uuid4())
+        self.jobStore = 'google:%s:autoscale-%s' % (self.projectID, uuid4())
 
     def _getScript(self):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
@@ -315,7 +314,7 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
         self.scriptName = "/home/restartScript.py"
         # TODO: replace this with a google job store
         zone = 'us-west-2'
-        self.jobStore = 'aws:%s:restart-%s' % (zone, uuid4())
+        self.jobStore = 'google:%s:restart-%s' % (self.projectID, uuid4())
 
     def _getScript(self):
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/provisioners/restartScript.py'),
