@@ -49,15 +49,12 @@ from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
+from toil.provisioners.clusterScaler import defaultTargetTime
 
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
 logger = logging.getLogger(__name__)
-
-# This constant is set to the default value used on unix for block size (in bytes) when
-# os.stat(<file>).st_blocks is called.
-unixBlockSize = 512
 
 
 class Config(object):
@@ -96,7 +93,7 @@ class Config(object):
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
-        self.targetTime = 1800
+        self.targetTime = defaultTargetTime
         self.betaInertia = 0.1
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
