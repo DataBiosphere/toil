@@ -172,7 +172,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1600)
 class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
@@ -218,11 +218,13 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
     @needs_google
     def testSpotAutoScale(self):
         self.instanceTypes = ["n1-standard-2:%f" % self.spotBid]
-        self.numWorkers = ['2']
+        # Some spot workers have a stopped state after being started, strangely.
+        # This could be the natural preemption process, but it seems too rapid.
+        self.numWorkers = ['3'] # Try 3 to account for a stopped node.
         self._test(preemptableJobs=True)
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1600)
 class GCEStaticAutoscaleTest(GCEAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
