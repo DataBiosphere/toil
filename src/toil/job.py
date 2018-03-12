@@ -43,7 +43,7 @@ from io import BytesIO
 from six import iteritems, string_types
 
 from bd2k.util.expando import Expando
-from bd2k.util.humanize import human2bytes
+from toil.lib.humanize import human2bytes
 
 from toil.common import Toil, addOptions, safeUnpickleFromStream
 from toil.fileStore import DeferredFunction

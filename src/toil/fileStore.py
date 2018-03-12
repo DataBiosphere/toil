@@ -46,7 +46,7 @@ from threading import Thread, Semaphore, Event
 from six.moves.queue import Empty, Queue
 from six.moves import xrange
 
-from bd2k.util.humanize import bytes2human
+from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor

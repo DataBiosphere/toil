@@ -44,7 +44,7 @@ formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(messag
 ch.setFormatter(formatter)
 logging.getLogger().addHandler(ch)
 
-defaultTargetTime = 3600
+defaultTargetTime = 1800
 
 
 class BinPackedFit(object):

@@ -39,7 +39,7 @@ except ImportError:
 # Python 3 compatibility imports
 from six import iteritems
 
-from bd2k.util.humanize import bytes2human
+from toil.lib.humanize import bytes2human
 from bd2k.util.retry import retry
 
 from toil import logProcessContext

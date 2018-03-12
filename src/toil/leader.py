@@ -24,19 +24,14 @@ from builtins import str
 from builtins import object
 from past.utils import old_div
 import logging
-import gzip
-import os
 import time
-from collections import namedtuple
 
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
 
-from bd2k.util.expando import Expando
-from bd2k.util.humanize import bytes2human
-
+from toil.lib.humanize import bytes2human
 from toil import resolveEntryPoint
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS

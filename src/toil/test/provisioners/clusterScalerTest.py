@@ -15,8 +15,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from builtins import map
-from builtins import range
 from builtins import object
+from builtins import range
 from past.utils import old_div
 import time
 import datetime
@@ -31,11 +31,11 @@ from mock import MagicMock
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
-from six.moves import xrange
 from six import iteritems
 
 from toil.job import JobNode, Job
 
+from toil.lib.humanize import human2bytes as h2b
 from toil.test import ToilTest, slow
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    NodeInfo,
@@ -53,20 +53,21 @@ logger = logging.getLogger(__name__)
 
 # simplified preemptable c4.8xlarge
 c4_8xlarge = Shape(wallTime=3600,
-                   memory=60000000000,
+                   memory=h2b('60G'),
                    cores=36,
-                   disk=100000000000,
+                   disk=h2b('100G'),
                    preemptable=True)
 # simplified non-preemptable c4.8xlarge
 c4_8xlarge_nonpreemptable = Shape(wallTime=3600,
-                                  memory=60000000000,
+                                  memory=h2b('60G'),
                                   cores=36,
-                                  disk=100000000000,
+                                  disk=h2b('100G'),
                                   preemptable=False)
 # simplified non-preemptable r3.8xlarge
 r3_8xlarge = Shape(wallTime=3600,
-                   memory=260000000000,
-                   cores=32, disk=600000000000,
+                   memory=h2b('260G'),
+                   cores=32,
+                   disk=h2b('600G'),
                    preemptable=False)
 
 
@@ -78,23 +79,41 @@ class BinPackingTest(ToilTest):
     def testPackingOneShape(self):
         """Pack one shape and check that the resulting reservations look sane."""
         self.bpf.nodeReservations[c4_8xlarge] = [NodeReservation(c4_8xlarge)]
-        self.bpf.addJobShape(
-            Shape(wallTime=1000, cores=2, memory=1000000000, disk=2000000000, preemptable=True))
+        self.bpf.addJobShape(Shape(wallTime=1000,
+                                   cores=2,
+                                   memory=h2b('1G'),
+                                   disk=h2b('2G'),
+                                   preemptable=True))
         self.assertEqual(self.bpf.nodeReservations[r3_8xlarge], [])
         self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge]],
-                         [[Shape(wallTime=1000, memory=59000000000, cores=34, disk=98000000000,
+                         [[Shape(wallTime=1000,
+                                 memory=h2b('59G'),
+                                 cores=34,
+                                 disk=h2b('98G'),
                                  preemptable=True),
-                           Shape(wallTime=2600, memory=60000000000, cores=36, disk=100000000000,
+                           Shape(wallTime=2600,
+                                 memory=h2b('60G'),
+                                 cores=36,
+                                 disk=h2b('100G'),
                                  preemptable=True)]])
 
     def testAddingInitialNode(self):
         """Pack one shape when no nodes are available and confirm that we fit one node properly."""
-        self.bpf.addJobShape(
-            Shape(wallTime=1000, cores=2, memory=1000000000, disk=2000000000, preemptable=True))
+        self.bpf.addJobShape(Shape(wallTime=1000,
+                                   cores=2,
+                                   memory=h2b('1G'),
+                                   disk=h2b('2G'),
+                                   preemptable=True))
         self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge]],
-                         [[Shape(wallTime=1000, memory=59000000000, cores=34, disk=98000000000,
+                         [[Shape(wallTime=1000,
+                                 memory=h2b('59G'),
+                                 cores=34,
+                                 disk=h2b('98G'),
                                  preemptable=True),
-                           Shape(wallTime=2600, memory=60000000000, cores=36, disk=100000000000,
+                           Shape(wallTime=2600,
+                                 memory=h2b('60G'),
+                                 cores=36,
+                                 disk=h2b('100G'),
                                  preemptable=True)]])
 
     def testPathologicalCase(self):
@@ -107,12 +126,18 @@ class BinPackingTest(ToilTest):
         the future.
         """
         # Add one job that partially fills an r3.8xlarge for 1000 hours
-        self.bpf.addJobShape(Shape(wallTime=3600000, memory=10000000000, cores=0, disk=10000000000,
+        self.bpf.addJobShape(Shape(wallTime=3600000,
+                                   memory=h2b('10G'),
+                                   cores=0,
+                                   disk=h2b('10G'),
                                    preemptable=False))
-        for _ in xrange(500):
+        for _ in range(500):
             # Add 500 CPU-hours worth of jobs that fill an r3.8xlarge
             self.bpf.addJobShape(
-                Shape(wallTime=3600, memory=26000000000, cores=32, disk=60000000000,
+                Shape(wallTime=3600,
+                      memory=h2b('26G'),
+                      cores=32,
+                      disk=h2b('60G'),
                       preemptable=False))
         # Hopefully we didn't assign just one node to cover all those jobs.
         self.assertNotEqual(self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge: 0})
@@ -143,9 +168,15 @@ class ClusterScalerTest(ToilTest):
         self.config.betaInertia = 0.0
         self.config.maxNodes = [2, 3]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
-        jobShapes = [Shape(wallTime=3600, cores=2, memory=1000000000, disk=2000000000,
+        jobShapes = [Shape(wallTime=3600,
+                           cores=2,
+                           memory=h2b('1G'),
+                           disk=h2b('2G'),
                            preemptable=True)] * 1000
-        jobShapes.extend([Shape(wallTime=3600, cores=2, memory=1000000000, disk=2000000000,
+        jobShapes.extend([Shape(wallTime=3600,
+                                cores=2,
+                                memory=h2b('1G'),
+                                disk=h2b('2G'),
                                 preemptable=False)] * 1000)
         estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
@@ -190,7 +221,10 @@ class ClusterScalerTest(ToilTest):
         scaler.preemptableNodeDeficit['c4.8xlarge'] = 5
         # Add a bunch of preemptable jobs (so the bin-packing
         # estimate for the non-preemptable node should still be 0)
-        jobShapes = [Shape(wallTime=3600, cores=2, memory=1000000000, disk=2000000000,
+        jobShapes = [Shape(wallTime=3600,
+                           cores=2,
+                           memory=h2b('1G'),
+                           disk=h2b('2G'),
                            preemptable=True)] * 1000
         estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         # We don't care about the estimated size of the preemptable
