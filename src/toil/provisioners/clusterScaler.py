@@ -35,6 +35,7 @@ from itertools import islice
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 from toil.provisioners.abstractProvisioner import Shape
 from toil.job import ServiceJobNode
+from toil.common import defaultTargetTime
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -43,8 +44,6 @@ ch.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 ch.setFormatter(formatter)
 logging.getLogger().addHandler(ch)
-
-defaultTargetTime = 1800
 
 
 class BinPackedFit(object):

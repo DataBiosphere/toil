@@ -49,11 +49,11 @@ from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
-from toil.provisioners.clusterScaler import defaultTargetTime
-
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
+
+defaultTargetTime = 1800
 logger = logging.getLogger(__name__)
 
 
