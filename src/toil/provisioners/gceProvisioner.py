@@ -259,16 +259,15 @@ class GCEProvisioner(AbstractProvisioner):
             self.gceUserDataWorker = gceUserData
             self.botoPath = None
 
-            # TODO: This is not necessary for ssh and rsync.
-            if os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-                self.googleJson = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-            else:
+            self.googleJson = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            if not self.googleJson:
                 raise RuntimeError('GOOGLE_APPLICATION_CREDENTIALS not set.')
             try:
                 with open(self.googleJson) as jsonFile:
                     self.googleConnectionParams = json.loads(jsonFile.read())
             except:
-                 raise RuntimeError('GCEProvisioner: Could not parse the Google service account json file %s' % self.googleJson)
+                 raise RuntimeError('GCEProvisioner: Could not parse the Google service account json file %s'
+                                    % self.googleJson)
 
             self.projectId = self.googleConnectionParams['project_id']
             self.clientEmail = self.googleConnectionParams['client_email']
@@ -500,7 +499,7 @@ class GCEProvisioner(AbstractProvisioner):
         retries = 0
         workersCreated = 0
         # Try a few times to create the requested number of workers
-        while numNodes > 0 and retries < 4:
+        while numNodes-workersCreated > 0 and retries < 3:
             instancesLaunched = self.ex_create_multiple_nodes(
                                     '', nodeType, imageType, numNodes,
                                     location=self.zone,
@@ -520,7 +519,6 @@ class GCEProvisioner(AbstractProvisioner):
             if failedWorkers:
                 logger.error("Terminating %d failed workers" % len(failedWorkers))
                 self.terminateNodes(failedWorkers)
-            numNodes -= workersCreated
             retries += 1
 
         logger.info('Launched %d new instance(s)', numNodes)

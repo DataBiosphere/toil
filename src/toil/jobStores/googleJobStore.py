@@ -114,8 +114,8 @@ class GoogleJobStore(AbstractJobStore):
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
         self.sseKey = None
-        if os.path.exists(self.nodeServiceAccountJson):
-            # load credentials from a file on GCE nodes
+        if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS') and os.path.exists(self.nodeServiceAccountJson):
+            # load credentials from a file on GCE nodes if GOOGLE_APPLICATION_CREDENTIALS is not set
             self.storageClient = storage.Client.from_service_account_json(self.nodeServiceAccountJson)
         else:
             self.storageClient = storage.Client()

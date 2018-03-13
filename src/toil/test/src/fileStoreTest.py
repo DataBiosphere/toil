@@ -635,8 +635,11 @@ class hidden(object):
                 A.addChild(B)
                 B.addChild(C)
                 C.addChild(D)
-                D.addChild(D2)
-                D2.addChild(E)
+                if diskRequestMB > 50:
+                    D.addChild(D2)
+                    D2.addChild(E)
+                else:
+                    D.addChild(E)
                 E.addChild(F)
                 F.addChild(G)
                 Job.Runner.startToil(A, self.options)
