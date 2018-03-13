@@ -813,7 +813,6 @@ class GCEProvisioner(AbstractProvisioner):
     @classmethod
     def _waitForDockerDaemon(cls, ip_address, keyName='core'):
         logger.info('Waiting for docker on %s to start...', ip_address)
-        retries = 0
         sleepTime = 10
         startTime = time.time()
         while True:
@@ -830,18 +829,13 @@ class GCEProvisioner(AbstractProvisioner):
                     logger.info('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
             except:
-                if retries == 5:
-                    raise # givup
-                else:
-                    logger.debug("Wait for docker daemon failed ssh, trying again.")
-                    retries += 1
-                    sleepTime += 20
+                logger.debug("Wait for docker daemon failed ssh, trying again.")
+                sleepTime += 20
         return True
 
     @classmethod
     def _waitForAppliance(cls, ip_address, role, keyName='core'):
         logger.info('Waiting for %s Toil appliance to start...', role)
-        retries = 0
         sleepTime = 10
         startTime = time.time()
         while True:
@@ -860,12 +854,9 @@ class GCEProvisioner(AbstractProvisioner):
                     logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
             except:
-                if retries == 5:
-                    raise # givup
-                else:
-                    logger.debug("Wait for appliance failed ssh, trying again.")
-                    retries += 1
-                    sleepTime += 20
+                # ignore exceptions, keep trying
+                logger.debug("Wait for appliance failed ssh, trying again.")
+                sleepTime += 20
         return True
 
     @classmethod
