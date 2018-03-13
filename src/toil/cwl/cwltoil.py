@@ -875,7 +875,7 @@ def main(args=None, stdout=sys.stdout):
                              "version v3.18+ or with overlayfs support "
                              "backported.")
     dockergroup.add_argument("--no-container", action="store_true",
-                             default=True, help="Do not execute jobs in a "
+                             help="Do not execute jobs in a "
                              "Docker container, even when `DockerRequirement` "
                              "is specified under `hints`.")
     parser.add_argument("--preserve-environment", type=str, nargs='+',
