@@ -29,12 +29,10 @@ from collections import defaultdict
 
 from bd2k.util.retry import retry
 from bd2k.util.threading import ExceptionalThread
-from bd2k.util.throttle import throttle
 from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 from toil.provisioners.abstractProvisioner import Shape
-from toil.job import ServiceJobNode
 from toil.common import defaultTargetTime
 
 logger = logging.getLogger(__name__)
@@ -289,7 +287,7 @@ def binPacking(nodeShapes, jobShapes, goalTime):
     bpf.binPack(jobShapes)
     return bpf.getRequiredNodes()
 
-class ClusterScaler(ExceptionalThread):
+class ClusterScaler(object):
     def __init__(self, provisioner, leader, config):
         """
         Class manages automatically scaling the number of worker nodes.
@@ -789,6 +787,8 @@ class ClusterScaler(ExceptionalThread):
             preemptable = nodeShape.preemptable
             nodeType = self.nodeShapeToType[nodeShape]
             self.setNodeCount(nodeType=nodeType, numNodes=0, preemptable=preemptable, force=True)
+        if self.stats:
+            self.stats.shutDownStats()
 
 
 class ScalerThread(ExceptionalThread):
@@ -832,8 +832,6 @@ class ScalerThread(ExceptionalThread):
         Shutdown the cluster.
         """
         self.stop = True
-        if self.stats:
-            self.stats.shutDownStats()
         self.join()
 
     def addCompletedJob(self, job, wallTime):
