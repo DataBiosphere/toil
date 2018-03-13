@@ -39,7 +39,7 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.provisioners.clusterScaler import ClusterScaler, ScalerThread
+from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.job import JobNode, ServiceJobNode
