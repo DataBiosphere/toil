@@ -68,6 +68,8 @@ class BinPackedFit(object):
     def __init__(self, nodeShapes, targetTime=defaultTargetTime):
         self.nodeShapes = nodeShapes
         self.targetTime = targetTime
+        
+        # {_Shape(wallTime=3600, memory=1073741824, cores=1, disk=8589934592, preemptable=False): []}
         self.nodeReservations = {nodeShape:[] for nodeShape in nodeShapes}
 
     def binPack(self, jobShapes):
@@ -98,6 +100,7 @@ class BinPackedFit(object):
             logger.warning("Couldn't fit job with requirements %r into any nodes in the nodeTypes "
                            "list." % jobShape)
 
+        # grab current list of job objects appended to this nodeType
         nodeReservations = self.nodeReservations[chosenNodeShape]
         for nodeReservation in nodeReservations:
             if nodeReservation.attemptToAddJob(jobShape, chosenNodeShape, self.targetTime):
@@ -135,6 +138,36 @@ class NodeReservation(object):
         self.shape = shape
         # The next portion of the reservation (None if this is the end)
         self.nReservation = None
+
+    def __str__(self):
+        return "-------------------\n" \
+               "Current Reservation\n" \
+               "-------------------\n" \
+               "Shape wallTime: %s\n" \
+               "Shape memory: %s\n" \
+               "Shape cores: %s\n" \
+               "Shape disk: %s\n" \
+               "Shape preempt: %s\n" \
+               "\n" \
+               "nReserv wallTime: %s\n" \
+               "nReserv memory: %s\n" \
+               "nReserv cores: %s\n" \
+               "nReserv disk: %s\n" \
+               "nReserv preempt: %s\n" \
+               "\n" \
+               "Time slices: %s\n" \
+               "\n" % \
+               (self.shape.wallTime,
+                self.shape.memory,
+                self.shape.cores,
+                self.shape.disk,
+                self.shape.preemptable,
+                self.nReservation.shape.wallTime if self.nReservation is not None else str(None),
+                self.nReservation.shape.memory if self.nReservation is not None else str(None),
+                self.nReservation.shape.cores if self.nReservation is not None else str(None),
+                self.nReservation.shape.disk if self.nReservation is not None else str(None),
+                self.nReservation.shape.preemptable if self.nReservation is not None else str(None),
+                str(len(self.shapes())))
 
     def fits(self, jobShape):
         """Check if a job shape's resource requirements will fit within this allocation."""
@@ -174,24 +207,24 @@ class NodeReservation(object):
         # current end of the slices we can fit in so far
         endingReservation = startingReservation
         # the amount of runtime of the job currently covered by slices
-        jobTimeSoFar = 0
+        availableTime = 0
         # total time from when the instance started up to startingReservation
         startingReservationTime = 0
 
         while True:
-            # Considering a new ending reservation.
+            # True == can run the job (resources & preemptable only; NO time)
             if endingReservation.fits(jobShape):
-                jobTimeSoFar += endingReservation.shape.wallTime
-
-                if jobTimeSoFar >= jobShape.wallTime:
-                    # Job fits into all the slices between startingReservation & endingReservation.
+                # add the time left available on the reservation
+                availableTime += endingReservation.shape.wallTime
+                # does the job time fit in the reservation's remaining time?
+                if availableTime >= jobShape.wallTime:
                     timeSlice = 0
-                    # Update all the slices, reserving the amount of resources that this job needs.
                     while startingReservation != endingReservation:
+                        # removes resources only (NO time) from startingReservation
                         startingReservation.subtract(jobShape)
+                        # set aside the timeSlice
                         timeSlice += startingReservation.shape.wallTime
                         startingReservation = startingReservation.nReservation
-                    assert startingReservation == endingReservation
                     assert jobShape.wallTime - timeSlice <= startingReservation.shape.wallTime
                     adjustEndingReservationForJob(endingReservation, jobShape, timeSlice)
                     # Packed the job.
@@ -202,11 +235,13 @@ class NodeReservation(object):
                 elif endingReservation.nReservation == None and startingReservation == self:
                     # Extend the node reservation to accommodate jobShape
                     endingReservation.nReservation = NodeReservation(nodeShape)
+            # can't run the job with the current resources
             else:
-                if startingReservationTime + jobTimeSoFar <= targetTime:
+                # will always hit at least once
+                if startingReservationTime + availableTime <= targetTime:
                     startingReservation = endingReservation.nReservation
-                    startingReservationTime += jobTimeSoFar + endingReservation.shape.wallTime
-                    jobTimeSoFar = 0
+                    startingReservationTime += availableTime + endingReservation.shape.wallTime
+                    availableTime = 0
                 else:
                     break
 
