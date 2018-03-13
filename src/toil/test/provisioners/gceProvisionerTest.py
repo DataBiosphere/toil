@@ -270,7 +270,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
 
     def setUp(self):
         super(GCEAutoscaleTestMultipleNodeTypes, self).setUp()
-        self.jobStore = 'google:%s:autoscale-%s' % (self.projectID, uuid4())
+        self.jobStore = 'google:%s:multinode-%s' % (self.projectID, uuid4())
 
     def _getScript(self):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
@@ -286,7 +286,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         # instances
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=0.6G', '--mergeMemory=3.0G']
         runCommand.extend(toilOptions)
-        runCommand.append('--sseKey=/home/keyFile')
+        #runCommand.append('--sseKey=/home/keyFile')
         log.info("_runScript: %s" % ''.join(runCommand))
         self.sshUtil(runCommand)
 
