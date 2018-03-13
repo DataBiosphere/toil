@@ -859,15 +859,25 @@ def main(args=None, stdout=sys.stdout):
     # user to select jobStore or get a default from logic one below.
     parser.add_argument("--jobStore", type=str)
     parser.add_argument("--not-strict", action="store_true")
-    parser.add_argument("--no-container", action="store_true")
     parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
-    parser.add_argument("--user-space-docker-cmd",
+    dockergroup = parser.add_mutually_exclusive_group()
+    dockergroup.add_argument("--user-space-docker-cmd",
                         help="(Linux/OS X only) Specify a user space docker "
                         "command (like udocker or dx-docker) that will be "
                         "used to call 'pull' and 'run'")
+    dockergroup.add_argument("--singularity", action="store_true",
+                             default=False, help="[experimental] Use "
+                             "Singularity runtime for running containers. "
+                             "Requires Singularity v2.3.2+ and Linux with kernel "
+                             "version v3.18+ or with overlayfs support "
+                             "backported.")
+    dockergroup.add_argument("--no-container", action="store_true",
+                             help="Do not execute jobs in a "
+                             "Docker container, even when `DockerRequirement` "
+                             "is specified under `hints`.")
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
                     metavar=("VAR1 VAR2"),
