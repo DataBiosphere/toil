@@ -50,7 +50,7 @@ class BinPackedFit(object):
     """
     If jobShapes is a set of tasks with run requirements (mem/disk/cpu), and nodeShapes is a sorted
     list of available computers to run these jobs on, this function attempts to return a dictionary
-    representing the minimum set of computerNode computers needed to run the tasks in jobShapes.
+    representing the minimum set of nodeShape computers needed to run the tasks in jobShapes.
 
     Uses a first fit decreasing (FFD) bin packing like algorithm to calculate an approximate minimum
     number of nodes that will fit the given list of jobs.  BinPackingFit assumes the ordered list,
@@ -289,7 +289,7 @@ def binPacking(nodeShapes, jobShapes, goalTime):
     bpf.binPack(jobShapes)
     return bpf.getRequiredNodes()
 
-class ClusterScaler(object):
+class ClusterScaler(ExceptionalThread):
     def __init__(self, provisioner, leader, config):
         """
         Class manages automatically scaling the number of worker nodes.
@@ -298,10 +298,21 @@ class ClusterScaler(object):
         :param toil.leader.Leader leader:
         :param Config config: Config object from which to draw parameters.
         """
+        super(ClusterScaler, self).__init__()
+
         self.provisioner = provisioner
         self.leader = leader
         self.config = config
         self.static = {}
+
+        self.stats = None
+        if config.clusterStats:
+            self.stats = ClusterStats(leader.config.clusterStats,
+                                      leader.batchSystem,
+                                      provisioner.clusterName)
+            for preemptable in [True, False]:
+                self.stats.startStats(preemptable=preemptable)
+            logger.debug("Cluster stats started.")
 
         # Dictionary of job names to their average runtime, used to estimate wall time of queued
         # jobs for bin-packing
@@ -501,10 +512,10 @@ class ClusterScaler(object):
                              self.maxNodes[nodeShape])
                 estimatedNodeCount = self.maxNodes[nodeShape]
             elif estimatedNodeCount < self.minNodes[nodeShape]:
-                logger.info('Raising the estimated number of necessary %s (%s) to the '
-                            'configured minimum (%s).', nodeType,
-                            estimatedNodeCount,
-                            self.minNodes[nodeShape])
+                logger.debug('Raising the estimated number of necessary %s (%s) to the '
+                             'configured minimum (%s).', nodeType,
+                             estimatedNodeCount,
+                             self.minNodes[nodeShape])
                 estimatedNodeCount = self.minNodes[nodeShape]
             estimatedNodeCounts[nodeShape] = estimatedNodeCount
         return estimatedNodeCounts
@@ -528,7 +539,8 @@ class ClusterScaler(object):
             if nodeShape.preemptable:
                 if newNodeCount < estimatedNodeCount:
                     deficit = estimatedNodeCount - newNodeCount
-                    logger.info('Preemptable scaler detected deficit of %d nodes of type %s.' % (deficit, nodeType))
+                    logger.info('Preemptable scaler detected deficit of '
+                                '%d nodes of type %s.' % (deficit, nodeType))
                     self.preemptableNodeDeficit[nodeType] = deficit
                 else:
                     self.preemptableNodeDeficit[nodeType] = 0
@@ -593,7 +605,10 @@ class ClusterScaler(object):
                     numNodes = numCurrentNodes + self._addNodes(nodeType, numNodes=delta,
                                                                 preemptable=preemptable)
                 elif delta < 0:
-                    logger.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
+                    logger.info('Removing %i %s nodes to get to desired cluster size of %i.',
+                                -delta,
+                                'preemptable' if preemptable else 'non-preemptable',
+                                numNodes)
                     numNodes = numCurrentNodes - self._removeNodes(workerInstances,
                                                                    nodeType = nodeType,
                                                                    numNodes=-delta,
@@ -601,9 +616,11 @@ class ClusterScaler(object):
                                                                    force=force)
                 else:
                     if not force:
-                        logger.info('Cluster (minus ignored nodes) already at desired size of %i. Nothing to do.', numNodes)
+                        logger.info('Cluster (minus ignored nodes) already at desired size of %i. '
+                                    'Nothing to do.', numNodes)
                     else:
-                        logger.info('Cluster already at desired size of %i. Nothing to do.', numNodes)
+                        logger.info('Cluster already at desired size of %i. '
+                                    'Nothing to do.', numNodes)
         return numNodes
 
     def _addNodes(self, nodeType, numNodes, preemptable):
@@ -773,14 +790,17 @@ class ClusterScaler(object):
             nodeType = self.nodeShapeToType[nodeShape]
             self.setNodeCount(nodeType=nodeType, numNodes=0, preemptable=preemptable, force=True)
 
+
 class ScalerThread(ExceptionalThread):
     """
     A thread that automatically scales the number of either preemptable or non-preemptable worker
     nodes according to the resource requirements of the queued jobs.
+
     The scaling calculation is essentially as follows: start with 0 estimated worker nodes. For
     each queued job, check if we expect it can be scheduled into a worker node before a certain time
     (currently one hour). Otherwise, attempt to add a single new node of the smallest type that
     can fit that job.
+
     At each scaling decision point a comparison between the current, C, and newly estimated
     number of nodes is made. If the absolute difference is less than beta * C then no change
     is made, else the size of the cluster is adapted. The beta factor is an inertia parameter
@@ -795,16 +815,6 @@ class ScalerThread(ExceptionalThread):
 
         # Indicates that the scaling thread should shutdown
         self.stop = False
-
-        self.stats = None
-        if config.clusterStats:
-            logger.debug("Starting up cluster statistics...")
-            self.stats = ClusterStats(leader.config.clusterStats,
-                                      leader.batchSystem,
-                                      provisioner.clusterName)
-            for preemptable in [True, False]:
-                self.stats.startStats(preemptable=preemptable)
-            logger.debug("...Cluster stats started.")
 
     def check(self):
         """
@@ -829,34 +839,6 @@ class ScalerThread(ExceptionalThread):
     def addCompletedJob(self, job, wallTime):
         self.scaler.addCompletedJob(job, wallTime)
 
-    def tryRun(self):
-        while not self.stop:
-            try:
-                with throttle(self.scaler.config.scaleInterval):
-                    queuedJobs = self.scaler.leader.getJobs()
-                    queuedJobShapes = [
-                        Shape(wallTime=self.scaler.getAverageRuntime(
-                            jobName=job.jobName,
-                            service=isinstance(job, ServiceJobNode)),
-                            memory=job.memory,
-                            cores=job.cores,
-                            disk=job.disk,
-                            preemptable=job.preemptable) for job in queuedJobs]
-                    currentNodeCounts = {}
-                    for nodeShape in self.scaler.nodeShapes:
-                        nodeType = self.scaler.nodeShapeToType[nodeShape]
-                        currentNodeCounts[nodeShape] = len(
-                            self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType,
-                                                                                 preemptable=nodeShape.preemptable))
-                    estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(queuedJobShapes,
-                                                                             currentNodeCounts)
-                    self.scaler.updateClusterSize(estimatedNodeCounts)
-                    if self.stats:
-                        self.stats.checkStats()
-            except:
-                logger.exception("Exception encountered in scaler thread. Making a best-effort "
-                                 "attempt to keep going, but things may go wrong from now on.")
-        self.scaler.shutDown()
 
 class ClusterStats(object):
     def __init__(self, path, batchSystem, clusterName):
