@@ -42,10 +42,17 @@ class ShapeOrdering(object):
 
     def __lt__(self, other):
         return self.preemptable > other.preemptable or \
-            self.memory < other.memory or \
-            self.cores < other.cores or \
-            self.disk < other.disk or \
-            self.wallTime < other.wallTime
+               self.memory < other.memory or \
+               self.cores < other.cores or \
+               self.disk < other.disk or \
+               self.wallTime < other.wallTime
+
+    def __gt__(self, other):
+        return self.preemptable < other.preemptable or \
+               self.memory > other.memory or \
+               self.cores > other.cores or \
+               self.disk > other.disk or \
+               self.wallTime > other.wallTime
 
 # This convoluted multiple-inheritance business is so that
 # ShapeOrdering overrides the default tuple comparison methods without
