@@ -275,6 +275,7 @@ class GCEProvisioner(AbstractProvisioner):
             self.credentialsPath = self.googleJson
 
         self.subnetID = None
+        self.botoExists = False
 
 
 
@@ -355,15 +356,14 @@ class GCEProvisioner(AbstractProvisioner):
         #TODO: get subnetID
         #self.subnetID = leader.subnet_id
 
-        if not self._copySshKeys(leader.public_ips[0], keyName) \
-           or not self._waitForNode(leader.public_ips[0], 'toil_leader'):
-            raise RuntimeError("Failed to start leader")
+        if (not self._waitForNode(leader.public_ips[0], 'toil_leader')
+            or not self._copySshKeys(leader.public_ips[0], keyName)
+            or not self._injectFile(leader.public_ips[0], self.credentialsPath, GoogleJobStore.nodeServiceAccountJson,
+                                    'toil_leader')
+            or (self.botoPath and
+                not self._injectFile(leader.public_ips[0], self.botoPath, self.nodeBotoPath, 'toil_leader'))):
 
-        if self.botoPath:
-            self._rsyncNode(leader.public_ips[0], [self.botoPath, ':' + self.nodeBotoPath],
-                            applianceName='toil_leader')
-        self._rsyncNode(leader.public_ips[0], [self.credentialsPath, ':' + GoogleJobStore.nodeServiceAccountJson],
-                        applianceName='toil_leader')
+            raise RuntimeError("Failed to start leader")
 
         # assuming that if the leader was launched without a spotbid then all workers
         # will be non-preemptable
@@ -452,11 +452,11 @@ class GCEProvisioner(AbstractProvisioner):
         # set to keyPath.
         keyPath = ''
         entryPoint = 'mesos-slave'
-        botoExists = False
+        self.botoExists = False
         if self.botoPath is not None and os.path.exists(self.botoPath):
             entryPoint = "waitForKey.sh"
             keyPath = self.nodeBotoPath
-            botoExists = True
+            self.botoExists = True
         elif self.config and self.config.sseKey:
             entryPoint = "waitForKey.sh"
             keyPath = self.config.sseKey
@@ -488,57 +488,81 @@ class GCEProvisioner(AbstractProvisioner):
 
         disk = {}
         disk['initializeParams'] = {
-            'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/images/coreos-stable-1576-4-0-v20171206'),
+            'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global'
+                                 '/images/coreos-stable-1576-4-0-v20171206'),
             'diskSizeGb' : self.nodeStorage }
         disk.update({'boot': True,
              #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
-        #     'mode': 'READ_WRITE',
-        #     'deviceName': clusterName,
+             #'mode': 'READ_WRITE',
+             #'deviceName': clusterName,
              'autoDelete': True })
         #instancesLaunched = driver.ex_create_multiple_nodes(
-        instancesLaunched = self.ex_create_multiple_nodes(
-                                '', nodeType, imageType, numNodes,
-                                location=self.zone,
-                                ex_service_accounts=sa_scopes,
-                                ex_metadata=metadata,
-                                ex_disks_gce_struct = [disk],
-                                description=self.tags,
-                                ex_preemptible = preemptable
-                                )
-        self.instanceGroup.add_instances(instancesLaunched)
+        retries = 0
         workersCreated = 0
-        for instance in instancesLaunched:
-            if not self._copySshKeys(instance.public_ips[0], self.keyName):
-                continue
-            if not self._waitForNode(instance.public_ips[0], 'toil_worker'):
-                continue
-            retries = 0
-            while True:
-                try:
-                    self._rsyncNode(instance.public_ips[0],
-                                    [self.credentialsPath, ':' + GoogleJobStore.nodeServiceAccountJson],
-                                    applianceName='toil_worker')
-                    if self.config and self.config.sseKey:
-                        self._rsyncNode(instance.public_ips[0], [self.config.sseKey, ':' + self.config.sseKey],
-                                        applianceName='toil_worker')
-                    if botoExists:
-                        self._rsyncNode(instance.public_ips[0], [self.botoPath, ':' + self.nodeBotoPath],
-                                        applianceName='toil_worker')
-                    break
-                except Exception as e:
-                    if retries == 5:
-                        logger.error("Failed to rysnc keys to worker with ip" % instance.public_ips[0])
-                        logger.error('Exception %s', e)
-                        continue # givup
-                    else:
-                        logger.debug("Rsync to new nodes failed, trying again")
-                        retries += 1
-                        time.sleep(20*retries)
-            workersCreated += 1
-        logger.info('Launched %s new instance(s)', numNodes)
-        if len(instancesLaunched) != workersCreated:
-            logger.error("Failed to launch %d workers", len(instancesLaunched)-workersCreated)
+        # Try a few times to create the requested number of workers
+        while numNodes > 0 and retries < 4:
+            instancesLaunched = self.ex_create_multiple_nodes(
+                                    '', nodeType, imageType, numNodes,
+                                    location=self.zone,
+                                    ex_service_accounts=sa_scopes,
+                                    ex_metadata=metadata,
+                                    ex_disks_gce_struct = [disk],
+                                    description=self.tags,
+                                    ex_preemptible = preemptable
+                                    )
+            self.instanceGroup.add_instances(instancesLaunched)
+            failedWorkers = []
+            for instance in instancesLaunched:
+                if self._injectWorkerFiles(instance.public_ips[0]):
+                    workersCreated += 1
+                else:
+                    failedWorkers.append(instance)
+            if failedWorkers:
+                logger.error("Terminating %d failed workers" % len(failedWorkers))
+                self.terminateNodes(failedWorkers)
+            numNodes -= workersCreated
+            retries += 1
+
+        logger.info('Launched %d new instance(s)', numNodes)
+        if numNodes != workersCreated:
+            logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
+
+
+    def _injectWorkerFiles(self, ip):
+        """
+        :return: True if all files successfully injected
+        """
+        if (not self._waitForNode(ip, 'toil_worker')
+            or not self._copySshKeys(ip, self.keyName)
+            or not self._injectFile(ip, self.credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_worker')):
+            return False
+        if self.config and self.config.sseKey:
+            if not self._injectFile(ip, self.config.sseKey, self.config.sseKey, 'toil_worker'):
+                return False
+        if self.botoExists and not self._injectFile(ip, self.botoPath, self.nodeBotoPath, 'toil_worker'):
+            return False
+        return True
+
+
+    def _injectFile(self, ip, fromFile, toFile, role):
+        """
+        rysnc a file to the vm with the given role
+        :return: True on success
+        """
+        maxRetries = 10
+        errMsg = None
+        for retry in range(maxRetries):
+            try:
+                self._rsyncNode(ip, [fromFile, ":" + toFile], applianceName=role)
+                return True
+            except Exception as e:
+                errMsg = e
+                logger.debug("Rsync to new node failed, trying again")
+                time.sleep(10*retry)
+        logger.error("Failed to inject file %s to %s with ip %s" % (fromFile, role, ip) )
+        logger.error('Exception %s', errMsg)
+        return False
 
     def getProvisionedWorkers(self, nodeType, preemptable):
         entireCluster = self._getNodesInCluster(nodeType=nodeType)
