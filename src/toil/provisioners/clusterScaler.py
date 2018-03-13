@@ -27,6 +27,7 @@ import sys
 import time
 from collections import defaultdict
 
+from bd2k.util.throttle import throttle
 from bd2k.util.retry import retry
 from bd2k.util.threading import ExceptionalThread
 from itertools import islice
@@ -34,6 +35,7 @@ from itertools import islice
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo
 from toil.provisioners.abstractProvisioner import Shape
 from toil.common import defaultTargetTime
+from toil.job import ServiceJobNode
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
@@ -787,8 +789,6 @@ class ClusterScaler(object):
             preemptable = nodeShape.preemptable
             nodeType = self.nodeShapeToType[nodeShape]
             self.setNodeCount(nodeType=nodeType, numNodes=0, preemptable=preemptable, force=True)
-        if self.stats:
-            self.stats.shutDownStats()
 
 
 class ScalerThread(ExceptionalThread):
@@ -805,6 +805,9 @@ class ScalerThread(ExceptionalThread):
     number of nodes is made. If the absolute difference is less than beta * C then no change
     is made, else the size of the cluster is adapted. The beta factor is an inertia parameter
     that prevents continual fluctuations in the number of nodes.
+
+    Called with ".start()" inherited from threading.Thread, which then runs the tryRun() overriding
+    ExceptionalThread's ".tryRun()".
     """
     def __init__(self, provisioner, leader, config):
         """
@@ -832,10 +835,36 @@ class ScalerThread(ExceptionalThread):
         Shutdown the cluster.
         """
         self.stop = True
+        if self.stats:
+            self.stats.shutDownStats()
         self.join()
 
     def addCompletedJob(self, job, wallTime):
         self.scaler.addCompletedJob(job, wallTime)
+
+    def tryRun(self):
+        while not self.stop:
+            try:
+                with throttle(self.scaler.config.scaleInterval):
+                    queuedJobs = self.scaler.leader.getJobs()
+                    queuedJobShapes = [Shape(wallTime=self.scaler.getAverageRuntime(jobName=job.jobName,
+                                                                                    service=isinstance(job, ServiceJobNode)),
+                                             memory=job.memory,
+                                             cores=job.cores,
+                                             disk=job.disk,
+                                             preemptable=job.preemptable) for job in queuedJobs]
+                    currentNodeCounts = {}
+                    for nodeShape in self.scaler.nodeShapes:
+                        nodeType = self.scaler.nodeShapeToType[nodeShape]
+                        currentNodeCounts[nodeShape] = len(self.scaler.leader.provisioner.getProvisionedWorkers(nodeType=nodeType, preemptable=nodeShape.preemptable))
+                    estimatedNodeCounts = self.scaler.getEstimatedNodeCounts(queuedJobShapes, currentNodeCounts)
+                    self.scaler.updateClusterSize(estimatedNodeCounts)
+                    if self.stats:
+                        self.stats.checkStats()
+            except:
+                logger.exception("Exception encountered in scaler thread. Making a best-effort "
+                                 "attempt to keep going, but things may go wrong from now on.")
+        self.scaler.shutDown()
 
 
 class ClusterStats(object):
