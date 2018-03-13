@@ -625,6 +625,7 @@ class hidden(object):
                 B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
                 C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
                                   fileMB=file2MB)
+                C2 = Job.wrapJobFn(self._sleepy, timeToSleep=5)
                 D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
                 E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'M']))
                 # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
@@ -633,7 +634,8 @@ class hidden(object):
                                   disk='100M')
                 A.addChild(B)
                 B.addChild(C)
-                C.addChild(D)
+                C.addChild(C2)
+                C2.addChild(D)
                 D.addChild(E)
                 E.addChild(F)
                 F.addChild(G)
