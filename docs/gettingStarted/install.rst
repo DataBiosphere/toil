@@ -208,12 +208,28 @@ Follow the steps below to prepare your Azure environment for running a Toil work
    accounts.
 
 #. Make sure you have an SSH RSA public key, usually stored in
-   ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create
-   one.
+   ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create one.
+
+#. Create an `Azure active directory and service principal`_ to create the following credentials:
+    - Client ID (also known as an Application ID)
+    - Subscription ID
+    - secret (also known as the authentication key)
+    - Tenant ID (also known as a Directory ID)
+
+   These Azure credentials need to be stored a location where the Ansible scripts can read them.
+   There are multiple options for doing so as described here_, one of which is to create a
+   file called `~/.azure/credentials` with the format ::
+
+      [default]
+      subscription_id=22222222-2222-2222-2222-222222222222
+      client_id=1111111-111-1111-111-111111111
+      secret=abc123
+      tenant=33333333-3333-3333-3333-333333333333
 
 .. _Azure account: https://azure.microsoft.com/en-us/free/
-
+.. _here: http://docs.ansible.com/ansible/latest/guide_azure.html#providing-credentials-to-azure-modules.o/docs/py2or3.html
 .. _Azure storage account: https://docs.microsoft.com/en-us/azure/storage/common/storage-quickstart-create-account?tabs=portal
+.. _Azure active directory and service principal: https://docs.microsoft.com/en-us/azure/azure-resource-manager/resource-group-create-service-principal-portal
 
 .. _prepareGoogle:
 
