@@ -592,7 +592,7 @@ class hidden(object):
             # overwrite the value set in setUp if it is ever changed in the future)
             self.options.clean = 'always'
 
-            self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=60)
+            self._testCacheEviction(file1MB=20, file2MB=25, diskRequestMB=60)
 
         def _testValidityOfCacheEvictTest(self):
             # If the job store and cache are on the same file system, file sizes are accounted for
@@ -625,6 +625,7 @@ class hidden(object):
                 B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
                 C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
                                   fileMB=file2MB)
+                C2 = Job.wrapJobFn(self._sleepy, timeToSleep=5)
                 D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
                 D2 = Job.wrapJobFn(self._sleepy, timeToSleep=5)
                 E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'M']))
@@ -634,11 +635,13 @@ class hidden(object):
                                   disk='100M')
                 A.addChild(B)
                 B.addChild(C)
-                C.addChild(D)
                 if diskRequestMB > 50:
+                    C.addChild(C2)
+                    C2.addChild(D)
                     D.addChild(D2)
                     D2.addChild(E)
                 else:
+                    C.addChild(D)
                     D.addChild(E)
                 E.addChild(F)
                 F.addChild(G)
