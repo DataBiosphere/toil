@@ -110,11 +110,13 @@ Test environment variables
 | TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepareAWS`), which      |
 |                        | is required to run the AWS tests.                  |
 +------------------------+----------------------------------------------------+
-| TOIL_AZURE_KEYNAME     | An Azure account keyname (see                      |
+| TOIL_AZURE_KEYNAME     | An Azure storage account keyname (see              |
 |                        | :ref:`prepareAzure`),                              |
 |                        | which is required to run the Azure tests.          |
 +------------------------+----------------------------------------------------+
 | TOIL_AZURE_ZONE        | The region in which to run the Azure tests.        |
++------------------------+----------------------------------------------------+
+| TOIL_SSH_KEYNAME       | The SSH key to use for tests.                      |
 +------------------------+----------------------------------------------------+
 | PUBLIC_KEY_FILE        | For Azure provisioner tests, the path to the       |
 |                        | public key file if not ~/.ssh/id_rsa.pub           |

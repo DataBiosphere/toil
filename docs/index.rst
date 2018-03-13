@@ -49,14 +49,6 @@ If using Toil for your research, please cite
    running/hpcEnvironments
 
 .. toctree::
-   :caption: Using Ansible to Deploy Workflows
-   :maxdepth: 2
-
-   ansible/azure/install
-   ansible/overview
-   ansible/install
-
-.. toctree::
    :caption: Developing Toil Workflows
    :maxdepth: 2
 

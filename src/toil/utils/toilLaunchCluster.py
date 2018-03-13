@@ -48,7 +48,7 @@ def main():
     parser.add_argument("-t", "--tag", metavar='NAME=VALUE', dest='tags', default=[], action='append',
                         help="Tags are added to the AWS cluster for this node and all of its "
                              "children. Tags are of the form:\n"
-                             " --t key1=value1 --tag key2=value2\n"
+                             " -t key1=value1 --tag key2=value2\n"
                              "Multiple tags are allowed and each tag needs its own flag. By "
                              "default the cluster is tagged with "
                              " {\n"

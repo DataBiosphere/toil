@@ -370,10 +370,10 @@ def needs_azure(test_item):
             # no file, check for environment variables
             try:
                 from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-                _fetchAzureAccountKey('toiltest')
+                _fetchAzureAccountKey(keyName)
             except:
-                 return unittest.skip("Configure %s with the access key for the 'toiltest' storage "
-                                     "account." % credential_file_path)(test_item)
+                 return unittest.skip("Configure %s with the access key for the '%s' storage "
+                                     "account." % (credential_file_path, keyName))(test_item)
         return test_item
 
 

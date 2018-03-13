@@ -186,6 +186,28 @@ during the computation of a workflow, first set up and configure an account with
 .. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 
 
+.. _sshKey:
+
+Creating an SSH RSA key pair
+----------------------------
+
+   To create a new ssh key run the command ::
+
+      ssh-keygen -t rsa -f ~/.ssh/id_rsa -C [USERNAME]
+
+   where ``[USERNAME]`` is something like ``jane@example.com``. Make sure to leave your password
+   blank
+
+   .. warning::
+      This command could overwrite an old ssh key you may be using.
+      If you have an existing ssh key you would like to use, it will need to be called id_rsa and it
+      needs to have no password set.
+
+   Make sure only you can read the SSH keys ::
+
+      $ chmod 400 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
+
+
 .. _prepareAzure:
 
 Preparing your Azure environment
@@ -207,8 +229,7 @@ Follow the steps below to prepare your Azure environment for running a Toil work
    These locations are searched in the order above, which can be useful if you work with multiple
    accounts.
 
-#. Make sure you have an SSH RSA public key, usually stored in
-   ``~/.ssh/id_rsa.pub``. If not, you can use ``ssh-keygen -t rsa`` to create one.
+#. Create an SSH keypair if one doesn't exist (see :ref:`sshKey`).
 
 #. Create an `Azure active directory and service principal`_ to create the following credentials:
     - Client ID (also known as an Application ID)
@@ -243,22 +264,7 @@ Toil supports using the `Google Cloud Platform`_. Setting this up is easy!
 #. Follow `Google's Instructions`_ to download credentials and set the
    ``GOOGLE_APPLICATION_CREDENTIALS`` environment variable.
 
-#. Create a new ssh key with the proper format.
-   To create a new ssh key run the command ::
-
-      ssh-keygen -t rsa -f ~/.ssh/id_rsa -C [USERNAME]
-
-   where ``[USERNAME]`` is something like ``jane@example.com``. Make sure to leave your password
-   blank
-
-   .. warning::
-      This command could overwrite an old ssh key you may be using.
-      If you have an existing ssh key you would like to use, it will need to be called id_rsa and it
-      needs to have no password set.
-
-   Make sure only you can read the SSH keys ::
-
-      $ chmod 400 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
+#. Create an SSH keypair if one doesn't exist (see :ref:`sshKey`).
 
 #. Add your newly formated public key to google. To do this, log into your Google Cloud account
    and go to `metadata`_ section under the Compute tab.

@@ -177,7 +177,7 @@ class AzureProvisioner(AnsibleDriver):
                                 applianceName='toil_leader')
 
         ansibleCredentials = '.azure/credentials'
-        fullPathAnsibleCredentials = os.path.expanduser('~/.azure/credentials')
+        fullPathAnsibleCredentials = os.path.expanduser('~/' + ansibleCredentials)
         if os.path.isfile(fullPathAnsibleCredentials):
             self._sshAppliance(leader['public_ip'], 'mkdir', '-p', containerUserPath + '.azure')
             self._rsyncNode(leader['public_ip'],
@@ -226,7 +226,7 @@ class AzureProvisioner(AnsibleDriver):
         instances = []
         wait = False
         for i in range(numNodes):
-            # Wait for the last one so that getProvisionedWorkers will see it
+            # Wait for the last one
             if i == numNodes - 1:
                 wait = True
             name = 'w' + str(uuid.uuid4())

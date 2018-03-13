@@ -35,7 +35,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
     (venv) $ toil launch-cluster <CLUSTER-NAME> --provisioner gce --leaderNodeType n1-standard-1 --keyPairName <SSH-KEYNAME> --boto <botoDir> --zone us-west1-a
 
    Where ``<SSH-KEYNAME>`` is the first part of ``[USERNAME]`` used when setting up your ssh key (see
-   :ref:`prepareGoogle`). For example if ``[USERNAME]`` was jane@example.com, ``<SSH-KEYNAME>`` should be ``jane``.
+   :ref:`sshKey`). For example if ``[USERNAME]`` was jane@example.com, ``<SSH-KEYNAME>`` should be ``jane``.
 
    The ``--boto`` option is necessary to talk to an AWS jobstore. This also requires that your aws credentials
    are actually saved in your ``.boto`` file.
@@ -56,7 +56,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 #. Cleanup ::
 
     $ exit  # this exits the ssh from the leader node
-    (venv) $ toil destory-cluster --provisioner gce <CLUSTER-NAME>
+    (venv) $ toil destroy-cluster --provisioner gce <CLUSTER-NAME>
 
 .. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
 

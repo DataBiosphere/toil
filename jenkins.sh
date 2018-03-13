@@ -26,7 +26,6 @@ export PUBLIC_KEY_FILE=/home/jenkins/builds/.ssh/id_rsa.pub
 export TOIL_SSH_KEYNAME=jenkins
 export TOIL_GOOGLE_PROJECTID=toil-dev
 export GOOGLE_APPLICATION_CREDENTIALS=/home/jenkins/builds/toil-dev-41fd0135b44d.json
-export TOIL_KEYNAME=jenkins
 export TOIL_BOTO_DIR=/home/jenkins/.boto
 
 # Needed for google provisioner tests
