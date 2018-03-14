@@ -87,7 +87,7 @@ help:
 SHELL=bash
 python=python2.7
 pip=pip2.7
-tests=src/toil/test/src/fileStoreTest.py::CachingFileStoreTestWithGoogleJobStore::testCacheEvictionFailCase
+tests=src
 tests_local=src/toil/test
 # do slightly less than travis timeout of 10 min.
 pytest_args_local=-vv --timeout=530
@@ -172,7 +172,7 @@ jenkins_test_parallel: check_venv check_build_reqs docker
 
 # This target is designed only for use on Jenkins
 jenkins_test_integration: check_venv check_build_reqs sdist push_docker
-	#TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
+	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins
