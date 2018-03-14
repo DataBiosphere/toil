@@ -120,45 +120,79 @@ class BinPackingTest(ToilTest):
                                  disk=h2b('100G'),
                                  preemptable=True)]])
 
-    def test1000micros(self):
-        """Test packing 1000 t2.micros.  Depending on the targetTime, these should pack differently.
-
-        Ideally, low targetTime means: Start quickly and maximize parallelization.  This should
-        appropriate 1000 instances for 1000 parallel jobs so if each job, for example, takes 5
-        minutes, then the run should complete in around 5 (realistically less than 10) minutes.
-
-        High targetTime means: Maximize packing within the targetTime.  For example, if all 1000
-        jobs take 5 minutes each, and the targetTime is 60 minutes, the bin packing algorithm
-        should appropriate 12 jobs per instance (60 minutes / 5 minutes).  That way, theoretically,
+    def testLowTargetTime(self):
         """
+        Test that a low targetTime (0) parallelizes jobs aggressively (1000 queued jobs require
+        1000 nodes).
 
-        # test low targetTime (60 seconds)
-        nodeShapes1 = [t2_micro]
-        bpf1 = BinPackedFit(nodeShapes1)
-        bpf1.targetTime = 0
+        Ideally, low targetTime means: Start quickly and maximize parallelization after the
+        cpu/disk/mem have been packed.
+
+        Disk/cpu/mem packing is prioritized first, so we set job resource reqs so that each
+        t2.micro (1 cpu/8G disk/1G RAM) can only run one job at a time with its resources.
+
+        Each job is parametrized to take 300 seconds, so (the minimum of) 1 of them should fit into
+        each node's 0 second window, so we expect 1000 nodes.
+        """
+        allocation = self.run1000JobsOnMicros(jobCores=1,
+                                              jobMem=h2b('1G'),
+                                              jobDisk=h2b('1G'),
+                                              jobTime=300,
+                                              globalTargetTime=0)
+        self.assertEqual(allocation, {t2_micro: 1000})
+
+    def testHighTargetTime(self):
+        """
+        Test that a high targetTime (3600 seconds) maximizes packing within the targetTime.
+
+        Ideally, high targetTime means: Maximize packing within the targetTime after the
+        cpu/disk/mem have been packed.
+
+        Disk/cpu/mem packing is prioritized first, so we set job resource reqs so that each
+        t2.micro (1 cpu/8G disk/1G RAM) can only run one job at a time with its resources.
+
+        Each job is parametrized to take 300 seconds, so 12 of them should fit into each node's
+        3600 second window.  1000/12 = 83.33, so we expect 84 nodes.
+        """
+        allocation = self.run1000JobsOnMicros(jobCores=1,
+                                              jobMem=h2b('1G'),
+                                              jobDisk=h2b('1G'),
+                                              jobTime=300,
+                                              globalTargetTime=3600)
+        self.assertEqual(allocation, {t2_micro: 84})
+
+    def testZeroResourceJobs(self):
+        """
+        Test that jobs requiring zero cpu/disk/mem pack first, regardless of targetTime.
+
+        Disk/cpu/mem packing is prioritized first, so we set job resource reqs so that each
+        t2.micro (1 cpu/8G disk/1G RAM) can run a seemingly infinite number of jobs with its 
+        resources.
+
+        Since all jobs should pack cpu/disk/mem-wise on a t2.micro, we expect only one t2.micro to
+        be provisioned.  If we raise this, as in testLowTargetTime, it will launch 1000 t2.micros.
+        """
+        allocation = self.run1000JobsOnMicros(jobCores=0,
+                                              jobMem=0,
+                                              jobDisk=0,
+                                              jobTime=300,
+                                              globalTargetTime=0)
+        self.assertEqual(allocation, {t2_micro: 1})
+
+    def run1000JobsOnMicros(self, jobCores, jobMem, jobDisk, jobTime, globalTargetTime):
+        """Test packing 1000 jobs on t2.micros.  Depending on the targetTime and resources,
+        these should pack differently.
+        """
+        nodeShapes = [t2_micro]
+        bpf = BinPackedFit(nodeShapes, targetTime=globalTargetTime)
 
         for _ in range(1000):
-            bpf1.addJobShape(Shape(wallTime=300,
-                                   memory=h2b('1G'),
-                                   cores=1,
-                                   disk=h2b('1G'),
+            bpf.addJobShape(Shape(wallTime=jobTime,
+                                   memory=jobMem,
+                                   cores=jobCores,
+                                   disk=jobDisk,
                                    preemptable=False))
-        logger.info(str(bpf1.getRequiredNodes()))
-        self.assertEqual(bpf1.getRequiredNodes(), {t2_micro: 1000})
-
-        # test high targetTime (3600 seconds)
-        nodeShapes2 = [t2_micro]
-        bpf2 = BinPackedFit(nodeShapes2)
-        bpf2.targetTime = 3600
-
-        for _ in range(1000):
-            bpf2.addJobShape(Shape(wallTime=300,
-                                   memory=h2b('0G'),
-                                   cores=0,
-                                   disk=h2b('0G'),
-                                   preemptable=False))
-        logger.info(str(bpf2.getRequiredNodes()))
-        self.assertEqual(bpf2.getRequiredNodes(), {t2_micro: 1})
+        return bpf.getRequiredNodes()
 
     def testPathologicalCase(self):
         """Test a pathological case where only one node can be requested to fit months' worth of jobs.
@@ -504,7 +538,7 @@ class ScalerThreadTest(ToilTest):
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
-        config.betaInertia = 0.1
+        config.betaInertia = 0.9
         config.scaleInterval = 3
 
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100, jobShape=jobShape)
