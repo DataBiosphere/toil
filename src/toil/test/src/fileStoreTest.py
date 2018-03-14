@@ -592,7 +592,40 @@ class hidden(object):
             # overwrite the value set in setUp if it is ever changed in the future)
             self.options.clean = 'always'
 
-            self._testCacheEviction(file1MB=20, file2MB=20, diskRequestMB=60)
+            #self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=60)
+            self.options.retryCount = 0
+            expectedResult = 'Fail'
+            try:
+                #A = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
+                A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
+                                  fileMB=20)
+                # Sleep for 1 second after writing the first file so that their ctimes are
+                # guaranteed to be distinct for the purpose of this test.
+                B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
+                C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
+                                  fileMB=20)
+                D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=100, disk='0M')
+                E = Job.wrapJobFn(self._uselessFunc, disk='600M')
+                # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
+                F = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
+                G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, cached=expectedResult,
+                                  disk='100M')
+                #A.addChild(A1)
+                A.addChild(B)
+                B.addChild(C)
+                C.addChild(D)
+                D.addChild(E)
+                E.addChild(F)
+                F.addChild(G)
+                Job.Runner.startToil(A, self.options)
+            except FailedJobsException as err:
+                self.assertEqual(err.numberOfFailedJobs, 1)
+                with open(self.options.logFile) as f:
+                    logContents = f.read()
+                if CacheUnbalancedError.message in logContents:
+                    self.assertEqual(expectedResult, 'Fail')
+                else:
+                    self.fail('Toil did not raise the expected AssertionError')
 
         def _testValidityOfCacheEvictTest(self):
             # If the job store and cache are on the same file system, file sizes are accounted for
@@ -618,36 +651,23 @@ class hidden(object):
             else:
                 expectedResult = 50 - file1MB if diskRequestMB <= file1MB else 0
             try:
-                A = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50)
-                A1 = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
+                A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
                                   fileMB=file1MB)
                 # Sleep for 1 second after writing the first file so that their ctimes are
                 # guaranteed to be distinct for the purpose of this test.
                 B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
                 C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
                                   fileMB=file2MB)
-                #C2 = Job.wrapJobFn(self._sleepy, timeToSleep=5)
+                D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
                 E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'M']))
                 # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
                 F = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
                 G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, cached=expectedResult,
                                   disk='100M')
-                A.addChild(A1)
-                A1.addChild(B)
+                A.addChild(B)
                 B.addChild(C)
-                C.addChild(E)
-                """
-                if diskRequestMB > 50:
-                    # On Google, this test was failing. Jobs C and D were also failing.
-                    # It appeared that job E, which is supposed to fail, was running
-                    # before C and D completed. This fix is kept separate and runs only
-                    # for cache fail tests in order to not interfere with other tests.
-                    C.addChild(C2)
-                    C2.addChild(D)
-                else:
-                    C.addChild(D)
+                C.addChild(D)
                 D.addChild(E)
-                """
                 E.addChild(F)
                 F.addChild(G)
                 Job.Runner.startToil(A, self.options)
