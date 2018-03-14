@@ -209,8 +209,6 @@ class Config(object):
         elif self.clean is None:
             self.clean = "onSuccess"
         setOption('clusterStats')
-
-        # Restarting the workflow options
         setOption("restart")
 
         # Batch system options
@@ -222,7 +220,6 @@ class Config(object):
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
         setOption("linkImports")
-
         setOption("environment", parseSetEnv)
 
         # Autoscaling options
@@ -233,17 +230,18 @@ class Config(object):
         setOption("maxNodes", parseIntList)
         setOption("targetTime", int)
         if self.targetTime <= 0:
-            raise RuntimeError(
-                'targetTime must be a positive integer (was set to %s)' % self.targetTime)
+            raise RuntimeError('targetTime (%s) must be a positive integer!'
+                               '' % self.targetTime)
         setOption("betaInertia", float)
-        if not 0.0 <= self.betaInertia <= 1.0:
-            raise RuntimeError('--betaInertia (%f) must be >= 0.0 and <= 1.0.' % self.betaInertia)
+        if not 0.1 <= self.betaInertia <= 0.9:
+            raise RuntimeError('betaInertia (%f) must be between 0.1 and 0.9!'
+                               '' % self.betaInertia)
         setOption("scaleInterval", float)
         setOption("metrics")
         setOption("preemptableCompensation", float)
         if not 0.0 <= self.preemptableCompensation <= 1.0:
-            raise Exception(
-                '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0.' % self.preemptableCompensation)
+            raise RuntimeError('preemptableCompensation (%f) must be between 0.1 and 0.9!'
+                               '' % self.preemptableCompensation)
         setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks

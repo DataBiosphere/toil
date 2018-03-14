@@ -139,12 +139,12 @@ class BinPackingTest(ToilTest):
 
         for _ in range(1000):
             bpf1.addJobShape(Shape(wallTime=300,
-                                  memory=h2b('0.1G'),
-                                  cores=0.1,
-                                  disk=h2b('0.1G'),
-                                  preemptable=False))
+                                   memory=h2b('1G'),
+                                   cores=1,
+                                   disk=h2b('1G'),
+                                   preemptable=False))
         logger.info(str(bpf1.getRequiredNodes()))
-        self.assertEqual(bpf1.getRequiredNodes(), {t2_micro: 100})
+        self.assertEqual(bpf1.getRequiredNodes(), {t2_micro: 1000})
 
         # test high targetTime (3600 seconds)
         nodeShapes2 = [t2_micro]
@@ -153,10 +153,10 @@ class BinPackingTest(ToilTest):
 
         for _ in range(1000):
             bpf2.addJobShape(Shape(wallTime=300,
-                                  memory=h2b('0G'),
-                                  cores=0,
-                                  disk=h2b('0G'),
-                                  preemptable=False))
+                                   memory=h2b('0G'),
+                                   cores=0,
+                                   disk=h2b('0G'),
+                                   preemptable=False))
         logger.info(str(bpf2.getRequiredNodes()))
         self.assertEqual(bpf2.getRequiredNodes(), {t2_micro: 1})
 
@@ -406,7 +406,7 @@ class ScalerThreadTest(ToilTest):
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
-        config.betaInertia = 1.0
+        config.betaInertia = 0.1
         config.scaleInterval = 3
 
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=0,
@@ -440,7 +440,7 @@ class ScalerThreadTest(ToilTest):
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
-        config.betaInertia = 1.0
+        config.betaInertia = 0.1
         config.scaleInterval = 3
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
@@ -504,7 +504,7 @@ class ScalerThreadTest(ToilTest):
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
-        config.betaInertia = 1.0
+        config.betaInertia = 0.1
         config.scaleInterval = 3
 
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100, jobShape=jobShape)
