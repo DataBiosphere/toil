@@ -23,8 +23,7 @@ Running a Workflow with Autoscaling
 -----------------------------------
 
 .. warning::
-   Azure Autoscaling is in beta! It is currently only tested with the AWS job store.
-   More work is on the way to fix this.
+   Azure Autoscaling is in beta!
 
 The steps to run a Azure workflow are similar to those of AWS (:ref:`Autoscaling`), except you will
 need to explicitly specify the ``--provisioner azure`` option which otherwise defaults to ``aws``.

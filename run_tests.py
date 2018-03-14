@@ -39,7 +39,7 @@ test_suites = {
         'AWSStaticAutoscaleTest',
         'AzureRestartTest',
         'AzureAutoscaleTest',
-        'AzureStaticAutoscaleTest'
+        'AzureStaticAutoscaleTest',
         'GCERestartTest',
         'GCEAutoscaleTest',
         'GCEStaticAutoscaleTest'
