@@ -627,7 +627,6 @@ class hidden(object):
                                   fileMB=file2MB)
                 C2 = Job.wrapJobFn(self._sleepy, timeToSleep=5)
                 D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
-                D2 = Job.wrapJobFn(self._sleepy, timeToSleep=5)
                 E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'M']))
                 # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
                 F = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
@@ -636,13 +635,15 @@ class hidden(object):
                 A.addChild(B)
                 B.addChild(C)
                 if diskRequestMB > 50:
+                    # On Google, this test was failing. Jobs C and D were also failing.
+                    # It appeared that job F, which is supposed to fail, was running
+                    # before C and D completed. This fix is kept separate and runs only
+                    # for cache fail tests in order to not interfere with other tests.
                     C.addChild(C2)
                     C2.addChild(D)
-                    D.addChild(D2)
-                    D2.addChild(E)
                 else:
                     C.addChild(D)
-                    D.addChild(E)
+                D.addChild(E)
                 E.addChild(F)
                 F.addChild(G)
                 Job.Runner.startToil(A, self.options)
