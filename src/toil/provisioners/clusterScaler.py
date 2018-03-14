@@ -254,7 +254,7 @@ class NodeReservation(object):
 
 def adjustEndingReservationForJob(reservation, jobShape, wallTime):
     """
-    Add a job to an ending reservation that ends at time t, splitting
+    Add a job to an ending reservation that ends at wallTime, splitting
     the reservation if the job doesn't fill the entire timeslice.
     """
     if jobShape.wallTime - wallTime < reservation.shape.wallTime:

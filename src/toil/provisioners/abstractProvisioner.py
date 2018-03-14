@@ -34,25 +34,18 @@ class ShapeOrdering(object):
     """Provides the sort ordering for Shape. Preemptability is first,
     followed by memory, etc."""
     def __eq__(self, other):
-        return self.wallTime == other.wallTime \
-            and self.memory == other.memory \
-            and self.cores == other.cores \
-            and self.disk == other.disk \
-            and self.preemptable == other.preemptable
+        return (self.wallTime == other.wallTime and
+                self.memory == other.memory and
+                self.cores == other.cores and
+                self.disk == other.disk and
+                self.preemptable == other.preemptable)
 
     def __lt__(self, other):
-        return self.preemptable > other.preemptable or \
-               self.memory < other.memory or \
-               self.cores < other.cores or \
-               self.disk < other.disk or \
-               self.wallTime < other.wallTime
-
-    def __gt__(self, other):
-        return self.preemptable < other.preemptable or \
-               self.memory > other.memory or \
-               self.cores > other.cores or \
-               self.disk > other.disk or \
-               self.wallTime > other.wallTime
+        return (self.preemptable > other.preemptable or
+                self.memory < other.memory or
+                self.cores < other.cores or
+                self.disk < other.disk or
+                self.wallTime < other.wallTime)
 
 # This convoluted multiple-inheritance business is so that
 # ShapeOrdering overrides the default tuple comparison methods without

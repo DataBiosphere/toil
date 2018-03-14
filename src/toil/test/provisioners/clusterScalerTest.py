@@ -144,7 +144,7 @@ class BinPackingTest(ToilTest):
                                   disk=h2b('0.1G'),
                                   preemptable=False))
         logger.info(str(bpf1.getRequiredNodes()))
-        self.assertEqual(bpf1.getRequiredNodes(), {t2_micro: 50})
+        self.assertEqual(bpf1.getRequiredNodes(), {t2_micro: 100})
 
         # test high targetTime (3600 seconds)
         nodeShapes2 = [t2_micro]
