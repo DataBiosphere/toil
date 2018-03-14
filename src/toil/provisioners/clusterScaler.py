@@ -313,8 +313,8 @@ class ClusterScaler(object):
         if self.targetTime <= 0:
             raise RuntimeError('targetTime (%s) must be a positive integer!' % self.targetTime)
         self.betaInertia = config.betaInertia
-        if not 0.1 <= self.betaInertia <= 0.9:
-            raise RuntimeError('betaInertia (%f) must be between 0.1 and 0.9!' % self.betaInertia)
+        if not 0.0 <= self.betaInertia <= 0.9:
+            raise RuntimeError('betaInertia (%f) must be between 0.0 and 0.9!' % self.betaInertia)
 
         self.nodeTypes = provisioner.nodeTypes
         self.nodeShapes = provisioner.nodeShapes
