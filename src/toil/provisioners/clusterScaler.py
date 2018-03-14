@@ -237,8 +237,7 @@ class NodeReservation(object):
                     endingReservation.nReservation = NodeReservation(nodeShape)
             # can't run the job with the current resources
             else:
-                # will always hit at least once
-                if startingReservationTime + availableTime <= targetTime:
+                if startingReservationTime + availableTime + endingReservation.shape.wallTime <= targetTime:
                     startingReservation = endingReservation.nReservation
                     startingReservationTime += availableTime + endingReservation.shape.wallTime
                     availableTime = 0

@@ -406,7 +406,7 @@ class ScalerThreadTest(ToilTest):
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
-        config.betaInertia = 1.2
+        config.betaInertia = 1.0
         config.scaleInterval = 3
 
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=0,
@@ -440,7 +440,7 @@ class ScalerThreadTest(ToilTest):
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
-        config.betaInertia = 1.2
+        config.betaInertia = 1.0
         config.scaleInterval = 3
 
         mock = MockBatchSystemAndProvisioner(config, secondsPerJob=2.0)
@@ -504,7 +504,7 @@ class ScalerThreadTest(ToilTest):
 
         # Algorithm parameters
         config.targetTime = defaultTargetTime
-        config.betaInertia = 1.2
+        config.betaInertia = 1.0
         config.scaleInterval = 3
 
         self._testClusterScaling(config, numJobs=100, numPreemptableJobs=100, jobShape=jobShape)
