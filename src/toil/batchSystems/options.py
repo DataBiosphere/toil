@@ -17,7 +17,7 @@ from .registry import batchSystemFactoryFor, defaultBatchSystem, uniqueNames
 
 import socket
 from contextlib import closing
-
+import multiprocessing
 
 def getPublicIP():
     """Get the IP that this machine uses to contact the internet.
@@ -43,7 +43,7 @@ def getPublicIP():
 def _parasolOptions(addOptionFn, config=None):
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
                       help="The name or path of the parasol program. Will be looked up on PATH "
-                           "unless it starts with a slashdefault=%s" % 'parasol')
+                           "unless it starts with a slash. default=%s" % 'parasol')
     addOptionFn("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
                 help="Maximum number of job batches the Parasol batch is allowed to create. One "
                      "batch is created for jobs with a a unique set of resource requirements. "
@@ -110,6 +110,14 @@ def addOptions(addOptionFn, config):
                 help=("Should hot-deployment of the user script be deactivated? If True, the user "
                       "script/package should be present at the same location on all workers. "
                       "default=false"))
+    localCores = multiprocessing.cpu_count()
+    addOptionFn("--maxLocalJobs", default=localCores,
+                help="For batch systems that support a local queue for "
+                "housekeeping jobs (Mesos, GridEngine, htcondor, lsf, slurm, "
+                "torque), the maximum number of these housekeeping jobs to "
+                "run on the local system. "
+                "The default (equal to the number of cores) is a maximum of "
+                "{} concurrent local housekeeping jobs.".format(localCores))
 
     for o in _options:
         o(addOptionFn, config)
