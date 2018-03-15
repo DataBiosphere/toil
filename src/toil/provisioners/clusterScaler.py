@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -68,7 +68,7 @@ class BinPackedFit(object):
     def __init__(self, nodeShapes, targetTime=defaultTargetTime):
         self.nodeShapes = nodeShapes
         self.targetTime = targetTime
-        
+
         # {_Shape(wallTime=3600, memory=1073741824, cores=1, disk=8589934592, preemptable=False): []}
         self.nodeReservations = {nodeShape:[] for nodeShape in nodeShapes}
 
@@ -381,7 +381,7 @@ class ClusterScaler(object):
             # the other. That could easily lead to underprovisioning
             # and a deadlock, because often multiple services need to
             # be running at once for any actual work to get done.
-            return self.targetTime * 24
+            return self.targetTime * 24 + 3600
         if jobName in self.jobNameToAvgRuntime:
             #Have seen jobs of this type before, so estimate
             #the runtime based on average of previous jobs of this type
@@ -667,16 +667,19 @@ class ClusterScaler(object):
         allNodeIPs = [node.privateIP for node in nodeToNodeInfo]
         self.ignoredNodes = set([ip for ip in self.ignoredNodes if ip in allNodeIPs])
 
-        logger.info("There are %i nodes being ignored by the batch system, checking if they can be terminated" % len(self.ignoredNodes))
-        nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo if node.privateIP in self.ignoredNodes}
-
-        nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo if nodeToNodeInfo[node] is not None and nodeToNodeInfo[node].workers < 1}
+        logger.info("There are %i nodes being ignored by the batch system, "
+                    "checking if they can be terminated" % len(self.ignoredNodes))
+        nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo
+                          if node.privateIP in self.ignoredNodes}
+        nodeToNodeInfo = {node:nodeToNodeInfo[node] for node in nodeToNodeInfo
+                          if nodeToNodeInfo[node] is not None and nodeToNodeInfo[node].workers < 1}
 
         for node in nodeToNodeInfo:
             self.ignoredNodes.remove(node.privateIP)
             self.leader.batchSystem.unignoreNode(node.privateIP)
         if len(nodeToNodeInfo) > 0:
-            logger.info("Terminating %i nodes that were being ignored by the batch system" % len(nodeToNodeInfo))
+            logger.info("Terminating %i nodes that were being ignored by the batch system."
+                        "" % len(nodeToNodeInfo))
             self.provisioner.terminateNodes(nodeToNodeInfo)
 
     def chooseNodes(self, nodeToNodeInfo, force=False, preemptable=False):
@@ -705,7 +708,6 @@ class ClusterScaler(object):
         """
         Returns a dictionary mapping node identifiers of preemptable or non-preemptable nodes to
         NodeInfo objects, one for each node.
-
 
         This method is the definitive source on nodes in cluster, & is responsible for consolidating
         cluster state between the provisioner & batch system.

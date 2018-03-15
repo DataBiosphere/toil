@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -52,8 +52,8 @@ from toil.provisioners import clusterFactory
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
-
-defaultTargetTime = 1800
+# aim to pack autoscaling jobs within a 20 minute block before provisioning a new node
+defaultTargetTime = 1200
 logger = logging.getLogger(__name__)
 
 
@@ -95,7 +95,7 @@ class Config(object):
         self.maxNodes = [10]
         self.targetTime = defaultTargetTime
         self.betaInertia = 0.1
-        self.scaleInterval = 30
+        self.scaleInterval = 60
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
         self.metrics = False
@@ -103,7 +103,7 @@ class Config(object):
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxsize
         self.maxServiceJobs = sys.maxsize
-        self.deadlockWait = 60  # Wait one minute before declaring a deadlock
+        self.deadlockWait = 80  # Wait 80 seconds before declaring a deadlock
         self.statePollingWait = 1  # Wait 1 seconds before querying job state
 
         # Resource requirements
@@ -408,16 +408,17 @@ def _addOptions(addGroupFn, config):
                      "default=%s" % config.maxNodes[0])
 
     addOptionFn("--targetTime", dest="targetTime", default=None,
-                help=("Sets how rapidly you aim to complete jobs. Shorter times mean more "
-                      "aggressive parallelization. The autoscaler attempts to scale up/down "
+                help=("Sets how rapidly you aim to complete jobs in seconds. Shorter times mean "
+                      "more aggressive parallelization. The autoscaler attempts to scale up/down "
                       "so that it expects all queued jobs will complete within targetTime "
                       "seconds. default=%s" % config.targetTime))
     addOptionFn("--betaInertia", dest="betaInertia", default=None,
                 help=("A smoothing parameter to prevent unnecessary oscillations in the "
                       "number of provisioned nodes. This controls an exponentially weighted "
                       "moving average of the estimated number of nodes. A value of 0.0 "
-                      "disables any smoothing, and a value of 1.0 will smooth so much that "
-                      "no change will ever be made. default=%s" % config.betaInertia))
+                      "disables any smoothing, and a value of 0.9 will smooth so much that "
+                      "few changes will ever be made.  Must be between 0.0 and 0.9.  "
+                      "default=%s" % config.betaInertia))
     addOptionFn("--scaleInterval", dest="scaleInterval", default=None,
                 help=("The interval (seconds) between assessing if the scale of"
                       " the cluster needs to change. default=%s" % config.scaleInterval))

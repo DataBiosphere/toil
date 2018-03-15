@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,7 +25,6 @@ from threading import Thread, Event
 import logging
 import random
 import uuid
-
 from collections import defaultdict
 from mock import MagicMock
 
@@ -34,7 +33,6 @@ from six.moves.queue import Empty, Queue
 from six import iteritems
 
 from toil.job import JobNode, Job
-
 from toil.lib.humanize import human2bytes as h2b
 from toil.test import ToilTest, slow
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
@@ -178,6 +176,24 @@ class BinPackingTest(ToilTest):
                                               jobTime=300,
                                               globalTargetTime=0)
         self.assertEqual(allocation, {t2_micro: 1})
+
+    def testLongRunningJobs(self):
+        """
+        Test that jobs with long run times (especially service jobs) are aggressively parallelized.
+
+        This is important, because services are one case where the degree of parallelization
+        really, really matters. If you have multiple services, they may all need to be running
+        simultaneously before any real work can be done.
+
+        Despite setting globalTargetTime=3600, this should launch 1000 t2.micros because each job's
+        estimated runtime (30000 seconds) extends well beyond 3600 seconds.
+        """
+        allocation = self.run1000JobsOnMicros(jobCores=1,
+                                              jobMem=h2b('1G'),
+                                              jobDisk=h2b('1G'),
+                                              jobTime=30000,
+                                              globalTargetTime=3600)
+        self.assertEqual(allocation, {t2_micro: 1000})
 
     def run1000JobsOnMicros(self, jobCores, jobMem, jobDisk, jobTime, globalTargetTime):
         """Test packing 1000 jobs on t2.micros.  Depending on the targetTime and resources,
@@ -380,7 +396,7 @@ class ScalerThreadTest(ToilTest):
             for preemptable in (True, False):
                 if preemptable and numPreemptableJobs > 0 or not preemptable and numJobs > 0:
                     # Add 1000 random jobs
-                    for i in range(1000):
+                    for _ in range(1000):
                         x = mock.getNodeShape(nodeType=jobShape)
                         iJ = JobNode(jobStoreID=1,
                                      requirements=dict(
@@ -549,7 +565,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     """
     Mimics a job batcher, provisioner and scalable batch system
     """
-
     def __init__(self, config, secondsPerJob):
         super(MockBatchSystemAndProvisioner, self).__init__('clusterName')
         # To mimic parallel preemptable and non-preemptable queues
@@ -558,21 +573,16 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.secondsPerJob = secondsPerJob
         self.provisioner = self
         self.batchSystem = self
-
         self.nodeTypes = config.nodeTypes
         self.nodeShapes = self.nodeTypes
         self.nodeShapes.sort()
-
         self.jobQueue = Queue()
         self.updatedJobsQueue = Queue()
         self.jobBatchSystemIDToIssuedJob = {}
         self.totalJobs = 0  # Count of total jobs processed
         self.totalWorkerTime = 0.0  # Total time spent in worker threads
-
         self.toilMetrics = None
-
         self.nodesToWorker = {}  # Map from Node to instances of the Worker class
-
         self.workers = {nodeShape: [] for nodeShape in
                         self.nodeShapes}  # Instances of the Worker class
         self.maxWorkers = {nodeShape: 0 for nodeShape in
@@ -589,7 +599,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.leaderThread.join()
 
     # Stub out all AbstractBatchSystem methods since they are never called
-
     for name, value in iteritems(AbstractBatchSystem.__dict__):
         if getattr(value, '__isabstractmethod__', False):
             exec('def %s(): pass' % name)
@@ -597,7 +606,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         del name, value
 
     # AbstractScalableBatchSystem methods
-
     def nodeInUse(self, nodeIP):
         return False
 
@@ -615,7 +623,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         yield nodes
 
     # AbstractProvisioner methods
-
     def getProvisionedWorkers(self, nodeType=None, preemptable=None):
         """
         Returns a list of Node objects, each representing a worker node in the cluster
@@ -647,7 +654,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.jobQueue.put(jobID)
 
     # JobBatcher functionality
-
     def getNumberOfJobsIssued(self, preemptable=None):
         if preemptable is not None:
             jobList = [job for job in list(self.jobQueue.queue) if
@@ -660,7 +666,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return self.jobBatchSystemIDToIssuedJob.values()
 
     # AbstractScalableBatchSystem functionality
-
     def getNodes(self, preemptable=False, timeout=None):
         nodes = dict()
         for node in self.nodesToWorker:
@@ -672,7 +677,6 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         return nodes
 
     # AbstractProvisioner functionality
-
     def addNodes(self, nodeType, numNodes, preemptable):
         self._addNodes(numNodes=numNodes, nodeType=nodeType, preemptable=preemptable)
         return self.getNumberOfNodes(nodeType=nodeType, preemptable=preemptable)
@@ -735,7 +739,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                 self.worker.join()
                 return time.time() - self.startTime
 
-        for i in range(numNodes):
+        for _ in range(numNodes):
             node = Node('127.0.0.1', uuid.uuid4(), 'testNode', datetime.datetime.now().isoformat()+'Z', nodeType=nodeType,
                     preemptable=preemptable)
             self.nodesToWorker[node] = Worker(self.jobQueue, self.updatedJobsQueue, self.secondsPerJob)
@@ -743,7 +747,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.maxWorkers[nodeShape] = max(self.maxWorkers[nodeShape], len(self.workers[nodeShape]))
 
     def _removeNodes(self, nodes):
-        logger.info("removing nodes. %s workers and %s to terminate", len(self.nodesToWorker),
+        logger.info("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker),
                     len(nodes))
         for node in nodes:
             logger.info("removed node")
