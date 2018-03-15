@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2016 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -53,7 +53,7 @@ from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
 # aim to pack autoscaling jobs within a 20 minute block before provisioning a new node
-defaultTargetTime = 1200
+defaultTargetTime = 1800
 logger = logging.getLogger(__name__)
 
 
@@ -103,7 +103,7 @@ class Config(object):
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxsize
         self.maxServiceJobs = sys.maxsize
-        self.deadlockWait = 80  # Wait 80 seconds before declaring a deadlock
+        self.deadlockWait = 60  # Wait 80 seconds before declaring a deadlock
         self.statePollingWait = 1  # Wait 1 seconds before querying job state
 
         # Resource requirements
