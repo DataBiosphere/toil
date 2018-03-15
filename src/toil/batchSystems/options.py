@@ -130,7 +130,8 @@ def setDefaultOptions(config):
     config.batchSystem = "singleMachine"
     config.disableHotDeployment = False
     config.environment = {}
-    config.statePollingWait = 1 # seconds
+    config.statePollingWait = 1  # seconds
+    config.maxLocalJobs = multiprocessing.cpu_count()
 
     # single machine
     config.scale = 1
