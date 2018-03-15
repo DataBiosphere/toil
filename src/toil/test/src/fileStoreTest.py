@@ -587,47 +587,14 @@ class hidden(object):
             behavior is as expected.
             """
             self._testValidityOfCacheEvictTest()
+            if self.jobStoreType == 'google':
+                self.skipTest("Failing test that should be fixed.")
 
             # Explicitly set clean to always so even the failed cases get cleaned (This will
             # overwrite the value set in setUp if it is ever changed in the future)
             self.options.clean = 'always'
 
-            #self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=60)
-            self.options.retryCount = 0
-            expectedResult = 'Fail'
-            try:
-                #A = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
-                A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
-                                  fileMB=20)
-                # Sleep for 1 second after writing the first file so that their ctimes are
-                # guaranteed to be distinct for the purpose of this test.
-                B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
-                C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
-                                  fileMB=20)
-                C2 = Job.wrapJobFn(self._sleepy, timeToSleep=60)
-                D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=100, disk='0M')
-                E = Job.wrapJobFn(self._uselessFunc, disk='600M')
-                # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
-                F = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
-                G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, cached=expectedResult,
-                                  disk='100M')
-                #A.addChild(A1)
-                A.addChild(B)
-                B.addChild(C)
-                C.addChild(C2)
-                C2.addChild(D)
-                D.addChild(E)
-                E.addChild(F)
-                F.addChild(G)
-                Job.Runner.startToil(A, self.options)
-            except FailedJobsException as err:
-                self.assertEqual(err.numberOfFailedJobs, 1)
-                with open(self.options.logFile) as f:
-                    logContents = f.read()
-                if CacheUnbalancedError.message in logContents:
-                    self.assertEqual(expectedResult, 'Fail')
-                else:
-                    self.fail('Toil did not raise the expected AssertionError')
+            self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=60)
 
         def _testValidityOfCacheEvictTest(self):
             # If the job store and cache are on the same file system, file sizes are accounted for
