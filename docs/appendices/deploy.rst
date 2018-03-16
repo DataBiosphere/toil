@@ -2,8 +2,8 @@
 
 .. _remoteDeploying:
 
-How Auto-Deployment Works
-=========================
+Auto-Deployment
+===============
 
 If you want to run your workflow in a distributed environment, on multiple worker machines, either in the cloud or on a
 bare-metal cluster, your script needs to be made available to those other machines. If your script imports other
@@ -94,7 +94,7 @@ We can now run our workflow::
 .. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
-Remote deployment with sibling modules
+Remote Deployment with Sibling Modules
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This scenario applies if the user script imports modules that are its siblings::
@@ -115,7 +115,7 @@ Sibling modules are a suitable method of organizing the source code of
 reasonably complicated workflows.
 
 
-Remotely deploying a package hierarchy
+Remotely Deploying a Package Hierarchy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Recall that in Python, a `package`_ is a directory containing one or more
 ``.py`` files—one of which must be called ``__init__.py``—and optionally other
@@ -174,7 +174,7 @@ could do this::
 Also note that the root directory itself must not be package, i.e. must not
 contain an ``__init__.py``.
 
-Relying on shared filesystems
+Relying on Shared Filesystems
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bare-metal clusters typically mount a shared file system like NFS on each node.
@@ -198,4 +198,3 @@ The term Toil Appliance refers to the Mesos Docker image that Toil uses to simul
 cluster.  It's easily deployed, only needs Docker, and allows for workflows to be run in single-machine mode and for
 clusters of VMs to be provisioned.  To specify a different image, see the Toil :ref:`envars` section.  For more
 information on the Toil Appliance, see the :ref:`runningAWS` section.
-
