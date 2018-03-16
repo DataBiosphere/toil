@@ -84,7 +84,7 @@ def main():
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         except ImportError:
-            print('The aws extra must be installed to use this provisioner')
+            logger.error('The aws extra must be installed to use this provisioner')
             raise
         provisioner = AWSProvisioner()
     elif config.provisioner == 'gce':
@@ -92,7 +92,7 @@ def main():
         try:
             from toil.provisioners.gceProvisioner import GCEProvisioner
         except ImportError:
-            print('The libCloud extra must be installed to use this provisioner')
+            logger.error('The google extra must be installed to use this provisioner')
             raise
         provisioner = GCEProvisioner()
     else:
