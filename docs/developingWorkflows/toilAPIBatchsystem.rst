@@ -3,7 +3,7 @@
 .. _batchSystemInterface:
 
 Batch System API
-==========================
+================
 
 The batch system interface is used by Toil to abstract over different ways of running
 batches of jobs, for example Slurm, GridEngine, Mesos, Parasol and a single node. The
