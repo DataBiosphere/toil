@@ -38,7 +38,7 @@ If using Toil for your research, please cite
    :caption: Running Toil
    :maxdepth: 2
 
-   running/overview
+   running/introduction
    running/cliOptions
    running/debugging
    running/cloud/cloud
