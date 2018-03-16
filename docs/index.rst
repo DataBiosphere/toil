@@ -50,10 +50,16 @@ If using Toil for your research, please cite
    :caption: Developing Toil Workflows
    :maxdepth: 2
 
+   developingWorkflows/jobStore
+   developingWorkflows/batchSystem
    developingWorkflows/developing
    developingWorkflows/toilAPI
-   developingWorkflows/batchSystem
-   developingWorkflows/jobStore
+   developingWorkflows/toilAPIJobFunctions
+   developingWorkflows/toilAPIMethods
+   developingWorkflows/toilAPIRunner
+   developingWorkflows/toilAPIFilestore
+   developingWorkflows/toilAPIService
+   developingWorkflows/toilAPIExceptions
 
 .. toctree::
    :caption: Contributing to Toil
