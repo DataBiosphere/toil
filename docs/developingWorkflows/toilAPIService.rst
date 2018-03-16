@@ -1,7 +1,7 @@
 .. _api-service:
 
-Job.Service
-***********
+Job.Service API
+***************
 
 The Service class allows databases and servers to be spawned within a Toil workflow.
 

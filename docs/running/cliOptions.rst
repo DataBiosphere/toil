@@ -2,8 +2,8 @@
 
 .. _workflowOptions:
 
-Options
-=======
+Commandline Options
+===================
 
 A quick way to see all of Toil's commandline options is by executing the following on a toil script::
 

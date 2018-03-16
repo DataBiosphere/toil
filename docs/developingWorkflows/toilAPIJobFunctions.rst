@@ -1,7 +1,7 @@
 .. _api-jobfunctions:
 
-Toil Job Utility Functions API
-******************************
+Toil Job API
+************
 
 Functions to wrap jobs and return values (promises).
 

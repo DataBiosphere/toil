@@ -39,7 +39,7 @@ If using Toil for your research, please cite
    :maxdepth: 2
 
    running/overview
-   running/cli
+   running/cliOptions
    running/debugging
    running/cloud/cloud
    running/hpcEnvironments

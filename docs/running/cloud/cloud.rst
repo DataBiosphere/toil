@@ -1,8 +1,8 @@
 
 .. _cloudOverview:
 
-An Introduction to Running Toil in the Cloud
-============================================
+Running in the Cloud
+====================
 
 Toil supports Amazon Web Services (AWS) and Google Compute Engine (GCE) in the cloud and has autoscaling capabilities
 that can adapt to the size of your workflow, whether your workflow requires 10 instances or 20,000.

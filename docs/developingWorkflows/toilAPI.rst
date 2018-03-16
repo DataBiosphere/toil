@@ -1,7 +1,7 @@
 .. _api:
 
-Toil API
-********
+Toil Class API
+**************
 
 The Toil class configures and starts a Toil run.
 

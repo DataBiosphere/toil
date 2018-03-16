@@ -1,7 +1,7 @@
 .. _api-exceptions:
 
-Exceptions
-**********
+Exceptions API
+**************
 
 Toil specific exceptions.
 

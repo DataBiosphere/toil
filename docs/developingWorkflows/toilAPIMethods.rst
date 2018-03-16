@@ -1,7 +1,7 @@
 .. _api-methods:
 
-Job Methods
-***********
+Job Methods API
+***************
 
 Jobs are the units of work in Toil which are composed into workflows.
 
