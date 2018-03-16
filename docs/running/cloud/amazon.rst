@@ -28,9 +28,122 @@ during the computation of a workflow, first set up and configure an account with
 
 #. If necessary, create and activate an `AWS account`_
 
-#. Only needed once, but AWS requires that users "subscribe" to use the `Container Linux by CoreOS AMI`_.
+#. Only needed once, but AWS requires that users "subscribe" to use the `Container Linux by CoreOS AMI`_.  You will encounter errors if this is not done.
 
-#. Create a key pair, install boto, install awscli, and configure your credentials using our `blog instructions`_ .
+#. Next, generate a key pair for AWS with the command (do NOT generate your key pair with the Amazon browser):
+
+::
+
+        $ ssh-keygen -t rsa
+
+    This should prompt you to save your key.  Please save it in:
+
+::
+
+        ~/.ssh/id_rsa
+
+    Now move this to where Ubuntu can see it as an authorized key:
+
+::
+
+        $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+        $ eval `ssh-agent -s`
+        $ ssh-add
+
+    You'll also need to chmod your private key (good practice but also enforced by AWS):
+
+::
+
+        $ chmod 400 id_rsa
+
+#. Now you'll need to add the key to AWS via the browser.  For example, on us-west1, this address would accessible at:
+
+::
+
+        https://us-west-1.console.aws.amazon.com/ec2/v2/home?region=us-west-1#KeyPairs:sort=keyName
+
+    Now click on the "Import Key Pair" button to add your key.
+
+.. image:: amazonaddkeypair.png
+   :target: https://us-west-1.console.aws.amazon.com/ec2/v2/home?region=us-west-1#KeyPairs:sort=keyName
+   :alt: Adding an Amazon Key Pair
+
+#. Next, you need to create an AWS access key.  First go to the IAM dashboard, again, for "us-west1", the example link would be here:
+
+::
+
+        https://console.aws.amazon.com/iam/home?region=us-west-1#/home
+
+    The directions (transcribed from: https://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html ) are now:
+
+    1. On the IAM Dashboard page, choose your account name in the navigation bar, and then choose My Security Credentials.
+    2. Expand the Access keys (access key ID and secret access key) section.
+    3. Choose Create New Access Key. Then choose Download Key File to save the access key ID and secret access key to a file on your computer. <strong><em>After you close the dialog box, you can't retrieve this secret access key again.
+
+#. Now you should have a newly generated "AWS Access Key ID" and "AWS Secret Access Key".  We can now install the AWS CLI and make sure that it has the proper credentials:
+
+::
+
+        $ pip install awscli --upgrade --user
+
+#. Now configure your AWS credentials with:
+
+::
+
+        $ aws configure
+
+    Add your "AWS Access Key ID" and "AWS Secret Access Key" from earlier and your region and output format:
+
+::
+
+        " AWS Access Key ID [****************Q65Q]: "
+        " AWS Secret Access Key [****************G0ys]: "
+        " Default region name [us-west-1]: "
+        " Default output format [json]: "
+
+#. Toil also relies on boto, and you'll need to create a boto file containing your credentials as well.  To do this, run:
+
+::
+
+        $ nano ~/.boto
+
+    And paste in the following (with your actual "AWS Access Key ID" and "AWS Secret Access Key"):
+
+::
+
+        [Credentials]
+        aws_access_key_id = ****************Q65Q
+        aws_secret_access_key = ****************G0ys
+
+#. If not done already, install toil (example uses version 3.12.0, but we recommend the latest release):
+
+::
+
+        $ virtualenv venv
+        $ source venv/bin/activate
+        $ pip install toil[all]==3.12.0
+
+#. Now that toil is installed and you are running a virtualenv, an example of launching a toil leader node would be
+   (again, note that we set TOIL_APPLIANCE_SELF to toil version 3.12.0 in this example, but please set the version to
+   the installed version that you are using if you're using a different version):
+
+::
+
+        $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 toil launch-cluster clustername --leaderNodeType t2.medium --zone us-west-1a --keyPairName id_rsa
+
+To further break down each of these commands:
+
+    **TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest** - This is optional.  It specifies a mesos docker image that we maintain with the latest version of toil installed on it.  If you want to use a different version of toil, please specify the image tag you need from: https://quay.io/repository/ucsc_cgl/toil?tag=latest&tab=tags
+
+    **toil launch-cluster** - Base command in toil to launch a cluster.
+
+    **clustername** - Just choose a name for your cluster.
+
+    **--leaderNodeType t2.medium** - Specify the leader node type.  Make a t2.medium (2CPU; 4Gb RAM; $0.0464/Hour).  List of available AWS instances: https://aws.amazon.com/ec2/pricing/on-demand/
+
+    **--zone us-west-1a** - Specify the AWS zone you want to launch the instance in.  Must have the same prefix as the zone in your awscli credentials (which, in the example of this tutorial is: "us-west-1").
+
+    **--keyPairName id_rsa** - The name of your key pair, which should be "id_rsa" if you've followed this tutorial.
 
 .. _Container Linux by CoreOS AMI: https://aws.amazon.com/marketplace/pp/B01H62FDJM/
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/

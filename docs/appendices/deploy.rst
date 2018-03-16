@@ -14,7 +14,7 @@ Let's first examine various scenarios of auto-deploying a workflow, which, as we
 auto-deployed. Lastly, we'll deal with the issue of declaring :ref:`Toil as a dependency <depending_on_toil>` of a
 workflow that is packaged as a setuptools distribution.
 
-Toil can be easily deployed to a remote host. First, assuming you've followed our `blog instructions`_ to install Toil
+Toil can be easily deployed to a remote host. First, assuming you've followed our :ref:`prepareAWS` section to install Toil
 and use it to create a remote leader node on (in this example) AWS, you can now log into this into using
 :ref:`sshCluster` and once on the remote host, create and activate a virtualenv (noting to make sure to use the
 ``--system-site-packages`` option!)::
@@ -90,7 +90,6 @@ We can now run our workflow::
    prevent the installation of your package as an ``.egg``. It will also disable
    the automatic installation of your project's dependencies.
 
-.. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 .. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
