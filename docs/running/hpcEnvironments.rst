@@ -1,7 +1,7 @@
 .. _hpcEnvironmentsOverview:
 
-Running in HPC Environments
-===========================
+HPC Environments
+================
 
 Toil is a flexible framework that can be leveraged in a variety of environments, including high-performance computing (HPC) environments.  
 Toil provides support for a number of batch systems, including `Grid Engine`_, `Slurm`_, `Torque`_ and `LSF`_, which are popular schedulars used in these environments. To use one of these batch systems specify the "--batchSystem" argument to the toil script.
