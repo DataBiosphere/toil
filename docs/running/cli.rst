@@ -281,7 +281,8 @@ the logging module, so:
   --cseKey CSEKEY       Path to file containing 256-bit key to be used for
                         client-side encryption on azureJobStore. By default,
                         no encryption is used.
-  --setEnv NAME=VALUE or NAME, -e NAME=VALUE or NAME
+  --setEnv NAME
+                        NAME=VALUE or NAME, -e NAME=VALUE or NAME are also valid.
                         Set an environment variable early on in the worker. If
                         VALUE is omitted, it will be looked up in the current
                         environment. Independently of this option, the worker

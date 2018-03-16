@@ -2,6 +2,7 @@
 
 Cluster Utilities
 -----------------
+
 There are several utilities used for starting and managing a Toil cluster using the AWS provisioner. They are installed
 via the ``[aws]`` or ``[google]`` extra. For installation details see :ref:`installProvisioner`. The cluster utilities
 are used for :ref:`runningAWS` and are comprised of ``toil launch-cluster``, ``toil rsync-cluster``,
@@ -50,6 +51,7 @@ The cluster utilities can be used for :ref:`runningGCE` and :ref:`runningAWS`.
 
 Status Command
 --------------
+
 To use the status command, a workflow must first be run using the ``--stats`` option.  Using this command makes certain
 that toil does not delete the job store, no matter what other options are specified (i.e. normally the option
 ``--clean=always`` would delete the job, but ``--stats`` will override this).
@@ -131,7 +133,7 @@ This should output the following:
             n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total
             1 |     0.07    0.07    0.07    0.07    0.07 |     0.07    0.07    0.07    0.07    0.07 |     0.00    0.00    0.00    0.00    0.00 |      76K     76K     76K     76K     76K
 
-Once we're done, we can clean up the job store by running
+Once we're done, we can clean up the job store by running:
 
 ::
 
@@ -139,6 +141,7 @@ Once we're done, we can clean up the job store by running
 
 Stats Command
 -------------
+
 Continuing the example from the status section above, if we ran our workflow with the command::
 
     toil discoverfiles.py file:my-jobstore --stats
@@ -160,6 +163,7 @@ Otherwise, the ``stats`` command should return the following:
 
 Clean Command
 -------------
+
 If a Toil pipeline didn't finish successfully, or was run using ``--clean=always`` or ``--stats``, the job store will exist
 until it is deleted. ``toil clean <jobStore>`` ensures that all artifacts associated with a job store are removed.
 This is particularly useful for deleting AWS job stores, which reserves an SDB domain as well as an S3 bucket.
@@ -173,17 +177,107 @@ disk space.
 
 .. _launchCluster:
 
-launch-cluster
-^^^^^^^^^^^^^^
+Launch-Cluster Command
+----------------------
 
 Running ``toil launch-cluster`` starts up a leader for a cluster. Workers can be
-added to the initial cluster by specifying the ``-w`` option. For an example usage see
-:ref:`launchCluster`. More information can be found using the ``--help`` option.
+added to the initial cluster by specifying the ``-w`` option.  An example would be: ::
+
+    $ toil launch-cluster my-cluster --leaderNodeType t2.small -z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4
+
+Options are listed below.  These can also be displayed by running: ::
+
+    $ toil launch-cluster --help
+
+Launch-cluster's main positional argument is the clusterName.  This is simply the name of your cluster.  If it does not
+exist yet, Toil will create it for you.
+
+**Launch-Cluster Options**
+
+  --help                -h also accepted.  Displays this help menu.
+  --tempDirRoot TEMPDIRROOT
+                        Path to where temporary directory containing all temp
+                        files are created, by default uses the current working
+                        directory as the base.
+  --version             Display version.
+  --provisioner CLOUDPROVIDER
+                        -p CLOUDPROVIDER also accepted.  The provisioner for
+                        cluster auto-scaling.  Both aws and google's gce are
+                        currently supported.
+  --zone ZONE           -z ZONE also accepted.  The AWS availability zone of the master. This
+                        parameter can also be set via the TOIL_AWS_ZONE
+                        environment variable, or by the ec2_region_name
+                        parameter in your .boto file, or derived from the
+                        instance metadata if using this utility on an existing
+                        EC2 instance. Currently: us-west-1a
+  --leaderNodeType LEADERNODETYPE
+                        Non-preemptable node type to use for the cluster
+                        leader.
+  --keyPairName KEYPAIRNAME
+                        The name of the AWS or ssh key pair to include on the
+                        instance
+  --boto BOTOPATH       The path to the boto credentials directory. This is
+                        transferred to all nodes in order to access the AWS
+                        jobStore from non-AWS instances.
+  --tag KEYVALUE
+                        KEYVALUE is specified as KEY=VALUE. -t KEY=VALUE also
+                        accepted.  Tags are added to the AWS cluster for this
+                        node and all of its children.
+                        Tags are of the form: -t key1=value1 --tag key2=value2.
+                        Multiple tags are allowed and each tag needs its own
+                        flag. By default the cluster is tagged with:
+                        { "Name": clusterName, "Owner": IAM username }.
+  --vpcSubnet VPCSUBNET
+                        VPC subnet ID to launch cluster in. Uses default
+                        subnet if not specified. This subnet needs to have
+                        auto assign IPs turned on.
+  --nodeTypes NODETYPES
+                        Comma-separated list of node types to create while
+                        launching the leader. The syntax for each node type
+                        depends on the provisioner used. For the aws
+                        provisioner this is the name of an EC2 instance type
+                        followed by a colon and the price in dollar to bid for
+                        a spot instance, for example 'c3.8xlarge:0.42'. Must
+                        also provide the --workers argument to specify how
+                        many workers of each node type to create
+  --workers WORKERS
+                        -w WORKERS also accepted.  Comma-separated list of the
+                        number of workers of each node type to launch alongside
+                        the leader when the cluster is created. This can be
+                        useful if running toil without auto-scaling but with
+                        need of more hardware support.
+  --leaderStorage LEADERSTORAGE
+                        Specify the size (in gigabytes) of the root volume for
+                        the leader instance. This is an EBS volume.
+  --nodeStorage NODESTORAGE
+                        Specify the size (in gigabytes) of the root volume for
+                        any worker instances created when using the -w flag.
+                        This is an EBS volume.
+
+**Logging Options**
+
+  --logOff              Same as --logCritical
+  --logCritical         Turn on logging at level CRITICAL and above. (default
+                        is INFO)
+  --logError            Turn on logging at level ERROR and above. (default is
+                        INFO)
+  --logWarning          Turn on logging at level WARNING and above. (default
+                        is INFO)
+  --logInfo             Turn on logging at level INFO and above. (default is
+                        INFO)
+  --logDebug            Turn on logging at level DEBUG and above. (default is
+                        INFO)
+  --logLevel LOGLEVEL   Log at given level (may be either OFF (or CRITICAL),
+                        ERROR, WARN (or WARNING), INFO or DEBUG). (default is
+                        INFO)
+  --logFile LOGFILE     File to log in
+  --rotatingLogging     Turn on rotating logging, which prevents log files
+                        getting too big.
 
 .. _sshCluster:
 
-ssh-cluster
-^^^^^^^^^^^
+Ssh-Cluster Command
+-------------------
 
 Toil provides the ability to ssh into the leader of the cluster. This
 can be done as follows::
@@ -212,8 +306,8 @@ For an example usage, see :ref:`Autoscaling`.
 
 .. _rsyncCluster:
 
-rsync-cluster
-^^^^^^^^^^^^^
+Rsync-Cluster Command
+---------------------
 
 The most frequent use case for the ``rsync-cluster`` utility is deploying your
 Toil script to the Toil leader. Note that the syntax is the same as traditional
@@ -228,8 +322,8 @@ Here is an example of its usage::
 
 .. _destroyCluster:
 
-destroy-cluster
-^^^^^^^^^^^^^^^
+destroy-cluster Command
+-----------------------
 
 The ``destroy-cluster`` command is the advised way to get rid of any Toil cluster
 launched using the :ref:`launchCluster` command. It ensures that all attached node, volumes, and
@@ -239,8 +333,9 @@ residual resources may still be in use in the background. To delete a cluster ru
     $ toil destroy-cluster CLUSTER-NAME-HERE
 
 
-Kill
-^^^^
+Kill Command
+------------
+
 To kill all currently running jobs for a given jobstore, use the command::
 
     toil kill file:my-jobstore

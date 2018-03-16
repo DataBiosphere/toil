@@ -39,8 +39,8 @@ A Toil workflow can be run with just three steps:
    Don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
    they should have their :ref:`virtual environment <venvPrep>` running.
 
-Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`, ``singleMachine``.
-using the ``file`` job store.
+Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`,
+``singleMachine``.  using the ``file`` job store.
 
 Toil uses batch systems to manage the jobs it creates.
 
@@ -115,8 +115,10 @@ For information on using CWL with Toil see the section :ref:`cwl`
 Running a basic WDL workflow
 ----------------------------
 
-The `Workflow Description Language`_ (WDL) is another emerging language for writing workflows that are portable across multiple workflow engines and platforms.
-Running WDL workflows using Toil is still in alpha, and currently experimental.  Toil currently supports basic workflow syntax (see :ref:`wdlSupport` for more details and examples).  Here we go over running a basic WDL helloworld workflow.
+The `Workflow Description Language`_ (WDL) is another emerging language for writing workflows that are portable across
+multiple workflow engines and platforms.  Running WDL workflows using Toil is still in alpha, and currently
+experimental.  Toil currently supports basic workflow syntax (see :ref:`wdl` for more details and examples).
+Here we go over running a basic WDL helloworld workflow.
 
 #. First ensure that Toil is installed with the
    ``wdl`` extra (see :ref:`extras`).  ::
@@ -171,7 +173,6 @@ Running the example
 ~~~~~~~~~~~~~~~~~~~
 
 #. Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
-
 
 #. Run it with the default settings::
 
@@ -246,10 +247,10 @@ of this new sorted file.
 
 If the base case fails, then the file is split into two new tempFiles using :func:`Job.FileStore.getLocalTempFile` and
 the helper function ``copySubRangeOfFile``. Finally we add a follow on Job ``up`` with :func:`Job.addFollowOnJobFn`.
-We've already seen child jobs. A follow-on Job is a job that runs after the current job and *all* of its children (and their children and follow-ons) have
-completed. Using a follow-on makes sense because ``up`` is responsible for merging the files together and we don't want
-to merge the files together until we *know* they are sorted. Again, the return value of the follow-on job is requested
-using :func:`Job.rv`.
+We've already seen child jobs. A follow-on Job is a job that runs after the current job and *all* of its children (and
+their children and follow-ons) have completed. Using a follow-on makes sense because ``up`` is responsible for merging
+the files together and we don't want to merge the files together until we *know* they are sorted. Again, the return
+value of the follow-on job is requested using :func:`Job.rv`.
 
 Looking at ``up``
 
@@ -293,8 +294,6 @@ arguments for the workflow which includes both Toil's and ones defined inside
 ``sort.py``. A complete explanation of Toil's arguments can be
 found in :ref:`commandRef`.
 
-
-
 Logging
 ~~~~~~~
 
@@ -307,8 +306,7 @@ messages to the screen::
 
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
-output. For more information, see :ref:`loggingRef`.
-
+output.
 
 Error Handling and Resuming Pipelines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -360,9 +358,7 @@ You'll now see Toil attempt to rerun the failed job until it runs out of tries.
 may experience a sporadic interruption, or some other non-deterministic failure.
 
 To successfully restart our pipeline, we can edit our script to comment out
-line 30, or remove it, and then run
-
-::
+line 30, or remove it, and then run::
 
     (venv) $ python sort.py --restart --overwriteOutput=True
 
@@ -384,7 +380,8 @@ Note that when running in AWS, users can either run the workflow on a single ins
 cluster (which is running across multiple containers on multiple AWS instances).  For more information
 on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
-Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may
+not be cleaned up properly.
 
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``,
    ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
@@ -409,7 +406,6 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
    Along with some other ``INFO`` log messages, you should get the following output in your terminal window:
    ``Hello, world!, here's a message: You did it!``
 
-
 #. Exit from the SSH connection. ::
 
         $ exit
@@ -419,7 +415,6 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
         (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
-
 .. _awscwl:
 
 Running a CWL Workflow on AWS
@@ -427,8 +422,8 @@ Running a CWL Workflow on AWS
 After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS
 (see :ref:`prepareAWS`), the user can run a CWL workflow with Toil on AWS.
 
-Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
-
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may
+not be cleaned up properly.
 
 #. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
@@ -471,7 +466,6 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
       (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
-
 .. _awscactus:
 
 Running a Workflow with Autoscaling on AWS - Cactus
@@ -480,7 +474,8 @@ Running a Workflow with Autoscaling on AWS - Cactus
 `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free whole-genome multiple alignment
 program.
 
-Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may
+not be cleaned up properly.
 
 #. Download :download:`pestis.tar.gz <../../src/toil/test/cactus/pestis.tar.gz>`.
 
@@ -552,4 +547,4 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
         (venv) $ toil destroy-cluster <cluster-name>
 
-For other examples and Toil resources see https://toilpipelines.wordpress.com/
+For other examples and Toil resources see https://toilpipelines.wordpress.com/ !

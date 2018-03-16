@@ -90,7 +90,7 @@ We can now run our workflow::
    prevent the installation of your package as an ``.egg``. It will also disable
    the automatic installation of your project's dependencies.
 
-
+.. _blog instructions: https://toilpipelines.wordpress.com/2018/01/18/running-toil-autoscaling-with-aws/
 .. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 

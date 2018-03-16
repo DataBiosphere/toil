@@ -39,7 +39,7 @@ See `here <https://github.com/BD2KGenomics/toil/pull/1912>`_ for the latest deta
 .. _cloudJobStore:
 
 Storage (Toil jobStore)
--------------------
+-----------------------
 
 Toil can make use of cloud storage such as Azure, AWS, or Google buckets to take of care of storage needs.
 
@@ -65,5 +65,4 @@ Cloud Platforms
     amazon
     azure
     gce
-    openstack
     clusterUtils
