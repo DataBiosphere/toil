@@ -52,7 +52,7 @@ from toil.provisioners import clusterFactory
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
-# aim to pack autoscaling jobs within a 20 minute block before provisioning a new node
+# aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
 logger = logging.getLogger(__name__)
 
@@ -103,8 +103,8 @@ class Config(object):
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxsize
         self.maxServiceJobs = sys.maxsize
-        self.deadlockWait = 60  # Wait 80 seconds before declaring a deadlock
-        self.statePollingWait = 1  # Wait 1 seconds before querying job state
+        self.deadlockWait = 60  # Number of seconds to wait before declaring a deadlock
+        self.statePollingWait = 1  # Number of seconds to wait before querying job state
 
         # Resource requirements
         self.defaultMemory = 2147483648
@@ -240,7 +240,7 @@ class Config(object):
         setOption("metrics")
         setOption("preemptableCompensation", float)
         if not 0.0 <= self.preemptableCompensation <= 1.0:
-            raise RuntimeError('preemptableCompensation (%f) must be between 0.1 and 0.9!'
+            raise RuntimeError('preemptableCompensation (%f) must be between 0.0 and 1.0!'
                                '' % self.preemptableCompensation)
         setOption("nodeStorage", int)
 
