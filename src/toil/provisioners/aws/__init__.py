@@ -310,8 +310,8 @@ coreos:
             --name node-exporter \
             --restart always \
             prom/node-exporter:v0.15.2 \
-            --collector.procfs /host/proc \
-            --collector.sysfs /host/sys \
+            --path.procfs /host/proc \
+            --path.sysfs /host/sys \
             --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
 
 ssh_authorized_keys:
