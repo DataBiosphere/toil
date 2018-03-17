@@ -84,7 +84,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(MesosBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
-        # The hot-deployed resource representing the user script. Will be passed along in every
+        # The auto-deployed resource representing the user script. Will be passed along in every
         # Mesos task. Also see setUserScript().
         self.userScript = None
         """

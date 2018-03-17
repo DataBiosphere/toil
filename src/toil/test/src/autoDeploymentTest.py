@@ -17,10 +17,10 @@ log = logging.getLogger(__name__)
 @slow
 class AutoDeploymentTest(ApplianceTestSupport):
     """
-    Tests various hot-deployment scenarios. Using the appliance, i.e. a docker container,
+    Tests various auto-deployment scenarios. Using the appliance, i.e. a docker container,
     for these tests allows for running worker processes on the same node as the leader process
     while keeping their file systems separate from each other and the leader process. Separate
-    file systems are crucial to prove that hot-deployment does its job.
+    file systems are crucial to prove that auto-deployment does its job.
     """
 
     def setUp(self):
@@ -341,7 +341,7 @@ class AutoDeploymentTest(ApplianceTestSupport):
 
         `Encapsulated` has two children to ensure that `Follow-on` is run in a new worker. That's
         the only way to guarantee that the user script has not been loaded yet, which would cause
-        the test to succeed coincidentally. We want to test that hot-deploying and loading of the
+        the test to succeed coincidentally. We want to test that auto-deploying and loading of the
         user script are done properly *before* deferred functions are being run and before any
         jobs have been executed by that worker.
         """

@@ -997,7 +997,7 @@ extras (or no extras at all), robbing the user of the choice what Toil extras
 to install. Secondly, and more importantly, declaring a dependency on Toil
 would only lead to Toil being installed on the leader node of a cluster, but
 not the worker nodes. Auto-deployment does not work here because Toil cannot
-hot-deploy itself, the classic "Which came first, chicken or egg?" problem.
+auto-deploy itself, the classic "Which came first, chicken or egg?" problem.
 
 In other words, you shouldn't explicitly depend on Toil. Document the
 dependency instead (as in "This workflow needs Toil version X.Y.Z to be
