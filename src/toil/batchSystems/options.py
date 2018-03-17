@@ -106,8 +106,13 @@ def addOptions(addOptionFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
                 help=("The type of batch system to run the job(s) with, currently can be one "
                       "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
-    addOptionFn("--disableHotDeployment", dest="disableHotDeployment", action='store_true', default=None,
-                help=("Should hot-deployment of the user script be deactivated? If True, the user "
+    addOptionFn("--disableHotDeployment", dest="disableAutoDeployment",
+                action='store_true', default=None,
+                help=("Hot-deployment was renamed to auto-deployment.  Option now redirects to "
+                "--disableAutoDeployment.  Left in for backwards compatibility."))
+    addOptionFn("--disableAutoDeployment", dest="disableAutoDeployment",
+                action='store_true', default=None,
+                help=("Should auto-deployment of the user script be deactivated? If True, the user "
                       "script/package should be present at the same location on all workers. "
                       "default=false"))
 
@@ -120,7 +125,7 @@ def setDefaultOptions(config):
     object is not constructed from an Options object.
     """
     config.batchSystem = "singleMachine"
-    config.disableHotDeployment = False
+    config.disableAutoDeployment = False
     config.environment = {}
     config.statePollingWait = 1 # seconds
 

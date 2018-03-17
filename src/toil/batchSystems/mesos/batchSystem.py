@@ -66,7 +66,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     """
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsAutoDeployment(cls):
         return True
 
     @classmethod

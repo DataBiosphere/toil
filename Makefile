@@ -150,7 +150,7 @@ test_offline: check_venv check_build_reqs
 	TOIL_SKIP_DOCKER=True \
 		$(python) -m pytest $(pytest_args_local) $(tests_local)
 
-# The hot deployment test needs the docker appliance
+# The auto deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
 	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
 	    $(python) -m pytest $(pytest_args_local) $(tests)

@@ -118,11 +118,6 @@ the logging module, so:
                         currently can be one of LSF, Mesos, Slurm, Torque,
                         HTCondor, singleMachine, parasol, gridEngine'.
                         default=singleMachine
-  --disableHotDeployment
-                        Should hot-deployment of the user script be
-                        deactivated? If True, the user script/package should
-                        be present at the same location on all workers.
-                        default=false
   --parasolCommand PARASOLCOMMAND
                         The name or path of the parasol program. Will be
                         looked up on PATH unless it starts with a

@@ -1,6 +1,6 @@
 .. highlight:: console
 
-.. _remoteDeploying:
+.. _autoDeploying:
 
 Auto-Deployment
 ===============
@@ -93,8 +93,8 @@ We can now run our workflow::
 .. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
-Remote Deployment with Sibling Modules
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Auto Deployment with Sibling Modules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This scenario applies if the user script imports modules that are its siblings::
 
