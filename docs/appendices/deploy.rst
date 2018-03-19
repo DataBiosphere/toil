@@ -1,6 +1,6 @@
 .. highlight:: console
 
-.. _remoteDeploying:
+.. _autoDeploying:
 
 Auto-Deployment
 ===============
@@ -81,7 +81,7 @@ We can now run our workflow::
 
    Neither ``python setup.py develop`` nor ``pip install -e .`` can be used in
    this process as, instead of copying the source files, they create ``.egg-link``
-   files that Toil can't remotely-deploy. Similarly, ``python setup.py install``
+   files that Toil can't auto-deploy. Similarly, ``python setup.py install``
    doesn't work either as it installs the project as a Python ``.egg`` which is
    also not currently supported by Toil (though it `could be`_ in the future).
 
@@ -93,8 +93,8 @@ We can now run our workflow::
 .. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
-Remote Deployment with Sibling Modules
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Auto Deployment with Sibling Modules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This scenario applies if the user script imports modules that are its siblings::
 
@@ -106,16 +106,16 @@ This scenario applies if the user script imports modules that are its siblings::
 Here ``userScript.py`` imports additional functionality from ``utilities.py``.
 Toil detects that ``userScript.py`` has sibling modules and copies them to the
 workers, alongside the user script. Note that sibling modules will be
-remotely-deployed regardless of whether they are actually imported by the user
+auto-deployed regardless of whether they are actually imported by the user
 script–all .py files residing in the same directory as the user script will
-automatically be remotely-deployed.
+automatically be auto-deployed.
 
 Sibling modules are a suitable method of organizing the source code of
 reasonably complicated workflows.
 
 
-Remotely Deploying a Package Hierarchy
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Auto-Deploying a Package Hierarchy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Recall that in Python, a `package`_ is a directory containing one or more
 ``.py`` files—one of which must be called ``__init__.py``—and optionally other
 packages. For more involved workflows that contain a significant amount of
