@@ -10,7 +10,7 @@ workflow using the Toil Python API.
 
     "script" and "workflow" will be used interchangeably
 
-Scripting quick start
+Scripting Quick Start
 ---------------------
 
 To begin, consider this short toil script which illustrates defining a
@@ -38,7 +38,7 @@ script is run using :func:`toil.job.Job.Runner.getDefaultOptions`. Below we
 explain the components of this code in detail.
 
 
-Job basics
+Job Basics
 ----------
 
 The atomic unit of work in a Toil workflow is a :class:`~toil.job.Job`.
@@ -65,7 +65,7 @@ work done. Here it just logs a message using
 output of the leader process of the workflow.
 
 
-Invoking a workflow
+Invoking a Workflow
 -------------------
 
 We can add to the previous example to turn it into a complete workflow by
@@ -147,8 +147,8 @@ root job is returned as the result of the completed workflow (see promises
 below to see how this is a useful feature!).
 
 
-Specifying arguments via the command line
------------------------------------------
+Specifying Commandline Arguments
+--------------------------------
 
 To allow command line control of the options we can use the
 :func:`toil.job.Job.Runner.getDefaultArgumentParser`
@@ -186,7 +186,7 @@ Alternatively an existing :class:`argparse.ArgumentParser` or
 added to it with the :func:`toil.job.Job.Runner.addToilOptions` method.
 
 
-Resuming a workflow
+Resuming a Workflow
 -------------------
 
 In the event that a workflow fails, either because of programmatic error within
@@ -212,7 +212,7 @@ the user can decide to fix the script and resume the workflow or delete the
 job-store manually and rerun the complete workflow.
 
 
-Functions and job functions
+Functions and Job Functions
 ---------------------------
 
 Defining jobs by creating class definitions generally involves the boilerplate
@@ -283,7 +283,7 @@ Which uses the function :func:`toil.job.Job.wrapJobFn` to wrap the job function
 instead of :func:`toil.job.Job.wrapFn` which wraps a vanilla function.
 
 
-Workflows with multiple jobs
+Workflows with Multiple Jobs
 ----------------------------
 
 A *parent* job can have *child* jobs and *follow-on* jobs. These relationships
@@ -383,7 +383,7 @@ Note the use of an extra child edge to make ``j4`` a child of both ``j2`` and
 ``j3``.
 
 
-Dynamic job creation
+Dynamic Job Creation
 --------------------
 
 The previous examples show a workflow being defined outside of a job. However,
@@ -500,7 +500,6 @@ patterns possible in many programming languages::
 The return value ``l`` of the workflow is a list of all binary strings of
 length 10, computed recursively. Although a toy example, it demonstrates how
 closely Toil workflows can mimic typical programming patterns.
-
 
 Promised Requirements
 ---------------------
@@ -689,7 +688,7 @@ different object stores and to use caching to limit the amount of network file
 transfer between jobs.
 
 
-Staging of files into the job store
+Staging of Files into the Job Store
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 External files can be imported into or exported out of the job store prior to
@@ -739,7 +738,7 @@ Example::
             toil.exportFile(outputFileID, 'file:///some/other/local/path')
 
 
-Using Docker containers in Toil
+Using Docker Containers in Toil
 -------------------------------
 
 Docker containers are commonly used with Toil. The combination of Toil and Docker
@@ -997,8 +996,8 @@ dependency on Toil, you would have to hard-code a particular combination of
 extras (or no extras at all), robbing the user of the choice what Toil extras
 to install. Secondly, and more importantly, declaring a dependency on Toil
 would only lead to Toil being installed on the leader node of a cluster, but
-not the worker nodes. Hot-deployment does not work here because Toil cannot
-hot-deploy itself, the classic "Which came first, chicken or egg?" problem.
+not the worker nodes. Auto-deployment does not work here because Toil cannot
+auto-deploy itself, the classic "Which came first, chicken or egg?" problem.
 
 In other words, you shouldn't explicitly depend on Toil. Document the
 dependency instead (as in "This workflow needs Toil version X.Y.Z to be
@@ -1022,7 +1021,7 @@ properly resolving overlapping dependencies and detecting conflicts.
 
 .. _incapable: https://github.com/pypa/pip/issues/988
 
-Best practices for Dockerizing Toil workflows
+Best Practices for Dockerizing Toil Workflows
 ---------------------------------------------
 
 `Computational Genomics Lab`_'s `Dockstore`_ based production system provides workflow authors a

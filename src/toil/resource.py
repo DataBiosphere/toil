@@ -459,7 +459,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
 
     def _getResourceClass(self):
         """
-        Return the concrete subclass of Resource that's appropriate for hot-deploying this module.
+        Return the concrete subclass of Resource that's appropriate for auto-deploying this module.
         """
         if self.fromVirtualEnv:
             subcls = VirtualEnvResource

@@ -1,73 +1,32 @@
 .. highlight:: console
 
-Deploying a Workflow
-====================
-You can deploy a workflow locally (on a single machine) or remotely (i.e. distributed on a cluster), as described below.
+.. _autoDeploying:
 
-.. _localDeploying:
+Auto-Deployment
+===============
 
-Deploying a Local Workflow
-----------------------------
-If a Toil workflow is run on a single machine (that is, single machine mode),
-there is nothing special you need to do. You change into the directory
-containing your user script and invoke it like any Python script::
+If you want to run your workflow in a distributed environment, on multiple worker machines, either in the cloud or on a
+bare-metal cluster, your script needs to be made available to those other machines. If your script imports other
+modules, those modules also need to be made available on the workers. Toil can automatically do that for you, with a
+little help on your part. We call this feature *auto-deployment* of a workflow.
 
-   $ cd my_project
-   $ ls
-   userScript.py …
-   $ ./userScript.py …
+Let's first examine various scenarios of auto-deploying a workflow, which, as we'll see shortly cannot be
+auto-deployed. Lastly, we'll deal with the issue of declaring :ref:`Toil as a dependency <depending_on_toil>` of a
+workflow that is packaged as a setuptools distribution.
 
-This assumes that your script has the executable permission bit set and
-contains a *shebang*, i.e. a line of the form
-
-.. code-block:: python
-
-   #!/usr/bin/env python
-
-Alternatively, the shebang can be omitted and the script invoked as a module
-via
-
-::
-
-   $ python -m userScript
-
-in which case the executable permission is not required either. Both are common
-methods for invoking Python scripts.
-
-The script can have dependencies, as long as those are installed on the machine,
-either globally, in a user-specific location or in a virtualenv. In the latter
-case, the virtualenv must of course be active when you run the user script.
-
-.. _remoteDeploying:
-
-Deploying a Remote Workflow
----------------------------
-If, however, you want to run your workflow in a distributed environment, on
-multiple worker machines, either in the cloud or on a bare-metal cluster, your
-script needs to be made available to those other machines. If your script
-imports other modules, those modules also need to be made available on the
-workers. Toil can automatically do that for you, with a little help on your
-part. We call this feature *remote-deployment* of a workflow.
-
-Let's first examine various scenarios of remote-deploying a workflow and then take
-a look at :ref:`deploying Toil <deploying_toil>`, which, as we'll see shortly
-cannot be remotely deployed. Lastly we'll deal with the issue of declaring
-:ref:`Toil as a dependency <depending_on_toil>` of a workflow that is packaged
-as a setuptools distribution.
-
-
-Toil can be easily deployed to a remote host, given that both Python and Toil
-are present. The first order of business after copying your workflow to each
-host is to create and activate a virtualenv::
+Toil can be easily deployed to a remote host. First, assuming you've followed our :ref:`prepareAWS` section to install Toil
+and use it to create a remote leader node on (in this example) AWS, you can now log into this into using
+:ref:`sshCluster` and once on the remote host, create and activate a virtualenv (noting to make sure to use the
+``--system-site-packages`` option!)::
 
    $ virtualenv --system-site-packages venv
    $ . venv/bin/activate
 
-Note that the virtualenv was created with the ``--system-site-packages`` option,
-which ensures that globally-installed packages are accessible inside the virtualenv.
-This is necessary as Toil and its dependencies must be installed globally.
+Note the ``--system-site-packages`` option, which ensures that globally-installed packages are accessible inside the
+virtualenv.  Do not (re)install Toil after this!  The ``--system-site-packages`` option has already transferred Toil and
+the dependencies from your local installation of Toil for you.
 
-From here, you can install your project and its dependencies::
+From here, you can install a project and its dependencies::
 
    $ tree
    .
@@ -81,11 +40,10 @@ From here, you can install your project and its dependencies::
        └── main.py
 
    3 directories, 5 files
-   $ pip install fairydust
+   $ pip install matplotlib
    $ cp -R workflow util venv/lib/python2.7/site-packages
 
-Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which
-streamlines the installation process::
+Ideally, your project would have a ``setup.py`` file (see `setuptools`_) which streamlines the installation process::
 
    $ tree
    .
@@ -106,13 +64,13 @@ Or, if your project has been published to PyPI::
 
    $ pip install my-project
 
-In each case, we have created a virtualenv with the ``--system-site-packages``
-flag in the ``venv`` subdirectory then installed the ``fairydust`` distribution
-from PyPI along with the two packages that our project consists of. (Again, both
-Python and Toil are assumed to be present on the leader and all worker nodes.)
+In each case, we have created a virtualenv with the ``--system-site-packages`` flag in the ``venv`` subdirectory then
+installed the ``matplotlib`` distribution from PyPI along with the two packages that our project consists of. (Again,
+both Python and Toil are assumed to be present on the leader and all worker nodes.)
+
 We can now run our workflow::
 
-   $ python -m workflow.main --batchSystem=mesos …
+   $ python main.py --batchSystem=mesos …
 
 .. important::
 
@@ -123,7 +81,7 @@ We can now run our workflow::
 
    Neither ``python setup.py develop`` nor ``pip install -e .`` can be used in
    this process as, instead of copying the source files, they create ``.egg-link``
-   files that Toil can't remotely-deploy. Similarly, ``python setup.py install``
+   files that Toil can't auto-deploy. Similarly, ``python setup.py install``
    doesn't work either as it installs the project as a Python ``.egg`` which is
    also not currently supported by Toil (though it `could be`_ in the future).
 
@@ -132,12 +90,11 @@ We can now run our workflow::
    prevent the installation of your package as an ``.egg``. It will also disable
    the automatic installation of your project's dependencies.
 
-
 .. _setuptools: http://setuptools.readthedocs.io/en/latest/index.html
 .. _could be: https://github.com/BD2KGenomics/toil/issues/1367
 
-Remote deployment with sibling modules
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Auto Deployment with Sibling Modules
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This scenario applies if the user script imports modules that are its siblings::
 
@@ -149,16 +106,16 @@ This scenario applies if the user script imports modules that are its siblings::
 Here ``userScript.py`` imports additional functionality from ``utilities.py``.
 Toil detects that ``userScript.py`` has sibling modules and copies them to the
 workers, alongside the user script. Note that sibling modules will be
-remotely-deployed regardless of whether they are actually imported by the user
+auto-deployed regardless of whether they are actually imported by the user
 script–all .py files residing in the same directory as the user script will
-automatically be remotely-deployed.
+automatically be auto-deployed.
 
 Sibling modules are a suitable method of organizing the source code of
 reasonably complicated workflows.
 
 
-Remotely deploying a package hierarchy
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Auto-Deploying a Package Hierarchy
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Recall that in Python, a `package`_ is a directory containing one or more
 ``.py`` files—one of which must be called ``__init__.py``—and optionally other
 packages. For more involved workflows that contain a significant amount of
@@ -216,7 +173,7 @@ could do this::
 Also note that the root directory itself must not be package, i.e. must not
 contain an ``__init__.py``.
 
-Relying on shared filesystems
+Relying on Shared Filesystems
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Bare-metal clusters typically mount a shared file system like NFS on each node.
@@ -233,11 +190,10 @@ replicates ``PYTHONPATH`` from the leader to every worker.
 
 .. _deploying_toil:
 
-Using Docker with Toil
-----------------------
+Toil Appliance
+--------------
 
-Toil comes with the Toil Appliance, a Docker image with Mesos and Toil baked in.
-It's easily deployed, only needs Docker, and allows for workflows to be run in
-single-machine mode and for clusters of VMs to be provisioned. For more
-information, see the :ref:`runningAWS` section.
-
+The term Toil Appliance refers to the Mesos Docker image that Toil uses to simulate the machines in the virtual mesos
+cluster.  It's easily deployed, only needs Docker, and allows for workflows to be run in single-machine mode and for
+clusters of VMs to be provisioned.  To specify a different image, see the Toil :ref:`envars` section.  For more
+information on the Toil Appliance, see the :ref:`runningAWS` section.

@@ -1,7 +1,7 @@
 .. _envars:
 
-Toil Environment Variables 
-============================
+Environment Variables
+=====================
 There are several environment variables that affect the way Toil runs.
 
 +------------------------+----------------------------------------------------+
@@ -90,4 +90,3 @@ There are several environment variables that affect the way Toil runs.
 +------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir
-

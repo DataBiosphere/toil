@@ -16,7 +16,7 @@ from builtins import str
 from builtins import range
 import logging
 import os
-import subprocess
+from toil import subprocess
 from abc import abstractmethod
 
 import pytest
@@ -33,6 +33,7 @@ log = logging.getLogger(__name__)
 @needs_appliance
 @slow
 class AbstractGCEAutoscaleTest(ToilTest):
+    projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
 
     def sshUtil(self, command):
         baseCommand = ['toil', 'ssh-cluster', '--insecure', '-p=gce', self.clusterName]
@@ -172,7 +173,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1600)
 class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def __init__(self, name):
@@ -182,8 +183,7 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
 
     def setUp(self):
         super(GCEAutoscaleTest, self).setUp()
-        zone = 'us-west-2'  # TODO: replace this with a google job store
-        self.jobStore = 'aws:%s:autoscale-%s' % (zone, uuid4())
+        self.jobStore = 'google:%s:autoscale-%s' % (self.projectID, uuid4())
 
     def _getScript(self):
         # TODO: Isn't this the key file?
@@ -218,11 +218,13 @@ class GCEAutoscaleTest(AbstractGCEAutoscaleTest):
     @needs_google
     def testSpotAutoScale(self):
         self.instanceTypes = ["n1-standard-2:%f" % self.spotBid]
-        self.numWorkers = ['2']
+        # Some spot workers have a stopped state after being started, strangely.
+        # This could be the natural preemption process, but it seems too rapid.
+        self.numWorkers = ['3'] # Try 3 to account for a stopped node.
         self._test(preemptableJobs=True)
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1600)
 class GCEStaticAutoscaleTest(GCEAutoscaleTest):
     """
     Runs the tests on a statically provisioned cluster with autoscaling enabled.
@@ -268,8 +270,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
 
     def setUp(self):
         super(GCEAutoscaleTestMultipleNodeTypes, self).setUp()
-        zone = 'us-west-2'  # TODO: replace this with a google job store
-        self.jobStore = 'aws:%s:autoscale-%s' % (zone, uuid4())
+        self.jobStore = 'google:%s:multinode-%s' % (self.projectID, uuid4())
 
     def _getScript(self):
         sseKeyFile = os.path.join(os.getcwd(), 'keyFile')
@@ -285,7 +286,7 @@ class GCEAutoscaleTestMultipleNodeTypes(AbstractGCEAutoscaleTest):
         # instances
         runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=0.6G', '--mergeMemory=3.0G']
         runCommand.extend(toilOptions)
-        runCommand.append('--sseKey=/home/keyFile')
+        #runCommand.append('--sseKey=/home/keyFile')
         log.info("_runScript: %s" % ''.join(runCommand))
         self.sshUtil(runCommand)
 
@@ -313,7 +314,7 @@ class GCERestartTest(AbstractGCEAutoscaleTest):
         self.scriptName = "/home/restartScript.py"
         # TODO: replace this with a google job store
         zone = 'us-west-2'
-        self.jobStore = 'aws:%s:restart-%s' % (zone, uuid4())
+        self.jobStore = 'google:%s:restart-%s' % (self.projectID, uuid4())
 
     def _getScript(self):
         self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/provisioners/restartScript.py'),
