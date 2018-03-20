@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -17,6 +17,11 @@ from __future__ import absolute_import
 import logging
 import os
 import sys
+import requests
+import docker
+from docker.errors import ImageNotFound
+from docker.errors import APIError
+from docker.errors import create_api_error_from_http_exception
 
 from bd2k.util import memoize
 
@@ -121,6 +126,12 @@ def applianceSelf():
     appliance = lookupEnvVar(name='docker appliance',
                              envName='TOIL_APPLIANCE_SELF',
                              defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
+
+    # return an error if the docker image cannot be pulled
+    registry_name = appliance.split(':')[0]
+    tag = appliance.split(':')[-1]
+    checkDockerImageExists(registry_name=registry_name, tag=tag)
+
     return appliance
 
 
@@ -145,8 +156,32 @@ def lookupEnvVar(name, envName, defaultValue):
         return value
 
 
+def checkDockerImageExists(registry_name, tag):
+    """
+    Attempts to pull a docker image, and returns an error if the image does not exist or otherwise
+    cannot be pulled.
+
+    :param str registry_name: The url of a docker image.  e.g. "quay.io/ucsc_cgl/toil:latest"
+    :return: Nothing, but raises an exception if the docker image cannot be pulled.
+    """
+    client = docker.from_env(version='auto')
+    try:
+        client.images.pull(name=registry_name, tag=tag)
+    except ImageNotFound:
+        log.error("Docker image (TOIL_APPLIANCE_SELF) not found: %s" % registry_name + ':' + tag)
+        raise
+    except APIError:
+        log.error("Docker image (TOIL_APPLIANCE_SELF) could not be pulled: %s" % registry_name + ':' + tag)
+        raise
+    except requests.exceptions.HTTPError as e:
+        log.error("The server returned an error.")
+        raise create_api_error_from_http_exception(e)
+    except:
+        raise
+
+
 def logProcessContext(config):
-    # toil.version.version (string) canont be imported at top level because it conflicts with
+    # toil.version.version (string) cannot be imported at top level because it conflicts with
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version
     log.info("Running Toil version %s.", version)
