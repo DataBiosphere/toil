@@ -128,7 +128,12 @@ def applianceSelf():
     appliance = lookupEnvVar(name='docker appliance',
                              envName='TOIL_APPLIANCE_SELF',
                              defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
-    checkDockerImageExists(registry_name=appliance)
+
+    # check if the docker image designated by TOIL_APPLIANCE_SELF exists
+    registry_name = appliance.split(':')[0]
+    tag = appliance.split(':')[-1]
+    checkDockerImageExists(registry_name=registry_name, tag=tag)
+
     return appliance
 
 
@@ -153,22 +158,36 @@ def lookupEnvVar(name, envName, defaultValue):
         return value
 
 
-def checkDockerImageExists(registry_name):
+def checkDockerImageExists(registry_name, tag):
     """
     Attempts to pull a docker image, and returns an error if the image does not exist or otherwise
     cannot be pulled.
 
-    :param str registry_name: The url of a docker image.  e.g. "quay.io/ucsc_cgl/toil:latest"
+    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
+    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Nothing, but raises an exception if the docker image cannot be pulled.
     """
     client = docker.from_env(version='auto')
     try:
-        client.images.get(name=registry_name)
+        # returns a list of the docker images in this registry
+        image_registry_list = client.images.list(name=registry_name)
+        if not image_registry_list:
+            raise ImageNotFound("Docker image (TOIL_APPLIANCE_SELF) error.  "
+                                "Registry appears to not exist: %s." % registry_name)
+        # get a list of the docker object tags there
+        tags = [j for i in [x.tags for x in image_registry_list] for j in i]
+        # if the tag is in that registry, the check is successful
+        if registry_name + ':' + tag in tags:
+            return
+        #  otherwise no tag exists and we should raise
+        else:
+            raise ImageNotFound("Tag for docker image (TOIL_APPLIANCE_SELF) not found in "
+                                "registry: %s." % registry_name + ':' + tag)
     except ImageNotFound:
-        log.error("Docker image (TOIL_APPLIANCE_SELF) not found: %s" % registry_name + ':' + tag)
+        log.error("Docker image (TOIL_APPLIANCE_SELF) not found: %s" % registry_name)
         raise
     except APIError:
-        log.error("Docker image (TOIL_APPLIANCE_SELF) could not be pulled: %s" % registry_name + ':' + tag)
+        log.error("Docker image (TOIL_APPLIANCE_SELF) called with APIError: %s" % registry_name)
         raise
     except requests.exceptions.HTTPError as e:
         log.error("The server returned an error.")
