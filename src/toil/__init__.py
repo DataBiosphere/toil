@@ -19,8 +19,6 @@ import os
 import sys
 import requests
 import docker
-import docker.api
-from docker.api.image import ImageApiMixin
 from docker.errors import ImageNotFound
 from docker.errors import APIError
 from docker.errors import create_api_error_from_http_exception
@@ -160,20 +158,19 @@ def lookupEnvVar(name, envName, defaultValue):
 
 def checkDockerImageExists(registry_name, tag):
     """
-    Attempts to pull a docker image, and returns an error if the image does not exist or otherwise
-    cannot be pulled.
+    Attempts to check a url registry_name for the existence of a docker image with a given tag.
 
     :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
-    :return: Nothing, but raises an exception if the docker image cannot be pulled.
+    :return: Nothing, but raises an exception if the docker image cannot be found.
     """
     client = docker.from_env(version='auto')
     try:
-        # returns a list of the docker images in this registry
+        # returns a list of the docker image objects in this registry
         image_registry_list = client.images.list(name=registry_name)
         if not image_registry_list:
             raise ImageNotFound("Docker image (TOIL_APPLIANCE_SELF) error.  "
-                                "Registry appears to not exist: %s." % registry_name)
+                                "No images found at the given registry: %s." % registry_name)
         # get a list of the docker object tags there
         tags = [j for i in [x.tags for x in image_registry_list] for j in i]
         # if the tag is in that registry, the check is successful
