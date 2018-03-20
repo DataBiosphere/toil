@@ -25,9 +25,6 @@ class AnsibleDriver(AbstractProvisioner):
     """
     Wrapper class for Ansible calls.
     """
-    contrib = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'contrib')
-    inventory = ''  # to be set by child class
-
     def __init__(self, playbooks, config=None):
         self.playbooks = playbooks
         super(AnsibleDriver, self).__init__(config)
@@ -50,19 +47,8 @@ class AnsibleDriver(AbstractProvisioner):
         logger.info("Executing Ansible call `%s`", " ".join(command))
         p = subprocess.Popen(command)
         if wait:
-            p.wait()
+            p.communicate()
             if p.returncode != 0:
+                # FIXME: parse error codes
                 logger.error("Ansible reported an error when executing playbook %s" % playbook)
 
-    @classmethod
-    def _getInventory(cls, clusterName):
-        """
-        List all nodes in the cluster.
-        Data model info: https://docs.ansible.com/ansible/latest/guide_azure.html#dynamic-inventory-script.
-
-        :param clusterName: The cluster identified by the name of the resource group.
-        :return: A list of nodes as dictionaries of properties.
-        """
-        command = ["python", os.path.join(cls.contrib, cls.inventory), "--resource-groups", clusterName]
-        data = subprocess.check_output(command)
-        return json.loads(data)

@@ -792,7 +792,10 @@ class Toil(object):
             self._provisioner = AWSProvisioner(self.config)
         elif self.config.provisioner == 'azure':
             logger.info('Using Azure provisioner.')
-            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+            try:
+                from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+            except ImportError:
+                raise RuntimeError('The Azure extra must be installed to use this provisioner')
             self._provisioner = AzureProvisioner(self.config)
         elif self.config.provisioner == 'gce':
             logger.info('Using a gce provisioner.')

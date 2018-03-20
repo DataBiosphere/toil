@@ -98,7 +98,10 @@ def main():
             raise RuntimeError('The aws extra must be installed to use this provisioner')
         provisioner = AWSProvisioner()
     elif config.provisioner == 'azure':
-        from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+        try:
+            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+        except ImportError:
+            raise RuntimeError('The aws extra must be installed to use this provisioner')
         provisioner = AzureProvisioner()
     elif config.provisioner == 'gce':
         logger.info('Using a gce provisioner.')

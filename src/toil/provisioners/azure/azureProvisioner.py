@@ -31,10 +31,13 @@ from toil.provisioners.aws import workerArgs
 
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.compute import ComputeManagementClient
+from azure.mgmt.network import NetworkManagementClient
+
 
 logger = logging.getLogger(__name__)
 logging.getLogger("msrest.http_logger").setLevel(logging.WARNING)
 logging.getLogger("msrest.pipeline").setLevel(logging.WARNING)
+logging.getLogger("requests_oauthlib.oauth2_session").setLevel(logging.WARNING)
 
 # Credentials:
 # sshKey - needed for ssh and rsync access to the VM
@@ -43,8 +46,6 @@ logging.getLogger("msrest.pipeline").setLevel(logging.WARNING)
 
 
 class AzureProvisioner(AnsibleDriver):
-    AnsibleDriver.inventory = 'azure_rm.py'
-
     def __init__(self, config=None):
 
         self.playbook = {
@@ -55,6 +56,21 @@ class AzureProvisioner(AnsibleDriver):
         }
         playbooks = os.path.dirname(os.path.realpath(__file__))
         super(AzureProvisioner, self).__init__(playbooks, config)
+
+        # Fetch Azure credentials from the CLI config
+        # FIXME: do error checking on this
+        azureCredentials = ConfigParser.SafeConfigParser()
+        azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
+        client_id = azureCredentials.get("default", "client_id")
+        secret = azureCredentials.get("default", "secret")
+        tenant = azureCredentials.get("default", "tenant")
+        subscription = azureCredentials.get("default", "subscription_id")
+
+        # Authenticate to Azure API and fetch list of instance types
+        credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
+        self._azureComputeClient = ComputeManagementClient(credentials, subscription)
+        self._azureNetworkClient = NetworkManagementClient(credentials, subscription)
+
 
         if config:
             # This is called when running on the leader.
@@ -77,7 +93,7 @@ class AzureProvisioner(AnsibleDriver):
             #self.leaderIp = metadata['network']['interface'][0]['ipv4']['ipaddress'][0]['privateIpAddress']
 
             self.keyName = tags.get('owner', 'no-owner')
-            self.leaderIP = self._getLeader(self.clusterName)['private_ip']
+            self.leaderIP = self._getNodes('leader')[0].privateIP
             self._setSSH()  # create id_rsa.pub file on the leader if it is not there
             self.masterPublicKeyFile = '/root/.ssh/id_rsa.pub'
 
@@ -161,11 +177,11 @@ class AzureProvisioner(AnsibleDriver):
         logger.info('Launched non-preemptable leader')
 
         # IP available as soon as the playbook finishes
-        leader = self._getLeader(self.clusterName)
-        self.leaderIP = leader['private_ip']
+        leader = self._getNodes('leader')[0]
+        self.leaderIP = leader.privateIP
 
         # Make sure leader container is up.
-        self._waitForNode(leader['public_ip'], 'toil_leader')
+        self._waitForNode(leader.publicIP, 'toil_leader')
 
         # Transfer credentials
         containerUserPath = '/root/'
@@ -173,14 +189,14 @@ class AzureProvisioner(AnsibleDriver):
         if storageCredentials is not None:
             fullPathCredentials = os.path.expanduser(storageCredentials)
             if os.path.isfile(fullPathCredentials):
-                self._rsyncNode(leader['public_ip'], [fullPathCredentials, ':' + containerUserPath],
+                self._rsyncNode(leader.publicIP, [fullPathCredentials, ':' + containerUserPath],
                                 applianceName='toil_leader')
 
         ansibleCredentials = '.azure/credentials'
         fullPathAnsibleCredentials = os.path.expanduser('~/' + ansibleCredentials)
         if os.path.isfile(fullPathAnsibleCredentials):
-            self._sshAppliance(leader['public_ip'], 'mkdir', '-p', containerUserPath + '.azure')
-            self._rsyncNode(leader['public_ip'],
+            self._sshAppliance(leader.publicIP, 'mkdir', '-p', containerUserPath + '.azure')
+            self._rsyncNode(leader.publicIP,
                             [fullPathAnsibleCredentials, ':' + containerUserPath + ansibleCredentials],
                             applianceName='toil_leader')
         # Add workers
@@ -249,18 +265,7 @@ class AzureProvisioner(AnsibleDriver):
         return len(instances)
 
     def getNodeShape(self, nodeType=None, preemptable=False):
-        # Fetch Azure credentials from the CLI config
-        azureCredentials = ConfigParser.SafeConfigParser()
-        azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
-        client_id = azureCredentials.get("default", "client_id")
-        secret = azureCredentials.get("default", "secret")
-        tenant = azureCredentials.get("default", "tenant")
-        subscription = azureCredentials.get("default", "subscription_id")
-
-        # Authenticate to Azure API and fetch list of instance types
-        credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
-        client = ComputeManagementClient(credentials, subscription)
-        instanceTypes = client.virtual_machine_sizes.list(self.region)
+        instanceTypes = self._azureComputeClient.virtual_machine_sizes.list(self.region)
 
         # Data model: https://docs.microsoft.com/en-us/python/api/azure.mgmt.compute.v2017_12_01.models.virtualmachinesize?view=azure-python
         instanceType = (vmType for vmType in instanceTypes if vmType.name == nodeType).next()
@@ -278,23 +283,37 @@ class AzureProvisioner(AnsibleDriver):
                      preemptable=False)
 
     def getProvisionedWorkers(self, nodeType, preemptable=False):
-        allNodes = self._getInventory(self.clusterName)
+        return self._getNodes('worker', nodeType)
 
-        logger.debug('All leaders in cluster: ' + str(allNodes.get('role_leader', None)))
-        logger.debug('All workers found in cluster: ' + str(allNodes.get('role_worker', None)))
-
+    def _getNodes(self, role, nodeType=None):
+        allNodes = self._azureComputeClient.virtual_machines.list(self.clusterName)
         rv = []
-        for node in allNodes['azure']:
-            node = allNodes['_meta']['hostvars'][node]
-            if nodeType is None or nodeType == node['virtual_machine_size']:
-                rv.append(Node(
-                    publicIP=node['public_ip'],
-                    privateIP=node['private_ip'],
-                    name=node['name'],
-                    launchTime=None,  # FIXME
-                    nodeType=node['virtual_machine_size'],
-                    preemptable=False)
-                )
+        allNodeNames = []
+        workerNames = []
+        for node in allNodes:
+            allNodeNames.append(node.name)
+            nodeRole = node.tags.get('role', None)
+            if node.provisioning_state != 'Succeeded' or nodeRole != role:
+                continue
+            if nodeType and node.hardware_profile.vm_size != nodeType:
+                continue
+
+            network_interface = self._azureNetworkClient.network_interfaces.get(self.clusterName, node.name)
+            if not network_interface.ip_configurations:
+                continue # no networks assigned to this node
+            publicIP = self._azureNetworkClient.public_ip_addresses.get(self.clusterName, node.name)
+            workerNames.append(node.name)
+            rv.append(Node(
+                publicIP=publicIP.ip_address,
+                privateIP=network_interface.ip_configurations[0].private_ip_address,
+                name=node.name,
+                launchTime=None,  # Not used with Azure.
+                nodeType=node.hardware_profile.vm_size,
+                preemptable=False) # Azure doesn't have preemptable nodes
+            )
+        logger.debug('All nodes in cluster: ' + ', '.join(allNodeNames))
+        typeStr = ' of type ' + nodeType if nodeType else ''
+        logger.debug('All %s nodes%s: %s' % (role, typeStr, ', '.join(workerNames)))
         return rv
 
     def remainingBillingInterval(self, node):
@@ -320,6 +339,7 @@ class AzureProvisioner(AnsibleDriver):
         * Not ending with a period
         More info on naming conventions: https://docs.microsoft.com/en-us/azure/architecture/best-practices/naming-conventions
         """
+        #FIXME - recheck the link above and verify length (conflicts with other names: virtual network or network security group)
         acceptedSpecialChars = ('_', '-', '(', ')', '.')
         if len(name) < 1 or len(name) > 90:
             return False
@@ -330,20 +350,22 @@ class AzureProvisioner(AnsibleDriver):
         return True
 
     @classmethod
-    def _getLeader(cls, clusterName):
-        data = cls._getInventory(clusterName)
-        return data['_meta']['hostvars'][data['role_leader'][0]]
+    def _getLeaderPublicIP(cls, clusterName):
+        provisioner = AzureProvisioner()
+        provisioner.clusterName = clusterName
+        return provisioner._getNodes('leader')[0].publicIP
+
 
     @classmethod
     def sshLeader(cls, clusterName, args=None, zone=None, **kwargs):
         logger.info('SSH ready')
         kwargs['tty'] = sys.stdin.isatty()
         command = args if args else ['bash']
-        cls._sshAppliance(cls._getLeader(clusterName)['public_ip'], *command, **kwargs)
+        cls._sshAppliance(cls._getLeaderPublicIP(clusterName), *command, **kwargs)
 
     @classmethod
     def rsyncLeader(cls, clusterName, args, zone=None, **kwargs):
-        cls._coreRsync(cls._getLeader(clusterName)['public_ip'], args, **kwargs)
+        cls._coreRsync(cls._getLeaderPublicIP(clusterName), args, **kwargs)
 
     def _setSSH(self):
         if not os.path.exists('/root/.sshSuccess'):
@@ -431,3 +453,4 @@ class AzureProvisioner(AnsibleDriver):
         logger.debug("Running %r.", command + parsedArgs)
 
         return subprocess.check_call(command + parsedArgs)
+
