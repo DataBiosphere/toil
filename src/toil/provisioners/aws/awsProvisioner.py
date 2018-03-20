@@ -44,7 +44,7 @@ from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNod
                                Node, NoSuchClusterException)
 
 logger = logging.getLogger(__name__)
-logging.getLogger("boto").setLevel(logging.WARNING)
+logging.getLogger("boto").setLevel(logging.CRITICAL)
 
 def awsRetryPredicate(e):
     if not isinstance(e, BotoServerError):

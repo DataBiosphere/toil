@@ -2,7 +2,7 @@
 
 .. _runningTests:
 
-Running tests
+Running Tests
 -------------
 
 Test make targets, invoked as ``$ make <target>``, subject to which
@@ -61,8 +61,8 @@ involving both the Parasol feature and the Azure extra, use the following
 
     $ make test tests="-m 'not azure and not parasol' src"
 
-Running tests with pytest
-~~~~~~~~~~~~~~~~~~~~~~~~~
+Running Tests (pytest)
+~~~~~~~~~~~~~~~~~~~~~~
 
 Often it is simpler to use pytest directly, instead of calling the ``make`` wrapper.
 This usually works as expected, but some tests need some manual preparation.
@@ -84,11 +84,9 @@ For more information, see the `pytest documentation`_.
 
 .. _pytest documentation: https://docs.pytest.org/en/latest/
 
-
-
 .. _test_env_vars:
 
-Test environment variables
+Test Environment Variables
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 +------------------------+----------------------------------------------------+
@@ -138,8 +136,9 @@ Test environment variables
 
 .. _quaySetup:
 
-Installing Docker with Quay
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Using Docker with Quay
+~~~~~~~~~~~~~~~~~~~~~~
+
 `Docker`_ is needed for some of the tests. Follow the appropriate
 installation instructions for your system on their website to get started.
 
@@ -160,7 +159,7 @@ For convenience you may want to add this variable to your bashrc by running
 
    $ echo 'export TOIL_DOCKER_REGISTRY=quay.io/USER' >> $HOME/.bashrc
 
-Running Mesos tests
+Running Mesos Tests
 ~~~~~~~~~~~~~~~~~~~
 
 If you're running Toil's Mesos tests, be sure to create the virtualenv with
@@ -176,13 +175,12 @@ this may come up empty. To fix it, run the following:
 .. _Quay: https://quay.io/
 .. _log into Quay: https://docs.quay.io/solution/getting-started.html
 
-
 .. _appliance_dev:
 
-Developing with the Toil Appliance
-----------------------------------
+Developing with Docker
+----------------------
 
-To develop on features reliant on the Toil Appliance (i.e. autoscaling), you
+To develop on features reliant on the Toil Appliance (the docker image toil uses for AWS autoscaling), you
 should consider setting up a personal registry on `Quay`_ or `Docker Hub`_. Because
 the Toil Appliance images are tagged with the Git commit they are based on and
 because only commits on our master branch trigger an appliance build on Quay,
@@ -192,11 +190,10 @@ image. Instead, developers wishing to test any appliance changes in autoscaling
 should build and push their own appliance image to a personal Docker registry.
 This is described in the next section.
 
-General workflow for using Quay
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Making Your Own Toil Docker Image
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here is a general workflow: (similar instructions apply when using
-Docker Hub)
+Here is a general workflow (similar instructions apply when using Docker Hub):
 
 1. Make some changes to the provisioner of your local version of Toil.
 
@@ -235,8 +232,8 @@ Docker Hub)
 7. Now you can launch your cluster! For more information see
    :ref:`Autoscaling`.
 
-Running Cluster Locally
-~~~~~~~~~~~~~~~~~~~~~~~
+Running a Cluster Locally
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The Toil Appliance container can also be useful as a test environment since it
 can simulate a Toil cluster locally. An important caveat for this is autoscaling,
@@ -290,11 +287,8 @@ with ``worker`` to get shell access in your worker.
     if Docker can't find the file/directory on the host it will silently fail and mount
     in an empty directory.
 
-
 .. _Quay: https://quay.io/
-
 .. _Docker Hub: https://hub.docker.com/
-
 
 Maintainer's Guidelines
 -----------------------
@@ -309,7 +303,7 @@ In general, as developers and maintainers of the code, we adhere to the followin
 * The commit message of direct commits to master must end in ``(resolves #``
   followed by the issue number followed by ``)``.
 
-Naming conventions
+Naming Conventions
 ~~~~~~~~~~~~~~~~~~
 
 * The **branch name** for a pull request starts with ``issues/`` followed by the
@@ -341,7 +335,7 @@ case of bar (resolves #123).`
 .. _here: http://chris.beams.io/posts/git-commit/
 .. _Waffle: https://waffle.io/BD2KGenomics/toil
 
-Pull requests
+Pull Requests
 ~~~~~~~~~~~~~
 * All pull requests must be reviewed by a person other than the request's
   author.
@@ -360,7 +354,7 @@ Pull requests
 
 .. _multi-author:
 
-Multi-author pull requests
+Multi-Author Pull Requests
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 * A pull request starts off as single-author and can be changed to multi-author
@@ -378,4 +372,3 @@ Multi-author pull requests
   the request after making sure they don't have any unpushed changes they care
   about. This is necessary because a single-author PR can be reabsed and
   rebasing would make it hard to integrate these pushed commits.
-

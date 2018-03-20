@@ -185,19 +185,20 @@ def subprocessDockerCall(job,
 def apiDockerCall(job,
                   image,
                   parameters=None,
-                  dockerParameters=None,
                   deferParam=None,
                   volumes=None,
                   working_dir=None,
                   containerName=None,
                   entrypoint=None,
                   detach=False,
-                  stderr=None,
                   log_config=None,
                   auto_remove=None,
                   remove=False,
                   user=None,
                   environment=None,
+                  stdout=None,
+                  stderr=False,
+                  streamfile=None,
                   **kwargs):
     """
     A toil wrapper for the python docker API.
@@ -215,10 +216,10 @@ def apiDockerCall(job,
         path = job.fileStore.readGlobalFile(ref_id,
                                           os.path.join(working_dir, 'ref.fasta')
         parameters = ['faidx', path]
-        dockerCall(job,
-                   image='quay.io/ucgc_cgl/samtools:latest',
-                   working_dir=working_dir,
-                   parameters=parameters)
+        apiDockerCall(job,
+                      image='quay.io/ucgc_cgl/samtools:latest',
+                      working_dir=working_dir,
+                      parameters=parameters)
 
     :param toil.Job.job job: The Job instance for the calling function.
     :param str image: Name of the Docker image to be used.
@@ -241,18 +242,27 @@ def apiDockerCall(job,
     :param str entrypoint: Prepends commands sent to the container.  See:
                       https://docker-py.readthedocs.io/en/stable/containers.html
     :param bool detach: Run the container in detached mode. (equivalent to '-d')
-    :param bool stderr: Return stderr after running the container or not.
-    :param str log_config: Specify the logs to return from the container.  See:
+    :param bool stdout: Return logs from STDOUT when detach=False (default: True).
+                        Stream stdout to a file when detach=True (default: False).
+                        Streaming defaults to output.log, and can be specified with
+                        the "streamfile" kwarg.
+    :param bool stderr: Return logs from STDERR when detach=False (default: False).
+                        Stream stderr to a file when detach=True (default: False).
+                        Streaming defaults to output.log, and can be specified with
+                        the "streamfile" kwarg.
+    :param str streamfile: Stream to a file if stderr and/or stdout are True.
+                           Must set detach=True to enable.  Defaults to "output.log".
+    :param dict log_config: Specify the logs to return from the container.  See:
                       https://docker-py.readthedocs.io/en/stable/containers.html
     :param bool remove: Remove the container on exit or not.
     :param str user: The container will be run with the privileges of
-                              the user specified.  Can be an actual name, such
-                              as 'root' or 'lifeisaboutfishtacos', or it can be
-                              the uid or gid of the user ('0' is root; '1000' is
-                              an example of a less privileged uid or gid), or a
-                              complement of the uid:gid (RECOMMENDED), such as
-                              '0:0' (root user : root group) or '1000:1000'
-                              (some other user : some other user group).
+                     the user specified.  Can be an actual name, such
+                     as 'root' or 'lifeisaboutfishtacos', or it can be
+                     the uid or gid of the user ('0' is root; '1000' is
+                     an example of a less privileged uid or gid), or a
+                     complement of the uid:gid (RECOMMENDED), such as
+                     '0:0' (root user : root group) or '1000:1000'
+                     (some other user : some other user group).
     :param environment: Allows one to set environment variables inside of the
                         container, such as:
     :param kwargs: Additional keyword arguments supplied to the docker API's
@@ -331,22 +341,62 @@ def apiDockerCall(job,
         auto_remove = remove
 
     try:
-        out = client.containers.run(image=image,
-                                    command=command,
-                                    working_dir=working_dir,
-                                    entrypoint=entrypoint,
-                                    name=containerName,
-                                    detach=detach,
-                                    volumes=volumes,
-                                    auto_remove=auto_remove,
-                                    remove=remove,
-                                    log_config=log_config,
-                                    user=user,
-                                    environment=environment,
-                                    **kwargs)
+        if detach is False:
+            # When detach is False, this returns stdout normally:
+            # >>> client.containers.run("ubuntu:latest", "echo hello world")
+            # 'hello world\n'
+            if stdout is None:
+                stdout = True
+            out = client.containers.run(image=image,
+                                        command=command,
+                                        working_dir=working_dir,
+                                        entrypoint=entrypoint,
+                                        name=containerName,
+                                        detach=False,
+                                        volumes=volumes,
+                                        auto_remove=auto_remove,
+                                        stdout=stdout,
+                                        stderr=stderr,
+                                        remove=remove,
+                                        log_config=log_config,
+                                        user=user,
+                                        environment=environment,
+                                        **kwargs)
 
-        return out
-    # If the container exits with a non-zero exit code and detach is False.
+            return out
+        else:
+            if (stdout or stderr) and log_config is None:
+                logger.warn('stdout or stderr specified, but log_config is not set.  '
+                            'Defaulting to "journald".')
+                log_config = dict(type='journald')
+
+            if stdout is None:
+                stdout = False
+
+            # When detach is True, this returns a container object:
+            # >>> client.containers.run("bfirsh/reticulate-splines", detach=True)
+            # <Container '45e6d2de7c54'>
+            container = client.containers.run(image=image,
+                                              command=command,
+                                              working_dir=working_dir,
+                                              entrypoint=entrypoint,
+                                              name=containerName,
+                                              detach=True,
+                                              volumes=volumes,
+                                              auto_remove=auto_remove,
+                                              stdout=stdout,
+                                              stderr=stderr,
+                                              remove=remove,
+                                              log_config=log_config,
+                                              user=user,
+                                              environment=environment,
+                                              **kwargs)
+            if stdout or stderr:
+                if streamfile is None:
+                    streamfile = 'output.log'
+                for line in container.logs(stdout=stdout, stderr=stderr, stream=True):
+                    with open(streamfile, 'w') as f:
+                        f.write(line)
     except ContainerError:
         logger.error("Docker had non-zero exit.  Check your command: " + \
                       repr(command))
