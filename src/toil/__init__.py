@@ -19,6 +19,8 @@ import os
 import sys
 import requests
 import docker
+import docker.api
+from docker.api.image import ImageApiMixin
 from docker.errors import ImageNotFound
 from docker.errors import APIError
 from docker.errors import create_api_error_from_http_exception
@@ -126,12 +128,7 @@ def applianceSelf():
     appliance = lookupEnvVar(name='docker appliance',
                              envName='TOIL_APPLIANCE_SELF',
                              defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
-
-    # return an error if the docker image cannot be pulled
-    registry_name = appliance.split(':')[0]
-    tag = appliance.split(':')[-1]
-    checkDockerImageExists(registry_name=registry_name, tag=tag)
-
+    checkDockerImageExists(registry_name=appliance)
     return appliance
 
 
@@ -156,7 +153,7 @@ def lookupEnvVar(name, envName, defaultValue):
         return value
 
 
-def checkDockerImageExists(registry_name, tag):
+def checkDockerImageExists(registry_name):
     """
     Attempts to pull a docker image, and returns an error if the image does not exist or otherwise
     cannot be pulled.
@@ -166,7 +163,7 @@ def checkDockerImageExists(registry_name, tag):
     """
     client = docker.from_env(version='auto')
     try:
-        client.images.pull(name=registry_name, tag=tag)
+        client.images.get(name=registry_name)
     except ImageNotFound:
         log.error("Docker image (TOIL_APPLIANCE_SELF) not found: %s" % registry_name + ':' + tag)
         raise
@@ -186,4 +183,3 @@ def logProcessContext(config):
     from toil.version import version
     log.info("Running Toil version %s.", version)
     log.debug("Configuration: %s", config.__dict__)
-
