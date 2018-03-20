@@ -428,17 +428,6 @@ class AWSProvisioner(AbstractProvisioner):
         return coreOSAMI.pop().id
 
     @classmethod
-    def dockerInfo(cls):
-        try:
-            return os.environ['TOIL_APPLIANCE_SELF']
-        except KeyError:
-            raise RuntimeError('Please set TOIL_APPLIANCE_SELF environment variable to the '
-                               'image of the Toil Appliance you wish to use. For example: '
-                               "'quay.io/ucsc_cgl/toil:3.5.0a1--80c340c5204bde016440e78e84350e3c13bd1801'. "
-                               'See https://quay.io/repository/ucsc_cgl/toil-leader?tab=tags '
-                               'for a full list of available versions.')
-
-    @classmethod
     def _toNameSpace(cls, clusterName):
         assert isinstance(clusterName, (str, bytes))
         if any((char.isupper() for char in clusterName)) or '_' in clusterName:
