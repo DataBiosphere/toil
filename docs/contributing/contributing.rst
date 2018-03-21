@@ -186,6 +186,16 @@ This is described in the next section.
 Making Your Own Toil Docker Image
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+**Note!**  Currently Toil supports checking if quay.io docker images exist, but not other 
+repos.  To use an image not hosted on quay.io, you will have to specifically override this 
+by specifying ``TOIL_APPLIANCE_SELF`` with the ``[override]`` modifier (though be warned, 
+Toil may loop forever when launching a cluster if this docker image does not, in fact, 
+exist... you've been warned), for example:
+
+::
+
+    ``TOIL_APPLIANCE_SELF=[override]broadinstitute/genomes-in-the-cloud:2.0.0``
+
 Here is a general workflow (similar instructions apply when using Docker Hub):
 
 1. Make some changes to the provisioner of your local version of Toil.
