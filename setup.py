@@ -95,9 +95,7 @@ def runSetup():
             'requests==2.18.4',
             'docker==2.5.1',
             'subprocess32==3.5.0rc1',
-            'python-dateutil',
-            'beautifulsoup4==4.6.0',
-            'html5lib==1.0.1'],
+            'python-dateutil'],
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,
