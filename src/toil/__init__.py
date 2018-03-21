@@ -18,6 +18,7 @@ import logging
 import os
 import sys
 import requests
+from docker.errors import ImageNotFound
 from bd2k.util import memoize
 
 # subprocess32 is a backport of python3's subprocess module for use on Python2,
