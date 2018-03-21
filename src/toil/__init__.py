@@ -18,10 +18,7 @@ import logging
 import os
 import sys
 import requests
-import docker
 from docker.errors import ImageNotFound
-from docker.errors import APIError
-from docker.errors import create_api_error_from_http_exception
 from bd2k.util import memoize
 
 # subprocess32 is a backport of python3's subprocess module for use on Python2,
@@ -30,11 +27,6 @@ if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
 else:
     import subprocess
-
-try:
-    from bs4 import BeautifulSoup
-except ImportError:
-    from BeautifulSoup import BeautifulSoup
 
 log = logging.getLogger(__name__)
 
@@ -60,18 +52,18 @@ def resolveEntryPoint(entryPoint):
     """
     if inVirtualEnv():
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
-        # Inside a virtualenv we try to use absolute paths to the entrypoints. 
+        # Inside a virtualenv we try to use absolute paths to the entrypoints.
         if os.path.isfile(path):
-            # If the entrypoint is present, Toil must have been installed into the virtualenv (as 
-            # opposed to being included via --system-site-packages). For clusters this means that 
+            # If the entrypoint is present, Toil must have been installed into the virtualenv (as
+            # opposed to being included via --system-site-packages). For clusters this means that
             # if Toil is installed in a virtualenv on the leader, it must be installed in
             # a virtualenv located at the same path on each worker as well.
             assert os.access(path, os.X_OK)
             return path
         else:
-            # For virtualenv's that have the toil package directory on their sys.path but whose 
-            # bin directory lacks the Toil entrypoints, i.e. where Toil is included via 
-            # --system-site-packages, we rely on PATH just as if we weren't in a virtualenv. 
+            # For virtualenv's that have the toil package directory on their sys.path but whose
+            # bin directory lacks the Toil entrypoints, i.e. where Toil is included via
+            # --system-site-packages, we rely on PATH just as if we weren't in a virtualenv.
             return entryPoint
     else:
         # Outside a virtualenv it is hard to predict where the entry points got installed. It is
@@ -159,11 +151,11 @@ def checkDockerImageExists(appliance):
     """
     Attempts to check a url registry_name for the existence of a docker image with a given tag.
 
-    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
-    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
-    :return: Raises an exception if the docker image cannot be found.  Otherwise return True.
-    May return True if the docker image does not exist but it cannot verify (docker is not
-    installed).
+    :param str appliance: The url of a docker image's registry (with a tag) of the form:
+                          'quay.io/<repo_path>:<tag>' .  e.g. "quay.io/ucsc_cgl/toil:latest" .
+    :return: Raises an exception if the docker image cannot be found or is invalid.  Otherwise, it
+             will return the name of the appliance.
+    :rtype: str
     """
     appliance = appliance.lower()
     tag = appliance.split(':')[-1]
@@ -177,15 +169,15 @@ def checkDockerImageExists(appliance):
         requestCheck(registry_name=registry_name, tag=tag)
     # lever to override the check for power users until we have support to check non-quay
     elif registry_name.startswith('[override]'):
-        log.debug("Overriding quay.io hosted image check.  The image: %s is unsupported, please "
-                  "be certain it exists or clusters launched may loop forever.  You've been "
-                  "warned." % registry_name + ':' + tag)
+        log.warn("Overriding quay.io hosted image check.  The image: %s is unsupported, please "
+                 "be certain it exists or clusters launched may loop forever.  You've been "
+                 "warned." % registry_name + ':' + tag)
         return registry_name[len('[override]'):] + ':' + tag
     else:
         raise NameError("TOIL_APPLIANCE_SELF only supports quay.io hosted images.  "
-        "The image: %s is unsupported (or malformed).  Please supply a docker image with "
-        "this format: 'quay.io/<repo_path>:<tag>' .  Example: 'quay.io/ucsc_cgl/toil:latest' ."
-        "" % registry_name + ':' + tag)
+                        "The image: %s is unsupported (or malformed).  Please supply a docker image with "
+                        "this format: 'quay.io/<repo_path>:<tag>' .  Example: 'quay.io/ucsc_cgl/toil:latest' ."
+                        "" % registry_name + ':' + tag)
     return appliance
 
 
