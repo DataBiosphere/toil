@@ -19,6 +19,7 @@ import os
 import sys
 import requests
 import docker
+import time
 from docker.errors import ImageNotFound
 from docker.errors import APIError
 from docker.errors import create_api_error_from_http_exception
@@ -282,6 +283,7 @@ def apiCheck(registry_name, tag):
     try:
         # raises an error if the image does not exist
         for line in client.pull(registry_name + ':' + tag, stream=True):
+        	time.sleep(10)
             break
     except ImageNotFound:
         log.error("Docker image (TOIL_APPLIANCE_SELF) not found: %s" % registry_name)
