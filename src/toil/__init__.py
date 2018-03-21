@@ -150,8 +150,8 @@ def checkDockerImageExists(appliance):
     """
     Attempts to check a url registry_name for the existence of a docker image with a given tag.
 
-    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
-    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
+    :param str appliance: The url of a docker image's registry (with a tag) of the form:
+                          'quay.io/<repo_path>:<tag>' .  e.g. "quay.io/ucsc_cgl/toil:latest" .
     :return: Raises an exception if the docker image cannot be found or is invalid.  Otherwise, it
              will return the name of the appliance.
     :rtype: str
