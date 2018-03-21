@@ -283,7 +283,7 @@ def apiCheck(registry_name, tag):
     try:
         # raises an error if the image does not exist
         for line in client.pull(registry_name + ':' + tag, stream=True):
-        	time.sleep(10)
+            time.sleep(10)
             break
     except ImageNotFound:
         log.error("Docker image (TOIL_APPLIANCE_SELF) not found: %s" % registry_name)
