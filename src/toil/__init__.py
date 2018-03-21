@@ -22,7 +22,6 @@ import docker
 from docker.errors import ImageNotFound
 from docker.errors import APIError
 from docker.errors import create_api_error_from_http_exception
-
 from bd2k.util import memoize
 
 # subprocess32 is a backport of python3's subprocess module for use on Python2,
@@ -31,6 +30,11 @@ if os.name == 'posix' and sys.version_info[0] < 3:
     import subprocess32 as subprocess
 else:
     import subprocess
+
+try:
+    from bs4 import BeautifulSoup
+except ImportError:
+    from BeautifulSoup import BeautifulSoup
 
 log = logging.getLogger(__name__)
 
@@ -127,10 +131,7 @@ def applianceSelf():
                              envName='TOIL_APPLIANCE_SELF',
                              defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
 
-    # check if the docker image designated by TOIL_APPLIANCE_SELF exists
-    registry_name = appliance.split(':')[0]
-    tag = appliance.split(':')[-1]
-    checkDockerImageExists(registry_name=registry_name, tag=tag)
+    checkDockerImageExists(appliance=appliance, dockerInstalled=isDockerInstalled())
 
     return appliance
 
@@ -156,30 +157,132 @@ def lookupEnvVar(name, envName, defaultValue):
         return value
 
 
-def checkDockerImageExists(registry_name, tag):
+def isDockerInstalled():
+    """Returns True if docker is installed.  False otherwise."""
+    try:
+        subprocess.check_call(['which', 'docker'])
+        return True
+    except:
+        return False
+
+
+def checkDockerImageExists(appliance, dockerInstalled):
     """
     Attempts to check a url registry_name for the existence of a docker image with a given tag.
 
     :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
+    :return: Raises an exception if the docker image cannot be found.  Otherwise return True.
+    May return True if the docker image does not exist but it cannot verify (docker is not
+    installed).
+    """
+    appliance = appliance.lower()
+    tag = appliance.split(':')[-1]
+    registry_name = appliance[:-(len(':' + tag))] # remove only the tag
+
+    if dockerInstalled:
+        apiCheck(registry_name=registry_name, tag=tag)
+    else:
+        requestsCheck(registry_name=registry_name, tag=tag)
+    return True
+
+
+def requestsCheck(registry_name, tag):
+    """
+    Attempts to check a url registry_name for the existence of a docker image with a given tag.
+
+    Does not require a docker installation, but only checks quay.io and docker.com repositories.
+
+    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
+    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Nothing, but raises an exception if the docker image cannot be found.
     """
-    client = docker.from_env(version='auto')
+    if 'quay.io/' in registry_name:
+        requestsCheckQuay(registry_name=registry_name, tag=tag)
+    else:
+        # assume official docker.com repo and attempt a check
+        requestsCheckOfficialDocker(registry_name=registry_name, tag=tag)
+
+
+def requestsCheckQuay(registry_name, tag):
+    """
+    Checks quay to see if an image exists using the requests library.
+
+    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
+    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
+    :return: Return True if match found.  Raise otherwise.
+    """
+    # find initial position of 'quay.io/' so that '//', 'http://', 'https://', etc. are removed
+    clip_position = registry_name.find('quay.io/')
+    # cut off 'quay.io/' itself too to get the path_name
+    path_name = registry_name[clip_position + len('quay.io/'):]
+    if path_name.endswith('/'):
+        path_name = path_name[:-1]
+    quay_url = 'https://quay.io/v2/{path_name}/manifests/{tag}'.format(path_name=path_name, tag=tag)
+    response = requests.head(quay_url)
+    if not response.ok:
+        raise ImageNotFound("TOIL_APPLIANCE_SELF not found at Quay.io: %s"
+                            "" % registry_name + ':' + tag)
+    else:
+        return True
+
+
+def requestsCheckOfficialDocker(registry_name, tag):
+    """
+    Checks the official docker repo.  Return True if match found.  Return False if unsure.
+
+    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
+    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
+    :return: Return True if match found.  Return False if unsure.
+    """
+    if registry_name.endswith('/'):
+        registry_name = registry_name[:-1]
+    # only official docker.com images such as 'ubuntu:latest' or 'busybox:latest'
+    if '/' not in registry_name:
+        docker_url = 'https://hub.docker.com/r/library/{path_name}/tags'.format(path_name=registry_name)
+    # third-party docker.com images such as 'broadinstitute/genomes-in-the-cloud:2.1.1'
+    else:
+        docker_url = 'https://hub.docker.com/r/{path_name}/tags'.format(path_name=registry_name)
+    response = requests.get(docker_url)
+    if response.ok:
+        # fetch the html and parse with beautifulsoup4 to look for tags
+        http_text = str(response.content).decode("utf-8")
+        soup = BeautifulSoup(http_text, "html5lib")
+        divs = soup.find_all('div')
+        for div in divs:
+            if div.text.startswith('404 Page Not Found'):
+                return False
+            if div.get('class'):
+                if 'FlexTable__flexItemGrow2___3I1KN' in div.get('class'):
+                    if tag == div.text:
+                        return True
+        # # if no matching tags found
+        # raise ImageNotFound("Tag for docker image (TOIL_APPLIANCE_SELF) not found in "
+        #                     "registry: %s." % (registry_name + ':' + tag))
+    # might not be a docker.com repository but we made a best effort
+    log.warning('Cannot verify that TOIL_APPLIANCE_SELF exists.  If starting a cluster, and it'
+                'takes too long to launch (more than 5-10 minutes), stop and check '
+                'TOIL_APPLIANCE_SELF.  Docker is not installed on this system.  Please '
+                'install docker to properly check.')
+    return False
+
+
+def apiCheck(registry_name, tag):
+    """
+    Attempts to check a url registry_name for the existence of a docker image with a given tag.
+
+    More robust than checking with the requestsCheck(appliance) metadata fetch, but requires
+    docker to be installed on the machine to work.
+
+    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
+    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
+    :return: Nothing, but raises an exception if the docker image cannot be found.
+    """
+    client = docker.APIClient(base_url='unix://var/run/docker.sock', version='auto')
     try:
-        # returns a list of the docker image objects in this registry
-        image_registry_list = client.images.list(name=registry_name)
-        if not image_registry_list:
-            raise ImageNotFound("Docker image (TOIL_APPLIANCE_SELF) error.  "
-                                "No images found at the given registry: %s." % registry_name)
-        # get a list of the docker object tags there
-        tags = [j for i in [x.tags for x in image_registry_list] for j in i]
-        # if the tag is in that registry, the check is successful
-        if registry_name + ':' + tag in tags:
-            return
-        #  otherwise no tag exists and we should raise
-        else:
-            raise ImageNotFound("Tag for docker image (TOIL_APPLIANCE_SELF) not found in "
-                                "registry: %s." % registry_name + ':' + tag)
+        # raises an error if the image does not exist
+        for line in client.pull(registry_name + ':' + tag, stream=True):
+            break
     except ImageNotFound:
         log.error("Docker image (TOIL_APPLIANCE_SELF) not found: %s" % registry_name)
         raise
