@@ -21,8 +21,6 @@ from docker.errors import ImageNotFound, APIError
 class dockerCheckTests(ToilTest):
     """
     Tests initial checking of whether a docker image exists in the specified repository or not.
-
-    If docker is installed, this will throw an exception if an image does not exist.
     """
     def setUp(self):
         pass
