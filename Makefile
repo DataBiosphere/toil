@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 UCSC Computational Genomics Lab
+# Copyright (C) 2015 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -99,14 +99,7 @@ sdist_name:=toil-$(dist_version).tar.gz
 docker_tag:=$(shell $(python) version_template.py dockerTag)
 default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
 docker_path:=$(strip $(shell which docker))
-
-ifdef docker_registry
-    export TOIL_DOCKER_REGISTRY?=$(docker_registry)
-else
-    export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
-endif
-export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
-export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
+TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag)
 
 ifndef BUILD_NUMBER
 green=\033[0;32m
@@ -145,8 +138,7 @@ test_offline: check_venv check_build_reqs
 
 # The auto-deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
-	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) -m pytest $(pytest_args_local) $(tests)
+	$(python) -m pytest $(pytest_args_local) $(tests)
 
 # For running integration tests locally in series (uses the -s argument for pyTest)
 integration_test_local: check_venv check_build_reqs sdist push_docker
