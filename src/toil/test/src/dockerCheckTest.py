@@ -25,8 +25,7 @@ class dockerCheckTests(ToilTest):
     def setUp(self):
         pass
 
-    # Cases where docker is not installed and we check with the requests package.
-    def testOfficialUbuntuRepo_NoDockerInstall(self):
+    def testOfficialUbuntuRepo(self):
         """Image exists.  This should pass."""
         ubuntu_repo = 'ubuntu:latest'
         assert checkDockerImageExists(ubuntu_repo)

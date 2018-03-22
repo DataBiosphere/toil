@@ -231,7 +231,7 @@ def requestCheckDockerIo(registry_name, tag):
 
     # only official images like 'busybox' or 'ubuntu'
     if '/' not in path_name:
-        'library/' + path_name
+        path_name = 'library/' + path_name
 
     token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(repo=path_name)
     requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=path_name, tag=tag)
