@@ -152,9 +152,11 @@ def checkDockerImageExists(appliance):
     Attempts to check a url registry_name for the existence of a docker image with a given tag.
 
     :param str appliance: The url of a docker image's registry (with a tag) of the form:
-                          'quay.io/<repo_path>:<tag>' .  e.g. "quay.io/ucsc_cgl/toil:latest" .
+                          'quay.io/<repo_path>:<tag>' or '<repo_path>:<tag>'.
+                          Examples: 'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or
+                          'broadinstitute/genomes-in-the-cloud:2.0.0'.
     :return: Raises an exception if the docker image cannot be found or is invalid.  Otherwise, it
-             will return the name of the appliance.
+             will return the appliance string.
     :rtype: str
     """
     appliance = appliance.lower()
@@ -165,16 +167,17 @@ def checkDockerImageExists(appliance):
     if ('quay.io/ucsc_cgl/toil-pr' in registry_name) or ('quay.io/ucsc_cgl/toil-it' in registry_name):
         return appliance
 
-    # lever to override the check for power users until we have support to check non-quay
+    # lever to override the check for power users
     if registry_name.startswith('[override]'):
         log.warn("Overriding hosted image check.  The image: %s may be unsupported, please "
                  "be certain it exists or clusters launched may loop forever.  You've been "
                  "warned." % registry_name + ':' + tag)
         return registry_name[len('[override]'):] + ':' + tag
-    # docker repo syntax checks
+    # docker repo syntax sanity checks
     elif '://' in registry_name:
         raise ImageNotFound("Docker images cannot contain a schema (such as '://'): %s"
                             "" % registry_name + ':' + tag)
+    # docker repo syntax sanity checks
     elif registry_name[0] == '-':
         raise ImageNotFound("Docker images cannot begin with '-': %s"
                             "" % registry_name + ':' + tag)
@@ -196,7 +199,7 @@ def requestCheckQuayIo(registry_name, tag):
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
-    # find initial position of 'quay.io/' so that '//', 'http://', 'https://', etc. are removed
+    # find initial position of 'quay.io/' so that '//', 'www.', etc. are removed
     clip_position = registry_name.find('quay.io/')
     # cut off 'quay.io/' itself too to get the path_name
     path_name = registry_name[clip_position + len('quay.io/'):]
@@ -208,7 +211,7 @@ def requestCheckQuayIo(registry_name, tag):
         raise ImageNotFound("TOIL_APPLIANCE_SELF only supports quay.io and official docker.io "
                             "hosted images.  The image: %s is unsupported (or malformed).  Please "
                             "supply a docker image with the format: 'quay.io/<repo_path>:<tag>' or "
-                            "'<repo_path>:<tag>'.  Example: 'quay.io/ucsc_cgl/toil:latest', "
+                            "'<repo_path>:<tag>'.  Examples: 'quay.io/ucsc_cgl/toil:latest', "
                             "'ubuntu:latest', or 'broadinstitute/genomes-in-the-cloud:2.0.0'."
                             "" % registry_name + ':' + tag)
     else:
@@ -221,7 +224,7 @@ def requestCheckDockerIo(registry_name, tag):
 
     URL is based on the docker v2 schema.  Requires that an access token be fetched first.
 
-    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
+    :param str registry_name: The url of a docker image's registry.  e.g. "ubuntu"
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
@@ -244,7 +247,7 @@ def requestCheckDockerIo(registry_name, tag):
         raise ImageNotFound("TOIL_APPLIANCE_SELF only supports quay.io and official docker.io "
                             "hosted images.  The image: %s is unsupported (or malformed).  Please "
                             "supply a docker image with the format: 'quay.io/<repo_path>:<tag>' or "
-                            "'<repo_path>:<tag>'.  Example: 'quay.io/ucsc_cgl/toil:latest', "
+                            "'<repo_path>:<tag>'.  Examples: 'quay.io/ucsc_cgl/toil:latest', "
                             "'ubuntu:latest', or 'broadinstitute/genomes-in-the-cloud:2.0.0'."
                             "" % registry_name + ':' + tag)
     else:

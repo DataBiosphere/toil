@@ -13,11 +13,12 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_appliance
 from toil import checkDockerImageExists
 from docker.errors import ImageNotFound
 
-
+# requires internet
+@needs_appliance
 class dockerCheckTests(ToilTest):
     """
     Tests initial checking of whether a docker image exists in the specified repository or not.
