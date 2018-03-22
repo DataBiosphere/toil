@@ -163,15 +163,11 @@ def checkDockerImageExists(appliance):
     tag = appliance.split(':')[-1]
     registry_name = appliance[:-(len(':' + tag))] # remove only the tag
 
-    # jenkins tests
-    if ('quay.io/ucsc_cgl/toil-pr' in registry_name) or ('quay.io/ucsc_cgl/toil-it' in registry_name):
-        return appliance
-
     # lever to override the check for power users
     if registry_name.startswith('[override]'):
-        log.warn("Overriding hosted image check.  The image: %s may be unsupported, please "
-                 "be certain it exists or clusters launched may loop forever.  You've been "
-                 "warned." % registry_name + ':' + tag)
+        log.warn("Overriding hosted image check.  The image: %s may be unsupported.  If in using "
+                 "launch-cluster you experience a timeout, you may want to check your image."
+                 "" % registry_name + ':' + tag)
         return registry_name[len('[override]'):] + ':' + tag
     # docker repo syntax sanity checks
     elif '://' in registry_name:
