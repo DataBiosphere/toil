@@ -13,9 +13,9 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
-from toil.test import ToilTest, slow, needs_appliance
+from toil.test import ToilTest
 from toil import checkDockerImageExists
-from docker.errors import ImageNotFound, APIError
+from docker.errors import ImageNotFound
 
 
 class dockerCheckTests(ToilTest):
@@ -27,25 +27,34 @@ class dockerCheckTests(ToilTest):
 
     # Cases where docker is not installed and we check with the requests package.
     def testOfficialUbuntuRepo_NoDockerInstall(self):
-        """Image exists, but is not quay.  This should raise."""
+        """Image exists.  This should pass."""
         ubuntu_repo = 'ubuntu:latest'
-        with self.assertRaises(NameError):
-            checkDockerImageExists(ubuntu_repo)
+        assert checkDockerImageExists(ubuntu_repo)
 
     def testBroadDockerRepo(self):
-        """Image exists, but is not quay.  This should raise."""
+        """Image exists.  This should pass."""
         broad_repo = 'broadinstitute/genomes-in-the-cloud:2.0.0'
-        with self.assertRaises(NameError):
+        assert checkDockerImageExists(broad_repo)
+
+    def testBroadDockerRepo(self):
+        """Bad tag.  This should raise."""
+        broad_repo = 'broadinstitute/genomes-in-the-cloud:-----'
+        with self.assertRaises(ImageNotFound):
             checkDockerImageExists(broad_repo)
 
     def testNonexistentRepo(self):
-        """Bad image and not quay.  This should raise."""
+        """Bad image.  This should raise."""
         nonexistent_repo = '------:-----'
-        with self.assertRaises(NameError):
+        with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_repo)
 
-    def testBroadDockerRepo(self):
-        """Image exists, and overrides the quay requirement.  Should pass."""
+    def testNonexistentRepoOverride(self):
+        """Bad image, and overrides.  Should pass."""
+        nonexistent_repo = '[override]------:-----'
+        assert checkDockerImageExists(nonexistent_repo)
+
+    def testBroadDockerRepoOverride(self):
+        """Image exists, and overrides.  Should pass."""
         broad_repo = '[override]broadinstitute/genomes-in-the-cloud:2.0.0'
         assert checkDockerImageExists(broad_repo)
 
@@ -55,19 +64,19 @@ class dockerCheckTests(ToilTest):
         assert checkDockerImageExists(toil_repo)
 
     def testBadQuayRepoNTag(self):
-        """Bad quay repo and tag.  This should raise."""
+        """Bad repo and tag.  This should raise."""
         nonexistent_quay_repo = 'quay.io/--------:---'
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_quay_repo)
 
     def testBadQuayRepo(self):
-        """Bad quay repo.  This should raise."""
+        """Bad repo.  This should raise."""
         nonexistent_quay_repo = 'quay.io/--------:latest'
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_quay_repo)
 
     def testBadQuayTag(self):
-        """Bad quay tag.  This should raise."""
+        """Bad tag.  This should raise."""
         nonexistent_quay_repo = 'quay.io/ucsc_cgl/toil:---'
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_quay_repo)
