@@ -20,6 +20,7 @@ import sys
 import requests
 from docker.errors import ImageNotFound
 from bd2k.util import memoize
+from toil.version import currentCommit
 
 # subprocess32 is a backport of python3's subprocess module for use on Python2,
 # and includes many reliability bug fixes relevant on POSIX platforms.
@@ -169,6 +170,8 @@ def checkDockerImageExists(appliance):
                  "launch-cluster you experience a timeout, you may want to check your image."
                  "" % registry_name + ':' + tag)
         return registry_name[len('[override]'):] + ':' + tag
+    if currentCommit in appliance:
+        return appliance
     # docker repo syntax sanity checks
     elif '://' in registry_name:
         raise ImageNotFound("Docker images cannot contain a schema (such as '://'): %s"

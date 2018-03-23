@@ -96,6 +96,18 @@ extras=
 dist_version:=$(shell $(python) version_template.py distVersion)
 sdist_name:=toil-$(dist_version).tar.gz
 
+docker_tag:=$(shell $(python) version_template.py dockerTag)
+default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
+docker_path:=$(strip $(shell which docker))
+
+ifdef docker_registry
+    export TOIL_DOCKER_REGISTRY?=$(docker_registry)
+else
+    export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
+endif
+export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
+export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
+
 ifndef BUILD_NUMBER
 green=\033[0;32m
 normal=\033[0m
@@ -103,19 +115,8 @@ red=\033[0;31m
 cyan=\033[0;36m
 endif
 
-check_venv:
-	@$(python) -c 'import sys; sys.exit( int( not (hasattr(sys, "real_prefix") or ( hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix ) ) ) )' \
-		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
-
-prepare: check_venv
-	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 \
-		pytest-timeout==1.2.0
-
 develop: check_venv
-	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 \
-		pytest-timeout==1.2.0
 	$(pip) install -e .$(extras)
-
 clean_develop: check_venv
 	- $(pip) uninstall -y toil
 	- rm -rf src/*.egg-info
@@ -135,11 +136,17 @@ clean_sdist:
 	- rm -rf dist
 	- rm src/toil/version.py
 
+
 # This target will skip building docker and all docker based tests
 test_offline: check_venv check_build_reqs
 	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
 	TOIL_SKIP_DOCKER=True \
 		$(python) -m pytest $(pytest_args_local) $(tests_local)
+
+# The auto-deployment test needs the docker appliance
+test: check_venv check_build_reqs docker
+	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
+	    $(python) -m pytest $(pytest_args_local) $(tests)
 
 # For running integration tests locally in series (uses the -s argument for pyTest)
 integration_test_local: check_venv check_build_reqs sdist push_docker
@@ -160,32 +167,6 @@ jenkins_test_parallel: check_venv check_build_reqs docker
 jenkins_test_integration: check_venv check_build_reqs sdist push_docker
 	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
-docker_tag:=$(shell $(python) version_template.py dockerTag)
-default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
-docker_path:=$(strip $(shell which docker))
-
-ifdef docker_registry
-    export TOIL_DOCKER_REGISTRY?=$(docker_registry)
-else
-    export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
-endif
-export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
-export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
-
-ifdef TOIL_DOCKER_REGISTRY
-
-docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
-docker_short_tag:=$(shell $(python) version_template.py dockerShortTag)
-docker_minimal_tag:=$(shell $(python) version_template.py dockerMinimalTag)
-
-# The auto-deployment test needs the docker appliance
-test: check_venv check_build_reqs docker
-	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) -m pytest $(pytest_args_local) $(tests)
-
-grafana_image:=$(TOIL_DOCKER_REGISTRY)/toil-grafana
-prometheus_image:=$(TOIL_DOCKER_REGISTRY)/toil-prometheus
-mtail_image:=$(TOIL_DOCKER_REGISTRY)/toil-mtail
 
 pypi: check_venv check_clean_working_copy check_running_on_jenkins
 	$(pip) install setuptools --upgrade
@@ -193,12 +174,24 @@ pypi: check_venv check_clean_working_copy check_running_on_jenkins
 clean_pypi:
 	- rm -rf build/
 
+
+ifdef TOIL_DOCKER_REGISTRY
+
+docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
+docker_short_tag:=$(shell $(python) version_template.py dockerShortTag)
+docker_minimal_tag:=$(shell $(python) version_template.py dockerMinimalTag)
+
+grafana_image:=$(TOIL_DOCKER_REGISTRY)/toil-grafana
+prometheus_image:=$(TOIL_DOCKER_REGISTRY)/toil-prometheus
+mtail_image:=$(TOIL_DOCKER_REGISTRY)/toil-mtail
+
 define tag_docker
 	@printf "$(cyan)Removing old tag $2. This may fail but that's expected.$(normal)\n"
 	-docker rmi $2
 	docker tag $1 $2
 	@printf "$(green)Tagged appliance image $1 as $2.$(normal)\n"
 endef
+
 
 docker: docker/Dockerfile
 	@set -ex \
@@ -266,6 +259,16 @@ clean: clean_develop clean_sdist clean_pypi clean_docs
 check_build_reqs:
 	@$(python) -c 'import mock; import pytest' \
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
+
+
+prepare: check_venv
+	$(pip) install sphinx==1.5.5 mock==1.0.1 pytest==2.8.3 stubserver==1.0.1 \
+		pytest-timeout==1.2.0
+
+
+check_venv:
+	@$(python) -c 'import sys; sys.exit( int( not (hasattr(sys, "real_prefix") or ( hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix ) ) ) )' \
+		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
 
 
 check_clean_working_copy:
