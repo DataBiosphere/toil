@@ -46,4 +46,3 @@ sys.exit(1 if f < min_free_in_GiB << 30 else 0)
 export TMPDIR
 make $make_targets
 docker run -v $(dirname $TMPDIR):$(dirname $TMPDIR) busybox rm -rf $TMPDIR
-export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest
