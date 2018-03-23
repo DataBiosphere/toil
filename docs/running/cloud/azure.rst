@@ -51,11 +51,12 @@ Follow the steps below to prepare your Azure environment for running a Toil work
    then "Access Control (IAM)", then "+ Add", then selecting "Owner" from the "Role" drop-down menu on the right,
    then typing in the name of your app under "Select" and add permissions.
 
-#. Create an SSH keypair if one doesn't exist (see :ref:`sshKey`).
+#. Create an SSH keypair if one doesn't exist (see: `add SSH`_).
 
 .. note::
    You do not need to upload your key pair to Azure as with AWS.
 
+.. _add SSH: https://help.github.com/articles/generating-a-new-ssh-key-and-adding-it-to-the-ssh-agent/
 .. _Azure account: https://azure.microsoft.com/en-us/free/
 .. _here: http://docs.ansible.com/ansible/latest/guide_azure.html#providing-credentials-to-azure-modules.o/docs/py2or3.html
 .. _Azure storage account: https://docs.microsoft.com/en-us/azure/storage/common/storage-quickstart-create-account?tabs=portal
@@ -78,7 +79,7 @@ need to explicitly specify the ``--provisioner azure`` option which otherwise de
 
    For Azure, the provisioner needs the ssh public key. It will read the file given by ``--publicKeyFile``. The
    default location is ~/.ssh/id_rsa.pub. The --keyPairName option is used to indicate the instances owner.
-   See :ref:`sshKey`.
+   See `add SSH`_.
 
 #. Upload the sort example and ssh into the leader. ::
 

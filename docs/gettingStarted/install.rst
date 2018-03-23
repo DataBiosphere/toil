@@ -29,7 +29,7 @@ And create a virtual environment called ``venv`` in your home directory.::
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
 
 If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv
-package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
+package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using: ::
 
     $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
     $ tar xvfz virtualenv-15.1.0.tar.gz
@@ -86,7 +86,7 @@ Installing Toil with extra features
 
 Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first
-install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run::
+install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run: ::
 
     $ pip install toil[aws,mesos,azure,google,encryption,cwl]
 
@@ -161,51 +161,7 @@ Here's what each extra provides:
 .. _Cryptography: https://cryptography.io/en/latest/installation/
 .. _Homebrew: http://brew.sh/
 
-.. _prepareAzure:
-
-Preparing your Azure environment
---------------------------------
-
-Follow the steps below to prepare your Azure environment for running a Toil workflow.
-
-#. Create an `Azure account`_ and to use the job store make an `Azure storage account`_.
-
-#. Locate your Azure storage account key and then store it in one of the following locations:
-    - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
-    - ``AZURE_ACCOUNT_KEY`` environment variable
-    - or finally in ``~/.toilAzureCredentials.`` with the format ::
-
-         [AzureStorageCredentials]
-         accountName1=ACCOUNTKEY1==
-         accountName2=ACCOUNTKEY2==
-
-   These locations are searched in the order above, which can be useful if you work with multiple
-   accounts.
-
-#. Create an SSH keypair if one doesn't exist (see :ref:`sshKey`).
-
-#. Create an `Azure active directory and service principal`_ to create the following credentials:
-    - Client ID (also known as an Application ID)
-    - Subscription ID
-    - secret (also known as the authentication key)
-    - Tenant ID (also known as a Directory ID)
-
-   These Azure credentials need to be stored a location where the Ansible scripts can read them.
-   There are multiple options for doing so as described here_, one of which is to create a
-   file called `~/.azure/credentials` with the format ::
-
-      [default]
-      subscription_id=22222222-2222-2222-2222-222222222222
-      client_id=1111111-111-1111-111-111111111
-      secret=abc123
-      tenant=33333333-3333-3333-3333-333333333333
-
-.. _Azure account: https://azure.microsoft.com/en-us/free/
-.. _here: http://docs.ansible.com/ansible/latest/guide_azure.html#providing-credentials-to-azure-modules.o/docs/py2or3.html
-.. _Azure storage account: https://docs.microsoft.com/en-us/azure/storage/common/storage-quickstart-create-account?tabs=portal
-.. _Azure active directory and service principal: https://docs.microsoft.com/en-us/azure/azure-resource-manager/resource-group-create-service-principal-portal
-
-.. _building_from_source-ref:
+.. _buildFromSource:
 
 Building from source
 --------------------
