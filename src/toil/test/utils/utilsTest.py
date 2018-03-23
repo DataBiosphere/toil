@@ -90,15 +90,15 @@ class UtilsTest(ToilTest):
     @integrative
     @slow
     def testAWSProvisionerUtils(self):
-        clusterName = 'cluster-utils-test'# + str(uuid.uuid4())
+        clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         keyName = os.getenv('TOIL_AWS_KEYNAME')
-        #try:
+        try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
-        #    system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro',
-        #            '--keyPairName=' + keyName, clusterName])
-        #finally:
-        #    system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
+            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro',
+                    '--keyPairName=' + keyName, clusterName])
+        finally:
+            system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
@@ -107,9 +107,9 @@ class UtilsTest(ToilTest):
             tags.update(userTags)
 
             # launch preemptable master with same name
-            #system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
-            #        '--leaderNodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
-            #        '--provisioner=aws', '--logLevel=DEBUG'])
+            system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
+                    '--leaderNodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
+                    '--provisioner=aws', '--logLevel=DEBUG'])
 
             cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
             leader = cluster.getLeader()

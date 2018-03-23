@@ -532,7 +532,7 @@ class GCEProvisioner(AbstractProvisioner):
     def _injectWorkerFiles(self, node):
         """
         """
-        node.waitForNode('toil_worker')
+        node.waitForNode('toil_worker', keyName=self.keyName)
         node.copySshKeys(self.keyName)
         node.injectFile(self.credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_worker')
         if self.config and self.config.sseKey:
