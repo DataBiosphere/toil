@@ -53,7 +53,7 @@ Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 
 .. _extras:
 
-Installing Toil with extra features
+Installing Toil with Extra Features
 -----------------------------------
 
 .. _python-dev:
@@ -163,7 +163,7 @@ Here's what each extra provides:
 
 .. _buildFromSource:
 
-Building from source
+Building from Source
 --------------------
 
 If developing with Toil, you will need to build from source. This allows changes you

@@ -130,8 +130,8 @@ Test Environment Variables
 
 .. admonition:: Partial install and failing tests.
 
-    Some tests may fail with an ImportError if the required extras are not installed
-    (:ref:`building_from_source-ref`). Install Toil with all of the extras
+    Some tests may fail with an ImportError if the required extras are not installed. 
+    Install Toil with all of the extras
     do prevent such errors.
 
 .. _quaySetup:
@@ -203,7 +203,7 @@ Here is a general workflow (similar instructions apply when using Docker Hub):
 
    to automatically build a docker image that can now be uploaded to
    your personal `Quay`_ account. If you have not installed Toil source
-   code yet check out :ref:`building_from_source-ref`.
+   code yet see :ref:`buildFromSource`.
 
 3. If it's not already you will need Docker installed and need
    to `log into Quay`_. Also you will want to make sure that your Quay
