@@ -209,7 +209,7 @@ def requestCheckQuayIo(registry_name, tag):
                             "supply a docker image with the format: 'quay.io/<repo_path>:<tag>' or "
                             "'<repo_path>:<tag>'.  Examples: 'quay.io/ucsc_cgl/toil:latest', "
                             "'ubuntu:latest', or 'broadinstitute/genomes-in-the-cloud:2.0.0'."
-                            "" % registry_name + ':' + tag)
+                            "" % (registry_name + ':' + tag))
     else:
         return registry_name + ':' + tag
 
@@ -245,7 +245,7 @@ def requestCheckDockerIo(registry_name, tag):
                             "supply a docker image with the format: 'quay.io/<repo_path>:<tag>' or "
                             "'<repo_path>:<tag>'.  Examples: 'quay.io/ucsc_cgl/toil:latest', "
                             "'ubuntu:latest', or 'broadinstitute/genomes-in-the-cloud:2.0.0'."
-                            "" % registry_name + ':' + tag)
+                            "" % (registry_name + ':' + tag))
     else:
         return registry_name + ':' + tag
 
