@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 class Node(object):
     maxWaitTime = 5*60
 
-    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags):
+    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
         self.publicIP = publicIP
         self.privateIP = privateIP
         self.name = name
@@ -55,6 +55,9 @@ class Node(object):
         current billing cycle for the given instance. If the return value is .25, we are one
         quarter into the billing cycle, with three quarters remaining before we will be charged
         again for that instance.
+
+        Assumes a billing cycle of one hour.
+
         :return: Float from 0 -> 1.0 representing percentage of pre-paid time left in cycle.
         """
         if self.launchTime:
@@ -92,7 +95,6 @@ class Node(object):
         rysnc a file to the vm with the given role
         """
         maxRetries = 10
-        errMsg = None
         for retry in range(maxRetries):
             try:
                 self.coreRsync([fromFile, ":" + toFile], applianceName=role)
@@ -108,7 +110,7 @@ class Node(object):
         startTime = time.time()
         while True:
             if time.time() - startTime > self.maxWaitTime:
-                raise RuntimeError("Key propagation failed on machine with ip %s" % instanceIP)
+                raise RuntimeError("Key propagation failed on machine with ip %s" % self.publicIP)
             try:
                 logger.info('Attempting to establish SSH connection...')
                 self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)

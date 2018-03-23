@@ -74,20 +74,12 @@ def main():
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
 
+    # parse node types
     spotBids = []
     nodeTypes = []
     preemptableNodeTypes = []
     numNodes = []
     numPreemptableNodes = []
-    leaderSpotBid = None
-
-
-    #Parse leader node type and spot bid
-    parsedBid = config.leaderNodeType.split(':', 1)
-    if len(config.leaderNodeType) != len(parsedBid[0]):
-        leaderSpotBid = float(parsedBid[1])
-        config.leaderNodeType = parsedBid[0]
-
     if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
         raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
     if config.nodeTypes:
@@ -99,7 +91,6 @@ def main():
             parsedBid = nodeTypeStr.split(':', 1)
             if len(nodeTypeStr) != len(parsedBid[0]):
                 #Is a preemptable node
-
                 preemptableNodeTypes.append(parsedBid[0])
                 spotBids.append(float(parsedBid[1]))
                 numPreemptableNodes.append(int(num))
@@ -110,14 +101,18 @@ def main():
     cluster = clusterFactory(provisioner=config.provisioner,
                              clusterName=config.clusterName, zone=config.zone)
     cluster.launchCluster(leaderNodeType=config.leaderNodeType,
-                              nodeTypes=nodeTypes,
-                              preemptableNodeTypes=preemptableNodeTypes,
-                              numWorkers=numNodes,
-                              numPreemptableWorkers = numPreemptableNodes,
-                              keyName=config.keyPairName,
-                              botoPath=config.botoPath,
-                              spotBids=spotBids,
-                              userTags=tagsDict,
-                              leaderStorage=config.leaderStorage,
-                              nodeStorage=config.nodeStorage,
-                              vpcSubnet=config.vpcSubnet)
+                          keyName=config.keyPairName,
+                          botoPath=config.botoPath,
+                          userTags=tagsDict,
+                          leaderStorage=config.leaderStorage,
+                          nodeStorage=config.nodeStorage,
+                          vpcSubnet=config.vpcSubnet)
+
+    workersCreated = 0
+    for nodeType, workers in zip(nodeTypes, numNodes):
+        workersCreated += cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
+    for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
+        workersCreated += cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
+                                           spotBid=spotBid)
+
+

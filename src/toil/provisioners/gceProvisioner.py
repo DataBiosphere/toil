@@ -227,7 +227,6 @@ class GCEProvisioner(AbstractProvisioner):
             self.gceUserDataWorker = gceUserDataWithSsh
 
             self.nodeStorage = config.nodeStorage
-            spotBids = []
             self.nonPreemptableNodeTypes = []
             self.preemptableNodeTypes = []
             for nodeTypeStr in config.nodeTypes:
@@ -235,7 +234,6 @@ class GCEProvisioner(AbstractProvisioner):
                 if len(nodeBidTuple) == 2:
                     #This is a preemptable node type, with a spot bid
                     self.preemptableNodeTypes.append(nodeBidTuple[0])
-                    spotBids.append(nodeBidTuple[1])
                 else:
                     self.nonPreemptableNodeTypes.append(nodeTypeStr)
             self.preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True) for nodeType in self.preemptableNodeTypes]
@@ -243,7 +241,6 @@ class GCEProvisioner(AbstractProvisioner):
 
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
-            self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
         else:
             self.instanceMetaData = None
             self.leaderPrivateIP = None
@@ -271,10 +268,7 @@ class GCEProvisioner(AbstractProvisioner):
         self.subnetID = None
         self.botoExists = False
 
-
-
-    def launchCluster(self, leaderNodeType, nodeTypes, preemptableNodeTypes, keyName,
-            numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None,
+    def launchCluster(self, leaderNodeType, keyName, userTags=None,
             vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None):
         if self.config is None:
             self.nodeStorage = nodeStorage
@@ -307,7 +301,6 @@ class GCEProvisioner(AbstractProvisioner):
         # Throws an error if cluster exists
         self.instanceGroup = driver.ex_create_instancegroup(self.clusterName, self.zone)
 
-        preemptable = False
         logger.info('Launching leader')
 
         disk = {}
@@ -327,7 +320,7 @@ class GCEProvisioner(AbstractProvisioner):
                                 ex_subnetwork=vpcSubnet,
                                 ex_disks_gce_struct = [disk],
                                 description=self.tags,
-                                ex_preemptible=preemptable)
+                                ex_preemptible=False)
 
         self.instanceGroup.add_instances([leader])
 
@@ -336,8 +329,6 @@ class GCEProvisioner(AbstractProvisioner):
         # if we are running launch cluster we need to save this data as it won't be generated
         # from the metadata. This data is needed to launch worker nodes.
         self.leaderPrivateIP = leader.private_ips[0]
-        if spotBids:
-            self.spotBids = dict(zip(preemptableNodeTypes, spotBids))
 
         #TODO: get subnetID
         #self.subnetID = leader.subnet_id
@@ -351,14 +342,6 @@ class GCEProvisioner(AbstractProvisioner):
         if self.botoPath:
             leaderNode.injectFile(self.botoPath, self.nodeBotoPath, 'toil_leader')
 
-        # assuming that if the leader was launched without a spotbid then all workers
-        # will be non-preemptable
-        workersCreated = 0
-        for nodeType, workers in zip(nodeTypes, numWorkers):
-            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
-        for nodeType, workers in zip(preemptableNodeTypes, numPreemptableWorkers):
-            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True)
-        logger.info('Added %d workers', workersCreated)
 
         return leader
 
@@ -407,7 +390,7 @@ class GCEProvisioner(AbstractProvisioner):
         instancesToKill = [i for i in instances if i.name in nodeNames]
         self._terminateInstances(instancesToKill)
 
-    def addNodes(self, nodeType, numNodes, preemptable):
+    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
         # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
         # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be

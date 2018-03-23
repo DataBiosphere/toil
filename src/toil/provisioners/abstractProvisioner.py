@@ -89,12 +89,26 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             self.static[preemptable] = {node.privateIP : node for node in nodes}
 
     @abstractmethod
-    def addNodes(self, nodeType, numNodes, preemptable):
+    def launchCluster(self, leaderNodeType, keyName, userTags=None,
+            vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None):
+        """
+        Initialize a cluster and create a leader node.
+
+        :param leaderNodeType: The leader instance.
+        :param preemptable: whether or not the nodes will be preemptable
+        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
+        :return: number of nodes successfully added
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
         """
         Used to add worker nodes to the cluster
 
         :param numNodes: The number of nodes to add
         :param preemptable: whether or not the nodes will be preemptable
+        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
         :return: number of nodes successfully added
         """
         raise NotImplementedError

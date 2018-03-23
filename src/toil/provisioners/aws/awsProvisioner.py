@@ -161,8 +161,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._buildContext() # create connection
         self.subnetID = None
 
-    def launchCluster(self, leaderNodeType, nodeTypes, preemptableNodeTypes, keyName,
-            numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None,
+    def launchCluster(self, leaderNodeType, keyName, userTags=None,
             vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None):
         if self.config is None:
             self.nodeStorage = nodeStorage
@@ -205,19 +204,9 @@ class AWSProvisioner(AbstractProvisioner):
         # from the metadata. This data is needed to launch worker nodes.
         self.leaderPrivateIP = leader.private_ip_address
         self._addTags([leader], defaultTags)
-        if spotBids:
-            self.spotBids = dict(zip(preemptableNodeTypes, spotBids))
         self.keyName = keyName
         self.tags = leader.tags
         self.subnetID = leader.subnet_id
-        # assuming that if the leader was launched without a spotbid then all workers
-        # will be non-preemptable
-        workersCreated = 0
-        for nodeType, workers in zip(nodeTypes, numWorkers):
-            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
-        for nodeType, workers in zip(preemptableNodeTypes, numPreemptableWorkers):
-            workersCreated += self.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True)
-        logger.info('Added %d workers', workersCreated)
 
         return leader
 
@@ -287,7 +276,12 @@ class AWSProvisioner(AbstractProvisioner):
         instanceIDs = [x.name for x in nodes]
         self._terminateIDs(instanceIDs)
 
-    def addNodes(self, nodeType, numNodes, preemptable):
+    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+        if preemptable and not spotBid:
+            if self.spotBids and self.spotBids[nodeType]:
+                spotBid = self.spotBids[nodeType]
+            else:
+                raise RuntimeError("No spot bid given for a preemptable node request.")
         instanceType = ec2_instance_types[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN()
@@ -322,10 +316,10 @@ class AWSProvisioner(AbstractProvisioner):
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
                     logger.info('Launching %s preemptable nodes', numNodes)
-                    kwargs['placement'] = getSpotZone(self.spotBids[nodeType], instanceType.name, self.ctx)
+                    kwargs['placement'] = getSpotZone(spotBid, instanceType.name, self.ctx)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self.ctx.ec2,
-                                                                   price=self.spotBids[nodeType],
+                                                                   price=spotBid,
                                                                    image_id=self._discoverAMI(),
                                                                    tags={'clusterName': self.clusterName},
                                                                    spec=kwargs,
