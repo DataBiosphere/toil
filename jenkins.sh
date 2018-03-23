@@ -18,6 +18,7 @@ make develop extras=[aws,mesos,azure,google,encryption,cwl,htcondor]
 export LIBPROCESS_IP=127.0.0.1
 
 # Needed for integrative provisioner tests
+export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest
 export CGCLOUD_ME=jenkins@jenkins-master
 export TOIL_AWS_KEYNAME=jenkins@jenkins-master
 export TOIL_AZURE_KEYNAME=toiltest
@@ -45,3 +46,4 @@ sys.exit(1 if f < min_free_in_GiB << 30 else 0)
 export TMPDIR
 make $make_targets
 docker run -v $(dirname $TMPDIR):$(dirname $TMPDIR) busybox rm -rf $TMPDIR
+export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest
