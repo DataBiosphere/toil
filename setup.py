@@ -24,7 +24,7 @@ def runSetup():
     boto = 'boto==2.38.0'
     boto3 = 'boto3==1.4.7'
     futures = 'futures==3.0.5'
-    pycrypto = 'pycrypto==2.6.1'
+    pycryptodome = 'pycryptodome==3.5.0'
     psutil = 'psutil==3.0.1'
     protobuf = 'protobuf==3.5.1'
     azure = 'azure==2.0.0'
@@ -46,7 +46,7 @@ def runSetup():
         boto,
         boto3,
         futures,
-        pycrypto]
+        pycryptodome]
     azure_reqs = [
         azure,
         azureCosmosdbTable]
