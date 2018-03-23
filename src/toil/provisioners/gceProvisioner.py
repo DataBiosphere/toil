@@ -269,7 +269,7 @@ class GCEProvisioner(AbstractProvisioner):
         self.botoExists = False
 
     def launchCluster(self, leaderNodeType, keyName, userTags=None,
-            vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None):
+            vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
         if self.config is None:
             self.nodeStorage = nodeStorage
         self.botoPath = botoPath

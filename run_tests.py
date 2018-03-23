@@ -37,6 +37,9 @@ test_suites = {
         'UtilsTest and testAWSProvisionerUtils',
         'AWSAutoscaleTest',
         'AWSStaticAutoscaleTest',
+        'AzureRestartTest',
+        'AzureAutoscaleTest',
+        'AzureStaticAutoscaleTest',
         'GCERestartTest',
         'GCEAutoscaleTest',
         'GCEStaticAutoscaleTest'

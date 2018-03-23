@@ -40,9 +40,15 @@ def clusterFactory(provisioner, clusterName=None, zone=None, config=None):
             logger.error('The google extra must be installed to use this provisioner')
             raise
         return GCEProvisioner(clusterName, zone, config)
+    elif provisioner == 'azure':
+        try:
+            from toil.provisioners.azureProvisioner import AzureProvisioner
+        except ImportError:
+            logger.error('The azure extra must be installed to use this provisioner')
+            raise
+        return AzureProvisioner(clusterName, zone, config)
     else:
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
-
 
 class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""

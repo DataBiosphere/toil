@@ -90,7 +90,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     def launchCluster(self, leaderNodeType, keyName, userTags=None,
-            vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None):
+            vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
         """
         Initialize a cluster and create a leader node.
 
