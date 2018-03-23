@@ -11,13 +11,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from builtins import str
-from builtins import map
 from builtins import range
 
 import os
-import sys
-import pipes
 import subprocess
 import time
 import threading
@@ -30,8 +26,9 @@ from libcloud.compute.providers import get_driver
 
 from toil import applianceSelf
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
-from toil.provisioners import (Node, NoSuchClusterException)
+from toil.provisioners import NoSuchClusterException
 from toil.jobStores.googleJobStore import GoogleJobStore
+from toil.provisioners.node import Node
 
 import logging
 logger = logging.getLogger(__name__)
@@ -189,15 +186,14 @@ class GCEProvisioner(AbstractProvisioner):
         rather in a provisioner refactor.
     """
 
-    maxWaitTime = 5*60
     nodeBotoPath = "/root/.boto"
 
-    def __init__(self, config=None):
+    def __init__(self, clusterName=None, zone=None, config=None):
         """
         :param config: Optional config object from common.py
         :param batchSystem:
         """
-        super(GCEProvisioner, self).__init__(config)
+        super(GCEProvisioner, self).__init__(clusterName, zone, config)
 
         # TODO: zone should be set in the constructor, not in the various calls
 
@@ -221,8 +217,8 @@ class GCEProvisioner(AbstractProvisioner):
             self.clusterName = tags['clusterName']
             self.instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
 
-            leader = self._getLeader()
-            self.leaderIP = leader.private_ips[0]  # this is PRIVATE IP
+            leader = self.getLeader()
+            self.leaderPrivateIP = leader.privateIP
             self.masterPublicKey = self._setSSH()
 
             self.botoPath = self.nodeBotoPath
@@ -249,9 +245,8 @@ class GCEProvisioner(AbstractProvisioner):
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
         else:
-            self.clusterName = None
             self.instanceMetaData = None
-            self.leaderIP = None
+            self.leaderPrivateIP = None
             self.keyName = None
             self.tags = None
             self.masterPublicKey = None
@@ -278,23 +273,19 @@ class GCEProvisioner(AbstractProvisioner):
 
 
 
-    def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
-            clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None,
-            vpcSubnet=None, leaderStorage=50, nodeStorage=50,
-            botoPath=None):
+    def launchCluster(self, leaderNodeType, nodeTypes, preemptableNodeTypes, keyName,
+            numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None,
+            vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None):
         if self.config is None:
             self.nodeStorage = nodeStorage
-        if userTags is None:
-            userTags = {}
-        self.zone = zone
-        self.clusterName = clusterName
         self.botoPath = botoPath
         self.keyName = keyName
 
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
         # Therefore, dumping tags into the description.
         tags = {'Owner': keyName, 'clusterName': self.clusterName}
-        tags.update(userTags)
+        if userTags:
+            tags.update(userTags)
         self.tags = json.dumps(tags)
 
         # TODO
@@ -304,7 +295,7 @@ class GCEProvisioner(AbstractProvisioner):
         leaderData = dict(role='leader',
                           dockerImage=applianceSelf(),
                           entrypoint='mesos-master',
-                          dockerArgs=leaderDockerArgs.format(name=clusterName))
+                          dockerArgs=leaderDockerArgs.format(name=self.clusterName))
         userData = gceUserData.format(**leaderData)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
 
@@ -314,14 +305,10 @@ class GCEProvisioner(AbstractProvisioner):
         driver = self._getDriver()
 
         # Throws an error if cluster exists
-        self.instanceGroup = driver.ex_create_instancegroup(clusterName, zone)
+        self.instanceGroup = driver.ex_create_instancegroup(self.clusterName, self.zone)
 
         preemptable = False
-        if leaderSpotBid:
-            logger.info('Launching preemptable leader')
-            preemptable = True
-        else:
-            logger.info('Launching non-preemptable leader')
+        logger.info('Launching leader')
 
         disk = {}
         disk['initializeParams'] = {
@@ -334,7 +321,7 @@ class GCEProvisioner(AbstractProvisioner):
              'autoDelete': True })
         name= 'l' + bytes(uuid.uuid4())
         leader = driver.create_node(name, leaderNodeType, imageType,
-                                location=zone,
+                                location=self.zone,
                                 ex_service_accounts=sa_scopes,
                                 ex_metadata=metadata,
                                 ex_subnetwork=vpcSubnet,
@@ -348,21 +335,21 @@ class GCEProvisioner(AbstractProvisioner):
 
         # if we are running launch cluster we need to save this data as it won't be generated
         # from the metadata. This data is needed to launch worker nodes.
-        self.leaderIP = leader.private_ips[0]
+        self.leaderPrivateIP = leader.private_ips[0]
         if spotBids:
             self.spotBids = dict(zip(preemptableNodeTypes, spotBids))
 
         #TODO: get subnetID
         #self.subnetID = leader.subnet_id
 
-        if (not self._waitForNode(leader.public_ips[0], 'toil_leader')
-            or not self._copySshKeys(leader.public_ips[0], keyName)
-            or not self._injectFile(leader.public_ips[0], self.credentialsPath, GoogleJobStore.nodeServiceAccountJson,
-                                    'toil_leader')
-            or (self.botoPath and
-                not self._injectFile(leader.public_ips[0], self.botoPath, self.nodeBotoPath, 'toil_leader'))):
-
-            raise RuntimeError("Failed to start leader")
+        leaderNode = Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
+                          name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
+                          preemptable=False, tags=self.tags)
+        leaderNode.waitForNode('toil_leader', keyName=self.keyName)
+        leaderNode.copySshKeys(keyName)
+        leaderNode.injectFile(self.credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
+        if self.botoPath:
+            leaderNode.injectFile(self.botoPath, self.nodeBotoPath, 'toil_leader')
 
         # assuming that if the leader was launched without a spotbid then all workers
         # will be non-preemptable
@@ -403,40 +390,16 @@ class GCEProvisioner(AbstractProvisioner):
         """ Not used by GCE """
         return False
 
-    def destroyCluster(self, clusterName, zone=None):
+    def destroyCluster(self):
         #TODO: anything like this with Google?
         #spotIDs = self._getSpotRequestIDs(ctx, clusterName)
         #if spotIDs:
         #    ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
-        self.clusterName = clusterName
-        if zone is not None:
-            self.zone = zone
         instancesToTerminate = self._getNodesInCluster()
         if instancesToTerminate:
             self._terminateInstances(instances=instancesToTerminate)
         instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
         instanceGroup.destroy()
-
-    def sshLeader(self, clusterName, args=None, zone=None, **kwargs):
-        self.clusterName = clusterName
-        if zone is not None:
-            self.zone = zone
-        leader = self._getLeader()
-        logger.info('SSH ready')
-        kwargs['tty'] = sys.stdin.isatty()
-        command = args if args else ['bash']
-        self._sshAppliance(leader.public_ips[0], *command, **kwargs)
-
-    def rsyncLeader(self, clusterName, args, zone=None, **kwargs):
-        self.clusterName = clusterName
-        if zone is not None:
-            self.zone = zone
-        leader = self._getLeader()
-        self._rsyncNode(leader.public_ips[0], args, **kwargs)
-
-    def remainingBillingInterval(self, node):
-        #TODO - does this exist in GCE?
-        return 1 #awsRemainingBillingInterval(node)
 
     def terminateNodes(self, nodes):
         nodeNames = [n.name for n in nodes]
@@ -464,7 +427,8 @@ class GCEProvisioner(AbstractProvisioner):
                           dockerImage=applianceSelf(),
                           entrypoint=entryPoint,
                           sshKey=self.masterPublicKey,
-                          dockerArgs=workerDockerArgs.format(ip=self.leaderIP, preemptable=preemptable, keyPath=keyPath))
+                          dockerArgs=workerDockerArgs.format(ip=self.leaderPrivateIP,
+                                                             preemptable=preemptable, keyPath=keyPath))
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
 
@@ -512,9 +476,14 @@ class GCEProvisioner(AbstractProvisioner):
             self.instanceGroup.add_instances(instancesLaunched)
             failedWorkers = []
             for instance in instancesLaunched:
-                if self._injectWorkerFiles(instance.public_ips[0]):
+                node = Node(publicIP=instance.public_ips[0], privateIP=instance.private_ips[0],
+                            name=instance.name, launchTime=instance.created_at, nodeType=instance.size,
+                            preemptable=False, tags=self.tags) #FIXME: what should tags be set to?
+                try:
+                    self._injectWorkerFiles(node)
                     workersCreated += 1
-                else:
+                except Exception as e:
+                    logger.error("Failed to configure worker %s. Error message: %s" % (node.publicIP, e))
                     failedWorkers.append(instance)
             if failedWorkers:
                 logger.error("Terminating %d failed workers" % len(failedWorkers))
@@ -525,42 +494,6 @@ class GCEProvisioner(AbstractProvisioner):
         if numNodes != workersCreated:
             logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
-
-
-    def _injectWorkerFiles(self, ip):
-        """
-        :return: True if all files successfully injected
-        """
-        if (not self._waitForNode(ip, 'toil_worker')
-            or not self._copySshKeys(ip, self.keyName)
-            or not self._injectFile(ip, self.credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_worker')):
-            return False
-        if self.config and self.config.sseKey:
-            if not self._injectFile(ip, self.config.sseKey, self.config.sseKey, 'toil_worker'):
-                return False
-        if self.botoExists and not self._injectFile(ip, self.botoPath, self.nodeBotoPath, 'toil_worker'):
-            return False
-        return True
-
-
-    def _injectFile(self, ip, fromFile, toFile, role):
-        """
-        rysnc a file to the vm with the given role
-        :return: True on success
-        """
-        maxRetries = 10
-        errMsg = None
-        for retry in range(maxRetries):
-            try:
-                self._rsyncNode(ip, [fromFile, ":" + toFile], applianceName=role)
-                return True
-            except Exception as e:
-                errMsg = e
-                logger.debug("Rsync to new node failed, trying again")
-                time.sleep(10*retry)
-        logger.error("Failed to inject file %s to %s with ip %s" % (fromFile, role, ip) )
-        logger.error('Exception %s', errMsg)
-        return False
 
     def getProvisionedWorkers(self, nodeType, preemptable):
         entireCluster = self._getNodesInCluster(nodeType=nodeType)
@@ -573,7 +506,7 @@ class GCEProvisioner(AbstractProvisioner):
                 continue
             isWorker = True
             for ip in instance.private_ips:
-                if ip == self.leaderIP:
+                if ip == self.leaderPrivateIP:
                     isWorker = False
                     break # don't include the leader
             if isWorker and instance.state == 'running':
@@ -582,17 +515,30 @@ class GCEProvisioner(AbstractProvisioner):
         logger.debug('All workers found in cluster: %s', workerInstances)
         return [Node(publicIP=i.public_ips[0], privateIP=i.private_ips[0],
                      name=i.name, launchTime=i.created_at, nodeType=i.size,
-                     preemptable=preemptable)
+                     preemptable=preemptable, tags=None)
                 for i in workerInstances]
 
-    def _getLeader(self):
+    def getLeader(self):
         instances = self._getNodesInCluster()
         instances.sort(key=lambda x: x.created_at)
         try:
             leader = instances[0]  # assume leader was launched first
         except IndexError:
             raise NoSuchClusterException(self.clusterName)
-        return leader
+        return Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
+                          name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
+                          preemptable=False, tags=None)
+
+    def _injectWorkerFiles(self, node):
+        """
+        """
+        node.waitForNode('toil_worker')
+        node.copySshKeys(self.keyName)
+        node.injectFile(self.credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_worker')
+        if self.config and self.config.sseKey:
+            node.injectFile(self.config.sseKey, self.config.sseKey, 'toil_worker')
+        if self.botoExists:
+            node.injectFile(self.botoPath, self.nodeBotoPath, 'toil_worker')
 
     def _getNodesInCluster(self, nodeType=None):
         instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
@@ -608,92 +554,6 @@ class GCEProvisioner(AbstractProvisioner):
                          self.googleJson,
                          project=self.projectId,
                          datacenter=self.zone)
-
-    @classmethod
-    def _copySshKeys(cls, instanceIP, keyName):
-        """ Copy authorized_keys file to the core user from the keyName user."""
-        if keyName == 'core':
-            return True
-
-        # Make sure that keys are there.
-        if not cls._waitForSSHKeys(instanceIP, keyName=keyName):
-            return False
-
-        # TODO: Check if there is another way to ssh to a GCE instance with Google credentials
-
-        # copy keys to core user so that the ssh calls will work
-        # - normal mechanism failed unless public key was in the google-ssh format
-        # - even so, the key wasn't copied correctly to the core account
-        keyFile = '/home/%s/.ssh/authorized_keys' % keyName
-        cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/cp', keyFile, '/home/core/.ssh', user=keyName)
-        cls._sshInstance(instanceIP, '/usr/bin/sudo', '/usr/bin/chown', 'core',
-                         '/home/core/.ssh/authorized_keys', user=keyName)
-
-        return True
-
-    def _waitForNode(self, instanceIP, role):
-        # wait here so docker commands can be used reliably afterwards
-        if not self._waitForSSHKeys(instanceIP, keyName=self.keyName):
-            return False
-        if not self._waitForDockerDaemon(instanceIP, keyName=self.keyName):
-            return False
-        return self._waitForAppliance(instanceIP, role=role, keyName=self.keyName)
-
-    @classmethod
-    def _coreSSH(cls, nodeIP, *args, **kwargs):
-        """
-        If strict=False, strict host key checking will be temporarily disabled.
-        This is provided as a convenience for internal/automated functions and
-        ought to be set to True whenever feasible, or whenever the user is directly
-        interacting with a resource (e.g. rsync-cluster or ssh-cluster). Assumed
-        to be False by default.
-
-        kwargs: input, tty, appliance, collectStdout, sshOptions, strict
-        """
-        commandTokens = ['ssh', '-t']
-        strict = kwargs.pop('strict', False)
-        if not strict:
-            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] \
-                                 + kwargs.get('sshOptions', [])
-        sshOptions = kwargs.pop('sshOptions', None)
-        #Forward port 3000 for grafana dashboard
-        commandTokens.extend(['-L', '3000:localhost:3000', '-L', '9090:localhost:9090'])
-        if sshOptions:
-            # add specified options to ssh command
-            assert isinstance(sshOptions, list)
-            commandTokens.extend(sshOptions)
-        # specify host
-        user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
-        commandTokens.append('%s@%s' % (user,str(nodeIP)))
-        appliance = kwargs.pop('appliance', None)
-        if appliance:
-            # run the args in the appliance
-            tty = kwargs.pop('tty', None)
-            ttyFlag = '-t' if tty else ''
-            commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
-        inputString = kwargs.pop('input', None)
-        if inputString is not None:
-            kwargs['stdin'] = subprocess.PIPE
-        collectStdout = kwargs.pop('collectStdout', None)
-        if collectStdout:
-            kwargs['stdout'] = subprocess.PIPE
-        kwargs['stderr'] = subprocess.PIPE
-        logger.debug('Node %s: %s', nodeIP, ' '.join(args))
-        args = list(map(pipes.quote, args))
-        commandTokens += args
-        logger.debug('Full command %s', ' '.join(commandTokens))
-        popen = subprocess.Popen(commandTokens, **kwargs)
-        stdout, stderr = popen.communicate(input=inputString)
-        # at this point the process has already exited, no need for a timeout
-        resultValue = popen.wait()
-        # ssh has been throwing random 255 errors - why?
-        if resultValue != 0:
-            logger.info('SSH Error (%s) %s' % (resultValue, stderr))
-            raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
-                               'exit code %s with stdout %s and stderr %s'
-                               % (' '.join(args), resultValue, stdout, stderr))
-        return stdout
-
 
     def _terminateInstances(self, instances):
         def worker(driver, instance):
@@ -810,100 +670,6 @@ class GCEProvisioner(AbstractProvisioner):
         for status in status_list:
             node_list.append(status['node'])
         return node_list
-
-
-    @classmethod
-    def _waitForSSHKeys(cls, instanceIP, keyName='core'):
-        # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
-        # the keys are propagated and the instance can be SSH into
-        startTime = time.time()
-        while True:
-            if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Key propagation failed on machine with ip %s" % instanceIP)
-                return False
-            try:
-                logger.info('Attempting to establish SSH connection...')
-                cls._sshInstance(instanceIP, 'ps', sshOptions=['-oBatchMode=yes'], user=keyName)
-            except RuntimeError:
-                logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
-                time.sleep(10)
-            else:
-                logger.info('...SSH connection established.')
-                # ssh succeeded
-                return True
-
-    @classmethod
-    def _waitForDockerDaemon(cls, ip_address, keyName='core'):
-        logger.info('Waiting for docker on %s to start...', ip_address)
-        sleepTime = 10
-        startTime = time.time()
-        while True:
-            if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Docker daemon failed to start on machine with ip %s" % ip_address)
-                return False
-            try:
-                output = cls._sshInstance(ip_address, '/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
-                if 'dockerd' in output:
-                    # docker daemon has started
-                    logger.info('Docker daemon running')
-                    break
-                else:
-                    logger.info('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
-                    time.sleep(sleepTime)
-            except:
-                logger.debug("Wait for docker daemon failed ssh, trying again.")
-                sleepTime += 20
-        return True
-
-    @classmethod
-    def _waitForAppliance(cls, ip_address, role, keyName='core'):
-        logger.info('Waiting for %s Toil appliance to start...', role)
-        sleepTime = 10
-        startTime = time.time()
-        while True:
-            if time.time() - startTime > cls.maxWaitTime:
-                logger.error("Appliance failed to start on machine with ip %s" % ip_address)
-                logger.error("Check if the appliance is valid, e.g. check if the environment variable"
-                              " TOIL_APPLIANCE_SELF is set correctly and the container exists.")
-                return False
-            try:
-                output = cls._sshInstance(ip_address, '/usr/bin/docker', 'ps',
-                                          sshOptions=['-oBatchMode=yes'], user=keyName)
-                if role in output:
-                    logger.info('...Toil appliance started')
-                    break
-                else:
-                    logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
-                    time.sleep(sleepTime)
-            except:
-                # ignore exceptions, keep trying
-                logger.debug("Wait for appliance failed ssh, trying again.")
-                sleepTime += 20
-        return True
-
-    @classmethod
-    def _rsyncNode(cls, ip, args, applianceName='toil_leader', **kwargs):
-        remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
-        parsedArgs = []
-        sshCommand = "ssh"
-        strict = kwargs.pop('strict', False)
-        if not strict:
-            sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
-        hostInserted = False
-        # Insert remote host address
-        for i in args:
-            if i.startswith(":") and not hostInserted:
-                i = ("core@%s" % ip) + i
-                hostInserted = True
-            elif i.startswith(":") and hostInserted:
-                raise ValueError("Cannot rsync between two remote hosts")
-            parsedArgs.append(i)
-        if not hostInserted:
-            raise ValueError("No remote host found in argument list")
-        command = ['rsync', '-e', sshCommand, '--rsync-path', remoteRsync]
-        logger.debug("Running %r.", command + parsedArgs)
-
-        return subprocess.check_call(command + parsedArgs)
 
     def _setSSH(self):
         if not os.path.exists('/root/.sshSuccess'):

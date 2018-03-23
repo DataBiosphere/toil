@@ -17,6 +17,7 @@ Launches a toil leader instance with the specified provisioner
 import logging
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
+from toil.provisioners import clusterFactory
 
 logger = logging.getLogger(__name__)
 
@@ -79,24 +80,6 @@ def main():
     numNodes = []
     numPreemptableNodes = []
     leaderSpotBid = None
-    if config.provisioner == 'aws':
-        logger.info('Using aws provisioner.')
-        try:
-            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        except ImportError:
-            logger.error('The aws extra must be installed to use this provisioner')
-            raise
-        provisioner = AWSProvisioner()
-    elif config.provisioner == 'gce':
-        logger.info('Using a gce provisioner.')
-        try:
-            from toil.provisioners.gceProvisioner import GCEProvisioner
-        except ImportError:
-            logger.error('The google extra must be installed to use this provisioner')
-            raise
-        provisioner = GCEProvisioner()
-    else:
-        assert False
 
 
     #Parse leader node type and spot bid
@@ -124,19 +107,17 @@ def main():
                 nodeTypes.append(nodeTypeStr)
                 numNodes.append(int(num))
 
-
-    provisioner.launchCluster(leaderNodeType=config.leaderNodeType,
-                              leaderSpotBid=leaderSpotBid,
+    cluster = clusterFactory(provisioner=config.provisioner,
+                             clusterName=config.clusterName, zone=config.zone)
+    cluster.launchCluster(leaderNodeType=config.leaderNodeType,
                               nodeTypes=nodeTypes,
                               preemptableNodeTypes=preemptableNodeTypes,
                               numWorkers=numNodes,
                               numPreemptableWorkers = numPreemptableNodes,
                               keyName=config.keyPairName,
                               botoPath=config.botoPath,
-                              clusterName=config.clusterName,
                               spotBids=spotBids,
                               userTags=tagsDict,
-                              zone=config.zone,
                               leaderStorage=config.leaderStorage,
                               nodeStorage=config.nodeStorage,
                               vpcSubnet=config.vpcSubnet)

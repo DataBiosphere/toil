@@ -582,7 +582,7 @@ class ScalerThread(ExceptionalThread):
             nodeToNodeInfo = nodesToTerminate
         else:
             # Without load info all we can do is sort instances by time left in billing cycle.
-            nodeToNodeInfo = sorted(nodeToNodeInfo, key=self.scaler.provisioner.remainingBillingInterval)
+            nodeToNodeInfo = sorted(nodeToNodeInfo, key=lambda x: x.remainingBillingInterval())
             nodeToNodeInfo = [instance for instance in islice(nodeToNodeInfo, numNodes)]
         logger.info('Terminating %i instance(s).', len(nodeToNodeInfo))
         if nodeToNodeInfo:
@@ -630,9 +630,7 @@ class ScalerThread(ExceptionalThread):
             nodesToTerminate.append((node, nodeInfo))
         # Sort nodes by number of workers and time left in billing cycle
         nodesToTerminate.sort(key=lambda node_nodeInfo: (
-            node_nodeInfo[1].workers if node_nodeInfo[1] else 1,
-            self.scaler.provisioner.remainingBillingInterval(node_nodeInfo[0]))
-                              )
+            node_nodeInfo[1].workers if node_nodeInfo[1] else 1, node_nodeInfo[0].remainingBillingInterval()))
         return nodesToTerminate
 
     def getNodes(self, preemptable):
