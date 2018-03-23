@@ -74,6 +74,7 @@ If using Toil for your research, please cite
    appendices/architecture
    appendices/deploy
    appendices/environment_vars
+   appendices/staticAzure
 
 * :ref:`genindex`
 * :ref:`search`

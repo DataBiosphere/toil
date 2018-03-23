@@ -15,7 +15,6 @@
 from setuptools import find_packages, setup
 import sys
 
-
 def runSetup():
     """
     Calls setup(). This function exists so the setup() invocation preceded more internal
@@ -29,6 +28,9 @@ def runSetup():
     protobuf = 'protobuf==3.5.1'
     azure = 'azure==2.0.0'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
+    azureAnsible = 'ansible[azure]==2.5.0a1'
+    azureStorage = 'azure-storage==0.35.1'
+    msRest = 'msrest==0.4.25'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
@@ -49,7 +51,10 @@ def runSetup():
         pycryptodome]
     azure_reqs = [
         azure,
-        azureCosmosdbTable]
+        azureCosmosdbTable,
+        azureAnsible,
+        azureStorage,
+        msRest]
     encryption_reqs = [
         pynacl]
     google_reqs = [
@@ -111,6 +116,9 @@ def runSetup():
                                # Note that we intentionally include the top-level `test` package for
                                # functionality like the @experimental and @integrative decoratorss:
                                exclude=['*.test.*']),
+        package_data = {
+            '': ['*.yml', 'contrib/azure_rm.py', 'cloud-config'],
+        },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
         # easy to search for.

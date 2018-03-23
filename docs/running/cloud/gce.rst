@@ -75,8 +75,8 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
     (venv) $ toil launch-cluster <CLUSTER-NAME> --provisioner gce --leaderNodeType n1-standard-1 --keyPairName <SSH-KEYNAME> --zone us-west1-a
 
-   Where ``<SSH-KEYNAME>`` is the first part of ``[USERNAME]`` used when setting up your ssh key (see
-   :ref:`prepareGoogle`). For example if ``[USERNAME]`` was jane@example.com, ``<SSH-KEYNAME>`` should be ``jane``.
+   Where ``<SSH-KEYNAME>`` is the first part of ``[USERNAME]`` used when setting up your ssh key.  
+   For example if ``[USERNAME]`` was jane@example.com, ``<SSH-KEYNAME>`` should be ``jane``.
 
 
    The ``--keyPairName`` option is for an SSH key that was added to the Google account. If your ssh
@@ -91,10 +91,10 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 
     $ python /root/sort.py  google:<PROJECT-ID>:<JOBSTORE-NAME> --provisioner gce --batchSystem mesos --nodeTypes n1-standard-2 --maxNodes 2
 
-#. Cleanup ::
+#. Cleanup. ::
 
     $ exit  # this exits the ssh from the leader node
-    (venv) $ toil destory-cluster --provisioner gce <CLUSTER-NAME>
+    (venv) $ toil destroy-cluster --provisioner gce <CLUSTER-NAME>
 
 .. _Google's Instructions: https://cloud.google.com/docs/authentication/getting-started
 

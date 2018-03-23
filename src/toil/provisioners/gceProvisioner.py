@@ -281,7 +281,7 @@ class GCEProvisioner(AbstractProvisioner):
     def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
             clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None,
             vpcSubnet=None, leaderStorage=50, nodeStorage=50,
-            botoPath=None):
+            botoPath=None, **kwargs):
         if self.config is None:
             self.nodeStorage = nodeStorage
         if userTags is None:
