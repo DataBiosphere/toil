@@ -42,7 +42,7 @@ def clusterFactory(provisioner, clusterName=None, zone=None, config=None):
         return GCEProvisioner(clusterName, zone, config)
     elif provisioner == 'azure':
         try:
-            from toil.provisioners.azureProvisioner import AzureProvisioner
+            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
         except ImportError:
             logger.error('The azure extra must be installed to use this provisioner')
             raise

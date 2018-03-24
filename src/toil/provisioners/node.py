@@ -138,7 +138,7 @@ class Node(object):
                 else:
                     logger.info('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
-            except:
+            except RuntimeError:
                 logger.debug("Wait for docker daemon failed ssh, trying again.")
                 sleepTime += 20
 
@@ -160,7 +160,7 @@ class Node(object):
                 else:
                     logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
-            except:
+            except RuntimeError:
                 # ignore exceptions, keep trying
                 logger.debug("Wait for appliance failed ssh, trying again.")
                 sleepTime += 20

@@ -106,9 +106,9 @@ class UtilsTest(ToilTest):
             tags = {'Name': clusterName, 'Owner': keyName}
             tags.update(userTags)
 
-            # launch preemptable master with same name
+            # launch master with same name
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
-                    '--leaderNodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
+                    '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--logLevel=DEBUG'])
 
             cluster = clusterFactory(provisioner='aws', clusterName=clusterName)

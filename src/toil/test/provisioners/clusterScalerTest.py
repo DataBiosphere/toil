@@ -412,7 +412,13 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def getWorkersInCluster(self, nodeShape):
         return self.workers[nodeShape]
 
+    def launchCluster(self, leaderNodeType, keyName, userTags=None,
+                      vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
+        pass
     def destroyCluster(self):
+        pass
+
+    def getLeader(self):
         pass
 
 

@@ -89,8 +89,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             self.static[preemptable] = {node.privateIP : node for node in nodes}
 
     @abstractmethod
-    def launchCluster(self, leaderNodeType, keyName, userTags=None,
-            vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
+    def launchCluster(self, leaderNodeType, keyName, userTags=None, vpcSubnet=None,
+                      leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
         """
         Initialize a cluster and create a leader node.
 
@@ -119,6 +119,13 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         Terminate the nodes represented by given Node objects
 
         :param nodes: list of Node objects
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def getLeader(self):
+        """
+        :return: The leader node.
         """
         raise NotImplementedError
 

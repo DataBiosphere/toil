@@ -70,8 +70,8 @@ class AbstractAzureAutoscaleTest(ToilTest):
         self.sshKeyName = os.getenv('TOIL_SSH_KEYNAME')
         self.azureZone = os.getenv('TOIL_AZURE_ZONE')
 
-        self.leaderInstanceType = 'Standard_A2'
-        self.instanceTypes = ["Standard_A3"]
+        self.leaderInstanceType = 'Standard_A2_v2'
+        self.instanceTypes = ["Standard_A4_v2"]
         self.numWorkers = ['2']
         self.numSamples = 2
 
@@ -190,7 +190,7 @@ class AzureAutoscaleTest(AbstractAzureAutoscaleTest):
     @integrative
     @needs_azure
     def testAutoScale(self):
-        self.instanceTypes = ["Standard_A3"]
+        self.instanceTypes = ["Standard_A4_v2"]
         self.numWorkers = ['2']
         self._test()
 
@@ -242,7 +242,7 @@ class AzureAutoscaleTestMultipleNodeTypes(AbstractAzureAutoscaleTest):
     @integrative
     @needs_azure
     def testAutoScale(self):
-        self.instanceTypes = ["Standard_A3", "Standard_D3"]
+        self.instanceTypes = ["Standard_A4_v2", "Standard_D3_v2"]
         self.numWorkers = ['2','1']
         self._test()
 
@@ -258,7 +258,7 @@ class AzureRestartTest(AbstractAzureAutoscaleTest):
 
     def setUp(self):
         super(AzureRestartTest, self).setUp()
-        self.instanceTypes = ['Standard_A3']
+        self.instanceTypes = ['Standard_A4_v2']
         self.numWorkers = ['1']
         self.scriptName = "/home/restartScript.py"
         self.jobStore = 'azure:%s:restart-%s' % (self.keyName, str(uuid4()).replace('-','')[:24])
