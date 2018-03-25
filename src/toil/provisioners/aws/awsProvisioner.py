@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2018 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,8 +30,9 @@ from bd2k.util import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
+from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
+from toil.lib.ec2nodes import fetchEC2InstanceList
 
 from toil import applianceSelf
 from toil.lib.misc import truncExpBackoff
@@ -130,7 +131,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
-
+            self.ec2_instance_types = fetchEC2InstanceList(regionNickname=config.zone[:-1], listSource=None, latest=config.useLatestNodeTypes)
         else:
             self.ctx = None
             self.clusterName = None
@@ -140,6 +141,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.tags = None
             self.masterPublicKey = None
             self.nodeStorage = None
+            self.ec2_instance_types = fetchEC2InstanceList()
         self.subnetID = None
 
     def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
@@ -152,7 +154,7 @@ class AWSProvisioner(AbstractProvisioner):
             userTags = {}
         ctx = self._buildContext(clusterName=clusterName, zone=zone)
         profileARN = self._getProfileARN(ctx)
-        leaderInstanceType = ec2_instance_types[leaderNodeType]
+        leaderInstanceType = self.ec2_instance_types[leaderNodeType]
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
         bdm = self._getBlockDeviceMapping(leaderInstanceType, rootVolSize=leaderStorage)
@@ -215,7 +217,7 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     def getNodeShape(self, nodeType, preemptable=False):
-        instanceType = ec2_instance_types[nodeType]
+        instanceType = self.ec2_instance_types[nodeType]
 
         disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
@@ -297,7 +299,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._terminateNodes(nodes, self.ctx)
 
     def addNodes(self, nodeType, numNodes, preemptable):
-        instanceType = ec2_instance_types[nodeType]
+        instanceType = self.ec2_instance_types[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey

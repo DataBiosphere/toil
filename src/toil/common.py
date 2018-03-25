@@ -90,6 +90,7 @@ class Config(object):
         #Autoscaling options
         self.provisioner = None
         self.nodeTypes = []
+        self.useLatestNodeTypes = None
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
@@ -226,6 +227,7 @@ class Config(object):
         setOption("provisioner")
         setOption("nodeTypes", parseStrList)
         setOption("nodeOptions")
+        setOption("useLatestNodeTypes")
         setOption("minNodes", parseIntList)
         setOption("maxNodes", parseIntList)
         setOption("alphaPacking", float)
@@ -378,10 +380,15 @@ def _addOptions(addGroupFn, config):
                       "new nodes once the maximum number of preemptable-nodes has been"
                       "reached.")
 
+    addOptionFn('--useLatestNodeTypes', default=False,
+                help="Fetches the latest instance pricing and spec info, however, the file "
+                "is large (220Mb+ as of 3.24.2018) and must be downloaded.  Currently, only "
+                "EC2 is supported.  Default: False.")
+
     addOptionFn('--nodeOptions', default=None,
-                 help="Options for provisioning the nodes. The syntax "
-                      "depends on the provisioner used. Neither the CGCloud nor the AWS "
-                      "provisioner support any node options.")
+                help="Options for provisioning the nodes. The syntax "
+                     "depends on the provisioner used. Neither the CGCloud nor the AWS "
+                     "provisioner support any node options.")
 
     addOptionFn('--minNodes', default=None, 
                  help="Mininum number of nodes of each type in the cluster, if using "

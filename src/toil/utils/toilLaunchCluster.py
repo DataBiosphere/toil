@@ -65,6 +65,10 @@ def main():
                              "EC2 instance type followed by a colon and the price in dollar to "
                              "bid for a spot instance, for example 'c3.8xlarge:0.42'. Must also provide "
                              "the --workers argument to specify how many workers of each node type to create")
+    parser.add_argument('--useLatestNodeTypes', default=False,
+                        help="Fetches the latest instance pricing and spec info, however, the file "
+                             "is large (220Mb+ as of 3.24.2018) and must be downloaded.  Currently, "
+                             "only EC2 is supported.  Default: False.")
     parser.add_argument("-w", "--workers", dest='workers', default=None, type=str,
                         help="Comma-separated list of the number of workers of each node type to launch "
                              "alongside the leader when the "
