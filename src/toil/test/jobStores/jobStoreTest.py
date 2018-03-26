@@ -1214,11 +1214,6 @@ class InvalidAzureJobStoreTest(ToilTest):
                           AzureJobStore,
                           'toiltest:a_b')
 
-
-class EncryptedFileJobStoreTest(FileJobStoreTest, AbstractEncryptedJobStoreTest.Test):
-    pass
-
-
 @needs_aws
 @needs_encryption
 @slow
