@@ -222,7 +222,15 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     def getNodeShape(self, nodeType, preemptable=False):
-        instanceType = self.ec2_instance_types[nodeType]
+        if self.ec2_instance_types:
+            instanceType = self.ec2_instance_types[nodeType]
+        else:
+            if self.config is None:
+                self.ec2_instance_types = fetchEC2InstanceDict()
+            else:
+                self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=self.config.zone[:-1],
+                                                               latest=self.config.useLatestNodeTypes)
+            instanceType = self.ec2_instance_types[nodeType]
 
         disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
@@ -304,7 +312,15 @@ class AWSProvisioner(AbstractProvisioner):
         self._terminateNodes(nodes, self.ctx)
 
     def addNodes(self, nodeType, numNodes, preemptable):
-        instanceType = self.ec2_instance_types[nodeType]
+        if self.ec2_instance_types:
+            instanceType = self.ec2_instance_types[nodeType]
+        else:
+            if self.config is None:
+                self.ec2_instance_types = fetchEC2InstanceDict()
+            else:
+                self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=self.config.zone[:-1],
+                                                               latest=self.config.useLatestNodeTypes)
+            instanceType = self.ec2_instance_types[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
