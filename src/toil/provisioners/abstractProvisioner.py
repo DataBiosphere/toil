@@ -13,7 +13,6 @@
 # limitations under the License.
 from abc import ABCMeta, abstractmethod
 from builtins import object
-from collections import namedtuple
 from functools import total_ordering
 from itertools import count
 import logging
@@ -29,28 +28,9 @@ a_short_time = 5
 
 log = logging.getLogger(__name__)
 
+
 @total_ordering
-class ShapeOrdering(object):
-    """Provides the sort ordering for Shape. Preemptability is first,
-    followed by memory, etc."""
-    def __eq__(self, other):
-        return (self.wallTime == other.wallTime and
-                self.memory == other.memory and
-                self.cores == other.cores and
-                self.disk == other.disk and
-                self.preemptable == other.preemptable)
-
-    def __lt__(self, other):
-        return (self.preemptable > other.preemptable or
-                self.memory < other.memory or
-                self.cores < other.cores or
-                self.disk < other.disk or
-                self.wallTime < other.wallTime)
-
-# This convoluted multiple-inheritance business is so that
-# ShapeOrdering overrides the default tuple comparison methods without
-# having to manually specify all seven comparison methods.
-class Shape(ShapeOrdering, namedtuple("_Shape", "wallTime memory cores disk preemptable")):
+class Shape(object):
     """
     Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
     wall-time allocation.
@@ -61,7 +41,43 @@ class Shape(ShapeOrdering, namedtuple("_Shape", "wallTime memory cores disk pree
     The memory and disk attributes store the number of bytes required by a job (or provided by a
     node) in RAM or on disk (SSD or HDD), respectively.
     """
-    pass
+    def __init__(self, wallTime, memory, cores, disk, preemptable):
+        self.wallTime = wallTime
+        self.memory = memory
+        self.cores = cores
+        self.disk = disk
+        self.preemptable = preemptable
+
+    def __eq__(self, other):
+        return (self.wallTime == other.wallTime and
+                self.memory == other.memory and
+                self.cores == other.cores and
+                self.disk == other.disk and
+                self.preemptable == other.preemptable)
+
+    def __lt__(self, other):
+        if self.preemptable > other.preemptable:
+            return True
+        elif self.preemptable < other.preemptable:
+            return False
+        elif self.memory > other.memory:
+            return True
+        elif self.memory < other.memory:
+            return False
+        elif self.cores > other.cores:
+            return True
+        elif self.cores < other.cores:
+            return False
+        elif self.disk > other.disk:
+            return True
+        elif self.disk < other.disk:
+            return False
+        elif self.wallTime > other.wallTime:
+            return True
+        elif self.wallTime < other.wallTime:
+            return False
+        else:
+            return False
 
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """

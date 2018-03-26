@@ -99,6 +99,19 @@ class BinPackingTest(ToilTest):
                                  disk=h2b('100G'),
                                  preemptable=True)]])
 
+    def testSorting(self):
+        """
+        Test that sorting is correct: preemptable, then memory, then cores, then disk,
+        then wallTime.
+        """
+        # TODO: Rename intuitively.  All shapes are non-preempt, except for c4_8xlarge
+        shapeList = [c4_8xlarge, r3_8xlarge, c4_8xlarge_nonpreemptable, c4_8xlarge_nonpreemptable,
+                     t2_micro, t2_micro, c4_8xlarge_nonpreemptable, r3_8xlarge, r3_8xlarge, t2_micro]
+        shapeList.sort()
+        assert shapeList == [c4_8xlarge, r3_8xlarge, r3_8xlarge, r3_8xlarge,
+                             c4_8xlarge_nonpreemptable, c4_8xlarge_nonpreemptable,
+                             c4_8xlarge_nonpreemptable, t2_micro, t2_micro, t2_micro]
+
     def testAddingInitialNode(self):
         """Pack one shape when no nodes are available and confirm that we fit one node properly."""
         self.bpf.addJobShape(Shape(wallTime=1000,
