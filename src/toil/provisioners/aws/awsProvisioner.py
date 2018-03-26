@@ -32,7 +32,7 @@ from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
-from toil.lib.ec2nodes import fetchEC2InstanceList
+from toil.lib.ec2nodes import fetchEC2InstanceDict
 
 from toil import applianceSelf
 from toil.lib.misc import truncExpBackoff
@@ -131,7 +131,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
-            self.ec2_instance_types = fetchEC2InstanceList(regionNickname=config.zone[:-1],
+            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=config.zone[:-1],
                                                            latest=config.useLatestNodeTypes)
         else:
             self.ctx = None
@@ -151,9 +151,9 @@ class AWSProvisioner(AbstractProvisioner):
             **kwargs):
         if self.config is None:
             self.nodeStorage = nodeStorage
-            self.ec2_instance_types = fetchEC2InstanceList()
+            self.ec2_instance_types = fetchEC2InstanceDict()
         else:
-            self.ec2_instance_types = fetchEC2InstanceList(regionNickname=self.config.zone[:-1],
+            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=self.config.zone[:-1],
                                                            latest=self.config.useLatestNodeTypes)
         if userTags is None:
             userTags = {}

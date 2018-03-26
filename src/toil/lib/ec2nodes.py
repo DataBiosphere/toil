@@ -16,8 +16,8 @@ import requests
 import json
 import datetime
 from toil.wdl.toilwdl import heredoc_wdl
-from toil.lib.generatedEC2Lists import ec2InstancesByRegion
-
+# from toil.lib.generatedEC2Lists import ec2InstancesByRegion
+ec2InstancesByRegion = 1
 
 EC2Regions = {'us-west-1': 'US West (N. California)',
               'us-west-2': 'US West (Oregon)',
@@ -44,10 +44,10 @@ class InstanceType(object):
     def __init__(self, name, cores, memory, disks, disk_capacity, cost):
         self.name = name  # the API name of the instance type
         self.cores = cores  # the number of cores
-        self.memory = memory  # RAM in GB
+        self.memory = memory  # RAM in GiB
         self.disks = disks  # the number of ephemeral (aka 'instance store') volumes
-        self.disk_capacity = disk_capacity  # the capacity of each ephemeral volume in GB
-        self.cost = cost
+        self.disk_capacity = disk_capacity  # the capacity of each ephemeral volume in GiB
+        self.cost = cost # cost in USD per hour
 
     def __str__(self):
         return ("Type: {}\n"
@@ -137,13 +137,15 @@ def parseMemory(memAttribute):
         raise RuntimeError('EC2 JSON format has likely changed.  Error parsing memory.')
 
 
-def fetchEC2InstanceList(regionNickname=None, latest=False):
+def fetchEC2InstanceDict(regionNickname=None, latest=False):
     """
     Fetches EC2 instances types by region programmatically using the AWS pricing API.
 
     See: https://aws.amazon.com/blogs/aws/new-aws-price-list-api/
 
-    :return: A list of InstanceType objects.
+    :return: A dict of InstanceType objects, where the key is the string:
+             aws instance name (example: 't2.micro'), and the value is an
+             InstanceType object representing that aws instance name.
     """
     ec2Source = 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json'
     if regionNickname is None:
@@ -265,23 +267,26 @@ def updateStaticEC2Instances():
     # generate appropriate instance list structures
     instancetypeNums = {}
     for k, v in EC2Regions.iteritems():
-        currentEC2List = fetchEC2InstanceList(regionNickname=k, latest=True)
+        currentEC2Dict = fetchEC2InstanceDict(regionNickname=k, latest=True)
+        currentEC2List = []
+        for y, x in currentEC2Dict.iteritems():
+            currentEC2List.append(x)
         instancetypeNums[str(k)] = len(currentEC2List)
         genString = "# {num} Instance Types.  Generated {date}.\n".format(
-            num=str(len(currentEC2List)), date=str(datetime.datetime.now()))
+                    num=str(len(currentEC2List)), date=str(datetime.datetime.now()))
         genString = genString + k.replace('-', '_') + "_E2Instances = [\n"
-        for j, i in currentEC2List.iteritems():
-            x = "    InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, cost={cost})," \
-                "\n".format(name=i.name, cores=i.cores, memory=i.memory,
-                            disks=i.disks, disk_capacity=i.disk_capacity, cost=i.cost)
-            genString = genString + x
+        sortedCurrentEC2List = sorted(currentEC2List, key=lambda x: x.name)
+        for i in sortedCurrentEC2List:
+            z = "    InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, cost={cost})," \
+                "\n".format(name=i.name, cores=i.cores, memory=i.memory, disks=i.disks, disk_capacity=i.disk_capacity, cost=i.cost)
+            genString = genString + z
         genString = genString + ']\n\n'
         with open(genFile, 'a+') as f:
             f.write(genString)
 
     # append key for fetching at the end
-    RegionKey = '''
-    ec2InstancesByRegion = {'us-west-1': us_west_1_E2Instances,
+    regionKey = '''
+    ec2InstancesByRegion = {{'us-west-1': us_west_1_E2Instances,
                             'us-west-2': us_west_2_E2Instances,
                             'us-east-1': us_east_1_E2Instances,
                             'us-east-2': us_east_2_E2Instances,
@@ -297,9 +302,6 @@ def updateStaticEC2Instances():
                             'eu-west-2': eu_west_2_E2Instances,
                             'eu-west-3': eu_west_3_E2Instances,
                             'eu-central-1': eu_central_1_E2Instances,
-                            'sa-east-1': sa_east_1_E2Instances}\n\n'''
+                            'sa-east-1': sa_east_1_E2Instances}}\n'''
     with open(genFile, 'a+') as f:
-        f.write(heredoc_wdl(RegionKey))
-
-
-updateStaticEC2Instances()
+        f.write(heredoc_wdl(regionKey))
