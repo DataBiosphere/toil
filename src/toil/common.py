@@ -260,6 +260,7 @@ class Config(object):
         setOption("rescueJobsFrequency", int, iC(1))
 
         #Misc
+        setOption("maxLocalJobs", int)
         setOption("disableCaching")
         setOption("disableChaining")
         setOption("maxLogFileSize", h2b, iC(1))
