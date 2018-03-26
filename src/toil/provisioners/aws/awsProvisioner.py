@@ -131,7 +131,8 @@ class AWSProvisioner(AbstractProvisioner):
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
-            self.ec2_instance_types = fetchEC2InstanceList(regionNickname=config.zone[:-1], listSource=None, latest=config.useLatestNodeTypes)
+            self.ec2_instance_types = fetchEC2InstanceList(regionNickname=config.zone[:-1],
+                                                           latest=config.useLatestNodeTypes)
         else:
             self.ctx = None
             self.clusterName = None
@@ -141,7 +142,7 @@ class AWSProvisioner(AbstractProvisioner):
             self.tags = None
             self.masterPublicKey = None
             self.nodeStorage = None
-            self.ec2_instance_types = fetchEC2InstanceList()
+            self.ec2_instance_types = None
         self.subnetID = None
 
     def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
@@ -150,6 +151,10 @@ class AWSProvisioner(AbstractProvisioner):
             **kwargs):
         if self.config is None:
             self.nodeStorage = nodeStorage
+            self.ec2_instance_types = fetchEC2InstanceList()
+        else:
+            self.ec2_instance_types = fetchEC2InstanceList(regionNickname=self.config.zone[:-1],
+                                                           latest=self.config.useLatestNodeTypes)
         if userTags is None:
             userTags = {}
         ctx = self._buildContext(clusterName=clusterName, zone=zone)

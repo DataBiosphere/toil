@@ -14,6 +14,9 @@
 from __future__ import absolute_import
 import requests
 import json
+import datetime
+from toil.wdl.toilwdl import heredoc_wdl
+from toil.lib.generatedEC2Lists import ec2InstancesByRegion
 
 
 EC2Regions = {'us-west-1': 'US West (N. California)',
@@ -37,12 +40,13 @@ EC2Regions = {'us-west-1': 'US West (N. California)',
 
 class InstanceType(object):
     __slots__ = ('name', 'cores', 'memory', 'disks', 'disk_capacity', 'cost')
+
     def __init__(self, name, cores, memory, disks, disk_capacity, cost):
-        self.name = name # the API name of the instance type
+        self.name = name  # the API name of the instance type
         self.cores = cores  # the number of cores
-        self.memory = memory # RAM in GB
-        self.disks = disks # the number of ephemeral (aka 'instance store') volumes
-        self.disk_capacity = disk_capacity # the capacity of each ephemeral volume in GB
+        self.memory = memory  # RAM in GB
+        self.disks = disks  # the number of ephemeral (aka 'instance store') volumes
+        self.disk_capacity = disk_capacity  # the capacity of each ephemeral volume in GB
         self.cost = cost
 
     def __str__(self):
@@ -52,102 +56,21 @@ class InstanceType(object):
                 "Memory: {}\n"
                 "Disk Capacity: {}\n"
                 "Cost: {}\n".format(self.name,
-                                             self.cores,
-                                             self.disks,
-                                             self.memory,
-                                             self.disk_capacity,
-                                             self.cost))
+                                    self.cores,
+                                    self.disks,
+                                    self.memory,
+                                    self.disk_capacity,
+                                    self.cost))
 
     def __eq__(self, other):
         # exclude cost
         if (self.name == other.name and
-            self.cores == other.cores and
-            self.memory == other.memory and
-            self.disks == other.disks and
-            self.disk_capacity == other.disk_capacity):
+                    self.cores == other.cores and
+                    self.memory == other.memory and
+                    self.disks == other.disks and
+                    self.disk_capacity == other.disk_capacity):
             return True
         return False
-
-
-# backup
-defaultE2List = [
-    InstanceType(name='t2.nano', cores=1, memory=0.5, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='t2.micro', cores=1, memory=1, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='t2.small', cores=1, memory=2, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='t2.medium', cores=2, memory=4, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='t2.large', cores=2, memory=8, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='t2.xlarge', cores=4, memory=16, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='t2.2xlarge', cores=8, memory=32, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='m3.medium', cores=1, memory=3.75, disks=1, disk_capacity=4, cost=0),
-    InstanceType(name='m3.large', cores=2, memory=7.5, disks=1, disk_capacity=32, cost=0),
-    InstanceType(name='m3.xlarge', cores=4, memory=15, disks=2, disk_capacity=40, cost=0),
-    InstanceType(name='m3.2xlarge', cores=8, memory=30, disks=2, disk_capacity=80, cost=0),
-    InstanceType(name='m4.large', cores=2, memory=8, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='m4.xlarge', cores=4, memory=16, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='m4.2xlarge', cores=8, memory=32, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='m4.4xlarge', cores=16, memory=64, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='m4.10xlarge', cores=40, memory=160, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='m4.16xlarge', cores=64, memory=256, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='c4.large', cores=2, memory=3.75, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='c4.xlarge', cores=4, memory=7.5, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='c4.2xlarge', cores=8, memory=15, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='c4.4xlarge', cores=16, memory=30, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='c4.8xlarge', cores=36, memory=60, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='c3.large', cores=2, memory=3.75, disks=2, disk_capacity=16, cost=0),
-    InstanceType(name='c3.xlarge', cores=4, memory=7.5, disks=2, disk_capacity=40, cost=0),
-    InstanceType(name='c3.2xlarge', cores=8, memory=15, disks=2, disk_capacity=80, cost=0),
-    InstanceType(name='c3.4xlarge', cores=16, memory=30, disks=2, disk_capacity=160, cost=0),
-    InstanceType(name='c3.8xlarge', cores=32, memory=60, disks=2, disk_capacity=320, cost=0),
-    InstanceType(name='p2.xlarge', cores=4, memory=61, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='p2.8xlarge', cores=32, memory=488, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='p2.16xlarge', cores=64, memory=732, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='g3.4xlarge', cores=16, memory=122, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='g3.8xlarge', cores=32, memory=244, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='g3.16xlarge', cores=64, memory=488, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='g2.2xlarge', cores=8, memory=15, disks=1, disk_capacity=60, cost=0),
-    InstanceType(name='g2.8xlarge', cores=32, memory=60, disks=2, disk_capacity=120, cost=0),
-    InstanceType(name='x1.16large', cores=64, memory=976, disks=1, disk_capacity=1920, cost=0),
-    InstanceType(name='x1.32large', cores=128, memory=1952, disks=2, disk_capacity=1920, cost=0),
-    InstanceType(name='x1e.32large', cores=128, memory=3904, disks=2, disk_capacity=1920, cost=0),
-    InstanceType(name='r3.large', cores=2, memory=15, disks=1, disk_capacity=32, cost=0),
-    InstanceType(name='r3.xlarge', cores=4, memory=30.5, disks=1, disk_capacity=80, cost=0),
-    InstanceType(name='r3.2xlarge', cores=8, memory=61, disks=1, disk_capacity=160, cost=0),
-    InstanceType(name='r3.4xlarge', cores=16, memory=122, disks=1, disk_capacity=320, cost=0),
-    InstanceType(name='r3.8xlarge', cores=32, memory=244, disks=2, disk_capacity=320, cost=0),
-    InstanceType(name='r4.large', cores=2, memory=15, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='r4.xlarge', cores=4, memory=30.5, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='r4.2xlarge', cores=8, memory=61, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='r4.4xlarge', cores=16, memory=122, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='r4.8xlarge', cores=32, memory=244, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='r4.16xlarge', cores=64, memory=488, disks=0, disk_capacity=0, cost=0),
-    InstanceType(name='i2.xlarge', cores=4, memory=30.5, disks=1, disk_capacity=800, cost=0),
-    InstanceType(name='i2.2xlarge', cores=8, memory=61, disks=2, disk_capacity=800, cost=0),
-    InstanceType(name='i2.4xlarge', cores=16, memory=122, disks=4, disk_capacity=800, cost=0),
-    InstanceType(name='i2.8xlarge', cores=32, memory=244, disks=8, disk_capacity=800, cost=0),
-    InstanceType(name='i3.large', cores=2, memory=15.25, disks=1, disk_capacity=475, cost=0),
-    InstanceType(name='i3.xlarge', cores=4, memory=30.5, disks=1, disk_capacity=950, cost=0),
-    InstanceType(name='i3.2xlarge', cores=8, memory=61, disks=1, disk_capacity=1900, cost=0),
-    InstanceType(name='i3.4xlarge', cores=16, memory=122, disks=2, disk_capacity=1900, cost=0),
-    InstanceType(name='i3.8xlarge', cores=32, memory=244, disks=4, disk_capacity=1900, cost=0),
-    InstanceType(name='i3.16xlarge', cores=64, memory=488, disks=8, disk_capacity=1900, cost=0),
-    InstanceType(name='d2.xlarge', cores=4, memory=30.5, disks=3, disk_capacity=2000, cost=0),
-    InstanceType(name='d2.2xlarge', cores=8, memory=61, disks=6, disk_capacity=2000, cost=0),
-    InstanceType(name='d2.4xlarge', cores=16, memory=122, disks=12, disk_capacity=2000, cost=0),
-    InstanceType(name='d2.8xlarge', cores=36, memory=244, disks=24, disk_capacity=2000, cost=0),
-    InstanceType(name='m1.small', cores=1, memory=1.7, disks=1, disk_capacity=160, cost=0),
-    InstanceType(name='m1.medium', cores=1, memory=3.75, disks=1, disk_capacity=410, cost=0),
-    InstanceType(name='m1.large', cores=2, memory=7.5, disks=2, disk_capacity=420, cost=0),
-    InstanceType(name='m1.xlarge', cores=4, memory=15, disks=4, disk_capacity=420, cost=0),
-    InstanceType(name='c1.medium', cores=2, memory=1.7, disks=1, disk_capacity=350, cost=0),
-    InstanceType(name='c1.xlarge', cores=8, memory=7, disks=4, disk_capacity=420, cost=0),
-    InstanceType(name='cc2.8xlarge', cores=32, memory=60.5, disks=4, disk_capacity=840, cost=0),
-    InstanceType(name='m2.xlarge', cores=2, memory=17.1, disks=1, disk_capacity=420, cost=0),
-    InstanceType(name='m2.2xlarge', cores=4, memory=34.2, disks=1, disk_capacity=850, cost=0),
-    InstanceType(name='m2.4xlarge', cores=8, memory=68.4, disks=2, disk_capacity=840, cost=0),
-    InstanceType(name='cr1.8xlarge', cores=32, memory=244, disks=2, disk_capacity=120, cost=0),
-    InstanceType(name='hi1.4xlarge', cores=16, memory=60.5, disks=2, disk_capacity=1024, cost=0),
-    InstanceType(name='hs1.8xlarge', cores=16, memory=117, disks=24, disk_capacity=2048, cost=0),
-    InstanceType(name='t1.micro', cores=1, memory=0.615, disks=0, disk_capacity=0, cost=0)]
 
 
 def is_number(s):
@@ -200,20 +123,21 @@ def parseMemory(memAttribute):
     """
     Returns EC2 'memory' string as a float.
 
-    Format should always be '#' GiB (example: '244 GiB').
+    Format should always be '#' GiB (example: '244 GiB' or '1,952 GiB').
+    Amazon loves to put commas in their numbers, so we have to accommodate that.
     If the syntax ever changes, this will raise.
 
     :param memAttribute: EC2 JSON memory param string.
     :return: A float representing memory in GiB.
     """
-    mem = memAttribute.split()
+    mem = memAttribute.replace(',', '').split()
     if mem[1] == 'GiB':
         return float(mem[0])
     else:
         raise RuntimeError('EC2 JSON format has likely changed.  Error parsing memory.')
 
 
-def fetchEC2InstanceList(regionNickname=None, listSource=None, latest=False):
+def fetchEC2InstanceList(regionNickname=None, latest=False):
     """
     Fetches EC2 instances types by region programmatically using the AWS pricing API.
 
@@ -221,11 +145,10 @@ def fetchEC2InstanceList(regionNickname=None, listSource=None, latest=False):
 
     :return: A list of InstanceType objects.
     """
-    if listSource is None:
-        ec2Source = 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json'
+    ec2Source = 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json'
     if regionNickname is None:
         regionNickname = 'us-west-2'
-    region = EC2Regions[regionNickname] # JSON uses verbose region names as keys
+    region = EC2Regions[regionNickname]  # JSON uses verbose region names as keys
 
     ec2InstanceList = []
 
@@ -238,7 +161,7 @@ def fetchEC2InstanceList(regionNickname=None, listSource=None, latest=False):
     if ec2InstanceList:
         return dict((_.name, _) for _ in ec2InstanceList)
     else:
-        return dict((_.name, _) for _ in defaultE2List)
+        return dict((_.name, _) for _ in ec2InstancesByRegion[regionNickname])
 
 
 def parseEC2Json2List(jsontext, region):
@@ -267,7 +190,7 @@ def parseEC2Json2List(jsontext, region):
                                             disks=disks,
                                             disk_capacity=disk_capacity,
                                             cost=cost)
-                    assert cost >= 0 # seems good to check
+                    assert cost >= 0  # seems good to check
                     if instance not in ec2InstanceList:
                         ec2InstanceList.append(instance)
                     else:
@@ -308,3 +231,75 @@ def fetchE2Cost(productID, priceDict):
                     if v['priceDimensions'][verboseHashID]["unit"] == "Hrs":
                         return float(v['priceDimensions'][verboseHashID]['pricePerUnit']['USD'])
     raise RuntimeError('EC2 JSON format has likely changed.  No price found for this instance.')
+
+
+def updateStaticEC2Instances():
+    """
+    Generates a new python file of fetchable EC2 Instances by region with current prices and specs.
+
+    Takes a few (~3+) minutes to run (you'll need decent internet).
+
+    :return: Nothing.  Writes a file ('generatedEC2Lists_{date}.py') in the cwd.
+    """
+    genFile = 'generatedEC2Lists_{date}.py'.format(date=str(datetime.datetime.now()))
+
+    # copyright and imports
+    with open(genFile, 'a+') as f:
+        f.write(heredoc_wdl('''
+        # Copyright (C) 2015-{year} UCSC Computational Genomics Lab
+        #
+        # Licensed under the Apache License, Version 2.0 (the "License");
+        # you may not use this file except in compliance with the License.
+        # You may obtain a copy of the License at
+        #
+        #     http://www.apache.org/licenses/LICENSE-2.0
+        #
+        # Unless required by applicable law or agreed to in writing, software
+        # distributed under the License is distributed on an "AS IS" BASIS,
+        # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+        # See the License for the specific language governing permissions and
+        # limitations under the License.\n''',
+                            dictionary={'year': datetime.date.today().strftime("%Y")}))
+        f.write('from toil.lib.ec2nodes import InstanceType\n\n\n')
+
+    # generate appropriate instance list structures
+    instancetypeNums = {}
+    for k, v in EC2Regions.iteritems():
+        currentEC2List = fetchEC2InstanceList(regionNickname=k, latest=True)
+        instancetypeNums[str(k)] = len(currentEC2List)
+        genString = "# {num} Instance Types.  Generated {date}.\n".format(
+            num=str(len(currentEC2List)), date=str(datetime.datetime.now()))
+        genString = genString + k.replace('-', '_') + "_E2Instances = [\n"
+        for j, i in currentEC2List.iteritems():
+            x = "    InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, cost={cost})," \
+                "\n".format(name=i.name, cores=i.cores, memory=i.memory,
+                            disks=i.disks, disk_capacity=i.disk_capacity, cost=i.cost)
+            genString = genString + x
+        genString = genString + ']\n\n'
+        with open(genFile, 'a+') as f:
+            f.write(genString)
+
+    # append key for fetching at the end
+    RegionKey = '''
+    ec2InstancesByRegion = {'us-west-1': us_west_1_E2Instances,
+                            'us-west-2': us_west_2_E2Instances,
+                            'us-east-1': us_east_1_E2Instances,
+                            'us-east-2': us_east_2_E2Instances,
+                            'us-gov-west-1': us_gov_west_1_E2Instances,
+                            'ca-central-1': ca_central_1_E2Instances,
+                            'ap-northeast-1': ap_northeast_1_E2Instances,
+                            'ap-northeast-2': ap_northeast_2_E2Instances,
+                            'ap-northeast-3': ap_northeast_3_E2Instances,
+                            'ap-southeast-1': ap_southeast_1_E2Instances,
+                            'ap-southeast-2': ap_southeast_2_E2Instances,
+                            'ap-south-1': ap_south_1_E2Instances,
+                            'eu-west-1': eu_west_1_E2Instances,
+                            'eu-west-2': eu_west_2_E2Instances,
+                            'eu-west-3': eu_west_3_E2Instances,
+                            'eu-central-1': eu_central_1_E2Instances,
+                            'sa-east-1': sa_east_1_E2Instances}\n\n'''
+    with open(genFile, 'a+') as f:
+        f.write(heredoc_wdl(RegionKey))
+
+
+updateStaticEC2Instances()
