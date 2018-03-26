@@ -76,9 +76,10 @@ class BinPackedFit(object):
         """Pack a list of jobShapes into the fewest nodes reasonable. Can be run multiple times."""
         logger.debug('Running bin packing for node shapes %s and %s job(s).',
                      self.nodeShapes, len(jobShapes))
-        # Sorts preemptables first, then highest memory, highest cores, highest disk,
-        # and finally highest wallTime.
+        # Sort in descending order from largest to smallest. The FFD like-strategy will pack the
+        # jobs in order from longest to shortest.
         jobShapes.sort()
+        jobShapes.reverse()
         assert len(jobShapes) == 0 or jobShapes[0] >= jobShapes[-1]
         for jS in jobShapes:
             self.addJobShape(jS)
@@ -316,10 +317,7 @@ class ClusterScaler(object):
             raise RuntimeError('betaInertia (%f) must be between 0.0 and 0.9!' % self.betaInertia)
 
         self.nodeTypes = provisioner.nodeTypes
-        # Sorts preemptables first, then highest memory, highest cores, highest disk,
-        # and finally highest wallTime.  Then reverses this.
-        # TODO: Sort by cost
-        self.nodeShapes = sorted(provisioner.nodeShapes, reverse=True)
+        self.nodeShapes = provisioner.nodeShapes
 
         self.nodeShapeToType = dict(zip(self.nodeShapes, self.nodeTypes))
 
@@ -354,10 +352,7 @@ class ClusterScaler(object):
         self.minNodes = dict(zip(self.nodeShapes, minNodes))
         self.maxNodes = dict(zip(self.nodeShapes, maxNodes))
 
-        # Sorts preemptables first, then highest memory, highest cores, highest disk,
-        # and finally highest wallTime.  Then reverses this.
-        # TODO: Sort by cost.
-        self.nodeShapes.sort(reverse=True)
+        self.nodeShapes.sort()
 
         #Node shape to number of currently provisioned nodes
         totalNodes = defaultdict(int)
