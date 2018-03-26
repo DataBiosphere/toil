@@ -49,17 +49,17 @@ from toil.common import Config, defaultTargetTime
 logger = logging.getLogger(__name__)
 
 # simplified c4.8xlarge (preemptable)
+c4_8xlarge_preemptable = Shape(wallTime=3600,
+                               memory=h2b('60G'),
+                               cores=36,
+                               disk=h2b('100G'),
+                               preemptable=True)
+# simplified c4.8xlarge (non-preemptable)
 c4_8xlarge = Shape(wallTime=3600,
                    memory=h2b('60G'),
                    cores=36,
                    disk=h2b('100G'),
-                   preemptable=True)
-# simplified c4.8xlarge (non-preemptable)
-c4_8xlarge_nonpreemptable = Shape(wallTime=3600,
-                                  memory=h2b('60G'),
-                                  cores=36,
-                                  disk=h2b('100G'),
-                                  preemptable=False)
+                   preemptable=False)
 # simplified r3.8xlarge (non-preemptable)
 r3_8xlarge = Shape(wallTime=3600,
                    memory=h2b('260G'),
@@ -75,19 +75,19 @@ t2_micro = Shape(wallTime=3600,
 
 class BinPackingTest(ToilTest):
     def setUp(self):
-        self.nodeShapes = [c4_8xlarge, r3_8xlarge]
+        self.nodeShapes = [c4_8xlarge_preemptable, r3_8xlarge]
         self.bpf = BinPackedFit(self.nodeShapes)
 
     def testPackingOneShape(self):
         """Pack one shape and check that the resulting reservations look sane."""
-        self.bpf.nodeReservations[c4_8xlarge] = [NodeReservation(c4_8xlarge)]
+        self.bpf.nodeReservations[c4_8xlarge_preemptable] = [NodeReservation(c4_8xlarge_preemptable)]
         self.bpf.addJobShape(Shape(wallTime=1000,
                                    cores=2,
                                    memory=h2b('1G'),
                                    disk=h2b('2G'),
                                    preemptable=True))
         self.assertEqual(self.bpf.nodeReservations[r3_8xlarge], [])
-        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge]],
+        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge_preemptable]],
                          [[Shape(wallTime=1000,
                                  memory=h2b('59G'),
                                  cores=34,
@@ -104,13 +104,13 @@ class BinPackingTest(ToilTest):
         Test that sorting is correct: preemptable, then memory, then cores, then disk,
         then wallTime.
         """
-        # TODO: Rename intuitively.  All shapes are non-preempt, except for c4_8xlarge
-        shapeList = [c4_8xlarge, r3_8xlarge, c4_8xlarge_nonpreemptable, c4_8xlarge_nonpreemptable,
-                     t2_micro, t2_micro, c4_8xlarge_nonpreemptable, r3_8xlarge, r3_8xlarge, t2_micro]
+        shapeList = [c4_8xlarge_preemptable, r3_8xlarge, c4_8xlarge, c4_8xlarge,
+                     t2_micro, t2_micro, c4_8xlarge, r3_8xlarge, r3_8xlarge, t2_micro]
         shapeList.sort()
-        assert shapeList == [c4_8xlarge, r3_8xlarge, r3_8xlarge, r3_8xlarge,
-                             c4_8xlarge_nonpreemptable, c4_8xlarge_nonpreemptable,
-                             c4_8xlarge_nonpreemptable, t2_micro, t2_micro, t2_micro]
+        assert shapeList == [c4_8xlarge_preemptable,
+                             t2_micro, t2_micro, t2_micro,
+                             c4_8xlarge, c4_8xlarge, c4_8xlarge,
+                             r3_8xlarge, r3_8xlarge, r3_8xlarge]
 
     def testAddingInitialNode(self):
         """Pack one shape when no nodes are available and confirm that we fit one node properly."""
@@ -119,7 +119,7 @@ class BinPackingTest(ToilTest):
                                    memory=h2b('1G'),
                                    disk=h2b('2G'),
                                    preemptable=True))
-        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge]],
+        self.assertEqual([x.shapes() for x in self.bpf.nodeReservations[c4_8xlarge_preemptable]],
                          [[Shape(wallTime=1000,
                                  memory=h2b('59G'),
                                  cores=34,
@@ -246,7 +246,7 @@ class BinPackingTest(ToilTest):
                                        disk=h2b('60G'),
                                        preemptable=False))
         # Hopefully we didn't assign just one node to cover all those jobs.
-        self.assertNotEqual(self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge: 0})
+        self.assertNotEqual(self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge_preemptable: 0})
 
 
 class ClusterScalerTest(ToilTest):
@@ -259,7 +259,7 @@ class ClusterScalerTest(ToilTest):
         self.provisioner = object()
         self.provisioner.nodeTypes = ['r3.8xlarge', 'c4.8xlarge']
         self.provisioner.nodeShapes = [r3_8xlarge,
-                                       c4_8xlarge]
+                                       c4_8xlarge_preemptable]
         self.provisioner.setStaticNodes = lambda _, __: None
         self.provisioner.retryPredicate = lambda _: False
 
@@ -286,7 +286,7 @@ class ClusterScalerTest(ToilTest):
                                 preemptable=False)] * 1000)
         estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
-        self.assertEqual(estimatedNodeCounts[c4_8xlarge], 3)
+        self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptable], 3)
 
     def testMinNodes(self):
         """
@@ -298,7 +298,7 @@ class ClusterScalerTest(ToilTest):
         jobShapes = []
         estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
-        self.assertEqual(estimatedNodeCounts[c4_8xlarge], 3)
+        self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptable], 3)
 
     def testPreemptableDeficitResponse(self):
         """
@@ -318,8 +318,8 @@ class ClusterScalerTest(ToilTest):
         # preemptableCompensation applies.
         self.config.nodeTypes = ['c4.8xlarge:0.6', 'c4.8xlarge']
         self.provisioner.nodeTypes = ['c4.8xlarge', 'c4.8xlarge']
-        self.provisioner.nodeShapes = [c4_8xlarge,
-                                       c4_8xlarge_nonpreemptable]
+        self.provisioner.nodeShapes = [c4_8xlarge_preemptable,
+                                       c4_8xlarge]
 
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # Simulate a situation where a previous run caused a
@@ -356,10 +356,10 @@ class ClusterScalerTest(ToilTest):
         # preemptableCompensation applies.
         self.config.nodeTypes = ['c4.8xlarge:0.6', 'c4.8xlarge']
         self.provisioner.nodeTypes = ['c4.8xlarge', 'c4.8xlarge']
-        self.provisioner.nodeShapes = [c4_8xlarge,
-                                       c4_8xlarge_nonpreemptable]
+        self.provisioner.nodeShapes = [c4_8xlarge_preemptable,
+                                       c4_8xlarge]
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
-        estimatedNodeCounts = {c4_8xlarge: 5, c4_8xlarge_nonpreemptable: 0}
+        estimatedNodeCounts = {c4_8xlarge_preemptable: 5, c4_8xlarge: 0}
         scaler.updateClusterSize(estimatedNodeCounts)
         self.assertEqual(scaler.preemptableNodeDeficit['c4.8xlarge'], 2)
         self.provisioner.addNodes.assert_called_once()
@@ -375,13 +375,13 @@ class ClusterScalerTest(ToilTest):
         self.config.betaInertia = 0.5
         scaler = ClusterScaler(self.provisioner, self.leader, self.config)
         # OK, smoothing things this much should get us 50% of the way to 100.
-        self.assertEqual(scaler.smoothEstimate(c4_8xlarge, 100), 50)
+        self.assertEqual(scaler.smoothEstimate(c4_8xlarge_preemptable, 100), 50)
         # Now we should be at 75%.
-        self.assertEqual(scaler.smoothEstimate(c4_8xlarge, 100), 75)
+        self.assertEqual(scaler.smoothEstimate(c4_8xlarge_preemptable, 100), 75)
         # We should eventually converge on our estimate as long as betaInertia is below 1.
         for _ in range(1000):
-            scaler.smoothEstimate(c4_8xlarge, 100)
-        self.assertEqual(scaler.smoothEstimate(c4_8xlarge, 100), 100)
+            scaler.smoothEstimate(c4_8xlarge_preemptable, 100)
+        self.assertEqual(scaler.smoothEstimate(c4_8xlarge_preemptable, 100), 100)
 
 
 class ScalerThreadTest(ToilTest):

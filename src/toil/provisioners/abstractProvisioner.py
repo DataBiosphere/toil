@@ -55,10 +55,10 @@ class Shape(object):
                 self.disk == other.disk and
                 self.preemptable == other.preemptable)
 
-    def __lt__(self, other):
-        if self.preemptable > other.preemptable:
+    def __gt__(self, other):
+        if self.preemptable < other.preemptable:
             return True
-        elif self.preemptable < other.preemptable:
+        elif self.preemptable > other.preemptable:
             return False
         elif self.memory > other.memory:
             return True
@@ -78,6 +78,19 @@ class Shape(object):
             return False
         else:
             return False
+
+    def __str__(self):
+        return "\nShape wallTime: %s\n" \
+               "Shape memory: %s\n" \
+               "Shape cores: %s\n" \
+               "Shape disk: %s\n" \
+               "Shape preemptable: %s\n" \
+               "\n" % \
+               (self.wallTime,
+                self.memory,
+                self.cores,
+                self.disk,
+                self.preemptable)
 
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """

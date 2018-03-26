@@ -66,7 +66,7 @@ class BinPackedFit(object):
               the jobs in jobShapes.
     """
     def __init__(self, nodeShapes, targetTime=defaultTargetTime):
-        self.nodeShapes = nodeShapes
+        self.nodeShapes = sorted(nodeShapes)
         self.targetTime = targetTime
 
         # {_Shape(wallTime=3600, memory=1073741824, cores=1, disk=8589934592, preemptable=False): []}
