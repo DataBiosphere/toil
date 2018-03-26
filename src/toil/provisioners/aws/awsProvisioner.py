@@ -151,8 +151,9 @@ class AWSProvisioner(AbstractProvisioner):
                       **kwargs):
         if self.config is None:
             self.nodeStorage = nodeStorage
+        if not self.ec2_instance_types and self.config is None:
             self.ec2_instance_types = fetchEC2InstanceDict()
-        else:
+        elif not self.ec2_instance_types:
             self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=self.config.zone[:-1],
                                                            latest=self.config.useLatestNodeTypes)
         if userTags is None:
