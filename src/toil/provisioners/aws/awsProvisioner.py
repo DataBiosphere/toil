@@ -111,7 +111,10 @@ class AWSProvisioner(AbstractProvisioner):
             self.leaderIP = self.instanceMetaData['local-ipv4']  # this is PRIVATE IP
             self.keyName = list(self.instanceMetaData['public-keys'].keys())[0]
             self.tags = self._getLeader(self.clusterName).tags
-            self.masterPublicKey = self._setSSH()
+            if config.noMasterPublicKey: 
+                self.masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
+            else:
+                self.masterPublicKey = self._setSSH()
             self.nodeStorage = config.nodeStorage
             spotBids = []
             self.nonPreemptableNodeTypes = []

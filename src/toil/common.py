@@ -99,7 +99,8 @@ class Config(object):
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
         self.metrics = False
-        
+        self.noMasterPublicKey = False
+
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxsize
         self.maxServiceJobs = sys.maxsize
@@ -236,6 +237,7 @@ class Config(object):
         if not 0.0 <= self.preemptableCompensation <= 1.0:
             raise Exception('--preemptableCompensation (%f) must be >= 0.0 and <= 1.0.' % self.preemptableCompensation)
         setOption("nodeStorage", int)
+        setOption("noMasterPublicKey")
 
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
@@ -304,6 +306,13 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil core options",
                              "Options to specify the location of the Toil workflow and turn on "
                              "stats collation about the performance of jobs.")
+
+    addOptionFn("--noMasterPublicKey", dest="noMasterPublicKey", action="store_true", default=None,
+                help="Do not create a master public key for the provisioner. "
+                     "This should be used when using autoscaling and "
+                     "running the pipeline from Dockstore (which calls cwl-runner), "
+                     "because cwl-runner locks the file system on the leader and "
+                     "creation of an ssh key is not possible.")
     addOptionFn('jobStore', type=str,
                 help="The location of the job store for the workflow. " + jobStoreLocatorHelp)
     addOptionFn("--workDir", dest="workDir", default=None,
