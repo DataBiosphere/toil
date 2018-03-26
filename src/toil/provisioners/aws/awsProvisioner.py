@@ -106,7 +106,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         super(AWSProvisioner, self).__init__(config)
         if config:
-            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=config.zone[:-1],
+            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=getCurrentAWSZone()[:-1] if getCurrentAWSZone() else 'us-west-2',
                                                            latest=config.useLatestNodeTypes)
             self.instanceMetaData = get_instance_metadata()
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
@@ -154,7 +154,7 @@ class AWSProvisioner(AbstractProvisioner):
         if not self.ec2_instance_types and self.config is None:
             self.ec2_instance_types = fetchEC2InstanceDict()
         elif not self.ec2_instance_types:
-            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=self.config.zone[:-1],
+            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=getCurrentAWSZone()[:-1] if getCurrentAWSZone() else 'us-west-2',
                                                            latest=self.config.useLatestNodeTypes)
         if userTags is None:
             userTags = {}
@@ -229,7 +229,7 @@ class AWSProvisioner(AbstractProvisioner):
             if self.config is None:
                 self.ec2_instance_types = fetchEC2InstanceDict()
             else:
-                self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=self.config.zone[:-1],
+                self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=getCurrentAWSZone()[:-1] if getCurrentAWSZone() else 'us-west-2',
                                                                latest=self.config.useLatestNodeTypes)
             instanceType = self.ec2_instance_types[nodeType]
 
@@ -319,7 +319,7 @@ class AWSProvisioner(AbstractProvisioner):
             if self.config is None:
                 self.ec2_instance_types = fetchEC2InstanceDict()
             else:
-                self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=self.config.zone[:-1],
+                self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=getCurrentAWSZone()[:-1] if getCurrentAWSZone() else 'us-west-2',
                                                                latest=self.config.useLatestNodeTypes)
             instanceType = self.ec2_instance_types[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
