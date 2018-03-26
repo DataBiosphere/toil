@@ -220,12 +220,12 @@ class Config(object):
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
         setOption("linkImports")
-
         setOption("environment", parseSetEnv)
 
         #Autoscaling options
         setOption("provisioner")
         setOption("nodeTypes", parseStrList)
+        checkValidNodeTypes(self.provisioner, self.nodeTypes)
         setOption("nodeOptions")
         setOption("useLatestNodeTypes")
         setOption("minNodes", parseIntList)
@@ -581,6 +581,38 @@ def addOptions(parser, config=Config()):
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
+
+def checkValidNodeTypes(provisioner, nodeTypes):
+    """
+    Raises if an invalid nodeType is specified for aws, azure, or gce.
+    """
+    # check if a valid node type for aws
+    if provisioner == 'aws':
+        from toil.lib.ec2nodes import fetchEC2InstanceDict
+        try:
+            from toil.provisioners.aws import getCurrentAWSZone
+            currentZone = getCurrentAWSZone()[:-1] # adds something like 'a' or 'b' to the end
+        except ImportError:
+            currentZone = 'us-west-2'
+        ec2Instances = fetchEC2InstanceDict(regionNickname=currentZone)
+        for nodeType in nodeTypes:
+            try:
+                ec2Instances[nodeType]
+            except KeyError:
+                raise KeyError('Invalid nodeType specified for AWS in this region.')
+    # Only checks if aws nodeType specified for gce/azure atm.
+    # TODO: get gce/azure nodeType list and check against it
+    if provisioner == 'gce' or provisioner == 'azure':
+        from toil.lib.ec2nodes import fetchEC2InstanceDict
+        ec2Instances = fetchEC2InstanceDict()
+        for nodeType in nodeTypes:
+            try:
+                ec2Instances[nodeType]
+                raise RuntimeError("It looks like you've specified an AWS nodeType with the"
+                                   "{} provisioner.  Please specify nodeTypes for {}."
+                                   "".format(provisioner, provisioner))
+            except KeyError:
+                pass
 
 def getNodeID(extraIDFiles=None):
     """
