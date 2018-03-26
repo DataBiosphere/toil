@@ -16,7 +16,6 @@ import requests
 import json
 import datetime
 from toil.wdl.toilwdl import heredoc_wdl
-from toil.lib.generatedEC2Lists import ec2InstancesByRegion
 
 EC2Regions = {'us-west-1': 'US West (N. California)',
               'us-west-2': 'US West (Oregon)',
@@ -162,7 +161,8 @@ def fetchEC2InstanceDict(regionNickname=None, latest=False):
     if ec2InstanceList:
         return dict((_.name, _) for _ in ec2InstanceList)
     else:
-        return dict((_.name, _) for _ in ec2InstancesByRegion[regionNickname])
+        from toil.lib import generatedEC2Lists as defaultEC2
+        return dict((_.name, _) for _ in defaultEC2.ec2InstancesByRegion[regionNickname])
 
 
 def parseEC2Json2List(jsontext, region):
@@ -198,7 +198,6 @@ def parseEC2Json2List(jsontext, region):
                         raise RuntimeError('EC2 JSON format has likely changed.  '
                                            'Duplicate instances found.')
     return ec2InstanceList
-
 
 def fetchE2Cost(productID, priceDict):
     """

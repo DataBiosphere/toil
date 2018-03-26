@@ -14,7 +14,6 @@
 from __future__ import absolute_import
 from toil.lib.ec2nodes import InstanceType
 
-
 # 60 Instance Types.  Generated 2018-03-25 19:05:18.705791.
 ap_south_1_E2Instances = [
     InstanceType(name='c4.2xlarge', cores=8, memory=15.0, disks=0, disk_capacity=0, cost=0.4),
