@@ -16,8 +16,7 @@ import requests
 import json
 import datetime
 from toil.wdl.toilwdl import heredoc_wdl
-# from toil.lib.generatedEC2Lists import ec2InstancesByRegion
-ec2InstancesByRegion = 1
+from toil.lib.generatedEC2Lists import ec2InstancesByRegion
 
 EC2Regions = {'us-west-1': 'US West (N. California)',
               'us-west-2': 'US West (Oregon)',
