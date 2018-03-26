@@ -106,6 +106,8 @@ class AWSProvisioner(AbstractProvisioner):
         """
         super(AWSProvisioner, self).__init__(config)
         if config:
+            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=config.zone[:-1],
+                                                           latest=config.useLatestNodeTypes)
             self.instanceMetaData = get_instance_metadata()
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
             self.ctx = self._buildContext(clusterName=self.clusterName)
@@ -131,9 +133,8 @@ class AWSProvisioner(AbstractProvisioner):
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
-            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=config.zone[:-1],
-                                                           latest=config.useLatestNodeTypes)
         else:
+            self.ec2_instance_types = None
             self.ctx = None
             self.clusterName = None
             self.instanceMetaData = None
@@ -142,13 +143,12 @@ class AWSProvisioner(AbstractProvisioner):
             self.tags = None
             self.masterPublicKey = None
             self.nodeStorage = None
-            self.ec2_instance_types = None
         self.subnetID = None
 
     def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
-            clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None,
-            vpcSubnet=None, leaderStorage=50, nodeStorage=50,
-            **kwargs):
+                      clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None,
+                      vpcSubnet=None, leaderStorage=50, nodeStorage=50,
+                      **kwargs):
         if self.config is None:
             self.nodeStorage = nodeStorage
             self.ec2_instance_types = fetchEC2InstanceDict()
@@ -757,7 +757,7 @@ class AWSProvisioner(AbstractProvisioner):
         profile_arn = profile.arn
 
         if len(profile.roles) > 1:
-                raise RuntimeError('Did not expect profile to contain more than one role')
+            raise RuntimeError('Did not expect profile to contain more than one role')
         elif len(profile.roles) == 1:
             # this should be profile.roles[0].role_name
             if profile.roles.member.role_name == iamRoleName:
