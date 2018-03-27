@@ -587,6 +587,8 @@ def checkValidNodeTypes(provisioner, nodeTypes):
     Raises if an invalid nodeType is specified for aws, azure, or gce.
     """
     # check if a valid node type for aws
+    if not nodeTypes:
+        return
     if provisioner == 'aws':
         from toil.lib.ec2nodes import fetchEC2InstanceDict
         try:
