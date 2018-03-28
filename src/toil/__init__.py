@@ -97,7 +97,7 @@ def physicalDisk(config, toilWorkflowDir=None):
     return diskStats.f_frsize * diskStats.f_bavail
 
 
-def applianceSelf():
+def applianceSelf(forceDockerAppliance=False):
     """
     Returns the fully qualified name of the Docker image to start Toil appliance containers from.
     The result is determined by the current version of Toil and three environment variables:
@@ -163,13 +163,6 @@ def checkDockerImageExists(appliance):
     appliance = appliance.lower()
     tag = appliance.split(':')[-1]
     registry_name = appliance[:-(len(':' + tag))] # remove only the tag
-
-    # lever to override the check for power users
-    if registry_name.startswith('[override]'):
-        log.warn("Overriding hosted image check.  The image: %s may be unsupported.  If in using "
-                 "launch-cluster you experience a timeout, you may want to check your image."
-                 "" % registry_name + ':' + tag)
-        return registry_name[len('[override]'):] + ':' + tag
     if currentCommit in appliance:
         return appliance
     # docker repo syntax sanity checks
@@ -180,77 +173,89 @@ def checkDockerImageExists(appliance):
     elif registry_name[0] == '-':
         raise ImageNotFound("Docker images cannot begin with '-': %s"
                             "" % registry_name + ':' + tag)
-    # check quay.io
-    elif 'quay.io/' in registry_name:
-        return requestCheckQuayIo(registry_name=registry_name, tag=tag)
+    # check if a valid io host is specified
+    elif '.io/' in registry_name and 'docker.io/' not in registry_name:
+        return requestCheckRegularIo(registry_name=registry_name, tag=tag)
     # otherwise check docker.io
     else:
         return requestCheckDockerIo(registry_name=registry_name, tag=tag)
 
 
-def requestCheckQuayIo(registry_name, tag):
+def requestCheckRegularIo(registryName, tag):
     """
-    Checks quay.io to see if an image exists using the requests library.
+    Checks to see if an image exists using the requests library.
 
-    URL is based on the docker v2 schema.
+    URL is based on the docker v2 schema described here:
+    https://docs.docker.com/registry/spec/manifest-v2-2/
 
-    :param str registry_name: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
+    This has the following format:
+    https://{websitehostname}.io/v2/{repo}/manifests/{tag}
+
+    Does not work with the official (docker.io) site, because they require an OAuth token, so a
+    separate check is done for docker.io images.
+
+    :param str registryName: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
-    # find initial position of 'quay.io/' so that '//', 'www.', etc. are removed
-    clip_position = registry_name.find('quay.io/')
-    # cut off 'quay.io/' itself too to get the path_name
-    path_name = registry_name[clip_position + len('quay.io/'):]
-    if path_name.endswith('/'):
-        path_name = path_name[:-1]
-    quay_url = 'https://quay.io/v2/{path_name}/manifests/{tag}'.format(path_name=path_name, tag=tag)
-    response = requests.head(quay_url)
+    # find initial position of '.io/'
+    clipPosition = registryName.find('.io/')
+    # split at '.io/' to get the path
+    splitHere = clipPosition + len('.io/')
+    webhostName = registryName[:splitHere]
+    pathName = registryName[splitHere:]
+    if pathName.endswith('/'):
+        pathName = pathName[:-1]
+    ioURL = 'https://{webhost}v2/{path_name}/manifests/{tag}' \
+              ''.format(path_name=pathName, webhost=webhostName, tag=tag)
+    response = requests.head(ioURL)
     if not response.ok:
-        raise ImageNotFound("TOIL_APPLIANCE_SELF only supports quay.io and official docker.io "
-                            "hosted images.  The image: %s is unsupported (or malformed).  Please "
-                            "supply a docker image with the format: 'quay.io/<repo_path>:<tag>' or "
-                            "'<repo_path>:<tag>'.  Examples: 'quay.io/ucsc_cgl/toil:latest', "
-                            "'ubuntu:latest', or 'broadinstitute/genomes-in-the-cloud:2.0.0'."
-                            "" % (registry_name + ':' + tag))
+        raise ImageNotFound("The docker image that TOIL_APPLIANCE_SELF specifies (%s) is "
+                            "unsupported (or malformed).  Please supply a docker image with the "
+                            "format: '<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
+                            "(for official docker.io images).  Examples: "
+                            "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
+                            "'broadinstitute/genomes-in-the-cloud:2.0.0'."
+                            "" % (registryName + ':' + tag))
     else:
-        return registry_name + ':' + tag
+        return registryName + ':' + tag
 
 
-def requestCheckDockerIo(registry_name, tag):
+def requestCheckDockerIo(registryName, tag):
     """
     Checks docker.io to see if an image exists using the requests library.
 
     URL is based on the docker v2 schema.  Requires that an access token be fetched first.
 
-    :param str registry_name: The url of a docker image's registry.  e.g. "ubuntu"
+    :param str registryName: The url of a docker image's registry.  e.g. "ubuntu"
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
-    path_name = registry_name
-    if path_name.endswith('/'):
-        path_name = path_name[:-1]
+    pathName = registryName
+    if pathName.endswith('/'):
+        pathName = pathName[:-1]
 
     # only official images like 'busybox' or 'ubuntu'
-    if '/' not in path_name:
-        path_name = 'library/' + path_name
+    if '/' not in pathName:
+        pathName = 'library/' + pathName
 
-    token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(repo=path_name)
-    requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=path_name, tag=tag)
+    token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(repo=pathName)
+    requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=pathName, tag=tag)
 
     token = requests.get(token_url)
-    json_token = token.json()
-    bearer = json_token["token"]
+    jsonToken = token.json()
+    bearer = jsonToken["token"]
     response = requests.head(requests_url, headers={'Authorization': 'Bearer {}'.format(bearer)})
     if not response.ok:
-        raise ImageNotFound("TOIL_APPLIANCE_SELF only supports quay.io and official docker.io "
-                            "hosted images.  The image: %s is unsupported (or malformed).  Please "
-                            "supply a docker image with the format: 'quay.io/<repo_path>:<tag>' or "
-                            "'<repo_path>:<tag>'.  Examples: 'quay.io/ucsc_cgl/toil:latest', "
-                            "'ubuntu:latest', or 'broadinstitute/genomes-in-the-cloud:2.0.0'."
-                            "" % (registry_name + ':' + tag))
+        raise ImageNotFound("The docker image that TOIL_APPLIANCE_SELF specifies (%s) is "
+                            "unsupported (or malformed).  Please supply a docker image with the "
+                            "format: '<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
+                            "(for official docker.io images).  Examples: "
+                            "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
+                            "'broadinstitute/genomes-in-the-cloud:2.0.0'."
+                            "" % (registryName + ':' + tag))
     else:
-        return registry_name + ':' + tag
+        return registryName + ':' + tag
 
 
 def logProcessContext(config):

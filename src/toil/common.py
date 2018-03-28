@@ -131,6 +131,7 @@ class Config(object):
         self.cseKey = None
         self.servicePollingInterval = 60
         self.useAsync = True
+        self.forceDockerAppliance = False
 
         #Debug options
         self.debugWorker = False
@@ -271,6 +272,7 @@ class Config(object):
         setOption("sseKey", checkFn=checkSse)
         setOption("cseKey", checkFn=checkSse)
         setOption("servicePollingInterval", float, fC(0.0))
+        setOption("forceDockerAppliance")
 
         #Debug options
         setOption("debugWorker")
@@ -502,7 +504,7 @@ def _addOptions(addGroupFn, config):
     #
     #Misc options
     #
-    addOptionFn = addGroupFn("toil miscellaneous options", "Miscellaneous options")
+    addOptionFn = addGroupFn("Toil Miscellaneous Options", "Miscellaneous Options")
     addOptionFn('--disableCaching', dest='disableCaching', action='store_true', default=True,
                 help='Disables caching in the file store. This flag must be set to use '
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
@@ -546,6 +548,10 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--servicePollingInterval", dest="servicePollingInterval", default=None,
                 help="Interval of time service jobs wait between polling for the existence"
                 " of the keep-alive flag (defailt=%s)" % config.servicePollingInterval)
+    addOptionFn('--forceDockerAppliance', dest='forceDockerAppliance', action='store_true',
+                default=False,
+                help='Disables sanity checking the existence of the docker image specified by '
+                'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
     #
     #Debug options
     #

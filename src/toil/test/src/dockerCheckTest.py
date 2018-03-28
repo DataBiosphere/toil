@@ -36,7 +36,7 @@ class dockerCheckTests(ToilTest):
         broad_repo = 'broadinstitute/genomes-in-the-cloud:2.0.0'
         assert checkDockerImageExists(broad_repo)
 
-    def testBroadDockerRepo(self):
+    def testBroadDockerRepoBadTag(self):
         """Bad tag.  This should raise."""
         broad_repo = 'broadinstitute/genomes-in-the-cloud:-----'
         with self.assertRaises(ImageNotFound):
@@ -47,16 +47,6 @@ class dockerCheckTests(ToilTest):
         nonexistent_repo = '------:-----'
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_repo)
-
-    def testNonexistentRepoOverride(self):
-        """Bad image, and overrides.  Should pass."""
-        nonexistent_repo = '[override]------:-----'
-        assert checkDockerImageExists(nonexistent_repo)
-
-    def testBroadDockerRepoOverride(self):
-        """Image exists, and overrides.  Should pass."""
-        broad_repo = '[override]broadinstitute/genomes-in-the-cloud:2.0.0'
-        assert checkDockerImageExists(broad_repo)
 
     def testToilQuayRepo(self):
         """Image exists.  Should pass."""
@@ -80,3 +70,14 @@ class dockerCheckTests(ToilTest):
         nonexistent_quay_repo = 'quay.io/ucsc_cgl/toil:---'
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_quay_repo)
+
+    def testGoogleRepo(self):
+        """Image exists.  Should pass."""
+        google_repo = 'gcr.io/google-containers/busybox:latest'
+        assert checkDockerImageExists(google_repo)
+
+    def testBadGoogleRepo(self):
+        """Bad repo and tag.  This should raise."""
+        nonexistent_google_repo = 'gcr.io/google-containers/--------:---'
+        with self.assertRaises(ImageNotFound):
+            checkDockerImageExists(nonexistent_google_repo)
