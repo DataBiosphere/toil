@@ -124,7 +124,10 @@ def applianceSelf(forceDockerAppliance=False):
                              envName='TOIL_APPLIANCE_SELF',
                              defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
 
-    return checkDockerImageExists(appliance=appliance)
+    if forceDockerAppliance:
+        return appliance
+    else:
+        return checkDockerImageExists(appliance=appliance)
 
 
 def lookupEnvVar(name, envName, defaultValue):
