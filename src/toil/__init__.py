@@ -150,7 +150,7 @@ def lookupEnvVar(name, envName, defaultValue):
 
 def checkDockerImageExists(appliance):
     """
-    Attempts to check a url registry_name for the existence of a docker image with a given tag.
+    Attempts to check a url registryName for the existence of a docker image with a given tag.
 
     :param str appliance: The url of a docker image's registry (with a tag) of the form:
                           'quay.io/<repo_path>:<tag>' or '<repo_path>:<tag>'.
@@ -162,23 +162,23 @@ def checkDockerImageExists(appliance):
     """
     appliance = appliance.lower()
     tag = appliance.split(':')[-1]
-    registry_name = appliance[:-(len(':' + tag))] # remove only the tag
+    registryName = appliance[:-(len(':' + tag))] # remove only the tag
     if currentCommit in appliance:
         return appliance
     # docker repo syntax sanity checks
-    elif '://' in registry_name:
+    elif '://' in registryName:
         raise ImageNotFound("Docker images cannot contain a schema (such as '://'): %s"
-                            "" % registry_name + ':' + tag)
+                            "" % registryName + ':' + tag)
     # docker repo syntax sanity checks
-    elif registry_name[0] == '-':
+    elif registryName[0] == '-':
         raise ImageNotFound("Docker images cannot begin with '-': %s"
-                            "" % registry_name + ':' + tag)
+                            "" % registryName + ':' + tag)
     # check if a valid io host is specified
-    elif '.io/' in registry_name and 'docker.io/' not in registry_name:
-        return requestCheckRegularIo(registry_name=registry_name, tag=tag)
+    elif '.io/' in registryName and 'docker.io/' not in registryName:
+        return requestCheckRegularIo(registryName=registryName, tag=tag)
     # otherwise check docker.io
     else:
-        return requestCheckDockerIo(registry_name=registry_name, tag=tag)
+        return requestCheckDockerIo(registryName=registryName, tag=tag)
 
 
 def requestCheckRegularIo(registryName, tag):
@@ -206,8 +206,8 @@ def requestCheckRegularIo(registryName, tag):
     pathName = registryName[splitHere:]
     if pathName.endswith('/'):
         pathName = pathName[:-1]
-    ioURL = 'https://{webhost}v2/{path_name}/manifests/{tag}' \
-              ''.format(path_name=pathName, webhost=webhostName, tag=tag)
+    ioURL = 'https://{webhost}v2/{pathName}/manifests/{tag}' \
+              ''.format(pathName=pathName, webhost=webhostName, tag=tag)
     response = requests.head(ioURL)
     if not response.ok:
         raise ImageNotFound("The docker image that TOIL_APPLIANCE_SELF specifies (%s) is "
