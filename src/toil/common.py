@@ -583,6 +583,8 @@ def checkValidNodeTypes(provisioner, nodeTypes):
     :param nodeTypes: A list of node types.  Example: ['t2.micro', 't2.medium']
     :return: Nothing.  Raises if invalid nodeType.
     """
+    if not isinstance(nodeTypes, (list,)):
+        nodeTypes = [nodeTypes]
     # check if a valid node type for aws
     from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if not nodeTypes:
