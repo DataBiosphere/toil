@@ -125,24 +125,20 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         Set node types, shapes and spot bids. Preemptable nodes will have the form "type:spotBid".
         :param nodeTypes: A list of node types
         """
-        spotBids = []
-        nonPreemptableNodeTypes = []
-        preemptableNodeTypes = []
+        self._spotBidsMap = {}
+        self.nodeShapes = []
+        self.nodeTypes = []
         for nodeTypeStr in nodeTypes:
             nodeBidTuple = nodeTypeStr.split(":")
             if len(nodeBidTuple) == 2:
                 #This is a preemptable node type, with a spot bid
-                preemptableNodeTypes.append(nodeBidTuple[0])
-                spotBids.append(nodeBidTuple[1])
+                nodeType, bid = nodeBidTuple
+                self.nodeTypes.append(nodeType)
+                self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=True))
+                self._spotBidsMap[nodeType] = bid
             else:
-                nonPreemptableNodeTypes.append(nodeTypeStr)
-        preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True)
-                                      for nodeType in preemptableNodeTypes]
-        nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False)
-                                         for nodeType in nonPreemptableNodeTypes]
-        self.nodeShapes = nonPreemptableNodeShapes + preemptableNodeShapes
-        self.nodeTypes = nonPreemptableNodeTypes + preemptableNodeTypes
-        self._spotBidsMap = dict(zip(preemptableNodeTypes, spotBids))
+                self.nodeTypes.append(nodeTypeStr)
+                self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=False))
 
     @staticmethod
     def retryPredicate(e):
