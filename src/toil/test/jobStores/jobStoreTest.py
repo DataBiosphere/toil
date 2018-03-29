@@ -842,6 +842,29 @@ class AbstractEncryptedJobStoreTest(object):
             config.cseKey = cseKeyFile
             return config
 
+        def testEncrypted(self):
+            """
+            Create an encrypted file. Read it in encrypted mode then try with encryption off
+            to ensure that it fails.
+            """
+            phrase = 'This file is encrypted.'
+            fileName = 'foo'
+            with self.master.writeSharedFileStream(fileName, isProtected=True) as f:
+                f.write(phrase)
+            with self.master.readSharedFileStream(fileName) as f:
+                self.assertEqual(phrase, f.read())
+
+            #disable encryption
+            self.master.config.sseKey = None
+            self.master.config.cseKey = None
+            try:
+                with self.master.readSharedFileStream(fileName) as f:
+                    self.assertEqual(phrase, f.read())
+            except AssertionError as e:
+                self.assertEqual("Content is encrypted but no key was provided.", e.message)
+            else:
+                self.fail("Read encryption content with encryption off.")
+
 
 class FileJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
@@ -1191,11 +1214,6 @@ class InvalidAzureJobStoreTest(ToilTest):
                           AzureJobStore,
                           'toiltest:a_b')
 
-
-class EncryptedFileJobStoreTest(FileJobStoreTest, AbstractEncryptedJobStoreTest.Test):
-    pass
-
-
 @needs_aws
 @needs_encryption
 @slow
@@ -1207,6 +1225,12 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Te
 @needs_encryption
 @slow
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
+    pass
+
+@needs_google
+@needs_encryption
+@slow
+class EncryptedGoogleJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
 
