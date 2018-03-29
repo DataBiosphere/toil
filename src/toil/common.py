@@ -90,7 +90,6 @@ class Config(object):
         #Autoscaling options
         self.provisioner = None
         self.nodeTypes = []
-        self.useLatestNodeTypes = None
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
@@ -227,7 +226,6 @@ class Config(object):
         setOption("nodeTypes", parseStrList)
         checkValidNodeTypes(self.provisioner, self.nodeTypes)
         setOption("nodeOptions")
-        setOption("useLatestNodeTypes")
         setOption("minNodes", parseIntList)
         setOption("maxNodes", parseIntList)
         setOption("alphaPacking", float)
@@ -379,11 +377,6 @@ def _addOptions(addGroupFn, config):
                       "preemptable nodes of that type will be preferred when creating "
                       "new nodes once the maximum number of preemptable-nodes has been"
                       "reached.")
-
-    addOptionFn('--useLatestNodeTypes', default=False,
-                help="Fetches the latest instance pricing and spec info, however, the file "
-                "is large (220Mb+ as of 3.24.2018) and must be downloaded.  Currently, only "
-                "EC2 is supported.  Default: False.")
 
     addOptionFn('--nodeOptions', default=None,
                 help="Options for provisioning the nodes. The syntax "
