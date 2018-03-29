@@ -108,9 +108,16 @@ Test Environment Variables
 | TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepareAWS`), which      |
 |                        | is required to run the AWS tests.                  |
 +------------------------+----------------------------------------------------+
-| TOIL_AZURE_KEYNAME     | An Azure account keyname (see                      |
+| TOIL_AZURE_KEYNAME     | An Azure storage account keyname (see              |
 |                        | :ref:`prepareAzure`),                              |
-|                        | which is required to run the AWS tests.            |
+|                        | which is required to run the Azure tests.          |
++------------------------+----------------------------------------------------+
+| TOIL_AZURE_ZONE        | The region in which to run the Azure tests.        |
++------------------------+----------------------------------------------------+
+| TOIL_SSH_KEYNAME       | The SSH key to use for tests.                      |
++------------------------+----------------------------------------------------+
+| PUBLIC_KEY_FILE        | For Azure provisioner tests, the path to the       |
+|                        | public key file if not ~/.ssh/id_rsa.pub           |
 +------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |
 |                        | (see :ref:`runningGCE`), which is required to      |
@@ -123,8 +130,8 @@ Test Environment Variables
 
 .. admonition:: Partial install and failing tests.
 
-    Some tests may fail with an ImportError if the required extras are not installed
-    (:ref:`building_from_source-ref`). Install Toil with all of the extras
+    Some tests may fail with an ImportError if the required extras are not installed. 
+    Install Toil with all of the extras
     do prevent such errors.
 
 .. _quaySetup:
@@ -201,7 +208,7 @@ Here is a general workflow (similar instructions apply when using Docker Hub):
 
    to automatically build a docker image that can now be uploaded to
    your personal `Quay`_ account. If you have not installed Toil source
-   code yet check out :ref:`building_from_source-ref`.
+   code yet see :ref:`buildFromSource`.
 
 3. If it's not already you will need Docker installed and need
    to `log into Quay`_. Also you will want to make sure that your Quay

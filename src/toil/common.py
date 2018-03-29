@@ -260,6 +260,7 @@ class Config(object):
         setOption("rescueJobsFrequency", int, iC(1))
 
         #Misc
+        setOption("maxLocalJobs", int)
         setOption("disableCaching")
         setOption("disableChaining")
         setOption("maxLogFileSize", h2b, iC(1))
@@ -363,9 +364,9 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['aws','gce'],
+    addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'azure', 'gce'],
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
-                     "'aws' or 'gce'. The default is %s." % config.provisioner)
+                     "'azure', 'gce', or 'aws'. The default is %s." % config.provisioner)
 
     addOptionFn('--nodeTypes', default=None,
                  help="List of node types separated by commas. The syntax for each node type "
@@ -796,6 +797,13 @@ class Toil(object):
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             enable_metadata_credential_caching()
             self._provisioner = AWSProvisioner(self.config)
+        elif self.config.provisioner == 'azure':
+            logger.info('Using Azure provisioner.')
+            try:
+                from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+            except ImportError:
+                raise RuntimeError('The Azure extra must be installed to use this provisioner')
+            self._provisioner = AzureProvisioner(self.config)
         elif self.config.provisioner == 'gce':
             logger.info('Using a gce provisioner.')
             try:

@@ -307,7 +307,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         super(BatchSystemLocalSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.localBatch = registry.batchSystemFactoryFor(
             registry.defaultBatchSystem())()(
-                config, maxCores, maxMemory, maxDisk)
+                config, config.maxLocalJobs, maxMemory, maxDisk)
 
     def handleLocalJob(self, jobNode):  # type: (JobNode) -> Optional[int]
         """

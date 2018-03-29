@@ -29,7 +29,7 @@ And create a virtual environment called ``venv`` in your home directory.::
 .. _pip: https://pip.readthedocs.io/en/latest/installing/
 
 If the user does not have root privileges, there are a few more steps, but one can download a specific virtualenv
-package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using::
+package directly, untar the file, create, and source the virtualenv (version 15.1.0 as an example) using: ::
 
     $ curl -O https://pypi.python.org/packages/d4/0c/9840c08189e030873387a73b90ada981885010dd9aea134d6de30cd24cb8/virtualenv-15.1.0.tar.gz
     $ tar xvfz virtualenv-15.1.0.tar.gz
@@ -53,7 +53,7 @@ Now you're ready to run :ref:`your first Toil workflow <quickstart>`!
 
 .. _extras:
 
-Installing Toil with extra features
+Installing Toil with Extra Features
 -----------------------------------
 
 .. _python-dev:
@@ -86,7 +86,7 @@ Installing Toil with extra features
 
 Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first
-install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run::
+install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run: ::
 
     $ pip install toil[aws,mesos,azure,google,encryption,cwl]
 
@@ -161,9 +161,9 @@ Here's what each extra provides:
 .. _Cryptography: https://cryptography.io/en/latest/installation/
 .. _Homebrew: http://brew.sh/
 
-.. _building_from_source-ref:
+.. _buildFromSource:
 
-Building from source
+Building from Source
 --------------------
 
 If developing with Toil, you will need to build from source. This allows changes you

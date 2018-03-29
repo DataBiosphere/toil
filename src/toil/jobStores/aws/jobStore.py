@@ -1284,7 +1284,7 @@ class AWSJobStore(AbstractJobStore):
                 try:
                     for upload in bucket.list_multipart_uploads():
                         upload.cancel_upload()
-                    for key in list(bucket.list_versions()):
+                    for key in bucket.list_versions():
                         bucket.delete_key(key.name, version_id=key.version_id)
                     bucket.delete()
                 except S3ResponseError as e:

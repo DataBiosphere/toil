@@ -18,6 +18,7 @@ import logging
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 from toil import applianceSelf
+from toil.jobStores.azureJobStore import credential_file_path
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,12 @@ def main():
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName', required=True,
-                        help="The name of the AWS or ssh key pair to include on the instance")
+                        help="On AWS, the name of the AWS key pair to include on the instance."
+                        " On Google/GCE, this is the ssh key pair."
+                        " On Azure, this will be used as the owner tag.")
+    parser.add_argument("--publicKeyFile", dest='publicKeyFile', default="~/.ssh/id_rsa.pub",
+                        help="On Azure, the file"
+                        " containing the key pairs (the first key pair will be used).")
     parser.add_argument("--boto", dest='botoPath',
                         help="The path to the boto credentials directory. This is transferred "
                         "to all nodes in order to access the AWS jobStore from non-AWS instances.")
@@ -78,6 +84,11 @@ def main():
                         help="Disables sanity checking the existence of the docker image specified "
                              "by TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for "
                              "autoscaling.")
+    parser.add_argument("--azureStorageCredentials", dest='azureStorageCredentials', type=str,
+                        default=credential_file_path,
+                        help="The location of the file containing the Azure storage credentials. If not specified,"
+                             " the default file is used with Azure provisioning. Use 'None' to disable"
+                             " the transfer of credentials.")
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
 
@@ -98,6 +109,12 @@ def main():
             logger.error('The aws extra must be installed to use this provisioner')
             raise
         provisioner = AWSProvisioner()
+    elif config.provisioner == 'azure':
+        try:
+            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+        except ImportError:
+            raise RuntimeError('The aws extra must be installed to use this provisioner')
+        provisioner = AzureProvisioner()
     elif config.provisioner == 'gce':
         logger.info('Using a gce provisioner.')
         try:
@@ -138,7 +155,7 @@ def main():
                               nodeTypes=nodeTypes,
                               preemptableNodeTypes=preemptableNodeTypes,
                               numWorkers=numNodes,
-                              numPreemptableWorkers = numPreemptableNodes,
+                              numPreemptableWorkers=numPreemptableNodes,
                               keyName=config.keyPairName,
                               botoPath=config.botoPath,
                               clusterName=config.clusterName,
@@ -147,4 +164,6 @@ def main():
                               zone=config.zone,
                               leaderStorage=config.leaderStorage,
                               nodeStorage=config.nodeStorage,
-                              vpcSubnet=config.vpcSubnet)
+                              vpcSubnet=config.vpcSubnet,
+                              publicKeyFile=config.publicKeyFile,
+                              azureStorageCredentials=config.azureStorageCredentials)

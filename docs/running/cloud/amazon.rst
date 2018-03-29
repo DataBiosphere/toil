@@ -30,104 +30,78 @@ during the computation of a workflow, first set up and configure an account with
 
 #. Only needed once, but AWS requires that users "subscribe" to use the `Container Linux by CoreOS AMI`_.  You will encounter errors if this is not done.
 
-#. Next, generate a key pair for AWS with the command (do NOT generate your key pair with the Amazon browser):
+#. Next, generate a key pair for AWS with the command (do NOT generate your key pair with the Amazon browser): ::
 
-::
+    $ ssh-keygen -t rsa
 
-        $ ssh-keygen -t rsa
+#. This should prompt you to save your key.  Please save it in: ::
 
-    This should prompt you to save your key.  Please save it in:
+    ~/.ssh/id_rsa
 
-::
+#. Now move this to where Ubuntu can see it as an authorized key: ::
 
-        ~/.ssh/id_rsa
+    $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+    $ eval `ssh-agent -s`
+    $ ssh-add
 
-    Now move this to where Ubuntu can see it as an authorized key:
+#. You'll also need to chmod your private key (good practice but also enforced by AWS): ::
 
-::
+    $ chmod 400 id_rsa
 
-        $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
-        $ eval `ssh-agent -s`
-        $ ssh-add
+#. Now you'll need to add the key to AWS via the browser.  For example, on us-west1, this address would accessible at: ::
 
-    You'll also need to chmod your private key (good practice but also enforced by AWS):
+    https://us-west-1.console.aws.amazon.com/ec2/v2/home?region=us-west-1#KeyPairs:sort=keyName
 
-::
-
-        $ chmod 400 id_rsa
-
-#. Now you'll need to add the key to AWS via the browser.  For example, on us-west1, this address would accessible at:
-
-::
-
-        https://us-west-1.console.aws.amazon.com/ec2/v2/home?region=us-west-1#KeyPairs:sort=keyName
-
-    Now click on the "Import Key Pair" button to add your key.
+#. Now click on the "Import Key Pair" button to add your key.
 
 .. image:: amazonaddkeypair.png
    :target: https://us-west-1.console.aws.amazon.com/ec2/v2/home?region=us-west-1#KeyPairs:sort=keyName
    :alt: Adding an Amazon Key Pair
 
-#. Next, you need to create an AWS access key.  First go to the IAM dashboard, again, for "us-west1", the example link would be here:
-
-::
+#. Next, you need to create an AWS access key.  First go to the IAM dashboard, again, for "us-west1", the example link would be here: ::
 
         https://console.aws.amazon.com/iam/home?region=us-west-1#/home
 
-    The directions (transcribed from: https://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html ) are now:
+#. The directions (transcribed from: https://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html ) are now:
 
     1. On the IAM Dashboard page, choose your account name in the navigation bar, and then choose My Security Credentials.
     2. Expand the Access keys (access key ID and secret access key) section.
     3. Choose Create New Access Key. Then choose Download Key File to save the access key ID and secret access key to a file on your computer. <strong><em>After you close the dialog box, you can't retrieve this secret access key again.
 
-#. Now you should have a newly generated "AWS Access Key ID" and "AWS Secret Access Key".  We can now install the AWS CLI and make sure that it has the proper credentials:
+#. Now you should have a newly generated "AWS Access Key ID" and "AWS Secret Access Key".  We can now install the AWS CLI and make sure that it has the proper credentials: ::
 
-::
+    $ pip install awscli --upgrade --user
 
-        $ pip install awscli --upgrade --user
+#. Now configure your AWS credentials with: ::
 
-#. Now configure your AWS credentials with:
+    $ aws configure
 
-::
+#. Add your "AWS Access Key ID" and "AWS Secret Access Key" from earlier and your region and output format: ::
 
-        $ aws configure
+    " AWS Access Key ID [****************Q65Q]: "
+    " AWS Secret Access Key [****************G0ys]: "
+    " Default region name [us-west-1]: "
+    " Default output format [json]: "
 
-    Add your "AWS Access Key ID" and "AWS Secret Access Key" from earlier and your region and output format:
+#. Toil also relies on boto, and you'll need to create a boto file containing your credentials as well.  To do this, run: ::
 
-::
+    $ nano ~/.boto
 
-        " AWS Access Key ID [****************Q65Q]: "
-        " AWS Secret Access Key [****************G0ys]: "
-        " Default region name [us-west-1]: "
-        " Default output format [json]: "
+#. Paste in the following (with your actual "AWS Access Key ID" and "AWS Secret Access Key"): ::
 
-#. Toil also relies on boto, and you'll need to create a boto file containing your credentials as well.  To do this, run:
+    [Credentials]
+    aws_access_key_id = ****************Q65Q
+    aws_secret_access_key = ****************G0ys
 
-::
+#. If not done already, install toil (example uses version 3.12.0, but we recommend the latest release): ::
 
-        $ nano ~/.boto
-
-    And paste in the following (with your actual "AWS Access Key ID" and "AWS Secret Access Key"):
-
-::
-
-        [Credentials]
-        aws_access_key_id = ****************Q65Q
-        aws_secret_access_key = ****************G0ys
-
-#. If not done already, install toil (example uses version 3.12.0, but we recommend the latest release):
-
-::
-
-        $ virtualenv venv
-        $ source venv/bin/activate
-        $ pip install toil[all]==3.12.0
+    $ virtualenv venv
+    $ source venv/bin/activate
+    $ pip install toil[all]==3.12.0
 
 #. Now that toil is installed and you are running a virtualenv, an example of launching a toil leader node would be
    (again, note that we set TOIL_APPLIANCE_SELF to toil version 3.12.0 in this example, but please set the version to
-   the installed version that you are using if you're using a different version):
-
-::
+   the installed version that you are using if you're using a different version): ::
 
         $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 toil launch-cluster clustername --leaderNodeType t2.medium --zone us-west-1a --keyPairName id_rsa
 
@@ -163,7 +137,7 @@ all you need to do is specify the prefix for the job store name.
 
 To run the sort example :ref:`sort example <sortExample>` with the AWS job store you would type ::
 
-	$ python sort.py aws:us-west-2:my-aws-sort-jobstore
+    $ python sort.py aws:us-west-2:my-aws-sort-jobstore
 
 .. _installProvisioner:
 
@@ -202,9 +176,7 @@ Details about Launching a Cluster in AWS
 ----------------------------------------
 
 Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example,
-to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run:
-
-::
+to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run: ::
 
     (venv) $ toil launch-cluster my-cluster --leaderNodeType t2.medium --zone us-west-2a --keyPairName <your-AWS-key-pair-name>
 
@@ -217,14 +189,15 @@ The leaderNodeType is an `EC2 instance type`_. This only affects the leader node
 
 .. _EC2 instance type: https://aws.amazon.com/ec2/instance-types/
 
-The ``--zone`` parameter specifies which EC2 availability
-zone to launch the cluster in. Alternatively, you can specify this option
-via the ``TOIL_AWS_ZONE`` environment variable. Note: the zone is different from an EC2 region. A region corresponds to
-a geographical area like ``us-west-2 (Oregon)``, and availability zones are partitions of this area like ``us-west-2a``.
+The ``--zone`` parameter specifies which EC2 availability zone to launch the cluster in.
+Alternatively, you can specify this option via the ``TOIL_AWS_ZONE`` environment variable.
+Note: the zone is different from an EC2 region. A region corresponds to a geographical area
+like ``us-west-2 (Oregon)``, and availability zones are partitions of this area like
+``us-west-2a``.
 
-For more information on options try::
+For more information on options try: ::
 
-        (venv) $ toil launch-cluster --help
+    (venv) $ toil launch-cluster --help
 
 .. _StaticProvisioning:
 
@@ -253,7 +226,7 @@ Now that our cluster is launched, we use the :ref:`rsyncCluster` utility to copy
 the workflow to the leader. For a simple workflow in a single file this might
 look like::
 
-        (venv) $ toil rsync-cluster -z us-west-2a my-cluster toil-workflow.py :/
+    (venv) $ toil rsync-cluster -z us-west-2a my-cluster toil-workflow.py :/
 
 .. note::
 
@@ -274,21 +247,23 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
 #. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`.
 
-#. Launch the leader node in AWS using the :ref:`launchCluster` command. ::
+#. Launch the leader node in AWS using the :ref:`launchCluster` command: ::
 
-        (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
+    (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2a
 
-#. Copy the ``sort.py`` script up to the leader node. ::
+#. Copy the ``sort.py`` script up to the leader node: ::
 
 	(venv) $ toil rsync-cluster <cluster-name> sort.py :/root
 
-#. Login to the leader node. ::
+#. Login to the leader node: ::
 
 	(venv) $ toil ssh-cluster <cluster-name>
 
-#. Run the script as an autoscaling workflow. ::
+#. Run the script as an autoscaling workflow: ::
 
 	$ python /root/sort.py aws:us-west-2:<my-jobstore-name> --provisioner aws --nodeTypes c3.large --maxNodes 2 --batchSystem mesos
+
+.. note::
 
     In this example, the autoscaling Toil code creates up to two instances of type `c3.large` and launches Mesos
     slave containers inside them. The containers are then available to run jobs defined by the `sort.py` script.
@@ -307,7 +282,7 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
 	$ head sortedFile.txt
 
-For more information on other autoscaling (and other) options have a look at :ref:`workflowOptions` and/or run::
+For more information on other autoscaling (and other) options have a look at :ref:`workflowOptions` and/or run: ::
 
     $ python my-toil-script.py --help
 
@@ -357,4 +332,3 @@ can also be used while running a workflow on a single machine. The dashboard use
 front end for displaying real-time plots, and Prometheus for tracking metrics exported by toil. In order to use the
 dashboard for a non-released toil version, you will have to build the containers locally with ``make docker``, since
 the prometheus, grafana, and mtail containers used in the dashboard are tied to a specific toil version.
-

@@ -6,6 +6,7 @@
 __pycache__
 .eggs/
 .cache/
+.idea/
 /test-report.xml
 /test-report-*.xml
 /venv/

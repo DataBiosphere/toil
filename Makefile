@@ -74,7 +74,7 @@ requires the TOIL_DOCKER_REGISTRY variable to be set to a value other than the d
 accidentally pushing to the official Docker registry for Toil.
 
 The TOIL_DOCKER_NAME environment variable can be set to customize the appliance image name that
-is created by the 'docker' target and pushed by the 'push_docker' target. The Toil team's
+is created by the 'docker' target and pushed by the 'push_docker' target. The Toil team\'s
 continuous integration system overrides this variable to avoid conflicts between concurrently
 executing builds for the same revision, e.g. toil-pr and toil-it.
 
@@ -299,7 +299,7 @@ check_docker_registry:
 check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
 	# https://github.com/BD2KGenomics/toil/issues/1503
-	! find . -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
+	! find src -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
 
 
 .PHONY: help \
