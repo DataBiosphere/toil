@@ -584,10 +584,10 @@ def checkValidNodeTypes(provisioner, nodeTypes):
     :return: Nothing.  Raises if invalid nodeType.
     """
     # check if a valid node type for aws
+    from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if not nodeTypes:
         return
     if provisioner == 'aws':
-        from toil.lib.generatedEC2Lists import E2Instances, regionDict
         try:
             from toil.provisioners.aws import getCurrentAWSZone
             currentZone = getCurrentAWSZone()[:-1] # adds something like 'a' or 'b' to the end
