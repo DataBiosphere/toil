@@ -585,31 +585,37 @@ def addOptions(parser, config=Config()):
 def checkValidNodeTypes(provisioner, nodeTypes):
     """
     Raises if an invalid nodeType is specified for aws, azure, or gce.
+
+    :param str provisioner: 'aws', 'gce', or 'azure' to specify which cloud provisioner used.
+    :param nodeTypes: A list of node types.  Example: ['t2.micro', 't2.medium']
+    :return: Nothing.  Raises if invalid nodeType.
     """
     # check if a valid node type for aws
     if not nodeTypes:
         return
     if provisioner == 'aws':
-        from toil.lib.ec2nodes import fetchEC2InstanceDict
+        from toil.lib.generatedEC2Lists import E2Instances, regionDict
         try:
             from toil.provisioners.aws import getCurrentAWSZone
             currentZone = getCurrentAWSZone()[:-1] # adds something like 'a' or 'b' to the end
         except ImportError:
-            currentZone = 'us-west-2'
-        ec2Instances = fetchEC2InstanceDict(regionNickname=currentZone)
+            # only check if AWS has an instance type with this name (in any region)
+            for nodeType in nodeTypes:
+                try:
+                    E2Instances[nodeType]
+                except KeyError:
+                    raise RuntimeError('Invalid nodeType (%s) specified for AWS.')
+                return
+        # check if instance type exists in this region
         for nodeType in nodeTypes:
-            try:
-                ec2Instances[nodeType]
-            except KeyError:
-                raise KeyError('Invalid nodeType specified for AWS in this region.')
+            if nodeType not in regionDict[currentZone]:
+                raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.'
+                                   '' % (nodeType, currentZone))
     # Only checks if aws nodeType specified for gce/azure atm.
-    # TODO: get gce/azure nodeType list and check against it
     if provisioner == 'gce' or provisioner == 'azure':
-        from toil.lib.ec2nodes import fetchEC2InstanceDict
-        ec2Instances = fetchEC2InstanceDict()
         for nodeType in nodeTypes:
             try:
-                ec2Instances[nodeType]
+                E2Instances[nodeType]
                 raise RuntimeError("It looks like you've specified an AWS nodeType with the"
                                    "{} provisioner.  Please specify nodeTypes for {}."
                                    "".format(provisioner, provisioner))

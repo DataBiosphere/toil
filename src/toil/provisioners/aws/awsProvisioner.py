@@ -32,8 +32,6 @@ from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
-from toil.lib.ec2nodes import fetchEC2InstanceDict
-
 from toil import applianceSelf
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
@@ -43,6 +41,7 @@ from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
 from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
                                Node, NoSuchClusterException)
+from toil.lib.generatedEC2Lists import E2Instances
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
@@ -106,8 +105,6 @@ class AWSProvisioner(AbstractProvisioner):
         """
         super(AWSProvisioner, self).__init__(config)
         if config:
-            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=getCurrentAWSZone()[:-1] if getCurrentAWSZone() else 'us-west-2',
-                                                           latest=config.useLatestNodeTypes)
             self.instanceMetaData = get_instance_metadata()
             self.clusterName = self._getClusterNameFromTags(self.instanceMetaData)
             self.ctx = self._buildContext(clusterName=self.clusterName)
@@ -134,7 +131,6 @@ class AWSProvisioner(AbstractProvisioner):
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
         else:
-            self.ec2_instance_types = None
             self.ctx = None
             self.clusterName = None
             self.instanceMetaData = None
@@ -151,16 +147,11 @@ class AWSProvisioner(AbstractProvisioner):
                       **kwargs):
         if self.config is None:
             self.nodeStorage = nodeStorage
-        if not self.ec2_instance_types and self.config is None:
-            self.ec2_instance_types = fetchEC2InstanceDict()
-        elif not self.ec2_instance_types:
-            self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=getCurrentAWSZone()[:-1] if getCurrentAWSZone() else 'us-west-2',
-                                                           latest=self.config.useLatestNodeTypes)
         if userTags is None:
             userTags = {}
         ctx = self._buildContext(clusterName=clusterName, zone=zone)
         profileARN = self._getProfileARN(ctx)
-        leaderInstanceType = self.ec2_instance_types[leaderNodeType]
+        leaderInstanceType = E2Instances[leaderNodeType]
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
         bdm = self._getBlockDeviceMapping(leaderInstanceType, rootVolSize=leaderStorage)
@@ -223,16 +214,7 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     def getNodeShape(self, nodeType, preemptable=False):
-        if self.ec2_instance_types:
-            instanceType = self.ec2_instance_types[nodeType]
-        else:
-            if self.config is None:
-                self.ec2_instance_types = fetchEC2InstanceDict()
-            else:
-                self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=getCurrentAWSZone()[:-1] if getCurrentAWSZone() else 'us-west-2',
-                                                               latest=self.config.useLatestNodeTypes)
-            instanceType = self.ec2_instance_types[nodeType]
-
+        instanceType = E2Instances[nodeType]
         disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
@@ -313,15 +295,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._terminateNodes(nodes, self.ctx)
 
     def addNodes(self, nodeType, numNodes, preemptable):
-        if self.ec2_instance_types:
-            instanceType = self.ec2_instance_types[nodeType]
-        else:
-            if self.config is None:
-                self.ec2_instance_types = fetchEC2InstanceDict()
-            else:
-                self.ec2_instance_types = fetchEC2InstanceDict(regionNickname=getCurrentAWSZone()[:-1] if getCurrentAWSZone() else 'us-west-2',
-                                                               latest=self.config.useLatestNodeTypes)
-            instanceType = self.ec2_instance_types[nodeType]
+        instanceType = E2Instances[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey

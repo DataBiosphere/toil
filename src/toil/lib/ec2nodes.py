@@ -13,9 +13,14 @@
 # limitations under the License.
 from __future__ import absolute_import
 import requests
+import os
 import json
 import datetime
+import logging
 from toil.wdl.toilwdl import heredoc_wdl
+
+logger = logging.getLogger( __name__ )
+
 
 EC2Regions = {'us-west-1': 'US West (N. California)',
               'us-west-2': 'US West (Oregon)',
@@ -37,15 +42,14 @@ EC2Regions = {'us-west-1': 'US West (N. California)',
 
 
 class InstanceType(object):
-    __slots__ = ('name', 'cores', 'memory', 'disks', 'disk_capacity', 'cost')
+    __slots__ = ('name', 'cores', 'memory', 'disks', 'disk_capacity')
 
-    def __init__(self, name, cores, memory, disks, disk_capacity, cost):
+    def __init__(self, name, cores, memory, disks, disk_capacity):
         self.name = name  # the API name of the instance type
         self.cores = cores  # the number of cores
         self.memory = memory  # RAM in GiB
         self.disks = disks  # the number of ephemeral (aka 'instance store') volumes
         self.disk_capacity = disk_capacity  # the capacity of each ephemeral volume in GiB
-        self.cost = cost # cost in USD per hour
 
     def __str__(self):
         return ("Type: {}\n"
@@ -53,25 +57,24 @@ class InstanceType(object):
                 "Disks: {}\n"
                 "Memory: {}\n"
                 "Disk Capacity: {}\n"
-                "Cost: {}\n".format(self.name,
-                                    self.cores,
-                                    self.disks,
-                                    self.memory,
-                                    self.disk_capacity,
-                                    self.cost))
+                "".format(
+                self.name,
+                self.cores,
+                self.disks,
+                self.memory,
+                self.disk_capacity))
 
     def __eq__(self, other):
-        # exclude cost
         if (self.name == other.name and
-                    self.cores == other.cores and
-                    self.memory == other.memory and
-                    self.disks == other.disks and
-                    self.disk_capacity == other.disk_capacity):
+            self.cores == other.cores and
+            self.memory == other.memory and
+            self.disks == other.disks and
+            self.disk_capacity == other.disk_capacity):
             return True
         return False
 
 
-def is_number(s):
+def isNumber(s):
     """
     Determines if a unicode string (that may include commas) is a number.
 
@@ -111,7 +114,7 @@ def parseStorage(storageData):
         return [0, 0]
     else:
         specs = storageData.strip().split()
-        if is_number(specs[0]) and specs[1] == 'x' and is_number(specs[2]):
+        if isNumber(specs[0]) and specs[1] == 'x' and isNumber(specs[2]):
             return float(specs[0].replace(',', '')), float(specs[2].replace(',', ''))
         else:
             raise RuntimeError('EC2 JSON format has likely changed.  Error parsing disk specs.')
@@ -135,7 +138,7 @@ def parseMemory(memAttribute):
         raise RuntimeError('EC2 JSON format has likely changed.  Error parsing memory.')
 
 
-def fetchEC2InstanceDict(regionNickname=None, latest=False):
+def fetchEC2InstanceDict(regionNickname=None):
     """
     Fetches EC2 instances types by region programmatically using the AWS pricing API.
 
@@ -152,11 +155,10 @@ def fetchEC2InstanceDict(regionNickname=None, latest=False):
 
     ec2InstanceList = []
 
-    if latest:
-        # summon the API to grab the latest instance types/prices/specs
-        response = requests.get(ec2Source)
-        if response.ok:
-            ec2InstanceList = parseEC2Json2List(jsontext=response.text, region=region)
+    # summon the API to grab the latest instance types/prices/specs
+    response = requests.get(ec2Source)
+    if response.ok:
+        ec2InstanceList = parseEC2Json2List(jsontext=response.text, region=region)
 
     if ec2InstanceList:
         return dict((_.name, _) for _ in ec2InstanceList)
@@ -184,53 +186,17 @@ def parseEC2Json2List(jsontext, region):
                 if v["attributes"]["operatingSystem"] == "Linux":
                     disks, disk_capacity = parseStorage(v["attributes"]["storage"])
                     memory = parseMemory(v["attributes"]["memory"])
-                    cost = fetchE2Cost(k, currentList["terms"]["OnDemand"])
                     instance = InstanceType(name=v["attributes"]["instanceType"],
                                             cores=v["attributes"]["vcpu"],
                                             memory=memory,
                                             disks=disks,
-                                            disk_capacity=disk_capacity,
-                                            cost=cost)
-                    assert cost >= 0  # seems good to check
+                                            disk_capacity=disk_capacity)
                     if instance not in ec2InstanceList:
                         ec2InstanceList.append(instance)
                     else:
                         raise RuntimeError('EC2 JSON format has likely changed.  '
                                            'Duplicate instances found.')
     return ec2InstanceList
-
-def fetchE2Cost(productID, priceDict):
-    """
-    Returns the current price of an EC2 instance in USD given an EC2 json dictionary.
-
-    Requires a unique key hash identifier matching an instance type from
-    the "products" section.
-
-    Example:
-
-      "terms" : { <----- Start of the entire Pricing Section.
-    "OnDemand" : {
-      "9ZEEN7WWWQKAG292" : {
-        "9ZEEN7WWWQKAG292.JRTCKXETXF" : {
-          "priceDimensions" : {
-            "9ZEEN7WWWQKAG292.JRTCKXETXF.6YS6EN2CT7" : {
-              "pricePerUnit" : {
-                "USD" : "12.2400000000"},
-              "unit": "Hrs"}},}}
-
-    :param str k: Unique hash key paired to an instance type.  Example: "9ZEEN7WWWQKAG292"
-    :param dict priceDict: A subsection of the EC2 JSON representing the pricing section ("terms").
-    :return:
-    """
-    for thisProduct in priceDict:
-        if productID == thisProduct:
-            for k, v in priceDict[thisProduct].iteritems():
-                # each verboseHashID has a different "unit" of price
-                for verboseHashID in v['priceDimensions']:
-                    # only fetch hourly rates
-                    if v['priceDimensions'][verboseHashID]["unit"] == "Hrs":
-                        return float(v['priceDimensions'][verboseHashID]['pricePerUnit']['USD'])
-    raise RuntimeError('EC2 JSON format has likely changed.  No price found for this instance.')
 
 
 def updateStaticEC2Instances():
@@ -239,12 +205,23 @@ def updateStaticEC2Instances():
 
     Takes a few (~3+) minutes to run (you'll need decent internet).
 
-    :return: Nothing.  Writes a file ('generatedEC2Lists_{date}.py') in the cwd.
+    :return: Nothing.  Writes a new 'generatedEC2Lists.py' file.
     """
-    genFile = 'generatedEC2Lists_{date}.py'.format(date=str(datetime.datetime.now()))
+    logger.info("Updating Toil's EC2 lists to the most current version from AWS's bulk API.  "
+                "This may take a while, depending on your internet connection.")
+
+    dirname = os.path.dirname(__file__)
+    # the file Toil uses to get info about EC2 instance types
+    origFile = os.path.join(dirname, 'generatedEC2Lists.py')
+    assert os.path.exists(origFile)
+    # use a temporary file until all info is fetched
+    genFile = os.path.join(dirname, 'generatedEC2Lists_tmp.py')
+    assert not os.path.exists(genFile)
+    # will be used to save a copy of the original when finished
+    oldFile = os.path.join(dirname, 'generatedEC2Lists_old.py')
 
     # copyright and imports
-    with open(genFile, 'a+') as f:
+    with open(genFile, 'w') as f:
         f.write(heredoc_wdl('''
         # Copyright (C) 2015-{year} UCSC Computational Genomics Lab
         #
@@ -258,48 +235,56 @@ def updateStaticEC2Instances():
         # distributed under the License is distributed on an "AS IS" BASIS,
         # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
         # See the License for the specific language governing permissions and
-        # limitations under the License.\n''',
+        # limitations under the License.
+        from toil.lib.ec2nodes import InstanceType\n\n\n''',
                             dictionary={'year': datetime.date.today().strftime("%Y")}))
-        f.write('from toil.lib.ec2nodes import InstanceType\n\n\n')
 
-    # generate appropriate instance list structures
-    instancetypeNums = {}
-    for k, v in EC2Regions.iteritems():
-        currentEC2Dict = fetchEC2InstanceDict(regionNickname=k, latest=True)
-        currentEC2List = []
-        for y, x in currentEC2Dict.iteritems():
-            currentEC2List.append(x)
-        instancetypeNums[str(k)] = len(currentEC2List)
-        genString = "# {num} Instance Types.  Generated {date}.\n".format(
-                    num=str(len(currentEC2List)), date=str(datetime.datetime.now()))
-        genString = genString + k.replace('-', '_') + "_E2Instances = [\n"
-        sortedCurrentEC2List = sorted(currentEC2List, key=lambda x: x.name)
-        for i in sortedCurrentEC2List:
-            z = "    InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity}, cost={cost})," \
-                "\n".format(name=i.name, cores=i.cores, memory=i.memory, disks=i.disks, disk_capacity=i.disk_capacity, cost=i.cost)
-            genString = genString + z
-        genString = genString + ']\n\n'
-        with open(genFile, 'a+') as f:
-            f.write(genString)
+    currentEC2List = []
+    instancesByRegion = {}
+    for regionNickname, _ in EC2Regions.iteritems():
+        currentEC2Dict = fetchEC2InstanceDict(regionNickname=regionNickname)
+        for instanceName, instanceTypeObj in currentEC2Dict.iteritems():
+            if instanceTypeObj not in currentEC2List:
+                currentEC2List.append(instanceTypeObj)
+            instancesByRegion.setdefault(regionNickname, []).append(instanceName)
+
+    # write header of total EC2 instance type list
+    genString = "# {num} Instance Types.  Generated {date}.\n".format(
+                num=str(len(currentEC2List)), date=str(datetime.datetime.now()))
+    genString = genString + "E2Instances = {\n"
+    sortedCurrentEC2List = sorted(currentEC2List, key=lambda x: x.name)
+
+    # write the list of all instances types
+    for i in sortedCurrentEC2List:
+        z = "    '{name}': InstanceType(name='{name}', cores={cores}, memory={memory}, disks={disks}, disk_capacity={disk_capacity})," \
+            "\n".format(name=i.name, cores=i.cores, memory=i.memory, disks=i.disks, disk_capacity=i.disk_capacity)
+        genString = genString + z
+    genString = genString + '}\n\n'
+
+    genString = genString + 'regionDict = {\n'
+    for regionName, instanceList in instancesByRegion.iteritems():
+        genString = genString + "              '{regionName}': [".format(regionName=regionName)
+        for instance in sorted(instanceList):
+            genString = genString + "'{instance}', ".format(instance=instance)
+        if genString.endswith(', '):
+            genString = genString[:-2]
+        genString = genString + '],\n'
+    if genString.endswith(',\n'):
+        genString = genString[:-len(',\n')]
+    genString = genString + '}\n'
+    with open(genFile, 'a+') as f:
+        f.write(genString)
 
     # append key for fetching at the end
-    regionKey = '''
-    ec2InstancesByRegion = {{'us-west-1': us_west_1_E2Instances,
-                            'us-west-2': us_west_2_E2Instances,
-                            'us-east-1': us_east_1_E2Instances,
-                            'us-east-2': us_east_2_E2Instances,
-                            'us-gov-west-1': us_gov_west_1_E2Instances,
-                            'ca-central-1': ca_central_1_E2Instances,
-                            'ap-northeast-1': ap_northeast_1_E2Instances,
-                            'ap-northeast-2': ap_northeast_2_E2Instances,
-                            'ap-northeast-3': ap_northeast_3_E2Instances,
-                            'ap-southeast-1': ap_southeast_1_E2Instances,
-                            'ap-southeast-2': ap_southeast_2_E2Instances,
-                            'ap-south-1': ap_south_1_E2Instances,
-                            'eu-west-1': eu_west_1_E2Instances,
-                            'eu-west-2': eu_west_2_E2Instances,
-                            'eu-west-3': eu_west_3_E2Instances,
-                            'eu-central-1': eu_central_1_E2Instances,
-                            'sa-east-1': sa_east_1_E2Instances}}\n'''
+    regionKey = '\nec2InstancesByRegion = dict((region, [E2Instances[i] for i in instances]) for region, instances in regionDict.iteritems())\n'
+
     with open(genFile, 'a+') as f:
-        f.write(heredoc_wdl(regionKey))
+        f.write(regionKey)
+    # preserve the original file unless it already exists
+    if not os.path.exists(oldFile):
+        os.rename(origFile, oldFile)
+    # delete the original file if it's still there
+    if os.path.exists(origFile):
+        os.remove(origFile)
+    # replace the instance list with a current list
+    os.rename(genFile, origFile)
