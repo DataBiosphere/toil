@@ -596,14 +596,14 @@ def checkValidNodeTypes(provisioner, nodeTypes):
         except ImportError:
             # only check if AWS has an instance type with this name (in any region)
             for nodeType in nodeTypes:
-                if ':' in nodeType:
+                if nodeType and ':' in nodeType:
                     nodeType = nodeType.split(':')[0]
                 if nodeType not in E2Instances:
                     raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.'
                                        '' % (nodeType, currentZone))
         # check if instance type exists in this region
         for nodeType in nodeTypes:
-            if ':' in nodeType:
+            if nodeType and ':' in nodeType:
                 nodeType = nodeType.split(':')[0]
             if nodeType not in regionDict[currentZone]:
                 raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.'
@@ -611,7 +611,7 @@ def checkValidNodeTypes(provisioner, nodeTypes):
     # Only checks if aws nodeType specified for gce/azure atm.
     if provisioner == 'gce' or provisioner == 'azure':
         for nodeType in nodeTypes:
-            if ':' in nodeType:
+            if nodeType and ':' in nodeType:
                 nodeType = nodeType.split(':')[0]
             try:
                 E2Instances[nodeType]
