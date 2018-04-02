@@ -26,7 +26,7 @@ import sys
 import tempfile
 import time
 import uuid
-import subprocess
+from toil import subprocess
 import requests
 from argparse import ArgumentParser
 
@@ -38,7 +38,6 @@ except ImportError:
 # Python 3 compatibility imports
 from six import iteritems
 
-from bd2k.util.exceptions import require
 from bd2k.util.humanize import bytes2human
 from bd2k.util.retry import retry
 
@@ -94,7 +93,7 @@ class Config(object):
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
-        self.alphaPacking = 0.8
+        self.alphaPacking = 0.0
         self.betaInertia = 1.2
         self.scaleInterval = 30
         self.preemptableCompensation = 0.0
@@ -124,6 +123,7 @@ class Config(object):
 
         #Misc
         self.disableCaching = True
+        self.disableChaining = False
         self.maxLogFileSize = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
@@ -131,11 +131,15 @@ class Config(object):
         self.cseKey = None
         self.servicePollingInterval = 60
         self.useAsync = True
+        self.forceDockerAppliance = False
 
         #Debug options
         self.debugWorker = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
+
+        # CWL
+        self.cwl = False
 
     def setOptions(self, options):
         """
@@ -210,7 +214,7 @@ class Config(object):
         #Batch system options
         setOption("batchSystem")
         setBatchOptions(self, setOption)
-        setOption("disableHotDeployment")
+        setOption("disableAutoDeployment")
         setOption("scale", float, fC(0.0))
         setOption("mesosMasterAddress")
         setOption("parasolCommand")
@@ -230,9 +234,8 @@ class Config(object):
         setOption("scaleInterval", float)
         setOption("metrics")
         setOption("preemptableCompensation", float)
-        require(0.0 <= self.preemptableCompensation <= 1.0,
-                '--preemptableCompensation (%f) must be >= 0.0 and <= 1.0',
-                self.preemptableCompensation)
+        if not 0.0 <= self.preemptableCompensation <= 1.0:
+            raise Exception('--preemptableCompensation (%f) must be >= 0.0 and <= 1.0.' % self.preemptableCompensation)
         setOption("nodeStorage", int)
 
         # Parameters to limit service jobs / detect deadlocks
@@ -257,7 +260,9 @@ class Config(object):
         setOption("rescueJobsFrequency", int, iC(1))
 
         #Misc
+        setOption("maxLocalJobs", int)
         setOption("disableCaching")
+        setOption("disableChaining")
         setOption("maxLogFileSize", h2b, iC(1))
         setOption("writeLogs")
         setOption("writeLogsGzip")
@@ -268,6 +273,7 @@ class Config(object):
         setOption("sseKey", checkFn=checkSse)
         setOption("cseKey", checkFn=checkSse)
         setOption("servicePollingInterval", float, fC(0.0))
+        setOption("forceDockerAppliance")
 
         #Debug options
         setOption("debugWorker")
@@ -348,7 +354,7 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil options for specifying the batch system",
                              "Allows the specification of the batch system, and arguments to the "
                              "batch system/big batch system (see below).")
-    addBatchOptions(addOptionFn)
+    addBatchOptions(addOptionFn, config)
 
     #
     #Auto scaling options
@@ -358,9 +364,9 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['aws'],
+    addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'azure', 'gce'],
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
-                     "'cgcloud' or 'aws'. The default is %s." % config.provisioner)
+                     "'azure', 'gce', or 'aws'. The default is %s." % config.provisioner)
 
     addOptionFn('--nodeTypes', default=None,
                  help="List of node types separated by commas. The syntax for each node type "
@@ -422,23 +428,24 @@ def _addOptions(addGroupFn, config):
                 default=False, action="store_true",
                 help=("Enable the prometheus/grafana dashboard for monitoring CPU/RAM usage, queue size, "
                       "and issued jobs."))
-    
+
     #        
     # Parameters to limit service jobs / detect service deadlocks
     #
-    addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
-                             "Allows the specification of the maximum number of service jobs "
-                             "in a cluster. By keeping this limited "
-                             " we can avoid all the nodes being occupied with services, so causing a deadlock")
-    addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None,
-                help=("The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
-    addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
-                help=("The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
-    addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
-                help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
-    addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
-                help=("Time, in seconds, to wait before doing a scheduler query for job state. "
-                      "Return cached results if within the waiting period."))
+    if not config.cwl:
+        addOptionFn = addGroupFn("toil options for limiting the number of service jobs and detecting service deadlocks",
+                                 "Allows the specification of the maximum number of service jobs "
+                                 "in a cluster. By keeping this limited "
+                                 " we can avoid all the nodes being occupied with services, so causing a deadlock")
+        addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None,
+                    help=("The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
+        addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
+                    help=("The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
+        addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
+                    help=("The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
+        addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
+                    help=("Time, in seconds, to wait before doing a scheduler query for job state. "
+                          "Return cached results if within the waiting period."))
 
     #
     #Resource requirements
@@ -498,11 +505,14 @@ def _addOptions(addGroupFn, config):
     #
     #Misc options
     #
-    addOptionFn = addGroupFn("toil miscellaneous options", "Miscellaneous options")
+    addOptionFn = addGroupFn("Toil Miscellaneous Options", "Miscellaneous Options")
     addOptionFn('--disableCaching', dest='disableCaching', action='store_true', default=True,
                 help='Disables caching in the file store. This flag must be set to use '
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
                      'LSF, or Slurm')
+    addOptionFn('--disableChaining', dest='disableChaining', action='store_true', default=False,
+                help="Disables chaining of jobs (chaining uses one job's resource allocation "
+                "for its successor job if possible).")
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
                 help=("The maximum size of a job log file to keep (in bytes), log files "
                       "larger than this will be truncated to the last X bytes. Setting "
@@ -539,6 +549,10 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--servicePollingInterval", dest="servicePollingInterval", default=None,
                 help="Interval of time service jobs wait between polling for the existence"
                 " of the keep-alive flag (defailt=%s)" % config.servicePollingInterval)
+    addOptionFn('--forceDockerAppliance', dest='forceDockerAppliance', action='store_true',
+                default=False,
+                help='Disables sanity checking the existence of the docker image specified by '
+                'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
     #
     #Debug options
     #
@@ -720,7 +734,7 @@ class Toil(object):
                                        'Toil.restart() to resume it.')
 
         self._batchSystem = self.createBatchSystem(self.config)
-        self._setupHotDeployment(rootJob.getUserScript())
+        self._setupAutoDeployment(rootJob.getUserScript())
         try:
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
@@ -763,7 +777,7 @@ class Toil(object):
             return self._jobStore.getRootJobReturnValue()
 
         self._batchSystem = self.createBatchSystem(self.config)
-        self._setupHotDeployment()
+        self._setupAutoDeployment()
         try:
             self._setBatchSystemEnvVars()
             self._serialiseEnv()
@@ -783,6 +797,20 @@ class Toil(object):
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             enable_metadata_credential_caching()
             self._provisioner = AWSProvisioner(self.config)
+        elif self.config.provisioner == 'azure':
+            logger.info('Using Azure provisioner.')
+            try:
+                from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+            except ImportError:
+                raise RuntimeError('The Azure extra must be installed to use this provisioner')
+            self._provisioner = AzureProvisioner(self.config)
+        elif self.config.provisioner == 'gce':
+            logger.info('Using a gce provisioner.')
+            try:
+                from toil.provisioners.gceProvisioner import GCEProvisioner
+            except ImportError:
+                raise RuntimeError('The libCloud extra must be installed to use this provisioner')
+            self._provisioner = GCEProvisioner(self.config)
         else:
             # Command line parser shold have checked argument validity already
             assert False, self.config.provisioner
@@ -871,10 +899,10 @@ class Toil(object):
 
         return batchSystemClass(**kwargs)
 
-    def _setupHotDeployment(self, userScript=None):
+    def _setupAutoDeployment(self, userScript=None):
         """
         Determine the user script, save it to the job store and inject a reference to the saved
-        copy into the batch system such that it can hot-deploy the resource on the worker
+        copy into the batch system such that it can auto-deploy the resource on the worker
         nodes.
 
         :param toil.resource.ModuleDescriptor userScript: the module descriptor referencing the
@@ -883,11 +911,11 @@ class Toil(object):
         if userScript is not None:
             # This branch is hit when a workflow is being started
             if userScript.belongsToToil:
-                logger.info('User script %s belongs to Toil. No need to hot-deploy it.', userScript)
+                logger.info('User script %s belongs to Toil. No need to auto-deploy it.', userScript)
                 userScript = None
             else:
-                if (self._batchSystem.supportsHotDeployment() and
-                        not self.config.disableHotDeployment):
+                if (self._batchSystem.supportsAutoDeployment() and
+                        not self.config.disableAutoDeployment):
                     # Note that by saving the ModuleDescriptor, and not the Resource we allow for
                     # redeploying a potentially modified user script on workflow restarts.
                     with self._jobStore.writeSharedFileStream('userScript') as f:
@@ -895,7 +923,7 @@ class Toil(object):
                 else:
                     from toil.batchSystems.singleMachine import SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
-                        logger.warn('Batch system does not support hot-deployment. The user '
+                        logger.warn('Batch system does not support auto-deployment. The user '
                                     'script %s will have to be present at the same location on '
                                     'every worker.', userScript)
                     userScript = None
@@ -909,7 +937,7 @@ class Toil(object):
                 logger.info('User script neither set explicitly nor present in the job store.')
                 userScript = None
         if userScript is None:
-            logger.info('No user script to hot-deploy.')
+            logger.info('No user script to auto-deploy.')
         else:
             logger.debug('Saving user script %s as a resource', userScript)
             userScriptResource = userScript.saveAsResourceTo(self._jobStore)

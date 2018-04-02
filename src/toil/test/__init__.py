@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,16 +22,16 @@ import os
 import re
 import shutil
 import signal
-import subprocess
+from toil import subprocess
 import tempfile
 import threading
 import time
 import unittest
 import uuid
+import errno
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
-from subprocess import PIPE, Popen, CalledProcessError, check_output
 from textwrap import dedent
 from unittest.util import strclass
 
@@ -40,17 +40,29 @@ from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
 from bd2k.util import less_strict_bool, memoize
-from bd2k.util.files import mkdir_p
 from bd2k.util.iterables import concat
 from bd2k.util.processes import which
 from bd2k.util.threading import ExceptionalThread
 
+from toil import subprocess
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
 from future.utils import with_metaclass
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
+
+def mkdir_p(path):
+    """
+    The equivalent of mkdir -p
+    """
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
 
 
 class ToilTest(unittest.TestCase):
@@ -218,14 +230,14 @@ class ToilTest(unittest.TestCase):
         capture = kwargs.pop('capture', False)
         _input = kwargs.pop('input', None)
         if capture:
-            kwargs['stdout'] = PIPE
+            kwargs['stdout'] = subprocess.PIPE
         if _input is not None:
-            kwargs['stdin'] = PIPE
-        popen = Popen(args, **kwargs)
+            kwargs['stdin'] = subprocess.PIPE
+        popen = subprocess.Popen(args, **kwargs)
         stdout, stderr = popen.communicate(input=_input)
         assert stderr is None
         if popen.returncode != 0:
-            raise CalledProcessError(popen.returncode, args)
+            raise subprocess.CalledProcessError(popen.returncode, args)
         if capture:
             return stdout
 
@@ -261,7 +273,7 @@ def needs_rsync3(test_item):
     test_item = _mark_test('rsync', test_item)
     try:
         versionInfo = subprocess.check_output(['rsync', '--version'])
-    except CalledProcessError:
+    except subprocess.CalledProcessError:
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
     else:
         # version output looks like: 'rsync  version 2.6.9 ...'
@@ -351,11 +363,17 @@ def needs_azure(test_item):
     except:
         raise
     else:
+        # check for the credentials file
         from toil.jobStores.azureJobStore import credential_file_path
         full_credential_file_path = os.path.expanduser(credential_file_path)
         if not os.path.exists(full_credential_file_path):
-            return unittest.skip("Configure %s with the access key for the 'toiltest' storage "
-                                 "account." % credential_file_path)(test_item)
+            # no file, check for environment variables
+            try:
+                from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+                _fetchAzureAccountKey(keyName)
+            except:
+                 return unittest.skip("Configure %s with the access key for the '%s' storage "
+                                     "account." % (credential_file_path, keyName))(test_item)
         return test_item
 
 
@@ -438,6 +456,30 @@ def needs_htcondor(test_item):
         return test_item
 
 
+def needs_lsf(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if LSF
+    is installed.
+    """
+    test_item = _mark_test('lsf', test_item)
+    if next(which('bsub'), None):
+        return test_item
+    else:
+        return unittest.skip("Install LSF to include this test.")(test_item)
+
+
+def needs_docker(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    docker is installed.
+    """
+    test_item = _mark_test('docker', test_item)
+    if next(which('docker'), None):
+        return test_item
+    else:
+        return unittest.skip("Install docker to include this test.")(test_item)
+
+
 def needs_encryption(test_item):
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
@@ -481,8 +523,8 @@ def needs_appliance(test_item):
     if next(which('docker'), None):
         image = applianceSelf()
         try:
-            images = check_output(['docker', 'inspect', image])
-        except CalledProcessError:
+            images = subprocess.check_output(['docker', 'inspect', image])
+        except subprocess.CalledProcessError:
             images = []
         else:
             images = {i['Id'] for i in json.loads(images) if image in i['RepoTags']}
@@ -800,7 +842,7 @@ class ApplianceTestSupport(ToilTest):
                                    image,
                                    self._containerCommand()))
                 log.info('Running %r', args)
-                self.popen = Popen(args)
+                self.popen = subprocess.Popen(args)
             self.start()
             self.__wait_running()
             return self
@@ -827,7 +869,7 @@ class ApplianceTestSupport(ToilTest):
                                               '--format={{ .State.Running }}',
                                               self.containerName,
                                               capture=True).strip()
-                except CalledProcessError:
+                except subprocess.CalledProcessError:
                     pass
                 else:
                     if 'true' == running:

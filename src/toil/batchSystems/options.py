@@ -17,6 +17,7 @@ from .registry import batchSystemFactoryFor, defaultBatchSystem, uniqueNames
 
 import socket
 from contextlib import closing
+import multiprocessing
 
 def getPublicIP():
     """Get the IP that this machine uses to contact the internet.
@@ -38,27 +39,43 @@ def getPublicIP():
         # to provide a default argument
         return '127.0.0.1'
 
-def _parasolOptions(addOptionFn):
+
+def _parasolOptions(addOptionFn, config=None):
     addOptionFn("--parasolCommand", dest="parasolCommand", default=None,
                       help="The name or path of the parasol program. Will be looked up on PATH "
-                           "unless it starts with a slashdefault=%s" % 'parasol')
+                           "unless it starts with a slash. default=%s" % 'parasol')
     addOptionFn("--parasolMaxBatches", dest="parasolMaxBatches", default=None,
                 help="Maximum number of job batches the Parasol batch is allowed to create. One "
                      "batch is created for jobs with a a unique set of resource requirements. "
                      "default=%i" % 1000)
 
 
-def _singleMachineOptions(addOptionFn):
+def _singleMachineOptions(addOptionFn, config):
     addOptionFn("--scale", dest="scale", default=None,
-                help=("A scaling factor to change the value of all submitted tasks's submitted cores. "
-                      "Used in singleMachine batch system. default=%s" % 1))
-    addOptionFn("--linkImports", dest="linkImports", default=False, action='store_true',
-                help=("When using Toil's importFile function for staging, input files are copied to the job store. "
-                      "Specifying this option saves space by sym-linking imported files. As long as caching is "
-                      "enabled Toil will protect the file automatically by changing the permissions to read-only."))
+                help=("A scaling factor to change the value of all submitted "
+                      "tasks's submitted cores. Used in singleMachine batch "
+                      "system. default=%s" % 1))
+    if config.cwl:
+        addOptionFn(
+            "--noLinkImports", dest="linkImports", default=True,
+            action='store_false', help="When using a filesystem based job "
+            "store, CWL input files are by default symlinked in. "
+            "Specifying this option instead copies the files into the job "
+            "store, which may protect them from being modified externally. "
+            "When not specified and as long as caching is enabled, Toil will "
+            "protect the file automatically by changing the permissions to "
+            "read-only.")
+    else:
+        addOptionFn(
+            "--linkImports", dest="linkImports", default=False,
+            action='store_true', help="When using Toil's importFile function "
+            "for staging, input files are copied to the job store. Specifying "
+            "this option saves space by sym-linking imported files. As long "
+            "as caching is enabled Toil will protect the file "
+            "automatically by changing the permissions to read-only.")
 
 
-def _mesosOptions(addOptionFn):
+def _mesosOptions(addOptionFn, config=None):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP() + ':5050',
                 help=("The host and port of the Mesos master separated by colon. (default: %(default)s)"))
 
@@ -85,17 +102,30 @@ def setOptions(config, setOption):
     batchSystem.setOptions(setOption)
 
 
-def addOptions(addOptionFn):
+def addOptions(addOptionFn, config):
     addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
                 help=("The type of batch system to run the job(s) with, currently can be one "
                       "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
-    addOptionFn("--disableHotDeployment", dest="disableHotDeployment", action='store_true', default=None,
-                help=("Should hot-deployment of the user script be deactivated? If True, the user "
+    addOptionFn("--disableHotDeployment", dest="disableAutoDeployment",
+                action='store_true', default=None,
+                help=("Hot-deployment was renamed to auto-deployment.  Option now redirects to "
+                "--disableAutoDeployment.  Left in for backwards compatibility."))
+    addOptionFn("--disableAutoDeployment", dest="disableAutoDeployment",
+                action='store_true', default=None,
+                help=("Should auto-deployment of the user script be deactivated? If True, the user "
                       "script/package should be present at the same location on all workers. "
                       "default=false"))
+    localCores = multiprocessing.cpu_count()
+    addOptionFn("--maxLocalJobs", default=localCores,
+                help="For batch systems that support a local queue for "
+                "housekeeping jobs (Mesos, GridEngine, htcondor, lsf, slurm, "
+                "torque), the maximum number of these housekeeping jobs to "
+                "run on the local system. "
+                "The default (equal to the number of cores) is a maximum of "
+                "{} concurrent local housekeeping jobs.".format(localCores))
 
     for o in _options:
-        o(addOptionFn)
+        o(addOptionFn, config)
 
 def setDefaultOptions(config):
     """
@@ -103,9 +133,10 @@ def setDefaultOptions(config):
     object is not constructed from an Options object.
     """
     config.batchSystem = "singleMachine"
-    config.disableHotDeployment = False
+    config.disableAutoDeployment = False
     config.environment = {}
-    config.statePollingWait = 1 # seconds
+    config.statePollingWait = 1  # seconds
+    config.maxLocalJobs = multiprocessing.cpu_count()
 
     # single machine
     config.scale = 1

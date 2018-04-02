@@ -15,7 +15,8 @@
 from __future__ import absolute_import
 from builtins import object
 import sys
-from subprocess import check_call
+
+from toil import subprocess
 from toil.job import Job
 from toil.test import ToilTest, slow
 
@@ -55,7 +56,7 @@ class UserDefinedJobArgTypeTest(ToilTest):
     def _testFromMain(self):
         testMethodName = self.id().split('.')[-1]
         self.assertTrue(testMethodName.endswith('FromMain'))
-        check_call([sys.executable, '-m', self.__module__, testMethodName[:-8]])
+        subprocess.check_call([sys.executable, '-m', self.__module__, testMethodName[:-8]])
 
 
 class JobClass(Job):

@@ -43,7 +43,6 @@ from io import BytesIO
 # Python 3 compatibility imports
 from six import iteritems, string_types
 
-from bd2k.util.exceptions import require
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 
@@ -708,8 +707,8 @@ class Job(JobLikeObject):
 
         :param dict kwargs: The keyword arguments to the function
         """
-        require(self._fileStore is not None, 'A deferred function may only be registered with a '
-                                             'job while that job is running.')
+        if self._fileStore is None:
+            raise Exception('A deferred function may only be registered with a job while that job is running.')
         self._fileStore._registerDeferredFunction(DeferredFunction.create(function, *args, **kwargs))
 
 
@@ -762,7 +761,7 @@ class Job(JobLikeObject):
         @staticmethod
         def startToil(job, options):
             """
-            Deprecated by toil.common.Toil.run. Runs the toil workflow using the given options
+            Deprecated by toil.common.Toil.start. Runs the toil workflow using the given options
             (see Job.Runner.getDefaultOptions and Job.Runner.addToilOptions) starting with this
             job.
             :param toil.job.Job job: root job of the workflow

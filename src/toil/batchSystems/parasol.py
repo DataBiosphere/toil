@@ -22,7 +22,7 @@ import logging
 import os
 import re
 import sys
-import subprocess
+from toil import subprocess
 import tempfile
 import time
 from threading import Thread
@@ -51,7 +51,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         return False
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsAutoDeployment(cls):
         return False
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):

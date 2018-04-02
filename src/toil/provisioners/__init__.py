@@ -66,9 +66,16 @@ class Cluster(object):
     def __init__(self, clusterName, provisioner, zone=None):
         self.clusterName = clusterName
         self.zone = zone
+        self.provisionerType = provisioner
         if provisioner == 'aws':
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
             self.provisioner = AWSProvisioner
+        elif provisioner == 'azure':
+            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+            self.provisioner = AzureProvisioner
+        elif provisioner == 'gce':
+            from toil.provisioners.gceProvisioner import GCEProvisioner
+            self.provisioner = GCEProvisioner()
         else:
             assert False, "Invalid provisioner '%s'" % provisioner
 
@@ -77,13 +84,15 @@ class Cluster(object):
 
     def rsyncCluster(self, args, **kwargs):
         self.provisioner.rsyncLeader(self.clusterName, args, self.zone, **kwargs)
-        ctx = self.provisioner._buildContext(self.clusterName, zone=self.zone)
-        instances = self.provisioner._getNodesInCluster(ctx, self.clusterName, both=True)
-        leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
-        workers = [i for i in instances if i.public_dns_name != leader.public_dns_name]
-        for instance in workers:
-            self.provisioner._waitForNode(instance, 'toil_worker')
-            self.provisioner._coreRsync(instance.public_dns_name, args, applianceName='toil_worker', **kwargs)
+
+        # Why was this added? It is undocumented and calling private methods.
+        #ctx = self.provisioner._buildContext(self.clusterName, zone=self.zone)
+        #instances = self.provisioner._getNodesInCluster(ctx, self.clusterName, both=True)
+        #leader = self.provisioner._getLeader(self.clusterName, zone=self.zone)
+        #workers = [i for i in instances if i.public_dns_name != leader.public_dns_name]
+        #for instance in workers:
+        #    self.provisioner._waitForNode(instance, 'toil_worker')
+        #    self.provisioner._coreRsync(instance.public_dns_name, args, applianceName='toil_worker', **kwargs)
 
     def destroyCluster(self):
         self.provisioner.destroyCluster(self.clusterName, self.zone)

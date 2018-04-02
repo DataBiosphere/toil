@@ -57,9 +57,9 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
 
     # noinspection PyMethodParameters
     @abstractclassmethod
-    def supportsHotDeployment(cls):
+    def supportsAutoDeployment(cls):
         """
-        Whether this batch system supports hot deployment of the user script itself. If it does,
+        Whether this batch system supports auto-deployment of the user script itself. If it does,
         the :meth:`.setUserScript` can be invoked to set the resource object representing the user
         script.
 
@@ -87,7 +87,7 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
     def setUserScript(self, userScript):
         """
         Set the user script for this workflow. This method must be called before the first job is
-        issued to this batch system, and only if :meth:`.supportsHotDeployment` returns True,
+        issued to this batch system, and only if :meth:`.supportsAutoDeployment` returns True,
         otherwise it will raise an exception.
 
         :param toil.resource.Resource userScript: the resource object representing the user script
@@ -280,16 +280,6 @@ class BatchSystemSupport(AbstractBatchSystem):
                 raise RuntimeError("%s does not exist in current environment", name)
         self.environment[name] = value
 
-    def _getResultsFileName(self, toilPath):
-        """
-        Get a path for the batch systems to store results. GridEngine, slurm,
-        and LSF currently use this and only work if locator is file.
-        """
-        # Use  parser to extract the path and type
-        locator, filePath = Toil.parseLocator(toilPath)
-        assert locator == "file"
-        return os.path.join(filePath, "results.txt")
-
     @staticmethod
     def workerCleanup(info):
         """
@@ -317,7 +307,7 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         super(BatchSystemLocalSupport, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.localBatch = registry.batchSystemFactoryFor(
             registry.defaultBatchSystem())()(
-                config, maxCores, maxMemory, maxDisk)
+                config, config.maxLocalJobs, maxMemory, maxDisk)
 
     def handleLocalJob(self, jobNode):  # type: (JobNode) -> Optional[int]
         """

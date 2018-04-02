@@ -66,7 +66,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     """
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsAutoDeployment(cls):
         return True
 
     @classmethod
@@ -84,7 +84,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(MesosBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
-        # The hot-deployed resource representing the user script. Will be passed along in every
+        # The auto-deployed resource representing the user script. Will be passed along in every
         # Mesos task. Also see setUserScript().
         self.userScript = None
         """
@@ -440,7 +440,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     remainingMemory -= toMiB(jobType.memory)
                     remainingDisk -= toMiB(jobType.disk)
                     nextToLaunchIndex += 1
-                else:
+                if not self.jobQueues.typeEmpty(jobType):
+                    # report that remaining jobs cannot be run with the current resourcesq:
                     log.debug('Offer %(offer)s not suitable to run the tasks with requirements '
                               '%(requirements)r. Mesos offered %(memory)s memory, %(cores)s cores '
                               'and %(disk)s of disk on a %(non)spreemptable slave.',

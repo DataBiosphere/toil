@@ -18,15 +18,12 @@
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
 
-from future import standard_library
-standard_library.install_aliases()
 from builtins import str
 from builtins import range
 from builtins import object
 from toil.job import Job
-from toil.common import Toil
+from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
-from toil.lib.bioio import setLoggingFromOptions
 
 import argparse
 import cwltool.errors
@@ -37,7 +34,7 @@ import cwltool.expression
 import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
-import cwltool.draft2tool
+import cwltool.command_line_tool
 
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
@@ -224,7 +221,7 @@ class ToilPathMapper(PathMapper):
                 self.visitlisting(obj.get("secondaryFiles", []), stagedir, basedir, copy=copy, staged=staged)
 
 
-class ToilCommandLineTool(cwltool.draft2tool.CommandLineTool):
+class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
     """Subclass the cwltool command line tool to provide the custom
     Toil.PathMapper.
 
@@ -799,7 +796,25 @@ class CWLWorkflow(Job):
 
         outobj = {}
         for out in self.cwlwf.tool["outputs"]:
-            outobj[shortname(out["id"])] = (shortname(out["outputSource"]), promises[out["outputSource"]].rv())
+            key = shortname(out["id"])
+            if out.get("linkMerge") or len(aslist(out["outputSource"])) > 1:
+                linkMerge = out.get("linkMerge", "merge_nested")
+                if linkMerge == "merge_nested":
+                    outobj[key] = (
+                            MergeInputsNested([(shortname(s), promises[s].rv())
+                                for s in aslist(out["outputSource"])]))
+                elif linkMerge == "merge_flattened":
+                    outobj[key] = (
+                            MergeInputsFlattened([
+                                (shortname(s), promises[s].rv())
+                                for s in aslist(out["source"])]))
+                else:
+                    raise validate.ValidationException(
+                            "Unsupported linkMerge '{}'".format(linkMerge))
+
+            else:
+                outobj[key] = (shortname(out["outputSource"]),
+                    promises[out["outputSource"]].rv())
 
         return IndirectDict(outobj)
 
@@ -833,8 +848,10 @@ def visitSteps(t, op):
 
 
 def main(args=None, stdout=sys.stdout):
+    config = Config()
+    config.cwl = True
     parser = argparse.ArgumentParser()
-    Job.Runner.addToilOptions(parser)
+    addOptions(parser, config)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
 
@@ -842,15 +859,25 @@ def main(args=None, stdout=sys.stdout):
     # user to select jobStore or get a default from logic one below.
     parser.add_argument("--jobStore", type=str)
     parser.add_argument("--not-strict", action="store_true")
-    parser.add_argument("--no-container", action="store_true")
     parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
-    parser.add_argument("--user-space-docker-cmd",
+    dockergroup = parser.add_mutually_exclusive_group()
+    dockergroup.add_argument("--user-space-docker-cmd",
                         help="(Linux/OS X only) Specify a user space docker "
                         "command (like udocker or dx-docker) that will be "
                         "used to call 'pull' and 'run'")
+    dockergroup.add_argument("--singularity", action="store_true",
+                             default=False, help="[experimental] Use "
+                             "Singularity runtime for running containers. "
+                             "Requires Singularity v2.3.2+ and Linux with kernel "
+                             "version v3.18+ or with overlayfs support "
+                             "backported.")
+    dockergroup.add_argument("--no-container", action="store_true",
+                             help="Do not execute jobs in a "
+                             "Docker container, even when `DockerRequirement` "
+                             "is specified under `hints`.")
     parser.add_argument("--preserve-environment", type=str, nargs='+',
                     help="Preserve specified environment variables when running CommandLineTools",
                     metavar=("VAR1 VAR2"),
@@ -885,7 +912,6 @@ def main(args=None, stdout=sys.stdout):
 
     use_container = not options.no_container
 
-    setLoggingFromOptions(options)
     if options.logLevel:
         cwllogger.setLevel(options.logLevel)
 
@@ -907,7 +933,6 @@ def main(args=None, stdout=sys.stdout):
         if options.restart:
             outobj = toil.restart()
         else:
-            toil.config.linkImports = False
             useStrict = not options.not_strict
             make_tool_kwargs["hints"] = [{
                 "class": "ResourceRequirement",

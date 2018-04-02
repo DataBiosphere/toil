@@ -3,10 +3,10 @@ from builtins import str
 from builtins import object
 import logging
 from contextlib import contextmanager
-from subprocess import CalledProcessError
 
 from bd2k.util.iterables import concat
 
+from toil import subprocess
 from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow
 
 log = logging.getLogger(__name__)
@@ -15,17 +15,17 @@ log = logging.getLogger(__name__)
 @needs_mesos
 @needs_appliance
 @slow
-class HotDeploymentTest(ApplianceTestSupport):
+class AutoDeploymentTest(ApplianceTestSupport):
     """
-    Tests various hot-deployment scenarios. Using the appliance, i.e. a docker container,
+    Tests various auto-deployment scenarios. Using the appliance, i.e. a docker container,
     for these tests allows for running worker processes on the same node as the leader process
     while keeping their file systems separate from each other and the leader process. Separate
-    file systems are crucial to prove that hot-deployment does its job.
+    file systems are crucial to prove that auto-deployment does its job.
     """
 
     def setUp(self):
         logging.basicConfig(level=logging.INFO)
-        super(HotDeploymentTest, self).setUp()
+        super(AutoDeploymentTest, self).setUp()
 
     @contextmanager
     def _venvApplianceCluster(self):
@@ -46,7 +46,7 @@ class HotDeploymentTest(ApplianceTestSupport):
 
     def testRestart(self):
         """
-        Test whether hot-deployment works on restart.
+        Test whether auto-deployment works on restart.
         """
         with self._venvApplianceCluster() as (leader, worker):
             def userScript():
@@ -78,7 +78,7 @@ class HotDeploymentTest(ApplianceTestSupport):
                         '--defaultMemory=10M',
                         '/data/jobstore']
             command = concat(pythonArgs, toilArgs)
-            self.assertRaises(CalledProcessError, leader.runOnAppliance, *command)
+            self.assertRaises(subprocess.CalledProcessError, leader.runOnAppliance, *command)
 
             # Deploy an updated version of the script ...
             userScript = userScript.replace('assert False', 'assert True')
@@ -91,8 +91,8 @@ class HotDeploymentTest(ApplianceTestSupport):
 
     def testSplitRootPackages(self):
         """
-        Test whether hot-deployment works with a virtualenv in which jobs are defined in
-        completely separate branches of the package hierarchy. Initially, hot deployment did
+        Test whether auto-deployment works with a virtualenv in which jobs are defined in
+        completely separate branches of the package hierarchy. Initially, auto-deployment did
         deploy the entire virtualenv but jobs could only be defined in one branch of the package
         hierarchy. We define a branch as the maximum set of fully qualified package paths that
         share the same first component. IOW, a.b and a.c are in the same branch, while a.b and
@@ -120,7 +120,7 @@ class HotDeploymentTest(ApplianceTestSupport):
                 # noinspection PyUnusedLocal
                 def job(job, disk='10M', cores=1, memory='10M'):
                     # Double the requirements to prevent chaining as chaining might hide problems
-                    # in hot deployment code.
+                    # in auto-deployment code.
                     job.addChildJobFn(libraryJob, disk='20M', cores=cores, memory=memory)
 
                 if __name__ == '__main__':
@@ -138,7 +138,7 @@ class HotDeploymentTest(ApplianceTestSupport):
             # Assert that output file isn't there
             worker.runOnAppliance('test', '!', '-f', '/data/foo.txt')
             # Just being paranoid
-            self.assertRaises(CalledProcessError,
+            self.assertRaises(subprocess.CalledProcessError,
                               worker.runOnAppliance, 'test', '-f', '/data/foo.txt')
             leader.runOnAppliance('venv/bin/python',
                                   '-m', 'toil_script.bar',
@@ -178,7 +178,7 @@ class HotDeploymentTest(ApplianceTestSupport):
                         r = toil.start(Job.wrapJobFn(job, x).encapsulate())
                     # Assert that the return value is of type X, but not X from the __main__
                     # module but X from foo.bar, the canonical name for the user module. The
-                    # translation from __main__ to foo.bar is a side effect of hot-deployment.
+                    # translation from __main__ to foo.bar is a side effect of auto-deployment.
                     assert r.__class__ is not X
                     import foo.bar
                     assert r.__class__ is foo.bar.X
@@ -341,7 +341,7 @@ class HotDeploymentTest(ApplianceTestSupport):
 
         `Encapsulated` has two children to ensure that `Follow-on` is run in a new worker. That's
         the only way to guarantee that the user script has not been loaded yet, which would cause
-        the test to succeed coincidentally. We want to test that hot-deploying and loading of the
+        the test to succeed coincidentally. We want to test that auto-deploying and loading of the
         user script are done properly *before* deferred functions are being run and before any
         jobs have been executed by that worker.
         """

@@ -213,7 +213,7 @@ write_files:
         ephemeral_count=0
         drives=""
         directories="toil mesos docker"
-        for drive in /dev/xvd{{b..z}}; do
+        for drive in /dev/xvd{{b..z}} /dev/nvme*n*; do
             echo checking for $drive
             if [ -b $drive ]; then
                 echo found it
@@ -309,10 +309,10 @@ coreos:
             -v /:/rootfs \
             --name node-exporter \
             --restart always \
-            prom/node-exporter:0.12.0 \
-            -collector.procfs /host/proc \
-            -collector.sysfs /host/sys \
-            -collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
+            prom/node-exporter:v0.15.2 \
+            --path.procfs /host/proc \
+            --path.sysfs /host/sys \
+            --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
 
 ssh_authorized_keys:
     - "ssh-rsa {sshKey}"

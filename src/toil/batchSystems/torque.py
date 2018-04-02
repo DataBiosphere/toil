@@ -19,7 +19,7 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import subprocess
+from toil import subprocess
 import time
 import math
 import sys
@@ -67,7 +67,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         """
         def getRunningJobIDs(self):
             times = {}
-            currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
+            with self.runningJobsLock:
+                currentjobs = dict((str(self.batchJobIDs[x][0].strip()), x) for x in self.runningJobs)
             logger.debug("getRunningJobIDs current jobs are: " + str(currentjobs))
             # Skip running qstat if we don't have any current jobs
             if not currentjobs:
@@ -183,6 +184,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             if cpu is not None and math.ceil(cpu) > 1:
                 reqline.append('ncpus=' + str(int(math.ceil(cpu))))
+                reqline.append('nodes=1:ppn=' + str(int(math.ceil(cpu))))
 
             # Other resource requirements can be passed through the environment (see man qsub)
             reqlineEnv = os.getenv('TOIL_TORQUE_REQS')

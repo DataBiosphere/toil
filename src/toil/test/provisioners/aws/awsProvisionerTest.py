@@ -16,7 +16,7 @@ from builtins import str
 from builtins import range
 import logging
 import os
-import subprocess
+from toil import subprocess
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
@@ -314,7 +314,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         #Set memory requirements so that sort jobs can be run
         # on small instances, but merge jobs must be run on large
         # instances
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=1.0G', '--mergeMemory=3.0G']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/s3am/bin/asadmin', '--sortMemory=0.6G', '--mergeMemory=3.0G']
         runCommand.extend(toilOptions)
         runCommand.append('--sseKey=/home/keyFile')
         self.sshUtil(runCommand)

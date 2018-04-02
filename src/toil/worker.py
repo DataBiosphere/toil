@@ -18,7 +18,6 @@ standard_library.install_aliases()
 from builtins import str
 from builtins import map
 from builtins import filter
-from builtins import object
 import os
 import sys
 import copy
@@ -42,32 +41,70 @@ from bd2k.util.expando import MagicExpando
 from toil.common import Toil
 from toil.fileStore import FileStore
 from toil import logProcessContext
+from toil.job import Job
+from toil.lib.bioio import setLogLevel
+from toil.lib.bioio import getTotalCpuTime
+from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
 import signal
 
 logger = logging.getLogger(__name__)
 
-
-def nextOpenDescriptor():
-    """Gets the number of the next available file descriptor.
+def nextChainableJobGraph(jobGraph, jobStore):
+    """Returns the next chainable jobGraph after this jobGraph if one
+    exists, or None if the chain must terminate.
     """
-    descriptor = os.open("/dev/null", os.O_RDONLY)
-    os.close(descriptor)
-    return descriptor
+    #If no more jobs to run or services not finished, quit
+    if len(jobGraph.stack) == 0 or len(jobGraph.services) > 0 or jobGraph.checkpoint != None:
+        logger.debug("Stopping running chain of jobs: length of stack: %s, services: %s, checkpoint: %s",
+                     len(jobGraph.stack), len(jobGraph.services), jobGraph.checkpoint != None)
+        return None
 
+    #Get the next set of jobs to run
+    jobs = jobGraph.stack[-1]
+    assert len(jobs) > 0
 
-class AsyncJobStoreWrite(object):
-    def __init__(self, jobStore):
-        pass
-    
-    def writeFile(self, filePath):
-        pass
-    
-    def writeFileStream(self):
-        pass
-    
-    def blockUntilSync(self):
-        pass
-    
+    #If there are 2 or more jobs to run in parallel we quit
+    if len(jobs) >= 2:
+        logger.debug("No more jobs can run in series by this worker,"
+                    " it's got %i children", len(jobs)-1)
+        return None
+
+    #We check the requirements of the jobGraph to see if we can run it
+    #within the current worker
+    successorJobNode = jobs[0]
+    if successorJobNode.memory > jobGraph.memory:
+        logger.debug("We need more memory for the next job, so finishing")
+        return None
+    if successorJobNode.cores > jobGraph.cores:
+        logger.debug("We need more cores for the next job, so finishing")
+        return None
+    if successorJobNode.disk > jobGraph.disk:
+        logger.debug("We need more disk for the next job, so finishing")
+        return None
+    if successorJobNode.preemptable != jobGraph.preemptable:
+        logger.debug("Preemptability is different for the next job, returning to the leader")
+        return None
+    if successorJobNode.predecessorNumber > 1:
+        logger.debug("The jobGraph has multiple predecessors, we must return to the leader.")
+        return None
+
+    # Load the successor jobGraph
+    successorJobGraph = jobStore.load(successorJobNode.jobStoreID)
+
+    # Somewhat ugly, but check if job is a checkpoint job and quit if
+    # so
+    if successorJobGraph.command.startswith( "_toil " ):
+        #Load the job
+        successorJob = Job._loadJob(successorJobGraph.command, jobStore)
+
+        # Check it is not a checkpoint
+        if successorJob.checkpoint:
+            logger.debug("Next job is checkpoint, so finishing")
+            return None
+
+    # Made it through! This job is chainable.
+    return successorJobGraph
+
 def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=True):
     """
     Worker process script, runs a job. 
@@ -79,29 +116,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     """
     logging.basicConfig()
 
-    ##########################################
-    #Import necessary modules 
-    ##########################################
-    
-    # This is assuming that worker.py is at a path ending in "/toil/worker.py".
-    sourcePath = os.path.dirname(os.path.dirname(__file__))
-    if sourcePath not in sys.path:
-        sys.path.append(sourcePath)
-    
-    #Now we can import all the necessary functions
-    from toil.lib.bioio import setLogLevel
-    from toil.lib.bioio import getTotalCpuTime
-    from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
-    from toil.job import Job
-    try:
-        import boto
-    except ImportError:
-        pass
-    else:
-        # boto is installed, monkey patch it now
-        from bd2k.util.ec2.credentials import enable_metadata_credential_caching
-        enable_metadata_credential_caching()
-    
     ##########################################
     #Create the worker killer, if requested
     ##########################################
@@ -203,7 +217,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     statsDict.jobs = []
     statsDict.workers.logsToMaster = []
     blockFn = lambda : True
-    cleanCacheFn = lambda x : True
     listOfJobs = [jobName]
     try:
 
@@ -211,11 +224,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         logger.info("---TOIL WORKER OUTPUT LOG---")
         sys.stdout.flush()
         
-        #Log the number of open file descriptors so we can tell if we're leaking
-        #them.
-        logger.debug("Next available file descriptor: {}".format(
-            nextOpenDescriptor()))
-
         logProcessContext(config)
 
         ##########################################
@@ -275,11 +283,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         ##########################################
         
         if config.stats:
-            startTime = time.time()
             startClock = getTotalCpuTime()
-
-        #Make a temporary file directory for the jobGraph
-        #localTempDir = makePublicDir(os.path.join(localWorkerTempDir, "localTempDir"))
 
         startTime = time.time()
         while True:
@@ -324,58 +328,10 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             ##########################################
             #Establish if we can run another jobGraph within the worker
             ##########################################
-            
-            #If no more jobs to run or services not finished, quit
-            if len(jobGraph.stack) == 0 or len(jobGraph.services) > 0 or jobGraph.checkpoint != None:
-                logger.debug("Stopping running chain of jobs: length of stack: %s, services: %s, checkpoint: %s",
-                             len(jobGraph.stack), len(jobGraph.services), jobGraph.checkpoint != None)
+            successorJobGraph = nextChainableJobGraph(jobGraph, jobStore)
+            if successorJobGraph is None or config.disableChaining:
+                # Can't chain any more jobs.
                 break
-            
-            #Get the next set of jobs to run
-            jobs = jobGraph.stack[-1]
-            assert len(jobs) > 0
-            
-            #If there are 2 or more jobs to run in parallel we quit
-            if len(jobs) >= 2:
-                logger.debug("No more jobs can run in series by this worker,"
-                            " it's got %i children", len(jobs)-1)
-                break
-            
-            #We check the requirements of the jobGraph to see if we can run it
-            #within the current worker
-            successorJobNode = jobs[0]
-            if successorJobNode.memory > jobGraph.memory:
-                logger.debug("We need more memory for the next job, so finishing")
-                break
-            if successorJobNode.cores > jobGraph.cores:
-                logger.debug("We need more cores for the next job, so finishing")
-                break
-            if successorJobNode.disk > jobGraph.disk:
-                logger.debug("We need more disk for the next job, so finishing")
-                break
-            if successorJobNode.preemptable != jobGraph.preemptable:
-                logger.debug("Preemptability is different for the next job, returning to the leader")
-                break
-            if successorJobNode.predecessorNumber > 1:
-                logger.debug("The jobGraph has multiple predecessors, we must return to the leader.")
-                break
-
-            # Load the successor jobGraph
-            successorJobGraph = jobStore.load(successorJobNode.jobStoreID)
-
-            # add the successor to the list of jobs run
-            listOfJobs.append(str(successorJobGraph))
-
-            # Somewhat ugly, but check if job is a checkpoint job and quit if
-            # so
-            if successorJobGraph.command.startswith( "_toil " ):
-                #Load the job
-                successorJob = Job._loadJob(successorJobGraph.command, jobStore)
-
-                # Check it is not a checkpoint
-                if successorJob.checkpoint:
-                    logger.debug("Next job is checkpoint, so finishing")
-                    break
 
             ##########################################
             #We have a single successor job that is not a checkpoint job.
@@ -385,20 +341,15 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             #We can then delete the successor jobGraph in the jobStore, as it is
             #wholly incorporated into the current jobGraph.
             ##########################################
-            
+
+            # add the successor to the list of jobs run
+            listOfJobs.append(str(successorJobGraph))
+
             #Clone the jobGraph and its stack
             jobGraph = copy.deepcopy(jobGraph)
             
             #Remove the successor jobGraph
             jobGraph.stack.pop()
-
-            #These should all match up
-            assert successorJobGraph.memory == successorJobNode.memory
-            assert successorJobGraph.cores == successorJobNode.cores
-            assert successorJobGraph.predecessorsFinished == set()
-            assert successorJobGraph.predecessorNumber == 1
-            assert successorJobGraph.command is not None
-            assert successorJobGraph.jobStoreID == successorJobNode.jobStoreID
 
             #Transplant the command and stack to the current jobGraph
             jobGraph.command = successorJobGraph.command
@@ -539,18 +490,28 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 def main(argv=None):
     if argv is None:
         argv = sys.argv
-        
+
     # Parse input args
     jobName = argv[1]
     jobStoreLocator = argv[2]
     jobStoreID = argv[3]
-    
+
     ##########################################
     #Load the jobStore/config file
     ##########################################
-    
+
+    # Try to monkey-patch boto early so that credentials are cached.
+    try:
+        import boto
+    except ImportError:
+        pass
+    else:
+        # boto is installed, monkey patch it now
+        from bd2k.util.ec2.credentials import enable_metadata_credential_caching
+        enable_metadata_credential_caching()
+
     jobStore = Toil.resumeJobStore(jobStoreLocator)
     config = jobStore.config
-    
+
     # Call the worker
     workerScript(jobStore, config, jobName, jobStoreID)

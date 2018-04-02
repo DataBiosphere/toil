@@ -18,7 +18,7 @@ from itertools import count
 import logging
 import pipes
 import socket
-import subprocess
+from toil import subprocess
 
 from future.utils import with_metaclass
 
@@ -159,20 +159,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
 
         :Keyword Arguments:
             * *strict*: if False, strict host key checking is disabled. (Enabled by default.)
-        """
-        raise NotImplementedError
-
-    @classmethod
-    @abstractmethod
-    def launchCluster(cls, instanceType, keyName, clusterName, spotBid=None):
-        """
-        Launches a cluster with the specified instance type for the leader with the specified name.
-
-        :param instanceType: desired type of the leader instance
-        :param keyName: name of the ssh key pair to launch the instance with
-        :param clusterName: desired identifier of the cluster
-        :param spotBid: how much to bid for the leader instance. If none, use on demand pricing.
-        :return:
         """
         raise NotImplementedError
 

@@ -18,7 +18,7 @@ from builtins import str
 from datetime import datetime
 import logging
 import time
-from threading import Thread
+from threading import Thread, Lock
 from abc import ABCMeta, abstractmethod
 
 # Python 3 compatibility imports
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
-    standard HPC cluster. By default worker cleanup and hot deployment are not
+    standard HPC cluster. By default worker cleanup and auto-deployment are not
     implemented.
     """
 
@@ -60,6 +60,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             self.killedJobsQueue = killedJobsQueue
             self.waitingJobs = list()
             self.runningJobs = set()
+            self.runningJobsLock = Lock()
             self.boss = boss
             self.allocatedCpus = dict()
             self.batchJobIDs = dict()
@@ -76,7 +77,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             :param: string jobID: toil job ID
             """
             if jobID not in self.batchJobIDs:
-                RuntimeError("Unknown jobID, could not be converted")
+                raise RuntimeError("Unknown jobID, could not be converted")
 
             (job, task) = self.batchJobIDs[jobID]
             if task is None:
@@ -90,7 +91,8 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
             :param: string jobID: toil job ID
             """
-            self.runningJobs.remove(jobID)
+            with self.runningJobsLock:
+                self.runningJobs.remove(jobID)
             del self.allocatedCpus[jobID]
             del self.batchJobIDs[jobID]
 
@@ -126,7 +128,8 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 self.batchJobIDs[jobID] = (batchJobID, None)
 
                 # Add to queue of running jobs
-                self.runningJobs.add(jobID)
+                with self.runningJobsLock:
+                    self.runningJobs.add(jobID)
 
                 # Add to allocated resources
                 self.allocatedCpus[jobID] = cpu
@@ -279,11 +282,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(AbstractGridEngineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
-        self.resultsFile = self._getResultsFileName(config.jobStore)
-        # Reset the job queue and results (initially, we do this again once we've killed the jobs)
-        self.resultsFileHandle = open(self.resultsFile, 'w')
-        # We lose any previous state in this file, and ensure the files existence
-        self.resultsFileHandle.close()
         self.currentJobs = set()
 
         # NOTE: this may be batch system dependent, maybe move into the worker?
@@ -302,16 +300,12 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         self._getRunningBatchJobIDsTimestamp = None
         self._getRunningBatchJobIDsCache = {}
 
-    def __des__(self):
-        # Closes the file handle associated with the results file.
-        self.resultsFileHandle.close()
-
     @classmethod
     def supportsWorkerCleanup(cls):
         return False
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsAutoDeployment(cls):
         return False
 
     def issueBatchJob(self, jobNode):

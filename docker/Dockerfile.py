@@ -41,13 +41,11 @@ def heredoc(s):
 
 motd = heredoc('''
 
-    This is the Toil appliance. You can run your Toil script directly on the appliance, but only
-    in single-machine mode. Alternatively, create a Toil cluster with `toil launch-cluster`,
-    log into the leader of that cluster with `toil ssh-cluster` and run your Toil script there.
-
+    This is the Toil appliance. You can run your Toil script directly on the appliance. 
+    Run toil <workflow>.py --help to see all options for running your workflow.
     For more information see http://toil.readthedocs.io/en/latest/
 
-    Copyright (C) 2015-2016 Regents of the University of California
+    Copyright (C) 2015-2018 Regents of the University of California
 
     Version: {applianceSelf}
 
@@ -117,7 +115,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN pip install {sdistName}[aws,mesos,encryption,cwl]
+    RUN pip install {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect

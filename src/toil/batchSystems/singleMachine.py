@@ -24,7 +24,7 @@ from contextlib import contextmanager
 import logging
 import multiprocessing
 import os
-import subprocess
+from toil import subprocess
 import time
 import math
 from threading import Thread
@@ -48,7 +48,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     """
 
     @classmethod
-    def supportsHotDeployment(cls):
+    def supportsAutoDeployment(cls):
         return False
 
     @classmethod

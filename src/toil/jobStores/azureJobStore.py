@@ -63,6 +63,9 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
 import toil.lib.encryption as encryption
 
 logger = logging.getLogger(__name__)
+logging.getLogger("azure.cosmosdb.common.storageclient").setLevel(logging.WARNING)
+logging.getLogger("azure.cosmosdb.common._auth").setLevel(logging.WARNING)
+logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
 credential_file_path = '~/.toilAzureCredentials'
 
@@ -107,7 +110,7 @@ class AzureJobStore(AbstractJobStore):
     # URLs where the may interfere with the certificate common name. We use a double underscore
     # as a separator instead.
     #
-    containerNameRe = re.compile(r'^[a-z0-9](-?[a-z0-9]+)+[a-z0-9]$')
+    containerNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
 
     # See https://msdn.microsoft.com/en-us/library/azure/dd135715.aspx
     #

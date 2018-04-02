@@ -1,5 +1,7 @@
-WDL Support in Toil
-*******************
+.. _wdl:
+
+WDL in Toil
+***********
 
 Support is still in the alpha phase and should be able to handle basic wdl files.  See the specification below for more
 details.

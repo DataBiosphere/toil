@@ -23,7 +23,7 @@ import json
 import csv
 import os
 import collections
-import subprocess
+from toil import subprocess
 import logging
 import textwrap
 

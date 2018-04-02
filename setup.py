@@ -13,8 +13,7 @@
 # limitations under the License.
 
 from setuptools import find_packages, setup
-
-
+import sys
 
 def runSetup():
     """
@@ -24,41 +23,66 @@ def runSetup():
     boto = 'boto==2.38.0'
     boto3 = 'boto3==1.4.7'
     futures = 'futures==3.0.5'
-    pycrypto = 'pycrypto==2.6.1'
+    pycryptodome = 'pycryptodome==3.5.0'
     psutil = 'psutil==3.0.1'
     protobuf = 'protobuf==3.5.1'
     azure = 'azure==2.0.0'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
+    azureAnsible = 'ansible[azure]==2.5.0a1'
+    azureStorage = 'azure-storage==0.35.1'
+    msRest = 'msrest==0.4.25'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
-    cwltool = 'cwltool==1.0.20180130110340'
+    gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
+    apacheLibcloud = 'apache-libcloud==2.2.1'
+    cwltool = 'cwltool==1.0.20180306140409'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
     cwltest = 'cwltest>=1.0.20180130081614'
     htcondor = 'htcondor>=8.6.0'
 
     mesos_reqs = [
-                  psutil,
-                  protobuf]
+        psutil,
+        protobuf]
     aws_reqs = [
-                  boto,
-                  boto3,
-                  futures,
-                  pycrypto]
+        boto,
+        boto3,
+        futures,
+        pycryptodome]
     azure_reqs = [
-                  azure,
-                  azureCosmosdbTable]
+        azure,
+        azureCosmosdbTable,
+        azureAnsible,
+        azureStorage,
+        msRest]
     encryption_reqs = [
-                  pynacl]
+        pynacl]
     google_reqs = [
-                  gcs]
+        gcs_oauth2_boto_plugin,  # is this being used??
+        apacheLibcloud,
+        gcs]
     cwl_reqs = [
-                  cwltool,
-                  schemaSalad,
-                  galaxyLib,
-                  cwltest]
+        cwltool,
+        schemaSalad,
+        galaxyLib,
+        cwltest]
+    wdl_reqs = []
     htcondor_reqs = [
-                  htcondor]
+        htcondor]
+
+    all_reqs = \
+        mesos_reqs + \
+        aws_reqs + \
+        azure_reqs + \
+        encryption_reqs + \
+        google_reqs + \
+        cwl_reqs + \
+        htcondor_reqs
+
+    # htcondor is not supported by apple
+    if sys.platform != 'linux' or 'linux2':
+        all_reqs.remove(htcondor)
+
     setup(
         name='toil',
         version=version.distVersion,
@@ -70,11 +94,13 @@ def runSetup():
         license="Apache License v2.0",
         install_requires=[
             'bd2k-python-lib>=1.14a1.dev35',
-            'dill==0.2.5',
+            'dill==0.2.7.1',
             'six>=1.10.0',
             'future',
             'requests==2.18.4',
-            'docker==2.5.1'],
+            'docker==2.5.1',
+            'subprocess32==3.5.0rc1',
+            'python-dateutil'],
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,
@@ -82,19 +108,17 @@ def runSetup():
             'encryption': encryption_reqs,
             'google': google_reqs,
             'cwl': cwl_reqs,
+            'wdl': wdl_reqs,
             'htcondor': htcondor_reqs,
-            'all': mesos_reqs +
-                   aws_reqs +
-                   azure_reqs +
-                   encryption_reqs +
-                   google_reqs +
-                   cwl_reqs +
-                   htcondor_reqs},
+            'all': all_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
                                # functionality like the @experimental and @integrative decoratorss:
                                exclude=['*.test.*']),
+        package_data = {
+            '': ['*.yml', 'contrib/azure_rm.py', 'cloud-config'],
+        },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
         # easy to search for.
