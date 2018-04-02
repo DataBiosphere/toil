@@ -37,6 +37,7 @@ except ImportError:
 
 # Python 3 compatibility imports
 from six import iteritems
+from six import string_types
 
 from bd2k.util.humanize import bytes2human
 from bd2k.util.retry import retry
@@ -583,24 +584,19 @@ def checkValidNodeTypes(provisioner, nodeTypes):
     :param nodeTypes: A list of node types.  Example: ['t2.micro', 't2.medium']
     :return: Nothing.  Raises if invalid nodeType.
     """
-    if not isinstance(nodeTypes, (list,)):
-        nodeTypes = [nodeTypes]
-    # check if a valid node type for aws
-    from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if not nodeTypes:
         return
+    if not isinstance(nodeTypes, list):
+        nodeTypes = [nodeTypes]
+    if not isinstance(nodeTypes[0], string_types):
+        return
+    # check if a valid node type for aws
+    from toil.lib.generatedEC2Lists import E2Instances, regionDict
     if provisioner == 'aws':
-        try:
-            from toil.provisioners.aws import getCurrentAWSZone
-            currentZone = getCurrentAWSZone()[:-1] # adds something like 'a' or 'b' to the end
-        except ImportError:
-            # only check if AWS has an instance type with this name (in any region)
-            for nodeType in nodeTypes:
-                if nodeType and ':' in nodeType:
-                    nodeType = nodeType.split(':')[0]
-                if nodeType not in E2Instances:
-                    raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.'
-                                       '' % (nodeType, currentZone))
+        from toil.provisioners.aws import getCurrentAWSZone
+        currentZone = getCurrentAWSZone()[:-1] # adds something like 'a' or 'b' to the end
+        if not currentZone:
+            currentZone = 'us-west-2'
         # check if instance type exists in this region
         for nodeType in nodeTypes:
             if nodeType and ':' in nodeType:
@@ -615,8 +611,8 @@ def checkValidNodeTypes(provisioner, nodeTypes):
                 nodeType = nodeType.split(':')[0]
             try:
                 E2Instances[nodeType]
-                raise RuntimeError("It looks like you've specified an AWS nodeType with the"
-                                   "{} provisioner.  Please specify nodeTypes for {}."
+                raise RuntimeError("It looks like you've specified an AWS nodeType with the "
+                                   "{} provisioner.  Please specify an {} nodeType."
                                    "".format(provisioner, provisioner))
             except KeyError:
                 pass

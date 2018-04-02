@@ -85,7 +85,7 @@ def main():
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
     checkValidNodeTypes(config.provisioner, config.nodeTypes)
-    checkValidNodeTypes(config.provisioner, [config.leaderNodeType])
+    checkValidNodeTypes(config.provisioner, config.leaderNodeType)
 
     spotBids = []
     nodeTypes = []
