@@ -742,8 +742,9 @@ class CWLWorkflow(Job):
                                         raise validate.ValidationException(
                                             "Unsupported linkMerge '%s'", linkMerge)
                                 else:
-                                    jobobj[key] = (shortname(inp["source"]),
-                                                   promises[inp["source"]].rv())
+                                    inputSource = str(inp["source"][0])
+                                    jobobj[key] = (shortname(inputSource),
+                                                   promises[inputSource].rv())
                             elif "default" in inp:
                                 d = copy.copy(inp["default"])
                                 jobobj[key] = ("default", {"default": d})
