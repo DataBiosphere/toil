@@ -35,7 +35,7 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20180330141240'
+    cwltool = 'cwltool==1.0.20180403145700'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
     cwltest = 'cwltest>=1.0.20180209171722'
