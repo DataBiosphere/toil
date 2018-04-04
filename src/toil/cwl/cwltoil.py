@@ -45,6 +45,7 @@ from cwltool.software_requirements import (
         DependenciesConfiguration, get_container_from_software_requirements)
 from cwltool.utils import aslist
 import schema_salad.validate as validate
+from ruamel.yaml.comments import CommentedSeq
 import schema_salad.ref_resolver
 import os
 import tempfile
@@ -742,7 +743,11 @@ class CWLWorkflow(Job):
                                         raise validate.ValidationException(
                                             "Unsupported linkMerge '%s'", linkMerge)
                                 else:
-                                    inputSource = str(inp["source"][0])
+                                    inputSource = inp["source"]
+                                    if isinstance(inputSource, CommentedSeq):
+                                        # It seems that an input source with a '#' in the name will be
+                                        # returned as a CommentedSeq list by the yaml parser.
+                                        inputSource = str(inputSource[0])
                                     jobobj[key] = (shortname(inputSource),
                                                    promises[inputSource].rv())
                             elif "default" in inp:
