@@ -23,7 +23,7 @@ def runSetup():
     boto = 'boto==2.38.0'
     boto3 = 'boto3==1.4.7'
     futures = 'futures==3.0.5'
-    pycryptodome = 'pycryptodome==3.5.0'
+    pycryptodome = 'pycryptodome==3.5.1'
     psutil = 'psutil==3.0.1'
     protobuf = 'protobuf==3.5.1'
     azure = 'azure==2.0.0'
@@ -35,10 +35,10 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20180306140409'
+    cwltool = 'cwltool==1.0.20180403145700'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
-    cwltest = 'cwltest>=1.0.20180130081614'
+    cwltest = 'cwltest>=1.0.20180209171722'
     htcondor = 'htcondor>=8.6.0'
 
     mesos_reqs = [
