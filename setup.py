@@ -83,9 +83,13 @@ def runSetup():
     if sys.platform != 'linux' or 'linux2':
         all_reqs.remove(htcondor)
 
+    if not sys.version_info[0] == 2:
+        raise RuntimeError("Toil currently requires Python 2, but we're working on adding Python 3 support (#1780)")
+
     setup(
         name='toil',
         version=version.distVersion,
+        python_requires='~=2.7',
         description='Pipeline management software for clusters.',
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
