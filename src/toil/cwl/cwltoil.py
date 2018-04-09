@@ -770,7 +770,7 @@ class CWLWorkflow(Job):
                         for inp in step.tool["inputs"]:
                             for s in aslist(inp.get("source", [])):
                                 if not promises[s].hasChild(wfjob):
-                                    if isinstance(promises[s], CWLJobWrapper):
+                                    if isinstance(promises[s], (CWLJobWrapper, CWLGather)):
                                         promises[s].addFollowOn(wfjob)
                                     else:
                                         promises[s].addChild(wfjob)
