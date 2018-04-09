@@ -2,7 +2,7 @@ from __future__ import absolute_import
 import unittest
 import os
 from toil import subprocess
-from toil.wdl.toilwdl import ToilWDL
+from toil.wdl.wdl_interpret import InterpretWDL
 from toil.test import ToilTest, slow
 import zipfile
 import shutil
@@ -173,7 +173,7 @@ class ToilWdlIntegrationTest(ToilTest):
         default_csv_output = [['1', '2', '3'], 
                               ['4', '5', '6'], 
                               ['7', '8', '9']]
-        t = ToilWDL(os.path.abspath(
+        t = InterpretWDL(os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
             os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
@@ -186,7 +186,7 @@ class ToilWdlIntegrationTest(ToilTest):
         default_tsv_output = [['1', '2', '3'], 
                               ['4', '5', '6'], 
                               ['7', '8', '9']]
-        t = ToilWDL(os.path.abspath(
+        t = InterpretWDL(os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
             os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
@@ -205,7 +205,7 @@ class ToilWdlIntegrationTest(ToilTest):
             u'RefDict': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict',
             u'RefFasta': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta'}
 
-        t = ToilWDL(
+        t = InterpretWDL(
             "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl",
             "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json",
             self.output_dir)
