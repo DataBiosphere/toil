@@ -20,8 +20,8 @@ import os
 import logging
 
 from toil import subprocess
-from toil.wdl.wdl_interpret import InterpretWDL, recursive_glob, generate_docker_bashscript_file, heredoc_wdl
-from toil.wdl.wdl_compile import CompileWDL
+from toil.wdl.wdl_interpret import InterpretWDL
+from toil.wdl.wdl_compile import CompileWDL, recursive_glob, generate_docker_bashscript_file, heredoc_wdl
 import toil.wdl.wdl_parser as wdl_parser
 
 wdllogger = logging.getLogger(__name__)

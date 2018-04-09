@@ -3,6 +3,7 @@ import unittest
 import os
 from toil import subprocess
 from toil.wdl.wdl_interpret import InterpretWDL
+from toil.wdl.wdl_compile import CompileWDL, recursive_glob, generate_docker_bashscript_file, heredoc_wdl
 from toil.test import ToilTest, slow
 import zipfile
 import shutil
