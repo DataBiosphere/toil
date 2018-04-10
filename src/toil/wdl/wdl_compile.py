@@ -454,12 +454,11 @@ class CompileWDL:
         main_section = ''
         skip_first = 1
 
-        for priority in range(self.task_priority + 1):
+        for priority in range(self.task_priority + 2):
             for job_declaration in self.workflows_dictionary:
                 if isinstance(job_declaration, (list, tuple)):
                     if job_declaration[0] == priority:
-                        main_section = main_section + '        job0.addChild(job' + str(
-                            job_declaration[1]) + ')\n'
+                        main_section = main_section + '        job0.addChild(job' + str(job_declaration[1]) + ')\n'
             if skip_first == 0:
                 main_section = main_section + '\n        job0 = job0.encapsulate()\n'
             skip_first = 0
@@ -559,8 +558,7 @@ class CompileWDL:
         fn_section = fn_section + fn_start
 
         # import files into the job store using readGlobalFile()
-        readglobalfiles_declarations = self.write_function_readglobalfiles(job,
-                                                                           job_declaration_array)
+        readglobalfiles_declarations = self.write_function_readglobalfiles(job, job_declaration_array)
         fn_section = fn_section + readglobalfiles_declarations
 
         # write out commandline keywords
@@ -575,8 +573,7 @@ class CompileWDL:
         fn_section = fn_section + subprocesspopen
 
         # write the outputs for the definition to return
-        return_outputs = self.write_function_outputreturn(job,
-                                                          job_task_reference)
+        return_outputs = self.write_function_outputreturn(job, job_task_reference)
         fn_section = fn_section + return_outputs
 
         return fn_section
@@ -634,8 +631,7 @@ class CompileWDL:
         fn_section = fn_section + fn_start
 
         # import files into the job store using readGlobalFile()
-        readglobalfiles_declarations = self.write_function_readglobalfiles(job,
-                                                                           job_declaration_array)
+        readglobalfiles_declarations = self.write_function_readglobalfiles(job, job_declaration_array)
         fn_section = fn_section + readglobalfiles_declarations
 
         # prep Array[File] commandline keywords
@@ -646,19 +642,16 @@ class CompileWDL:
         cmdline = self.write_function_cmdline(job, docker=True)
         fn_section = fn_section + cmdline
 
-        bashscriptline = self.write_function_bashscriptline(job_task_reference,
-                                                            job_alias)
+        bashscriptline = self.write_function_bashscriptline(job_task_reference, job_alias)
         fn_section = fn_section + bashscriptline
 
         docker_image = self.get_docker_image(job_task_reference)
 
-        dockercall = self.write_function_dockercall(job_task_reference,
-                                                    docker_image)
+        dockercall = self.write_function_dockercall(job_task_reference, docker_image)
         fn_section = fn_section + dockercall
 
         # write the outputs for the definition to return
-        return_outputs = self.write_function_outputreturn(job,
-                                                          job_task_reference)
+        return_outputs = self.write_function_outputreturn(job, job_task_reference, docker=True)
         fn_section = fn_section + return_outputs
 
         return fn_section
@@ -956,7 +949,7 @@ class CompileWDL:
 
         return fn_section
 
-    def write_function_outputreturn(self, job, job_task_reference):
+    def write_function_outputreturn(self, job, job_task_reference, docker=False):
         '''
         Find the output values that this function needs and write them out as a
         string.
@@ -966,6 +959,10 @@ class CompileWDL:
         :param job_task_reference: The name of the job to look up values for.
         :return: A string representing this.
         '''
+        if docker:
+            outpath = "os.path.join(tempDir, 'execution', output_filename)"
+        else:
+            outpath = "output_filename"
 
         fn_section = ''
         if 'outputs' in self.tasks_dictionary[job_task_reference]:
@@ -1021,10 +1018,11 @@ class CompileWDL:
                             "formatted_output_filename": self.translate_wdl_string_to_python_string(
                                 job, output_value),
                             "output_name": output_name,
-                            "out_dir": self.output_directory}
+                            "out_dir": self.output_directory,
+                            "outpath": outpath}
                         nonglob_template = heredoc_wdl('''
                             output_filename = {formatted_output_filename}
-                            output_file = job.fileStore.writeGlobalFile(output_filename)
+                            output_file = job.fileStore.writeGlobalFile({outpath})
                             job.fileStore.exportFile(output_file, "file://{out_dir}/" + output_filename)
                             {output_name} = (output_file, output_filename)
 
@@ -1083,12 +1081,10 @@ class CompileWDL:
         if job in self.workflows_dictionary:
             for input in self.workflows_dictionary[job]['job_declarations']:
                 input_type = \
-                    self.workflows_dictionary[job]['job_declarations'][input][
-                        'type']
+                    self.workflows_dictionary[job]['job_declarations'][input]['type']
                 if input_type == 'output':
                     input_name = \
-                        self.workflows_dictionary[job]['job_declarations'][input][
-                            'name']
+                        self.workflows_dictionary[job]['job_declarations'][input]['name']
                     if input == job_declaration_name:
                         parent_job = input_name.split()[0]
                         dict_output_key = input_name.split()[-1]
@@ -1422,8 +1418,7 @@ class CompileWDL:
                     for each_section in i.tasks_dictionary[each_task]:
                         f.write('    ' + str(each_section))
                         if i.tasks_dictionary[each_task][each_section]:
-                            for each_variable in i.tasks_dictionary[each_task][
-                                each_section]:
+                            for each_variable in i.tasks_dictionary[each_task][each_section]:
                                 f.write('        ' + str(each_variable))
 
                         f.write('\n\nworkflows_dict')
@@ -1440,9 +1435,7 @@ class CompileWDL:
                     for j in i.workflows_dictionary[each_task][
                         'job_declarations']:
                         f.write('        ' + str(j))
-                        for g in \
-                                i.workflows_dictionary[each_task]['job_declarations'][
-                                    j]:
+                        for g in i.workflows_dictionary[each_task]['job_declarations'][j]:
                             f.write('            ' + g + ': ' +
                                     i.workflows_dictionary[each_task][
                                         'job_declarations'][j][g])

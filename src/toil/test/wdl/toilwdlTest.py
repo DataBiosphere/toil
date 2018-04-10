@@ -32,7 +32,7 @@ class ToilWdlIntegrationTest(ToilTest):
         # GATK tests will not run on jenkins b/c GATK.jar needs Java 7
         # and jenkins only has Java 6 (12-16-2017).
         # Set this to true to run the GATK integration tests locally.
-        self.manual_integration_tests = False
+        self.manual_integration_tests = True
 
         # Delete the test datasets after running the tests.
         # Jenkins requires this to not error on "untracked files".
@@ -80,6 +80,25 @@ class ToilWdlIntegrationTest(ToilTest):
         remove_encode_output()
 
         unittest.TestCase.tearDown(self)
+
+    # estimated run time 27 sec
+    @slow
+    def testMD5sum(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #1.'''
+        wdl = os.path.abspath('src/toil/test/wdl/md5sum.wdl')
+        inputfile = os.path.abspath('src/toil/test/wdl/md5sum.input')
+        json = os.path.abspath('src/toil/test/wdl/md5sum.json')
+
+        json_text = '''{"ga4ghMd5.inputFile": "{md5suminput}"}'''.format(md5suminput=input)
+        with open(json, 'w') as f:
+            f.write(json_text)
+            f.write('\n')
+        subprocess.check_call(['wget', 'https://raw.githubusercontent.com/briandoconnor/dockstore-workflow-md5sum/develop/md5sum.wdl', '-o', wdl])
+        subprocess.check_call(['wget', 'https://raw.githubusercontent.com/briandoconnor/dockstore-workflow-md5sum/develop/md5sum.input', '-o', inputfile])
+
+        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+        assert os.path.exists(os.path.join(self.output_dir, 'md5sum.txt'))
 
     # estimated run time 27 sec
     @slow
@@ -171,8 +190,8 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time <1 sec
     def testCSV(self):
-        default_csv_output = [['1', '2', '3'], 
-                              ['4', '5', '6'], 
+        default_csv_output = [['1', '2', '3'],
+                              ['4', '5', '6'],
                               ['7', '8', '9']]
         t = InterpretWDL(os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
@@ -184,8 +203,8 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time <1 sec
     def testTSV(self):
-        default_tsv_output = [['1', '2', '3'], 
-                              ['4', '5', '6'], 
+        default_tsv_output = [['1', '2', '3'],
+                              ['4', '5', '6'],
                               ['7', '8', '9']]
         t = InterpretWDL(os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
