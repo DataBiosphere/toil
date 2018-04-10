@@ -86,19 +86,16 @@ class ToilWdlIntegrationTest(ToilTest):
     def testMD5sum(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #1.'''
-        wdl = os.path.abspath('src/toil/test/wdl/md5sum.wdl')
-        inputfile = os.path.abspath('src/toil/test/wdl/md5sum.input')
-        json = os.path.abspath('src/toil/test/wdl/md5sum.json')
-
-        json_text = '''{"ga4ghMd5.inputFile": "{md5suminput}"}'''.format(md5suminput=input)
-        with open(json, 'w') as f:
-            f.write(json_text)
-            f.write('\n')
-        subprocess.check_call(['wget', 'https://raw.githubusercontent.com/briandoconnor/dockstore-workflow-md5sum/develop/md5sum.wdl', '-o', wdl])
-        subprocess.check_call(['wget', 'https://raw.githubusercontent.com/briandoconnor/dockstore-workflow-md5sum/develop/md5sum.input', '-o', inputfile])
+        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.wdl')
+        inputfile = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.input')
+        json = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
 
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
-        assert os.path.exists(os.path.join(self.output_dir, 'md5sum.txt'))
+        md5sum_output = os.path.join(self.output_dir, 'md5sum.txt')
+        assert os.path.exists(md5sum_output)
+        with open(md5sum_output, 'r') as f:
+            assert f.read() == '0844e1fd61d7b73dc53e320b9efa7a9c\n'
+        os.unlink(md5sum_output)
 
     # estimated run time 27 sec
     @slow
