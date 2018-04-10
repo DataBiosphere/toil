@@ -32,7 +32,7 @@ class ToilWdlIntegrationTest(ToilTest):
         # GATK tests will not run on jenkins b/c GATK.jar needs Java 7
         # and jenkins only has Java 6 (12-16-2017).
         # Set this to true to run the GATK integration tests locally.
-        self.manual_integration_tests = True
+        self.manual_integration_tests = False
 
         # Delete the test datasets after running the tests.
         # Jenkins requires this to not error on "untracked files".
