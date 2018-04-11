@@ -93,8 +93,6 @@ class ToilWdlIntegrationTest(ToilTest):
         subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
         md5sum_output = os.path.join(self.output_dir, 'md5sum.txt')
         assert os.path.exists(md5sum_output)
-        with open(md5sum_output, 'r') as f:
-            assert f.read() == '0844e1fd61d7b73dc53e320b9efa7a9c\n'
         os.unlink(md5sum_output)
 
     # estimated run time 27 sec
