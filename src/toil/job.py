@@ -25,9 +25,7 @@ import importlib
 import inspect
 import logging
 import os
-import sys
 import time
-import uuid
 import dill
 import tempfile
 
@@ -47,7 +45,7 @@ from six import iteritems, string_types
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 
-from toil.common import Toil, addOptions
+from toil.common import Toil, addOptions, safeUnpickleFromStream
 from toil.fileStore import DeferredFunction
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
@@ -1750,7 +1748,7 @@ class Promise(object):
         with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
             # If this doesn't work then the file containing the promise may not exist or be
             # corrupted
-            value = pickle.load(fileHandle)
+            value = safeUnpickleFromStream(fileHandle)
             return value
 
 
