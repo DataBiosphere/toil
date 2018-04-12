@@ -29,6 +29,7 @@ import sys
 import time
 import uuid
 import dill
+import tempfile
 
 try:
     import cPickle as pickle
@@ -898,13 +899,14 @@ class Job(JobLikeObject):
         logger.debug('Loading user module %s.', userModule)
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
-        if pickleFile == "firstJob":
-            openFileStream = jobStore.readSharedFileStream(pickleFile)
-        else:
-            openFileStream = jobStore.readFileStream(pickleFile)
-        with openFileStream as fileHandle:
-            return cls._unpickle(userModule, fileHandle, jobStore.config)
-
+        with tempfile.NamedTemporaryFile() as f:
+            filename = f.name
+            if pickleFile == "firstJob":
+                jobStore.readSharedFile(pickleFile, filename)
+            else:
+                jobStore.readFile(pickleFile, filename)
+            with open(filename) as fileHandle:
+                return cls._unpickle(userModule, fileHandle, jobStore.config)
 
     @classmethod
     def _unpickle(cls, userModule, fileHandle, config):
