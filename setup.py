@@ -35,10 +35,10 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20180306140409'
+    cwltool = 'cwltool==1.0.20180403145700'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
-    cwltest = 'cwltest>=1.0.20180130081614'
+    cwltest = 'cwltest>=1.0.20180209171722'
     htcondor = 'htcondor>=8.6.0'
 
     mesos_reqs = [
@@ -83,9 +83,13 @@ def runSetup():
     if sys.platform != 'linux' or 'linux2':
         all_reqs.remove(htcondor)
 
+    if not sys.version_info[0] == 2:
+        raise RuntimeError("Toil currently requires Python 2, but we're working on adding Python 3 support (#1780)")
+
     setup(
         name='toil',
         version=version.distVersion,
+        python_requires='~=2.7',
         description='Pipeline management software for clusters.',
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',

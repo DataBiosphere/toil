@@ -128,7 +128,8 @@ class CWLTest(ToilTest):
     def test_run_conformance(self, batchSystem=None):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
-        testhash = "91f108df4d4ca567e567fc65f61feb0674467a84"
+        # The latest cwl git hash. Update it to get the latest tests.
+        testhash = "f96bca6911b6688ff614c02dbefe819bed260a13"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(cwlSpec):
             urlretrieve(url, "spec.zip")

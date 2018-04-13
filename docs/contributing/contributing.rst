@@ -193,6 +193,11 @@ This is described in the next section.
 Making Your Own Toil Docker Image
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+**Note!**  Toil checks if the docker image specified by TOIL_APPLIANCE_SELF
+exists prior to launching by using the docker v2 schema.  This should be
+valid for any major docker repository, but there is an option to override
+this if desired using the option: `--forceDockerAppliance`.
+
 Here is a general workflow (similar instructions apply when using Docker Hub):
 
 1. Make some changes to the provisioner of your local version of Toil.

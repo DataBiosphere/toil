@@ -39,8 +39,8 @@ A Toil workflow can be run with just three steps:
    Don't actually type ``(venv) $`` in at the beginning of each command. This is intended only to remind the user that
    they should have their :ref:`virtual environment <venvPrep>` running.
 
-Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`,
-``singleMachine``.  using the ``file`` job store.
+Congratulations! You've run your first Toil workflow using the default :ref:`Batch System <batchsysteminterface>`, ``singleMachine``.
+using the ``file`` job store.
 
 Toil uses batch systems to manage the jobs it creates.
 
@@ -115,10 +115,8 @@ For information on using CWL with Toil see the section :ref:`cwl`
 Running a basic WDL workflow
 ----------------------------
 
-The `Workflow Description Language`_ (WDL) is another emerging language for writing workflows that are portable across
-multiple workflow engines and platforms.  Running WDL workflows using Toil is still in alpha, and currently
-experimental.  Toil currently supports basic workflow syntax (see :ref:`wdl` for more details and examples).
-Here we go over running a basic WDL helloworld workflow.
+The `Workflow Description Language`_ (WDL) is another emerging language for writing workflows that are portable across multiple workflow engines and platforms.
+Running WDL workflows using Toil is still in alpha, and currently experimental.  Toil currently supports basic workflow syntax (see :ref:`wdlSupport` for more details and examples).  Here we go over running a basic WDL helloworld workflow.
 
 #. First ensure that Toil is installed with the
    ``wdl`` extra (see :ref:`extras`).  ::
@@ -160,8 +158,8 @@ To learn more about WDL, see the main `WDL website`_ .
 
 .. _runningDetail:
 
-Sort Example
-------------
+A (more) real-world example
+---------------------------
 
 For a more detailed example and explanation, we've developed a sample pipeline
 that merge-sorts a temporary file. This is not supposed to be an efficient
@@ -173,6 +171,7 @@ Running the example
 ~~~~~~~~~~~~~~~~~~~
 
 #. Download :download:`the example code <../../src/toil/test/sort/sort.py>`.
+
 
 #. Run it with the default settings::
 
@@ -247,10 +246,10 @@ of this new sorted file.
 
 If the base case fails, then the file is split into two new tempFiles using :func:`Job.FileStore.getLocalTempFile` and
 the helper function ``copySubRangeOfFile``. Finally we add a follow on Job ``up`` with :func:`Job.addFollowOnJobFn`.
-We've already seen child jobs. A follow-on Job is a job that runs after the current job and *all* of its children (and
-their children and follow-ons) have completed. Using a follow-on makes sense because ``up`` is responsible for merging
-the files together and we don't want to merge the files together until we *know* they are sorted. Again, the return
-value of the follow-on job is requested using :func:`Job.rv`.
+We've already seen child jobs. A follow-on Job is a job that runs after the current job and *all* of its children (and their children and follow-ons) have
+completed. Using a follow-on makes sense because ``up`` is responsible for merging the files together and we don't want
+to merge the files together until we *know* they are sorted. Again, the return value of the follow-on job is requested
+using :func:`Job.rv`.
 
 Looking at ``up``
 
@@ -294,6 +293,8 @@ arguments for the workflow which includes both Toil's and ones defined inside
 ``sort.py``. A complete explanation of Toil's arguments can be
 found in :ref:`commandRef`.
 
+
+
 Logging
 ~~~~~~~
 
@@ -306,7 +307,8 @@ messages to the screen::
 
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
-output.
+output. For more information, see :ref:`loggingRef`.
+
 
 Error Handling and Resuming Pipelines
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -358,17 +360,21 @@ You'll now see Toil attempt to rerun the failed job until it runs out of tries.
 may experience a sporadic interruption, or some other non-deterministic failure.
 
 To successfully restart our pipeline, we can edit our script to comment out
-line 30, or remove it, and then run::
+line 30, or remove it, and then run
+
+::
 
     (venv) $ python sort.py --restart --overwriteOutput=True
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
 
+
 Collecting Statistics
 ~~~~~~~~~~~~~~~~~~~~~
 
 Please see the :ref:`cli_status` section for more on gathering runtime and resource info on jobs.
+
 
 Launching a Toil Workflow in AWS
 --------------------------------
@@ -380,8 +386,7 @@ Note that when running in AWS, users can either run the workflow on a single ins
 cluster (which is running across multiple containers on multiple AWS instances).  For more information
 on running Toil workflows on a cluster, see :ref:`runningAWS`.
 
-Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may
-not be cleaned up properly.
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
 #. Launch a cluster in AWS using the :ref:`launchCluster` command. The arguments ``keyPairName``,
    ``leaderNodeType``, and ``zone`` are required to launch a cluster. ::
@@ -406,6 +411,7 @@ not be cleaned up properly.
    Along with some other ``INFO`` log messages, you should get the following output in your terminal window:
    ``Hello, world!, here's a message: You did it!``
 
+
 #. Exit from the SSH connection. ::
 
         $ exit
@@ -415,6 +421,7 @@ not be cleaned up properly.
 
         (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
+
 .. _awscwl:
 
 Running a CWL Workflow on AWS
@@ -422,8 +429,8 @@ Running a CWL Workflow on AWS
 After having installed the ``aws`` and ``cwl`` extras for Toil during the :ref:`installation-ref` and set up AWS
 (see :ref:`prepareAWS`), the user can run a CWL workflow with Toil on AWS.
 
-Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may
-not be cleaned up properly.
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
+
 
 #. First launch a node in AWS using the :ref:`launchCluster` command. ::
 
@@ -466,72 +473,115 @@ not be cleaned up properly.
 
       (venv) $ toil destroy-cluster --zone us-west-2a <cluster-name>
 
+
 .. _awscactus:
 
-Running a Workflow with Autoscaling on AWS - Cactus
+Running a Workflow with Autoscaling - Cactus
 ---------------------------------------------------
 
-`Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free whole-genome multiple alignment
-program.
+`Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ is a reference-free, whole-genome multiple alignment
+program that can be run on any of the cloud platforms Toil supports.
 
-Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may
-not be cleaned up properly.
+.. note::
+
+      **Cloud Independence**:
+
+      This example provides a "cloud agnostic" view of running Cactus with Toil. Most options will not change between cloud providers.
+      However, each provisioner has unique inputs for  ``--leaderNodeType``, ``--nodeType`` and ``--zone``.
+      We recommend the following:
+
+        +----------------------+----------------+------------+---------------+
+        |        Option        | Used in        |  AWS       |     Google    |
+        +----------------------+----------------+------------+---------------+
+        | ``--leaderNodeType`` | launch-cluster | t2.medium  | n1-standard-1 |
+        +----------------------+----------------+------------+---------------+
+        | ``--zone``           | launch-cluster | us-west-2a |               |
+        +----------------------+----------------+------------+   us-west1-a  +
+        | ``--zone``           | cactus         | us-west-2  |               |
+        +----------------------+----------------+------------+---------------+
+        | ``--nodeType``       | cactus         | c3.4xlarge | n1-standard-8 |
+        +----------------------+----------------+------------+---------------+
+
+      When executing ``toil launch-cluster`` with ``gce`` specified for ``--provisioner``, the option ``--boto`` must
+      be specified and given a path to your .boto file. See :ref:`Running in Google Compute Engine (GCE)` for more information about the ``--boto`` option.
+
+Also!  Remember to use the :ref:`destroyCluster` command when finished to destroy the cluster!  Otherwise things may not be cleaned up properly.
 
 #. Download :download:`pestis.tar.gz <../../src/toil/test/cactus/pestis.tar.gz>`.
 
-#. Launch a leader node in AWS using the :ref:`launchCluster` command. ::
+#. Launch a leader node using the :ref:`launchCluster` command. ::
 
-        (venv) $ toil launch-cluster <cluster-name> --keyPairName <AWS-key-pair-name> --leaderNodeType t2.medium --zone us-west-2c
+        (venv) $ toil launch-cluster <cluster-name> --provisioner <aws, gce, azure> --keyPairName <key-pair-name> --leaderNodeType <type> --zone <zone>
 
-   Setting the environment variable ``TOIL_AWS_ZONE`` eliminates having to do this for each later command.
-        (venv) $ export TOIL_AWS_ZONE=us-west-2c
+
+   .. note::
+
+        **A Helpful Tip**
+
+        When using AWS, setting the environment variable eliminates having to specify the ``--zone`` option for each command.
+        This will be supported for GCE and Azure in the future. ::
+
+            (venv) $ export TOIL_AWS_ZONE=us-west-2c
+
+#. Create appropriate directory for uploading files. ::
+
+        (venv) $ toil ssh-cluster --provisioner <aws, gce, azure> <cluster-name>
+        $ mkdir /root/cact_ex
+        $ exit
 
 #. Copy the required files, i.e., seqFile.txt (a text file containing the locations of the input sequences as
    well as their phylogenetic tree, see
    `here <https://github.com/ComparativeGenomicsToolkit/cactus#seqfile-the-input-file>`__), organisms' genome sequence
    files in FASTA format, and configuration files (e.g. blockTrim1.xml, if desired), up to the leader node. ::
 
-      (venv) $ toil rsync-cluster <cluster-name> pestis-short-aws-seqFile.txt :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> setup_leaderNode.sh :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> blockTrim1.xml :/tmp
-      (venv) $ toil rsync-cluster <cluster-name> blockTrim3.xml :/tmp
+      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> pestis-short-aws-seqFile.txt :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> setup_leaderNode.sh :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> blockTrim1.xml :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> blockTrim3.xml :/root/cact_ex
 
 #. Log into the leader node. ::
 
-        (venv) $ toil ssh-cluster <cluster-name>
+        (venv) $ toil ssh-cluster --provisioner <aws, gce, azure> <cluster-name>
 
 #. Set up the environment of the leader node to run Cactus. ::
 
-        $ bash /tmp/setup_leaderNode.sh
+        $ bash /root/cact_ex/setup_leaderNode.sh
         $ source cact_venv/bin/activate
         (cact_venv) $ cd cactus
         (cact_venv) $ pip install --upgrade .
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow. ::
 
-       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 cactus --provisioner aws --nodeType c3.4xlarge --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /tmp/blockTrim3.xml aws:us-west-2:cactus-pestis /tmp/pestis-short-aws-seqFile.txt /tmp/pestis_output3.hal
+       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0 cactus --provisioner <aws, gce, azure> --nodeType <type> --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /root/cact_ex/blockTrim3.xml <aws, google, azure>:<zone>:cactus-pestis /root/cact_ex/pestis-short-aws-seqFile.txt /root/cact_ex/pestis_output3.hal
 
    .. note::
 
-      In this example, we specify the version of Toil to be 3.12.0; if the latest one is desired, please eliminate
-      ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0``.
+      **Pieces of the Puzzle**:
 
-      The flag ``--maxNodes 2`` creates up to two instances of type `c3.4xlarge` and launches Mesos worker containers
-      inside them.
+      ``TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0`` - specfies the version of Toil being used, 3.14.0;
+      if the latest one is desired, please eliminate.
 
-      The flag ``--logDebug`` is equivalent to ``--logLevel DEBUG``.
+      ``--nodeType`` - determines the instance type used for worker nodes. The instance type specified here must be on
+      the same cloud provider as the one specified with ``--leaderNodeType``
 
-      ``--logFile /logFile_pestis3``: Write log in a file named `logFile_pestis3` under ``/`` folder.
+      ``--maxNodes 2`` - creates up to two instances of the type specified with ``--nodeType`` and
+      launches Mesos worker containers inside them.
 
-      The ``--configFile`` flag is not required, depending on whether a specific configuration file is intended to run
+      ``--logDebug`` - equivalent to ``--logLevel DEBUG``.
+
+      ``--logFile /logFile_pestis3`` - writes logs in a file named `logFile_pestis3` under ``/`` folder.
+
+      ``--configFile`` - this is not required depending on whether a specific configuration file is intended to run
       the alignment.
 
-      Toil creates a bucket in S3 called `aws:us-west-2:cactus-pestis` to store intermediate job files and metadata.
-      The result file, named ``pestis_output3.hal``, is stored under ``/tmp`` folder of the leader node.
+      ``<aws, google, azure>:<zone>:cactus-pestis`` - creates a bucket, named ``cactus-pestis``, with the specified cloud provider to store intermediate job files and metadata.
+      **NOTE**: If you want to use a GCE-based jobstore, specify ``google`` here, not ``gce``.
+
+      The result file, named ``pestis_output3.hal``, is stored under ``/root/cact_ex`` folder of the leader node.
 
       Use ``cactus --help`` to see all the Cactus and Toil flags available.
 
@@ -541,10 +591,9 @@ not be cleaned up properly.
 
 #. Download the resulted output to local machine. ::
 
-        (venv) $ toil rsync-cluster <cluster-name> :/tmp/pestis_output3.hal <path-of-folder-on-local-machine>
+        (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name>  :/root/cact_ex/pestis_output3.hal <path-of-folder-on-local-machine>
 
 #. Destroy the cluster. ::
 
-        (venv) $ toil destroy-cluster <cluster-name>
+        (venv) $ toil destroy-cluster --provisioner <aws, gce, azure> <cluster-name>
 
-For other examples and Toil resources see https://toilpipelines.wordpress.com/ !
