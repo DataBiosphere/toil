@@ -39,11 +39,6 @@ except ImportError:
 from six.moves.http_client import HTTPException
 from six.moves.configparser import RawConfigParser, NoOptionError
 
-from azure.common import AzureMissingResourceHttpError, AzureException
-from azure.storage.blob.blockblobservice import BlockBlobService
-from azure.storage.blob.models import BlobPermissions, BlobBlock
-from azure.cosmosdb.table import TableService, EntityProperty, Entity
-
 # noinspection PyPackageRequirements
 # (pulled in transitively)
 import requests
@@ -105,6 +100,11 @@ class AzureJobStore(AbstractJobStore):
     A job store that uses Azure's blob store for file storage and Table Service to store job info
     with strong consistency.
     """
+
+    from azure.common import AzureMissingResourceHttpError, AzureException
+    from azure.storage.blob.blockblobservice import BlockBlobService
+    from azure.storage.blob.models import BlobPermissions, BlobBlock
+    from azure.cosmosdb.table import TableService, EntityProperty, Entity
 
     # Dots in container names should be avoided because container names are used in HTTPS bucket
     # URLs where the may interfere with the certificate common name. We use a double underscore
@@ -656,6 +656,8 @@ class AzureTable(object):
       - returns None when attempting to get a non-existent entity.
     """
 
+    from azure.common import AzureMissingResourceHttpError
+
     def __init__(self, tableService, tableName):
         self.tableService = tableService
         self.tableName = tableName
@@ -694,6 +696,8 @@ class AzureBlobContainer(object):
     must use *only* keyword arguments.
     """
 
+    #from azure.storage.blob.blockblobservice import BlockBlobService
+
     def __init__(self, blobService, containerName):
         self.blobService = blobService
         self.containerName = containerName
@@ -718,6 +722,9 @@ class AzureJob(JobGraph):
     Copied almost entirely from AWSJob, except to take into account the
     fact that Azure properties must start with a letter or underscore.
     """
+
+    from azure.common import AzureException
+    from azure.cosmosdb.table import EntityProperty, Entity
 
     defaultAttrs = ['PartitionKey', 'RowKey', 'etag', 'Timestamp']
 
