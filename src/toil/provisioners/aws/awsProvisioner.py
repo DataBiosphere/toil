@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2018 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -30,9 +30,8 @@ from bd2k.util import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
+from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
-
 from toil import applianceSelf
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
@@ -42,6 +41,7 @@ from boto.utils import get_instance_metadata
 from bd2k.util.retry import retry
 from toil.provisioners import (awsRemainingBillingInterval, awsFilterImpairedNodes,
                                Node, NoSuchClusterException)
+from toil.lib.generatedEC2Lists import E2Instances
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
@@ -130,7 +130,6 @@ class AWSProvisioner(AbstractProvisioner):
             self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
             self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
             self.spotBids = dict(zip(self.preemptableNodeTypes, spotBids))
-
         else:
             self.ctx = None
             self.clusterName = None
@@ -143,16 +142,16 @@ class AWSProvisioner(AbstractProvisioner):
         self.subnetID = None
 
     def launchCluster(self, leaderNodeType, leaderSpotBid, nodeTypes, preemptableNodeTypes, keyName,
-            clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None,
-            vpcSubnet=None, leaderStorage=50, nodeStorage=50,
-            **kwargs):
+                      clusterName, numWorkers=0, numPreemptableWorkers=0, spotBids=None, userTags=None, zone=None,
+                      vpcSubnet=None, leaderStorage=50, nodeStorage=50,
+                      **kwargs):
         if self.config is None:
             self.nodeStorage = nodeStorage
         if userTags is None:
             userTags = {}
         ctx = self._buildContext(clusterName=clusterName, zone=zone)
         profileARN = self._getProfileARN(ctx)
-        leaderInstanceType = ec2_instance_types[leaderNodeType]
+        leaderInstanceType = E2Instances[leaderNodeType]
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup(ctx, clusterName, vpcSubnet)
         bdm = self._getBlockDeviceMapping(leaderInstanceType, rootVolSize=leaderStorage)
@@ -215,8 +214,7 @@ class AWSProvisioner(AbstractProvisioner):
         return leader
 
     def getNodeShape(self, nodeType, preemptable=False):
-        instanceType = ec2_instance_types[nodeType]
-
+        instanceType = E2Instances[nodeType]
         disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
@@ -297,7 +295,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._terminateNodes(nodes, self.ctx)
 
     def addNodes(self, nodeType, numNodes, preemptable):
-        instanceType = ec2_instance_types[nodeType]
+        instanceType = E2Instances[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self.nodeStorage)
         arn = self._getProfileARN(self.ctx)
         keyPath = '' if not self.config or not self.config.sseKey else self.config.sseKey
@@ -723,7 +721,7 @@ class AWSProvisioner(AbstractProvisioner):
         profile_arn = profile.arn
 
         if len(profile.roles) > 1:
-                raise RuntimeError('Did not expect profile to contain more than one role')
+            raise RuntimeError('Did not expect profile to contain more than one role')
         elif len(profile.roles) == 1:
             # this should be profile.roles[0].role_name
             if profile.roles.member.role_name == iamRoleName:

@@ -37,6 +37,7 @@ except ImportError:
 
 # Python 3 compatibility imports
 from six import iteritems
+from six import string_types
 
 from bd2k.util.humanize import bytes2human
 from bd2k.util.retry import retry
@@ -220,12 +221,12 @@ class Config(object):
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
         setOption("linkImports")
-
         setOption("environment", parseSetEnv)
 
         #Autoscaling options
         setOption("provisioner")
         setOption("nodeTypes", parseStrList)
+        checkValidNodeTypes(self.provisioner, self.nodeTypes)
         setOption("nodeOptions")
         setOption("minNodes", parseIntList)
         setOption("maxNodes", parseIntList)
@@ -382,9 +383,9 @@ def _addOptions(addGroupFn, config):
                       "reached.")
 
     addOptionFn('--nodeOptions', default=None,
-                 help="Options for provisioning the nodes. The syntax "
-                      "depends on the provisioner used. Neither the CGCloud nor the AWS "
-                      "provisioner support any node options.")
+                help="Options for provisioning the nodes. The syntax "
+                     "depends on the provisioner used. Neither the CGCloud nor the AWS "
+                     "provisioner support any node options.")
 
     addOptionFn('--minNodes', default=None, 
                  help="Mininum number of nodes of each type in the cluster, if using "
@@ -581,6 +582,47 @@ def addOptions(parser, config=Config()):
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
+
+def checkValidNodeTypes(provisioner, nodeTypes):
+    """
+    Raises if an invalid nodeType is specified for aws, azure, or gce.
+
+    :param str provisioner: 'aws', 'gce', or 'azure' to specify which cloud provisioner used.
+    :param nodeTypes: A list of node types.  Example: ['t2.micro', 't2.medium']
+    :return: Nothing.  Raises if invalid nodeType.
+    """
+    if not nodeTypes:
+        return
+    if not isinstance(nodeTypes, list):
+        nodeTypes = [nodeTypes]
+    if not isinstance(nodeTypes[0], string_types):
+        return
+    # check if a valid node type for aws
+    from toil.lib.generatedEC2Lists import E2Instances, regionDict
+    if provisioner == 'aws':
+        from toil.provisioners.aws import getCurrentAWSZone
+        currentZone = getCurrentAWSZone()[:-1] # adds something like 'a' or 'b' to the end
+        if not currentZone:
+            currentZone = 'us-west-2'
+        # check if instance type exists in this region
+        for nodeType in nodeTypes:
+            if nodeType and ':' in nodeType:
+                nodeType = nodeType.split(':')[0]
+            if nodeType not in regionDict[currentZone]:
+                raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.'
+                                   '' % (nodeType, currentZone))
+    # Only checks if aws nodeType specified for gce/azure atm.
+    if provisioner == 'gce' or provisioner == 'azure':
+        for nodeType in nodeTypes:
+            if nodeType and ':' in nodeType:
+                nodeType = nodeType.split(':')[0]
+            try:
+                E2Instances[nodeType]
+                raise RuntimeError("It looks like you've specified an AWS nodeType with the "
+                                   "{} provisioner.  Please specify an {} nodeType."
+                                   "".format(provisioner, provisioner))
+            except KeyError:
+                pass
 
 def getNodeID(extraIDFiles=None):
     """
