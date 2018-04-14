@@ -743,13 +743,8 @@ class CWLWorkflow(Job):
                                         raise validate.ValidationException(
                                             "Unsupported linkMerge '%s'", linkMerge)
                                 else:
-                                    inputSource = inp["source"]
-                                    if isinstance(inputSource, CommentedSeq):
-                                        # It seems that an input source with a '#' in the name will be
-                                        # returned as a CommentedSeq list by the yaml parser.
-                                        inputSource = str(inputSource[0])
-                                    jobobj[key] = (shortname(inputSource),
-                                                   promises[inputSource].rv())
+                                    jobobj[key] = (shortname(inp["source"]),
+                                                   promises[inp["source"]].rv())
                             elif "default" in inp:
                                 d = copy.copy(inp["default"])
                                 jobobj[key] = ("default", {"default": d})
