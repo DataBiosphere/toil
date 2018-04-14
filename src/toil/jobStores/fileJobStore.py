@@ -236,7 +236,7 @@ class FileJobStore(AbstractJobStore):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
         if self.exists(jobStoreID):
-            shutil.rmtree(self.jobStoreDir)
+            shutil.rmtree(self._getAbsPath(jobStoreID))
 
     def jobs(self):
         # Walk through list of temporary directories searching for jobs
