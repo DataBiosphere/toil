@@ -161,7 +161,7 @@ class FileJobStore(AbstractJobStore):
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
-            self._recursiveDelete(self.jobStoreDir)
+            shutil.rmtree(self.jobStoreDir)
 
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the
@@ -236,7 +236,7 @@ class FileJobStore(AbstractJobStore):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
         if self.exists(jobStoreID):
-            self._recursiveDelete(self._getAbsPath(jobStoreID))
+            shutil.rmtree(self.jobStoreDir)
 
     def jobs(self):
         # Walk through list of temporary directories searching for jobs
