@@ -81,7 +81,9 @@ class ToilWdlIntegrationTest(ToilTest):
 
         unittest.TestCase.tearDown(self)
 
-    # estimated run time 7 sec
+    # estimated run time 7 sec; not actually slow, but this will break on travis because it does not have
+    # docker installed so we tag this so that it runs on jenkins instead.
+    @slow
     def testMD5sum(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #1.'''
