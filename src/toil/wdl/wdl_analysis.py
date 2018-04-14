@@ -25,30 +25,20 @@ import toil.wdl.wdl_parser as wdl_parser
 wdllogger = logging.getLogger(__name__)
 
 
-class InterpretWDL:
+class AnalyzeWDL:
     '''
-    A program to run WDL input files using native Toil scripts.
+    Analyzes a wdl file, and associated json and/or extraneous files and restructures them
+    into 2 intermediate data structures (python dictionaries):
+        "workflows_dictionary": containing the parsed workflow information.
+        "tasks_dictionary": containing the parsed task information.
+
+    These are then fed into wdl_synthesis.py which uses them to write a native python
+    script for use with Toil.
 
     Requires a WDL file, and a JSON file.  The WDL file contains ordered commands,
-    and the JSON file contains input values for those commands.  To run in Toil,
-    these two files must be parsed, restructured into python dictionaries, and
-    then compiled into a Toil formatted python script.  This compiled Toil script
-    is deleted after running unless the user specifies: "--dont_delete_compiled"
-    as an option.
-
-    The WDL parser was auto-generated from the Broad's current WDL grammar file:
-    https://github.com/openwdl/wdl/blob/master/parsers/grammar.hgr
-    using Scott Frazer's Hermes: https://github.com/scottfrazer/hermes
-    Thank you Scott Frazer!
-
-    Currently in alpha testing, and known to work with the Broad's GATK tutorial
-    set for WDL on their main wdl site:
-    software.broadinstitute.org/wdl/documentation/topic?name=wdl-tutorials
-
-    And ENCODE's WDL workflow:
-    github.com/ENCODE-DCC/pipeline-container/blob/master/local-workflows/encode_mapping_workflow.wdl
-
-    Additional support to be broadened to include more features soon.
+    and the JSON file contains input values for those commands.  In addition, this
+    also takes potential accessory files like csv/tsv potentially also containing
+    variables which need to be incorporated.
     '''
 
     def __init__(self, wdl_filename, secondary_filename, output_directory):

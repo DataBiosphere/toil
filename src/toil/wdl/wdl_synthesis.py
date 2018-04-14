@@ -26,168 +26,22 @@ import toil.wdl.wdl_parser as wdl_parser
 wdllogger = logging.getLogger(__name__)
 
 
-def recursive_glob(job, directoryname, glob_pattern):
+class SynthesizeWDL:
     '''
-    Walks through a directory and its subdirectories looking for files matching
-    the glob_pattern and returns a list=[].
+    SynthesizeWDL takes the "workflows_dictionary" and "tasks_dictionary" produced by
+    wdl_analysis.py and uses them to write a native python script for use with Toil.
 
-    :param job: A "job" object representing the current task node "job" being
-                passed around by toil.  Toil's minimum unit of work.
-    :param directoryname: Any accessible folder name on the filesystem.
-    :param glob_pattern: A string like "*.txt", which would find all text files.
-    :return: A list=[] of absolute filepaths matching the glob pattern.
-    '''
-    matches = []
-    for root, dirnames, filenames in os.walk(directoryname):
-        for filename in fnmatch.filter(filenames, glob_pattern):
-            absolute_filepath = os.path.join(root, filename)
-            matches.append(absolute_filepath)
-    return matches
+    A WDL "workflow" section roughly corresponds to the python "main()" function, where
+    functions are wrapped as Toil "jobs", output dependencies specified, and called.
 
+    A WDL "task" section corresponds to a unique python function, which will be wrapped
+    as a Toil "job" and defined outside of the "main()" function that calls it.
 
-def heredoc_wdl(template, dictionary={}, indent=''):
-    template = textwrap.dedent(template).format(**dictionary)
-    return template.replace('\n', '\n' + indent) + '\n'
+    Generally this handles breaking sections into their corresponding Toil counterparts.
 
-
-def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
-    '''
-    Creates a bashscript to inject into a docker container for the job.
-
-    This script wraps the job command(s) given in a bash script, hard links the
-    outputs and returns an "rc" file containing the exit code.  All of this is
-    done in an effort to parallel the Broad's cromwell engine, which is the
-    native WDL runner.  As they've chosen to write and then run a bashscript for
-    every command, so shall we.
-
-    :param temp_dir: The current directory outside of docker to deposit the
-                     bashscript into, which will be the bind mount that docker
-                     loads files from into its own containerized filesystem.
-                     This is usually the tempDir created by this individual job
-                     using 'tempDir = job.fileStore.getLocalTempDir()'.
-    :param docker_dir: The working directory inside of the docker container
-                       which is bind mounted to 'temp_dir'.  By default this is
-                       'data'.
-    :param globs: A list of expected output files to retrieve as glob patterns
-                  that will be returned as hard links to the current working
-                  directory.
-    :param cmd: A bash command to be written into the bash script and run.
-    :param job_name: The job's name, only used to write in a file name
-                     identifying the script as written for that job.
-                     Will be used to call the script later.
-    :return: Nothing, but it writes and deposits a bash script in temp_dir
-             intended to be run inside of a docker container for this job.
-    '''
-    wdl_copyright = heredoc_wdl('''        \n
-        # Borrowed/rewritten from the Broad's Cromwell implementation.  As 
-        # that is under a BSD-ish license, I include here the license off 
-        # of their GitHub repo.  Thank you Broadies!
-
-        # Copyright (c) 2015, Broad Institute, Inc.
-        # All rights reserved.
-
-        # Redistribution and use in source and binary forms, with or without
-        # modification, are permitted provided that the following conditions are met:
-
-        # * Redistributions of source code must retain the above copyright notice, this
-        #   list of conditions and the following disclaimer.
-
-        # * Redistributions in binary form must reproduce the above copyright notice,
-        #   this list of conditions and the following disclaimer in the documentation
-        #   and/or other materials provided with the distribution.
-
-        # * Neither the name Broad Institute, Inc. nor the names of its
-        #   contributors may be used to endorse or promote products derived from
-        #   this software without specific prior written permission.
-
-        # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
-        # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
-        # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-        # DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
-        # FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
-        # DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
-        # SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
-        # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
-        # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-        # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
-
-        # make a temp directory w/identifier
-        ''')
-    prefix_dict = {"docker_dir": docker_dir,
-                   "cmd": cmd}
-    bashfile_prefix = heredoc_wdl('''
-        tmpDir=$(mktemp -d /{docker_dir}/execution/tmp.XXXXXX)
-        chmod 777 $tmpDir
-        # set destination for java to deposit all of its files
-        export _JAVA_OPTIONS=-Djava.io.tmpdir=$tmpDir
-        export TMPDIR=$tmpDir
-
-        (
-        cd /{docker_dir}/execution
-        {cmd}
-        )
-
-        # gather the input command return code
-        echo $? > "$tmpDir/rc.tmp"
-
-        ''', prefix_dict)
-
-    bashfile_string = '#!/bin/bash' + wdl_copyright + bashfile_prefix
-
-    begin_globbing_string = heredoc_wdl('''
-        (
-        cd $tmpDir
-        mkdir "$tmpDir/globs"
-        ''')
-
-    bashfile_string = bashfile_string + begin_globbing_string
-
-    for glob_input in globs:
-        add_this_glob = \
-            '( ln -L ' + glob_input + \
-            ' "$tmpDir/globs" 2> /dev/null ) || ( ln ' + glob_input + \
-            ' "$tmpDir/globs" )\n'
-        bashfile_string = bashfile_string + add_this_glob
-
-    bashfile_suffix = heredoc_wdl('''
-        )
-
-        # flush RAM to disk
-        sync
-
-        mv "$tmpDir/rc.tmp" "$tmpDir/rc"
-        ''')
-
-    bashfile_string = bashfile_string + bashfile_suffix
-
-    with open(os.path.join(temp_dir, job_name + '_script.sh'), 'w') as bashfile:
-        bashfile.write(bashfile_string)
-
-
-class CompileWDL:
-    '''
-    A program to run WDL input files using native Toil scripts.
-
-    Requires a WDL file, and a JSON file.  The WDL file contains ordered commands,
-    and the JSON file contains input values for those commands.  To run in Toil,
-    these two files must be parsed, restructured into python dictionaries, and
-    then compiled into a Toil formatted python script.  This compiled Toil script
-    is deleted after running unless the user specifies: "--dont_delete_compiled"
-    as an option.
-
-    The WDL parser was auto-generated from the Broad's current WDL grammar file:
-    https://github.com/openwdl/wdl/blob/master/parsers/grammar.hgr
-    using Scott Frazer's Hermes: https://github.com/scottfrazer/hermes
-    Thank you Scott Frazer!
-
-    Currently in alpha testing, and known to work with the Broad's GATK tutorial
-    set for WDL on their main wdl site:
-    software.broadinstitute.org/wdl/documentation/topic?name=wdl-tutorials
-
-    And ENCODE's WDL workflow:
-    github.com/ENCODE-DCC/pipeline-container/blob/master/local-workflows/encode_mapping_workflow.wdl
-
-    Additional support to be broadened to include more features soon.
+    For example: write the imports, then write all functions defining jobs (which have subsections
+    like: write header, define variables, read "File" types into the jobstore, docker call, etc.),
+    then write the main and all of its subsections.
     '''
 
     def __init__(self, tasks_dictionary, workflows_dictionary, output_directory, json_dict, tsv_dict, csv_dict):
@@ -217,8 +71,8 @@ class CompileWDL:
                     from toil.job import Job
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
-                    from toil.wdl.toilwdl import generate_docker_bashscript_file
-                    from toil.wdl.toilwdl import recursive_glob
+                    from toil.wdl.wdl_synthesis import generate_docker_bashscript_file
+                    from toil.wdl.wdl_synthesis import recursive_glob
                     import fnmatch
                     import subprocess
                     import os
@@ -967,7 +821,6 @@ class CompileWDL:
         fn_section = ''
         if 'outputs' in self.tasks_dictionary[job_task_reference]:
             files_to_return = []
-            glob = False
             for output in self.tasks_dictionary[job_task_reference]['outputs']:
                 output_name = output[0]
                 output_type = output[1]
@@ -1449,3 +1302,141 @@ class CompileWDL:
             for var in i.csv_dict:
                 f.write(str(var))
                 f.write(str(i.csv_dict))
+
+
+def recursive_glob(job, directoryname, glob_pattern):
+    '''
+    Walks through a directory and its subdirectories looking for files matching
+    the glob_pattern and returns a list=[].
+
+    :param job: A "job" object representing the current task node "job" being
+                passed around by toil.  Toil's minimum unit of work.
+    :param directoryname: Any accessible folder name on the filesystem.
+    :param glob_pattern: A string like "*.txt", which would find all text files.
+    :return: A list=[] of absolute filepaths matching the glob pattern.
+    '''
+    matches = []
+    for root, dirnames, filenames in os.walk(directoryname):
+        for filename in fnmatch.filter(filenames, glob_pattern):
+            absolute_filepath = os.path.join(root, filename)
+            matches.append(absolute_filepath)
+    return matches
+
+
+def heredoc_wdl(template, dictionary={}, indent=''):
+    template = textwrap.dedent(template).format(**dictionary)
+    return template.replace('\n', '\n' + indent) + '\n'
+
+
+def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
+    '''
+    Creates a bashscript to inject into a docker container for the job.
+
+    This script wraps the job command(s) given in a bash script, hard links the
+    outputs and returns an "rc" file containing the exit code.  All of this is
+    done in an effort to parallel the Broad's cromwell engine, which is the
+    native WDL runner.  As they've chosen to write and then run a bashscript for
+    every command, so shall we.
+
+    :param temp_dir: The current directory outside of docker to deposit the
+                     bashscript into, which will be the bind mount that docker
+                     loads files from into its own containerized filesystem.
+                     This is usually the tempDir created by this individual job
+                     using 'tempDir = job.fileStore.getLocalTempDir()'.
+    :param docker_dir: The working directory inside of the docker container
+                       which is bind mounted to 'temp_dir'.  By default this is
+                       'data'.
+    :param globs: A list of expected output files to retrieve as glob patterns
+                  that will be returned as hard links to the current working
+                  directory.
+    :param cmd: A bash command to be written into the bash script and run.
+    :param job_name: The job's name, only used to write in a file name
+                     identifying the script as written for that job.
+                     Will be used to call the script later.
+    :return: Nothing, but it writes and deposits a bash script in temp_dir
+             intended to be run inside of a docker container for this job.
+    '''
+    wdl_copyright = heredoc_wdl('''        \n
+        # Borrowed/rewritten from the Broad's Cromwell implementation.  As 
+        # that is under a BSD-ish license, I include here the license off 
+        # of their GitHub repo.  Thank you Broadies!
+
+        # Copyright (c) 2015, Broad Institute, Inc.
+        # All rights reserved.
+
+        # Redistribution and use in source and binary forms, with or without
+        # modification, are permitted provided that the following conditions are met:
+
+        # * Redistributions of source code must retain the above copyright notice, this
+        #   list of conditions and the following disclaimer.
+
+        # * Redistributions in binary form must reproduce the above copyright notice,
+        #   this list of conditions and the following disclaimer in the documentation
+        #   and/or other materials provided with the distribution.
+
+        # * Neither the name Broad Institute, Inc. nor the names of its
+        #   contributors may be used to endorse or promote products derived from
+        #   this software without specific prior written permission.
+
+        # THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+        # AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+        # IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+        # DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+        # FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+        # DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+        # SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+        # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+        # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+        # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE
+
+        # make a temp directory w/identifier
+        ''')
+    prefix_dict = {"docker_dir": docker_dir,
+                   "cmd": cmd}
+    bashfile_prefix = heredoc_wdl('''
+        tmpDir=$(mktemp -d /{docker_dir}/execution/tmp.XXXXXX)
+        chmod 777 $tmpDir
+        # set destination for java to deposit all of its files
+        export _JAVA_OPTIONS=-Djava.io.tmpdir=$tmpDir
+        export TMPDIR=$tmpDir
+
+        (
+        cd /{docker_dir}/execution
+        {cmd}
+        )
+
+        # gather the input command return code
+        echo $? > "$tmpDir/rc.tmp"
+
+        ''', prefix_dict)
+
+    bashfile_string = '#!/bin/bash' + wdl_copyright + bashfile_prefix
+
+    begin_globbing_string = heredoc_wdl('''
+        (
+        cd $tmpDir
+        mkdir "$tmpDir/globs"
+        ''')
+
+    bashfile_string = bashfile_string + begin_globbing_string
+
+    for glob_input in globs:
+        add_this_glob = \
+            '( ln -L ' + glob_input + \
+            ' "$tmpDir/globs" 2> /dev/null ) || ( ln ' + glob_input + \
+            ' "$tmpDir/globs" )\n'
+        bashfile_string = bashfile_string + add_this_glob
+
+    bashfile_suffix = heredoc_wdl('''
+        )
+
+        # flush RAM to disk
+        sync
+
+        mv "$tmpDir/rc.tmp" "$tmpDir/rc"
+        ''')
+
+    bashfile_string = bashfile_string + bashfile_suffix
+
+    with open(os.path.join(temp_dir, job_name + '_script.sh'), 'w') as bashfile:
+        bashfile.write(bashfile_string)

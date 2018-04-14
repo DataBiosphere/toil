@@ -20,14 +20,48 @@ import os
 import logging
 
 from toil import subprocess
-from toil.wdl.wdl_interpret import InterpretWDL
-from toil.wdl.wdl_compile import CompileWDL, recursive_glob, generate_docker_bashscript_file, heredoc_wdl
+from toil.wdl.wdl_analysis import AnalyzeWDL
+from toil.wdl.wdl_synthesis import SynthesizeWDL
 import toil.wdl.wdl_parser as wdl_parser
 
 wdllogger = logging.getLogger(__name__)
 
 
 def main():
+    '''
+    A program to run WDL input files using native Toil scripts.
+
+    Calls two files, described below, wdl_analysis.py and wdl_synthesis.py:
+
+    wdl_analysis reads the wdl, json, and extraneous files and restructures them
+    into 2 intermediate data structures before writing (python dictionaries):
+        "wf_dictionary": containing the parsed workflow information.
+        "tasks_dictionary": containing the parsed task information.
+
+    wdl_synthesis takes the "wf_dictionary" and "tasks_dictionary" and uses them to
+    write a native python script for use with Toil.
+
+    Requires a WDL file, and a JSON file.  The WDL file contains ordered commands,
+    and the JSON file contains input values for those commands.  To run in Toil,
+    these two files must be parsed, restructured into python dictionaries, and
+    then compiled into a Toil formatted python script.  This compiled Toil script
+    is deleted after running unless the user specifies: "--dont_delete_compiled"
+    as an option.
+
+    The WDL parser was auto-generated from the Broad's current WDL grammar file:
+    https://github.com/openwdl/wdl/blob/master/parsers/grammar.hgr
+    using Scott Frazer's Hermes: https://github.com/scottfrazer/hermes
+    Thank you Scott Frazer!
+
+    Currently in alpha testing, and known to work with the Broad's GATK tutorial
+    set for WDL on their main wdl site:
+    software.broadinstitute.org/wdl/documentation/topic?name=wdl-tutorials
+
+    And ENCODE's WDL workflow:
+    github.com/ENCODE-DCC/pipeline-container/blob/master/local-workflows/encode_mapping_workflow.wdl
+
+    Additional support to be broadened to include more features soon.
+    '''
     parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
     parser.add_argument('wdl_file', help='A WDL workflow file.')
     parser.add_argument('secondary_file', help='A secondary data file (json).')
@@ -54,13 +88,13 @@ def main():
     args.secondary_file = os.path.abspath(args.secondary_file)
     args.output_directory = os.path.abspath(args.output_directory)
 
-    iWDL = InterpretWDL(wdl_file_path, args.secondary_file, args.output_directory)
+    aWDL = AnalyzeWDL(wdl_file_path, args.secondary_file, args.output_directory)
 
     # read secondary file; create dictionary to hold variables
     if args.secondary_file.endswith('.json'):
-        iWDL.dict_from_JSON(args.secondary_file)
+        aWDL.dict_from_JSON(args.secondary_file)
     elif args.secondary_file.endswith('.yml') or args.secondary_file.endswith('.yaml'):
-        iWDL.dict_from_YML(args.secondary_file) # json only atm
+        aWDL.dict_from_YML(args.secondary_file) # json only atm
     else:
         raise RuntimeError('Unsupported Secondary File Type.  Use json.')
 
@@ -68,40 +102,40 @@ def main():
     with open(wdl_file_path, 'r') as wdl:
         wdl_string = wdl.read()
         ast = wdl_parser.parse(wdl_string).ast()
-        iWDL.create_tasks_dict(ast)
-        iWDL.create_workflows_dict(ast)
+        aWDL.create_tasks_dict(ast)
+        aWDL.create_workflows_dict(ast)
 
-    cWDL = CompileWDL(iWDL.tasks_dictionary,
-                      iWDL.workflows_dictionary,
+    sWDL = SynthesizeWDL(aWDL.tasks_dictionary,
+                      aWDL.workflows_dictionary,
                       args.output_directory,
-                      iWDL.json_dict,
-                      iWDL.tsv_dict,
-                      iWDL.csv_dict)
+                      aWDL.json_dict,
+                      aWDL.tsv_dict,
+                      aWDL.csv_dict)
 
     # use the AST dictionaries to write 4 strings
     # these are the future 4 sections of the compiled toil python file
-    module_section = cWDL.write_modules()
-    fn_section = cWDL.write_functions()
-    main_section = cWDL.write_main()
+    module_section = sWDL.write_modules()
+    fn_section = sWDL.write_functions()
+    main_section = sWDL.write_main()
 
     # write 3 strings to a python output file
-    cWDL.write_python_file(module_section,
+    sWDL.write_python_file(module_section,
                            fn_section,
                            main_section,
-                           cWDL.output_file)
+                           sWDL.output_file)
 
     wdllogger.debug('WDL file compiled to toil script.  Running now.')
 
     if args.gen_parse_files:
-        cWDL.write_mappings(iWDL)
-        cWDL.write_AST()
+        sWDL.write_mappings(aWDL)
+        sWDL.write_AST()
 
-    cmd = ['python', cWDL.output_file]
+    cmd = ['python', sWDL.output_file]
     cmd.extend(wdl_run_args)
     subprocess.check_call(cmd)
 
     if not args.dont_delete_compiled:
-        os.remove(cWDL.output_file)
+        os.remove(sWDL.output_file)
 
 if __name__ == '__main__':
     main()
