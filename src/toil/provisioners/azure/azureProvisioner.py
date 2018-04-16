@@ -169,7 +169,7 @@ class AzureProvisioner(AnsibleDriver):
         self.callPlaybook(self.playbook['create'], ansibleArgs, wait=True)
         # IP available as soon as the playbook finishes
         try:
-            leaderNode = self._getNodes('leader')[0]
+            leaderNode = self.getLeader()
         except IndexError:
             raise RuntimeError("Failed to launcher leader")
         logger.info('Launched leader')

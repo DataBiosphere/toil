@@ -278,7 +278,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
         if preemptable and not spotBid:
-            if self.spotBids and self.spotBids[nodeType]:
+            if self.spotBids and nodeType in self.spotBids:
                 spotBid = self.spotBids[nodeType]
             else:
                 raise RuntimeError("No spot bid given for a preemptable node request.")
