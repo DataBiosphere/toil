@@ -35,7 +35,6 @@ except ImportError:
     import pickle
 
 # toil and bd2k dependencies
-from bd2k.util.files import rm_f
 from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
@@ -72,9 +71,6 @@ class FileJobStore(AbstractJobStore):
         # Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
         self.linkImports = None
-        
-        # This flag is used by self._recursiveDelete to limit warning count
-        self._warnedOnNfs = False
 
     def initialize(self, config):
         try:
@@ -92,79 +88,34 @@ class FileJobStore(AbstractJobStore):
         if not os.path.isdir(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
         super(FileJobStore, self).resume()
-        
-    def _recursiveDelete(self, path, maxTries=3):
+
+    def robust_rmtree(self, path, max_retries=7):
+        """Robustly tries to delete paths.
+
+        Retries several times (with increasing delays) if an OSError
+        occurs.  If the final attempt fails, the Exception is propagated
+        to the caller.
+
+        Borrowed and slightly modified from:
+        https://github.com/hashdist/hashdist
         """
-        
-        Delete a directory recursively, retrying after a delay on error, to
-        deal with filesystems that present a bad FS abstraction.
-        
-        Detect and warn about .nfs files.
-        
-        If the directory cannot ultiumately be removed after maxTries
-        attempts, raise an error.
-        
-        We want to clean up after ourselves. But some filesystem backends (e.g.
-        NFS, GPFS) either create new files in the hierarchy when deleted files
-        are still open ("silly rename"), or else sometimes can't keep up with
-        filesystem operations and lack perfect read-your-own-writes
-        consistency. This code works around that. It can be deleted if and when
-        we check the mount type of the filesystem we are using to make sure it
-        is not flaky/fake.
-        
-        """
-        
-        for tryNumber in range(maxTries):
-                # Try a few times to delete everything
-        
+        dt = 1
+        for _ in range(max_retries):
             try:
-            
-                for baseName in os.listdir(path):
-                    # For each file in this directory
-                    fullName = os.path.join(path, baseName)
-            
-                    if os.path.isdir(fullName):
-                        # Recurse into directories
-                        self._recursiveDelete(fullName, maxTries)
-                    else:
-                        try:
-                            # Try to delete files
-                            rm_f(fullName)
-                        except OSError:
-                             if baseName.startswith(".nfs"):
-                                # If we can't delete NFS files, skip them for now
-                                if not self._warnedOnNfs:
-                                    # But warn the user they exist
-                                    self._warnedOnNfs = True
-                                    logger.warning("Open NFS files like {} may prevent job or job store deletion".format(fullName))
-                                # Note that if the file deosn't go away soon we will fail deleting the parent directory.
-                                continue
-                             else:
-                                raise
-                
-                # Now we have deleted all the files in the directory (or skipped out on NFS files).
-                # Try to remove the directory.
-                os.rmdir(path)
-                
-                # If it worked, we are done
+                shutil.rmtree(path)
                 return
-            except:
-                # Something went wrong
-                if tryNumber + 1 >= maxTries:
-                    # This was our last attempt
-                    raise
-                else:
-                    # Wait and try again
-                    timeToSleep = 2 ** tryNumber
-                    logger.warning("Cannot delete {}; retrying in {} seconds".format(path, timeToSleep))
-                    time.sleep(timeToSleep)
+            except OSError:
+                if logger:
+                    logger.info('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, dt))
+                time.sleep(dt)
+                dt *= 2
+
+        # Final attempt, pass any Exceptions up to caller.
+        shutil.rmtree(path)
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
-            shutil.rmtree(self.jobStoreDir)
-            # nfs-like behavior may be interfering, try a more robust deletion
-            if os.path.exists(self.jobStoreDir):
-                self._recursiveDelete(self.jobStoreDir)
+            self.robust_rmtree(self.jobStoreDir)
 
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the
@@ -239,10 +190,7 @@ class FileJobStore(AbstractJobStore):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
         if self.exists(jobStoreID):
-            shutil.rmtree(self._getAbsPath(jobStoreID))
-            # nfs-like behavior may be interfering, try a more robust deletion
-            if self.exists(jobStoreID):
-                self._recursiveDelete(self._getAbsPath(jobStoreID))
+            self.robust_rmtree(self._getAbsPath(jobStoreID))
 
     def jobs(self):
         # Walk through list of temporary directories searching for jobs
