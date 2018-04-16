@@ -124,7 +124,7 @@ class CWLTest(ToilTest):
             pass
 
     @slow
-    @pytest.mark.timeout(1200)
+    @pytest.mark.timeout(1500)
     def test_run_conformance(self, batchSystem=None):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
