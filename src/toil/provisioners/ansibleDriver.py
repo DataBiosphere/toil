@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import logging
 import os
 import subprocess
@@ -25,9 +24,9 @@ class AnsibleDriver(AbstractProvisioner):
     """
     Wrapper class for Ansible calls.
     """
-    def __init__(self, playbooks, config=None):
+    def __init__(self, playbooks, clusterName=None, zone=None, config=None):
         self.playbooks = playbooks
-        super(AnsibleDriver, self).__init__(config)
+        super(AnsibleDriver, self).__init__(clusterName, zone, config)
 
     def callPlaybook(self, playbook, ansibleArgs, wait=True, tags=["all"]):
         """

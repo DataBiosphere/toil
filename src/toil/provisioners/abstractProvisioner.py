@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -47,7 +47,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     Toil cluster.
     """
 
-    def __init__(self, config=None):
+    def __init__(self, clusterName, zone=None, config=None):
         """
         Initialize provisioner. If config and batchSystem are not specified, the
         provisioner is being used to manage nodes without a workflow
@@ -56,8 +56,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         :param batchSystem: The batchSystem used during run
         """
         self.config = config
-        self.stop = False
-        self.staticNodesDict = {}  # dict with keys of nodes private IPs, val is nodeInfo
+        self.clusterName = clusterName
+        self.zone = zone
         self.static = {}
 
     def getStaticNodes(self, preemptable):
@@ -89,12 +89,26 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             self.static[preemptable] = {node.privateIP : node for node in nodes}
 
     @abstractmethod
-    def addNodes(self, nodeType, numNodes, preemptable):
+    def launchCluster(self, leaderNodeType, keyName, userTags=None, vpcSubnet=None,
+                      leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
+        """
+        Initialize a cluster and create a leader node.
+
+        :param leaderNodeType: The leader instance.
+        :param preemptable: whether or not the nodes will be preemptable
+        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
+        :return: number of nodes successfully added
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
         """
         Used to add worker nodes to the cluster
 
         :param numNodes: The number of nodes to add
         :param preemptable: whether or not the nodes will be preemptable
+        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
         :return: number of nodes successfully added
         """
         raise NotImplementedError
@@ -105,6 +119,13 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         Terminate the nodes represented by given Node objects
 
         :param nodes: list of Node objects
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def getLeader(self):
+        """
+        :return: The leader node.
         """
         raise NotImplementedError
 
@@ -121,17 +142,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         raise NotImplementedError
 
     @abstractmethod
-    def remainingBillingInterval(self, node):
-        """
-        Calculate how much of a node's allocated billing interval is
-        left in this cycle.
-
-        :param node: Node object
-        :return: float from 0 -> 1.0 representing percentage of pre-paid time left in cycle
-        """
-        raise NotImplementedError
-
-    @abstractmethod
     def getNodeShape(self, nodeType=None, preemptable=False):
         """
         The shape of a preemptable or non-preemptable node managed by this provisioner. The node
@@ -144,38 +154,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-    @classmethod
     @abstractmethod
-    def rsyncLeader(cls, clusterName, args, **kwargs):
-        """
-        Rsyncs to the leader of the cluster with the specified name. The arguments are passed directly to
-        Rsync.
-
-        :param clusterName: name of the cluster to target
-        :param args: list of string arguments to rsync. Identical to the normal arguments to rsync, but the
-           host name of the remote host can be omitted. ex) ['/localfile', ':/remotedest']
-        :param \**kwargs:
-           See below
-
-        :Keyword Arguments:
-            * *strict*: if False, strict host key checking is disabled. (Enabled by default.)
-        """
-        raise NotImplementedError
-
-    @classmethod
-    @abstractmethod
-    def sshLeader(cls, clusterName, args, **kwargs):
-        """
-        SSH into the leader instance of the specified cluster with the specified arguments to SSH.
-        :param clusterName: name of the cluster to target
-        :param args: list of string arguments to ssh.
-        :param strict: If False, strict host key checking is disabled. (Enabled by default.)
-        """
-        raise NotImplementedError
-
-    @classmethod
-    @abstractmethod
-    def destroyCluster(cls, clusterName):
+    def destroyCluster(self):
         """
         Terminates all nodes in the specified cluster and cleans up all resources associated with the
         cluser.
@@ -183,119 +163,4 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-    @classmethod
-    def _waitForSSHPort(cls, ip_address):
-        """
-        Wait until the instance represented by this box is accessible via SSH.
 
-        :return: the number of unsuccessful attempts to connect to the port before a the first
-        success
-        """
-        log.info('Waiting for ssh port to open...')
-        for i in count():
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            try:
-                s.settimeout(a_short_time)
-                s.connect((ip_address, 22))
-                log.info('...ssh port open')
-                return i
-            except socket.error:
-                pass
-            finally:
-                s.close()
-
-    @classmethod
-    def _sshAppliance(cls, leaderIP, *args, **kwargs):
-        """
-        :param str leaderIP: IP of the master
-        :param args: arguments to execute in the appliance
-        :param kwargs: tty=bool tells docker whether or not to create a TTY shell for
-            interactive SSHing. The default value is False. Input=string is passed as
-            input to the Popen call.
-        """
-        kwargs['appliance'] = True
-        return cls._coreSSH(leaderIP, *args, **kwargs)
-
-    @classmethod
-    def _sshInstance(cls, nodeIP, *args, **kwargs):
-        # returns the output from the command
-        kwargs['collectStdout'] = True
-        return cls._coreSSH(nodeIP, *args, **kwargs)
-
-    @classmethod
-    def _coreSSH(cls, nodeIP, *args, **kwargs):
-        """
-        If strict=False, strict host key checking will be temporarily disabled.
-        This is provided as a convenience for internal/automated functions and
-        ought to be set to True whenever feasible, or whenever the user is directly
-        interacting with a resource (e.g. rsync-cluster or ssh-cluster). Assumed
-        to be False by default.
-
-        kwargs: input, tty, appliance, collectStdout, sshOptions, strict
-        """
-        commandTokens = ['ssh', '-t']
-        strict = kwargs.pop('strict', False)
-        if not strict:
-            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get('sshOptions', [])
-        sshOptions = kwargs.pop('sshOptions', None)
-        # Forward port 3000 for grafana dashboard
-        commandTokens.extend(['-L', '3000:localhost:3000', '-L', '9090:localhost:9090'])
-        if sshOptions:
-            # add specified options to ssh command
-            assert isinstance(sshOptions, list)
-            commandTokens.extend(sshOptions)
-        # specify host
-        commandTokens.append('core@%s' % nodeIP)
-
-        appliance = kwargs.pop('appliance', None)
-        if appliance:
-            # run the args in the appliance
-            tty = kwargs.pop('tty', None)
-            ttyFlag = '-t' if tty else ''
-            commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
-
-        inputString = kwargs.pop('input', None)
-        if inputString is not None:
-            kwargs['stdin'] = subprocess.PIPE
-
-        collectStdout = kwargs.pop('collectStdout', None)
-        if collectStdout:
-            kwargs['stdout'] = subprocess.PIPE
-
-        log.debug('Node %s: %s', nodeIP, ' '.join(args))
-        args = list(map(pipes.quote, args))
-        commandTokens += args
-        log.debug('Full command %s', ' '.join(commandTokens))
-        popen = subprocess.Popen(commandTokens, **kwargs)
-        stdout, stderr = popen.communicate(input=inputString)
-        # at this point the process has already exited, no need for a timeout
-        resultValue = popen.wait()
-        if resultValue != 0:
-            raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
-                               'exit code %s with stdout %s and stderr %s' % (' '.join(args), resultValue, stdout, stderr))
-        assert stderr is None
-        return stdout
-
-    @classmethod
-    def _coreRsync(cls, ip, args, applianceName='toil_leader', **kwargs):
-        remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
-        parsedArgs = []
-        sshCommand = "ssh"
-        strict = kwargs.pop('strict', False)
-        if not strict:
-            sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
-        hostInserted = False
-        # Insert remote host address
-        for i in args:
-            if i.startswith(":") and not hostInserted:
-                i = ("core@%s" % ip) + i
-                hostInserted = True
-            elif i.startswith(":") and hostInserted:
-                raise ValueError("Cannot rsync between two remote hosts")
-            parsedArgs.append(i)
-        if not hostInserted:
-            raise ValueError("No remote host found in argument list")
-        command = ['rsync', '-e', sshCommand, '--rsync-path', remoteRsync]
-        log.debug("Running %r.", command + parsedArgs)
-
-        return subprocess.check_call(command + parsedArgs)

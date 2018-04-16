@@ -19,6 +19,7 @@ from builtins import range
 from builtins import object
 from past.utils import old_div
 import time
+import datetime
 from contextlib import contextmanager
 from threading import Thread, Event
 import logging
@@ -38,7 +39,7 @@ from toil.test import ToilTest, slow
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    NodeInfo,
                                                    AbstractBatchSystem)
-from toil.provisioners import Node
+from toil.provisioners.node import Node
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.clusterScaler import ClusterScaler, binPacking
 from toil.common import Config
@@ -280,7 +281,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     """
 
     def __init__(self, config, secondsPerJob):
-        super(MockBatchSystemAndProvisioner, self).__init__(config=config)
+        super(MockBatchSystemAndProvisioner, self).__init__('clusterName', config=config)
         # To mimic parallel preemptable and non-preemptable queues
         # for jobs we create two parallel instances of the following class
         self.config = config
@@ -411,6 +412,15 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def getWorkersInCluster(self, nodeShape):
         return self.workers[nodeShape]
 
+    def launchCluster(self, leaderNodeType, keyName, userTags=None,
+                      vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
+        pass
+    def destroyCluster(self):
+        pass
+
+    def getLeader(self):
+        pass
+
 
     def _leaderFn(self):
         while self.running:
@@ -453,7 +463,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
                 self.worker.join()
                 return time.time() - self.startTime
         for i in range(numNodes):
-            node = Node('127.0.0.1', uuid.uuid4(), 'testNode', time.time(), nodeType=nodeType,
+            node = Node('127.0.0.1', uuid.uuid4(), 'testNode', datetime.datetime.now().isoformat()+'Z', nodeType=nodeType,
                     preemptable=preemptable)
             self.nodesToWorker[node] = Worker(self.jobQueue, self.updatedJobsQueue, self.secondsPerJob)
             self.workers[nodeShape].append(self.nodesToWorker[node])

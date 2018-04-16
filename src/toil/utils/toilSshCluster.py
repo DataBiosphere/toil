@@ -16,7 +16,8 @@ SSHs into the toil appliance container running on the leader of the cluster
 """
 import argparse
 import logging
-from toil.provisioners import Cluster
+import sys
+from toil.provisioners import clusterFactory
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 
@@ -30,6 +31,7 @@ def main():
                         help="Temporarily disable strict host key checking.")
     parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
-    cluster = Cluster(provisioner=config.provisioner,
-                      clusterName=config.clusterName, zone=config.zone)
-    cluster.sshCluster(args=config.args, strict=not config.insecure)
+    cluster = clusterFactory(provisioner=config.provisioner,
+                             clusterName=config.clusterName, zone=config.zone)
+    command = config.args if config.args else ['bash']
+    cluster.getLeader().sshAppliance(*command, strict=not config.insecure, tty=sys.stdin.isatty())
