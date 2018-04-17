@@ -1,0 +1,281 @@
+# Copyright (C) 2015-2018 Regents of the University of California
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+from abc import ABCMeta, abstractmethod
+from builtins import object
+from itertools import count
+import logging
+import pipes
+import socket
+import datetime
+import time
+from toil import subprocess
+from bd2k.util import parse_iso_utc
+
+a_short_time = 5
+
+logger = logging.getLogger(__name__)
+
+
+class Node(object):
+    maxWaitTime = 5*60
+
+    def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
+        self.publicIP = publicIP
+        self.privateIP = privateIP
+        self.name = name
+        self.launchTime = launchTime
+        self.nodeType = nodeType
+        self.preemptable = preemptable
+        self.tags = tags
+
+    def __str__(self):
+        return "%s at %s" % (self.name, self.publicIP)
+
+    def __repr__(self):
+        return str(self)
+
+    def __hash__(self):
+        return hash(self.publicIP)
+
+    def remainingBillingInterval(self):
+        """
+        If the node has a launch time, this function returns a floating point value
+        between 0 and 1.0 representing how far we are into the
+        current billing cycle for the given instance. If the return value is .25, we are one
+        quarter into the billing cycle, with three quarters remaining before we will be charged
+        again for that instance.
+
+        Assumes a billing cycle of one hour.
+
+        :return: Float from 0 -> 1.0 representing percentage of pre-paid time left in cycle.
+        """
+        if self.launchTime:
+            now = datetime.datetime.utcnow()
+            delta = now - parse_iso_utc(self.launchTime)
+            return 1 - delta.total_seconds() / 3600.0 % 1.0
+        else:
+            return 1
+
+    def waitForNode(self, role, keyName='core'):
+        self._waitForSSHPort()
+        # wait here so docker commands can be used reliably afterwards
+        self._waitForSSHKeys(keyName=keyName)
+        self._waitForDockerDaemon(keyName=keyName)
+        self._waitForAppliance(role=role, keyName=keyName)
+
+    def copySshKeys(self, keyName):
+        """ Copy authorized_keys file to the core user from the keyName user."""
+        if keyName == 'core':
+            return # No point.
+
+        # Make sure that keys are there.
+        self._waitForSSHKeys(keyName=keyName)
+
+        # copy keys to core user so that the ssh calls will work
+        # - normal mechanism failed unless public key was in the google-ssh format
+        # - even so, the key wasn't copied correctly to the core account
+        keyFile = '/home/%s/.ssh/authorized_keys' % keyName
+        self.sshInstance('/usr/bin/sudo', '/usr/bin/cp', keyFile, '/home/core/.ssh', user=keyName)
+        self.sshInstance('/usr/bin/sudo', '/usr/bin/chown', 'core',
+                         '/home/core/.ssh/authorized_keys', user=keyName)
+
+    def injectFile(self, fromFile, toFile, role):
+        """
+        rysnc a file to the vm with the given role
+        """
+        maxRetries = 10
+        for retry in range(maxRetries):
+            try:
+                self.coreRsync([fromFile, ":" + toFile], applianceName=role)
+                return True
+            except Exception as e:
+                logger.debug("Rsync to new node failed, trying again. Error message: %s" % e)
+                time.sleep(10*retry)
+        raise RuntimeError("Failed to inject file %s to %s with ip %s" % (fromFile, role, self.publicIP) )
+
+    def _waitForSSHKeys(self, keyName='core'):
+        # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
+        # the keys are propagated and the instance can be SSH into
+        startTime = time.time()
+        while True:
+            if time.time() - startTime > self.maxWaitTime:
+                raise RuntimeError("Key propagation failed on machine with ip %s" % self.publicIP)
+            try:
+                logger.info('Attempting to establish SSH connection...')
+                self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)
+            except RuntimeError:
+                logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
+                time.sleep(10)
+            else:
+                logger.info('...SSH connection established.')
+                # ssh succeeded
+                return
+
+    def _waitForDockerDaemon(self, keyName='core'):
+        logger.info('Waiting for docker on %s to start...', self.publicIP)
+        sleepTime = 10
+        startTime = time.time()
+        while True:
+            if time.time() - startTime > self.maxWaitTime:
+                raise RuntimeError("Docker daemon failed to start on machine with ip %s" % self.publicIP)
+            try:
+                output = self.sshInstance('/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
+                if 'dockerd' in output:
+                    # docker daemon has started
+                    logger.info('Docker daemon running')
+                    break
+                else:
+                    logger.info('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
+                    time.sleep(sleepTime)
+            except RuntimeError:
+                logger.debug("Wait for docker daemon failed ssh, trying again.")
+                sleepTime += 20
+
+    def _waitForAppliance(self, role, keyName='core'):
+        logger.info('Waiting for %s Toil appliance to start...', role)
+        sleepTime = 10
+        startTime = time.time()
+        while True:
+            if time.time() - startTime > self.maxWaitTime:
+                raise RuntimeError("Appliance failed to start on machine with ip %s"
+                                   " Check if the appliance is valid, e.g. check if the environment variable"
+                                    " TOIL_APPLIANCE_SELF is set correctly and the container exists." % self.publicIP)
+            try:
+                output = self.sshInstance('/usr/bin/docker', 'ps',
+                                          sshOptions=['-oBatchMode=yes'], user=keyName)
+                if role in output:
+                    logger.info('...Toil appliance started')
+                    break
+                else:
+                    logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
+                    time.sleep(sleepTime)
+            except RuntimeError:
+                # ignore exceptions, keep trying
+                logger.debug("Wait for appliance failed ssh, trying again.")
+                sleepTime += 20
+
+    def _waitForSSHPort(self):
+        """
+        Wait until the instance represented by this box is accessible via SSH.
+
+        :return: the number of unsuccessful attempts to connect to the port before a the first
+        success
+        """
+        logger.info('Waiting for ssh port to open...')
+        for i in count():
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            try:
+                s.settimeout(a_short_time)
+                s.connect((self.publicIP, 22))
+                logger.info('...ssh port open')
+                return i
+            except socket.error:
+                pass
+            finally:
+                s.close()
+
+    def sshAppliance(self, *args, **kwargs):
+        """
+        :param args: arguments to execute in the appliance
+        :param kwargs: tty=bool tells docker whether or not to create a TTY shell for
+            interactive SSHing. The default value is False. Input=string is passed as
+            input to the Popen call.
+        """
+        kwargs['appliance'] = True
+        return self.coreSSH(*args, **kwargs)
+
+    def sshInstance(self, *args, **kwargs):
+        # returns the output from the command
+        kwargs['collectStdout'] = True
+        return self.coreSSH(*args, **kwargs)
+
+    def coreSSH(self, *args, **kwargs):
+        """
+        If strict=False, strict host key checking will be temporarily disabled.
+        This is provided as a convenience for internal/automated functions and
+        ought to be set to True whenever feasible, or whenever the user is directly
+        interacting with a resource (e.g. rsync-cluster or ssh-cluster). Assumed
+        to be False by default.
+
+        kwargs: input, tty, appliance, collectStdout, sshOptions, strict
+        """
+        commandTokens = ['ssh', '-t']
+        strict = kwargs.pop('strict', False)
+        if not strict:
+            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] \
+                                 + kwargs.get('sshOptions', [])
+        sshOptions = kwargs.pop('sshOptions', None)
+        # Forward port 3000 for grafana dashboard
+        commandTokens.extend(['-L', '3000:localhost:3000', '-L', '9090:localhost:9090'])
+        if sshOptions:
+            # add specified options to ssh command
+            assert isinstance(sshOptions, list)
+            commandTokens.extend(sshOptions)
+        # specify host
+        user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
+        commandTokens.append('%s@%s' % (user,str(self.publicIP)))
+        appliance = kwargs.pop('appliance', None)
+        if appliance:
+            # run the args in the appliance
+            tty = kwargs.pop('tty', None)
+            ttyFlag = '-t' if tty else ''
+            commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
+
+        inputString = kwargs.pop('input', None)
+        if inputString is not None:
+            kwargs['stdin'] = subprocess.PIPE
+        collectStdout = kwargs.pop('collectStdout', None)
+        if collectStdout:
+            kwargs['stdout'] = subprocess.PIPE
+        kwargs['stderr'] = subprocess.PIPE
+
+        logger.debug('Node %s: %s', self.publicIP, ' '.join(args))
+        args = list(map(pipes.quote, args))
+        commandTokens += args
+        logger.debug('Full command %s', ' '.join(commandTokens))
+        popen = subprocess.Popen(commandTokens, **kwargs)
+        stdout, stderr = popen.communicate(input=inputString)
+        # at this point the process has already exited, no need for a timeout
+        resultValue = popen.wait()
+        # ssh has been throwing random 255 errors - why?
+        if resultValue != 0:
+            logger.info('SSH Error (%s) %s' % (resultValue, stderr))
+            raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
+                               'exit code %s with stdout %s and stderr %s'
+                               % (' '.join(args), resultValue, stdout, stderr))
+        return stdout
+
+    def coreRsync(self, args, applianceName='toil_leader', **kwargs):
+        remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
+        parsedArgs = []
+        sshCommand = "ssh"
+        strict = kwargs.pop('strict', False)
+        if not strict:
+            sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
+        hostInserted = False
+        # Insert remote host address
+        for i in args:
+            if i.startswith(":") and not hostInserted:
+                user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
+                i = ("%s@%s" % (user, self.publicIP)) + i
+                hostInserted = True
+            elif i.startswith(":") and hostInserted:
+                raise ValueError("Cannot rsync between two remote hosts")
+            parsedArgs.append(i)
+        if not hostInserted:
+            raise ValueError("No remote host found in argument list")
+        command = ['rsync', '-e', sshCommand, '--rsync-path', remoteRsync]
+        logger.debug("Running %r.", command + parsedArgs)
+
+        return subprocess.check_call(command + parsedArgs)

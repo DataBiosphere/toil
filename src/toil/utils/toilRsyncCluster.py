@@ -18,7 +18,7 @@ import argparse
 import logging
 
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
-from toil.provisioners import Cluster
+from toil.provisioners import clusterFactory
 from toil.utils import addBasicProvisionerOptions
 
 
@@ -37,5 +37,6 @@ def main():
                         "\nOr, to download a file from the remote:, `toil rsync-cluster"
                         " -p aws test-cluster :example.py .`")
     config = parseBasicOptions(parser)
-    cluster = Cluster(provisioner=config.provisioner, clusterName=config.clusterName, zone=config.zone)
-    cluster.rsyncCluster(args=config.args, strict=not config.insecure)
+    cluster = clusterFactory(provisioner=config.provisioner,
+                             clusterName=config.clusterName, zone=config.zone)
+    cluster.getLeader().coreRsync(args=config.args, strict=not config.insecure)

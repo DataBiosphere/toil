@@ -22,15 +22,13 @@ def runSetup():
     """
     boto = 'boto==2.38.0'
     boto3 = 'boto3==1.4.7'
-    futures = 'futures==3.0.5'
+    futures = 'futures==3.2.0'
     pycryptodome = 'pycryptodome==3.5.1'
     psutil = 'psutil==3.0.1'
     protobuf = 'protobuf==3.5.1'
-    azure = 'azure==2.0.0'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     azureAnsible = 'ansible[azure]==2.5.0a1'
     azureStorage = 'azure-storage==0.35.1'
-    msRest = 'msrest==0.4.25'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
@@ -50,11 +48,9 @@ def runSetup():
         futures,
         pycryptodome]
     azure_reqs = [
-        azure,
         azureCosmosdbTable,
         azureAnsible,
-        azureStorage,
-        msRest]
+        azureStorage]
     encryption_reqs = [
         pynacl]
     google_reqs = [

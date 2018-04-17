@@ -34,6 +34,7 @@ from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
+from toil.provisioners import clusterFactory
 
 
 logger = logging.getLogger(__name__)
@@ -91,7 +92,6 @@ class UtilsTest(ToilTest):
     def testAWSProvisionerUtils(self):
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         keyName = os.getenv('TOIL_AWS_KEYNAME')
-
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
@@ -106,20 +106,22 @@ class UtilsTest(ToilTest):
             tags = {'Name': clusterName, 'Owner': keyName}
             tags.update(userTags)
 
-            # launch preemptable master with same name
+            # launch master with same name
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
-                    '--leaderNodeType=m3.medium:0.2', '--keyPairName=' + keyName, clusterName,
+                    '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
                     '--provisioner=aws', '--logLevel=DEBUG'])
 
+            cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
+            leader = cluster.getLeader()
             # test leader tags
-            leaderTags = AWSProvisioner._getLeader(clusterName).tags
-            self.assertEqual(tags, leaderTags)
+            for key in tags.keys():
+                self.assertEqual(tags[key], leader.tags.get(key))
 
             # Test strict host key checking
             # Doesn't work when run locally.
             if(keyName == 'jenkins@jenkins-master'):
                 try:
-                    AWSProvisioner.sshLeader(clusterName=clusterName, strict=True)
+                    leader.sshAppliance(strict=True)
                 except RuntimeError:
                     pass
                 else:
@@ -127,7 +129,7 @@ class UtilsTest(ToilTest):
 
             # Add the host key to known_hosts so that the rest of the tests can
             # pass without choking on the verification prompt.
-            AWSProvisioner.sshLeader(clusterName=clusterName, strict=True, sshOptions=['-oStrictHostKeyChecking=no'])
+            leader.sshAppliance('bash', strict=True, sshOptions=['-oStrictHostKeyChecking=no'])
 
             system([self.toilMain, 'ssh-cluster', '--provisioner=aws', clusterName])
 
@@ -145,21 +147,17 @@ class UtilsTest(ToilTest):
             for test in testStrings:
                 logger.info('Testing SSH with special string: %s', test)
                 compareTo = "import sys; assert sys.argv[1]==%r" % test
-                AWSProvisioner.sshLeader(clusterName=clusterName,
-                                         args=['python', '-', test],
-                                         input=compareTo)
+                leader.sshAppliance('python', '-', test, input=compareTo)
 
             try:
-                AWSProvisioner.sshLeader(clusterName=clusterName,
-                                         args=['nonsenseShouldFail'])
+                leader.sshAppliance('nonsenseShouldFail')
             except RuntimeError:
                 pass
             else:
                 self.fail('The remote command failed silently where it should have '
                           'raised an error')
 
-            AWSProvisioner.sshLeader(clusterName=clusterName,
-                                     args=['python', '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'"])
+            leader.sshAppliance('python', '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'")
 
             # `toil rsync-cluster`
             # Testing special characters - string.punctuation
@@ -170,13 +168,13 @@ class UtilsTest(ToilTest):
                 tmpFile.write(testData)
                 tmpFile.flush()
                 # Upload file to leader
-                AWSProvisioner.rsyncLeader(clusterName=clusterName, args=[tmpFile.name, ":"])
+                leader.coreRsync(args=[tmpFile.name, ":"])
                 # Ensure file exists
-                AWSProvisioner.sshLeader(clusterName=clusterName, args=["test", "-e", relpath])
+                leader.sshAppliance("test", "-e", relpath)
             tmpDir = tempfile.mkdtemp()
             # Download the file again and make sure it's the same file
             # `--protect-args` needed because remote bash chokes on special characters
-            AWSProvisioner.rsyncLeader(clusterName=clusterName, args=["--protect-args", ":" + relpath, tmpDir])
+            leader.coreRsync(args=["--protect-args", ":" + relpath, tmpDir])
             with open(os.path.join(tmpDir, relpath), "r") as f:
                 self.assertEqual(f.read(), testData, "Downloaded file does not match original file")
         finally:

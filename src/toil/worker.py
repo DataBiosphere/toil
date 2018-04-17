@@ -38,7 +38,7 @@ except ImportError:
     import pickle
 
 from bd2k.util.expando import MagicExpando
-from toil.common import Toil
+from toil.common import Toil, safeUnpickleFromStream
 from toil.fileStore import FileStore
 from toil import logProcessContext
 from toil.job import Job
@@ -145,7 +145,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     
     #First load the environment for the jobGraph.
     with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
-        environment = pickle.load(fileHandle)
+        environment = safeUnpickleFromStream(fileHandle)
     for i in environment:
         if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
             os.environ[i] = environment[i]

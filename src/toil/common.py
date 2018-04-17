@@ -47,6 +47,7 @@ from toil.realtimeLogger import RealtimeLogger
 from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
+from toil.provisioners import clusterFactory
 
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
@@ -791,29 +792,8 @@ class Toil(object):
     def _setProvisioner(self):
         if self.config.provisioner is None:
             self._provisioner = None
-        elif self.config.provisioner == 'aws':
-            logger.info('Using AWS provisioner.')
-            from bd2k.util.ec2.credentials import enable_metadata_credential_caching
-            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-            enable_metadata_credential_caching()
-            self._provisioner = AWSProvisioner(self.config)
-        elif self.config.provisioner == 'azure':
-            logger.info('Using Azure provisioner.')
-            try:
-                from toil.provisioners.azure.azureProvisioner import AzureProvisioner
-            except ImportError:
-                raise RuntimeError('The Azure extra must be installed to use this provisioner')
-            self._provisioner = AzureProvisioner(self.config)
-        elif self.config.provisioner == 'gce':
-            logger.info('Using a gce provisioner.')
-            try:
-                from toil.provisioners.gceProvisioner import GCEProvisioner
-            except ImportError:
-                raise RuntimeError('The libCloud extra must be installed to use this provisioner')
-            self._provisioner = GCEProvisioner(self.config)
         else:
-            # Command line parser shold have checked argument validity already
-            assert False, self.config.provisioner
+            self._provisioner = clusterFactory(provisioner=self.config.provisioner, config=self.config)
 
     @classmethod
     def getJobStore(cls, locator):
@@ -932,7 +912,7 @@ class Toil(object):
             from toil.jobStores.abstractJobStore import NoSuchFileException
             try:
                 with self._jobStore.readSharedFileStream('userScript') as f:
-                    userScript = pickle.load(f)
+                    userScript = safeUnpickleFromStream(f)
             except NoSuchFileException:
                 logger.info('User script neither set explicitly nor present in the job store.')
                 userScript = None
@@ -1323,3 +1303,7 @@ def getFileSystemSize(dirPath):
     freeSpace = diskStats.f_frsize * diskStats.f_bavail
     diskSize = diskStats.f_frsize * diskStats.f_blocks
     return freeSpace, diskSize
+
+def safeUnpickleFromStream(stream):
+    string = stream.read()
+    return pickle.loads(string)

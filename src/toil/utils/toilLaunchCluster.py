@@ -17,6 +17,7 @@ Launches a toil leader instance with the specified provisioner
 import logging
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
+from toil.provisioners import clusterFactory
 from toil import applianceSelf
 from toil.jobStores.azureJobStore import credential_file_path
 
@@ -92,46 +93,15 @@ def main():
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
 
+
     # checks the validity of TOIL_APPLIANCE_SELF before proceeding
-    checkToilApplianceSelf = applianceSelf(forceDockerAppliance=config.forceDockerAppliance)
+    applianceSelf(forceDockerAppliance=config.forceDockerAppliance)
 
     spotBids = []
     nodeTypes = []
     preemptableNodeTypes = []
     numNodes = []
     numPreemptableNodes = []
-    leaderSpotBid = None
-    if config.provisioner == 'aws':
-        logger.info('Using aws provisioner.')
-        try:
-            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        except ImportError:
-            logger.error('The aws extra must be installed to use this provisioner')
-            raise
-        provisioner = AWSProvisioner()
-    elif config.provisioner == 'azure':
-        try:
-            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
-        except ImportError:
-            raise RuntimeError('The aws extra must be installed to use this provisioner')
-        provisioner = AzureProvisioner()
-    elif config.provisioner == 'gce':
-        logger.info('Using a gce provisioner.')
-        try:
-            from toil.provisioners.gceProvisioner import GCEProvisioner
-        except ImportError:
-            logger.error('The google extra must be installed to use this provisioner')
-            raise
-        provisioner = GCEProvisioner()
-    else:
-        assert False
-
-    #Parse leader node type and spot bid
-    parsedBid = config.leaderNodeType.split(':', 1)
-    if len(config.leaderNodeType) != len(parsedBid[0]):
-        leaderSpotBid = float(parsedBid[1])
-        config.leaderNodeType = parsedBid[0]
-
     if (config.nodeTypes or config.workers) and not (config.nodeTypes and config.workers):
         raise RuntimeError("The --nodeTypes and --workers options must be specified together,")
     if config.nodeTypes:
@@ -150,20 +120,20 @@ def main():
                 nodeTypes.append(nodeTypeStr)
                 numNodes.append(int(num))
 
-    provisioner.launchCluster(leaderNodeType=config.leaderNodeType,
-                              leaderSpotBid=leaderSpotBid,
-                              nodeTypes=nodeTypes,
-                              preemptableNodeTypes=preemptableNodeTypes,
-                              numWorkers=numNodes,
-                              numPreemptableWorkers=numPreemptableNodes,
-                              keyName=config.keyPairName,
-                              botoPath=config.botoPath,
-                              clusterName=config.clusterName,
-                              spotBids=spotBids,
-                              userTags=tagsDict,
-                              zone=config.zone,
-                              leaderStorage=config.leaderStorage,
-                              nodeStorage=config.nodeStorage,
-                              vpcSubnet=config.vpcSubnet,
-                              publicKeyFile=config.publicKeyFile,
-                              azureStorageCredentials=config.azureStorageCredentials)
+    cluster = clusterFactory(provisioner=config.provisioner,
+                             clusterName=config.clusterName, zone=config.zone)
+    cluster.launchCluster(leaderNodeType=config.leaderNodeType,
+                          keyName=config.keyPairName,
+                          botoPath=config.botoPath,
+                          userTags=tagsDict,
+                          leaderStorage=config.leaderStorage,
+                          nodeStorage=config.nodeStorage,
+                          vpcSubnet=config.vpcSubnet,
+                          publicKeyFile=config.publicKeyFile,
+                          azureStorageCredentials=config.azureStorageCredentials)
+    for nodeType, workers in zip(nodeTypes, numNodes):
+        cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
+    for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
+        cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
+                                           spotBid=spotBid)
+
