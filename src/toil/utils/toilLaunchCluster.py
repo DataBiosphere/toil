@@ -32,6 +32,7 @@ def createTagsDict(tagList):
 
 def main():
     from toil.jobStores.azureJobStore import credential_file_path
+    
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
