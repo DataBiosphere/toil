@@ -33,6 +33,7 @@ import six.moves.urllib.parse as urlparse
 
 from bd2k.util.retry import retry_http
 
+from toil.common import safeUnpickleFromStream
 from toil.fileStore import FileID
 from toil.job import JobException
 from bd2k.util import memoize
@@ -153,7 +154,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :raises NoSuchJobStoreException: if the physical storage for this job store doesn't exist
         """
         with self.readSharedFileStream('config.pickle') as fileHandle:
-            config = pickle.load(fileHandle)
+            config = safeUnpickleFromStream(fileHandle)
             assert config.workflowID is not None
             self.__config = config
 
@@ -216,7 +217,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         # Parse out the return value from the root job
         with self.readSharedFileStream('rootJobReturnValue') as fH:
-            return pickle.load(fH)
+            return safeUnpickleFromStream(fH)
 
     @property
     @memoize

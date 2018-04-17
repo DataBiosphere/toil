@@ -25,10 +25,9 @@ import importlib
 import inspect
 import logging
 import os
-import sys
 import time
-import uuid
 import dill
+import tempfile
 
 try:
     import cPickle as pickle
@@ -46,7 +45,7 @@ from six import iteritems, string_types
 from bd2k.util.expando import Expando
 from bd2k.util.humanize import human2bytes
 
-from toil.common import Toil, addOptions
+from toil.common import Toil, addOptions, safeUnpickleFromStream
 from toil.fileStore import DeferredFunction
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
@@ -898,13 +897,14 @@ class Job(JobLikeObject):
         logger.debug('Loading user module %s.', userModule)
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
-        if pickleFile == "firstJob":
-            openFileStream = jobStore.readSharedFileStream(pickleFile)
-        else:
-            openFileStream = jobStore.readFileStream(pickleFile)
-        with openFileStream as fileHandle:
-            return cls._unpickle(userModule, fileHandle, jobStore.config)
-
+        with tempfile.NamedTemporaryFile() as f:
+            filename = f.name
+            if pickleFile == "firstJob":
+                jobStore.readSharedFile(pickleFile, filename)
+            else:
+                jobStore.readFile(pickleFile, filename)
+            with open(filename) as fileHandle:
+                return cls._unpickle(userModule, fileHandle, jobStore.config)
 
     @classmethod
     def _unpickle(cls, userModule, fileHandle, config):
@@ -1748,7 +1748,7 @@ class Promise(object):
         with cls._jobstore.readFileStream(jobStoreFileID) as fileHandle:
             # If this doesn't work then the file containing the promise may not exist or be
             # corrupted
-            value = pickle.load(fileHandle)
+            value = safeUnpickleFromStream(fileHandle)
             return value
 
 
