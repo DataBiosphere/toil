@@ -2,7 +2,8 @@ from __future__ import absolute_import
 import unittest
 import os
 from toil import subprocess
-from toil.wdl.toilwdl import ToilWDL
+from toil.wdl.wdl_analysis import AnalyzeWDL
+from toil.wdl.wdl_synthesis import SynthesizeWDL, recursive_glob, generate_docker_bashscript_file, heredoc_wdl
 from toil.test import ToilTest, slow
 import zipfile
 import shutil
@@ -79,6 +80,21 @@ class ToilWdlIntegrationTest(ToilTest):
         remove_encode_output()
 
         unittest.TestCase.tearDown(self)
+
+    # estimated run time 7 sec; not actually slow, but this will break on travis because it does not have
+    # docker installed so we tag this so that it runs on jenkins instead.
+    @slow
+    def testMD5sum(self):
+        '''Test if toilwdl produces the same outputs as known good outputs for WDL's
+        GATK tutorial #1.'''
+        wdl = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.wdl')
+        inputfile = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.input')
+        json = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
+
+        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+        md5sum_output = os.path.join(self.output_dir, 'md5sum.txt')
+        assert os.path.exists(md5sum_output)
+        os.unlink(md5sum_output)
 
     # estimated run time 27 sec
     @slow
@@ -170,10 +186,10 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time <1 sec
     def testCSV(self):
-        default_csv_output = [['1', '2', '3'], 
-                              ['4', '5', '6'], 
+        default_csv_output = [['1', '2', '3'],
+                              ['4', '5', '6'],
                               ['7', '8', '9']]
-        t = ToilWDL(os.path.abspath(
+        t = AnalyzeWDL(os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
             os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
@@ -183,10 +199,10 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time <1 sec
     def testTSV(self):
-        default_tsv_output = [['1', '2', '3'], 
-                              ['4', '5', '6'], 
+        default_tsv_output = [['1', '2', '3'],
+                              ['4', '5', '6'],
                               ['7', '8', '9']]
-        t = ToilWDL(os.path.abspath(
+        t = AnalyzeWDL(os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
             os.path.abspath(
                 "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
@@ -205,7 +221,7 @@ class ToilWdlIntegrationTest(ToilTest):
             u'RefDict': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict',
             u'RefFasta': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta'}
 
-        t = ToilWDL(
+        t = AnalyzeWDL(
             "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl",
             "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json",
             self.output_dir)
