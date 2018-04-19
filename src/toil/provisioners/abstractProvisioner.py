@@ -14,10 +14,8 @@
 from abc import ABCMeta, abstractmethod
 from builtins import object
 from collections import namedtuple
-from itertools import count
 import logging
-import pipes
-import socket
+import os.path
 from toil import subprocess
 
 from future.utils import with_metaclass
@@ -47,21 +45,50 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     Toil cluster.
     """
 
-    def __init__(self, clusterName, zone=None, config=None):
-        """
-        Initialize provisioner. If config and batchSystem are not specified, the
-        provisioner is being used to manage nodes without a workflow
+    LEADER_HOME_DIR = '/root/' # home directory in the Toil appliance on an instance
 
-        :param config: Config from common.py
-        :param batchSystem: The batchSystem used during run
+    def __init__(self, clusterName=None, zone=None, nodeStorage=50):
         """
-        self.config = config
+        Initialize provisioner.
+
+        :param clusterName: The cluster identifier.
+        :param zone: The zone the cluster runs in.
+        :param nodeStorage: The amount of storage on the worker instances, in gigabytes.
+        """
         self.clusterName = clusterName
-        self.zone = zone
-        self.static = {}
+        self._zone = zone
+        self._nodeStorage = nodeStorage
 
-    def getStaticNodes(self, preemptable):
-        return self.static[preemptable]
+    def readClusterSettings(self):
+        """
+        Initialize class from an existing cluster. This method assumes that
+        the instance we are running on is the leader.
+        """
+        raise NotImplementedError
+
+    def setAutoscaledNodeTypes(self, nodeTypes):
+        """
+        Set node types, shapes and spot bids. Preemptable nodes will have the form "type:spotBid".
+        :param nodeTypes: A list of node types
+        """
+        spotBids = []
+        nonPreemptableNodeTypes = []
+        preemptableNodeTypes = []
+        for nodeTypeStr in nodeTypes:
+            nodeBidTuple = nodeTypeStr.split(":")
+            if len(nodeBidTuple) == 2:
+                #This is a preemptable node type, with a spot bid
+                preemptableNodeTypes.append(nodeBidTuple[0])
+                spotBids.append(nodeBidTuple[1])
+            else:
+                nonPreemptableNodeTypes.append(nodeTypeStr)
+        preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True)
+                                      for nodeType in preemptableNodeTypes]
+        nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False)
+                                         for nodeType in nonPreemptableNodeTypes]
+        self.nodeShapes = nonPreemptableNodeShapes + preemptableNodeShapes
+        self.nodeTypes = nonPreemptableNodeTypes + preemptableNodeTypes
+        self._spotBidsMap = dict(zip(preemptableNodeTypes, spotBids))
 
     @staticmethod
     def retryPredicate(e):
@@ -75,29 +102,15 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         return never(e)
 
-    def setStaticNodes(self, nodes, preemptable):
-        """
-        Used to track statically provisioned nodes. These nodes are
-        treated differently than autoscaled nodes in that they should not
-        be automatically terminated.
-
-        :param nodes: list of Node objects
-        """
-        prefix = 'non-' if not preemptable else ''
-        log.debug("Adding %s to %spreemptable static nodes", nodes, prefix)
-        if nodes is not None:
-            self.static[preemptable] = {node.privateIP : node for node in nodes}
-
     @abstractmethod
-    def launchCluster(self, leaderNodeType, keyName, userTags=None, vpcSubnet=None,
-                      leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
+    def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
         """
         Initialize a cluster and create a leader node.
 
         :param leaderNodeType: The leader instance.
-        :param preemptable: whether or not the nodes will be preemptable
-        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
-        :return: number of nodes successfully added
+        :param leaderStorage: The amount of disk to allocate to the leader in gigabytes.
+        :param owner: Tag identifying the owner of the instances.
+
         """
         raise NotImplementedError
 
@@ -163,4 +176,16 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-
+    def _setSSH(self):
+        if not os.path.exists('/root/.sshSuccess'):
+            subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
+            with open('/root/.sshSuccess', 'w') as f:
+                f.write('written here because of restrictive permissions on .ssh dir')
+        os.chmod('/root/.ssh', 0o700)
+        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
+        with open('/root/.ssh/id_rsa.pub') as f:
+            masterPublicKey = f.read()
+        masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
+        # confirm it really is an RSA public key
+        assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
+        return masterPublicKey

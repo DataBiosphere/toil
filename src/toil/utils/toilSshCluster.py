@@ -32,6 +32,7 @@ def main():
     parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
     cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName, zone=config.zone)
+                             clusterName=config.clusterName,
+                             zone=config.zone)
     command = config.args if config.args else ['bash']
     cluster.getLeader().sshAppliance(*command, strict=not config.insecure, tty=sys.stdin.isatty())

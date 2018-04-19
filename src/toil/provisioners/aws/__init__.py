@@ -272,13 +272,12 @@ coreos:
       content: |
         [Unit]
         Description=toil-{role} container
-        Author=cketchum@ucsc.edu
         After=docker.service
 
         [Service]
         Restart=on-failure
         RestartSec=2
-        ExecPre=-/usr/bin/docker rm toil_{role}
+        ExecStartPre=-/usr/bin/docker rm toil_{role}
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
@@ -301,7 +300,7 @@ coreos:
         [Service]
         Restart=on-failure
         RestartSec=2
-        ExecPre=-/usr/bin/docker rm node_exporter
+        ExecStartPre=-/usr/bin/docker rm node_exporter
         ExecStart=/usr/bin/docker run \
             -p 9100:9100 \
             -v /proc:/host/proc \

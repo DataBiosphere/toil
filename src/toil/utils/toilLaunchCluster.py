@@ -37,10 +37,13 @@ def main():
     parser = addBasicProvisionerOptions(parser)
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
                         help="Non-preemptable node type to use for the cluster leader.")
-    parser.add_argument("--keyPairName", dest='keyPairName', required=True,
+    parser.add_argument("--keyPairName", dest='keyPairName',
                         help="On AWS, the name of the AWS key pair to include on the instance."
                         " On Google/GCE, this is the ssh key pair."
-                        " On Azure, this will be used as the owner tag.")
+                        " Not needed for Azure.")
+    parser.add_argument("--owner", dest='owner',
+                        help="The owner tag for all instances. If not given, the value in"
+                        " --keyPairName will be used if given.")
     parser.add_argument("--publicKeyFile", dest='publicKeyFile', default="~/.ssh/id_rsa.pub",
                         help="On Azure, the file"
                         " containing the key pairs (the first key pair will be used).")
@@ -120,17 +123,28 @@ def main():
                 nodeTypes.append(nodeTypeStr)
                 numNodes.append(int(num))
 
+    # set owner (default to keyPairName if not given)
+    owner = 'toil'
+    if config.owner:
+        owner = config.owner
+    elif config.keyPairName:
+        owner = config.keyPairName
+
     cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName, zone=config.zone)
+                             clusterName=config.clusterName,
+                             zone=config.zone,
+                             nodeStorage=config.nodeStorage)
+
     cluster.launchCluster(leaderNodeType=config.leaderNodeType,
+                          leaderStorage=config.leaderStorage,
+                          owner=owner,
                           keyName=config.keyPairName,
                           botoPath=config.botoPath,
                           userTags=tagsDict,
-                          leaderStorage=config.leaderStorage,
-                          nodeStorage=config.nodeStorage,
                           vpcSubnet=config.vpcSubnet,
                           publicKeyFile=config.publicKeyFile,
                           azureStorageCredentials=config.azureStorageCredentials)
+
     for nodeType, workers in zip(nodeTypes, numNodes):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
     for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):

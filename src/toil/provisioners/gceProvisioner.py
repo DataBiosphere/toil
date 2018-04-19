@@ -130,13 +130,12 @@ coreos:
       content: |
         [Unit]
         Description=toil-{role} container
-        Author=cketchum@ucsc.edu
         After=docker.service
 
         [Service]
         Restart=on-failure
         RestartSec=2
-        ExecPre=-/usr/bin/docker rm toil_{role}
+        ExecStartPre=-/usr/bin/docker rm toil_{role}
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
@@ -159,7 +158,7 @@ coreos:
         [Service]
         Restart=on-failure
         RestartSec=2
-        ExecPre=-/usr/bin/docker rm node_exporter
+        ExecStartPre=-/usr/bin/docker rm node_exporter
         ExecStart=/usr/bin/docker run \
             -p 9100:9100 \
             -v /proc:/host/proc \
@@ -186,105 +185,83 @@ class GCEProvisioner(AbstractProvisioner):
         rather in a provisioner refactor.
     """
 
-    nodeBotoPath = "/root/.boto"
+    NODE_BOTO_PATH = "/root/.boto" # boto file on instances
 
-    def __init__(self, clusterName=None, zone=None, config=None):
-        """
-        :param config: Optional config object from common.py
-        :param batchSystem:
-        """
-        super(GCEProvisioner, self).__init__(clusterName, zone, config)
+    def __init__(self, clusterName, zone, nodeStorage, sseKey):
+        super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage)
+        self._sseKey = sseKey
 
-        # TODO: zone should be set in the constructor, not in the various calls
+        # If the clusterName is not given, then we are running on the leader
+        # and should read the settings from the instance meta-data.
+        if clusterName:
+            self._readCredentials()
+        else:
+            self._readClusterSettings()
+
+    def _readClusterSettings(self):
+        # https://cloud.google.com/compute/docs/storing-retrieving-metadata
+        metadata_server = "http://metadata/computeMetadata/v1/instance/"
+        metadata_flavor = {'Metadata-Flavor' : 'Google'}
+        zone = requests.get(metadata_server + 'zone', headers = metadata_flavor).text
+        self._zone = zone.split('/')[-1]
+
+        project_metadata_server = "http://metadata/computeMetadata/v1/project/"
+        self._projectId = requests.get(project_metadata_server + 'project-id', headers = metadata_flavor).text
 
         # From a GCE instance, these values can be blank. Only the projectId is needed
-        self.googleJson = ''
-        self.clientEmail = ''
-        self.clusterInc = None
+        self._googleJson = ''
+        self._clientEmail = ''
 
-        if config:
-            # https://cloud.google.com/compute/docs/storing-retrieving-metadata
-            metadata_server = "http://metadata/computeMetadata/v1/instance/"
-            metadata_flavor = {'Metadata-Flavor' : 'Google'}
-            self.zone = requests.get(metadata_server + 'zone', headers = metadata_flavor).text
-            self.zone = self.zone.split('/')[-1]
+        self._tags = requests.get(metadata_server + 'description', headers = metadata_flavor).text
+        tags = json.loads(self._tags)
+        self.clusterName = tags['clusterName']
+        self._instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self._zone)
 
-            project_metadata_server = "http://metadata/computeMetadata/v1/project/"
-            self.projectId = requests.get(project_metadata_server + 'project-id', headers = metadata_flavor).text
+        leader = self.getLeader()
+        self._leaderPrivateIP = leader.privateIP
+        self._masterPublicKey = self._setSSH()
 
-            self.tags = requests.get(metadata_server + 'description', headers = metadata_flavor).text
-            tags = json.loads(self.tags)
-            self.clusterName = tags['clusterName']
-            self.instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
+        self._botoPath = self.NODE_BOTO_PATH
+        self._credentialsPath = GoogleJobStore.nodeServiceAccountJson
+        self._keyName = 'core'
+        self.gceUserDataWorker = gceUserDataWithSsh
 
-            leader = self.getLeader()
-            self.leaderPrivateIP = leader.privateIP
-            self.masterPublicKey = self._setSSH()
 
-            self.botoPath = self.nodeBotoPath
-            self.credentialsPath = GoogleJobStore.nodeServiceAccountJson
-            self.keyName = 'core'
-            self.gceUserDataWorker = gceUserDataWithSsh
 
-            self.nodeStorage = config.nodeStorage
-            self.nonPreemptableNodeTypes = []
-            self.preemptableNodeTypes = []
-            for nodeTypeStr in config.nodeTypes:
-                nodeBidTuple = nodeTypeStr.split(":")
-                if len(nodeBidTuple) == 2:
-                    #This is a preemptable node type, with a spot bid
-                    self.preemptableNodeTypes.append(nodeBidTuple[0])
-                else:
-                    self.nonPreemptableNodeTypes.append(nodeTypeStr)
-            self.preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True) for nodeType in self.preemptableNodeTypes]
-            self.nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False) for nodeType in self.nonPreemptableNodeTypes]
+    def _readCredentials(self):
+        """
+        Get the credentials from the file specified by GOOGLE_APPLICATION_CREDENTIALS.
+        """
+        self._googleJson = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        if not self._googleJson:
+            raise RuntimeError('GOOGLE_APPLICATION_CREDENTIALS not set.')
+        try:
+            with open(self._googleJson) as jsonFile:
+                self.googleConnectionParams = json.loads(jsonFile.read())
+        except:
+             raise RuntimeError('GCEProvisioner: Could not parse the Google service account json file %s'
+                                % self._googleJson)
 
-            self.nodeShapes = self.nonPreemptableNodeShapes + self.preemptableNodeShapes
-            self.nodeTypes = self.nonPreemptableNodeTypes + self.preemptableNodeTypes
-        else:
-            self.instanceMetaData = None
-            self.leaderPrivateIP = None
-            self.keyName = None
-            self.tags = None
-            self.masterPublicKey = None
-            self.nodeStorage = None
-            self.gceUserDataWorker = gceUserData
-            self.botoPath = None
+        self._projectId = self.googleConnectionParams['project_id']
+        self._clientEmail = self.googleConnectionParams['client_email']
+        self._credentialsPath = self._googleJson
 
-            self.googleJson = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-            if not self.googleJson:
-                raise RuntimeError('GOOGLE_APPLICATION_CREDENTIALS not set.')
-            try:
-                with open(self.googleJson) as jsonFile:
-                    self.googleConnectionParams = json.loads(jsonFile.read())
-            except:
-                 raise RuntimeError('GCEProvisioner: Could not parse the Google service account json file %s'
-                                    % self.googleJson)
-
-            self.projectId = self.googleConnectionParams['project_id']
-            self.clientEmail = self.googleConnectionParams['client_email']
-            self.credentialsPath = self.googleJson
-
-        self.subnetID = None
-        self.botoExists = False
-
-    def launchCluster(self, leaderNodeType, keyName, userTags=None,
-            vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
-        if self.config is None:
-            self.nodeStorage = nodeStorage
-        self.botoPath = botoPath
-        self.keyName = keyName
+    def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
+        if 'keyName' not in kwargs:
+            raise RuntimeError("A keyPairName is required for the GCE provisioner.")
+        self._keyName = kwargs['keyName']
+        if 'botoPath' in kwargs:
+            self._botoPath = kwargs['botoPath']
+        self._vpcSubnet = kwargs['vpcSubnet'] if 'vpcSubnet' in kwargs else None
+        self.gceUserDataWorker = gceUserData
+        self._masterPublicKey = None # not needed by leader and static nodes
 
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
         # Therefore, dumping tags into the description.
-        tags = {'Owner': keyName, 'clusterName': self.clusterName}
-        if userTags:
-            tags.update(userTags)
-        self.tags = json.dumps(tags)
-
-        # TODO
-        # - security group: just for a cluster identifier?
-        # - Error thrown if cluster exists. Add an explicit check for an existing cluster? Racey though.
+        tags = {'Owner': self._keyName, 'clusterName': self.clusterName}
+        if 'userTags' in kwargs:
+            tags.update(kwargs['userTags'])
+        self._tags = json.dumps(tags)
 
         leaderData = dict(role='leader',
                           dockerImage=applianceSelf(),
@@ -299,7 +276,7 @@ class GCEProvisioner(AbstractProvisioner):
         driver = self._getDriver()
 
         # Throws an error if cluster exists
-        self.instanceGroup = driver.ex_create_instancegroup(self.clusterName, self.zone)
+        self._instanceGroup = driver.ex_create_instancegroup(self.clusterName, self._zone)
 
         logger.info('Launching leader')
 
@@ -314,39 +291,32 @@ class GCEProvisioner(AbstractProvisioner):
              'autoDelete': True })
         name= 'l' + bytes(uuid.uuid4())
         leader = driver.create_node(name, leaderNodeType, imageType,
-                                location=self.zone,
+                                location=self._zone,
                                 ex_service_accounts=sa_scopes,
                                 ex_metadata=metadata,
-                                ex_subnetwork=vpcSubnet,
+                                ex_subnetwork=self._vpcSubnet,
                                 ex_disks_gce_struct = [disk],
-                                description=self.tags,
+                                description=self._tags,
                                 ex_preemptible=False)
 
-        self.instanceGroup.add_instances([leader])
+        self._instanceGroup.add_instances([leader])
+        self._leaderPrivateIP = leader.private_ips[0] # needed if adding workers
 
-        logger.info('... toil_leader is running')
-
-        # if we are running launch cluster we need to save this data as it won't be generated
-        # from the metadata. This data is needed to launch worker nodes.
-        self.leaderPrivateIP = leader.private_ips[0]
-
-        #TODO: get subnetID
-        #self.subnetID = leader.subnet_id
+        #self.subnetID = leader.subnet_id #TODO: get subnetID
 
         leaderNode = Node(publicIP=leader.public_ips[0], privateIP=leader.private_ips[0],
                           name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
-                          preemptable=False, tags=self.tags)
-        leaderNode.waitForNode('toil_leader', keyName=self.keyName)
-        leaderNode.copySshKeys(keyName)
-        leaderNode.injectFile(self.credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
-        if self.botoPath:
-            leaderNode.injectFile(self.botoPath, self.nodeBotoPath, 'toil_leader')
-
-
-        return leader
+                          preemptable=False, tags=self._tags)
+        leaderNode.waitForNode('toil_leader', keyName=self._keyName)
+        leaderNode.copySshKeys(self._keyName)
+        leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
+        if self._botoPath:
+            leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
+        logger.info('Launched leader')
 
     def getNodeShape(self, nodeType, preemptable=False):
-        sizes = self._getDriver().list_sizes(location=self.zone)
+        # TODO: read this value only once
+        sizes = self._getDriver().list_sizes(location=self._zone)
         sizes = [x for x in sizes if x.name == nodeType]
         assert len(sizes) == 1
         instanceType = sizes[0]
@@ -354,9 +324,8 @@ class GCEProvisioner(AbstractProvisioner):
         disk = 0 #instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
-            # volume, so add the amount of EBS storage requested for
-            # the root volume
-            disk = self.nodeStorage * 2 ** 30
+            # volume, so add the amount of EBS storage requested forhe root volume
+            disk = self._nodeStorage * 2 ** 30
 
         # Ram is in M.
         #Underestimate memory by 100M to prevent autoscaler from disagreeing with
@@ -374,14 +343,11 @@ class GCEProvisioner(AbstractProvisioner):
         return False
 
     def destroyCluster(self):
-        #TODO: anything like this with Google?
-        #spotIDs = self._getSpotRequestIDs(ctx, clusterName)
-        #if spotIDs:
-        #    ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
+        #TODO: call threaded instance terminate
         instancesToTerminate = self._getNodesInCluster()
         if instancesToTerminate:
             self._terminateInstances(instances=instancesToTerminate)
-        instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
+        instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self._zone)
         instanceGroup.destroy()
 
     def terminateNodes(self, nodes):
@@ -391,26 +357,28 @@ class GCEProvisioner(AbstractProvisioner):
         self._terminateInstances(instancesToKill)
 
     def addNodes(self, nodeType, numNodes, preemptable, spotBid=None):
+        assert self._leaderPrivateIP
+
         # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
         # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
         # set to keyPath.
         keyPath = ''
         entryPoint = 'mesos-slave'
-        self.botoExists = False
-        if self.botoPath is not None and os.path.exists(self.botoPath):
+        botoExists = False
+        if self._botoPath is not None and os.path.exists(self._botoPath):
             entryPoint = "waitForKey.sh"
-            keyPath = self.nodeBotoPath
-            self.botoExists = True
-        elif self.config and self.config.sseKey:
+            keyPath = self.NODE_BOTO_PATH
+            botoExists = True
+        elif self._sseKey:
             entryPoint = "waitForKey.sh"
-            keyPath = self.config.sseKey
+            keyPath = self._sseKey
 
         workerData = dict(role='worker',
                           dockerImage=applianceSelf(),
                           entrypoint=entryPoint,
-                          sshKey=self.masterPublicKey,
-                          dockerArgs=workerDockerArgs.format(ip=self.leaderPrivateIP,
+                          sshKey=self._masterPublicKey,
+                          dockerArgs=workerDockerArgs.format(ip=self._leaderPrivateIP,
                                                              preemptable=preemptable, keyPath=keyPath))
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
@@ -436,7 +404,7 @@ class GCEProvisioner(AbstractProvisioner):
         disk['initializeParams'] = {
             'sourceImage': bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global'
                                  '/images/coreos-stable-1576-4-0-v20171206'),
-            'diskSizeGb' : self.nodeStorage }
+            'diskSizeGb' : self._nodeStorage }
         disk.update({'boot': True,
              #'type': 'bytes('zones/us-central1-a/diskTypes/local-ssd'), #'PERSISTANT'
              #'mode': 'READ_WRITE',
@@ -449,21 +417,21 @@ class GCEProvisioner(AbstractProvisioner):
         while numNodes-workersCreated > 0 and retries < 3:
             instancesLaunched = self.ex_create_multiple_nodes(
                                     '', nodeType, imageType, numNodes,
-                                    location=self.zone,
+                                    location=self._zone,
                                     ex_service_accounts=sa_scopes,
                                     ex_metadata=metadata,
                                     ex_disks_gce_struct = [disk],
-                                    description=self.tags,
+                                    description=self._tags,
                                     ex_preemptible = preemptable
                                     )
-            self.instanceGroup.add_instances(instancesLaunched)
+            self._instanceGroup.add_instances(instancesLaunched)
             failedWorkers = []
             for instance in instancesLaunched:
                 node = Node(publicIP=instance.public_ips[0], privateIP=instance.private_ips[0],
                             name=instance.name, launchTime=instance.created_at, nodeType=instance.size,
-                            preemptable=False, tags=self.tags) #FIXME: what should tags be set to?
+                            preemptable=False, tags=self._tags) #FIXME: what should tags be set to?
                 try:
-                    self._injectWorkerFiles(node)
+                    self._injectWorkerFiles(node, botoExists)
                     workersCreated += 1
                 except Exception as e:
                     logger.error("Failed to configure worker %s. Error message: %s" % (node.publicIP, e))
@@ -479,6 +447,7 @@ class GCEProvisioner(AbstractProvisioner):
         return workersCreated
 
     def getProvisionedWorkers(self, nodeType, preemptable):
+        assert self._leaderPrivateIP
         entireCluster = self._getNodesInCluster(nodeType=nodeType)
         logger.debug('All nodes in cluster: %s', entireCluster)
         workerInstances = []
@@ -489,7 +458,7 @@ class GCEProvisioner(AbstractProvisioner):
                 continue
             isWorker = True
             for ip in instance.private_ips:
-                if ip == self.leaderPrivateIP:
+                if ip == self._leaderPrivateIP:
                     isWorker = False
                     break # don't include the leader
             if isWorker and instance.state == 'running':
@@ -512,19 +481,19 @@ class GCEProvisioner(AbstractProvisioner):
                           name=leader.name, launchTime=leader.created_at, nodeType=leader.size,
                           preemptable=False, tags=None)
 
-    def _injectWorkerFiles(self, node):
+    def _injectWorkerFiles(self, node, botoExists):
         """
         """
-        node.waitForNode('toil_worker', keyName=self.keyName)
-        node.copySshKeys(self.keyName)
-        node.injectFile(self.credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_worker')
-        if self.config and self.config.sseKey:
-            node.injectFile(self.config.sseKey, self.config.sseKey, 'toil_worker')
-        if self.botoExists:
-            node.injectFile(self.botoPath, self.nodeBotoPath, 'toil_worker')
+        node.waitForNode('toil_worker', keyName=self._keyName)
+        node.copySshKeys(self._keyName)
+        node.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_worker')
+        if self._sseKey:
+            node.injectFile(self._sseKey, self._sseKey, 'toil_worker')
+        if botoExists:
+            node.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_worker')
 
     def _getNodesInCluster(self, nodeType=None):
-        instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self.zone)
+        instanceGroup = self._getDriver().ex_get_instancegroup(self.clusterName, zone=self._zone)
         instances = instanceGroup.list_instances()
         if nodeType:
             instances = [instance for instance in instances if instance.size == nodeType]
@@ -533,10 +502,10 @@ class GCEProvisioner(AbstractProvisioner):
     def _getDriver(self):
         """  Connect to GCE """
         driverCls = get_driver(Provider.GCE)
-        return driverCls(self.clientEmail,
-                         self.googleJson,
-                         project=self.projectId,
-                         datacenter=self.zone)
+        return driverCls(self._clientEmail,
+                         self._googleJson,
+                         project=self._projectId,
+                         datacenter=self._zone)
 
     def _terminateInstances(self, instances):
         def worker(driver, instance):
@@ -653,17 +622,3 @@ class GCEProvisioner(AbstractProvisioner):
         for status in status_list:
             node_list.append(status['node'])
         return node_list
-
-    def _setSSH(self):
-        if not os.path.exists('/root/.sshSuccess'):
-            subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
-            with open('/root/.sshSuccess', 'w') as f:
-                f.write('written here because of restrictive permissions on .ssh dir')
-        os.chmod('/root/.ssh', 0o700)
-        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
-        with open('/root/.ssh/id_rsa.pub') as f:
-            masterPublicKey = f.read()
-        masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
-        # confirm it really is an RSA public key
-        assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
-        return masterPublicKey

@@ -23,5 +23,6 @@ def main():
     parser = addBasicProvisionerOptions(parser)
     config = parseBasicOptions(parser)
     cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName, zone=config.zone)
+                             clusterName=config.clusterName,
+                             zone=config.zone)
     cluster.destroyCluster()

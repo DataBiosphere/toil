@@ -24,9 +24,9 @@ class AnsibleDriver(AbstractProvisioner):
     """
     Wrapper class for Ansible calls.
     """
-    def __init__(self, playbooks, clusterName=None, zone=None, config=None):
+    def __init__(self, playbooks, clusterName, zone, nodeStorage):
         self.playbooks = playbooks
-        super(AnsibleDriver, self).__init__(clusterName, zone, config)
+        super(AnsibleDriver, self).__init__(clusterName, zone, nodeStorage)
 
     def callPlaybook(self, playbook, ansibleArgs, wait=True, tags=["all"]):
         """
@@ -49,5 +49,5 @@ class AnsibleDriver(AbstractProvisioner):
             p.communicate()
             if p.returncode != 0:
                 # FIXME: parse error codes
-                logger.error("Ansible reported an error when executing playbook %s" % playbook)
+                raise RuntimeError("Ansible reported an error when executing playbook %s" % playbook)
 

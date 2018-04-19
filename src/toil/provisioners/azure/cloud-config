@@ -56,7 +56,6 @@ coreos:
       content: |
         [Unit]
         Description=mounts ephemeral volumes & bind mounts toil directories
-        Author=cketchum@ucsc.edu
         Before=docker.service
 
         [Service]
@@ -75,7 +74,7 @@ coreos:
         [Service]
         Restart=on-failure
         RestartSec=2
-        ExecPre=-/usr/bin/docker rm toil_{role}
+        ExecStartPre=-/usr/bin/docker rm toil_{role}
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
@@ -98,7 +97,7 @@ coreos:
         [Service]
         Restart=on-failure
         RestartSec=2
-        ExecPre=-/usr/bin/docker rm node_exporter
+        ExecStartPre=-/usr/bin/docker rm node_exporter
         ExecStart=/usr/bin/docker run \
             -p 9100:9100 \
             -v /proc:/host/proc \
