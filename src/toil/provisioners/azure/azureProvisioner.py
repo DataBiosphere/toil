@@ -122,14 +122,7 @@ class AzureProvisioner(AnsibleDriver):
         self._checkValidClusterName()
         self._checkIfClusterExists()
 
-
         instanceName = 'l' + str(uuid.uuid4())
-        cloudConfigArgs = {
-            'image': applianceSelf(),
-            'role': "leader",
-            'entrypoint': "mesos-master",
-            '_args': leaderArgs.format(name=self.clusterName),
-        }
         ansibleArgs = {
             'vmsize': leaderNodeType,
             'vmname': instanceName,
@@ -141,7 +134,11 @@ class AzureProvisioner(AnsibleDriver):
             'diskSize': str(leaderStorage),  # TODO: not implemented
             'publickeyfile': self._masterPublicKeyFile   # The users public key to be added to authorized_keys
         }
-        ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
+        #ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
+        with tempfile.NamedTemporaryFile(delete=False) as t:
+            userData =  self._getCloudConfigUserData('leader')
+            t.write(userData)
+            ansibleArgs['cloudconfig'] = t.name
         self.callPlaybook(self.playbook['create'], ansibleArgs, wait=True)
 
         try:
@@ -193,14 +190,8 @@ class AzureProvisioner(AnsibleDriver):
         self.callPlaybook(self.playbook['destroy'], ansibleArgs)
 
     def addNodes(self, nodeType, numNodes, preemptable=False, spotBid=None):
-        assert self._leaderPrivateIP
+        assert self._leaderPrivateIP # for GetCloudConfigUserData
 
-        cloudConfigArgs = {
-            'image': applianceSelf(),
-            'role': "worker",
-            'entrypoint': "mesos-slave",
-            '_args': workerArgs.format(ip=self._leaderPrivateIP, preemptable=False, keyPath='')
-        }
         ansibleArgs = dict(vmsize=nodeType,
                            resgrp=self.clusterName,
                            region=self._zone,
@@ -208,7 +199,10 @@ class AzureProvisioner(AnsibleDriver):
                            owner=self._owner,
                            role="worker",
                            publickeyfile=self._masterPublicKeyFile)
-        ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
+        with tempfile.NamedTemporaryFile(delete=False) as t:
+            userData =  self._getCloudConfigUserData('worker')
+            t.write(userData)
+            ansibleArgs['cloudconfig'] = t.name
 
         instances = []
         for i in range(numNodes):
@@ -238,7 +232,7 @@ class AzureProvisioner(AnsibleDriver):
         return numLaunched
 
     def getNodeShape(self, nodeType=None, preemptable=False):
-        # FIXME: this should only needs to be called once, but 
+        # FIXME: this should only needs to be called once, but
         self._instanceTypes = self._azureComputeClient.virtual_machine_sizes.list(self._zone)
 
         instanceType = (vmType for vmType in self._instanceTypes if vmType.name == nodeType).next()

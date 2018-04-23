@@ -131,6 +131,8 @@ class AWSProvisioner(AbstractProvisioner):
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup()
         bdm = self._getBlockDeviceMapping(ec2_instance_types[leaderNodeType], rootVolSize=leaderStorage)
+
+
         self._masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
         leaderData = dict(role='leader',
                           image=applianceSelf(),
@@ -138,6 +140,8 @@ class AWSProvisioner(AbstractProvisioner):
                           sshKey=self._masterPublicKey,
                           args=leaderArgs.format(name=self.clusterName))
         userData = awsUserData.format(**leaderData)
+        #userData =  self._getCloudConfigUserData('leader', self._masterPublicKey)
+        logger.info("User data %s" % userData)
         specKwargs = {'key_name': self._keyName, 'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': leaderNodeType,
                   'user_data': userData, 'block_device_map': bdm,
@@ -243,19 +247,9 @@ class AWSProvisioner(AbstractProvisioner):
         instanceType = ec2_instance_types[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self._nodeStorage)
         arn = self._getProfileARN()
-        if self._sseKey:
-            keyPath = self._sseKey
-            entryPoint = "waitForKey.sh"
-        else:
-            keyPath = ''
-            entryPoint = 'mesos-slave'
-        workerData = dict(role='worker',
-                          image=applianceSelf(),
-                          entrypoint=entryPoint,
-                          sshKey=self._masterPublicKey,
-                          args=workerArgs.format(ip=self._leaderPrivateIP, preemptable=preemptable,
-                                                 keyPath=keyPath))
-        userData = awsUserData.format(**workerData)
+
+        keyPath = self._sseKey if self._sseKey else None
+        userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
         sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if sg.name == self.clusterName]
         kwargs = {'key_name': self._keyName,
                   'security_group_ids': [sg.id for sg in sgs],

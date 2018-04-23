@@ -23,8 +23,8 @@ import uuid
 
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
+from libcloud.compute.drivers.gce import GCEFailedNode
 
-from toil import applianceSelf
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners import NoSuchClusterException
 from toil.jobStores.googleJobStore import GoogleJobStore
@@ -226,8 +226,6 @@ class GCEProvisioner(AbstractProvisioner):
         self._keyName = 'core'
         self.gceUserDataWorker = gceUserDataWithSsh
 
-
-
     def _readCredentials(self):
         """
         Get the credentials from the file specified by GOOGLE_APPLICATION_CREDENTIALS.
@@ -245,6 +243,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._projectId = self.googleConnectionParams['project_id']
         self._clientEmail = self.googleConnectionParams['client_email']
         self._credentialsPath = self._googleJson
+        self._masterPublicKey = None
 
     def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
         if 'keyName' not in kwargs:
@@ -253,8 +252,6 @@ class GCEProvisioner(AbstractProvisioner):
         if 'botoPath' in kwargs:
             self._botoPath = kwargs['botoPath']
         self._vpcSubnet = kwargs['vpcSubnet'] if 'vpcSubnet' in kwargs else None
-        self.gceUserDataWorker = gceUserData
-        self._masterPublicKey = None # not needed by leader and static nodes
 
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
         # Therefore, dumping tags into the description.
@@ -263,11 +260,7 @@ class GCEProvisioner(AbstractProvisioner):
             tags.update(kwargs['userTags'])
         self._tags = json.dumps(tags)
 
-        leaderData = dict(role='leader',
-                          dockerImage=applianceSelf(),
-                          entrypoint='mesos-master',
-                          dockerArgs=leaderDockerArgs.format(name=self.clusterName))
-        userData = gceUserData.format(**leaderData)
+        userData =  self._getCloudConfigUserData('leader')
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
 
         imageType = 'coreos-stable'
@@ -363,29 +356,18 @@ class GCEProvisioner(AbstractProvisioner):
         # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
         # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
         # set to keyPath.
-        keyPath = ''
-        entryPoint = 'mesos-slave'
+        keyPath = None
         botoExists = False
         if self._botoPath is not None and os.path.exists(self._botoPath):
-            entryPoint = "waitForKey.sh"
             keyPath = self.NODE_BOTO_PATH
             botoExists = True
         elif self._sseKey:
-            entryPoint = "waitForKey.sh"
             keyPath = self._sseKey
-
-        workerData = dict(role='worker',
-                          dockerImage=applianceSelf(),
-                          entrypoint=entryPoint,
-                          sshKey=self._masterPublicKey,
-                          dockerArgs=workerDockerArgs.format(ip=self._leaderPrivateIP,
-                                                             preemptable=preemptable, keyPath=keyPath))
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
 
-        userData = self.gceUserDataWorker.format(**workerData)
+        userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
-
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
 
@@ -424,15 +406,20 @@ class GCEProvisioner(AbstractProvisioner):
                                     description=self._tags,
                                     ex_preemptible = preemptable
                                     )
-            self._instanceGroup.add_instances(instancesLaunched)
             failedWorkers = []
             for instance in instancesLaunched:
+                if isinstance(instance, GCEFailedNode):
+                    logger.error("Worker failed to launch with code %s. Error message: %s"
+                                 % (instance.code, instance.error))
+                    continue
+
                 node = Node(publicIP=instance.public_ips[0], privateIP=instance.private_ips[0],
                             name=instance.name, launchTime=instance.created_at, nodeType=instance.size,
                             preemptable=False, tags=self._tags) #FIXME: what should tags be set to?
                 try:
                     self._injectWorkerFiles(node, botoExists)
                     workersCreated += 1
+                    self._instanceGroup.add_instances(instance)
                 except Exception as e:
                     logger.error("Failed to configure worker %s. Error message: %s" % (node.publicIP, e))
                     failedWorkers.append(instance)
