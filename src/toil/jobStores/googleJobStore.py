@@ -293,6 +293,10 @@ class GoogleJobStore(AbstractJobStore):
         bucketName = url.netloc
         fileName = url.path
 
+        # remove leading '/', which can cause problems if fileName is a path
+        if fileName.startswith('/'):
+            fileName = fileName[1:]
+
         storageClient = storage.Client()
         bucket = storageClient.get_bucket(bucketName)
         blob = bucket.blob(bytes(fileName))
