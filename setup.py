@@ -29,6 +29,7 @@ def runSetup():
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     azureAnsible = 'ansible[azure]==2.5.0a1'
     azureStorage = 'azure-storage==0.35.1'
+    secretstorage = 'secretstorage<3'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
@@ -49,6 +50,7 @@ def runSetup():
         pycryptodome]
     azure_reqs = [
         azureCosmosdbTable,
+        secretstorage,
         azureAnsible,
         azureStorage]
     encryption_reqs = [
