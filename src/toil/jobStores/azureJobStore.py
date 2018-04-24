@@ -57,12 +57,19 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobStoreException)
 import toil.lib.encryption as encryption
 
+from azure.common import AzureMissingResourceHttpError, AzureException
+from azure.storage.blob.blockblobservice import BlockBlobService
+from azure.storage.blob.models import BlobPermissions, BlobBlock
+from azure.cosmosdb.table import TableService, EntityProperty, Entity
+
+from toil.jobStores import azure_credential_file_path as credential_file_path
+
 logger = logging.getLogger(__name__)
 logging.getLogger("azure.cosmosdb.common.storageclient").setLevel(logging.WARNING)
 logging.getLogger("azure.cosmosdb.common._auth").setLevel(logging.WARNING)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
-credential_file_path = '~/.toilAzureCredentials'
+
 
 
 def _fetchAzureAccountKey(accountName):
@@ -100,11 +107,6 @@ class AzureJobStore(AbstractJobStore):
     A job store that uses Azure's blob store for file storage and Table Service to store job info
     with strong consistency.
     """
-
-    from azure.common import AzureMissingResourceHttpError, AzureException
-    from azure.storage.blob.blockblobservice import BlockBlobService
-    from azure.storage.blob.models import BlobPermissions, BlobBlock
-    from azure.cosmosdb.table import TableService, EntityProperty, Entity
 
     # Dots in container names should be avoided because container names are used in HTTPS bucket
     # URLs where the may interfere with the certificate common name. We use a double underscore
@@ -656,8 +658,6 @@ class AzureTable(object):
       - returns None when attempting to get a non-existent entity.
     """
 
-    from azure.common import AzureMissingResourceHttpError
-
     def __init__(self, tableService, tableName):
         self.tableService = tableService
         self.tableName = tableName
@@ -696,8 +696,6 @@ class AzureBlobContainer(object):
     must use *only* keyword arguments.
     """
 
-    #from azure.storage.blob.blockblobservice import BlockBlobService
-
     def __init__(self, blobService, containerName):
         self.blobService = blobService
         self.containerName = containerName
@@ -722,9 +720,6 @@ class AzureJob(JobGraph):
     Copied almost entirely from AWSJob, except to take into account the
     fact that Azure properties must start with a letter or underscore.
     """
-
-    from azure.common import AzureException
-    from azure.cosmosdb.table import EntityProperty, Entity
 
     defaultAttrs = ['PartitionKey', 'RowKey', 'etag', 'Timestamp']
 

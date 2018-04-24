@@ -19,6 +19,8 @@ from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 from toil import applianceSelf
 
+from toil.jobStores import azure_credential_file_path as credential_file_path
+
 logger = logging.getLogger(__name__)
 
 
@@ -31,8 +33,6 @@ def createTagsDict(tagList):
 
 
 def main():
-    from toil.jobStores.azureJobStore import credential_file_path
-    
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
     parser.add_argument("--leaderNodeType", dest="leaderNodeType", required=True,
