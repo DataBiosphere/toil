@@ -15,24 +15,18 @@ from functools import wraps
 
 from builtins import str
 from builtins import range
-import logging
 import time
-from toil import subprocess
 import string
 
 # Python 3 compatibility imports
 from _ssl import SSLError
-
 from six import iteritems
-
 from bd2k.util import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
-
-from toil import applianceSelf
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
@@ -60,9 +54,6 @@ def awsRetryPredicate(e):
     elif e.status == 400 and e.error_code == 'Throttling':
         return True
     return False
-
-
-
 
 def awsFilterImpairedNodes(nodes, ec2):
     # if TOIL_AWS_NODE_DEBUG is set don't terminate nodes with
@@ -97,6 +88,9 @@ def awsRetry(f):
 
 
 class AWSProvisioner(AbstractProvisioner):
+    """
+    Implements an AWS provisioner using the boto libraries.
+    """
 
     def __init__(self, clusterName, zone, nodeStorage, sseKey):
         super(AWSProvisioner, self).__init__(clusterName, zone, nodeStorage)
@@ -109,6 +103,10 @@ class AWSProvisioner(AbstractProvisioner):
             self._readClusterSettings()
 
     def _readClusterSettings(self):
+        """
+        Reads the cluster settings from the instance metadata, which assumes the instance
+        is the leader.
+        """
         instanceMetaData = get_instance_metadata()
         region = Context.availability_zone_re.match(self._zone).group(1)
         conn = boto.ec2.connect_to_region(region)
@@ -122,6 +120,12 @@ class AWSProvisioner(AbstractProvisioner):
         self._masterPublicKey = self._setSSH()
 
     def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
+        """
+        In addition to the parameters inherited from the abstractProvisioner,
+        the AWS launchCluster takes the following parameters:
+        keyName: The key used to communicate with instances
+        vpcSubnet: A subnet (optional).
+        """
         if 'keyName' not in kwargs:
             raise RuntimeError("A keyPairName is required for the AWS provisioner.")
         self._keyName = kwargs['keyName']
@@ -132,16 +136,8 @@ class AWSProvisioner(AbstractProvisioner):
         sgs = self._createSecurityGroup()
         bdm = self._getBlockDeviceMapping(ec2_instance_types[leaderNodeType], rootVolSize=leaderStorage)
 
-
-        self._masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded'
-        leaderData = dict(role='leader',
-                          image=applianceSelf(),
-                          entrypoint='mesos-master',
-                          sshKey=self._masterPublicKey,
-                          args=leaderArgs.format(name=self.clusterName))
-        userData = awsUserData.format(**leaderData)
-        #userData =  self._getCloudConfigUserData('leader', self._masterPublicKey)
-        logger.info("User data %s" % userData)
+        self._masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded' # dummy key
+        userData =  self._getCloudConfigUserData('leader', self._masterPublicKey)
         specKwargs = {'key_name': self._keyName, 'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': leaderNodeType,
                   'user_data': userData, 'block_device_map': bdm,
@@ -151,8 +147,9 @@ class AWSProvisioner(AbstractProvisioner):
             specKwargs["subnet_id"] = self._vpcSubnet
         instances = create_ondemand_instances(self._ctx.ec2, image_id=self._discoverAMI(),
                                                   spec=specKwargs, num_instances=1)
-        leader = instances[0]
 
+        # wait for the leader to finish setting up
+        leader = instances[0]
         wait_instances_running(self._ctx.ec2, [leader])
         self._waitForIP(leader)
         leaderNode = Node(publicIP=leader.ip_address, privateIP=leader.private_ip_address,
@@ -195,6 +192,9 @@ class AWSProvisioner(AbstractProvisioner):
         return awsRetryPredicate(e)
 
     def destroyCluster(self):
+        """
+        Terminate instances and delete the profile and security group.
+        """
         assert self._ctx
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
@@ -290,7 +290,6 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 wait_instances_running(self._ctx.ec2, instancesLaunched)
 
-        # request throttling retry happens internally to these two methods to insure proper granularity
         AWSProvisioner._addTags(instancesLaunched, self._tags)
         if self._sseKey:
             for i in instancesLaunched:

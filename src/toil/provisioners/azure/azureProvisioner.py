@@ -20,11 +20,9 @@ import urllib
 import json
 import re
 
-from toil import applianceSelf
 from toil.provisioners.node import Node
 from toil.provisioners.abstractProvisioner import Shape
 from toil.provisioners.ansibleDriver import AnsibleDriver
-from toil.provisioners.aws import (leaderArgs, workerArgs)
 from toil.provisioners import NoSuchClusterException
 
 from azure.common.credentials import ServicePrincipalCredentials
@@ -110,6 +108,9 @@ class AzureProvisioner(AnsibleDriver):
         resource group.
 
         Cloud-config is called during vm creation to create directories and launch the appliance.
+
+        The azureStorageCredentials must be passed in kwargs. These credentials allow access to
+        Azure jobStores.
         """
         self._owner = owner
         self._masterPublicKeyFile = kwargs['publicKeyFile']
@@ -134,7 +135,8 @@ class AzureProvisioner(AnsibleDriver):
             'diskSize': str(leaderStorage),  # TODO: not implemented
             'publickeyfile': self._masterPublicKeyFile   # The users public key to be added to authorized_keys
         }
-        #ansibleArgs['cloudconfig'] = self._cloudConfig(cloudConfigArgs)
+
+        # Ansible reads the cloud-config script from a file.
         with tempfile.NamedTemporaryFile(delete=False) as t:
             userData =  self._getCloudConfigUserData('leader')
             t.write(userData)
@@ -175,14 +177,6 @@ class AzureProvisioner(AnsibleDriver):
             logger.info("The cluster could not be created. Try deleting the cluster if it already exits.")
             raise
 
-    def _cloudConfig(self, args):
-        # Populate cloud-config file and pass it to Ansible
-        with open(os.path.join(self.playbooks, "cloud-config"), "r") as f:
-            configRaw = f.read()
-        with tempfile.NamedTemporaryFile(delete=False) as t:
-            t.write(configRaw.format(**args))
-            return t.name
-
     def destroyCluster(self):
         ansibleArgs = {
             'resgrp': self.clusterName,
@@ -190,7 +184,7 @@ class AzureProvisioner(AnsibleDriver):
         self.callPlaybook(self.playbook['destroy'], ansibleArgs)
 
     def addNodes(self, nodeType, numNodes, preemptable=False, spotBid=None):
-        assert self._leaderPrivateIP # for GetCloudConfigUserData
+        assert self._leaderPrivateIP # for getCloudConfigUserData
 
         ansibleArgs = dict(vmsize=nodeType,
                            resgrp=self.clusterName,
@@ -232,7 +226,7 @@ class AzureProvisioner(AnsibleDriver):
         return numLaunched
 
     def getNodeShape(self, nodeType=None, preemptable=False):
-        # FIXME: this should only needs to be called once, but
+        # FIXME: this should only needs to be called once, but failed
         self._instanceTypes = self._azureComputeClient.virtual_machine_sizes.list(self._zone)
 
         instanceType = (vmType for vmType in self._instanceTypes if vmType.name == nodeType).next()
