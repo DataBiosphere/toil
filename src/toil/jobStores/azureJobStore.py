@@ -39,6 +39,13 @@ except ImportError:
 from six.moves.http_client import HTTPException
 from six.moves.configparser import RawConfigParser, NoOptionError
 
+from azure.common import AzureMissingResourceHttpError, AzureException
+from azure.storage.blob.blockblobservice import BlockBlobService
+from azure.storage.blob.models import BlobPermissions, BlobBlock
+from azure.cosmosdb.table import TableService, EntityProperty, Entity
+
+from toil.jobStores import azure_credential_file_path as credential_file_path
+
 # noinspection PyPackageRequirements
 # (pulled in transitively)
 import requests
@@ -56,13 +63,6 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
                                              NoSuchJobStoreException)
 import toil.lib.encryption as encryption
-
-from azure.common import AzureMissingResourceHttpError, AzureException
-from azure.storage.blob.blockblobservice import BlockBlobService
-from azure.storage.blob.models import BlobPermissions, BlobBlock
-from azure.cosmosdb.table import TableService, EntityProperty, Entity
-
-from toil.jobStores import azure_credential_file_path as credential_file_path
 
 logger = logging.getLogger(__name__)
 logging.getLogger("azure.cosmosdb.common.storageclient").setLevel(logging.WARNING)
