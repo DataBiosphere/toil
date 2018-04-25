@@ -241,6 +241,7 @@ class ClusterScaler(object):
         self.config = config
         # Indicates that the scaling threads should shutdown
         self.stop = False
+        self.static = {}
 
         #Dictionary of job names to their average runtime, used to estimate wall time
         #of queued jobs for bin-packing
@@ -317,6 +318,29 @@ class ClusterScaler(object):
                 preemptable=job.preemptable)
         self.scaler.addRecentJobShape(s)
 
+    def setStaticNodes(self, nodes, preemptable):
+        """
+        Used to track statically provisioned nodes. This method must be called
+        before any auto-scaled nodes are provisioned.
+
+        These nodes are treated differently than auto-scaled nodes in that they should
+        not be automatically terminated.
+
+        :param nodes: list of Node objects
+        """
+        prefix = 'non-' if not preemptable else ''
+        logger.debug("Adding %s to %spreemptable static nodes", nodes, prefix)
+        if nodes is not None:
+            self.static[preemptable] = {node.privateIP : node for node in nodes}
+
+    def getStaticNodes(self, preemptable):
+        """
+        Returns nodes set in setStaticNodes().
+
+        :param preemptable:
+        :return: Statically provisioned nodes.
+        """
+        return self.static[preemptable]
 
 class ScalerThread(ExceptionalThread):
     """
@@ -385,7 +409,7 @@ class ScalerThread(ExceptionalThread):
                     self.totalNodes[nodeShape] += len(nodes_thisType)
                     nodes.extend(nodes_thisType)
 
-                self.scaler.provisioner.setStaticNodes(nodes, preemptable)
+                self.scaler.setStaticNodes(nodes, preemptable)
                     
 
         self.stats = None
@@ -617,7 +641,7 @@ class ScalerThread(ExceptionalThread):
             if node is None:
                 logger.info("Node with info %s was not found in our node list", nodeInfo)
                 continue
-            staticNodes = self.scaler.provisioner.getStaticNodes(preemptable)
+            staticNodes = self.scaler.getStaticNodes(preemptable)
             prefix = 'non-' if not preemptable else ''
             if node.privateIP in staticNodes:
                 # we don't want to automatically terminate any statically

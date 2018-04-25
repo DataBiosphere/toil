@@ -14,11 +14,11 @@
 from abc import ABCMeta, abstractmethod
 from builtins import object
 from collections import namedtuple
-from itertools import count
 import logging
-import pipes
-import socket
+import os.path
 from toil import subprocess
+from toil import applianceSelf
+
 
 from future.utils import with_metaclass
 
@@ -47,21 +47,51 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     Toil cluster.
     """
 
-    def __init__(self, clusterName, zone=None, config=None):
-        """
-        Initialize provisioner. If config and batchSystem are not specified, the
-        provisioner is being used to manage nodes without a workflow
+    LEADER_HOME_DIR = '/root/' # home directory in the Toil appliance on an instance
 
-        :param config: Config from common.py
-        :param batchSystem: The batchSystem used during run
+    def __init__(self, clusterName=None, zone=None, nodeStorage=50):
         """
-        self.config = config
+        Initialize provisioner.
+
+        :param clusterName: The cluster identifier.
+        :param zone: The zone the cluster runs in.
+        :param nodeStorage: The amount of storage on the worker instances, in gigabytes.
+        """
         self.clusterName = clusterName
-        self.zone = zone
-        self.static = {}
+        self._zone = zone
+        self._nodeStorage = nodeStorage
+        self._leaderPrivateIP = None
 
-    def getStaticNodes(self, preemptable):
-        return self.static[preemptable]
+    def readClusterSettings(self):
+        """
+        Initialize class from an existing cluster. This method assumes that
+        the instance we are running on is the leader.
+        """
+        raise NotImplementedError
+
+    def setAutoscaledNodeTypes(self, nodeTypes):
+        """
+        Set node types, shapes and spot bids. Preemptable nodes will have the form "type:spotBid".
+        :param nodeTypes: A list of node types
+        """
+        spotBids = []
+        nonPreemptableNodeTypes = []
+        preemptableNodeTypes = []
+        for nodeTypeStr in nodeTypes:
+            nodeBidTuple = nodeTypeStr.split(":")
+            if len(nodeBidTuple) == 2:
+                #This is a preemptable node type, with a spot bid
+                preemptableNodeTypes.append(nodeBidTuple[0])
+                spotBids.append(nodeBidTuple[1])
+            else:
+                nonPreemptableNodeTypes.append(nodeTypeStr)
+        preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True)
+                                      for nodeType in preemptableNodeTypes]
+        nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False)
+                                         for nodeType in nonPreemptableNodeTypes]
+        self.nodeShapes = nonPreemptableNodeShapes + preemptableNodeShapes
+        self.nodeTypes = nonPreemptableNodeTypes + preemptableNodeTypes
+        self._spotBidsMap = dict(zip(preemptableNodeTypes, spotBids))
 
     @staticmethod
     def retryPredicate(e):
@@ -75,29 +105,15 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         return never(e)
 
-    def setStaticNodes(self, nodes, preemptable):
-        """
-        Used to track statically provisioned nodes. These nodes are
-        treated differently than autoscaled nodes in that they should not
-        be automatically terminated.
-
-        :param nodes: list of Node objects
-        """
-        prefix = 'non-' if not preemptable else ''
-        log.debug("Adding %s to %spreemptable static nodes", nodes, prefix)
-        if nodes is not None:
-            self.static[preemptable] = {node.privateIP : node for node in nodes}
-
     @abstractmethod
-    def launchCluster(self, leaderNodeType, keyName, userTags=None, vpcSubnet=None,
-                      leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
+    def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
         """
         Initialize a cluster and create a leader node.
 
         :param leaderNodeType: The leader instance.
-        :param preemptable: whether or not the nodes will be preemptable
-        :param spotBid: The bid for preemptable nodes if applicable (this can be set in config, also).
-        :return: number of nodes successfully added
+        :param leaderStorage: The amount of disk to allocate to the leader in gigabytes.
+        :param owner: Tag identifying the owner of the instances.
+
         """
         raise NotImplementedError
 
@@ -163,4 +179,178 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
+    def _setSSH(self):
+        """
+        Generate a key pair, save it in /root/.ssh/id_rsa.pub, and return the public key.
+        The file /root/.sshSuccess is used to prevent this operation from running twice.
+        :return Public key.
+        """
+        if not os.path.exists('/root/.sshSuccess'):
+            subprocess.check_call(['ssh-keygen', '-f', '/root/.ssh/id_rsa', '-t', 'rsa', '-N', ''])
+            with open('/root/.sshSuccess', 'w') as f:
+                f.write('written here because of restrictive permissions on .ssh dir')
+        os.chmod('/root/.ssh', 0o700)
+        subprocess.check_call(['bash', '-c', 'eval $(ssh-agent) && ssh-add -k'])
+        with open('/root/.ssh/id_rsa.pub') as f:
+            masterPublicKey = f.read()
+        masterPublicKey = masterPublicKey.split(' ')[1]  # take 'body' of key
+        # confirm it really is an RSA public key
+        assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
+        return masterPublicKey
+
+
+
+
+
+
+
+    cloudConfigTemplate = """#cloud-config
+
+write_files:
+    - path: "/home/core/volumes.sh"
+      permissions: "0777"
+      owner: "root"
+      content: |
+        #!/bin/bash
+        set -x
+        ephemeral_count=0
+        drives=""
+        directories="toil mesos docker"
+        for drive in /dev/xvd{{b..z}} /dev/nvme*n*; do
+            echo checking for $drive
+            if [ -b $drive ]; then
+                echo found it
+                ephemeral_count=$((ephemeral_count + 1 ))
+                drives="$drives $drive"
+                echo increased ephemeral count by one
+            fi
+        done
+        if (("$ephemeral_count" == "0" )); then
+            echo no ephemeral drive
+            for directory in $directories; do
+                sudo mkdir -p /var/lib/$directory
+            done
+            exit 0
+        fi
+        sudo mkdir /mnt/ephemeral
+        if (("$ephemeral_count" == "1" )); then
+            echo one ephemeral drive to mount
+            sudo mkfs.ext4 -F $drives
+            sudo mount $drives /mnt/ephemeral
+        fi
+        if (("$ephemeral_count" > "1" )); then
+            echo multiple drives
+            for drive in $drives; do
+                dd if=/dev/zero of=$drive bs=4096 count=1024
+            done
+            sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count $drives # determine force flag
+            sudo mkfs.ext4 -F /dev/md0
+            sudo mount /dev/md0 /mnt/ephemeral
+        fi
+        for directory in $directories; do
+            sudo mkdir -p /mnt/ephemeral/var/lib/$directory
+            sudo mkdir -p /var/lib/$directory
+            sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
+        done
+
+coreos:
+    update:
+      reboot-strategy: off
+    units:
+    - name: "volume-mounting.service"
+      command: "start"
+      content: |
+        [Unit]
+        Description=mounts ephemeral volumes & bind mounts toil directories
+        Before=docker.service
+
+        [Service]
+        Type=oneshot
+        Restart=no
+        ExecStart=/usr/bin/bash /home/core/volumes.sh
+
+    - name: "toil-{role}.service"
+      command: "start"
+      content: |
+        [Unit]
+        Description=toil-{role} container
+        After=docker.service
+
+        [Service]
+        Restart=on-failure
+        RestartSec=2
+        ExecStartPre=-/usr/bin/docker rm toil_{role}
+        ExecStart=/usr/bin/docker run \
+            --entrypoint={entrypoint} \
+            --net=host \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v /var/lib/mesos:/var/lib/mesos \
+            -v /var/lib/docker:/var/lib/docker \
+            -v /var/lib/toil:/var/lib/toil \
+            -v /var/lib/cwl:/var/lib/cwl \
+            -v /tmp:/tmp \
+            --name=toil_{role} \
+            {dockerImage} \
+            {mesosArgs}
+    - name: "node-exporter.service"
+      command: "start"
+      content: |
+        [Unit]
+        Description=node-exporter container
+        After=docker.service
+
+        [Service]
+        Restart=on-failure
+        RestartSec=2
+        ExecStartPre=-/usr/bin/docker rm node_exporter
+        ExecStart=/usr/bin/docker run \
+            -p 9100:9100 \
+            -v /proc:/host/proc \
+            -v /sys:/host/sys \
+            -v /:/rootfs \
+            --name node-exporter \
+            --restart always \
+            prom/node-exporter:v0.15.2 \
+            --path.procfs /host/proc \
+            --path.sysfs /host/sys \
+            --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
+"""
+
+    sshTemplate = """ssh_authorized_keys:
+    - "ssh-rsa {sshKey}"
+"""
+
+
+       # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
+        # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
+        # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
+        # set to keyPath.
+
+    MESOS_LOG_DIR = '--log_dir=/var/lib/mesos '
+    LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
+    WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable}'
+    def _getCloudConfigUserData(self, role, masterPublicKey=None, keyPath=None, preemptable=False):
+        if role == 'leader':
+            entryPoint = 'mesos-master'
+            mesosArgs = self.MESOS_LOG_DIR + self.LEADER_DOCKER_ARGS.format(name=self.clusterName)
+        elif role == 'worker':
+            entryPoint = 'mesos-slave'
+            mesosArgs = self.MESOS_LOG_DIR + self.WORKER_DOCKER_ARGS.format(ip=self._leaderPrivateIP,
+                                                        preemptable=preemptable)
+        else:
+            raise RuntimeError("Unknown role %s" % role)
+
+        template = self.cloudConfigTemplate
+        if masterPublicKey:
+            template += self.sshTemplate
+        if keyPath:
+            mesosArgs = keyPath + ' ' + mesosArgs
+            entryPoint = "waitForKey.sh"
+        templateArgs = dict(role=role,
+                            dockerImage=applianceSelf(),
+                            entrypoint=entryPoint,
+                            sshKey=masterPublicKey,   # ignored if None
+                            mesosArgs=mesosArgs)
+        userData = template.format(**templateArgs)
+        return userData
 

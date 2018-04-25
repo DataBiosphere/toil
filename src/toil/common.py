@@ -793,7 +793,12 @@ class Toil(object):
         if self.config.provisioner is None:
             self._provisioner = None
         else:
-            self._provisioner = clusterFactory(provisioner=self.config.provisioner, config=self.config)
+            self._provisioner = clusterFactory(provisioner=self.config.provisioner,
+                                               clusterName=None,
+                                               zone=None, # read from instance meta-data
+                                               nodeStorage=self.config.nodeStorage,
+                                               sseKey=self.config.sseKey)
+            self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
     @classmethod
     def getJobStore(cls, locator):

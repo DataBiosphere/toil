@@ -38,5 +38,6 @@ def main():
                         " -p aws test-cluster :example.py .`")
     config = parseBasicOptions(parser)
     cluster = clusterFactory(provisioner=config.provisioner,
-                             clusterName=config.clusterName, zone=config.zone)
+                             clusterName=config.clusterName,
+                             zone=config.zone)
     cluster.getLeader().coreRsync(args=config.args, strict=not config.insecure)

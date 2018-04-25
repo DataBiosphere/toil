@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def clusterFactory(provisioner, clusterName=None, zone=None, config=None):
+def clusterFactory(provisioner, clusterName=None, zone=None, nodeStorage=50, sseKey=None):
     """
     :param clusterName: The name of the cluster.
     :param provisioner: The cloud type of the cluster.
@@ -32,21 +32,21 @@ def clusterFactory(provisioner, clusterName=None, zone=None, config=None):
             logger.error('The aws extra must be installed to use this provisioner')
             raise
         enable_metadata_credential_caching() # monkey patch for AWS
-        return AWSProvisioner(clusterName, zone, config)
+        return AWSProvisioner(clusterName, zone, nodeStorage, sseKey)
     elif provisioner == 'gce':
         try:
             from toil.provisioners.gceProvisioner import GCEProvisioner
         except ImportError:
             logger.error('The google extra must be installed to use this provisioner')
             raise
-        return GCEProvisioner(clusterName, zone, config)
+        return GCEProvisioner(clusterName, zone, nodeStorage, sseKey)
     elif provisioner == 'azure':
         try:
             from toil.provisioners.azure.azureProvisioner import AzureProvisioner
         except ImportError:
             logger.error('The azure extra must be installed to use this provisioner')
             raise
-        return AzureProvisioner(clusterName, zone, config)
+        return AzureProvisioner(clusterName, zone, nodeStorage)
     else:
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
 
