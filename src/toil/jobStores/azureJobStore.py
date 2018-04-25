@@ -44,6 +44,8 @@ from azure.storage.blob.blockblobservice import BlockBlobService
 from azure.storage.blob.models import BlobPermissions, BlobBlock
 from azure.cosmosdb.table import TableService, EntityProperty, Entity
 
+from toil.jobStores import azure_credential_file_path as credential_file_path
+
 # noinspection PyPackageRequirements
 # (pulled in transitively)
 import requests
@@ -67,7 +69,7 @@ logging.getLogger("azure.cosmosdb.common.storageclient").setLevel(logging.WARNIN
 logging.getLogger("azure.cosmosdb.common._auth").setLevel(logging.WARNING)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
-credential_file_path = '~/.toilAzureCredentials'
+
 
 
 def _fetchAzureAccountKey(accountName):
