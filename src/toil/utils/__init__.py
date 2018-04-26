@@ -17,7 +17,7 @@ def addBasicProvisionerOptions(parser):
     except ImportError:
         currentZone = None
     zoneString = currentZone if currentZone else 'No zone could be determined'
-    parser.add_argument('-z', '--zone', dest='zone', required=False, default=currentZone,
+    parser.add_argument('-z', '--zone', dest='zone', required=not currentZone, default=currentZone,
                         help="The AWS availability zone of the master. This parameter can also be "
                              "set via the TOIL_AWS_ZONE environment variable, or by the ec2_region_name "
                              "parameter in your .boto file, or derived from the instance metadata if "
