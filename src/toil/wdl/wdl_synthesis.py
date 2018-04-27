@@ -194,6 +194,7 @@ class SynthesizeWDL:
         for wf in self.workflows_dictionary:
             for assignment in self.workflows_dictionary[wf]:
                 if assignment.startswith('call'):
+                    main_section += '        job0 = job0.encapsulate()\n'
                     main_section += self.write_main_jobwrappers_call(self.workflows_dictionary[wf][assignment])
         main_section += '\n        toil.start(job0)\n'
 
@@ -206,7 +207,7 @@ class SynthesizeWDL:
             main_section += var + '=' + task['io'][var] + ', '
         if main_section.endswith(', '):
             main_section = main_section[:-2]
-        return main_section + ')).encapsulate()\n'
+        return main_section + '))\n'
 
     def write_functions(self):
         '''
