@@ -21,7 +21,7 @@ import logging
 
 from toil import subprocess
 from toil.wdl.wdl_analysis import AnalyzeWDL
-from toil.wdl.wdl_synthesis import SynthesizeWDL
+from toil.wdl.wdl_synthesis import SynthesizeWDL, write_AST
 import toil.wdl.wdl_parser as wdl_parser
 
 wdllogger = logging.getLogger(__name__)
@@ -78,6 +78,8 @@ def main():
     parser.add_argument('--dont_delete_compiled', required=False, default=False,
                         help='Saves the compiled toil script generated from the'
                              'wdl/json files from deletion.')
+    parser.add_argument('--dont_run', required=False, default=False,
+                        help='Do not actually run the compiled file.')
 
     # wdl_run_args is an array containing all of the unknown arguments not
     # specified by the parser in this main.  All of these will be passed down in
@@ -87,6 +89,9 @@ def main():
     wdl_file_path = os.path.abspath(args.wdl_file)
     args.secondary_file = os.path.abspath(args.secondary_file)
     args.output_directory = os.path.abspath(args.output_directory)
+
+    if args.gen_parse_files:
+        write_AST(wdl_file_path, args.output_directory)
 
     aWDL = AnalyzeWDL(wdl_file_path, args.secondary_file, args.output_directory)
 
@@ -106,11 +111,11 @@ def main():
         aWDL.create_workflows_dict(ast)
 
     sWDL = SynthesizeWDL(aWDL.tasks_dictionary,
-                      aWDL.workflows_dictionary,
-                      args.output_directory,
-                      aWDL.json_dict,
-                      aWDL.tsv_dict,
-                      aWDL.csv_dict)
+                          aWDL.workflows_dictionary,
+                          args.output_directory,
+                          aWDL.json_dict,
+                          aWDL.tsv_dict,
+                          aWDL.csv_dict)
 
     # use the AST dictionaries to write 4 strings
     # these are the future 4 sections of the compiled toil python file
@@ -126,13 +131,12 @@ def main():
 
     wdllogger.debug('WDL file compiled to toil script.  Running now.')
 
-    if args.gen_parse_files:
-        sWDL.write_mappings(aWDL)
-        sWDL.write_AST()
+    sWDL.write_mappings(aWDL)
 
-    cmd = ['python', sWDL.output_file]
-    cmd.extend(wdl_run_args)
-    subprocess.check_call(cmd)
+    if not args.dont_run:
+        cmd = ['python', sWDL.output_file]
+        cmd.extend(wdl_run_args)
+        subprocess.check_call(cmd)
 
     if not args.dont_delete_compiled:
         os.remove(sWDL.output_file)

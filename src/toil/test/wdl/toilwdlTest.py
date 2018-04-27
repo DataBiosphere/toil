@@ -3,7 +3,9 @@ import unittest
 import os
 from toil import subprocess
 from toil.wdl.wdl_analysis import AnalyzeWDL
-from toil.wdl.wdl_synthesis import SynthesizeWDL, recursive_glob, generate_docker_bashscript_file, heredoc_wdl
+from toil.wdl.wdl_synthesis import SynthesizeWDL
+from toil.wdl.wdl_functions import read_tsv
+from toil.wdl.wdl_functions import read_csv
 from toil.test import ToilTest, slow
 import zipfile
 import shutil
@@ -189,12 +191,7 @@ class ToilWdlIntegrationTest(ToilTest):
         default_csv_output = [['1', '2', '3'],
                               ['4', '5', '6'],
                               ['7', '8', '9']]
-        t = AnalyzeWDL(os.path.abspath(
-                "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
-            os.path.abspath(
-                "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
-            self.output_dir)
-        csv_array = t.create_csv_array('src/toil/test/wdl/test.csv')
+        csv_array = read_csv(os.path.abspath('src/toil/test/wdl/test.csv'))
         assert csv_array == default_csv_output
 
     # estimated run time <1 sec
@@ -202,33 +199,27 @@ class ToilWdlIntegrationTest(ToilTest):
         default_tsv_output = [['1', '2', '3'],
                               ['4', '5', '6'],
                               ['7', '8', '9']]
-        t = AnalyzeWDL(os.path.abspath(
-                "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl"),
-            os.path.abspath(
-                "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json"),
-            self.output_dir)
-        tsv_array = t.create_tsv_array('src/toil/test/wdl/test.tsv')
+        tsv_array = read_tsv(os.path.abspath('src/toil/test/wdl/test.tsv'))
         assert tsv_array == default_tsv_output
 
-    # estimated run time <1 sec
-    def testJSON(self):
-        default_json_dict_output = {
-            u'RefIndex': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta.fai',
-            u'sampleName': u'WDL_tut1_output',
-            u'inputBAM': u'src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bam',
-            u'bamIndex': u'src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bai',
-            u'GATK': u'src/toil/test/wdl/GATK_data/GenomeAnalysisTK.jar',
-            u'RefDict': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict',
-            u'RefFasta': u'src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta'}
+# estimated run time <1 sec
+def testJSON(self):
+    default_json_dict_output = {
+        u'helloHaplotypeCaller.haplotypeCaller.RefIndex': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta.fai"',
+        u'helloHaplotypeCaller.haplotypeCaller.sampleName': u'"WDL_tut1_output"',
+        u'helloHaplotypeCaller.haplotypeCaller.inputBAM': u'"src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bam"',
+        u'helloHaplotypeCaller.haplotypeCaller.bamIndex': u'"src/toil/test/wdl/GATK_data/inputs/NA12878_wgs_20.bai"',
+        u'helloHaplotypeCaller.haplotypeCaller.GATK': u'"src/toil/test/wdl/GATK_data/GenomeAnalysisTK.jar"',
+        u'helloHaplotypeCaller.haplotypeCaller.RefDict': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.dict"',
+        u'helloHaplotypeCaller.haplotypeCaller.RefFasta': u'"src/toil/test/wdl/GATK_data/ref/human_g1k_b37_20.fasta"'}
 
-        t = AnalyzeWDL(
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl",
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json",
-            self.output_dir)
+    t = AnalyzeWDL(
+        "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller.wdl",
+        "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json",
+        self.output_dir)
 
-        json_dict = t.dict_from_JSON(
-            "src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
-        assert json_dict == default_json_dict_output
+    json_dict = t.dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
+    assert json_dict == default_json_dict_output, (str(json_dict) + '\nAssertionError: ' + str(default_json_dict_output))
 
     def fetch_and_unzip_from_s3(self, filename, data, data_dir):
         if not os.path.exists(data):
