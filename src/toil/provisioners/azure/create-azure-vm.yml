@@ -20,52 +20,6 @@
   gather_facts: False
 
   tasks:
-  - name: Create a resource group
-    tags:
-      - leader
-    # We use resource groups to identify all instances in a cluster.
-    azure_rm_resourcegroup:
-      name: "{{ resgrp }}"
-      location: "{{ region }}"
-      state: present
-
-  - name: Create security group that allows SSH and HTTP
-    tags:
-      - leader
-    # All instances in a security group can communicate with each other by default,
-    # so we don't have to touch that. All we have to do is open port 22 for SSH.
-    azure_rm_securitygroup:
-      resource_group: "{{ resgrp }}"
-      name: "{{ resgrp }}"
-      rules:
-        - name: SSH
-          protocol: Tcp
-          destination_port_range: 22
-          access: Allow
-          priority: 101
-          direction: Inbound
-
-  - name: Create a virtual network
-    tags:
-      - leader
-    # We don't need to run the above two steps if we're adding worker nodes.
-    azure_rm_virtualnetwork:
-      name: "{{ resgrp }}"
-      resource_group: '{{ resgrp }}'
-      address_prefixes: '192.168.0.0/16'
-      state: present
-
-  - name: Create a subnet
-    tags:
-      - leader
-    azure_rm_subnet:
-      name: "{{ resgrp }}"
-      virtual_network_name: "{{ resgrp }}"
-      resource_group: "{{ resgrp }}"
-      address_prefix: "192.168.0.0/24"
-      security_group_name: "{{ resgrp }}"
-      state: present
-
   - name: Create NIC
     azure_rm_networkinterface:
       resource_group: "{{ resgrp }}"

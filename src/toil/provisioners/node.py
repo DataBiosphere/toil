@@ -144,7 +144,7 @@ class Node(object):
 
     def _waitForAppliance(self, role, keyName='core'):
         logger.info('Waiting for %s Toil appliance to start...', role)
-        sleepTime = 10
+        sleepTime = 20
         startTime = time.time()
         while True:
             if time.time() - startTime > self.maxWaitTime:
