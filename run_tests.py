@@ -68,7 +68,7 @@ def run_parallel_to_xml(suite, args):
     :param args: auxiliary arguments to pass to pyTest
     :return:  exit status (number of failures)
     """
-    suite = [] #test_suites[suite]
+    suite = [None] #test_suites[suite]
     for name in glob.glob('test-report-*.xml'):
         os.unlink(name)
     num_failures = 0
