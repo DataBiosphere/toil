@@ -59,10 +59,6 @@ class SynthesizeWDL:
 
         # unique iterator to add to cmd names
         self.cmd_num = 0
-        # unique number for a job
-        self.task_number = 0
-        # a job's 'level' on the DAG
-        self.task_priority = 0
 
     def write_modules(self):
         # string used to write imports to the file
@@ -72,6 +68,7 @@ class SynthesizeWDL:
                     from toil.lib.docker import apiDockerCall
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
                     from toil.wdl.wdl_functions import select_first
+                    from toil.wdl.wdl_functions import sub
                     from toil.wdl.wdl_functions import size
                     from toil.wdl.wdl_functions import glob
                     from toil.wdl.wdl_functions import process_and_read_file
@@ -88,6 +85,7 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import read_tsv
                     from toil.wdl.wdl_functions import read_csv
                     import fnmatch
+                    import textwrap
                     import subprocess
                     import os
                     import errno
@@ -96,8 +94,9 @@ class SynthesizeWDL:
                     import shlex
                     import uuid
                     import logging
-                    from re import sub # re.sub('[ES]', 'a', s)
+                    
                     asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir = os.getcwd()
+                    asldijoiu23r8u34q89fho934t8u34fjobstore_path = os.path.abspath("./toilWorkflowRun/tmp")
 
                     logger = logging.getLogger(__name__)
 
@@ -196,18 +195,80 @@ class SynthesizeWDL:
                 if assignment.startswith('call'):
                     main_section += '        job0 = job0.encapsulate()\n'
                     main_section += self.write_main_jobwrappers_call(self.workflows_dictionary[wf][assignment])
+                if assignment.startswith('scatter'):
+                    main_section += '        job0 = job0.encapsulate()\n'
+                    main_section += self.write_main_jobwrappers_scatter(self.workflows_dictionary[wf][assignment], assignment)
+
         main_section += '\n        toil.start(job0)\n'
 
         return main_section
 
-    def write_main_jobwrappers_call(self, task):
+    def write_main_jobwrappers_scatter(self, task, assignment):
+        scatter_inputs = self.fetch_scatter_inputs(assignment)
 
+        main_section = '        {scatter} = job0.addChild({scatter}Cls('.format(scatter=assignment)
+        for var in scatter_inputs:
+            main_section += var + '=' + var + ', '
+        if main_section.endswith(', '):
+            main_section = main_section[:-2]
+        main_section += '))\n'
+
+        scatter_outputs = self.fetch_scatter_outputs(task)
+        for var in scatter_outputs:
+            main_section += '        {var} = {scatter}.rv("{var}")\n'.format(var=var['task'] + '_' + var['output'], scatter=assignment)
+
+        return main_section
+
+    def fetch_scatter_outputs(self, task):
+        scatteroutputs = []
+
+        for var in task['body']:
+            # TODO variable support
+            if var.startswith('call'):
+                if 'outputs' in self.tasks_dictionary[task['body'][var]['task']]:
+                    for output in self.tasks_dictionary[task['body'][var]['task']]['outputs']:
+                        scatteroutputs.append({'task': task['body'][var]['alias'], 'output': output[0]})
+        return scatteroutputs
+
+    def fetch_scatter_inputs(self, assigned):
+        scatternamespace = []
+
+        for wfname, wf in self.workflows_dictionary.iteritems():
+            if 'wf_declarations' in wf:
+                for var in wf['wf_declarations']:
+                    scatternamespace.append(var)
+
+        for wf in self.workflows_dictionary:
+            for assignment in self.workflows_dictionary[wf]:
+                if assignment == assigned:
+                    return scatternamespace
+                elif assignment.startswith('call'):
+                    if 'outputs' in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]:
+                        for output in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]['outputs']:
+                            scatternamespace.append(self.workflows_dictionary[wf][assignment]['alias'] + '_' + output[0])
+        return scatternamespace
+
+    def write_main_jobwrappers_call(self, task):
         main_section = '        {} = job0.addChild({}Cls('.format(task['alias'], task['task'])
         for var in task['io']:
             main_section += var + '=' + task['io'][var] + ', '
         if main_section.endswith(', '):
             main_section = main_section[:-2]
-        return main_section + '))\n'
+        main_section += '))\n'
+
+        call_outputs = self.fetch_call_outputs(task)
+        for var in call_outputs:
+            main_section += '        {var} = {task}.rv("{output}")\n'.format(var=var['task'] + '_' + var['output'],
+                                                                             task=var['task'],
+                                                                             output=var['output'])
+        return main_section
+
+    def fetch_call_outputs(self, task):
+        calloutputs = []
+        if 'outputs' in self.tasks_dictionary[task['task']]:
+            for output in self.tasks_dictionary[task['task']]['outputs']:
+                calloutputs.append({'task': task['alias'], 'output': output[0]})
+        return calloutputs
 
     def write_functions(self):
         '''
@@ -224,7 +285,149 @@ class SynthesizeWDL:
         for job in self.tasks_dictionary:
             fn_section += self.write_function(job)
 
+        for wf in self.workflows_dictionary:
+            for assignment in self.workflows_dictionary[wf]:
+                if assignment.startswith('scatter'):
+                    fn_section += self.write_scatterfunction(self.workflows_dictionary[wf][assignment], assignment)
+
         return fn_section
+
+    def write_scatterfunction(self, job, scattername):
+        '''
+        Writes out a python function for each WDL "scatter" object.
+        '''
+
+        scatter_outputs = self.fetch_scatter_outputs(job)
+
+        # write the function header
+        fn_section = self.write_scatterfunction_header(scattername)
+
+        # write the scatter definitions
+        fn_section += self.write_scatterfunction_lists(scatter_outputs)
+
+        # write
+        fn_section += self.write_scatterfunction_loop(job, scatter_outputs)
+
+        # write the outputs for the task to return
+        fn_section += self.write_scatterfunction_outputreturn(scatter_outputs)
+
+        return fn_section
+
+
+    def write_scatterfunction_header(self, scattername):
+        """
+
+        :return:
+        """
+        scatter_inputs = self.fetch_scatter_inputs(scattername)
+
+        fn_section = '\n\nclass {jobname}Cls(Job):\n'.format(jobname=scattername)
+        fn_section += '    def __init__(self, '
+        for input in scatter_inputs:
+            fn_section += '{input}=None, '.format(input=input)
+        fn_section += '*args, **kwargs):\n'
+        fn_section += '        Job.__init__(self)\n\n'
+
+        for input in scatter_inputs:
+            fn_section += '        self.{input} = {input}\n'.format(input=input)
+
+        fn_section += heredoc_wdl('''
+                                 super({jobname}Cls, self).__init__(*args, **kwargs)
+
+                             def run(self, fileStore):
+                                 fileStore.logToMaster("{jobname}")
+                                 tempDir = fileStore.getLocalTempDir()
+                                 
+                                 try:
+                                     os.makedirs(os.path.join(tempDir, 'execution'))
+                                 except OSError as e:
+                                     if e.errno != errno.EEXIST:
+                                         raise
+                                 ''', {'jobname': scattername}, indent='    ')[1:]
+        for input in scatter_inputs:
+            fn_section += '        {input} = self.{input}\n'.format(input=input)
+        return fn_section
+
+    def write_scatterfunction_outputreturn(self, scatter_outputs):
+        """
+
+        :return:
+        """
+        fn_section = '\n        rvDict = {'
+        for var in scatter_outputs:
+            fn_section += '"{var}": {var}, '.format(var=var['task'] + '_' + var['output'])
+        if fn_section.endswith(', '):
+            fn_section = fn_section[:-2]
+        fn_section += '}\n'
+        fn_section += '        return rvDict\n\n'
+
+        return fn_section[:-1]
+
+    def write_scatterfunction_lists(self, scatter_outputs):
+        """
+
+        :return:
+        """
+        fn_section = '\n'
+        for var in scatter_outputs:
+            fn_section += '        {var} = []\n'.format(var=var['task'] + '_' + var['output'])
+
+        return fn_section
+
+
+    def write_scatterfunction_loop(self, job, scatter_outputs):
+        """
+
+        :return:
+        """
+        collection = job['collection']
+        item = job['item']
+
+        fn_section = '        for {item} in {collection}:\n'.format(item=item, collection=collection)
+
+        previous_dependency = 'self'
+        for statement in job['body']:
+            if statement.startswith('call'):
+                fn_section += self.write_scatter_callwrapper(job['body'][statement], previous_dependency)
+                previous_dependency = 'job_' + job['body'][statement]['alias']
+            elif statement.startswith('variable'):
+                fn_section += '            {var} = {expr}\n'.format(var=job['body'][statement]['name'],
+                                                                    expr=job['body'][statement]['value'])
+
+        for var in scatter_outputs:
+            fn_section += '            {var}.append({task}.rv("{output}"))\n'.format(var=var['task'] + '_' + var['output'],
+                                                                                   task='job_' + var['task'],
+                                                                                   output=var['output'])
+        return fn_section
+
+    def write_scatter_callwrapper(self, job, previous_dependency):
+        fn_section = '            job_{alias} = {pd}.addFollowOn({task}Cls('.format(alias=job['alias'],
+                                                                                    pd=previous_dependency,
+                                                                                    task=job['task'])
+        for var in job['io']:
+            fn_section += var + '=' + job['io'][var] + ', '
+        if fn_section.endswith(', '):
+            fn_section = fn_section[:-2]
+        fn_section += '))\n'
+        return fn_section
+
+    def fetch_scatter_varwrapper_inputs(self, job, scattername):
+        varwrapper_inputs = self.fetch_scatter_inputs(scattername)
+
+        for wf in self.workflows_dictionary:
+            for assignment in self.workflows_dictionary[wf]:
+                if assignment == scattername:
+                    for scatterassignment in self.workflows_dictionary[wf][assignment]['body']:
+                        if scatterassignment.startswith('variable'):
+                            if job['name'] == self.workflows_dictionary[wf][assignment]['body'][scatterassignment]['name']:
+                                varwrapper_inputs.append(self.workflows_dictionary[wf][assignment]['item'])
+                                return varwrapper_inputs
+                            else:
+                                varwrapper_inputs.append(self.workflows_dictionary[wf][assignment]['body'][scatterassignment]['name'])
+                        if scatterassignment.startswith('call'):
+                            varwrapper_inputs.append(self.workflows_dictionary[wf][assignment]['body'][scatterassignment]['alias'])
+                    varwrapper_inputs.append(self.workflows_dictionary[wf][assignment]['item'])
+        return varwrapper_inputs
 
     def write_function(self, job):
         '''
@@ -334,7 +537,6 @@ class SynthesizeWDL:
                                  except OSError as e:
                                      if e.errno != errno.EEXIST:
                                          raise
-
                                  ''', {'jobname': job}, indent='    ')[1:]
         if 'inputs' in self.tasks_dictionary[job]:
             for i in self.tasks_dictionary[job]['inputs']:
@@ -383,7 +585,7 @@ class SynthesizeWDL:
         :return: A string writing all of this.
         '''
         fn_section = "        generate_docker_bashscript_file(temp_dir=tempDir, docker_dir='/root', globs=["
-        # TODO: Add glob functionality.
+        # TODO: Add glob
         # if 'outputs' in self.tasks_dictionary[job]:
         #     for output in self.tasks_dictionary[job]['outputs']:
         #         fn_section += '({}), '.format(output[2])
@@ -411,6 +613,7 @@ class SynthesizeWDL:
                                parameters=["/root/{job_task_reference}_script.sh"], 
                                entrypoint="/bin/bash", 
                                volumes={{tempDir: {{"bind": "/root"}}}})
+        os.chdir(os.path.join(tempDir, 'execution'))
             ''', docker_dict, indent='        ')[1:]
 
         return docker_template
@@ -430,6 +633,8 @@ class SynthesizeWDL:
         cmd_array = []
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
+                if not cmd.startswith("r'''"):
+                    cmd = 'str({}).strip("\\n")'.format(cmd)
                 fn_section = fn_section + '        command{} = {}\n'.format(str(self.cmd_num), cmd)
                 cmd_array.append('command' + str(self.cmd_num))
                 self.cmd_num = self.cmd_num + 1
@@ -437,10 +642,10 @@ class SynthesizeWDL:
         if cmd_array:
             fn_section += '\n        cmd = '
             for command in cmd_array:
-                fn_section += command + ' + '
+                fn_section += '{command} + '.format(command=command)
             if fn_section.endswith(' + '):
                 fn_section = fn_section[:-3]
-            fn_section = fn_section + '\n'
+            fn_section += '\n        cmd = textwrap.dedent(cmd.strip("\\n"))\n'
 
         return fn_section
 
@@ -538,10 +743,6 @@ class SynthesizeWDL:
         :param output_file: The file to write the compiled toil script to.
         '''
         with open(output_file, 'w') as file:
-            file.write(module_section)
-            file.write(fn_section)
-            file.write(main_section)
-        with open('/home/quokka/Desktop/test/toil/src/toil/test/wdl/astTemplates/compiled.py', 'w') as file:
             file.write(module_section)
             file.write(fn_section)
             file.write(main_section)

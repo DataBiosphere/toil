@@ -26,6 +26,7 @@ from toil import subprocess
 wdllogger = logging.getLogger(__name__)
 
 
+
 def glob(glob_pattern, directoryname):
     '''
     Walks through a directory and its subdirectories looking for files matching
@@ -155,10 +156,18 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
     with open(os.path.join(temp_dir, job_name + '_script.sh'), 'w') as bashfile:
         bashfile.write(bashfile_string)
 
+    with open(os.path.join('/home/quokka/Desktop/toilwdl/build/toil/src/toil/test/wdl/simplescatter/script.sh'), 'w') as bashfile:
+        bashfile.write(bashfile_string)
+
 
 def process_single_infile(f, fileStore):
-    if f.startswith('http://') or f.startswith('https://') or f.startswith('gs://') or \
+    wdllogger.info('Importing {f} into the jobstore.'.format(f=f))
+    if f.startswith('http://') or f.startswith('https://') or \
             f.startswith('file://') or f.startswith('wasb://') or f.startswith('s3://'):
+        filepath = fileStore.importFile(f)
+        preserveThisFilename = os.path.basename(f)
+    elif f.startswith('gs://'):
+        f = 'https://storage.googleapis.com/' + f[5:]
         filepath = fileStore.importFile(f)
         preserveThisFilename = os.path.basename(f)
     else:
@@ -184,6 +193,17 @@ def process_infile(f, fileStore):
         return process_single_infile(f, fileStore)
     else:
         raise RuntimeError('Error processing file: '.format(str(f)))
+
+
+def sub(a, b, c):
+    if isinstance(a, tuple):
+        a = a[1]
+    if isinstance(a, tuple):
+        b = b[1]
+    if isinstance(a, tuple):
+        c = c[1]
+    import re
+    return re.sub(str(a), str(b), str(c))
 
 
 def process_single_outfile(f, fileStore, workDir, outDir):
@@ -353,16 +373,17 @@ def is_number(s):
         return False
 
 
-def size(f, unit='B'):
+def size(f, unit, d):
     """
     Returns the size of a file in bytes.
 
     :param f:
+    :param d:
     :param unit:
     :return:
     """
     if isinstance(f, tuple):
-        f = f[0]
+        f = os.path.join(d, f[0])
     divisor = return_bytes(unit)
     return (float(subprocess.check_output(['du', '-s', f],
             env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode('ascii')) * 512) / divisor
@@ -420,7 +441,7 @@ def heredoc_wdl(template, dictionary={}, indent=''):
     template = textwrap.dedent(template).format(**dictionary)
     return template.replace('\n', '\n' + indent) + '\n'
 
-def read_tsv(tsv_filepath, delimiter="\t"):
+def read_tsv(f, delimiter="\t"):
     '''
     Take a tsv filepath and return an array; e.g. [[],[],[]].
 
@@ -436,13 +457,13 @@ def read_tsv(tsv_filepath, delimiter="\t"):
     :return: tsv_array
     '''
     tsv_array = []
-    with open(tsv_filepath, "r") as f:
+    with open(f, "r") as f:
         data_file = csv.reader(f, delimiter=delimiter)
         for line in data_file:
             tsv_array.append(line)
     return (tsv_array)
 
-def read_csv(csv_filepath):
+def read_csv(f):
     '''
     Take a csv filepath and return an array; e.g. [[],[],[]].
 
@@ -457,4 +478,5 @@ def read_csv(csv_filepath):
     :param csv_filepath:
     :return: csv_array
     '''
-    return read_tsv(csv_filepath, delimiter=",")
+    return read_tsv(f, delimiter=",")
+

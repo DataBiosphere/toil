@@ -60,8 +60,6 @@ class AnalyzeWDL:
 
         # only json is required; tsv/csv are optional
         self.json_dict = {}
-        self.tsv_dict = {} # TODO remove
-        self.csv_dict = {} # TODO remove
 
         # holds task skeletons from WDL task objects
         self.tasks_dictionary = OrderedDict()
@@ -74,6 +72,9 @@ class AnalyzeWDL:
 
         # unique iterator to add to call names
         self.call_number = 0
+
+        # unique iterator to add to scatter names
+        self.scatter_number = 0
 
     def find_asts(self, ast_root, name):
         '''
@@ -95,50 +96,6 @@ class AnalyzeWDL:
             for attr_name, attr in ast_root.attributes.items():
                 nodes.extend(self.find_asts(attr, name))
         return nodes
-
-    def create_tsv_array(self, tsv_filepath):
-        '''
-        Take a tsv filepath and return an array; e.g. [[],[],[]].
-
-        For example, a file containing:
-
-        1   2   3
-        4   5   6
-        7   8   9
-
-        would return the array: [['1','2','3'], ['4','5','6'], ['7','8','9']]
-
-        :param tsv_filepath:
-        :return: tsv_array
-        '''
-        tsv_array = []
-        with open(tsv_filepath, "r") as f:
-            data_file = csv.reader(f, delimiter="\t")
-            for line in data_file:
-                tsv_array.append(line)
-        return (tsv_array)
-
-    def create_csv_array(self, csv_filepath):
-        '''
-        Take a csv filepath and return an array; e.g. [[],[],[]].
-
-        For example, a file containing:
-
-        1,2,3
-        4,5,6
-        7,8,9
-
-        would return the array: [['1','2','3'], ['4','5','6'], ['7','8','9']]
-
-        :param csv_filepath:
-        :return: csv_array
-        '''
-        csv_array = []
-        with open(csv_filepath, "r") as f:
-            data_file = csv.reader(f)
-            for line in data_file:
-                csv_array.append(line)
-        return (csv_array)
 
     def dict_from_YML(self, YML_file):
         '''
@@ -298,7 +255,7 @@ class AnalyzeWDL:
 
             # normal string
             if isinstance(code_snippet, wdl_parser.Terminal):
-                command_var = "'''" + code_snippet.source_string + "'''"
+                command_var = "r'''" + code_snippet.source_string + "'''"
 
             # a variable like ${dinosaurDNA}
             if isinstance(code_snippet, wdl_parser.Ast):
@@ -323,7 +280,7 @@ class AnalyzeWDL:
         """
         for param in code_attr:
             if param == 'sep':
-                code_expr = "{sep}.join({expr})".format(sep=code_attr[param], expr=code_expr)
+                code_expr = "{sep}.join(str(x) for x in {expr})".format(sep=code_attr[param], expr=code_expr)
             else:
                 raise NotImplementedError
         return code_expr
@@ -514,17 +471,61 @@ class AnalyzeWDL:
             self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['wf_declarations'] = wf_declared_dict
 
             if section.name == "Scatter":
-                for i in section.attr('body'):
-                    if 'task' in i.attributes:
-                        # task = self.parse_workflow_scatter(section, workflow_name)
-                        task = self.parse_workflow_call(i)
-                        self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['scatter' + str(self.call_number)] = task
-                        self.call_number += 1
+                scattertask = self.parse_workflow_scatter(section)
+                self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['scatter' + str(self.scatter_number)] = scattertask
+                self.scatter_number += 1
 
             if section.name == "Call":
                 task = self.parse_workflow_call(section)
                 self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['call' + str(self.call_number)] = task
                 self.call_number += 1
+
+    def parse_workflow_scatter(self, scatterAST):
+        item = self.parse_workflow_scatter_item(scatterAST.attr('item'))
+        collection = self.parse_workflow_scatter_collection(scatterAST.attr('collection'))
+        body = self.parse_workflow_scatter_body(scatterAST.attr('body'))
+        return {'item': item, 'collection': collection, 'body': body}
+
+    def parse_workflow_scatter_item(self, i):
+        if isinstance(i, wdl_parser.Terminal):
+            return i.source_string
+        elif isinstance(i, wdl_parser.Ast):
+            raise NotImplementedError
+        elif isinstance(i, wdl_parser.AstList):
+            raise NotImplementedError
+
+    def parse_workflow_scatter_collection(self, i):
+        if isinstance(i, wdl_parser.Terminal):
+            return i.source_string
+        elif isinstance(i, wdl_parser.Ast):
+            return self.parse_declaration_expressn(i, es='')
+        elif isinstance(i, wdl_parser.AstList):
+            raise NotImplementedError
+
+    def parse_workflow_scatter_body(self, i):
+        if isinstance(i, wdl_parser.Terminal):
+            raise NotImplementedError
+        elif isinstance(i, wdl_parser.Ast):
+            raise NotImplementedError
+        elif isinstance(i, wdl_parser.AstList):
+            scatterbody = OrderedDict()
+            element = 0
+            for ast in i:
+                if ast.name == "Declaration":
+                    var_name, var_map = self.parse_workflow_declaration(ast)
+                    scatterbody['variable' + str(element)] = var_map
+                    element += 1
+
+                if ast.name == "Scatter":
+                    # TODO
+                    raise NotImplementedError
+
+                if ast.name == "Call":
+                    task = self.parse_workflow_call(ast)
+                    scatterbody['call' + str(element)] = task
+                    element += 1
+        return scatterbody
+
 
     def parse_declaration_name(self, nameAST):
         """
@@ -574,7 +575,7 @@ class AnalyzeWDL:
                 raise NotImplementedError
         elif isinstance(typeAST, wdl_parser.AstList):
             for ast in typeAST:
-                # TODO only ever seen one element lists?
+                # TODO only ever seen one element lists.
                 return self.parse_declaration_type(ast)
 
     def parse_declaration_expressn(self, expressionAST, es, output_expressn=False):
@@ -697,7 +698,7 @@ class AnalyzeWDL:
         elif isinstance(lhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
-        es = es + '.rv("'
+        es = es + '_'
 
         if isinstance(rhsAST, wdl_parser.Terminal):
             es = es + rhsAST.source_string
@@ -706,7 +707,7 @@ class AnalyzeWDL:
         elif isinstance(rhsAST, wdl_parser.AstList):
             raise NotImplementedError
 
-        return es + '")'
+        return es
 
     def parse_declaration_expressn_ternaryif(self, cond, iftrue, iffalse, es):
         """
@@ -814,7 +815,7 @@ class AnalyzeWDL:
                 # use python's built-in for length()
                 if name.source_string == 'length':
                     es = es + 'len('
-                if name.source_string == 'stdout':
+                elif name.source_string == 'stdout':
                     return es + 'stdout'
                 else:
                     es = es + name.source_string + '('
@@ -833,6 +834,8 @@ class AnalyzeWDL:
 
         if name.source_string == 'glob':
             return es + es_params + ', tempDir)'
+        elif name.source_string == 'size':
+            return es + es_params + ', d=asldijoiu23r8u34q89fho934t8u34fjobstore_path)'
         else:
             return es + es_params + ')'
 
@@ -897,6 +900,7 @@ class AnalyzeWDL:
         var_type = self.parse_declaration_type(wf_declaration_subAST.attr("type"))
         var_expressn = self.parse_declaration_expressn(wf_declaration_subAST.attr("expression"), es='')
 
+        var_map['name'] = var_name
         var_map['type'] = var_type
         var_map['value'] = var_expressn
 
@@ -1008,7 +1012,7 @@ class AnalyzeWDL:
         elif isinstance(i, wdl_parser.Ast):
             if i.name == 'CallBody':
                 declarations = self.parse_workflow_call_body_declarations(i.attr("declarations")) # have not seen this used
-                io_map = self.parse_workflow_call_body_io(i.attr("io"))
+                io_map = self.parse_workflow_call_body_io(i.attr('io'))
             else:
                 raise NotImplementedError
         elif isinstance(i, wdl_parser.AstList):
