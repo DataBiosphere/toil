@@ -43,14 +43,12 @@ class SynthesizeWDL:
     then write the main and all of its subsections.
     '''
 
-    def __init__(self, tasks_dictionary, workflows_dictionary, output_directory, json_dict, tsv_dict, csv_dict):
+    def __init__(self, tasks_dictionary, workflows_dictionary, output_directory, json_dict):
         self.output_directory = output_directory
         self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
 
         # only json is required; tsv/csv are optional
         self.json_dict = json_dict
-        self.tsv_dict = tsv_dict
-        self.csv_dict = csv_dict
 
         # holds task skeletons from WDL task objects
         self.tasks_dictionary = tasks_dictionary
