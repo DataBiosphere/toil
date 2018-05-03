@@ -113,9 +113,7 @@ def main():
     sWDL = SynthesizeWDL(aWDL.tasks_dictionary,
                           aWDL.workflows_dictionary,
                           args.output_directory,
-                          aWDL.json_dict,
-                          aWDL.tsv_dict,
-                          aWDL.csv_dict)
+                          aWDL.json_dict)
 
     # use the AST dictionaries to write 4 strings
     # these are the future 4 sections of the compiled toil python file
