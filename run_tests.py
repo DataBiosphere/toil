@@ -68,7 +68,7 @@ def run_parallel_to_xml(suite, args):
     :param args: auxiliary arguments to pass to pyTest
     :return:  exit status (number of failures)
     """
-    suite = test_suites[suite]
+    suite = [] #test_suites[suite]
     for name in glob.glob('test-report-*.xml'):
         os.unlink(name)
     num_failures = 0
@@ -104,6 +104,7 @@ def run_parallel_to_xml(suite, args):
     if None in suite:
         everything_else = ' and '.join('not (%s)' % keyword
                                        for keyword in itertools.chain(*test_suites.values()))
+        everything_else = 'testConcurrencyStatic'
         process = run_to_xml(everything_else, str(next(index)), args)
         if process.wait():
             num_failures += 1
