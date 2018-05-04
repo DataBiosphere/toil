@@ -156,9 +156,6 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
     with open(os.path.join(temp_dir, job_name + '_script.sh'), 'w') as bashfile:
         bashfile.write(bashfile_string)
 
-    with open(os.path.join('/home/quokka/Desktop/toilwdl/build/toil/src/toil/test/wdl/simplescatter/script.sh'), 'w') as bashfile:
-        bashfile.write(bashfile_string)
-
 
 def process_single_infile(f, fileStore):
     wdllogger.info('Importing {f} into the jobstore.'.format(f=f))
@@ -397,14 +394,23 @@ def select_first(values):
 
 
 def read_string(inputstring):
+    if isinstance(inputstring, tuple):
+        if len(inputstring) == 1:
+            inputstring = inputstring[0]
     return str(inputstring)
 
 
 def read_float(inputstring):
+    if isinstance(inputstring, tuple):
+        if len(inputstring) == 1:
+            inputstring = inputstring[0]
     return float(inputstring)
 
 
 def read_int(inputstring):
+    if isinstance(inputstring, tuple):
+        if len(inputstring) == 1:
+            inputstring = inputstring[0]
     return int(inputstring)
 
 
