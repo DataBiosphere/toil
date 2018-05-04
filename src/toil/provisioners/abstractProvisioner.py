@@ -215,7 +215,7 @@ write_files:
         set -x
         ephemeral_count=0
         drives=""
-        directories="toil mesos docker"
+        directories="toil mesos docker cwl"
         for drive in /dev/xvd{{b..z}} /dev/nvme*n*; do
             echo checking for $drive
             if [ -b $drive ]; then

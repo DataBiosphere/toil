@@ -689,7 +689,7 @@ class ScalerThread(ExceptionalThread):
             else:
                 # Node was tracked but we haven't seen this in the last 10 minutes
                 inUse = self.scaler.leader.batchSystem.nodeInUse(ip)
-                if not inUse:
+                if not inUse and info:
                     # The node hasn't reported in the last 10 minutes & last we know
                     # there weren't any tasks running. We will fake executorInfo with no
                     # worker to reflect this, since otherwise this node will never

@@ -19,6 +19,7 @@ import uuid
 import urllib
 import json
 import re
+from toil import subprocess
 
 from toil.provisioners.node import Node
 from toil.provisioners.abstractProvisioner import Shape
@@ -51,7 +52,8 @@ class AzureProvisioner(AnsibleDriver):
     def __init__(self, clusterName, zone, nodeStorage):
 
         self.playbook = {
-            'create-cluster': 'create-azure-resourcegroup.yml',
+            'check-cluster': 'create-azure-resourcegroup.yml',
+            'create-cluster': 'create-azure-cluster.yml',
             'create': 'create-azure-vm.yml',
             'delete': 'delete-azure-vm.yml',
             'destroy': 'delete-azure-cluster.yml'
@@ -73,9 +75,12 @@ class AzureProvisioner(AnsibleDriver):
         self._azureComputeClient = ComputeManagementClient(credentials, subscription)
         self._azureNetworkClient = NetworkManagementClient(credentials, subscription)
 
+        self._onLeader = False
         if not clusterName:
             # If no clusterName, Toil must be running on the leader.
             self._readClusterSettings()
+            self._onLeader = True
+
 
     def _readClusterSettings(self):
         """
@@ -101,6 +106,10 @@ class AzureProvisioner(AnsibleDriver):
         self._setSSH()  # create id_rsa.pub file on the leader if it is not there
         self._masterPublicKeyFile =  self.LEADER_HOME_DIR + '.ssh/id_rsa.pub'
 
+        # Add static nodes to /etc/hosts since Azure sometimes fails to find them with DNS
+        map(lambda x: self._addToHosts(x), self.getProvisionedWorkers(None))
+
+
     def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
         """
         Launches an Azure cluster using Ansible.
@@ -123,11 +132,15 @@ class AzureProvisioner(AnsibleDriver):
         self._checkValidClusterName()
         self._checkIfClusterExists()
 
-        instanceName = 'l' + str(uuid.uuid4())
+        # Create the cluster.
+        clusterArgs = {
+            'resgrp': self.clusterName,  # The resource group, which represents the cluster.
+            'region': self._zone
+        }
+        self.callPlaybook(self.playbook['create-cluster'], clusterArgs, wait=True)
+
         ansibleArgs = {
             'vmsize': leaderNodeType,
-            'vmname': instanceName,
-            'storagename': instanceName.replace('-', '')[:24],  # Azure limits the name to 24 characters, no dashes.
             'resgrp': self.clusterName,  # The resource group, which represents the cluster.
             'region': self._zone,
             'role': "leader",
@@ -135,32 +148,55 @@ class AzureProvisioner(AnsibleDriver):
             'diskSize': str(leaderStorage),  # TODO: not implemented
             'publickeyfile': self._masterPublicKeyFile   # The users public key to be added to authorized_keys
         }
-
         # Ansible reads the cloud-config script from a file.
         with tempfile.NamedTemporaryFile(delete=False) as t:
             userData =  self._getCloudConfigUserData('leader')
             t.write(userData)
             ansibleArgs['cloudconfig'] = t.name
-        self.callPlaybook(self.playbook['create'], ansibleArgs, wait=True)
 
-        try:
-            leaderNode = self.getLeader()
-        except IndexError:
-            raise RuntimeError("Failed to launcher leader")
-        self._leaderPrivateIP = leaderNode.privateIP # IP available as soon as the playbook finishes
-        leaderNode.waitForNode('toil_leader') # Make sure leader appliance is up.
+        # Launch the leader VM.
+        retries = 0
+        while True:
+            instanceName = 'l' + str(uuid.uuid4())
+            ansibleArgs['vmname'] = instanceName
+            # Azure limits the name to 24 characters, no dashes.
+            ansibleArgs['storagename'] = instanceName.replace('-', '')[:24]
 
-        # Transfer credentials
-        if storageCredentials is not None:
-            fullPathCredentials = os.path.expanduser(storageCredentials)
-            if os.path.isfile(fullPathCredentials):
-                leaderNode.injectFile(fullPathCredentials, self.LEADER_HOME_DIR, 'toil_leader')
-        ansibleCredentials = '.azure/credentials'
-        fullPathAnsibleCredentials = os.path.expanduser('~/' + ansibleCredentials)
-        if os.path.isfile(fullPathAnsibleCredentials):
-            leaderNode.sshAppliance('mkdir', '-p', self.LEADER_HOME_DIR + '.azure')
-            leaderNode.injectFile(fullPathAnsibleCredentials, self.LEADER_HOME_DIR + ansibleCredentials,
-                                  'toil_leader')
+            self.callPlaybook(self.playbook['create'], ansibleArgs, wait=True)
+            try:
+                leaderNode = self.getLeader()
+            except IndexError:
+                raise RuntimeError("Failed to launcher leader")
+            self._leaderPrivateIP = leaderNode.privateIP # IP available as soon as the playbook finishes
+
+            try:
+                # Fix for DNS failure.
+                self._addToHosts(leaderNode, leaderNode.publicIP)
+
+                leaderNode.waitForNode('toil_leader') # Make sure leader appliance is up.
+
+                # Transfer credentials
+                if storageCredentials is not None:
+                    fullPathCredentials = os.path.expanduser(storageCredentials)
+                    if os.path.isfile(fullPathCredentials):
+                        leaderNode.injectFile(fullPathCredentials, self.LEADER_HOME_DIR, 'toil_leader')
+                ansibleCredentials = '.azure/credentials'
+                fullPathAnsibleCredentials = os.path.expanduser('~/' + ansibleCredentials)
+                if os.path.isfile(fullPathAnsibleCredentials):
+                    leaderNode.sshAppliance('mkdir', '-p', self.LEADER_HOME_DIR + '.azure')
+                    leaderNode.injectFile(fullPathAnsibleCredentials,
+                                          self.LEADER_HOME_DIR + ansibleCredentials,
+                                          'toil_leader')
+                break #success!
+            except RuntimeError as e:
+                self._terminateNode(instanceName, False) # remove failed leader
+                retries += 1
+                if retries == 3:
+                    logger.debug("Leader appliance failed to start. Giving up.")
+                    raise e
+                logger.debug("Leader appliance failed to start, retrying. (Error %s)" % e)
+
+
         logger.info('Launched leader')
 
     def _checkIfClusterExists(self):
@@ -172,16 +208,18 @@ class AzureProvisioner(AnsibleDriver):
             'region': self._zone
         }
         try:
-            self.callPlaybook(self.playbook['create-cluster'], ansibleArgs, wait=True)
+            self.callPlaybook(self.playbook['check-cluster'], ansibleArgs, wait=True)
         except RuntimeError:
             logger.info("The cluster could not be created. Try deleting the cluster if it already exits.")
             raise
 
     def destroyCluster(self):
+        nodes = self._getNodes()
+        self.terminateNodes(nodes) # this will terminate nodes in parallel
         ansibleArgs = {
             'resgrp': self.clusterName,
         }
-        self.callPlaybook(self.playbook['destroy'], ansibleArgs)
+        self.callPlaybook(self.playbook['destroy'], ansibleArgs, wait=True)
 
     def addNodes(self, nodeType, numNodes, preemptable=False, spotBid=None):
         assert self._leaderPrivateIP # for getCloudConfigUserData
@@ -209,13 +247,16 @@ class AzureProvisioner(AnsibleDriver):
             instances.append(name)
             self.callPlaybook(self.playbook['create'], ansibleArgs, wait=wait, tags=['untagged'])
 
-        # Wait for nodes
+        # Wait for nodes - needed if transferring credential files
         allWorkers = self.getProvisionedWorkers(None)
         nodesIndex = dict((x.name, x) for x in allWorkers)
         numLaunched = 0
         for vmName in instances:
             if vmName in nodesIndex:
                 try:
+                    self._addToHosts(nodesIndex[vmName], nodesIndex[vmName].publicIP)
+                    if self._onLeader:
+                        self._addToHosts(nodesIndex[vmName]) # add to leader, too
                     nodesIndex[vmName].waitForNode('toil_worker')
                     numLaunched += 1
                 except RuntimeError as e:
@@ -252,12 +293,33 @@ class AzureProvisioner(AnsibleDriver):
             raise NoSuchClusterException(self.clusterName)
         return leader
 
-    def _getNodes(self, role, nodeType=None):
+    def _addToHosts(self, node, destinationIP=None):
+        """
+        Add an "privateIP hostname" line to the /etc/hosts file. If destinationIP is given,
+        do this on the remote machine.
+
+        Azure VMs sometimes fail to initialize, causing the appliance to fail.
+        This error is given:
+           Failed to obtain the IP address for 'l7d41a19b-15a6-442c-8ba1-9678a951d824';
+           the DNS service may not be able to resolve it: Name or service not known.
+        This method is a fix.
+
+        :param node: Node to add to /etc/hosts.
+        :param destinationIP: A remote host's address
+        """
+        cmd = "echo %s %s | sudo tee --append /etc/hosts > /dev/null" % (node.privateIP, node.name)
+        logger.debug("Running command %s on %s" % (cmd, destinationIP))
+        if destinationIP:
+            subprocess.Popen(["ssh", "-oStrictHostKeyChecking=no", "core@%s" % destinationIP, cmd])
+        else:
+            subprocess.Popen(cmd, shell=True)
+
+    def _getNodes(self, role=None, nodeType=None):
         """
         Return a list of Node objects representing the instances in the cluster
         with the given role and nodeType.
-        :param role: leader or worker
-        :param nodeType: An instance type
+        :param role: leader, work, or None for both
+        :param nodeType: An instance type or None for all types.
         :return: A list of Node objects.
         """
         allNodes = self._azureComputeClient.virtual_machines.list(self.clusterName)
@@ -266,7 +328,7 @@ class AzureProvisioner(AnsibleDriver):
         for node in allNodes:
             allNodeNames.append(node.name)
             nodeRole = node.tags.get('role', None)
-            if node.provisioning_state != 'Succeeded' or nodeRole != role:
+            if node.provisioning_state != 'Succeeded' or (role is not None and nodeRole != role):
                 continue
             if nodeType and node.hardware_profile.vm_size != nodeType:
                 continue
@@ -288,13 +350,21 @@ class AzureProvisioner(AnsibleDriver):
 
     def terminateNodes(self, nodes, preemptable=False):
         for counter, node in enumerate(nodes):
+            wait = True if counter == len(nodes) - 1 else False
+            self._terminateNode(node.name, wait)
             ansibleArgs = {
                 'vmname': node.name,
                 'resgrp': self.clusterName,
                 'storagename': node.name.replace('-', '')[:24]
             }
-            wait = True if counter == len(nodes) - 1 else False
-            self.callPlaybook(self.playbook['delete'], ansibleArgs, wait=wait)
+
+    def _terminateNode(self, name, wait):
+        ansibleArgs = {
+            'vmname': name,
+            'resgrp': self.clusterName,
+            'storagename': name.replace('-', '')[:24]
+        }
+        self.callPlaybook(self.playbook['delete'], ansibleArgs, wait=wait)
 
     def _checkValidClusterName(self):
         """
