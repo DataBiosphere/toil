@@ -611,7 +611,6 @@ class SynthesizeWDL:
                                parameters=["/root/{job_task_reference}_script.sh"], 
                                entrypoint="/bin/bash", 
                                volumes={{tempDir: {{"bind": "/root"}}}})
-        os.chdir(os.path.join(tempDir, 'execution'))
             ''', docker_dict, indent='        ')[1:]
 
         return docker_template
