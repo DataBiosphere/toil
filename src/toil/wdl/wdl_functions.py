@@ -210,6 +210,8 @@ def process_single_outfile(f, fileStore, workDir, outDir):
         output_f_path = os.path.abspath(f)
     elif os.path.exists(os.path.join(workDir, 'execution', f)):
         output_f_path = os.path.join(workDir, 'execution', f)
+    elif os.path.exists(os.path.join('execution', f)):
+        output_f_path = os.path.join('execution', f)
     elif os.path.exists(os.path.join(workDir, f)):
         output_f_path = os.path.join(workDir, f)
     else:
