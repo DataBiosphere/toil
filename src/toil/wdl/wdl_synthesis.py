@@ -657,8 +657,8 @@ class SynthesizeWDL:
         :return: A string representing this.
         '''
         fn_section = heredoc_wdl('''
-                this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
-                stdout = this_process.communicate()\n''', indent='        ')
+                this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = this_process.communicate()\n''', indent='        ')
 
         return fn_section
 
