@@ -138,7 +138,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                 self._spotBidsMap[nodeType] = bid
             else:
                 self.nodeTypes.append(nodeTypeStr)
-                self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=False))
+                self.nodeShapes.append(self.getNodeShape(nodeTypeStr, preemptable=False))
 
     @staticmethod
     def retryPredicate(e):
