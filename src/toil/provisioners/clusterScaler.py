@@ -365,7 +365,7 @@ class ClusterScaler(object):
                     totalNodes[nodeShape] += len(nodes_thisType)
                     nodes.extend(nodes_thisType)
 
-                provisioner.setStaticNodes(nodes, preemptable)
+                self.setStaticNodes(nodes, preemptable)
 
         logger.info('Starting with the following nodes in the cluster: %s' % totalNodes)
 
@@ -688,7 +688,7 @@ class ClusterScaler(object):
             if node is None:
                 logger.info("Node with info %s was not found in our node list", nodeInfo)
                 continue
-            staticNodes = self.scaler.getStaticNodes(preemptable)
+            staticNodes = self.getStaticNodes(preemptable)
             prefix = 'non-' if not preemptable else ''
             if node.privateIP in staticNodes:
                 # we don't want to automatically terminate any statically
