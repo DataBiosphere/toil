@@ -76,6 +76,9 @@ class AnalyzeWDL:
         # unique iterator to add to scatter names
         self.scatter_number = 0
 
+        # unique iterator to add to if names
+        self.if_number = 0
+
     def find_asts(self, ast_root, name):
         '''
         Finds an AST node with the given name and the entire subtree under it.
@@ -281,6 +284,8 @@ class AnalyzeWDL:
         for param in code_attr:
             if param == 'sep':
                 code_expr = "{sep}.join(str(x) for x in {expr})".format(sep=code_attr[param], expr=code_expr)
+            elif param == 'default':
+                code_expr = "{expr} if {expr} else {default}".format(default=code_attr[param], expr=code_expr)
             else:
                 raise NotImplementedError
         return code_expr
@@ -321,6 +326,8 @@ class AnalyzeWDL:
             for ast in runtime_subAST:
                 key = self.parse_task_runtime_key(ast.attr('key'))
                 value = self.parse_declaration_expressn(ast.attr('value'), es='')
+                if value.startswith('"'):
+                    value = self.translate_wdl_string_to_python_string(value[1:-1])
                 runtime_attributes[key] = value
         return runtime_attributes
 
@@ -414,7 +421,7 @@ class AnalyzeWDL:
                         output_string = output_string + "'" + stringword + "' + "
 
                     keyword = edited_string[index_start + 2:index_end]
-                    output_string = output_string + keyword + " + "
+                    output_string = output_string + "str(" + keyword + ") + "
 
                     edited_string = edited_string[index_end + 1:]
                     if edited_string.find('${') == -1:
@@ -480,6 +487,55 @@ class AnalyzeWDL:
                 self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['call' + str(self.call_number)] = task
                 self.call_number += 1
 
+            if section.name == "If":
+                task = self.parse_workflow_if(section)
+                self.workflows_dictionary.setdefault(workflow_name, OrderedDict())['if' + str(self.if_number)] = task
+                self.if_number += 1
+
+    def parse_workflow_if(self, ifAST):
+        expression = self.parse_workflow_if_expression(ifAST.attr('expression'))
+        body = self.parse_workflow_if_body(ifAST.attr('body'))
+        return {'expression': expression, 'body': body}
+
+    def parse_workflow_if_body(self, i):
+        subworkflow_dict = OrderedDict()
+        wf_declared_dict = OrderedDict()
+        if isinstance(i, wdl_parser.Terminal):
+            raise NotImplementedError
+        elif isinstance(i, wdl_parser.Ast):
+            raise NotImplementedError
+        elif isinstance(i, wdl_parser.AstList):
+            for ast in i:
+                if ast.name == "Declaration":
+                    var_name, var_map = self.parse_workflow_declaration(ast)
+                    wf_declared_dict[var_name] = var_map
+                subworkflow_dict['wf_declarations'] = wf_declared_dict
+
+                if ast.name == "Scatter":
+                    scattertask = self.parse_workflow_scatter(ast)
+                    subworkflow_dict['scatter' + str(self.scatter_number)] = scattertask
+                    self.scatter_number += 1
+
+                if ast.name == "Call":
+                    task = self.parse_workflow_call(ast)
+                    subworkflow_dict['call' + str(self.call_number)] = task
+                    self.call_number += 1
+
+                if ast.name == "If":
+                    task = self.parse_workflow_if(ast)
+                    subworkflow_dict['if' + str(self.if_number)] = task
+                    self.if_number += 1
+        return subworkflow_dict
+
+    def parse_workflow_if_expression(self, i):
+        if isinstance(i, wdl_parser.Terminal):
+            ifthis = i.source_string
+        elif isinstance(i, wdl_parser.Ast):
+            ifthis = self.parse_declaration_expressn(i, es='')
+        elif isinstance(i, wdl_parser.AstList):
+            raise NotImplementedError
+        return ifthis
+
     def parse_workflow_scatter(self, scatterAST):
         item = self.parse_workflow_scatter_item(scatterAST.attr('item'))
         collection = self.parse_workflow_scatter_collection(scatterAST.attr('collection'))
@@ -517,13 +573,21 @@ class AnalyzeWDL:
                     element += 1
 
                 if ast.name == "Scatter":
-                    # TODO
+                    scattertask = self.parse_workflow_scatter(ast)
+                    scatterbody['scatter' + str(self.scatter_number)] = scattertask
+                    self.scatter_number += 1
+                    # TODO test this
                     raise NotImplementedError
 
                 if ast.name == "Call":
                     task = self.parse_workflow_call(ast)
-                    scatterbody['call' + str(element)] = task
-                    element += 1
+                    scatterbody['call' + str(self.call_number)] = task
+                    self.call_number += 1
+
+                if ast.name == "If":
+                    task = self.parse_workflow_if(ast)
+                    scatterbody['if' + str(self.if_number)] = task
+                    self.if_number += 1
         return scatterbody
 
 
@@ -644,18 +708,32 @@ class AnalyzeWDL:
                                                                            expressionAST.attr('rhs'),
                                                                            es)
                 elif expressionAST.name == 'ArrayLiteral':
-                    es = es + self.parse_declaration_expressn_arrayliteral(expressionAST.attr('values'), es)
+                    es = es + self.parse_declaration_expressn_arrayliteral(expressionAST.attr('values'),
+                                                                           es)
                 elif expressionAST.name == 'TupleLiteral':
-                    es = es + self.parse_declaration_expressn_tupleliteral(expressionAST.attr('values'), es)
+                    es = es + self.parse_declaration_expressn_tupleliteral(expressionAST.attr('values'),
+                                                                           es)
                 elif expressionAST.name == 'ArrayOrMapLookup':
                     es = es + self.parse_declaration_expressn_arraymaplookup(expressionAST.attr('lhs'),
                                                                              expressionAST.attr('rhs'),
                                                                              es)
+                elif expressionAST.name == 'LogicalNot':
+                    es = es + self.parse_declaration_expressn_logicalnot(expressionAST.attr('expression'),
+                                                                         es)
                 else:
                     raise NotImplementedError
             elif isinstance(expressionAST, wdl_parser.AstList):
                 raise NotImplementedError
             return '(' + es + ')'
+
+    def parse_declaration_expressn_logicalnot(self, exprssn, es):
+        if isinstance(exprssn, wdl_parser.Terminal):
+            es = es + exprssn.source_string
+        elif isinstance(exprssn, wdl_parser.Ast):
+            es = es + self.parse_declaration_expressn(exprssn, es='')
+        elif isinstance(exprssn, wdl_parser.AstList):
+            raise NotImplementedError
+        return ' not ' + es
 
     def parse_declaration_expressn_arraymaplookup(self, lhsAST, rhsAST, es):
         """

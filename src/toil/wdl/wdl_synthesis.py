@@ -15,7 +15,6 @@ from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
 
-import fnmatch
 import os
 import logging
 
@@ -82,6 +81,7 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import read_float
                     from toil.wdl.wdl_functions import read_tsv
                     from toil.wdl.wdl_functions import read_csv
+                    from toil.wdl.wdl_functions import defined
                     import fnmatch
                     import textwrap
                     import subprocess
@@ -196,9 +196,27 @@ class SynthesizeWDL:
                 if assignment.startswith('scatter'):
                     main_section += '        job0 = job0.encapsulate()\n'
                     main_section += self.write_main_jobwrappers_scatter(self.workflows_dictionary[wf][assignment], assignment)
+                if assignment.startswith('if'):
+                    main_section += '        if {}:\n'.format(self.workflows_dictionary[wf][assignment]['expression'])
+                    main_section += self.write_main_jobwrappers_if(self.workflows_dictionary[wf][assignment]['body'])
 
         main_section += '\n        toil.start(job0)\n'
 
+        return main_section
+
+    def write_main_jobwrappers_if(self, if_statement):
+        main_section = ''
+        for assignment in if_statement:
+            if assignment.startswith('call'):
+                main_section += '        job0 = job0.encapsulate()\n'
+                main_section += self.write_main_jobwrappers_call(if_statement[assignment])
+            if assignment.startswith('scatter'):
+                main_section += '        job0 = job0.encapsulate()\n'
+                main_section += self.write_main_jobwrappers_scatter(if_statement[assignment], assignment)
+            if assignment.startswith('if'):
+                main_section += '        if {}:\n'.format(if_statement[assignment]['expression'])
+                main_section += self.write_main_jobwrappers_if(if_statement[assignment]['body'])
+        main_section = self.indent_docstring(main_section)
         return main_section
 
     def write_main_jobwrappers_scatter(self, task, assignment):
@@ -238,12 +256,31 @@ class SynthesizeWDL:
 
         for wf in self.workflows_dictionary:
             for assignment in self.workflows_dictionary[wf]:
-                if assignment == assigned:
+                scatter_inputs = self.fetch_scatter_inputs_byassignment(assigned, self.workflows_dictionary[wf], assignment)
+                if scatter_inputs is False:
                     return scatternamespace
-                elif assignment.startswith('call'):
-                    if 'outputs' in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]:
-                        for output in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]['outputs']:
-                            scatternamespace.append(self.workflows_dictionary[wf][assignment]['alias'] + '_' + output[0])
+                else:
+                    scatternamespace += scatter_inputs
+        return scatternamespace
+
+    def fetch_scatter_inputs_byassignment(self, assigned, substatement, assignment):
+        scatternamespace = []
+        if assignment == assigned:
+            return False
+        elif assignment.startswith('call'):
+            if 'outputs' in self.tasks_dictionary[substatement[assignment]['task']]:
+                for output in self.tasks_dictionary[substatement[assignment]['task']]['outputs']:
+                    scatternamespace.append(substatement[assignment]['alias'] + '_' + output[0])
+        elif assignment.startswith('scatter'):
+            for var in self.fetch_scatter_outputs(substatement[assignment]):
+                scatternamespace.append(var['task'] + '_' + var['output'])
+        elif assignment.startswith('if'):
+            for new_assignment in substatement[assignment]['body']:
+                scatter_inputs = self.fetch_scatter_inputs_byassignment(assigned, substatement[assignment]['body'], new_assignment)
+                if scatter_inputs is False:
+                    return scatternamespace
+                else:
+                    scatternamespace += scatter_inputs
         return scatternamespace
 
     def write_main_jobwrappers_call(self, task):
@@ -287,8 +324,20 @@ class SynthesizeWDL:
             for assignment in self.workflows_dictionary[wf]:
                 if assignment.startswith('scatter'):
                     fn_section += self.write_scatterfunction(self.workflows_dictionary[wf][assignment], assignment)
+                if assignment.startswith('if'):
+                    fn_section += self.write_scatterfunctions_within_if(self.workflows_dictionary[wf][assignment]['body'])
 
         return fn_section
+
+    def write_scatterfunctions_within_if(self, ifstatement):
+        fn_section = ''
+        for assignment in ifstatement:
+            if assignment.startswith('scatter'):
+                fn_section += self.write_scatterfunction(ifstatement[assignment], assignment)
+            if assignment.startswith('if'):
+                fn_section += self.write_scatterfunctions_within_if(ifstatement[assignment]['body'])
+        return fn_section
+
 
     def write_scatterfunction(self, job, scattername):
         '''
@@ -327,7 +376,7 @@ class SynthesizeWDL:
         fn_section += '        Job.__init__(self)\n\n'
 
         for input in scatter_inputs:
-            fn_section += '        self.{input} = {input}\n'.format(input=input)
+            fn_section += '        self.id_{input} = {input}\n'.format(input=input)
 
         fn_section += heredoc_wdl('''
                                  super({jobname}Cls, self).__init__(*args, **kwargs)
@@ -343,7 +392,7 @@ class SynthesizeWDL:
                                          raise
                                  ''', {'jobname': scattername}, indent='    ')[1:]
         for input in scatter_inputs:
-            fn_section += '        {input} = self.{input}\n'.format(input=input)
+            fn_section += '        {input} = self.id_{input}\n'.format(input=input)
         return fn_section
 
     def write_scatterfunction_outputreturn(self, scatter_outputs):
@@ -521,7 +570,7 @@ class SynthesizeWDL:
                 if not var_expressn:
                     var_expressn = var
 
-                fn_section += '        self.{} = {}\n'.format(var, var_expressn)
+                fn_section += '        self.id_{} = {}\n'.format(var, var_expressn)
 
         fn_section += heredoc_wdl('''
                                  super({jobname}Cls, self).__init__(*args, **kwargs)
@@ -542,9 +591,9 @@ class SynthesizeWDL:
                 var_type = i[1]
                 docker_bool = str(self.needsdocker(job))
                 if var_type == 'File':
-                    fn_section += '        {} = process_and_read_file(abspath_file(self.{}, asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
+                    fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
                 else:
-                    fn_section += '        {} = self.{}\n'.format(var, var)
+                    fn_section += '        {} = self.id_{}\n'.format(var, var)
 
         return fn_section
 
@@ -713,6 +762,14 @@ class SynthesizeWDL:
 
         return fn_section
 
+    def indent_docstring(self, string2indent):
+        split_string = string2indent.split('\n')
+        print(split_string)
+        new_string = ''
+        for line in split_string:
+            new_string += '    {}\n'.format(line)
+        return new_string
+
     def needsdocker(self, job):
         """
 
@@ -833,3 +890,4 @@ def write_AST(wdl_file, outdir=None):
             wdl_string = wdl.read()
             ast = wdl_parser.parse(wdl_string).ast()
             f.write(ast.dumps(indent=2))
+

@@ -90,8 +90,7 @@ def main():
     args.secondary_file = os.path.abspath(args.secondary_file)
     args.output_directory = os.path.abspath(args.output_directory)
 
-    if args.gen_parse_files:
-        write_AST(wdl_file_path, args.output_directory)
+    write_AST(wdl_file_path, args.output_directory)
 
     aWDL = AnalyzeWDL(wdl_file_path, args.secondary_file, args.output_directory)
 

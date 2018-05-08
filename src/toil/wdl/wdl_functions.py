@@ -202,6 +202,10 @@ def sub(a, b, c):
     import re
     return re.sub(str(a), str(b), str(c))
 
+def defined(i):
+    if i:
+        return True
+    return False
 
 def process_single_outfile(f, fileStore, workDir, outDir):
     if os.path.exists(f):
@@ -215,7 +219,11 @@ def process_single_outfile(f, fileStore, workDir, outDir):
     elif os.path.exists(os.path.join(workDir, f)):
         output_f_path = os.path.join(workDir, f)
     else:
-        raise RuntimeError('OUTPUT FILE: {} was not found!'.format(f))
+        tmp = subprocess.check_output(['ls', '-lha', workDir])
+        exe = subprocess.check_output(['ls', '-lha', os.path.join(workDir, 'execution')])
+        raise RuntimeError('OUTPUT FILE: {} was not found!\n'
+                           '{}\n\n'
+                           '{}\n'.format(f, tmp, exe))
     output_file = fileStore.writeGlobalFile(output_f_path)
     preserveThisFilename = os.path.basename(output_f_path)
     fileStore.exportFile(output_file, "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename))
@@ -330,38 +338,53 @@ def parse_memory(memory):
     :param memory:
     :return:
     """
-    import re
-    raw_mem_split = re.split('([a-zA-Z]+)', memory)
-    mem_split = []
+    if 'None' in memory:
+        return 2147483648 # toil's default
+    try:
+        import re
+        raw_mem_split = re.split('([a-zA-Z]+)', memory)
+        mem_split = []
 
-    for r in raw_mem_split:
-        if r:
-            mem_split.append(r.replace(' ', ''))
+        for r in raw_mem_split:
+            if r:
+                mem_split.append(r.replace(' ', ''))
 
-    if len(mem_split) == 1:
-        return memory
+        if len(mem_split) == 1:
+            return memory
 
-    if len(mem_split) == 2:
-        num = mem_split[0]
-        unit = mem_split[1]
-        return int(float(num) * return_bytes(unit))
-    else:
-        raise RuntimeError('Memory parsing failed: {}'.format(memory))
+        if len(mem_split) == 2:
+            num = mem_split[0]
+            unit = mem_split[1]
+            return int(float(num) * return_bytes(unit))
+        else:
+            raise RuntimeError('Memory parsing failed: {}'.format(memory))
+    except:
+        return 2147483648 # toil's default
 
 
 def parse_cores(cores):
-    return float(cores)
+    if 'None' in cores:
+        return 1 # toil's default
+    if cores:
+        return float(cores)
+    else:
+        return 1
 
 
 def parse_disk(disk):
-    total_disk = 0
-    disks = disk.split(',')
-    for d in disks:
-        d = d.strip().split(' ')
-        for part in d:
-            if is_number(part):
-                total_disk += int(part)
-    return total_disk if total_disk > 2147483648 else 2147483648
+    if 'None' in disk:
+        return 2147483648 # toil's default
+    try:
+        total_disk = 0
+        disks = disk.split(',')
+        for d in disks:
+            d = d.strip().split(' ')
+            for part in d:
+                if is_number(part):
+                    total_disk += int(part)
+        return total_disk if total_disk > 2147483648 else 2147483648
+    except:
+        return 2147483648 # toil's default
 
 
 def is_number(s):
@@ -397,22 +420,19 @@ def select_first(values):
 
 def read_string(inputstring):
     if isinstance(inputstring, tuple):
-        if len(inputstring) == 1:
-            inputstring = inputstring[0]
+        inputstring = inputstring[0]
     return str(inputstring)
 
 
 def read_float(inputstring):
     if isinstance(inputstring, tuple):
-        if len(inputstring) == 1:
-            inputstring = inputstring[0]
+        inputstring = inputstring[0]
     return float(inputstring)
 
 
 def read_int(inputstring):
     if isinstance(inputstring, tuple):
-        if len(inputstring) == 1:
-            inputstring = inputstring[0]
+        inputstring = inputstring[0]
     return int(inputstring)
 
 
