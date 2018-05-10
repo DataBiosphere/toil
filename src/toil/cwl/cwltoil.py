@@ -865,7 +865,7 @@ def main(args=None, stdout=sys.stdout):
     # user to select jobStore or get a default from logic one below.
     parser.add_argument("--jobStore", type=str)
     parser.add_argument("--not-strict", action="store_true")
-    parser.add_argument("--quiet", dest="logLevel", action="store_const", const="ERROR")
+    parser.add_argument("--quiet", dest="logLevel", action="store_const", const="DEBUG")
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
