@@ -338,6 +338,7 @@ def parse_memory(memory):
     :param memory:
     :return:
     """
+    memory = str(memory)
     if 'None' in memory:
         return 2147483648 # toil's default
     try:
@@ -363,6 +364,7 @@ def parse_memory(memory):
 
 
 def parse_cores(cores):
+    cores = str(cores)
     if 'None' in cores:
         return 1 # toil's default
     if cores:
@@ -372,6 +374,7 @@ def parse_cores(cores):
 
 
 def parse_disk(disk):
+    disk = str(disk)
     if 'None' in disk:
         return 2147483648 # toil's default
     try:
