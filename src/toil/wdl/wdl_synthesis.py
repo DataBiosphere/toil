@@ -195,7 +195,8 @@ class SynthesizeWDL:
                     main_section += self.write_main_jobwrappers_call(self.workflows_dictionary[wf][assignment])
                 if assignment.startswith('scatter'):
                     main_section += '        job0 = job0.encapsulate()\n'
-                    main_section += self.write_main_jobwrappers_scatter(self.workflows_dictionary[wf][assignment], assignment)
+                    main_section += self.write_main_jobwrappers_scatter(self.workflows_dictionary[wf][assignment],
+                                                                        assignment)
                 if assignment.startswith('if'):
                     main_section += '        if {}:\n'.format(self.workflows_dictionary[wf][assignment]['expression'])
                     main_section += self.write_main_jobwrappers_if(self.workflows_dictionary[wf][assignment]['body'])
@@ -203,6 +204,30 @@ class SynthesizeWDL:
         main_section += '\n        toil.start(job0)\n'
 
         return main_section
+
+    def fetch_ignoredifs(self, assignments, breaking_assignment):
+        ignore_ifs = []
+        for assignment in assignments:
+            if assignment.startswith('call'):
+                pass
+            elif assignment.startswith('scatter'):
+                pass
+            elif assignment.startswith('if'):
+                if not self.fetch_ignoredifs_chain(assignments[assignment]['body'], breaking_assignment):
+                    ignore_ifs.append(assignment)
+        return ignore_ifs
+
+    def fetch_ignoredifs_chain(self, assignments, breaking_assignment):
+        for assignment in assignments:
+            if assignment.startswith('call'):
+                if assignment == breaking_assignment:
+                    return True
+            if assignment.startswith('scatter'):
+                if assignment == breaking_assignment:
+                    return True
+            if assignment.startswith('if'):
+                return self.fetch_ignoredifs_chain(assignments[assignment]['body'], breaking_assignment)
+        return False
 
     def write_main_jobwrappers_if(self, if_statement):
         main_section = ''
@@ -247,6 +272,12 @@ class SynthesizeWDL:
         return scatteroutputs
 
     def fetch_scatter_inputs(self, assigned):
+
+        for wf in self.workflows_dictionary:
+            ignored_ifs = self.fetch_ignoredifs(self.workflows_dictionary[wf], assigned)
+            # TODO support additional wfs
+            break
+
         scatternamespace = []
 
         for wfname, wf in self.workflows_dictionary.iteritems():
@@ -256,32 +287,43 @@ class SynthesizeWDL:
 
         for wf in self.workflows_dictionary:
             for assignment in self.workflows_dictionary[wf]:
-                scatter_inputs = self.fetch_scatter_inputs_byassignment(assigned, self.workflows_dictionary[wf], assignment)
-                if scatter_inputs is False:
+                if assignment == assigned:
                     return scatternamespace
-                else:
-                    scatternamespace += scatter_inputs
+                elif assignment.startswith('call'):
+                    if 'outputs' in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]:
+                        for output in self.tasks_dictionary[self.workflows_dictionary[wf][assignment]['task']]['outputs']:
+                            scatternamespace.append(self.workflows_dictionary[wf][assignment]['alias'] + '_' + output[0])
+                elif assignment.startswith('scatter'):
+                    for var in self.fetch_scatter_outputs(self.workflows_dictionary[wf][assignment]):
+                        scatternamespace.append(var['task'] + '_' + var['output'])
+                elif assignment.startswith('if') and assignment not in ignored_ifs:
+                    new_list, cont_or_break = self.fetch_scatter_inputs_chain(self.workflows_dictionary[wf][assignment]['body'],
+                                                                        assigned,
+                                                                        ignored_ifs,
+                                                                        inputs_list=[])
+                    scatternamespace += new_list
+                    if not cont_or_break:
+                        return scatternamespace
         return scatternamespace
 
-    def fetch_scatter_inputs_byassignment(self, assigned, substatement, assignment):
-        scatternamespace = []
-        if assignment == assigned:
-            return False
-        elif assignment.startswith('call'):
-            if 'outputs' in self.tasks_dictionary[substatement[assignment]['task']]:
-                for output in self.tasks_dictionary[substatement[assignment]['task']]['outputs']:
-                    scatternamespace.append(substatement[assignment]['alias'] + '_' + output[0])
-        elif assignment.startswith('scatter'):
-            for var in self.fetch_scatter_outputs(substatement[assignment]):
-                scatternamespace.append(var['task'] + '_' + var['output'])
-        elif assignment.startswith('if'):
-            for new_assignment in substatement[assignment]['body']:
-                scatter_inputs = self.fetch_scatter_inputs_byassignment(assigned, substatement[assignment]['body'], new_assignment)
-                if scatter_inputs is False:
-                    return scatternamespace
-                else:
-                    scatternamespace += scatter_inputs
-        return scatternamespace
+    def fetch_scatter_inputs_chain(self, inputs, assigned, ignored_ifs, inputs_list):
+        for i in inputs:
+            if i == assigned:
+                return inputs_list, False
+            elif i.startswith('call'):
+                if 'outputs' in self.tasks_dictionary[inputs[i]['task']]:
+                    for output in self.tasks_dictionary[inputs[i]['task']]['outputs']:
+                        inputs_list.append(inputs[i]['alias'] + '_' + output[0])
+            elif i.startswith('scatter'):
+                for var in self.fetch_scatter_outputs(inputs[i]):
+                    inputs_list.append(var['task'] + '_' + var['output'])
+            elif i.startswith('if') and i not in ignored_ifs:
+                inputs_list, cont_or_break = self.fetch_scatter_inputs_chain(inputs[i]['body'], assigned, ignored_ifs, inputs_list)
+                if not cont_or_break:
+                    return inputs_list, False
+        return inputs_list, True
+
+
 
     def write_main_jobwrappers_call(self, task):
         main_section = '        {} = job0.addChild({}Cls('.format(task['alias'], task['task'])
@@ -659,6 +701,7 @@ class SynthesizeWDL:
                                working_dir=tempDir, 
                                parameters=["/root/{job_task_reference}_script.sh"], 
                                entrypoint="/bin/bash", 
+                               user='root',
                                volumes={{tempDir: {{"bind": "/root"}}}})
             ''', docker_dict, indent='        ')[1:]
 
@@ -764,7 +807,6 @@ class SynthesizeWDL:
 
     def indent_docstring(self, string2indent):
         split_string = string2indent.split('\n')
-        print(split_string)
         new_string = ''
         for line in split_string:
             new_string += '    {}\n'.format(line)
