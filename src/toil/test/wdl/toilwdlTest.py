@@ -40,7 +40,7 @@ class ToilWdlIntegrationTest(ToilTest):
         # Jenkins requires this to not error on "untracked files".
         # Set to true if running tests locally and you don't want to
         # redownload the data each time you run the test.
-        self.jenkins = True
+        self.jenkins = False
 
         self.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
                                      data=self.encode_data,

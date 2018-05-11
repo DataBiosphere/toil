@@ -46,12 +46,12 @@ class SynthesizeWDL:
         self.output_directory = output_directory
         self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
 
-        if docker_user:
+        if docker_user != 'None':
             self.docker_user = "'" + docker_user + "'"
         else:
             self.docker_user = docker_user
 
-        # only json is required; tsv/csv are optional
+            # only json is required; tsv/csv are optional
         self.json_dict = json_dict
 
         # holds task skeletons from WDL task objects
