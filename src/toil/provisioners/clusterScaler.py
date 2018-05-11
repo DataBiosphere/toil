@@ -41,11 +41,11 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 import sys
 
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-ch.setFormatter(formatter)
-logging.getLogger().addHandler(ch)
+# ch = logging.StreamHandler(sys.stdout)
+# ch.setLevel(logging.DEBUG)
+# formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# ch.setFormatter(formatter)
+# logging.getLogger().addHandler(ch)
 
 
 class RecentJobShapes(object):

@@ -19,6 +19,7 @@ from toil import subprocess
 import unittest
 import re
 import shutil
+import sys
 import pytest
 from future.moves.urllib.request import urlretrieve
 import zipfile
@@ -137,25 +138,29 @@ class CWLTest(ToilTest):
                 z.extractall()
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
-        try:
-            cmd = ["bash", "run_test.sh", "RUNNER=toil-cwl-runner",
-                   "DRAFT=v1.0", "-j4"]
-            if batchSystem:
-                cmd.extend(["--batchSystem", batchSystem])
-            subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            only_unsupported = False
-            # check output -- if we failed but only have unsupported features, we're okay
-            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-            for line in e.output.split("\n"):
-                m = p.search(line)
-                if m:
-                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
-                        only_unsupported = True
-                        break
-            if not only_unsupported:
-                print(e.output)
-                raise e
+        from tempfile import NamedTemporaryFile
+        with NamedTemporaryFile() as f:
+            try:
+                cmd = ["bash", "run_test.sh", "RUNNER=toil-cwl-runner",
+                       "DRAFT=v1.0", "-j4", "EXTRA=--logDebug", "--verbose", "--junit-xml=" + f.name]
+                if batchSystem:
+                    cmd.extend(["--batchSystem", batchSystem])
+                subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
+            except subprocess.CalledProcessError as e:
+                sys.stderr.write("Contents of JUnit XML:\n")
+                sys.stderr.write(open(f.name).read())
+                only_unsupported = False
+                # check output -- if we failed but only have unsupported features, we're okay
+                p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
+                for line in e.output.split("\n"):
+                    m = p.search(line)
+                    if m:
+                        if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
+                            only_unsupported = True
+                            break
+                if not only_unsupported:
+                    print(e.output)
+                    raise e
 
     @slow
     def test_bioconda(self):
