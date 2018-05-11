@@ -142,7 +142,7 @@ class CWLTest(ToilTest):
         with NamedTemporaryFile() as f:
             try:
                 cmd = ["bash", "run_test.sh", "RUNNER=toil-cwl-runner",
-                       "DRAFT=v1.0", "-j4", "EXTRA=--logDebug", "--junit-xml=" + f.name]
+                       "DRAFT=v1.0", "-j4", "EXTRA=--logDebug", "--verbose", "--junit-xml=" + f.name]
                 if batchSystem:
                     cmd.extend(["--batchSystem", batchSystem])
                 subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
