@@ -24,19 +24,14 @@ from builtins import str
 from builtins import object
 from past.utils import old_div
 import logging
-import gzip
-import os
 import time
-from collections import namedtuple
 
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
 
-from bd2k.util.expando import Expando
-from bd2k.util.humanize import bytes2human
-
+from toil.lib.humanize import bytes2human
 from toil import resolveEntryPoint
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
@@ -44,7 +39,7 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.provisioners.clusterScaler import ClusterScaler
+from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.job import JobNode, ServiceJobNode
@@ -167,7 +162,7 @@ class Leader(object):
         # Create cluster scaling thread if the provisioner is not None
         self.clusterScaler = None
         if self.provisioner is not None and len(self.provisioner.nodeTypes) > 0:
-            self.clusterScaler = ClusterScaler(self.provisioner, self, self.config)
+            self.clusterScaler = ScalerThread(self.provisioner, self, self.config)
 
         # A service manager thread to start and terminate services
         self.serviceManager = ServiceManager(jobStore, self.toilState)
@@ -762,15 +757,16 @@ class Leader(object):
         return len( self.reissueMissingJobs_missingHash ) == 0 #We use this to inform
         #if there are missing jobs
 
+    def processRemovedJob(self, issuedJob, resultStatus):
+        if resultStatus != 0:
+            logger.warn("Despite the batch system claiming failure the "
+                        "job %s seems to have finished and been removed", issuedJob)
+        self._updatePredecessorStatus(issuedJob.jobStoreID)
+
     def processFinishedJob(self, batchSystemID, resultStatus, wallTime=None):
         """
-        Function reads a processed jobGraph file and updates it state.
+        Function reads a processed jobGraph file and updates its state.
         """
-        def processRemovedJob(issuedJob):
-            if resultStatus != 0:
-                logger.warn("Despite the batch system claiming failure the "
-                            "job %s seems to have finished and been removed", issuedJob)
-            self._updatePredecessorStatus(issuedJob.jobStoreID)
         jobNode = self.removeJob(batchSystemID)
         jobStoreID = jobNode.jobStoreID
         if wallTime is not None and self.clusterScaler is not None:
@@ -788,7 +784,7 @@ class Leader(object):
                     # This is a temporary work around until https://github.com/BD2KGenomics/toil/issues/1091
                     # is completed
                     logger.warn('Got a stale read from SDB for job %s', jobNode)
-                    processRemovedJob(jobNode)
+                    self.processRemovedJob(jobNode, resultStatus)
                     return
                 else:
                     raise
@@ -818,7 +814,7 @@ class Leader(object):
             #jobGraph is done we can add it to the list of updated jobGraph files
             logger.debug("Added job: %s to active jobs", jobGraph)
         else:  #The jobGraph is done
-            processRemovedJob(jobNode)
+            self.processRemovedJob(jobNode, resultStatus)
 
     @staticmethod
     def getSuccessors(jobGraph, alreadySeenSuccessors, jobStore):

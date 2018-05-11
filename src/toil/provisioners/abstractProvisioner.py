@@ -13,7 +13,8 @@
 # limitations under the License.
 from abc import ABCMeta, abstractmethod
 from builtins import object
-from collections import namedtuple
+from functools import total_ordering
+from itertools import count
 import logging
 import os.path
 from toil import subprocess
@@ -28,18 +29,68 @@ a_short_time = 5
 log = logging.getLogger(__name__)
 
 
-Shape = namedtuple("_Shape", "wallTime memory cores disk preemptable")
-"""
-Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
-wall-time allocation.
+@total_ordering
+class Shape(object):
+    """
+    Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
+    wall-time allocation.
 
-The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
-or 60 for Azure. FIXME: and for jobs?
+    The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
+    or 60 for Azure. FIXME: and for jobs?
 
-The memory and disk attributes store the number of bytes required by a job (or provided by a
-node) in RAM or on disk (SSD or HDD), respectively.
-"""
+    The memory and disk attributes store the number of bytes required by a job (or provided by a
+    node) in RAM or on disk (SSD or HDD), respectively.
+    """
+    def __init__(self, wallTime, memory, cores, disk, preemptable):
+        self.wallTime = wallTime
+        self.memory = memory
+        self.cores = cores
+        self.disk = disk
+        self.preemptable = preemptable
 
+    def __eq__(self, other):
+        return (self.wallTime == other.wallTime and
+                self.memory == other.memory and
+                self.cores == other.cores and
+                self.disk == other.disk and
+                self.preemptable == other.preemptable)
+
+    def __gt__(self, other):
+        if self.preemptable < other.preemptable:
+            return True
+        elif self.preemptable > other.preemptable:
+            return False
+        elif self.memory > other.memory:
+            return True
+        elif self.memory < other.memory:
+            return False
+        elif self.cores > other.cores:
+            return True
+        elif self.cores < other.cores:
+            return False
+        elif self.disk > other.disk:
+            return True
+        elif self.disk < other.disk:
+            return False
+        elif self.wallTime > other.wallTime:
+            return True
+        elif self.wallTime < other.wallTime:
+            return False
+        else:
+            return False
+
+    def __str__(self):
+        return "\nShape wallTime: %s\n" \
+               "Shape memory: %s\n" \
+               "Shape cores: %s\n" \
+               "Shape disk: %s\n" \
+               "Shape preemptable: %s\n" \
+               "\n" % \
+               (self.wallTime,
+                self.memory,
+                self.cores,
+                self.disk,
+                self.preemptable)
 
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
@@ -74,24 +125,20 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         Set node types, shapes and spot bids. Preemptable nodes will have the form "type:spotBid".
         :param nodeTypes: A list of node types
         """
-        spotBids = []
-        nonPreemptableNodeTypes = []
-        preemptableNodeTypes = []
+        self._spotBidsMap = {}
+        self.nodeShapes = []
+        self.nodeTypes = []
         for nodeTypeStr in nodeTypes:
             nodeBidTuple = nodeTypeStr.split(":")
             if len(nodeBidTuple) == 2:
                 #This is a preemptable node type, with a spot bid
-                preemptableNodeTypes.append(nodeBidTuple[0])
-                spotBids.append(nodeBidTuple[1])
+                nodeType, bid = nodeBidTuple
+                self.nodeTypes.append(nodeType)
+                self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=True))
+                self._spotBidsMap[nodeType] = bid
             else:
-                nonPreemptableNodeTypes.append(nodeTypeStr)
-        preemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=True)
-                                      for nodeType in preemptableNodeTypes]
-        nonPreemptableNodeShapes = [self.getNodeShape(nodeType=nodeType, preemptable=False)
-                                         for nodeType in nonPreemptableNodeTypes]
-        self.nodeShapes = nonPreemptableNodeShapes + preemptableNodeShapes
-        self.nodeTypes = nonPreemptableNodeTypes + preemptableNodeTypes
-        self._spotBidsMap = dict(zip(preemptableNodeTypes, spotBids))
+                self.nodeTypes.append(nodeTypeStr)
+                self.nodeShapes.append(self.getNodeShape(nodeTypeStr, preemptable=False))
 
     @staticmethod
     def retryPredicate(e):
@@ -328,7 +375,9 @@ coreos:
 
     MESOS_LOG_DIR = '--log_dir=/var/lib/mesos '
     LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
-    WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable}'
+    # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
+    # Mesos attempts to contact systemd but can't find its run file)
+    WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
     def _getCloudConfigUserData(self, role, masterPublicKey=None, keyPath=None, preemptable=False):
         if role == 'leader':
             entryPoint = 'mesos-master'
