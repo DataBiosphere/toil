@@ -167,7 +167,7 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testENCODE/output/")
 
         subprocess.check_call(
-            ['python', self.program, wdl, json, '--out_dir', self.output_dir])
+            ['python', self.program, wdl, json, '--docker_user=None', '--out_dir', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 

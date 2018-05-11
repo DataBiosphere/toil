@@ -42,9 +42,14 @@ class SynthesizeWDL:
     then write the main and all of its subsections.
     '''
 
-    def __init__(self, tasks_dictionary, workflows_dictionary, output_directory, json_dict):
+    def __init__(self, tasks_dictionary, workflows_dictionary, output_directory, json_dict, docker_user):
         self.output_directory = output_directory
         self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
+
+        if docker_user:
+            self.docker_user = "'" + docker_user + "'"
+        else:
+            self.docker_user = docker_user
 
         # only json is required; tsv/csv are optional
         self.json_dict = json_dict
@@ -694,14 +699,15 @@ class SynthesizeWDL:
         :return: A string containing the apiDockerCall() that will run the job.
         '''
         docker_dict = {"docker_image": self.tasks_dictionary[job]['runtime']['docker'],
-                       "job_task_reference": job}
+                       "job_task_reference": job,
+                       "docker_user": str(self.docker_user)}
         docker_template = heredoc_wdl('''
         stdout = apiDockerCall(self, 
                                image={docker_image}, 
                                working_dir=tempDir, 
                                parameters=["/root/{job_task_reference}_script.sh"], 
                                entrypoint="/bin/bash", 
-                               user='root',
+                               user={docker_user},
                                volumes={{tempDir: {{"bind": "/root"}}}})
             ''', docker_dict, indent='        ')[1:]
 
