@@ -155,7 +155,7 @@ class GoogleJobStore(AbstractJobStore):
             self.bucket.delete(force=True)
             # throws ValueError if bucket has more than 256 objects. Then we must delete manually
         except ValueError:
-            self.bucket.delete_blobs(self.bucket.list_blobs)
+            self.bucket.delete_blobs(self.bucket.list_blobs())
             self.bucket.delete()
             # if ^ throws a google.cloud.exceptions.Conflict, then we should have a deletion retry mechanism.
 
