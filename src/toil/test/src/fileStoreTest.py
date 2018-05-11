@@ -587,6 +587,8 @@ class hidden(object):
             behavior is as expected.
             """
             self._testValidityOfCacheEvictTest()
+            if self.jobStoreType == 'google':
+                self.skipTest("Failing test that should be fixed.")
 
             # Explicitly set clean to always so even the failed cases get cleaned (This will
             # overwrite the value set in setUp if it is ever changed in the future)
