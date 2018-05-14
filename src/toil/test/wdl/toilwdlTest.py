@@ -144,11 +144,14 @@ class ToilWdlIntegrationTest(ToilTest):
         assert vocab_location == [os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')], str(vocab_location)
         wdl_locations = glob('wdl_*', os.path.abspath('src/toil'))
         wdl_that_should_exist = [os.path.abspath('src/toil/wdl/wdl_analysis.py'),
+                                 os.path.abspath('src/toil/wdl/wdl_analysis.pyc'),
                                  os.path.abspath('src/toil/wdl/wdl_synthesis.py'),
+                                 os.path.abspath('src/toil/wdl/wdl_synthesis.pyc'),
                                  os.path.abspath('src/toil/test/wdl/wdl_templates.zip'),
                                  os.path.abspath('src/toil/wdl/wdl_functions.py'),
                                  os.path.abspath('src/toil/wdl/wdl_functions.pyc'),
-                                 os.path.abspath('src/toil/wdl/wdl_parser.py')]
+                                 os.path.abspath('src/toil/wdl/wdl_parser.py'),
+                                 os.path.abspath('src/toil/wdl/wdl_parser.pyc')]
         # make sure the files match the expected files
         for location in wdl_that_should_exist:
             assert location in wdl_locations, '{} not in {}!'.format(str(location), str(wdl_locations))
