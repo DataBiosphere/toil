@@ -39,10 +39,10 @@ from unittest.util import strclass
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
-from bd2k.util import less_strict_bool, memoize
-from bd2k.util.iterables import concat
-from bd2k.util.processes import which
-from bd2k.util.threading import ExceptionalThread
+from toil.lib.util import less_strict_bool, memoize
+from toil.lib.util.iterables import concat
+from toil.lib.util.processes import which
+from toil.lib.util.threading import ExceptionalThread
 
 from toil import subprocess
 from toil import toilPackageDirPath, applianceSelf
@@ -616,9 +616,6 @@ def timeLimit(seconds):
         yield
     finally:
         signal.alarm(0)
-
-
-# FIXME: move to bd2k-python-lib
 
 
 def make_tests(generalMethod, targetClass, **kwargs):

@@ -17,7 +17,7 @@ from docker.errors import DockerException
 from docker.utils.types import LogConfig
 from docker.api.container import ContainerApiMixin
 
-from bd2k.util.retry import retry
+from toil.lib.util.retry import retry
 from docker import client
 from pwd import getpwuid
 

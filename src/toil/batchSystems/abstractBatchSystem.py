@@ -25,7 +25,7 @@ from abc import ABCMeta, abstractmethod
 from collections import namedtuple
 from contextlib import contextmanager
 
-from bd2k.util.objects import abstractclassmethod
+from toil.lib.util.objects import abstractclassmethod
 
 from toil.batchSystems import registry
 from toil.common import Toil, cacheDirName

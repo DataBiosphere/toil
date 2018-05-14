@@ -27,7 +27,7 @@ def clusterFactory(provisioner, clusterName=None, zone=None, nodeStorage=50, sse
     if provisioner == 'aws':
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-            from bd2k.util.ec2.credentials import enable_metadata_credential_caching
+            from toil.lib.ec2Credentials import enable_metadata_credential_caching
         except ImportError:
             logger.error('The aws extra must be installed to use this provisioner')
             raise

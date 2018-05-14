@@ -38,9 +38,9 @@ import urllib.request, urllib.parse, urllib.error
 from six.moves import StringIO, reprlib
 from six import iteritems
 
-from bd2k.util import strict_bool
-from bd2k.util.exceptions import panic
-from bd2k.util.objects import InnerClass
+from toil.lib.util import strict_bool
+from toil.lib.util.exceptions import panic
+from toil.lib.util.objects import InnerClass
 import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError

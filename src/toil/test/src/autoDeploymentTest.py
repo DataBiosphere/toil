@@ -4,7 +4,7 @@ from builtins import object
 import logging
 from contextlib import contextmanager
 
-from bd2k.util.iterables import concat
+from toil.lib.util.iterables import concat
 
 from toil import subprocess
 from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow

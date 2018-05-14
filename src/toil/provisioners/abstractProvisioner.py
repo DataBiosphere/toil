@@ -23,7 +23,7 @@ from toil import applianceSelf
 
 from future.utils import with_metaclass
 
-from bd2k.util.retry import never
+from toil.lib.util.retry import never
 a_short_time = 5
 
 log = logging.getLogger(__name__)

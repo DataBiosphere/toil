@@ -95,14 +95,15 @@ def runSetup():
         classifiers=["License :: OSI Approved :: Apache Software License"],
         license="Apache License v2.0",
         install_requires=[
-            'bd2k-python-lib>=1.14a1.dev35',
             'dill==0.2.7.1',
             'six>=1.10.0',
             'future',
             'requests==2.18.4',
             'docker==2.5.1',
             'subprocess32==3.5.0rc1',
-            'python-dateutil'],
+            'python-dateutil',
+            'lockfile==0.11.0',
+            'mock==1.0.1'],
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,

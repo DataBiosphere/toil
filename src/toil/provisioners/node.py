@@ -20,7 +20,7 @@ import socket
 import datetime
 import time
 from toil import subprocess
-from bd2k.util import parse_iso_utc
+from toil.lib.util import parse_iso_utc
 
 a_short_time = 5
 

@@ -37,7 +37,7 @@ try:
 except ImportError:
     import pickle
 
-from bd2k.util.expando import MagicExpando
+from toil.lib.util.expando import MagicExpando
 from toil.common import Toil, safeUnpickleFromStream
 from toil.fileStore import FileStore
 from toil import logProcessContext
@@ -507,7 +507,7 @@ def main(argv=None):
         pass
     else:
         # boto is installed, monkey patch it now
-        from bd2k.util.ec2.credentials import enable_metadata_credential_caching
+        from toil.lib.ec2Credentials import enable_metadata_credential_caching
         enable_metadata_credential_caching()
 
     jobStore = Toil.resumeJobStore(jobStoreLocator)

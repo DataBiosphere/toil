@@ -32,7 +32,7 @@ from toil.lib.docker import dockerCall, dockerCheckOutput, apiDockerCall, contai
 
 # only needed for subprocessDockerCall tests
 from pwd import getpwuid
-from bd2k.util.retry import retry
+from toil.lib.util.retry import retry
 from toil.lib import dockerPredicate
 
 
