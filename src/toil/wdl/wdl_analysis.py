@@ -659,7 +659,15 @@ class AnalyzeWDL:
             return None
         else:
             if isinstance(expressionAST, wdl_parser.Terminal):
-                if expressionAST.str == 'string' and not output_expressn:
+                if expressionAST.str == 'boolean':
+                    if expressionAST.source_string == 'false':
+                        return 'False'
+                    elif expressionAST.source_string == 'true':
+                        return 'True'
+                    else:
+                        raise TypeError('Parsed boolean ({}) must be expressed as "true" or "false".'
+                                        ''.format(expressionAST.source_string))
+                elif expressionAST.str == 'string' and not output_expressn:
                     return '"{string}"'.format(string=expressionAST.source_string)
                 else:
                     return '{string}'.format(string=expressionAST.source_string)

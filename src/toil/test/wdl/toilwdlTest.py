@@ -2,8 +2,26 @@ from __future__ import absolute_import
 import unittest
 import os
 from toil import subprocess
+import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_analysis import AnalyzeWDL
 from toil.wdl.wdl_synthesis import SynthesizeWDL
+from toil.wdl.wdl_functions import generate_docker_bashscript_file
+from toil.wdl.wdl_functions import select_first
+from toil.wdl.wdl_functions import sub
+from toil.wdl.wdl_functions import size
+from toil.wdl.wdl_functions import glob
+from toil.wdl.wdl_functions import process_and_read_file
+from toil.wdl.wdl_functions import process_infile
+from toil.wdl.wdl_functions import process_outfile
+from toil.wdl.wdl_functions import abspath_file
+from toil.wdl.wdl_functions import combine_dicts
+from toil.wdl.wdl_functions import parse_memory
+from toil.wdl.wdl_functions import parse_cores
+from toil.wdl.wdl_functions import parse_disk
+from toil.wdl.wdl_functions import read_string
+from toil.wdl.wdl_functions import read_int
+from toil.wdl.wdl_functions import read_float
+from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
 from toil.test import ToilTest, slow
@@ -97,6 +115,135 @@ class ToilWdlIntegrationTest(ToilTest):
         md5sum_output = os.path.join(self.output_dir, 'md5sum.txt')
         assert os.path.exists(md5sum_output)
         os.unlink(md5sum_output)
+
+    # estimated run time <1 sec
+    def testFn_SelectFirst(self):
+        """Test the wdl built-in functional equivalent of 'select_first()',
+        which returns the first value in a list that is not None."""
+        assert select_first(['somestring', 'anotherstring', None, '', 1]) == 'somestring'
+        assert select_first([None, '', 1, 'somestring']) == 1
+        assert select_first([2, 1, '', 'somestring', None, '']) == 2
+        assert select_first(['', 2, 1, 'somestring', None, '']) == 2
+
+    # estimated run time <1 sec
+    def testFn_Size(self):
+        """Test the wdl built-in functional equivalent of 'size()',
+        which returns a file's size based on the path."""
+        small_file = size(os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl'))
+        larger_file = size(self.encode_data)
+        larger_file_in_mb = size(self.encode_data, 'mb')
+        assert small_file >= 4096, small_file
+        assert larger_file >= 70000000, larger_file
+        assert larger_file_in_mb >= 70, larger_file_in_mb
+
+    # estimated run time <1 sec
+    def testFn_Glob(self):
+        """Test the wdl built-in functional equivalent of 'glob()',
+        which finds all files with a pattern in a directory."""
+        vocab_location = glob('vocab.wdl', os.path.abspath('src/toil'))
+        assert vocab_location == [os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')], str(vocab_location)
+        wdl_locations = glob('wdl_*', os.path.abspath('src/toil'))
+        wdl_that_should_exist = [os.path.abspath('src/toil/wdl/wdl_analysis.py'),
+                                 os.path.abspath('src/toil/wdl/wdl_analysis.pyc'),
+                                 os.path.abspath('src/toil/wdl/wdl_synthesis.py'),
+                                 os.path.abspath('src/toil/wdl/wdl_synthesis.pyc'),
+                                 os.path.abspath('src/toil/test/wdl/wdl_templates.zip'),
+                                 os.path.abspath('src/toil/wdl/wdl_functions.py'),
+                                 os.path.abspath('src/toil/wdl/wdl_functions.pyc'),
+                                 os.path.abspath('src/toil/wdl/wdl_parser.py'),
+                                 os.path.abspath('src/toil/wdl/wdl_parser.pyc')]
+        # make sure the files match the expected files
+        for location in wdl_that_should_exist:
+            assert location in wdl_locations, '{} not in {}!'.format(str(location), str(wdl_locations))
+        # make sure the same number of files were found as expected
+        assert len(wdl_that_should_exist) == len(wdl_locations), '{} != {}'.format(str(len(wdl_locations)), str(len(wdl_that_should_exist)))
+
+    # estimated run time <1 sec
+    def testFn_ParseMemory(self):
+        """Test the wdl built-in functional equivalent of 'parse_memory()',
+        which parses a specified memory input to an int output.
+
+        The input can be a string or an int or a float and may include units
+        such as 'Gb' or 'mib' as a separate argument."""
+        assert parse_memory(2147483648) == 2147483648, str(parse_memory(2147483648))
+        assert parse_memory('2147483648') == 2147483648, str(parse_memory(2147483648))
+        assert parse_memory('2GB') == 2000000000, str(parse_memory('2GB'))
+        assert parse_memory('2GiB') == 2147483648, str(parse_memory('2GiB'))
+        assert parse_memory('1 GB') == 1000000000, str(parse_memory('1 GB'))
+        assert parse_memory('1 GiB') == 1073741824, str(parse_memory('1 GiB'))
+
+    # estimated run time <1 sec
+    def testFn_ParseCores(self):
+        """Test the wdl built-in functional equivalent of 'parse_cores()',
+        which parses a specified disk input to an int output.
+
+        The input can be a string or an int."""
+        assert parse_cores(1) == 1
+        assert parse_cores('1') == 1
+
+    # estimated run time <1 sec
+    def testFn_ParseDisk(self):
+        """Test the wdl built-in functional equivalent of 'parse_disk()',
+        which parses a specified disk input to an int output.
+
+        The input can be a string or an int or a float and may include units
+        such as 'Gb' or 'mib' as a separate argument.
+
+        The minimum returned value is 2147483648 bytes."""
+        # check minimum returned value
+        assert parse_disk('1') == 2147483648, str(parse_disk('1'))
+        assert parse_disk(1) == 2147483648, str(parse_disk(1))
+
+        assert parse_disk(2200000001) == 2200000001, str(parse_disk(2200000001))
+        assert parse_disk('2200000001') == 2200000001, str(parse_disk('2200000001'))
+        assert parse_disk('/mnt/my_mnt 3 SSD, /mnt/my_mnt2 500 HDD') == 503000000000, str(parse_disk('/mnt/my_mnt 3 SSD, /mnt/my_mnt2 500 HDD'))
+        assert parse_disk('local-disk 10 SSD') == 10000000000, str(parse_disk('local-disk 10 SSD'))
+        assert parse_disk('/mnt/ 10 HDD') == 10000000000, str(parse_disk('/mnt/ 10 HDD'))
+        assert parse_disk('/mnt/ 1000 HDD') == 1000000000000, str(parse_disk('/mnt/ 1000 HDD'))
+
+    # estimated run time <1 sec
+    def testPrimitives(self):
+        '''Test if toilwdl correctly interprets some basic declarations.'''
+        wdl = os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')
+        json = os.path.abspath('src/toil/test/wdl/testfiles/vocab.json')
+
+        aWDL = AnalyzeWDL(wdl, json, self.output_dir)
+        with open(wdl, 'r') as wdl:
+            wdl_string = wdl.read()
+            ast = wdl_parser.parse(wdl_string).ast()
+            aWDL.create_tasks_dict(ast)
+            aWDL.create_workflows_dict(ast)
+
+        no_declaration = ['bool1', 'int1', 'float1', 'file1', 'string1']
+        collection_counter = []
+        for name, declaration in aWDL.workflows_dictionary['vocabulary']['wf_declarations'].iteritems():
+
+            if name in no_declaration:
+                collection_counter.append(name)
+                assert not declaration['value']
+
+            if name == 'bool2':
+                collection_counter.append(name)
+                assert declaration['value'] == 'True', declaration['value']
+                assert declaration['type'] == 'Boolean', declaration['type']
+            if name == 'int2':
+                collection_counter.append(name)
+                assert declaration['value'] == '1', declaration['value']
+                assert declaration['type'] == 'Int', declaration['type']
+            if name == 'float2':
+                collection_counter.append(name)
+                assert declaration['value'] == '1.1', declaration['value']
+                assert declaration['type'] == 'Float', declaration['type']
+            if name == 'file2':
+                collection_counter.append(name)
+                assert declaration['value'] == '"src/toil/test/wdl/test.tsv"', declaration['value']
+                assert declaration['type'] == 'File', declaration['type']
+            if name == 'string2':
+                collection_counter.append(name)
+                assert declaration['value'] == '"x"', declaration['value']
+                assert declaration['type'] == 'String', declaration['type']
+        assert collection_counter == ['bool1', 'int1', 'float1', 'file1', 'string1',
+                                      'bool2', 'int2', 'float2', 'file2', 'string2']
 
     # estimated run time 27 sec
     @slow

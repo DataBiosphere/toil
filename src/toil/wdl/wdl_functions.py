@@ -351,7 +351,7 @@ def parse_memory(memory):
                 mem_split.append(r.replace(' ', ''))
 
         if len(mem_split) == 1:
-            return memory
+            return int(memory)
 
         if len(mem_split) == 2:
             num = mem_split[0]
@@ -382,9 +382,12 @@ def parse_disk(disk):
         disks = disk.split(',')
         for d in disks:
             d = d.strip().split(' ')
-            for part in d:
-                if is_number(part):
-                    total_disk += int(part)
+            if len(d) > 1:
+                for part in d:
+                    if is_number(part):
+                        total_disk += parse_memory('{} GB'.format(part))
+            else:
+                return parse_memory(d[0]) if parse_memory(d[0]) > 2147483648 else 2147483648
         return total_disk if total_disk > 2147483648 else 2147483648
     except:
         return 2147483648 # toil's default
@@ -398,16 +401,16 @@ def is_number(s):
         return False
 
 
-def size(f, unit, d):
+def size(f, unit='B', d=None):
     """
     Returns the size of a file in bytes.
 
-    :param f:
-    :param d:
-    :param unit:
+    :param f: Filename
+    :param d: The directory containing the file to be sized.
+    :param unit: Return the byte size in these units (gigabytes, etc.).
     :return:
     """
-    if isinstance(f, tuple):
+    if isinstance(f, tuple) and d:
         f = os.path.join(d, f[0])
     divisor = return_bytes(unit)
     return (float(subprocess.check_output(['du', '-s', f],
