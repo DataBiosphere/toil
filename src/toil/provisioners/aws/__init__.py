@@ -17,6 +17,7 @@ from collections import namedtuple
 from operator import attrgetter
 import datetime
 from toil.lib.misc import std_dev, mean
+from six import string_types
 
 from toil.test import runningOnEC2
 

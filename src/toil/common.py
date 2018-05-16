@@ -38,7 +38,6 @@ except ImportError:
 
 # Python 3 compatibility imports
 from six import iteritems
-from six import string_types
 
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
