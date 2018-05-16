@@ -20,7 +20,7 @@ from builtins import object
 import time
 import threading
 
-from toil.lib.util.threading import BoundedEmptySemaphore
+from toil.lib.threading import BoundedEmptySemaphore
 
 
 class GlobalThrottle(object):
@@ -125,7 +125,7 @@ class LocalThrottle(object):
         return wrapper
 
 
-class throttle( object ):
+class throttle(object):
     """
     A context manager for ensuring that the execution of its body takes at least a given amount
     of time, sleeping if necessary. It is a simpler version of LocalThrottle if used as a

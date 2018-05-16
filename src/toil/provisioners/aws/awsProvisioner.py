@@ -21,7 +21,7 @@ import string
 # Python 3 compatibility imports
 from _ssl import SSLError
 from six import iteritems
-from toil.lib.util import memoize
+from toil.lib.memoize import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
@@ -32,8 +32,8 @@ from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from toil.lib.context import Context
 from boto.utils import get_instance_metadata
-from toil.lib.util.retry import retry
-from toil.lib.util import less_strict_bool
+from toil.lib.retry import retry
+from toil.lib.memoize import less_strict_bool
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.node import Node
 

@@ -17,7 +17,7 @@
 from __future__ import absolute_import
 
 from builtins import object
-from toil.lib.util.memoize import sync_memoize
+from toil.lib.memoize import sync_memoize
 
 
 class abstractclassmethod( classmethod ):
@@ -134,10 +134,10 @@ class InnerClass( object ):
     >>> o = Outer()
     >>> i = o.new_inner()
     >>> i # doctest: +ELLIPSIS
-    <toil.lib.util.objects.Inner...> bound to <toil.lib.util.objects.Outer object at ...>
+    <toil.lib.objects.Inner...> bound to <toil.lib.objects.Outer object at ...>
 
     >>> i.get_outer() # doctest: +ELLIPSIS
-    <toil.lib.util.objects.Outer object at ...>
+    <toil.lib.objects.Outer object at ...>
 
     Now with inheritance for both inner and outer:
 
@@ -152,18 +152,18 @@ class InnerClass( object ):
     >>> derived_outer = DerivedOuter()
     >>> derived_inner = derived_outer.new_inner()
     >>> derived_inner # doctest: +ELLIPSIS
-    <toil.lib.util.objects...> bound to <toil.lib.util.objects.DerivedOuter object at ...>
+    <toil.lib.objects...> bound to <toil.lib.objects.DerivedOuter object at ...>
 
     >>> derived_inner.get_outer() # doctest: +ELLIPSIS
-    <toil.lib.util.objects.DerivedOuter object at ...>
+    <toil.lib.objects.DerivedOuter object at ...>
 
     Test a static references:
     >>> Outer.Inner # doctest: +ELLIPSIS
-    <class 'toil.lib.util.objects...Inner'>
+    <class 'toil.lib.objects...Inner'>
     >>> DerivedOuter.Inner # doctest: +ELLIPSIS
-    <class 'toil.lib.util.objects...Inner'>
+    <class 'toil.lib.objects...Inner'>
     >>> DerivedOuter.DerivedInner #doctest: +ELLIPSIS
-    <class 'toil.lib.util.objects...DerivedInner'>
+    <class 'toil.lib.objects...DerivedInner'>
 
     Can't decorate top-level classes. Unfortunately, this is detected when the instance is
     created, not when the class is defined.

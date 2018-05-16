@@ -23,7 +23,7 @@ import multiprocessing
 import signal
 import os
 import errno
-from toil.lib.util.objects import InnerClass
+from toil.lib.objects import InnerClass
 
 from toil import physicalMemory
 

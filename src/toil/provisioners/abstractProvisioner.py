@@ -14,16 +14,14 @@
 from abc import ABCMeta, abstractmethod
 from builtins import object
 from functools import total_ordering
-from itertools import count
 import logging
 import os.path
 from toil import subprocess
 from toil import applianceSelf
 
-
 from future.utils import with_metaclass
 
-from toil.lib.util.retry import never
+from toil.lib.retry import never
 a_short_time = 5
 
 log = logging.getLogger(__name__)

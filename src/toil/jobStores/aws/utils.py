@@ -34,10 +34,10 @@ from ssl import SSLError
 import itertools
 
 
-from toil.lib.util.exceptions import panic
+from toil.lib.exceptions import panic
 from six import iteritems
 
-from toil.lib.util.retry import retry
+from toil.lib.retry import retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,

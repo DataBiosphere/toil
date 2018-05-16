@@ -34,7 +34,7 @@ except ImportError:
 
 import psutil
 import mesos.interface
-from toil.lib.util.expando import Expando
+from toil.lib.expando import Expando
 from mesos.interface import mesos_pb2
 import mesos.native
 from struct import pack

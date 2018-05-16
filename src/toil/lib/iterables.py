@@ -15,56 +15,12 @@
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 
 from __future__ import absolute_import
-import sys
 from builtins import map
-from builtins import zip
 from builtins import object
-from itertools import takewhile, dropwhile, chain
 try:
     from itertools import zip_longest
 except:
     from itertools import izip_longest as zip_longest
-
-
-def common_prefix( xs, ys ):
-    """
-    >>> list( common_prefix('','') )
-    []
-    >>> list( common_prefix('A','') )
-    []
-    >>> list( common_prefix('','A') )
-    []
-    >>> list( common_prefix('A','A') )
-    ['A']
-    >>> list( common_prefix('AB','A') )
-    ['A']
-    >>> list( common_prefix('A','AB') )
-    ['A']
-    >>> list( common_prefix('A','B') )
-    []
-    """
-    return [x_y[0] for x_y in takewhile( lambda a_b: a_b[0] == a_b[1], list(zip( xs, ys )) )]
-
-
-def disparate_suffix( xs, ys ):
-    """
-    >>> list( disparate_suffix('','') )
-    []
-    >>> list( disparate_suffix('A','') )
-    [('A', None)]
-    >>> list( disparate_suffix('','A') )
-    [(None, 'A')]
-    >>> list( disparate_suffix('A','A') )
-    []
-    >>> list( disparate_suffix('AB','A') )
-    [('B', None)]
-    >>> list( disparate_suffix('A','AB') )
-    [(None, 'B')]
-    >>> list( disparate_suffix('A','B') )
-    [('A', 'B')]
-    """
-    return dropwhile( lambda a_b1: a_b1[0] == a_b1[1], zip_longest( xs, ys ) )
-
 
 def flatten( iterables ):
     """ Flatten an iterable, except for string elements. """
@@ -75,9 +31,8 @@ def flatten( iterables ):
             for element in it:
                 yield element
 
-
 # noinspection PyPep8Naming
-class concat( object ):
+class concat(object):
     """
     A literal iterable that lets you combine sequence literals (lists, set) with generators or list
     comprehensions. Instead of
@@ -157,50 +112,3 @@ class concat( object ):
             return i
 
         return flatten( map( expand, self.args ) )
-
-
-# noinspection PyPep8Naming
-class crush( object ):
-    """
-    >>> list(crush([]))
-    []
-    >>> list(crush([[]]))
-    []
-    >>> list(crush([1]))
-    [1]
-    >>> list(crush([[1]]))
-    [1]
-    >>> list(crush([[[]]]))
-    []
-    >>> list(crush([1,(),['two'],([3, 4],),{5}]))
-    [1, 'two', 3, 4, 5]
-
-    >>> list(crush(1))
-    Traceback (most recent call last):
-    ...
-    TypeError: 'int' object is not iterable
-
-    >>> list(crush('123'))
-    ['1', '2', '3']
-
-    The above is a bit of an anomaly since strings occurring inside iterables are not broken up:
-
-    >>> list(crush(['123']))
-    ['123']
-    """
-
-    def __init__( self, iterables ):
-        super( crush, self ).__init__( )
-        self.iterables = iterables
-
-    def __iter__( self ):
-        def expand( x ):
-            if isinstance(x, str):
-                return x
-            try:
-                # Using __iter__() instead of iter() prevents breaking up of strings
-                return crush( x.__iter__( ) )
-            except AttributeError:
-                return x,
-
-        return flatten( list(map( expand, self.iterables )) )

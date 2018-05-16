@@ -19,21 +19,20 @@ import time
 import os
 import uuid
 import docker
-from toil import subprocess
 from threading import Thread
 from docker.errors import ContainerError
 
+from toil import subprocess
 from toil.test import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow, needs_appliance
-from toil.lib import FORGO, STOP, RM
 from toil.lib.docker import dockerCall, dockerCheckOutput, apiDockerCall, containerIsRunning, dockerKill
+from toil.lib.docker import dockerPredicate, FORGO, STOP, RM
 
 # only needed for subprocessDockerCall tests
 from pwd import getpwuid
-from toil.lib.util.retry import retry
-from toil.lib import dockerPredicate
+from toil.lib.retry import retry
 
 
 logger = logging.getLogger(__name__)

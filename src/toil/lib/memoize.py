@@ -13,17 +13,13 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-
 from __future__ import absolute_import
-
 import datetime
 import grp
 import pwd
-from functools import wraps
-
-from threading import Lock
-
 import re
+from functools import wraps
+from threading import Lock
 
 
 def uid_to_name( uid ):

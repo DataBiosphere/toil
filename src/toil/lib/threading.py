@@ -36,7 +36,7 @@ class BoundedEmptySemaphore( BoundedSemaphore ):
             assert self.acquire( blocking=False )
 
 
-class ExceptionalThread( threading.Thread ):
+class ExceptionalThread(threading.Thread):
     """
     A thread whose join() method re-raises exceptions raised during run(). While join() is
     idempotent, the exception is only during the first invocation of join() that succesfully
@@ -87,7 +87,7 @@ class ExceptionalThread( threading.Thread ):
 
 
 # noinspection PyPep8Naming
-class defaultlocal( threading.local ):
+class defaultlocal(threading.local):
     """
     Thread local storage with default values for each field in each thread
 

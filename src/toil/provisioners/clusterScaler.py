@@ -27,9 +27,9 @@ import sys
 import time
 from collections import defaultdict
 
-from toil.lib.util.retry import retry
-from toil.lib.util.threading import ExceptionalThread
-from toil.lib.util.throttle import throttle
+from toil.lib.retry import retry
+from toil.lib.threading import ExceptionalThread
+from toil.lib.throttle import throttle
 from itertools import islice
 
 from toil.batchSystems.abstractBatchSystem import AbstractScalableBatchSystem, NodeInfo

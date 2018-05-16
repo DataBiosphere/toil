@@ -40,7 +40,7 @@ except ImportError:
 from six import iteritems
 
 from toil.lib.humanize import bytes2human
-from toil.lib.util.retry import retry
+from toil.lib.retry import retry
 
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
@@ -145,7 +145,7 @@ class Config(object):
         """
         Creates a config object from the options object.
         """
-        from toil.lib.util.humanize import human2bytes  # This import is used to convert
+        from toil.lib.humanize import human2bytes  # This import is used to convert
         # from human readable quantites to integers
         def setOption(varName, parsingFn=None, checkFn=None, default=None):
             # If options object has the option "varName" specified

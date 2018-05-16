@@ -39,7 +39,7 @@ from six import iteritems, itervalues
 
 import mesos.interface
 import mesos.native
-from toil.lib.util import strict_bool
+from toil.lib.memoize import strict_bool
 from mesos.interface import mesos_pb2
 
 from toil import resolveEntryPoint

@@ -18,8 +18,8 @@ from boto.sns.connection import SNSConnection
 from boto.vpc import VPCConnection
 from boto.iam.connection import IAMConnection
 from boto.ec2.keypair import KeyPair
-from toil.lib.util import refnmatch
-from toil.lib.util import memoize
+from toil.lib.fnmatch import fnmatch
+from toil.lib.memoize import memoize
 from boto.utils import get_instance_metadata
 
 from toil.lib.message import Message
@@ -561,7 +561,7 @@ class Context(object):
         for glob in globs:
             i = len(result)
             for name, keypair in keypairs.iteritems():
-                if refnmatch.fnmatch(name, glob):
+                if fnmatch.fnmatch(name, glob):
                     result.append(keypair)
 
             # since we can't modify the set during iteration

@@ -101,9 +101,7 @@ def runSetup():
             'requests==2.18.4',
             'docker==2.5.1',
             'subprocess32==3.5.0rc1',
-            'python-dateutil',
-            'lockfile==0.11.0',
-            'mock==1.0.1'],
+            'python-dateutil'],
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,

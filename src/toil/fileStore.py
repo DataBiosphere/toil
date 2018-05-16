@@ -21,7 +21,7 @@ from builtins import range
 from builtins import object
 from abc import abstractmethod, ABCMeta
 
-from toil.lib.util.objects import abstractclassmethod
+from toil.lib.objects import abstractclassmethod
 
 import base64
 from collections import namedtuple, defaultdict
