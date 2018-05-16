@@ -18,7 +18,7 @@ import logging
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 from toil.provisioners import clusterFactory
-from toil.common import checkValidNodeTypes
+from toil.provisioners.aws import checkValidNodeTypes
 from toil import applianceSelf
 
 from toil.jobStores import azure_credential_file_path as credential_file_path
