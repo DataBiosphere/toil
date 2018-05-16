@@ -30,7 +30,7 @@ try:
 except ImportError:
     import pickle
 
-from bd2k.util.retry import retry
+from toil.lib.retry import retry
 from google.cloud import storage, exceptions
 from google.api_core.exceptions import GoogleAPICallError, InternalServerError, ServiceUnavailable
 from toil.lib.misc import truncExpBackoff

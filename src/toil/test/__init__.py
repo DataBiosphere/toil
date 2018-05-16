@@ -39,10 +39,10 @@ from unittest.util import strclass
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
-from bd2k.util import less_strict_bool, memoize
-from bd2k.util.iterables import concat
-from bd2k.util.processes import which
-from bd2k.util.threading import ExceptionalThread
+from toil.lib.memoize import less_strict_bool, memoize
+from toil.lib.iterables import concat
+from toil.lib.processes import which
+from toil.lib.threading import ExceptionalThread
 
 from toil import subprocess
 from toil import toilPackageDirPath, applianceSelf

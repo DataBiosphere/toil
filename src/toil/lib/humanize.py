@@ -10,9 +10,9 @@ License: MIT
 """
 
 from __future__ import division
-
 # see: http://goo.gl/kTQMs
 from past.utils import old_div
+
 SYMBOLS = {
     'customary'     : ('', 'K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y'),
     'customary_ext' : ('byte', 'kilo', 'mega', 'giga', 'tera', 'peta', 'exa', 'zetta', 'iotta'),

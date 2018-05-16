@@ -23,7 +23,7 @@ import os
 import time
 from threading import Thread, Event
 
-from bd2k.util.expando import Expando
+from toil.lib.expando import Expando
 from toil.lib.bioio import getTotalCpuTime
 
 logger = logging.getLogger( __name__ )

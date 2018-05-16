@@ -34,11 +34,11 @@ from urllib.error import HTTPError
 from zipfile import ZipFile
 
 # Python 3 compatibility imports
-from bd2k.util.retry import retry
+from toil.lib.retry import retry
 from six.moves.urllib.request import urlopen
 
-from bd2k.util import strict_bool
-from bd2k.util.iterables import concat
+from toil.lib.memoize import strict_bool
+from toil.lib.iterables import concat
 
 from toil import inVirtualEnv
 

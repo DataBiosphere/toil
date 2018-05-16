@@ -12,22 +12,3 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import
-
-from toil import subprocess
-
-FORGO = 0
-STOP = 1
-RM = 2
-
-
-def dockerPredicate(e):
-    """
-    Used to ensure Docker exceptions are retried if appropriate
-
-    :param e: Exception
-    :return: True if e retriable, else False
-    """
-    if not isinstance(e, subprocess.CalledProcessError):
-        return False
-    if e.returncode == 125:
-        return True

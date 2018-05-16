@@ -15,7 +15,7 @@
 from __future__ import absolute_import
 from __future__ import division
 
-from bd2k.util.retry import retry
+from toil.lib.retry import retry
 from future import standard_library
 from toil.lib.misc import truncExpBackoff
 
@@ -48,8 +48,8 @@ from six import iteritems
 import six.moves.urllib.parse as urlparse
 from six.moves.urllib.request import urlopen, Request
 
-from bd2k.util import memoize
-from bd2k.util.exceptions import panic
+from toil.lib.memoize import memoize
+from toil.lib.exceptions import panic
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
 from mock import patch

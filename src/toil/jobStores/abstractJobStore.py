@@ -31,13 +31,13 @@ from six import itervalues
 from six.moves.urllib.request import urlopen
 import six.moves.urllib.parse as urlparse
 
-from bd2k.util.retry import retry_http
+from toil.lib.retry import retry_http
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStore import FileID
 from toil.job import JobException
-from bd2k.util import memoize
-from bd2k.util.objects import abstractclassmethod
+from toil.lib.memoize import memoize
+from toil.lib.objects import abstractclassmethod
 from future.utils import with_metaclass
 
 try:

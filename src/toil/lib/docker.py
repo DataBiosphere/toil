@@ -17,18 +17,29 @@ from docker.errors import DockerException
 from docker.utils.types import LogConfig
 from docker.api.container import ContainerApiMixin
 
-from bd2k.util.retry import retry
+from toil.lib.retry import retry
 from docker import client
 from pwd import getpwuid
 
-from toil.lib import dockerPredicate
-from toil.lib import FORGO
-from toil.lib import STOP
-from toil.lib import RM
 from toil.test import timeLimit
 
 logger = logging.getLogger(__name__)
 
+FORGO = 0
+STOP = 1
+RM = 2
+
+def dockerPredicate(e):
+    """
+    Used to ensure Docker exceptions are retried if appropriate
+
+    :param e: Exception
+    :return: True if e retriable, else False
+    """
+    if not isinstance(e, subprocess.CalledProcessError):
+        return False
+    if e.returncode == 125:
+        return True
 
 def dockerCheckOutput(*args, **kwargs):
     """
