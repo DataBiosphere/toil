@@ -18,6 +18,7 @@ import logging
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
 from toil.provisioners import clusterFactory
+from toil.common import checkValidNodeTypes
 from toil import applianceSelf
 
 from toil.jobStores import azure_credential_file_path as credential_file_path
@@ -96,6 +97,8 @@ def main():
                              " the transfer of credentials.")
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
+    checkValidNodeTypes(config.provisioner, config.nodeTypes)
+    checkValidNodeTypes(config.provisioner, config.leaderNodeType)
 
 
     # checks the validity of TOIL_APPLIANCE_SELF before proceeding
