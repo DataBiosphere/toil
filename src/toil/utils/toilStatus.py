@@ -18,6 +18,7 @@
 # python 2/3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
+from six.moves import xrange
 # TODO: change functions to support python 3 str and map
 # from builtins import map
 # from builtins import str

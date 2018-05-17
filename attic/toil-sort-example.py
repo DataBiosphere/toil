@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from six.moves import xrange
 from argparse import ArgumentParser
 import os
 import logging
