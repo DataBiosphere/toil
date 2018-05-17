@@ -25,7 +25,7 @@ from toil.lib.memoize import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
-from toil.lib.ec2 import (ec2_instance_types, a_short_time, create_ondemand_instances,
+from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
@@ -36,6 +36,7 @@ from toil.lib.retry import retry
 from toil.lib.memoize import less_strict_bool
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.node import Node
+from toil.lib.generatedEC2Lists import E2Instances
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
@@ -134,7 +135,7 @@ class AWSProvisioner(AbstractProvisioner):
         profileARN = self._getProfileARN()
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup()
-        bdm = self._getBlockDeviceMapping(ec2_instance_types[leaderNodeType], rootVolSize=leaderStorage)
+        bdm = self._getBlockDeviceMapping(E2Instances[leaderNodeType], rootVolSize=leaderStorage)
 
         self._masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded' # dummy key
         userData =  self._getCloudConfigUserData('leader', self._masterPublicKey)
@@ -169,7 +170,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._subnetID = leader.subnet_id
 
     def getNodeShape(self, nodeType, preemptable=False):
-        instanceType = ec2_instance_types[nodeType]
+        instanceType = E2Instances[nodeType]
 
         disk = instanceType.disks * instanceType.disk_capacity * 2 ** 30
         if disk == 0:
@@ -244,7 +245,7 @@ class AWSProvisioner(AbstractProvisioner):
                 spotBid = self._spotBidsMap[nodeType]
             else:
                 raise RuntimeError("No spot bid given for a preemptable node request.")
-        instanceType = ec2_instance_types[nodeType]
+        instanceType = E2Instances[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self._nodeStorage)
         arn = self._getProfileARN()
 

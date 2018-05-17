@@ -53,7 +53,7 @@ class ToilContextManagerTest(ToilTest):
         options.restart = True
         with Toil(options) as toil:
             fileID = toil.restart()
-            print fileID
+            print(fileID)
             # Hopefully the error didn't cause us to lose all our work!
             toil.exportFile(fileID, 'file://' + self.exportPath)
         with open(self.exportPath) as f:

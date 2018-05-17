@@ -49,6 +49,7 @@ from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
+from toil.provisioners.aws import checkValidNodeTypes
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
@@ -90,6 +91,7 @@ class Config(object):
         # Autoscaling options
         self.provisioner = None
         self.nodeTypes = []
+        checkValidNodeTypes(self.provisioner, self.nodeTypes)
         self.nodeOptions = None
         self.minNodes = None
         self.maxNodes = [10]
@@ -392,9 +394,9 @@ def _addOptions(addGroupFn, config):
                      "reached.")
 
     addOptionFn('--nodeOptions', default=None,
-                help="Options for provisioning the nodes. The syntax "
-                     "depends on the provisioner used. Neither the CGCloud nor the AWS "
-                     "provisioner support any node options.")
+                help = "Options for provisioning the nodes. The syntax "
+                       "depends on the provisioner used. Neither the CGCloud nor the AWS "
+                       "provisioner support any node options.")
 
     addOptionFn('--minNodes', default=None,
                 help="Mininum number of nodes of each type in the cluster, if using "
@@ -600,7 +602,6 @@ def addOptions(parser, config=Config()):
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
-
 
 def getNodeID(extraIDFiles=None):
     """

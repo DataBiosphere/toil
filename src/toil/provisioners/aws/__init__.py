@@ -17,6 +17,7 @@ from collections import namedtuple
 from operator import attrgetter
 import datetime
 from toil.lib.misc import std_dev, mean
+from six import string_types
 
 from toil.test import runningOnEC2
 
@@ -195,3 +196,46 @@ sdbFullPolicy = dict(Version="2012-10-17", Statement=[
 
 iamFullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="iam:*")])
+
+def checkValidNodeTypes(provisioner, nodeTypes):
+    """
+    Raises if an invalid nodeType is specified for aws, azure, or gce.
+
+    :param str provisioner: 'aws', 'gce', or 'azure' to specify which cloud provisioner used.
+    :param nodeTypes: A list of node types.  Example: ['t2.micro', 't2.medium']
+    :return: Nothing.  Raises if invalid nodeType.
+    """
+    if not nodeTypes:
+        return
+    if not isinstance(nodeTypes, list):
+        nodeTypes = [nodeTypes]
+    if not isinstance(nodeTypes[0], string_types):
+        return
+    # check if a valid node type for aws
+    from toil.lib.generatedEC2Lists import E2Instances, regionDict
+    if provisioner == 'aws':
+        from toil.provisioners.aws import getCurrentAWSZone
+        currentZone = getCurrentAWSZone()
+        if not currentZone:
+            currentZone = 'us-west-2'
+        else:
+            currentZone = currentZone[:-1] # adds something like 'a' or 'b' to the end
+        # check if instance type exists in this region
+        for nodeType in nodeTypes:
+            if nodeType and ':' in nodeType:
+                nodeType = nodeType.split(':')[0]
+            if nodeType not in regionDict[currentZone]:
+                raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.'
+                                   '' % (nodeType, currentZone))
+    # Only checks if aws nodeType specified for gce/azure atm.
+    if provisioner == 'gce' or provisioner == 'azure':
+        for nodeType in nodeTypes:
+            if nodeType and ':' in nodeType:
+                nodeType = nodeType.split(':')[0]
+            try:
+                E2Instances[nodeType]
+                raise RuntimeError("It looks like you've specified an AWS nodeType with the "
+                                   "{} provisioner.  Please specify an {} nodeType."
+                                   "".format(provisioner, provisioner))
+            except KeyError:
+                pass

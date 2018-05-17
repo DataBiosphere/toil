@@ -199,5 +199,5 @@ def convert_mb(kb, unit):
 
 
 if __name__ == "__main__":
-    print (get_lsf_units())
-    print (per_core_reservation())
+    print(get_lsf_units())
+    print(per_core_reservation())

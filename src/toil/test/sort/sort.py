@@ -215,9 +215,9 @@ def main(options=None):
         # make the file ourselves
         fileName = 'fileToSort.txt'
         if os.path.exists(fileName):
-            print "Sorting existing file", fileName
+            print("Sorting existing file: {}".format(fileName))
         else:
-            print 'No sort file specified. Generating one automatically called %s.' % fileName
+            print('No sort file specified. Generating one automatically called: {}.'.format(fileName))
             makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
     else:
         if not os.path.exists(options.fileToSort):
