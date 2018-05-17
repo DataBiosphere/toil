@@ -4,7 +4,7 @@ import logging
 import time
 from collections import Iterator
 from operator import attrgetter
-
+from past.builtins import map
 from toil.lib.exceptions import panic
 from toil.lib.retry import retry
 from boto.ec2.ec2object import TaggedEC2Object

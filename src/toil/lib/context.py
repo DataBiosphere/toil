@@ -1,6 +1,6 @@
 # coding=utf-8
 from six import iteritems
-import hashlib
+from past.builtins import map
 from contextlib import contextmanager
 import json
 import os
