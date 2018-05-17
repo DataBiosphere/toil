@@ -15,7 +15,6 @@
 # python 2/3 compatibility
 from __future__ import absolute_import
 from builtins import range
-from six.moves import xrange
 
 # standard library
 from contextlib import contextmanager

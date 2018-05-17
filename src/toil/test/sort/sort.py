@@ -109,14 +109,12 @@ def sort(file):
     """
     Sorts the given file.
     """
-    fileHandle = open(file, 'r')
-    lines = fileHandle.readlines()
-    fileHandle.close()
+    with open(file, 'r') as f:
+        lines = f.readlines()
     lines.sort()
-    fileHandle = open(file, 'w')
-    for line in lines:
-        fileHandle.write(line)
-    fileHandle.close()
+    with open(file, 'w') as f:
+        for line in lines:
+            f.write(line)
 
 
 def merge(fileHandle1, fileHandle2, outputFileHandle):
@@ -151,18 +149,18 @@ def getMidPoint(file, fileStart, fileEnd):
     Finds the point in the file to split.
     Returns an int i such that fileStart <= i < fileEnd
     """
-    fileHandle = open(file, 'r')
-    midPoint = old_div((fileStart + fileEnd), 2)
-    assert midPoint >= fileStart
-    fileHandle.seek(midPoint)
-    line = fileHandle.readline()
-    assert len(line) >= 1
-    if len(line) + midPoint < fileEnd:
-        return midPoint + len(line) - 1
-    fileHandle.seek(fileStart)
-    line = fileHandle.readline()
-    assert len(line) >= 1
-    assert len(line) + fileStart <= fileEnd
+    with open(file, 'r') as f:
+        midPoint = old_div((fileStart + fileEnd), 2)
+        assert midPoint >= fileStart
+        f.seek(midPoint)
+        line = f.readline()
+        assert len(line) >= 1
+        if len(line) + midPoint < fileEnd:
+            return midPoint + len(line) - 1
+        f.seek(fileStart)
+        line = f.readline()
+        assert len(line) >= 1
+        assert len(line) + fileStart <= fileEnd
     return len(line) + fileStart - 1
 
 

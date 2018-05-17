@@ -301,18 +301,20 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             assert fileSize > 0
             fileStart = random.choice(range(0, fileSize))
             fileEnd = random.choice(range(fileStart, fileSize))
-            fileHandle = open(outputFile, 'w')
-            copySubRangeOfFile(tempFile, fileStart, fileEnd, fileHandle)
-            fileHandle.close()
-            l = open(outputFile, 'r').read()
-            l2 = open(tempFile, 'r').read()[fileStart:fileEnd]
+            with open(outputFile, 'w') as f:
+                copySubRangeOfFile(tempFile, fileStart, fileEnd, f)
+            with open(outputFile, 'r') as f:
+                l = f.read()
+            with open(tempFile, 'r') as f:
+                l2 = f.read()[fileStart:fileEnd]
             self.assertEquals(l, l2)
 
     def testGetMidPoint(self):
         for test in range(self.testNo):
             tempFile = os.path.join(self.tempDir, "fileToSort.txt")
             makeFileToSort(tempFile)
-            l = open(tempFile, 'r').read()
+            with open(tempFile, 'r') as f:
+                l = f.read()
             fileSize = os.path.getsize(tempFile)
             midPoint = getMidPoint(tempFile, 0, fileSize)
             print("the mid point is %i of a file of %i bytes" % (midPoint, fileSize))

@@ -29,7 +29,7 @@ from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.fileStore import CacheUnbalancedError
-
+from io import open
 import collections
 import inspect
 import os
@@ -39,7 +39,6 @@ import time
 import pytest
 
 # Python 3 compatibility imports
-from six.moves import xrange
 from future.utils import with_metaclass
 
 # Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
@@ -409,10 +408,10 @@ class hidden(object):
             nonLocalFile1 = os.path.join(workdir, str(uuid4()))
             nonLocalFile2 = os.path.join(workdir, str(uuid4()))
             # The first file has to be non zero or meseeks will go into an infinite sleep
-            file1 = open(nonLocalFile1, 'w')
-            file1.write('test')
-            file1.close()
-            open(nonLocalFile2, 'w').close()
+            with open(nonLocalFile1, 'w') as file1:
+                file1.write('test')
+            with open(nonLocalFile2, 'w') as file2:
+                pass
             assert os.path.exists(nonLocalFile1)
             assert os.path.exists(nonLocalFile2)
             A = Job.wrapJobFn(self._testNewJobsCanHandleOtherJobDeaths_A,

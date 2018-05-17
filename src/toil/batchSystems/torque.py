@@ -218,12 +218,10 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             now this goes to default tempdir
             """
             _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
-            fh = open(tmpFile , 'w')
-            fh.write("#!/bin/sh\n")
-            fh.write("cd $PBS_O_WORKDIR\n\n")
-            fh.write(command + "\n")
-
-            fh.close
+            with open(tmpFile , 'w') as f:
+                f.write("#!/bin/sh\n")
+                f.write("cd $PBS_O_WORKDIR\n\n")
+                f.write(command + "\n")
             
             return tmpFile
 

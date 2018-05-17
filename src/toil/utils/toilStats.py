@@ -585,9 +585,8 @@ def reportData(tree, options):
         root, worker, job, job_types = refineData(tree, options)
         out_str = reportPrettyData(root, worker, job, job_types, options)
     if options.outputFile is not None:
-        fileHandle = open(options.outputFile, "w")
-        fileHandle.write(out_str)
-        fileHandle.close()
+        with open(options.outputFile, "w") as f:
+            f.write(out_str)
     # Now dump onto the screen
     print(out_str)
 
