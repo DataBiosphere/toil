@@ -39,6 +39,22 @@ def runSetup():
     galaxyLib = 'galaxy-lib==17.9.3'
     cwltest = 'cwltest>=1.0.20180209171722'
     htcondor = 'htcondor>=8.6.0'
+    dill = 'dill==0.2.7.1'
+    six = 'six>=1.10.0'
+    future = 'future'
+    requests = 'requests==2.18.4'
+    docker = 'docker==2.5.1'
+    subprocess32 = 'subprocess32==3.5.0rc1'
+    dateutil = 'python-dateutil'
+
+    core_reqs = [
+        dill,
+        six,
+        future,
+        requests,
+        docker,
+        dateutil,
+        subprocess32]
 
     mesos_reqs = [
         psutil,
@@ -81,27 +97,20 @@ def runSetup():
     if sys.platform != 'linux' or 'linux2':
         all_reqs.remove(htcondor)
 
+    # remove the subprocess32 backport if not python2
     if not sys.version_info[0] == 2:
-        raise RuntimeError("Toil currently requires Python 2, but we're working on adding Python 3 support (#1780)")
+        core_reqs.remove(subprocess32)
 
     setup(
         name='toil',
         version=version.distVersion,
-        python_requires='~=2.7',
         description='Pipeline management software for clusters.',
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
         url="https://github.com/BD2KGenomics/toil",
         classifiers=["License :: OSI Approved :: Apache Software License"],
         license="Apache License v2.0",
-        install_requires=[
-            'dill==0.2.7.1',
-            'six>=1.10.0',
-            'future',
-            'requests==2.18.4',
-            'docker==2.5.1',
-            'subprocess32==3.5.0rc1',
-            'python-dateutil'],
+        install_requires=core_reqs,
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,
@@ -163,7 +172,7 @@ def importVersion():
                 raise
 
         if old != new:
-            with NamedTemporaryFile(dir='src/toil', prefix='version.py.', delete=False) as f:
+            with NamedTemporaryFile(dir='src/toil', prefix='version.py.', delete=False, mode='w') as f:
                 f.write(new)
             os.rename(f.name, 'src/toil/version.py')
     # Unfortunately, we can't use a straight import here because that would also load the stuff
