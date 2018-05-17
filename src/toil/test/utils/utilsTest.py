@@ -114,7 +114,7 @@ class UtilsTest(ToilTest):
             cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
             leader = cluster.getLeader()
             # test leader tags
-            for key in tags.keys():
+            for key in list(tags.keys()):
                 self.assertEqual(tags[key], leader.tags.get(key))
 
             # Test strict host key checking

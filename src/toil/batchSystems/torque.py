@@ -75,7 +75,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 return times
             # Only query for job IDs to avoid clogging the batch system on heavily loaded clusters
             # PBS plain qstat will return every running job on the system.
-            jobids = sorted(currentjobs.keys())
+            jobids = sorted(list(currentjobs.keys()))
             if self._version == "pro":
                 process = subprocess.Popen(['qstat', '-x'] + jobids, stdout=subprocess.PIPE)
             elif self._version == "oss":

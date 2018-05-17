@@ -732,7 +732,7 @@ class Leader(object):
         runningJobs = set(self.batchSystem.getIssuedBatchJobIDs())
         jobBatchSystemIDsSet = set(self.getJobIDs())
         #Clean up the reissueMissingJobs_missingHash hash, getting rid of jobs that have turned up
-        missingJobIDsSet = set(self.reissueMissingJobs_missingHash.keys())
+        missingJobIDsSet = set(list(self.reissueMissingJobs_missingHash.keys()))
         for jobBatchSystemID in missingJobIDsSet.difference(jobBatchSystemIDsSet):
             self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
             logger.warn("Batch system id: %s is no longer missing", str(jobBatchSystemID))

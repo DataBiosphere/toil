@@ -694,7 +694,7 @@ class Context(object):
                                 list_policies, delete_policy, get_policy, put_policy):
         # Delete superfluous policies
         policy_names = set(list_policies(entity_name).policy_names)
-        for policy_name in policy_names.difference(set(policies.keys())):
+        for policy_name in policy_names.difference(set(list(policies.keys()))):
             delete_policy(entity_name, policy_name)
 
         # Create expected policies
