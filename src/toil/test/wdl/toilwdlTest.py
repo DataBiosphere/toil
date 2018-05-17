@@ -59,7 +59,7 @@ class ToilWdlIntegrationTest(ToilTest):
         # Jenkins requires this to not error on "untracked files".
         # Set to true if running tests locally and you don't want to
         # redownload the data each time you run the test.
-        self.jenkins = False
+        self.jenkins = True
 
         self.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
                                      data=self.encode_data,
@@ -143,16 +143,11 @@ class ToilWdlIntegrationTest(ToilTest):
         which finds all files with a pattern in a directory."""
         vocab_location = glob('vocab.wdl', os.path.abspath('src/toil'))
         assert vocab_location == [os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')], str(vocab_location)
-        wdl_locations = glob('wdl_*', os.path.abspath('src/toil'))
+        wdl_locations = glob('wdl_*.py', os.path.abspath('src/toil'))
         wdl_that_should_exist = [os.path.abspath('src/toil/wdl/wdl_analysis.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_analysis.pyc'),
                                  os.path.abspath('src/toil/wdl/wdl_synthesis.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_synthesis.pyc'),
-                                 os.path.abspath('src/toil/test/wdl/wdl_templates.zip'),
                                  os.path.abspath('src/toil/wdl/wdl_functions.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_functions.pyc'),
-                                 os.path.abspath('src/toil/wdl/wdl_parser.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_parser.pyc')]
+                                 os.path.abspath('src/toil/wdl/wdl_parser.py')]
         # make sure the files match the expected files
         for location in wdl_that_should_exist:
             assert location in wdl_locations, '{} not in {}!'.format(str(location), str(wdl_locations))

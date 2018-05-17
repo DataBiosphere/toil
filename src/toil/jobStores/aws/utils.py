@@ -100,8 +100,8 @@ class SDBHelper(object):
     # old_div implents the python2 behavior in both 2 & 3
     maxRawValueSize = old_div(maxValueSize * 3, 4)
     # Just make sure we don't have a problem with padding or integer truncation:
-    assert len(base64.b64encode(' ' * maxRawValueSize)) == 1024
-    assert len(base64.b64encode(' ' * (1 + maxRawValueSize))) > 1024
+    assert len(base64.b64encode(b' ' * maxRawValueSize)) == 1024
+    assert len(base64.b64encode(b' ' * (1 + maxRawValueSize))) > 1024
 
     @classmethod
     def _reservedAttributes(cls):

@@ -22,7 +22,7 @@ def runSetup():
     """
     boto = 'boto==2.38.0'
     boto3 = 'boto3==1.4.7'
-    futures = 'futures==3.2.0'
+    futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
     psutil = 'psutil==3.0.1'
     protobuf = 'protobuf==3.5.1'

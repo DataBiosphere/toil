@@ -14,9 +14,9 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from past.builtins import basestring
 
 import json
-import csv
 import os
 import logging
 from collections import OrderedDict

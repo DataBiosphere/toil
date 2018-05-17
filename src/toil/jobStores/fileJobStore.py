@@ -15,7 +15,6 @@
 # python 2/3 compatibility
 from __future__ import absolute_import
 from builtins import range
-from six.moves import xrange
 
 # standard library
 from contextlib import contextmanager
@@ -180,7 +179,7 @@ class FileJobStore(AbstractJobStore):
         # The file is then moved to its correct path.
         # Atomicity guarantees use the fact the underlying file systems "move"
         # function is atomic.
-        with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
+        with open(self._getJobFileName(job.jobStoreID) + ".new", 'wb') as f:
             pickle.dump(job, f)
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
@@ -297,7 +296,7 @@ class FileJobStore(AbstractJobStore):
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
         fd, absPath = self._getTempFile(jobStoreID)
-        with open(absPath, 'w') as f:
+        with open(absPath, 'wb') as f:
             yield f, self._getRelativePath(absPath)
         os.close(fd)  # Close the os level file descriptor
 
@@ -365,13 +364,13 @@ class FileJobStore(AbstractJobStore):
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
-        with open(self._getAbsPath(jobStoreFileID), 'w') as f:
+        with open(self._getAbsPath(jobStoreFileID), 'wb') as f:
             yield f
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
-        with open(self._getAbsPath(jobStoreFileID), 'r') as f:
+        with open(self._getAbsPath(jobStoreFileID), 'rb') as f:
             yield f
 
     ##########################################
@@ -386,14 +385,14 @@ class FileJobStore(AbstractJobStore):
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         # the isProtected parameter has no effect on the fileStore
         assert self._validateSharedFileName( sharedFileName )
-        with open(self._getSharedFilePath(sharedFileName), 'w') as f:
+        with open(self._getSharedFilePath(sharedFileName), 'wb') as f:
             yield f
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName):
         assert self._validateSharedFileName( sharedFileName )
         try:
-            with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
+            with open(os.path.join(self.jobStoreDir, sharedFileName), 'rb') as f:
                 yield f
         except IOError as e:
             if e.errno == errno.ENOENT:
@@ -404,7 +403,7 @@ class FileJobStore(AbstractJobStore):
     def writeStatsAndLogging(self, statsAndLoggingString):
         # Temporary files are placed in the set of temporary files/directoies
         fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
-        with open(tempStatsFile, "w") as f:
+        with open(tempStatsFile, "wb") as f:
             f.write(statsAndLoggingString)
         os.close(fd)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
@@ -416,7 +415,7 @@ class FileJobStore(AbstractJobStore):
                 if tempFile.startswith('stats'):
                     absTempFile = os.path.join(tempDir, tempFile)
                     if readAll or not tempFile.endswith('.new'):
-                        with open(absTempFile, 'r') as fH:
+                        with open(absTempFile, 'rb') as fH:
                             callback(fH)
                         numberOfFilesProcessed += 1
                         newName = tempFile.rsplit('.', 1)[0] + '.new'
