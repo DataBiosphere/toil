@@ -3,6 +3,8 @@ from argparse import ArgumentParser
 import os
 import logging
 import random
+from past.utils import old_div
+from six.moves import xrange
 
 from toil.common import Toil
 from toil.job import Job
@@ -79,14 +81,12 @@ def up(job, input_file_id_1, input_file_id_2):
 def sort(in_file, out_file):
     """Sorts the given file.
     """
-    filehandle = open(in_file, 'r')
-    lines = filehandle.readlines()
-    filehandle.close()
+    with open(in_file, 'r') as f:
+        lines = f.readlines()
     lines.sort()
-    filehandle = open(out_file, 'w')
-    for line in lines:
-        filehandle.write(line)
-    filehandle.close()
+    with open(out_file, 'w') as f:
+        for line in lines:
+            f.write(line)
 
 
 def merge(filehandle_1, filehandle_2, output_filehandle):
@@ -118,18 +118,18 @@ def get_midpoint(file, file_start, file_end):
     """Finds the point in the file to split.
     Returns an int i such that fileStart <= i < fileEnd
     """
-    filehandle = open(file, 'r')
-    mid_point = (file_start + file_end) / 2
-    assert mid_point >= file_start
-    filehandle.seek(mid_point)
-    line = filehandle.readline()
-    assert len(line) >= 1
-    if len(line) + mid_point < file_end:
-        return mid_point + len(line) - 1
-    filehandle.seek(file_start)
-    line = filehandle.readline()
-    assert len(line) >= 1
-    assert len(line) + file_start <= file_end
+    with open(file, 'r') as filehandle:
+        mid_point = old_div((file_start + file_end), 2)
+        assert mid_point >= file_start
+        filehandle.seek(mid_point)
+        line = filehandle.readline()
+        assert len(line) >= 1
+        if len(line) + mid_point < file_end:
+            return mid_point + len(line) - 1
+        filehandle.seek(file_start)
+        line = filehandle.readline()
+        assert len(line) >= 1
+        assert len(line) + file_start <= file_end
     return len(line) + file_start - 1
 
 

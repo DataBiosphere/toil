@@ -84,14 +84,13 @@ def logFile(fileName, printFunction=logger.info):
     """
     printFunction("Reporting file: %s" % fileName)
     shortName = fileName.split("/")[-1]
-    fileHandle = open(fileName, 'r')
-    line = fileHandle.readline()
-    while line != '':
-        if line[-1] == '\n':
-            line = line[:-1]
-        printFunction("%s:\t%s" % (shortName, line))
-        line = fileHandle.readline()
-    fileHandle.close()
+    with open(fileName, 'r') as f:
+        line = f.readline()
+        while line != '':
+            if line[-1] == '\n':
+                line = line[:-1]
+            printFunction("%s:\t%s" % (shortName, line))
+            line = f.readline()
     
 def logStream(fileHandle, shortName, printFunction=logger.info):
     """Writes out a formatted version of the given log stream.

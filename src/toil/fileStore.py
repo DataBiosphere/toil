@@ -36,6 +36,7 @@ import tempfile
 import time
 import uuid
 
+from io import open
 from contextlib import contextmanager
 from fcntl import flock, LOCK_EX, LOCK_UN
 from functools import partial
@@ -44,7 +45,6 @@ from threading import Thread, Semaphore, Event
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
-from six.moves import xrange
 
 from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
