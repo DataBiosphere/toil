@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from six import iteritems
 import unittest
 import os
 from toil import subprocess
@@ -216,7 +217,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
         no_declaration = ['bool1', 'int1', 'float1', 'file1', 'string1']
         collection_counter = []
-        for name, declaration in aWDL.workflows_dictionary['vocabulary']['wf_declarations'].iteritems():
+        for name, declaration in iteritems(aWDL.workflows_dictionary['vocabulary']['wf_declarations']):
 
             if name in no_declaration:
                 collection_counter.append(name)

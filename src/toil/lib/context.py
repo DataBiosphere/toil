@@ -1,4 +1,5 @@
 # coding=utf-8
+from six import iteritems
 import hashlib
 from contextlib import contextmanager
 import json
@@ -560,7 +561,7 @@ class Context(object):
         keypairs = dict((keypair.name, keypair) for keypair in self.ec2.get_all_key_pairs())
         for glob in globs:
             i = len(result)
-            for name, keypair in keypairs.iteritems():
+            for name, keypair in iteritems(keypairs):
                 if fnmatch.fnmatch(name, glob):
                     result.append(keypair)
 
@@ -697,7 +698,7 @@ class Context(object):
             delete_policy(entity_name, policy_name)
 
         # Create expected policies
-        for policy_name, policy in policies.iteritems():
+        for policy_name, policy in iteritems(policies):
             current_policy = None
             try:
                 current_policy = json.loads(urllib.unquote(
