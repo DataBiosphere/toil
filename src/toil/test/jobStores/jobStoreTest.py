@@ -1230,7 +1230,7 @@ class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTes
 @needs_google
 @needs_encryption
 @slow
-class EncryptedGoogleJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
+class EncryptedGoogleJobStoreTest(GoogleJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
 
