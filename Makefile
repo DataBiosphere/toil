@@ -267,7 +267,7 @@ prepare: check_venv
 
 
 check_venv:
-	@$(python) -c 'import sys; sys.exit( int( not (hasattr(sys, "real_prefix") or ( hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix ) ) ) )' \
+	@$(python) -c 'import sys; sys.exit( int( 1 if 'VIRTUAL_ENV' in os.environ else 0 ) )' \
 		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
 
 
