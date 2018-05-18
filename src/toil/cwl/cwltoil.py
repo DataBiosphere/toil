@@ -18,10 +18,9 @@
 # For an overview of how this all works, see discussion in
 # docs/architecture.rst
 
-from builtins import str
 from builtins import range
 from builtins import object
-from toil.job import Job
+from toil.job import Job, Promise
 from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
 
@@ -133,6 +132,19 @@ class StepValueFrom(object):
                                           None, None, {}, context=ctx)
 
 
+class DefaultWithSource(object):
+    """A workflow step input that has both a source and a default value."""
+    def __init__(self, default, source):
+        self.default = default
+        self.source = source
+
+    def resolve(self):
+        if self.source:
+            result = self.source[1][self.source[0]]
+            if result:
+                return result
+        return self.default
+
 def _resolve_indirect_inner(d):
     """Resolve the contents an indirect dictionary (containing promises) to produce
     a dictionary actual values, including merging multiple sources into a
@@ -143,7 +155,7 @@ def _resolve_indirect_inner(d):
     if isinstance(d, IndirectDict):
         r = {}
         for k, v in list(d.items()):
-            if isinstance(v, MergeInputs):
+            if isinstance(v, (MergeInputs, DefaultWithSource)):
                 r[k] = v.resolve()
             else:
                 r[k] = v[1].get(v[0])
@@ -390,10 +402,10 @@ class CWLJobWrapper(Job):
 
     def run(self, fileStore):
         cwljob = resolve_indirect(self.cwljob)
+        fillInDefaults(self.cwltool.tool['inputs'], cwljob)
         options = copy.deepcopy(self.kwargs)
         options['jobobj'] = cwljob
         realjob = CWLJob(self.cwltool, cwljob, **options)
-        fillInDefaults(realjob.step_inputs, realjob.cwljob)
         self.addChild(realjob)
         return realjob.rv()
 
@@ -748,9 +760,18 @@ class CWLWorkflow(Job):
                                         inputSource = str(inputSource[0])
                                     jobobj[key] = (shortname(inputSource),
                                                    promises[inputSource].rv())
-                            elif "default" in inp:
-                                d = copy.copy(inp["default"])
-                                jobobj[key] = ("default", {"default": d})
+                            if "default" in inp:
+                                if key in jobobj:
+                                    if isinstance(jobobj[key][1], Promise):
+                                        d = copy.copy(inp["default"])
+                                        jobobj[key] = DefaultWithSource(d, jobobj[key])
+                                    else:
+                                        if jobobj[key][1][jobobj[key][0]] is None:
+                                            d = copy.copy(inp["default"])
+                                            jobobj[key] = ("default", {"default": d})
+                                else:
+                                    d = copy.copy(inp["default"])
+                                    jobobj[key] = ("default", {"default": d})
 
                             if "valueFrom" in inp and "scatter" not in step.tool:
                                 if key in jobobj:
