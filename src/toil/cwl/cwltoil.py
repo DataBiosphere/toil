@@ -393,6 +393,7 @@ class CWLJobWrapper(Job):
         options = copy.deepcopy(self.kwargs)
         options['jobobj'] = cwljob
         realjob = CWLJob(self.cwltool, cwljob, **options)
+        fillInDefaults(realjob.step_inputs, realjob.cwljob)
         self.addChild(realjob)
         return realjob.rv()
 

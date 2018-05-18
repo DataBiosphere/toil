@@ -37,7 +37,6 @@ def runSetup():
     cwltool = 'cwltool==1.0.20180403145700'
     schemaSalad = 'schema-salad >= 2.6, < 3'
     galaxyLib = 'galaxy-lib==17.9.3'
-    cwltest = 'cwltest>=1.0.20180209171722'
     htcondor = 'htcondor>=8.6.0'
 
     mesos_reqs = [
@@ -62,8 +61,7 @@ def runSetup():
     cwl_reqs = [
         cwltool,
         schemaSalad,
-        galaxyLib,
-        cwltest]
+        galaxyLib]
     wdl_reqs = []
     htcondor_reqs = [
         htcondor]
