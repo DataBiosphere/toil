@@ -43,7 +43,7 @@ from cwltool.process import (shortname, fillInDefaults, compute_checksums,
                              collectFilesAndDirs)
 from cwltool.software_requirements import (
         DependenciesConfiguration, get_container_from_software_requirements)
-from cwltool.utils import aslist
+from cwltool.utils import aslist, add_sizes
 import schema_salad.validate as validate
 from ruamel.yaml.comments import CommentedSeq
 import schema_salad.ref_resolver
@@ -978,6 +978,7 @@ def main(args=None, stdout=sys.stdout):
 
             def importFiles(tool):
                 visit_class(tool, ("File", "Directory"), pathToLoc)
+                visit_class(tool, ("File", ), add_sizes)
                 normalizeFilesDirs(tool)
                 adjustDirObjs(tool, functools.partial(get_listing,
                                                       cwltool.stdfsaccess.StdFsAccess(""),
