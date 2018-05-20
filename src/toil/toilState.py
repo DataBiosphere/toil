@@ -80,23 +80,22 @@ class ToilState( object ):
         If jobCache is passed, it must be a dict from job ID to JobGraph
         object. Jobs will be loaded from the cache (which can be downloaded from
         the jobStore in a batch) instead of piecemeal when recursed into.
+
+        :param jobGraph: Object representing a job.
+        :param jobStore: Object inheriting toil.jobStores.abstractJobStore.AbstractJobStore.
+        :param jobCache:
+        :return:
         """
 
         def getJob(jobId):
-            if jobCache is not None:
-                try:
+            if jobCache:
+                if jobId in jobCache:
                     return jobCache[jobId]
-                except ValueError:
-                    return jobStore.load(jobId)
-            else:
-                return jobStore.load(jobId)
+            return jobStore.load(jobId)
 
         # If the jobGraph has a command, is a checkpoint, has services or is ready to be
         # deleted it is ready to be processed
-        if (jobGraph.command is not None
-            or jobGraph.checkpoint is not None
-            or len(jobGraph.services) > 0
-            or len(jobGraph.stack) == 0):
+        if jobGraph.command or jobGraph.checkpoint or jobGraph.services or not jobGraph.stack:
             logger.debug('Found job to run: %s, with command: %s, with checkpoint: %s, '
                          'with  services: %s, with stack: %s', jobGraph.jobStoreID,
                          jobGraph.command is not None, jobGraph.checkpoint is not None,

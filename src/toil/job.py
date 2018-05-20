@@ -56,7 +56,7 @@ from future.utils import with_metaclass
 logger = logging.getLogger( __name__ )
 
 
-class JobLikeObject(object):
+class CoreMemDisk(object):
     """
     Inherit from this class to add requirement properties to a job (or job-like) object.
     If the object doesn't specify explicit requirements, these properties will fall back
@@ -67,13 +67,13 @@ class JobLikeObject(object):
         memory = requirements.get('memory')
         disk = requirements.get('disk')
         preemptable = requirements.get('preemptable')
-        if unitName is not None:
+        if unitName:
             assert isinstance(unitName, (str, bytes))
-        if jobName is not None:
+        if jobName:
             assert isinstance(jobName, (str, bytes))
         self.unitName = unitName
-        self.displayName = displayName if displayName is not None else self.__class__.__name__
-        self.jobName = jobName if jobName is not None else self.__class__.__name__
+        self.displayName = displayName if displayName else self.__class__.__name__
+        self.jobName = jobName if jobName else self.__class__.__name__
         self._cores = self._parseResource('cores', cores)
         self._memory = self._parseResource('memory', memory)
         self._disk = self._parseResource('disk', disk)
@@ -146,9 +146,7 @@ class JobLikeObject(object):
         corresponding integral value will be returned.
 
         :param str name: The name of the resource
-
         :param None|str|float|int value: The resource value
-
         :rtype: int|float|None
 
         >>> Job._parseResource('cores', None)
@@ -191,7 +189,7 @@ class JobLikeObject(object):
         return printedName
 
 
-class JobNode(JobLikeObject):
+class JobNode(CoreMemDisk):
     """
     This object bridges the job graph, job, and batchsystem classes
     """
@@ -256,7 +254,7 @@ class JobNode(JobLikeObject):
                    displayName=job.displayName,
                    predecessorNumber=predecessorNumber)
 
-class Job(JobLikeObject):
+class Job(CoreMemDisk):
     """
     Class represents a unit of work in toil.
     """
@@ -460,24 +458,6 @@ class Job(JobLikeObject):
             return self.addFollowOn(PromisedRequirementJobFunctionWrappingJob.create(fn, *args, **kwargs))
         else:
             return self.addFollowOn(JobFunctionWrappingJob(fn, *args, **kwargs))
-
-    @property
-    def tempDir(self):
-        """
-        Shortcut to calling :func:`job.fileStore.getLocalTempDir`. Temp dir is created on first call
-        and will be returned for first and future calls
-        :return: Path to tempDir. See `job.fileStore.getLocalTempDir`
-        :rtype: str
-        """
-        if self._tempDir is None:
-            self._tempDir = self._fileStore.getLocalTempDir()
-        return self._tempDir
-
-    def log(self, text, level=logging.INFO):
-        """
-        convenience wrapper for :func:`fileStore.logToMaster`
-        """
-        self._fileStore.logToMaster(text, level)
 
     @staticmethod
     def wrapFn(fn, *args, **kwargs):
@@ -776,7 +756,7 @@ class Job(JobLikeObject):
                 else:
                     return toil.restart()
 
-    class Service(with_metaclass(ABCMeta, JobLikeObject)):
+    class Service(with_metaclass(ABCMeta, CoreMemDisk)):
         """
         Abstract class used to define the interface to a service.
         """
@@ -933,7 +913,7 @@ class Job(JobLikeObject):
 
         unpickler.find_global = filter_main
         runnable = unpickler.load()
-        assert isinstance(runnable, JobLikeObject)
+        assert isinstance(runnable, CoreMemDisk)
         runnable._config = config
         return runnable
 
@@ -1801,15 +1781,13 @@ class PromisedRequirement(object):
         :param kwargs: function keyword arguments
         :return: bool
         """
-        requirements = ["disk", "memory", "cores"]
-        foundPromisedRequirement = False
-        for r in requirements:
+        for r in ["disk", "memory", "cores"]:
             if isinstance(kwargs.get(r), Promise):
                 kwargs[r] = PromisedRequirement(kwargs[r])
-                foundPromisedRequirement = True
+                return True
             elif isinstance(kwargs.get(r), PromisedRequirement):
-                foundPromisedRequirement = True
-        return foundPromisedRequirement
+                return True
+        return False
 
 
 class UnfulfilledPromiseSentinel(object):
