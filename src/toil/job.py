@@ -56,9 +56,10 @@ from future.utils import with_metaclass
 logger = logging.getLogger( __name__ )
 
 
-class CoreMemDisk(object):
+class BaseJob(object):
     """
-    Inherit from this class to add requirement properties to a job (or job-like) object.
+    Inherit from this class to add job properties to an object.
+
     If the object doesn't specify explicit requirements, these properties will fall back
     to the configured defaults. If the value cannot be determined, an AttributeError is raised.
     """
@@ -189,7 +190,7 @@ class CoreMemDisk(object):
         return printedName
 
 
-class JobNode(CoreMemDisk):
+class JobNode(BaseJob):
     """
     This object bridges the job graph, job, and batchsystem classes
     """
@@ -254,7 +255,7 @@ class JobNode(CoreMemDisk):
                    displayName=job.displayName,
                    predecessorNumber=predecessorNumber)
 
-class Job(CoreMemDisk):
+class Job(BaseJob):
     """
     Class represents a unit of work in toil.
     """
@@ -756,7 +757,7 @@ class Job(CoreMemDisk):
                 else:
                     return toil.restart()
 
-    class Service(with_metaclass(ABCMeta, CoreMemDisk)):
+    class Service(with_metaclass(ABCMeta, BaseJob)):
         """
         Abstract class used to define the interface to a service.
         """
@@ -913,7 +914,7 @@ class Job(CoreMemDisk):
 
         unpickler.find_global = filter_main
         runnable = unpickler.load()
-        assert isinstance(runnable, CoreMemDisk)
+        assert isinstance(runnable, BaseJob)
         runnable._config = config
         return runnable
 
