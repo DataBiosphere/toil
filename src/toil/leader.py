@@ -22,7 +22,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import object
-from past.utils import old_div
+from builtins import super
 import logging
 import time
 
@@ -69,7 +69,7 @@ logger = logging.getLogger( __name__ )
 # Exception thrown by the Leader class when one or more jobs fails
 ####################################################
 
-class FailedJobsException( Exception ):
+class FailedJobsException(Exception):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
         msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
         try:
@@ -84,7 +84,7 @@ class FailedJobsException( Exception ):
         # catch failures to prepare more complex details and only return the basics
         except:
             logger.exception('Exception when compiling information about failed jobs')
-        super( FailedJobsException, self ).__init__(msg)
+        super().__init__()
         self.jobStoreLocator = jobStoreLocator
         self.numberOfFailedJobs = len(failedJobs)
 
@@ -93,10 +93,10 @@ class FailedJobsException( Exception ):
 # resources to run the workflow
 ####################################################
 
-class DeadlockException( Exception ):
+class DeadlockException(Exception):
     def __init__(self, msg):
         msg = "Deadlock encountered: " + msg
-        super( DeadlockException, self ).__init__(msg)
+        super().__init__()
 
 ####################################################
 ##Following class represents the leader
