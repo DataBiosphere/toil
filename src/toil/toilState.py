@@ -17,9 +17,9 @@ from __future__ import absolute_import
 from builtins import object
 import logging
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
-class ToilState( object ):
+class ToilState(object):
     """
     Represents a snapshot of the jobs in the jobStore. Used by the leader to manage the batch.
     """
@@ -27,10 +27,10 @@ class ToilState( object ):
         """
         Loads the state from the jobStore, using the rootJob 
         as the source of the job graph.
-        
+
         The jobCache is a map from jobStoreIDs to jobGraphs or None. Is used to
         speed up the building of the state.
-        
+
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore 
         :param toil.jobWrapper.JobGraph rootJob
         """
@@ -51,7 +51,7 @@ class ToilState( object ):
         self.servicesIssued = { }
         
         # Jobs that are ready to be processed
-        self.updatedJobs = set( )
+        self.updatedJobs = set()
         
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
@@ -102,7 +102,7 @@ class ToilState( object ):
                          len(jobGraph.services) > 0, len(jobGraph.stack) == 0)
             self.updatedJobs.add((jobGraph, 0))
 
-            if jobGraph.checkpoint is not None:
+            if jobGraph.checkpoint:
                 jobGraph.command = jobGraph.checkpoint
 
         else: # There exist successors
