@@ -134,7 +134,7 @@ class Leader(object):
         assert len(self.batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
         logger.info("Checked batch system has no running jobs and no updated jobs")
 
-        # Map of batch system IDs to IsseudJob tuples
+        # Map of batch system IDs to IssuedJob tuples
         self.jobBatchSystemIDToIssuedJob = {}
 
         # Number of preempetable jobs currently being run by batch system
@@ -557,8 +557,8 @@ class Leader(object):
         totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
         # If there are no updated jobs and at least some jobs running
         if totalServicesIssued >= totalRunningJobs and len(self.toilState.updatedJobs) == 0 and totalRunningJobs > 0:
-            serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.values()) if isinstance(x, ServiceJobNode)]
-            runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.isRunning(x)])
+            serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.keys()) if isinstance(self.jobBatchSystemIDToIssuedJob[x], ServiceJobNode)]
+            runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.isRunning(self.jobBatchSystemIDToIssuedJob[x])])
             assert len(runningServiceJobs) <= totalRunningJobs
 
             # If all the running jobs are active services then we have a potential deadlock
@@ -586,7 +586,10 @@ class Leader(object):
         Add a job to the queue of jobs
         """
         jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
-                                    jobNode.jobName, self.jobStoreLocator, jobNode.jobStoreID))
+                                    jobNode.jobName,
+                                    self.jobStoreLocator,
+                                    jobNode.jobStoreID))
+        # jobBatchSystemID is an int that is an incremented counter for each job
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
         if jobNode.preemptable:
