@@ -358,6 +358,16 @@ class Job(JobLikeObject):
         followOnJob._addPredecessor(self)
         return followOnJob
 
+    def hasFollowOn(self, followOnJob):
+        """
+        Check if given job is already a follow-on of this job.
+
+        :param toil.job.Job followOnJob:
+        :return: True if the followOnJob is a follow-on of this job, else False.
+        :rtype: bool
+        """
+        return followOnJob in self._followOns
+
     def addService(self, service, parentService=None):
         """
         Add a service.

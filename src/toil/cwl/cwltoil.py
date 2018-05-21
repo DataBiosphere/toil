@@ -797,12 +797,16 @@ class CWLWorkflow(Job):
                         connected = False
                         for inp in step.tool["inputs"]:
                             for s in aslist(inp.get("source", [])):
-                                if not promises[s].hasChild(wfjob):
-                                    if isinstance(promises[s], (CWLJobWrapper, CWLGather)):
+                                if (isinstance(promises[s],
+                                        (CWLJobWrapper, CWLGather)) and
+                                        not promises[s].hasFollowOn(wfjob)):
                                         promises[s].addFollowOn(wfjob)
-                                    else:
+                                        connected = True
+                                if (not isinstance(promises[s],
+                                        (CWLJobWrapper, CWLGather)) and
+                                        not promises[s].hasChild(wfjob)):
                                         promises[s].addChild(wfjob)
-                                    connected = True
+                                        connected = True
                         if not connected:
                             # workflow step has default inputs only, isn't connected to other jobs,
                             # so add it as child of workflow.
