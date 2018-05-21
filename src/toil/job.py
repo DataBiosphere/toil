@@ -20,6 +20,7 @@ from builtins import zip
 from builtins import map
 from builtins import str
 from builtins import object
+from builtins import super
 import collections
 import importlib
 import inspect
@@ -196,13 +197,13 @@ class JobNode(BaseJob):
     """
     def __init__(self, requirements, jobName, unitName, jobStoreID,
                  command, displayName=None, predecessorNumber=1):
-        super(JobNode, self).__init__(requirements=requirements, displayName=displayName, unitName=unitName, jobName=jobName)
+        super().__init__(requirements=requirements, displayName=displayName, unitName=unitName, jobName=jobName)
         self.jobStoreID = jobStoreID
         self.predecessorNumber = predecessorNumber
         self.command = command
 
     def __str__(self):
-        return super(JobNode, self).__str__() + ' ' + self.jobStoreID
+        return super().__str__() + ' ' + self.jobStoreID
 
     def __hash__(self):
         return hash(self.jobStoreID)
@@ -280,7 +281,7 @@ class Job(BaseJob):
         """
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}
-        super(Job, self).__init__(requirements=requirements, unitName=unitName, displayName=displayName)
+        super().__init__(requirements=requirements, unitName=unitName, displayName=displayName)
         self.checkpoint = checkpoint
         self.displayName = displayName if displayName is not None else self.__class__.__name__
 
@@ -768,7 +769,7 @@ class Job(BaseJob):
             """
             requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                             'preemptable': preemptable}
-            super(Job.Service, self).__init__(requirements=requirements, unitName=unitName)
+            super().__init__(requirements=requirements, unitName=unitName)
             self._childServices = []
             self._hasParent = False
 
@@ -1316,21 +1317,21 @@ class Job(BaseJob):
         return self.displayName
 
 
-class JobException( Exception ):
+class JobException(Exception):
     """
     General job exception.
     """
-    def __init__( self, message ):
-        super( JobException, self ).__init__( message )
+    def __init__(self, message):
+        super().__init__(message)
 
 
-class JobGraphDeadlockException( JobException ):
+class JobGraphDeadlockException(JobException):
     """
     An exception raised in the event that a workflow contains an unresolvable \
     dependency, such as a cycle. See :func:`toil.job.Job.checkJobGraphForDeadlocks`.
     """
-    def __init__( self, string ):
-        super( JobGraphDeadlockException, self ).__init__( string )
+    def __init__(self, string):
+        super().__init__(string)
 
 
 class FunctionWrappingJob(Job):
@@ -1448,7 +1449,7 @@ class PromisedRequirementFunctionWrappingJob(FunctionWrappingJob):
         self._promisedKwargs = kwargs.copy()
         # Replace resource requirements in intermediate job with small values.
         kwargs.update(dict(disk='1M', memory='32M', cores=0.1))
-        super(PromisedRequirementFunctionWrappingJob, self).__init__(userFunction, *args, **kwargs)
+        super().__init__(userFunction, *args, **kwargs)
 
     @classmethod
     def create(cls, userFunction, *args, **kwargs):
@@ -1544,7 +1545,7 @@ class EncapsulatedJob(Job):
         return self.encapsulatedJob.rv(*path)
 
     def prepareForPromiseRegistration(self, jobStore):
-        super(EncapsulatedJob, self).prepareForPromiseRegistration(jobStore)
+        super().prepareForPromiseRegistration(jobStore)
         self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
 
     def getUserScript(self):
@@ -1555,7 +1556,7 @@ class ServiceJobNode(JobNode):
     def __init__(self, jobStoreID, memory, cores, disk, preemptable, startJobStoreID, terminateJobStoreID,
                  errorJobStoreID, unitName, jobName, command, predecessorNumber):
         requirements = dict(memory=memory, cores=cores, disk=disk, preemptable=preemptable)
-        super(ServiceJobNode, self).__init__(unitName=unitName, jobName=jobName,
+        super().__init__(unitName=unitName, jobName=jobName,
                                              requirements=requirements,
                                              jobStoreID=jobStoreID,
                                              command=command,
@@ -1714,7 +1715,7 @@ class Promise(object):
         assert len(args) == 2
         if isinstance(args[0], Job):
             # Regular instantiation when promise is created, before it is being pickled
-            return super(Promise, cls).__new__(cls, *args)
+            return super().__new__(cls)
         else:
             # Attempted instantiation during unpickling, return promised value instead
             return cls._resolve(*args)
