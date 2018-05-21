@@ -19,6 +19,7 @@ from builtins import map
 from builtins import str
 from builtins import range
 from builtins import object
+from builtins import super
 from abc import abstractmethod, ABCMeta
 
 from toil.lib.objects import abstractclassmethod
@@ -435,7 +436,7 @@ class CachingFileStore(FileStore):
     """
 
     def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
-        super(CachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
+        super().__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
         # Variables related to asynchronous writes.
         self.workerNumber = 2
         self.queue = Queue()
@@ -593,7 +594,7 @@ class CachingFileStore(FileStore):
 
     def writeGlobalFileStream(self, cleanup=False):
         # TODO: Make this work with caching
-        return super(CachingFileStore, self).writeGlobalFileStream(cleanup)
+        return super().writeGlobalFileStream(cleanup)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
         """
@@ -1597,7 +1598,7 @@ class NonCachingFileStore(FileStore):
         self.jobsToDelete = set()
         self.loggingMessages = []
         self.filesToDelete = set()
-        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
+        super().__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
         # This will be defined in the `open` method.
         self.jobStateFile = None
         self.localFileMap = defaultdict(list)
@@ -1834,18 +1835,20 @@ class NonCachingFileStore(FileStore):
         cls.findAndHandleDeadJobs(dir_, batchSystemShutdown=True)
 
 
-class FileID(str):
+class FileID(object):
     """
     A class to wrap the job store file id returned by writeGlobalFile and any attributes we may want
     to add to it.
     """
-    def __new__(cls, fileStoreID, *args):
-        return super(FileID, cls).__new__(cls, fileStoreID)
-
     def __init__(self, fileStoreID, size):
-        super(FileID, self).__init__(fileStoreID)
+        self.id = fileStoreID
         self.size = size
 
+    def __str__(self):
+        return str(self.id)
+
+    def __eq__(self, other):
+        return str(self.id) == other
 
 def shutdownFileStore(workflowDir, workflowID):
     """
@@ -1879,7 +1882,7 @@ class CacheError(Exception):
     """
 
     def __init__(self, message):
-        super(CacheError, self).__init__(message)
+        super().__init__(message)
 
 
 class CacheUnbalancedError(CacheError):
@@ -1891,7 +1894,7 @@ class CacheUnbalancedError(CacheError):
               'more information leading up to this error through cache usage logs.'
 
     def __init__(self):
-        super(CacheUnbalancedError, self).__init__(self.message)
+        super().__init__(self.message)
 
 
 class IllegalDeletionCacheError(CacheError):
@@ -1902,7 +1905,7 @@ class IllegalDeletionCacheError(CacheError):
     def __init__(self, deletedFile):
         message = 'Cache tracked file (%s) deleted explicitly by user. Use deleteLocalFile to ' \
                   'delete such files.' % deletedFile
-        super(IllegalDeletionCacheError, self).__init__(message)
+        super().__init__(message)
 
 
 class InvalidSourceCacheError(CacheError):
@@ -1911,4 +1914,4 @@ class InvalidSourceCacheError(CacheError):
     """
 
     def __init__(self, message):
-        super(InvalidSourceCacheError, self).__init__(message)
+        super().__init__(message)
