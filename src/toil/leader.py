@@ -968,6 +968,3 @@ class Leader(object):
                     # Now we know the job is done we can add it to the list of updated job files
                     assert predecessorJob not in self.toilState.updatedJobs
                     self.toilState.updatedJobs.add((predecessorJob, 0))
-
-                    logger.debug('Job %s has all its non-service successors completed or totally '
-                                 'failed', predecessorJob)
