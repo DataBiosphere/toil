@@ -164,7 +164,7 @@ class FileJobStore(AbstractJobStore):
         self._checkJobStoreId(jobStoreID)
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
-        with open(jobFile, 'rb') as fileHandle:
+        with open(jobFile, 'r') as fileHandle:
             job = pickle.load(fileHandle)
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
@@ -404,7 +404,7 @@ class FileJobStore(AbstractJobStore):
         # Temporary files are placed in the set of temporary files/directoies
         fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
         with open(tempStatsFile, "wb") as f:
-            f.write(statsAndLoggingString.encode('Latin-1'))
+            f.write(statsAndLoggingString)
         os.close(fd)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
 
