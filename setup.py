@@ -98,7 +98,7 @@ def runSetup():
             'future',
             'requests==2.18.4',
             'docker==2.5.1',
-            'subprocess32==3.5.0',
+            'subprocess32==3.5.1',
             'python-dateutil'],
         extras_require={
             'mesos': mesos_reqs,
