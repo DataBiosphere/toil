@@ -857,7 +857,7 @@ class MesosBatchSystemJobTest(hidden.AbstractBatchSystemJobTest, MesosTestSuppor
         self._stopMesos()
 
 
-def measureConcurrency(filepath, sleep_time=1):
+def measureConcurrency(filepath, sleep_time=3):
     """
     Run in parallel to determine the number of concurrent tasks.
     This code was copied from toil.batchSystemTestMaxCoresSingleMachineBatchSystemTest
