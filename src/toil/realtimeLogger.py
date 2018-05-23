@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from future import standard_library
 standard_library.install_aliases()
 from builtins import object
+from builtins import super
 import os
 import os.path
 import json
@@ -228,7 +229,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
         suppressed on the workers. Note that this is different from passing level='OFF',
         which is equivalent to level='CRITICAL' and does not disable the server.
         """
-        super(RealtimeLogger, self).__init__()
+        super().__init__()
         self.__level = level
         self.__batchSystem = batchSystem
 
