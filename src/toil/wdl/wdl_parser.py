@@ -3150,11 +3150,11 @@ def output(ctx, terminal, source_string, line, col):
     default_action(ctx, terminal, source_string, line, col)
 def wdl_unescape(ctx, terminal, source_string, line, col):
     for regex, c in ctx.user_context['replacements'].items():
-        source_string = regex.sub(chr(c).encode('latin-1'), source_string)
+        source_string = regex.sub(chr(c).encode('utf-8'), source_string)
     source_string = source_string.replace("\u005C\u005C", "\u005C")
     for regex, base in ctx.user_context['escapes'].items():
         for escape_sequence, number in regex.findall(source_string):
-            source_string = source_string.replace(escape_sequence, chr(int(number, base)).encode('latin-1'))
+            source_string = source_string.replace(escape_sequence, chr(int(number, base)).encode('utf-8'))
     default_action(ctx, terminal, source_string[1:-1], line, col)
 # END USER CODE
 def emit(ctx, terminal, source_string, line, col):

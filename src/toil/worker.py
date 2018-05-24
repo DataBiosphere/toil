@@ -460,7 +460,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                         f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                     elif logFileByteReportLimit < 0:
                         f.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
-                w.write(f.read().encode('Latin-1')) # TODO load file using a buffer
+                w.write(f.read().encode('utf-8')) # TODO load file using a buffer
         jobStore.update(jobGraph)
 
     elif debugging and redirectOutputToLogFile:  # write log messages

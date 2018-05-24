@@ -630,7 +630,7 @@ def fn1Test(string, outputFile):
     character in the string, e.g. if string is "AA" returns "B".
     """
 
-    rV = string + chr(ord(string[-1]) + 1).encode('latin-1')
+    rV = string + chr(ord(string[-1]) + 1).encode('utf-8')
     with open(outputFile, 'w') as fH:
         fH.write(rV)
     return rV
