@@ -47,11 +47,10 @@ class StatsAndLogging( object ):
 
     @classmethod
     def logWithFormatting(cls, jobStoreID, jobLogs, method=logger.debug, message=None):
-        if message:
-            method(message.encode('Latin-1'))
+        if message is not None:
+            method(message)
         for line in jobLogs:
-            line2print = '{id}    {log}'.format(id=str(jobStoreID), log=str(line).rstrip('\n'))
-            method(line2print)
+            method('%s    %s', jobStoreID, line.rstrip('\n'))
 
     @classmethod
     def writeLogFiles(cls, jobNames, jobLogList, config):
