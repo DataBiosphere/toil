@@ -209,7 +209,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
 
     @classmethod
     def _pathHash(cls, path):
-        return hashlib.md5(path).hexdigest()
+        return hashlib.md5(path.encode('utf-8')).hexdigest()
 
     @classmethod
     def _load(cls, path):
