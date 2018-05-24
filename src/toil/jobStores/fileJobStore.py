@@ -403,8 +403,8 @@ class FileJobStore(AbstractJobStore):
     def writeStatsAndLogging(self, statsAndLoggingString):
         # Temporary files are placed in the set of temporary files/directories
         fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
-        with open(tempStatsFile, "wb") as f:
-            f.write(statsAndLoggingString.encode('utf-8'))
+        with open(tempStatsFile, "w") as f:
+            f.write(statsAndLoggingString.decode('utf-8'))
         os.close(fd)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
 
