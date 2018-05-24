@@ -164,8 +164,8 @@ class FileJobStore(AbstractJobStore):
         self._checkJobStoreId(jobStoreID)
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
-        with open(jobFile, 'r') as fileHandle:
-            job = pickle.load(fileHandle)
+        with open(jobFile, 'rb') as fileHandle:
+            job = pickle.load(fileHandle, encoding='bytes')
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
@@ -194,7 +194,7 @@ class FileJobStore(AbstractJobStore):
         # Walk through list of temporary directories searching for jobs
         for tempDir in self._tempDirectories():
             for i in os.listdir(tempDir):
-                if i.startswith( 'job' ):
+                if i.startswith('job'):
                     try:
                         yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
                     except NoSuchJobException:
@@ -401,10 +401,10 @@ class FileJobStore(AbstractJobStore):
                 raise
 
     def writeStatsAndLogging(self, statsAndLoggingString):
-        # Temporary files are placed in the set of temporary files/directoies
+        # Temporary files are placed in the set of temporary files/directories
         fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
         with open(tempStatsFile, "wb") as f:
-            f.write(statsAndLoggingString)
+            f.write(bytes(statsAndLoggingString))
         os.close(fd)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
 
