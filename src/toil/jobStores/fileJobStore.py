@@ -165,7 +165,7 @@ class FileJobStore(AbstractJobStore):
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'rb') as fileHandle:
-            job = pickle.load(fileHandle, encoding='bytes')
+            job = pickle.load(fileHandle)
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
