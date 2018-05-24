@@ -404,7 +404,7 @@ class FileJobStore(AbstractJobStore):
         # Temporary files are placed in the set of temporary files/directories
         fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
         with open(tempStatsFile, "wb") as f:
-            f.write(bytes(statsAndLoggingString))
+            f.write(statsAndLoggingString.encode('utf-8'))
         os.close(fd)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
 
