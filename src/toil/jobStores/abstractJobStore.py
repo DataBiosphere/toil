@@ -174,7 +174,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param str rootJobStoreID: The ID of the job to set as root
         """
         with self.writeSharedFileStream(self.rootJobStoreIDFileName) as f:
-            f.write(rootJobStoreID)
+            f.write(rootJobStoreID.encode('utf-8'))
 
     def loadRootJob(self):
         """
