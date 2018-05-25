@@ -33,7 +33,7 @@ def encrypt(message, keyPath):
     A constant overhead is added to every encrypted message (for the nonce and MAC).
     >>> import tempfile
     >>> k = tempfile.mktemp()
-    >>> with open(k, 'w') as f:
+    >>> with open(k, 'wb') as f:
     ...     f.write(nacl.utils.random(SecretBox.KEY_SIZE))
     >>> message = 'test'
     >>> len(encrypt(message, k)) == overhead + len(message)

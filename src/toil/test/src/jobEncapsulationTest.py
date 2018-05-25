@@ -53,7 +53,7 @@ class JobEncapsulationTest(ToilTest):
 
     def testAddChildEncapsulate(self):
         """
-        Make sure that the encapsulate child does not have two pareents
+        Make sure that the encapsulate child does not have two parents
         with unique roots.
         """
         # Temporary file
