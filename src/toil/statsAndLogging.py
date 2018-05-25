@@ -138,7 +138,7 @@ class StatsAndLogging( object ):
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
-                               total_clock=str(getTotalCpuTime() - startClock)))
+                               total_clock=str(getTotalCpuTime() - startClock)), ensure_ascii=True)
         jobStore.writeStatsAndLogging(text)
 
     def check(self):
