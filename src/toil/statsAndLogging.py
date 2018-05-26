@@ -50,9 +50,9 @@ class StatsAndLogging( object ):
         if message is not None:
             method(message)
         if isinstance(jobStoreID, bytes):
-            jobStoreID = jobStoreID.encode('utf-8')
+            jobStoreID = jobStoreID.decode('utf-8')
         for line in jobLogs:
-            line = line.encode('utf-8')
+            line = line.decode('utf-8')
             method('%s    %s', jobStoreID, line.rstrip('\n'))
 
     @classmethod
