@@ -371,7 +371,7 @@ class ToilWdlIntegrationTest(ToilTest):
             subprocess.check_call(fetch_from_s3_cmd)
         # extract the compressed data if not already extracted
         if not os.path.exists(data_dir):
-            with zipfile.ZipFile(data, 'rb') as zip_ref:
+            with zipfile.ZipFile(data, 'r') as zip_ref:
                 zip_ref.extractall(self.test_directory)
 
 def remove_encode_output():
