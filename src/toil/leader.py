@@ -79,7 +79,7 @@ class FailedJobsException(Exception):
                 if job.logJobStoreFileID:
                     msg += "\n=========> Failed job %s \n" % jobNode
                     with job.getLogFileHandle(jobStore) as fH:
-                        msg += fH.read()
+                        msg += fH.read().decode('utf-8')
                     msg += "<=========\n"
         # catch failures to prepare more complex details and only return the basics
         except:
