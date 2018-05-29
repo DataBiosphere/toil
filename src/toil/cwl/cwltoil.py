@@ -54,11 +54,12 @@ import logging
 import copy
 import functools
 from typing import Text
-
+import hashlib
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
 import six.moves.urllib.parse as urlparse
+import six
 
 cwllogger = logging.getLogger("cwltool")
 
@@ -418,6 +419,36 @@ class CWLJobWrapper(Job):
         return realjob.rv()
 
 
+def _makeNestedTempDir(top,seed,levels=2):
+    """
+    Gets a temporary directory in the hierarchy of directories under a given top directory.
+
+    This exists to avoid placing too many temporary directories under a single top
+    in a flat structure, which can slow down metadata updates such as deletes on the 
+    local file system.
+
+    The seed parameter allows for deterministic placement of the created directory.
+    The seed is hashed into hex digest and the directory structure is created from
+    the initial letters of the digest.
+
+    :param top : string, top directory for the hierarchy
+    :param seed : string, the hierarchy will be generated from this seed string
+    :rtype : string, path to temporary directory - will be created when necessary.
+    """
+    # Valid chars for the creation of temporary directories
+    validDirs = hashlib.md5(six.b(str(seed))).hexdigest()
+    tempDir = top
+    for i in range(max(min(levels,len(validDirs)),1)):
+        tempDir = os.path.join(tempDir, validDirs[i])
+        if not os.path.exists(tempDir):
+            try:
+                os.mkdir(tempDir)
+            except os.error:
+                if not os.path.exists(tempDir): # In the case that a collision occurs and
+                    # it is created while we wait then we ignore
+                    raise
+    return tempDir
+
 class CWLJob(Job):
     """Execute a CWL tool using cwltool.main.single_job_executor"""
 
@@ -461,7 +492,8 @@ class CWLJob(Job):
         os.environ["TMPDIR"] = os.path.realpath(opts.pop("tmpdir", None) or fileStore.getLocalTempDir())
         outdir = os.path.join(fileStore.getLocalTempDir(), "out")
         os.mkdir(outdir)
-        tmp_outdir_prefix = os.path.join(opts.pop("workdir", None) or os.environ["TMPDIR"], "out_tmpdir")
+        top_tmp_outdir = (opts.pop("workdir", None) or os.environ["TMPDIR"])
+        tmp_outdir_prefix = os.path.join(_makeNestedTempDir(top=top_tmp_outdir,seed=outdir,levels=2),"out_tmpdir")
 
         index = {}
         existing = {}
