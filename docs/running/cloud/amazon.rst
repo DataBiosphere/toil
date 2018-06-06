@@ -38,7 +38,7 @@ during the computation of a workflow, first set up and configure an account with
 
     ~/.ssh/id_rsa
 
-#. Now move this to where Ubuntu can see it as an authorized key::
+#. Now move this to where your OS can see it as an authorized key::
 
     $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
     $ eval `ssh-agent -s`
