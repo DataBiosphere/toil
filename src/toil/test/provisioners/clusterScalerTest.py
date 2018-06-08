@@ -248,6 +248,19 @@ class BinPackingTest(ToilTest):
         # Hopefully we didn't assign just one node to cover all those jobs.
         self.assertNotEqual(self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge_preemptable: 0})
 
+    def testJobTooLargeForAllNodes(self):
+        """
+        If a job is too large for all node types, the scaler should print a
+        warning, but definitely not crash.
+        """
+        # Takes more RAM than an r3.8xlarge
+        largerThanR3 = Shape(wallTime=3600,
+                             memory=h2b('360G'),
+                             cores=32,
+                             disk=h2b('600G'),
+                             preemptable=False)
+        self.bpf.addJobShape(largerThanR3)
+        # If we got here we didn't crash.
 
 class ClusterScalerTest(ToilTest):
     def setUp(self):
