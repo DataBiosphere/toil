@@ -835,8 +835,8 @@ class ScalerThread(ExceptionalThread):
 
     def tryRun(self):
         while not self.stop:
-            try:
-                with throttle(self.scaler.config.scaleInterval):
+            with throttle(self.scaler.config.scaleInterval):
+                try:
                     queuedJobs = self.scaler.leader.getJobs()
                     queuedJobShapes = [
                         Shape(wallTime=self.scaler.getAverageRuntime(
@@ -857,9 +857,9 @@ class ScalerThread(ExceptionalThread):
                     self.scaler.updateClusterSize(estimatedNodeCounts)
                     if self.stats:
                         self.stats.checkStats()
-            except:
-                logger.exception("Exception encountered in scaler thread. Making a best-effort "
-                                 "attempt to keep going, but things may go wrong from now on.")
+                except:
+                    logger.exception("Exception encountered in scaler thread. Making a best-effort "
+                                     "attempt to keep going, but things may go wrong from now on.")
         self.scaler.shutDown()
 
 class ClusterStats(object):
