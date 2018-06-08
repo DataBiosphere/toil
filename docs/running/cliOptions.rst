@@ -15,7 +15,7 @@ The Job Store
 -------------
 
 Running toil scripts requires a filepath or url to a centralizing location for all of the files of the workflow.
-This is Toil's one required positional argument: the job store.  To use the :ref:`quick start <quickstart>` example,
+This is Toil's one required positional argument: the job store.  To use the :ref:`quickstart <quickstart>` example,
 if you're on a node that has a large **/scratch** volume, you can specify that the jobstore be created there by
 executing: ``python HelloWorld.py /scratch/my-job-store``, or more explicitly,
 ``python HelloWorld.py file:/scratch/my-job-store``.
@@ -52,9 +52,9 @@ Commandline Options
   --clean=STATE
                         Determines the deletion of the jobStore upon
                         completion of the program. Choices: 'always',
-                        'onError','never', or 'onSuccess'. The --stats option
+                        'onError','never', or 'onSuccess'. The -\\-stats option
                         requires information from the jobStore upon completion
-                        so the jobStore will never be deleted withthat flag.
+                        so the jobStore will never be deleted with that flag.
                         If you wish to be able to restart the run, choose
                         'never' or 'onSuccess'. Default is 'never' if stats is
                         enabled, and 'onSuccess' otherwise
@@ -72,15 +72,15 @@ Commandline Options
                         also be passed to specify where this file should be
                         written. This options only applies when using scalable
                         batch systems.
-  --restart             If --restart is specified then will attempt to restart
+  --restart             If -\\-restart is specified then will attempt to restart
                         existing workflow at the location pointed to by the
-                        --jobStore option. Will raise an exception if the
+                        -\\-jobStore option. Will raise an exception if the
                         workflow does not exist
 
 **Logging Options**
 
 Toil hides stdout and stderr by default except in case of job failure.  Log levels in toil are based on priority from
-the logging module, so:
+the logging module:
 
   --logOff
                         Only CRITICAL log levels are shown.
@@ -117,18 +117,18 @@ the logging module, so:
                         The type of batch system to run the job(s) with,
                         currently can be one of LSF, Mesos, Slurm, Torque,
                         HTCondor, singleMachine, parasol, gridEngine'.
-                        default=singleMachine
+                        (default: singleMachine)
   --parasolCommand PARASOLCOMMAND
                         The name or path of the parasol program. Will be
                         looked up on PATH unless it starts with a
-                        slashdefault=parasol
+                        slash. (default: parasol)
   --parasolMaxBatches PARASOLMAXBATCHES
                         Maximum number of job batches the Parasol batch is
                         allowed to create. One batch is created for jobs with
-                        a a unique set of resource requirements. default=1000
+                        a unique set of resource requirements. (default: 1000)
   --scale SCALE         A scaling factor to change the value of all submitted
-                        tasks's submitted cores. Used in singleMachine batch
-                        system. default=1
+                        tasks' submitted cores. Used in singleMachine batch
+                        system. (default: 1)
   --linkImports         When using Toil's importFile function for staging,
                         input files are copied to the job store. Specifying
                         this option saves space by sym-linking imported files.
@@ -136,14 +136,14 @@ the logging module, so:
                         file automatically by changing the permissions to
                         read-only.
   --mesosMaster MESOSMASTERADDRESS
-                        The host and port of the Mesos master separated by
+                        The host and port of the Mesos master separated by a
                         colon. (default: 169.233.147.202:5050)
 
 **Autoscaling Options**
 
   --provisioner CLOUDPROVIDER
                         The provisioner for cluster auto-scaling. The
-                        currently supported choices are'aws' or 'gce'. The
+                        currently supported choices are 'aws' or 'gce'. The
                         default is None.
   --nodeTypes NODETYPES
                         List of node types separated by commas. The syntax for
@@ -151,19 +151,19 @@ the logging module, so:
                         the cgcloud and AWS provisioners this is the name of
                         an EC2 instance type, optionally followed by a colon
                         and the price in dollars to bid for a spot instance of
-                        that type, for example 'c3.8xlarge:0.42'.If no spot
-                        bid is specified, nodes of this type will be non-
-                        preemptable.It is acceptable to specify an instance as
+                        that type, for example 'c3.8xlarge:0.42'. If no spot
+                        bid is specified, nodes of this type will be non-preemptable.
+                        It is acceptable to specify an instance as
                         both preemptable and non-preemptable, including it
-                        twice in the list. In that case,preemptable nodes of
+                        twice in the list. In that case, preemptable nodes of
                         that type will be preferred when creating new nodes
-                        once the maximum number of preemptable-nodes has
-                        beenreached.
+                        once the maximum number of preemptable-nodes
+                        have been reached.
   --nodeOptions NODEOPTIONS
                         Options for provisioning the nodes. The syntax depends
                         on the provisioner used. Neither the CGCloud nor the
                         AWS provisioner support any node options.
-  --minNodes MINNODES   Mininum number of nodes of each type in the cluster,
+  --minNodes MINNODES   Minimum number of nodes of each type in the cluster,
                         if using auto-scaling. This should be provided as a
                         comma-separated list of the same length as the list of
                         node types. default=0
@@ -255,7 +255,7 @@ the logging module, so:
                         log files larger than this will be truncated to the
                         last X bytes. Setting this option to zero will prevent
                         any truncation. Setting this option to a negative
-                        value will truncate from the beginning.Default=62.5 K
+                        value will truncate from the beginning. Default=62.5 K
   --writeLogs FILEPATH
                         Write worker logs received by the leader into their
                         own files at the specified path. The current working
@@ -266,7 +266,7 @@ the logging module, so:
                         'maxLogFileSize' to control the truncation limit for
                         worker logs.
   --writeLogsGzip FILEPATH
-                        Identical to --writeLogs except the logs files are
+                        Identical to -\\-writeLogs except the logs files are
                         gzipped on the leader.
   --realTimeLogging     Enable real-time logging from workers to masters
   --sseKey SSEKEY       Path to file containing 32 character key to be used
@@ -287,7 +287,7 @@ the logging module, so:
                         started.
   --servicePollingInterval SERVICEPOLLINGINTERVAL
                         Interval of time service jobs wait between polling for
-                        the existence of the keep-alive flag (defailt=60)
+                        the existence of the keep-alive flag (default=60)
 
 Restart Option
 --------------
@@ -308,8 +308,8 @@ to run both simultaneously. To cope with this situation Toil attempts to
 schedule services and accessors intelligently, however to avoid a deadlock
 with workflows running service jobs it is advisable to use the following parameters:
 
-* ``--maxServiceJobs`` The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes.
-* ``--maxPreemptableServiceJobs`` The maximum number of service jobs that can run concurrently on preemptable nodes.
+* ``--maxServiceJobs``: The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes.
+* ``--maxPreemptableServiceJobs``: The maximum number of service jobs that can run concurrently on preemptable nodes.
 
 Specifying these parameters so that at a maximum cluster size there will be
 sufficient resources to run accessors in addition to services will ensure that
@@ -325,9 +325,9 @@ Setting Options directly with the Toil Script
 ---------------------------------------------
 
 It's good to remember that commandline options can be overridden in the Toil script itself.  For example,
-:func:`toil.job.Job.Runner.getDefaultOptions`:: can be used to run toil with all default options, and in this example,
+:func:`toil.job.Job.Runner.getDefaultOptions` can be used to run toil with all default options, and in this example,
 it will override commandline args to run the default options and always run with the "./toilWorkflow" directory
-specified as the jobstore.
+specified as the jobstore:
 
 .. code-block:: python
 

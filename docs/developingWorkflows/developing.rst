@@ -449,7 +449,7 @@ Running this workflow results in three log messages from the jobs: ``i is 1``
 from ``j1``, ``i is 2`` from ``j2`` and ``i is 3`` from ``j3``.
 
 The return value from the first job is *promised* to the second job by the call
-to :func:`toil.job.Job.rv` in the line::
+to :func:`toil.job.Job.rv` in the following line::
 
     j2 = j1.addChildFn(fn, j1.rv())
 
@@ -613,7 +613,7 @@ node and that will be cleaned up, regardless of failure, when the job finishes::
             toil.start(j)
 
 Job functions can also access the file store for the job. The equivalent of the
-``LocalFileStoreJob`` class is::
+``LocalFileStoreJob`` class is ::
 
     def localFileStoreJobFn(job):
         scratchDir = job.tempDir

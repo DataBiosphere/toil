@@ -24,7 +24,7 @@ Preparing your AWS environment
 ------------------------------
 
 To use Amazon Web Services (AWS) to run Toil or to just use S3 to host the files
-during the computation of a workflow, first set up and configure an account with AWS.
+during the computation of a workflow, first set up and configure an account with AWS:
 
 #. If necessary, create and activate an `AWS account`_
 
@@ -34,33 +34,33 @@ during the computation of a workflow, first set up and configure an account with
 
     $ ssh-keygen -t rsa
 
-#. This should prompt you to save your key.  Please save it in: ::
+#. This should prompt you to save your key.  Please save it in ::
 
     ~/.ssh/id_rsa
 
-#. Now move this to where Ubuntu can see it as an authorized key: ::
+#. Now move this to where your OS can see it as an authorized key::
 
     $ cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
     $ eval `ssh-agent -s`
     $ ssh-add
 
-#. You'll also need to chmod your private key (good practice but also enforced by AWS): ::
+#. You'll also need to chmod your private key (good practice but also enforced by AWS)::
 
     $ chmod 400 id_rsa
 
-#. Now you'll need to add the key to AWS via the browser.  For example, on us-west1, this address would accessible at: ::
+#. Now you'll need to add the key to AWS via the browser.  For example, on us-west1, this address would accessible at::
 
     https://us-west-1.console.aws.amazon.com/ec2/v2/home?region=us-west-1#KeyPairs:sort=keyName
 
-#. Now click on the "Import Key Pair" button to add your key.
+#. Now click on the "Import Key Pair" button to add your key:
 
-.. image:: amazonaddkeypair.png
-   :target: https://us-west-1.console.aws.amazon.com/ec2/v2/home?region=us-west-1#KeyPairs:sort=keyName
-   :alt: Adding an Amazon Key Pair
+    .. image:: amazonaddkeypair.png
+       :target: https://us-west-1.console.aws.amazon.com/ec2/v2/home?region=us-west-1#KeyPairs:sort=keyName
+       :alt: Adding an Amazon Key Pair
 
-#. Next, you need to create an AWS access key.  First go to the IAM dashboard, again, for "us-west1", the example link would be here: ::
+#. Next, you need to create an AWS access key.  First go to the IAM dashboard, again; for "us-west1", the example link would be here::
 
-        https://console.aws.amazon.com/iam/home?region=us-west-1#/home
+    https://console.aws.amazon.com/iam/home?region=us-west-1#/home
 
 #. The directions (transcribed from: https://docs.aws.amazon.com/general/latest/gr/managing-aws-access-keys.html ) are now:
 
@@ -99,7 +99,7 @@ during the computation of a workflow, first set up and configure an account with
     $ source venv/bin/activate
     $ pip install toil[all]==3.12.0
 
-#. Now that toil is installed and you are running a virtualenv, an example of launching a toil leader node would be
+#. Now that toil is installed and you are running a virtualenv, an example of launching a toil leader node would be the following
    (again, note that we set TOIL_APPLIANCE_SELF to toil version 3.12.0 in this example, but please set the version to
    the installed version that you are using if you're using a different version): ::
 
@@ -107,17 +107,17 @@ during the computation of a workflow, first set up and configure an account with
 
 To further break down each of these commands:
 
-    **TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest** - This is optional.  It specifies a mesos docker image that we maintain with the latest version of toil installed on it.  If you want to use a different version of toil, please specify the image tag you need from: https://quay.io/repository/ucsc_cgl/toil?tag=latest&tab=tags
+    **TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:latest** --- This is optional.  It specifies a mesos docker image that we maintain with the latest version of toil installed on it.  If you want to use a different version of toil, please specify the image tag you need from https://quay.io/repository/ucsc_cgl/toil?tag=latest&tab=tags.
 
-    **toil launch-cluster** - Base command in toil to launch a cluster.
+    **toil launch-cluster** --- Base command in toil to launch a cluster.
 
-    **clustername** - Just choose a name for your cluster.
+    **clustername** --- Just choose a name for your cluster.
 
-    **--leaderNodeType t2.medium** - Specify the leader node type.  Make a t2.medium (2CPU; 4Gb RAM; $0.0464/Hour).  List of available AWS instances: https://aws.amazon.com/ec2/pricing/on-demand/
+    **--leaderNodeType t2.medium** --- Specify the leader node type.  Make a t2.medium (2CPU; 4Gb RAM; $0.0464/Hour).  List of available AWS instances: https://aws.amazon.com/ec2/pricing/on-demand/
 
-    **--zone us-west-1a** - Specify the AWS zone you want to launch the instance in.  Must have the same prefix as the zone in your awscli credentials (which, in the example of this tutorial is: "us-west-1").
+    **--zone us-west-1a** --- Specify the AWS zone you want to launch the instance in.  Must have the same prefix as the zone in your awscli credentials (which, in the example of this tutorial is: "us-west-1").
 
-    **--keyPairName id_rsa** - The name of your key pair, which should be "id_rsa" if you've followed this tutorial.
+    **--keyPairName id_rsa** --- The name of your key pair, which should be "id_rsa" if you've followed this tutorial.
 
 .. _Container Linux by CoreOS AMI: https://aws.amazon.com/marketplace/pp/B01H62FDJM/
 .. _AWS account: https://aws.amazon.com/premiumsupport/knowledge-center/create-and-activate-aws-account/
@@ -132,7 +132,7 @@ To further break down each of these commands:
 AWS Job Store
 -------------
 
-Using the AWS job store is straightforward after you've finished :ref:`prepareAWS`,
+Using the AWS job store is straightforward after you've finished :ref:`prepareAWS`;
 all you need to do is specify the prefix for the job store name.
 
 To run the sort example :ref:`sort example <sortExample>` with the AWS job store you would type ::
@@ -154,7 +154,7 @@ Getting started with the provisioner is simple:
 #. You will need an AWS account and you will need to save your AWS credentials on your local
    machine. For help setting up an AWS account see
    `here <http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-set-up.html>`__. For
-   setting up your aws credentials follow instructions
+   setting up your AWS credentials follow instructions
    `here <http://docs.aws.amazon.com/cli/latest/userguide/cli-chap-getting-started.html#cli-config-files>`__.
 
 The Toil provisioner is built around the Toil Appliance, a Docker image that bundles
@@ -164,7 +164,7 @@ platforms, and you can even simulate a cluster locally (see :ref:`appliance_dev`
 .. admonition:: Choosing Toil Appliance Image
 
     When using the Toil provisioner, the appliance image will be automatically chosen
-    based on the pip installed version of Toil on your system. That choice can be
+    based on the pip-installed version of Toil on your system. That choice can be
     overriden by setting the environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
     ``TOIL_APPLIANCE_SELF``. See :ref:`envars` for more information on these variables. If
     you are developing with autoscaling and want to test and build your own
@@ -176,7 +176,7 @@ Details about Launching a Cluster in AWS
 ----------------------------------------
 
 Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example,
-to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run: ::
+to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run ::
 
     (venv) $ toil launch-cluster my-cluster --leaderNodeType t2.medium --zone us-west-2a --keyPairName <your-AWS-key-pair-name>
 
@@ -208,11 +208,11 @@ The cluster utilities also make it easy to run a toil workflow directly on this
 cluster. We call this static provisioning because the size of the cluster does not
 change. This is in contrast with :ref:`Autoscaling`.
 
-To launch worker nodes alongside the leader we use the ``-w`` option.::
+To launch worker nodes alongside the leader we use the ``-w`` option::
 
     (venv) $ toil launch-cluster my-cluster --leaderNodeType t2.small -z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4
 
-This will spin up a leader node of type t2.small with five additional workers - one m3.large instance and four t2.micro.
+This will spin up a leader node of type t2.small with five additional workers --- one m3.large instance and four t2.micro.
 
 Currently static provisioning is only possible during the cluster's creation.
 The ability to add new nodes and remove existing nodes via the native provisioner is
@@ -224,7 +224,7 @@ Uploading Workflows
 
 Now that our cluster is launched, we use the :ref:`rsyncCluster` utility to copy
 the workflow to the leader. For a simple workflow in a single file this might
-look like::
+look like ::
 
     (venv) $ toil rsync-cluster -z us-west-2a my-cluster toil-workflow.py :/
 
@@ -245,7 +245,7 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
    Make sure you've done the AWS setup in :ref:`prepareAWS`.
 
-#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`.
+#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`
 
 #. Launch the leader node in AWS using the :ref:`launchCluster` command: ::
 
@@ -253,15 +253,15 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
 #. Copy the ``sort.py`` script up to the leader node: ::
 
-	(venv) $ toil rsync-cluster <cluster-name> sort.py :/root
+    (venv) $ toil rsync-cluster <cluster-name> sort.py :/root
 
 #. Login to the leader node: ::
 
-	(venv) $ toil ssh-cluster <cluster-name>
+    (venv) $ toil ssh-cluster <cluster-name>
 
 #. Run the script as an autoscaling workflow: ::
 
-	$ python /root/sort.py aws:us-west-2:<my-jobstore-name> --provisioner aws --nodeTypes c3.large --maxNodes 2 --batchSystem mesos
+    $ python /root/sort.py aws:us-west-2:<my-jobstore-name> --provisioner aws --nodeTypes c3.large --maxNodes 2 --batchSystem mesos
 
 .. note::
 
@@ -274,15 +274,15 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
     c3.large nodes and one r3.xlarge node for memory-intensive jobs. In this situation, the autoscaler would avoid
     creating the more expensive r3.xlarge node until needed, running most jobs on the c3.large nodes.
 
-#. View the generated file to sort. ::
+#. View the generated file to sort::
 
-	$ head fileToSort.txt
+    $ head fileToSort.txt
 
-#. View the sorted file. ::
+#. View the sorted file::
 
-	$ head sortedFile.txt
+    $ head sortedFile.txt
 
-For more information on other autoscaling (and other) options have a look at :ref:`workflowOptions` and/or run: ::
+For more information on other autoscaling (and other) options have a look at :ref:`workflowOptions` and/or run ::
 
     $ python my-toil-script.py --help
 

@@ -17,7 +17,7 @@ Preparing your Azure environment
 
 Follow the steps below to prepare your Azure environment for running a Toil workflow.
 
-#. Create an `Azure account`_ and an `Azure storage account`_.
+#. Create an `Azure account`_ and an `Azure storage account`_
 
 #. Locate your Azure storage account key and then store it in one of the following locations:
     - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
@@ -51,7 +51,7 @@ Follow the steps below to prepare your Azure environment for running a Toil work
    then "Access Control (IAM)", then "+ Add", then selecting "Owner" from the "Role" drop-down menu on the right,
    then typing in the name of your app under "Select" and add permissions.
 
-#. Create an SSH keypair if one doesn't exist (see: `add SSH`_).
+#. Create an SSH keypair if one doesn't exist (see: `add SSH`_)
 
 .. note::
    You do not need to upload your key pair to Azure as with AWS.
@@ -71,7 +71,7 @@ Running a Workflow with Autoscaling
 The steps to run a Azure workflow are similar to those of AWS (:ref:`Autoscaling`), except you will
 need to explicitly specify the ``--provisioner azure`` option which otherwise defaults to ``aws``.
 
-#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`.
+#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`
 
 #. Launch the leader node in Azure using the :ref:`launchCluster` command. ::
 
@@ -81,16 +81,16 @@ need to explicitly specify the ``--provisioner azure`` option which otherwise de
    default location is ~/.ssh/id_rsa.pub. The --keyPairName option is used to indicate the instances owner.
    See `add SSH`_.
 
-#. Upload the sort example and ssh into the leader. ::
+#. Upload the sort example and ssh into the leader::
 
     (venv) $ toil rsync-cluster --provisioner azure <CLUSTER-NAME> sort.py :/root
     (venv) $ toil ssh-cluster --provisioner azure <CLUSTER-NAME>
 
-#. Run the workflow. ::
+#. Run the workflow::
 
     $ python /root/sort.py  azure:<AZURE-STORAGE-ACCOUNT>:<JOBSTORE-NAME> --provisioner azure --batchSystem mesos --nodeTypes Standard_A2 --maxNodes 2
 
-#. Cleanup ::
+#. Clean up::
 
     $ exit  # this exits the ssh from the leader node
     (venv) $ toil destroy-cluster --provisioner azure <CLUSTER-NAME>
