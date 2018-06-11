@@ -68,8 +68,6 @@ class BinPackedFit(object):
     def __init__(self, nodeShapes, targetTime=defaultTargetTime):
         self.nodeShapes = sorted(nodeShapes)
         self.targetTime = targetTime
-
-        # {_Shape(wallTime=3600, memory=1073741824, cores=1, disk=8589934592, preemptable=False): []}
         self.nodeReservations = {nodeShape:[] for nodeShape in nodeShapes}
 
     def binPack(self, jobShapes):
@@ -99,6 +97,7 @@ class BinPackedFit(object):
         if chosenNodeShape is None:
             logger.warning("Couldn't fit job with requirements %r into any nodes in the nodeTypes "
                            "list." % jobShape)
+            return
 
         # grab current list of job objects appended to this nodeType
         nodeReservations = self.nodeReservations[chosenNodeShape]
@@ -836,8 +835,8 @@ class ScalerThread(ExceptionalThread):
 
     def tryRun(self):
         while not self.stop:
-            try:
-                with throttle(self.scaler.config.scaleInterval):
+            with throttle(self.scaler.config.scaleInterval):
+                try:
                     queuedJobs = self.scaler.leader.getJobs()
                     queuedJobShapes = [
                         Shape(wallTime=self.scaler.getAverageRuntime(
@@ -858,9 +857,9 @@ class ScalerThread(ExceptionalThread):
                     self.scaler.updateClusterSize(estimatedNodeCounts)
                     if self.stats:
                         self.stats.checkStats()
-            except:
-                logger.exception("Exception encountered in scaler thread. Making a best-effort "
-                                 "attempt to keep going, but things may go wrong from now on.")
+                except:
+                    logger.exception("Exception encountered in scaler thread. Making a best-effort "
+                                     "attempt to keep going, but things may go wrong from now on.")
         self.scaler.shutDown()
 
 class ClusterStats(object):
