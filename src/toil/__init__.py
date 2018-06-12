@@ -213,13 +213,15 @@ def requestCheckRegularIo(registryName, tag):
               ''.format(pathName=pathName, webhost=webhostName, tag=tag)
     response = requests.head(ioURL)
     if not response.ok:
-        raise ImageNotFound("The docker image that TOIL_APPLIANCE_SELF specifies (%s) is "
-                            "unsupported (or malformed).  Please supply a docker image with the "
+        raise ImageNotFound("The docker image that TOIL_APPLIANCE_SELF specifies (%s) produced "
+                            "a nonfunctional manifest URL (%s). The HTTP status returned was %s. "
+                            "The specifier is most likely unsupported or malformed.  "
+                            "Please supply a docker image with the "
                             "format: '<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
                             "(for official docker.io images).  Examples: "
                             "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
                             "'broadinstitute/genomes-in-the-cloud:2.0.0'."
-                            "" % (registryName + ':' + tag))
+                            "" % (registryName + ':' + tag, ioURL, str(response.status_code)))
     else:
         return registryName + ':' + tag
 
