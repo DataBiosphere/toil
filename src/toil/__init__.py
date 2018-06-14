@@ -184,6 +184,30 @@ def checkDockerImageExists(appliance):
         return requestCheckDockerIo(registryName=registryName, tag=tag)
 
 
+class ApplianceImageNotFound(ImageNotFound):
+    """
+    Compose an ApplianceImageNotFound error complaining that the given name and
+    tag for TOIL_APPLIANCE_SELF specify an image manifest which could not be
+    retrieved from the given URL, because it produced the given HTTP error
+    code.
+    
+    :param str name: The name of a docker image.  e.g. "quay.io/ucsc_cgl/toil"
+    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
+    :param str url: The URL at which the image's manifest is supposed to appear
+    :param int statusCode: the failing HTTP status code returned by the URL
+    """
+    def __init__(self, name, tag, url, statusCode):
+        msg = ("The docker image that TOIL_APPLIANCE_SELF specifies (%s) produced "
+               "a nonfunctional manifest URL (%s). The HTTP status returned was %s. "
+               "The specifier is most likely unsupported or malformed.  "
+               "Please supply a docker image with the format: "
+               "'<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
+               "(for official docker.io images).  Examples: "
+               "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
+               "'broadinstitute/genomes-in-the-cloud:2.0.0'."
+               "" % (name + ':' + tag, url, str(statusCode)))
+        super(ApplianceImageNotFound, self).__init__(msg)
+
 def requestCheckRegularIo(registryName, tag):
     """
     Checks to see if an image exists using the requests library.
@@ -213,13 +237,7 @@ def requestCheckRegularIo(registryName, tag):
               ''.format(pathName=pathName, webhost=webhostName, tag=tag)
     response = requests.head(ioURL)
     if not response.ok:
-        raise ImageNotFound("The docker image that TOIL_APPLIANCE_SELF specifies (%s) is "
-                            "unsupported (or malformed).  Please supply a docker image with the "
-                            "format: '<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
-                            "(for official docker.io images).  Examples: "
-                            "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
-                            "'broadinstitute/genomes-in-the-cloud:2.0.0'."
-                            "" % (registryName + ':' + tag))
+        raise ApplianceImageNotFound(registryName, tag, ioURL, response.status_code)
     else:
         return registryName + ':' + tag
 
@@ -250,13 +268,7 @@ def requestCheckDockerIo(registryName, tag):
     bearer = jsonToken["token"]
     response = requests.head(requests_url, headers={'Authorization': 'Bearer {}'.format(bearer)})
     if not response.ok:
-        raise ImageNotFound("The docker image that TOIL_APPLIANCE_SELF specifies (%s) is "
-                            "unsupported (or malformed).  Please supply a docker image with the "
-                            "format: '<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
-                            "(for official docker.io images).  Examples: "
-                            "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
-                            "'broadinstitute/genomes-in-the-cloud:2.0.0'."
-                            "" % (registryName + ':' + tag))
+        raise ApplianceImageNotFound(registryName, tag, requests_url, response.status_code)
     else:
         return registryName + ':' + tag
 
