@@ -18,7 +18,7 @@ from toil import checkDockerImageExists, parseDockerAppliance
 from docker.errors import ImageNotFound
 
 # requires internet
-# @needs_appliance
+@needs_appliance
 class dockerCheckTests(ToilTest):
     """
     Tests initial checking of whether a docker image exists in the specified repository or not.
