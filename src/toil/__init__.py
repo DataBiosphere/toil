@@ -17,6 +17,7 @@ from __future__ import absolute_import
 import logging
 import os
 import sys
+import re
 import requests
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
@@ -124,6 +125,8 @@ def applianceSelf(forceDockerAppliance=False):
                              envName='TOIL_APPLIANCE_SELF',
                              defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
 
+    checkDockerSchema(appliance)
+
     if forceDockerAppliance:
         return appliance
     else:
@@ -163,25 +166,63 @@ def checkDockerImageExists(appliance):
              will return the appliance string.
     :rtype: str
     """
-    appliance = appliance.lower()
-    tag = appliance.split(':')[-1]
-    registryName = appliance[:-(len(':' + tag))] # remove only the tag
     if currentCommit in appliance:
         return appliance
-    # docker repo syntax sanity checks
-    elif '://' in registryName:
-        raise ImageNotFound("Docker images cannot contain a schema (such as '://'): %s"
-                            "" % registryName + ':' + tag)
-    # docker repo syntax sanity checks
-    elif registryName[0] == '-':
-        raise ImageNotFound("Docker images cannot begin with '-': %s"
-                            "" % registryName + ':' + tag)
-    # check if a valid io host is specified
-    elif '.io/' in registryName and 'docker.io/' not in registryName:
-        return requestCheckRegularIo(registryName=registryName, tag=tag)
-    # otherwise check docker.io
+    registryName, imageName, tag = parseDockerAppliance(appliance)
+
+    if registryName == 'docker.io':
+        return requestCheckDockerIo(origAppliance=appliance, imageName=imageName, tag=tag)
     else:
-        return requestCheckDockerIo(registryName=registryName, tag=tag)
+        return requestCheckRegularDocker(origAppliance=appliance, registryName=registryName, imageName=imageName, tag=tag)
+
+
+def parseDockerAppliance(appliance):
+    """
+    Takes string describing a docker image and returns the parsed
+    registry, image reference, and tag for that image.
+
+    Example: "quay.io/ucsc_cgl/toil:latest"
+    Should return: "quay.io", "ucsc_cgl/toil", "latest"
+
+    If a registry is not defined, the default is: "docker.io"
+    If a tag is not defined, the default is: "latest"
+
+    :param appliance: The full url of the docker image originally
+                      specified by the user (or the default).
+                      e.g. "quay.io/ucsc_cgl/toil:latest"
+    :return: registryName, imageName, tag
+    """
+    appliance = appliance.lower()
+
+    # get the tag
+    if ':' in appliance:
+        tag = appliance.split(':')[-1]
+        appliance = appliance[:-(len(':' + tag))] # remove only the tag
+    else:
+        # default to 'latest' if no tag is specified
+        tag = 'latest'
+
+    # get the registry and image
+    registryName = 'docker.io' # default if not specified
+    imageName = appliance # will be true if not specified
+    if '/' in appliance and '.' in appliance.split('/')[0]:
+        registryName = appliance.split('/')[0]
+        imageName = appliance[len(registryName):]
+    registryName = registryName.strip('/')
+    imageName = imageName.strip('/')
+
+    return registryName, imageName, tag
+
+
+def checkDockerSchema(appliance):
+    if not appliance:
+        raise ImageNotFound("No docker image specified.")
+    elif '://' in appliance:
+        raise ImageNotFound("Docker images cannot contain a schema (such as '://'): %s"
+                            "" % appliance)
+    elif len(appliance) > 256:
+        raise ImageNotFound("Docker image must be less than 256 chars: %s"
+                            "" % appliance)
 
 
 class ApplianceImageNotFound(ImageNotFound):
@@ -190,13 +231,14 @@ class ApplianceImageNotFound(ImageNotFound):
     tag for TOIL_APPLIANCE_SELF specify an image manifest which could not be
     retrieved from the given URL, because it produced the given HTTP error
     code.
-    
-    :param str name: The name of a docker image.  e.g. "quay.io/ucsc_cgl/toil"
-    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
+
+    :param str origAppliance: The full url of the docker image originally
+                              specified by the user (or the default).
+                              e.g. "quay.io/ucsc_cgl/toil:latest"
     :param str url: The URL at which the image's manifest is supposed to appear
     :param int statusCode: the failing HTTP status code returned by the URL
     """
-    def __init__(self, name, tag, url, statusCode):
+    def __init__(self, origAppliance, url, statusCode):
         msg = ("The docker image that TOIL_APPLIANCE_SELF specifies (%s) produced "
                "a nonfunctional manifest URL (%s). The HTTP status returned was %s. "
                "The specifier is most likely unsupported or malformed.  "
@@ -205,10 +247,11 @@ class ApplianceImageNotFound(ImageNotFound):
                "(for official docker.io images).  Examples: "
                "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
                "'broadinstitute/genomes-in-the-cloud:2.0.0'."
-               "" % (name + ':' + tag, url, str(statusCode)))
+               "" % (origAppliance, url, str(statusCode)))
         super(ApplianceImageNotFound, self).__init__(msg)
 
-def requestCheckRegularIo(registryName, tag):
+
+def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
     """
     Checks to see if an image exists using the requests library.
 
@@ -221,56 +264,50 @@ def requestCheckRegularIo(registryName, tag):
     Does not work with the official (docker.io) site, because they require an OAuth token, so a
     separate check is done for docker.io images.
 
-    :param str registryName: The url of a docker image's registry.  e.g. "quay.io/ucsc_cgl/toil"
+    :param str origAppliance: The full url of the docker image originally
+                              specified by the user (or the default).
+                              e.g. "quay.io/ucsc_cgl/toil:latest"
+    :param str registryName: The url of a docker image's registry.  e.g. "quay.io"
+    :param str imageName: The image, including path and excluding the tag. e.g. "ucsc_cgl/toil"
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
-    # find initial position of '.io/'
-    clipPosition = registryName.find('.io/')
-    # split at '.io/' to get the path
-    splitHere = clipPosition + len('.io/')
-    webhostName = registryName[:splitHere]
-    pathName = registryName[splitHere:]
-    if pathName.endswith('/'):
-        pathName = pathName[:-1]
-    ioURL = 'https://{webhost}v2/{pathName}/manifests/{tag}' \
-              ''.format(pathName=pathName, webhost=webhostName, tag=tag)
+    ioURL = 'https://{webhost}/v2/{pathName}/manifests/{tag}' \
+              ''.format(webhost=registryName, pathName=imageName, tag=tag)
     response = requests.head(ioURL)
     if not response.ok:
-        raise ApplianceImageNotFound(registryName, tag, ioURL, response.status_code)
+        raise ApplianceImageNotFound(origAppliance, ioURL, response.status_code)
     else:
-        return registryName + ':' + tag
+        return origAppliance
 
 
-def requestCheckDockerIo(registryName, tag):
+def requestCheckDockerIo(origAppliance, imageName, tag):
     """
     Checks docker.io to see if an image exists using the requests library.
 
     URL is based on the docker v2 schema.  Requires that an access token be fetched first.
 
-    :param str registryName: The url of a docker image's registry.  e.g. "ubuntu"
+    :param str origAppliance: The full url of the docker image originally
+                              specified by the user (or the default).  e.g. "ubuntu:latest"
+    :param str imageName: The image, including path and excluding the tag. e.g. "ubuntu"
     :param str tag: The tag used at that docker image's registry.  e.g. "latest"
     :return: Return True if match found.  Raise otherwise.
     """
-    pathName = registryName
-    if pathName.endswith('/'):
-        pathName = pathName[:-1]
-
     # only official images like 'busybox' or 'ubuntu'
-    if '/' not in pathName:
-        pathName = 'library/' + pathName
+    if '/' not in imageName:
+        imageName = 'library/' + imageName
 
-    token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(repo=pathName)
-    requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=pathName, tag=tag)
+    token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(repo=imageName)
+    requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=imageName, tag=tag)
 
     token = requests.get(token_url)
     jsonToken = token.json()
     bearer = jsonToken["token"]
     response = requests.head(requests_url, headers={'Authorization': 'Bearer {}'.format(bearer)})
     if not response.ok:
-        raise ApplianceImageNotFound(registryName, tag, requests_url, response.status_code)
+        raise ApplianceImageNotFound(origAppliance, requests_url, response.status_code)
     else:
-        return registryName + ':' + tag
+        return origAppliance
 
 
 def logProcessContext(config):
