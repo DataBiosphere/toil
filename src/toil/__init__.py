@@ -17,7 +17,6 @@ from __future__ import absolute_import
 import logging
 import os
 import sys
-import re
 import requests
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
