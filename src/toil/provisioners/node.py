@@ -130,7 +130,7 @@ class Node(object):
             if time.time() - startTime > self.maxWaitTime:
                 raise RuntimeError("Docker daemon failed to start on machine with ip %s" % self.publicIP)
             try:
-                output = self.sshInstance('/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
+                output = self.sshInstance('/usr/bin/ps', 'auxww', sshOptions=['-oBatchMode=yes'], user=keyName)
                 if 'dockerd' in output:
                     # docker daemon has started
                     logger.info('Docker daemon running')
