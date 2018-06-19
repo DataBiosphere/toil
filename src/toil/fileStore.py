@@ -943,8 +943,10 @@ class CachingFileStore(FileStore):
         :return: outCachedFile: A path to the hashed file in localCacheDir
         :rtype: str
         """
-        outCachedFile = os.path.join(self.localCacheDir,
-                                     base64.urlsafe_b64encode(jobStoreFileID))
+        
+        base64Text = base64.urlsafe_b64encode(jobStoreFileID.encode('utf-8')).decode('utf-8')
+        
+        outCachedFile = os.path.join(self.localCacheDir, base64Text)
         return outCachedFile
 
     def _fileIsCached(self, jobStoreFileID):
@@ -963,10 +965,10 @@ class CachingFileStore(FileStore):
         """
         fileDir, fileName = os.path.split(cachedFilePath)
         assert fileDir == self.localCacheDir, 'Can\'t decode uncached file names'
-        # We convert to byes here because base64 can't work with unicode
-        # Its probably worth, later, converting all file name variables to str
-        # rather than unicode.
-        return base64.urlsafe_b64decode(bytes(fileName))
+        # We encode and decode here because base64 can't work with unencoded text
+        # Its probably worth, later, converting all file name variables to bytes
+        # and not text.
+        return base64.urlsafe_b64decode(fileName.encode('utf-8')).decode('utf-8')
 
     def addToCache(self, localFilePath, jobStoreFileID, callingFunc, mutable=False):
         """
