@@ -478,9 +478,9 @@ class AzureJobStore(AbstractJobStore):
 
     def _newFileID(self, sharedFileName=None):
         if sharedFileName is None:
-            ret = bytes(uuid.uuid4())
+            ret = str(uuid.uuid4())
         else:
-            ret = bytes(uuid.uuid5(self.sharedFileJobID, bytes(sharedFileName)))
+            ret = str(uuid.uuid5(self.sharedFileJobID, sharedFileName))
         return ret.replace('-', '_')
 
     def _associateFileWithJob(self, jobStoreFileID, jobStoreID=None):

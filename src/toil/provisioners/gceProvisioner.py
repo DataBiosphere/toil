@@ -146,7 +146,7 @@ class GCEProvisioner(AbstractProvisioner):
             'diskSizeGb' : leaderStorage }
         disk.update({'boot': True,
              'autoDelete': True })
-        name= 'l' + bytes(uuid.uuid4())
+        name= 'l' + str(uuid.uuid4())
         leader = self._gceDriver.create_node(name, leaderNodeType, imageType,
                                             location=self._zone,
                                             ex_service_accounts=sa_scopes,
@@ -448,7 +448,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         for i in range(number):
             name = 'wp' if ex_preemptible else 'wn'
-            name += bytes(uuid.uuid4()) #'%s-%03d' % (base_name, i)
+            name += str(uuid.uuid4()) #'%s-%03d' % (base_name, i)
             status = {'name': name, 'node_response': None, 'node': None}
             status_list.append(status)
 
