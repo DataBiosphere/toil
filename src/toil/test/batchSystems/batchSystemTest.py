@@ -888,12 +888,12 @@ def count(delta, file_path):
         fcntl.flock(fd, fcntl.LOCK_EX)
         try:
             s = os.read(fd, 10)
-            value, maxValue = list(map(int, s.split(',')))
+            value, maxValue = list(map(int, s.decode('utf-8').split(',')))
             value += delta
             if value > maxValue: maxValue = value
             os.lseek(fd, 0, 0)
             os.ftruncate(fd, 0)
-            os.write(fd, ','.join(map(str, (value, maxValue))))
+            os.write(fd, ','.join(map(str, (value, maxValue))).encode('utf-8'))
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
     finally:
