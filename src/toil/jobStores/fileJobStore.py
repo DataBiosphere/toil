@@ -431,6 +431,7 @@ class FileJobStore(AbstractJobStore):
 
     def _getAbsPath(self, relativePath):
         """
+        :param str relativePath: path relative to self.tempFilesDir.
         :rtype : string, string is the absolute path to a file path relative
         to the self.tempFilesDir.
         """
