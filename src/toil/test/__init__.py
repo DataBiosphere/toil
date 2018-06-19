@@ -755,9 +755,14 @@ def make_tests(generalMethod, targetClass, **kwargs):
 
 @contextmanager
 def tempFileContaining(content, suffix=''):
+    """
+    Write a file with the given contents, and keep it on disk as long as the context is active.
+    :param str content: The contents of the file.
+    :param str suffix: The extension to use for the temporary file.
+    """
     fd, path = tempfile.mkstemp(suffix=suffix)
     try:
-        os.write(fd, bytes(content))
+        os.write(fd, content.encode('utf-8'))
     except:
         os.close(fd)
         raise
