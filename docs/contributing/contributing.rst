@@ -36,7 +36,7 @@ Run only quick tests (as of Sep 18, 2017, this was < 30 minutes):
 
     $ export TOIL_TEST_QUICK=True; make test
 
-Run an individual test with:
+Run an individual test with
 
 ::
 
@@ -45,7 +45,7 @@ Run an individual test with:
 The default value for ``tests`` is ``"src"`` which includes all tests in the
 ``src/`` subdirectory of the project root. Tests that require a particular
 feature will be skipped implicitly. If you want to explicitly skip tests that
-depend on a currently installed *feature*, use:
+depend on a currently installed *feature*, use
 
 ::
 
@@ -55,9 +55,7 @@ This will run only the tests that don't depend on the ``azure`` extra, even if
 that extra is currently installed. Note the distinction between the terms
 *feature* and *extra*. Every extra is a feature but there are features that are
 not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
-involving both the Parasol feature and the Azure extra, use the following
-
-::
+involving both the Parasol feature and the Azure extra, use the following::
 
     $ make test tests="-m 'not azure and not parasol' src"
 
@@ -76,7 +74,7 @@ This usually works as expected, but some tests need some manual preparation.
 
        export TOIL_TEST_INTEGRATIVE=True
 
-To run a specific test with pytest ::
+To run a specific test with pytest, use the following::
 
     python -m pytest src/toil/test/sort/sortTest.py::SortTest::testSort
 
@@ -128,7 +126,7 @@ Test Environment Variables
 
 .. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir
 
-.. admonition:: Partial install and failing tests.
+.. admonition:: Partial install and failing tests
 
     Some tests may fail with an ImportError if the required extras are not installed. 
     Install Toil with all of the extras
@@ -196,13 +194,13 @@ Making Your Own Toil Docker Image
 **Note!**  Toil checks if the docker image specified by TOIL_APPLIANCE_SELF
 exists prior to launching by using the docker v2 schema.  This should be
 valid for any major docker repository, but there is an option to override
-this if desired using the option: `--forceDockerAppliance`.
+this if desired using the option: `-\\-forceDockerAppliance`.
 
 Here is a general workflow (similar instructions apply when using Docker Hub):
 
-1. Make some changes to the provisioner of your local version of Toil.
+#. Make some changes to the provisioner of your local version of Toil
 
-2. Go to the location where you installed the Toil source code and run::
+#. Go to the location where you installed the Toil source code and run ::
 
         $ make docker
 
@@ -210,31 +208,31 @@ Here is a general workflow (similar instructions apply when using Docker Hub):
    your personal `Quay`_ account. If you have not installed Toil source
    code yet see :ref:`buildFromSource`.
 
-3. If it's not already you will need Docker installed and need
+#. If it's not already you will need Docker installed and need
    to `log into Quay`_. Also you will want to make sure that your Quay
    account is public.
 
-4. Set the environment variable ``TOIL_DOCKER_REGISTRY`` to your Quay
-   account. If you find yourself doing this often you may want to add::
+#. Set the environment variable ``TOIL_DOCKER_REGISTRY`` to your Quay
+   account. If you find yourself doing this often you may want to add ::
 
         export TOIL_DOCKER_REGISTRY=quay.io/<MY_QUAY_USERNAME>
 
    to your ``.bashrc`` or equivalent.
 
-5. Now you can run::
+#. Now you can run ::
 
         $ make push_docker
 
    which will upload the docker image to your Quay account. Take note of
    the image's tag for the next step.
 
-6. Finally you will need to tell Toil from where to pull the Appliance
+#. Finally you will need to tell Toil from where to pull the Appliance
    image you've created (it uses the Toil release you have installed by
    default). To do this set the environment variable
    ``TOIL_APPLIANCE_SELF`` to the url of your image. For more info see
    :ref:`envars`.
 
-7. Now you can launch your cluster! For more information see
+#. Now you can launch your cluster! For more information see
    :ref:`Autoscaling`.
 
 Running a Cluster Locally
@@ -269,7 +267,7 @@ of cores we can change the 2 to whatever number you like, and to
 change the worker to be preemptable we change ``preemptable:False`` to
 ``preemptable:True``. Also note that the same volume is mounted into the
 worker. This is needed since both the leader and worker write and read
-from the job store. Now that your cluster is running, you can run::
+from the job store. Now that your cluster is running, you can run ::
 
     docker exec -it leader bash
 

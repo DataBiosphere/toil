@@ -90,6 +90,14 @@ class Shape(object):
                 self.disk,
                 self.preemptable)
 
+    def __repr__(self):
+        return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptable=%s)" % \
+               (self.wallTime,
+                self.memory,
+                self.cores,
+                self.disk,
+                self.preemptable)
+
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
     An abstract base class to represent the interface for provisioning worker nodes to use in a

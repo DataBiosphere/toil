@@ -1,3 +1,5 @@
+ATTENTION: Toil will be moving from https://github.com/BD2KGenomics/toil to https://github.com/DataBiosphere/toil on June 20th, 2018.
+
 .. image:: https://badge.waffle.io/BD2KGenomics/toil.svg?label=ready&title=Ready
    :target: https://waffle.io/BD2KGenomics/toil
    :alt: 'Stories in Ready'

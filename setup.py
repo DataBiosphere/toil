@@ -21,7 +21,7 @@ def runSetup():
     functionality. The `version` module is imported dynamically by importVersion() below.
     """
     boto = 'boto==2.38.0'
-    boto3 = 'boto3==1.4.7'
+    boto3 = 'boto3>=1.4.7, <2.0'
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
     psutil = 'psutil==3.0.1'
@@ -35,7 +35,7 @@ def runSetup():
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
     cwltool = 'cwltool==1.0.20180518123035'
-    schemaSalad = 'schema-salad >= 2.6, < 3'
+    schemaSalad = 'schema-salad>=2.6, <3'
     galaxyLib = 'galaxy-lib==17.9.3'
     htcondor = 'htcondor>=8.6.0'
     dill = 'dill==0.2.7.1'
