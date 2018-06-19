@@ -849,7 +849,7 @@ class CachingFileStore(FileStore):
         """
         This is a context manager to acquire a lock on the Lock file that will be used to
         prevent synchronous cache operations between workers.
-        :yields: File descriptor for cache lock file in r+ mode
+        :yields: File descriptor for cache lock file in w mode
         """
         cacheLockFile = open(self.cacheLockFile, 'w')
         try:
