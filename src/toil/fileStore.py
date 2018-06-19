@@ -1843,7 +1843,9 @@ class FileID(str):
         return super(FileID, cls).__new__(cls, fileStoreID)
 
     def __init__(self, fileStoreID, size):
-        super(str, self).__init__(fileStoreID)
+        # Don't pass an argument to parent class's __init__.
+        # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
+        super(FileID, self).__init__()
         self.size = size
 
 
