@@ -762,7 +762,8 @@ def tempFileContaining(content, suffix=''):
     """
     fd, path = tempfile.mkstemp(suffix=suffix)
     try:
-        os.write(fd, content.encode('utf-8'))
+        encoded = content.encode('utf-8')
+        assert os.write(fd, encoded) == len(encoded)
     except:
         os.close(fd)
         raise
