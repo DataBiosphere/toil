@@ -305,7 +305,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
             """
             # Read the value from the cache state file then initialize and instance of
             # _CacheState with it.
-            with open(fileName, 'r') as fH:
+            with open(fileName, 'rb') as fH:
                 infoDict = dill.load(fH)
             return cls(infoDict)
 
@@ -316,7 +316,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
 
             :param str fileName: Path to the state file.
             """
-            with open(fileName + '.tmp', 'w') as fH:
+            with open(fileName + '.tmp', 'wb') as fH:
                 # Based on answer by user "Mark" at:
                 # http://stackoverflow.com/questions/2709800/how-to-pickle-yourself
                 # We can't pickle nested classes. So we have to pickle the variables of the class
@@ -566,7 +566,7 @@ class CachingFileStore(FileStore):
                 # (and the file was unable to be cached/was evicted from the cache).
                 harbingerFile = self.HarbingerFile(self, fileStoreID=jobStoreFileID)
                 harbingerFile.write()
-                fileHandle = open(absLocalFileName, 'r')
+                fileHandle = open(absLocalFileName, 'rb')
                 with self._pendingFileWritesLock:
                     self._pendingFileWrites.add(jobStoreFileID)
                 # A file handle added to the queue allows the asyncWrite threads to remove their
@@ -738,7 +738,7 @@ class CachingFileStore(FileStore):
         # If fileStoreID is in the cache provide a handle from the local cache
         if self._fileIsCached(fileStoreID):
             logger.debug('CACHE: Cache hit on file with ID \'%s\'.' % fileStoreID)
-            return open(self.encodedFileID(fileStoreID), 'r')
+            return open(self.encodedFileID(fileStoreID), 'rb')
         else:
             logger.debug('CACHE: Cache miss on file with ID \'%s\'.' % fileStoreID)
             return self.jobStore.readFileStream(fileStoreID)
@@ -1795,15 +1795,15 @@ class NonCachingFileStore(FileStore):
 
     @staticmethod
     def _readJobState(jobStateFileName):
-        with open(jobStateFileName) as fH:
+        with open(jobStateFileName, 'rb') as fH:
             state = dill.load(fH)
         return state
 
     def _registerDeferredFunction(self, deferredFunction):
-        with open(self.jobStateFile) as fH:
+        with open(self.jobStateFile, 'rb') as fH:
             jobState = dill.load(fH)
         jobState['deferredFunctions'].append(deferredFunction)
-        with open(self.jobStateFile + '.tmp', 'w') as fH:
+        with open(self.jobStateFile + '.tmp', 'wb') as fH:
             dill.dump(jobState, fH)
         os.rename(self.jobStateFile + '.tmp', self.jobStateFile)
         logger.debug('Registered "%s" with job "%s".', deferredFunction, self.jobName)
@@ -1821,7 +1821,7 @@ class NonCachingFileStore(FileStore):
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir,
                     'deferredFunctions': []}
-        with open(jobStateFile + '.tmp', 'w') as fH:
+        with open(jobStateFile + '.tmp', 'wb') as fH:
             dill.dump(jobState, fH)
         os.rename(jobStateFile + '.tmp', jobStateFile)
         return jobStateFile
