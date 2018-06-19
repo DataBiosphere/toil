@@ -456,7 +456,7 @@ class CachingFileStore(FileStore):
         # dictionary.
         self.jobSpecificFiles = {}
         self.jobName = str(self.jobGraph)
-        self.jobID = sha1(self.jobName).hexdigest()
+        self.jobID = sha1(self.jobName.encode('utf-8')).hexdigest()
         logger.info('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
         # A variable to describe how many hard links an unused file in the cache will have.
         self.nlinkThreshold = None
