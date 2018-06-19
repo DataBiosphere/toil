@@ -357,7 +357,7 @@ class ResolveIndirect(Job):
         return resolve_indirect(self.cwljob)
 
 
-def toilStageFiles(fileStore, cwljob, outdir, index, existing, export):
+def toilStageFiles(fileStore, cwljob, outdir, index, existing, export, destBucket=None):
     """Copy input files out of the global file store and update location and
     path."""
 
@@ -367,6 +367,21 @@ def toilStageFiles(fileStore, cwljob, outdir, index, existing, export):
     for f, p in pm.items():
         if not p.staged:
             continue
+
+        # Deal with bucket exports
+        if destBucket:
+            # Directories don't need to be created if we're exporting to
+            # a bucket
+            if p.type == "File":
+                # Remove the staging directory from the filepath and
+                # form the destination URL
+                unstageTargetPath = p.target[len(outdir):]
+                destUrl = '/'.join(s.strip('/') for s in [destBucket, unstageTargetPath])
+
+                fileStore.exportFile(p.resolved[7:], destUrl)
+
+            continue
+
         if not os.path.exists(os.path.dirname(p.target)):
             os.makedirs(os.path.dirname(p.target), 0o0755)
         if p.type == "File":
@@ -915,6 +930,8 @@ def main(args=None, stdout=sys.stdout):
                     metavar=("VAR1 VAR2"),
                     default=("PATH",),
                     dest="preserve_environment")
+    parser.add_argument("--destBucket", type=str,
+                        help="Specify a cloud bucket endpoint for output files.")
     # help="Dependency resolver configuration file describing how to adapt 'SoftwareRequirement' packages to current system."
     parser.add_argument("--beta-dependency-resolvers-configuration", default=None)
     # help="Defaut root directory used by dependency resolvers configuration."
@@ -1049,9 +1066,20 @@ def main(args=None, stdout=sys.stdout):
 
         outobj = resolve_indirect(outobj)
 
-        toilStageFiles(toil, outobj, outdir, fileindex, existing, True)
+        # Stage files. Specify destination bucket if specified in CLI
+        # options. If destination bucket not passed in,
+        # options.destBucket's value will be None.
+        toilStageFiles(
+            toil,
+            outobj,
+            outdir,
+            fileindex,
+            existing,
+            export=True,
+            destBucket=options.destBucket)
 
-        visit_class(outobj, ("File",), functools.partial(compute_checksums, cwltool.stdfsaccess.StdFsAccess("")))
+        if not options.destBucket:
+            visit_class(outobj, ("File",), functools.partial(compute_checksums, cwltool.stdfsaccess.StdFsAccess("")))
 
         stdout.write(json.dumps(outobj, indent=4))
 
