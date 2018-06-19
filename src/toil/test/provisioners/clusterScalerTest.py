@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from threading import Thread, Event
 import logging
 import random
+import types
 import uuid
 from collections import defaultdict
 from mock import MagicMock
@@ -269,12 +270,17 @@ class ClusterScalerTest(ToilTest):
         self.config.targetTime = 1800
         self.config.nodeTypes = ['r3.8xlarge', 'c4.8xlarge:0.6']
         # Set up a stub provisioner with some nodeTypes and nodeShapes.
-        self.provisioner = object()
-        self.provisioner.nodeTypes = ['r3.8xlarge', 'c4.8xlarge']
-        self.provisioner.nodeShapes = [r3_8xlarge,
-                                       c4_8xlarge_preemptable]
-        self.provisioner.setStaticNodes = lambda _, __: None
-        self.provisioner.retryPredicate = lambda _: False
+        try:
+            # In Python 3 we can use a SimpleNamespace as a mock provisioner
+            self.provisioner = types.SimpleNamespace()
+        except:
+            # In Python 2 we can just tack fields onto an object
+            self.provisioner = object()
+        setattr(self.provisioner, 'nodeTypes', ['r3.8xlarge', 'c4.8xlarge'])
+        setattr(self.provisioner, 'nodeShapes', [r3_8xlarge,
+                                                 c4_8xlarge_preemptable])
+        setattr(self.provisioner, 'setStaticNodes', lambda _, __: None)
+        setattr(self.provisioner, 'retryPredicate', lambda _: False)
 
         self.leader = MockBatchSystemAndProvisioner(self.config, 1)
 
