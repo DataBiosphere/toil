@@ -269,13 +269,17 @@ write_files:
         ephemeral_count=0
         drives=""
         directories="toil mesos docker cwl"
-        for drive in /dev/xvd{{b..z}} /dev/nvme*n*; do
+        for drive in /dev/xvd{{a..z}} /dev/nvme{{0..26}}n1; do
             echo checking for $drive
             if [ -b $drive ]; then
                 echo found it
-                ephemeral_count=$((ephemeral_count + 1 ))
-                drives="$drives $drive"
-                echo increased ephemeral count by one
+                if mount | grep $drive; then
+                    echo "already mounted, likely a root device"
+                else
+                    ephemeral_count=$((ephemeral_count + 1 ))
+                    drives="$drives $drive"
+                    echo increased ephemeral count by one
+                fi
             fi
         done
         if (("$ephemeral_count" == "0" )); then
