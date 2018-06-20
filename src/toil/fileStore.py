@@ -589,7 +589,7 @@ class CachingFileStore(FileStore):
             # Non local files are NOT cached by default, but they are tracked as local files.
             self._JobState.updateJobSpecificFiles(self, jobStoreFileID, None,
                                                   0.0, False)
-        return FileID(jobStoreFileID, os.stat(absLocalFileName).st_size)
+        return FileID.forPath(jobStoreFileID, absLocalFileName)
 
     def writeGlobalFileStream(self, cleanup=False):
         # TODO: Make this work with caching
@@ -1646,7 +1646,7 @@ class NonCachingFileStore(FileStore):
         cleanupID = None if not cleanup else self.jobGraph.jobStoreID
         fileStoreID = self.jobStore.writeFile(absLocalFileName, cleanupID)
         self.localFileMap[fileStoreID].append(absLocalFileName)
-        return FileID(fileStoreID, os.stat(absLocalFileName).st_size)
+        return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
         if userPath is not None:
@@ -1845,6 +1845,10 @@ class FileID(str):
     def __init__(self, fileStoreID, size):
         super(str, self).__init__(fileStoreID)
         self.size = size
+
+    @classmethod
+    def forPath(cls, fileStoreID, filePath):
+        return cls(fileStoreID, os.stat(filePath).st_size)
 
 
 def shutdownFileStore(workflowDir, workflowID):
