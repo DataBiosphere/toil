@@ -204,14 +204,14 @@ class Leader(object):
             try:
 
                 # Create cluster scaling processes if not None
-                if self.clusterScaler:
+                if self.clusterScaler is not None:
                     self.clusterScaler.start()
 
                 try:
                     # Run the main loop
                     self.innerLoop()
                 finally:
-                    if self.clusterScaler:
+                    if self.clusterScaler is not None:
                         logger.info('Waiting for workers to shutdown.')
                         startTime = time.time()
                         self.clusterScaler.shutdown()
@@ -232,7 +232,7 @@ class Leader(object):
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
         logger.info("Finished toil run %s" %
-                     ("successfully." if len(self.toilState.totalFailedJobs) == 0 \
+                     ("successfully." if not self.toilState.totalFailedJobs \
                 else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))
 
         if len(self.toilState.totalFailedJobs):
@@ -526,7 +526,7 @@ class Leader(object):
 
             # check in with the batch system
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
-            if updatedJobTuple:
+            if updatedJobTuple is not None:
                 self._gatherUpdatedJobs(updatedJobTuple)
             else:
                 self._processLostJobs()
@@ -535,7 +535,7 @@ class Leader(object):
             self.statsAndLogging.check()
             self.serviceManager.check()
             # the cluster scaler object will only be instantiated if autoscaling is enabled
-            if self.clusterScaler:
+            if self.clusterScaler is not None:
                 self.clusterScaler.check()
 
             # Check for deadlocks
