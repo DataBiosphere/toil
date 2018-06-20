@@ -113,7 +113,7 @@ def currentCommit():
     except:
         # Return this we are not in a git environment.
         return '000'
-    return output
+    return str(output)
 
 
 def dirty():

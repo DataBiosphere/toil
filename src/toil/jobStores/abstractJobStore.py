@@ -18,6 +18,7 @@ standard_library.install_aliases()
 from builtins import str
 from builtins import map
 from builtins import object
+from builtins import super
 import shutil
 
 import re
@@ -55,8 +56,7 @@ class InvalidImportExportUrlException(Exception):
         """
         :param urlparse.ParseResult url:
         """
-        super(InvalidImportExportUrlException, self).__init__(
-            "The URL '%s' is invalid" % url.geturl())
+        super().__init__("The URL '%s' is invalid." % url.geturl())
 
 
 class NoSuchJobException(Exception):
@@ -65,7 +65,7 @@ class NoSuchJobException(Exception):
         """
         :param str jobStoreID: the jobStoreID that was mistakenly assumed to exist
         """
-        super(NoSuchJobException, self).__init__("The job '%s' does not exist" % jobStoreID)
+        super().__init__("The job '%s' does not exist." % jobStoreID)
 
 
 class ConcurrentFileModificationException(Exception):
@@ -75,8 +75,7 @@ class ConcurrentFileModificationException(Exception):
         :param str jobStoreFileID: the ID of the file that was modified by multiple workers
                or processes concurrently
         """
-        super(ConcurrentFileModificationException, self).__init__(
-            'Concurrent update to file %s detected.' % jobStoreFileID)
+        super().__init__('Concurrent update to file %s detected.' % jobStoreFileID)
 
 
 class NoSuchFileException(Exception):
@@ -87,25 +86,24 @@ class NoSuchFileException(Exception):
         :param str customName: optionally, an alternate name for the nonexistent file
         """
         if customName is None:
-            message = "File '%s' does not exist" % jobStoreFileID
+            message = "File '%s' does not exist." % jobStoreFileID
         else:
-            message = "File '%s' (%s) does not exist" % (customName, jobStoreFileID)
-        super(NoSuchFileException, self).__init__(message)
+            message = "File '%s' (%s) does not exist." % (customName, jobStoreFileID)
+        super().__init__(message)
 
 
 class NoSuchJobStoreException(Exception):
     """Indicates that the specified job store does not exist."""
     def __init__(self, locator):
-        super(NoSuchJobStoreException, self).__init__(
-            "The job store '%s' does not exist, so there is nothing to restart" % locator)
+        super().__init__("The job store '%s' does not exist, so there is nothing to restart." % locator)
 
 
 class JobStoreExistsException(Exception):
     """Indicates that the specified job store already exists."""
     def __init__(self, locator):
-        super(JobStoreExistsException, self).__init__(
+        super().__init__(
             "The job store '%s' already exists. Use --restart to resume the workflow, or remove "
-            "the job store with 'toil clean' to start the workflow from scratch" % locator)
+            "the job store with 'toil clean' to start the workflow from scratch." % locator)
 
 
 class AbstractJobStore(with_metaclass(ABCMeta, object)):
@@ -176,7 +174,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param str rootJobStoreID: The ID of the job to set as root
         """
         with self.writeSharedFileStream(self.rootJobStoreIDFileName) as f:
-            f.write(rootJobStoreID)
+            f.write(rootJobStoreID.encode('utf-8'))
 
     def loadRootJob(self):
         """

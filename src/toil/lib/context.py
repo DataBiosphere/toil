@@ -1,5 +1,6 @@
 # coding=utf-8
-import hashlib
+from six import iteritems
+from past.builtins import map
 from contextlib import contextmanager
 import json
 import os
@@ -560,7 +561,7 @@ class Context(object):
         keypairs = dict((keypair.name, keypair) for keypair in self.ec2.get_all_key_pairs())
         for glob in globs:
             i = len(result)
-            for name, keypair in keypairs.iteritems():
+            for name, keypair in iteritems(keypairs):
                 if fnmatch.fnmatch(name, glob):
                     result.append(keypair)
 
@@ -693,11 +694,11 @@ class Context(object):
                                 list_policies, delete_policy, get_policy, put_policy):
         # Delete superfluous policies
         policy_names = set(list_policies(entity_name).policy_names)
-        for policy_name in policy_names.difference(set(policies.keys())):
+        for policy_name in policy_names.difference(set(list(policies.keys()))):
             delete_policy(entity_name, policy_name)
 
         # Create expected policies
-        for policy_name, policy in policies.iteritems():
+        for policy_name, policy in iteritems(policies):
             current_policy = None
             try:
                 current_policy = json.loads(urllib.unquote(

@@ -757,7 +757,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
 def tempFileContaining(content, suffix=''):
     fd, path = tempfile.mkstemp(suffix=suffix)
     try:
-        os.write(fd, content)
+        os.write(fd, bytes(content))
     except:
         os.close(fd)
         raise

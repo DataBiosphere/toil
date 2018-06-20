@@ -37,7 +37,7 @@ def setup(job, inputFile, N, downCheckpoints, options):
     Sets up the sort.
     Returns the FileID of the sorted file
     """
-    job.log("Starting the merge sort")
+    job.fileStore.logToMaster("Starting the merge sort")
     return job.addChildJobFn(down,
                              inputFile, N,
                              downCheckpoints,
@@ -59,7 +59,7 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
     length = os.path.getsize(inputFile)
     if length > N:
         # We will subdivide the file
-        job.log("Splitting file: %s of size: %s"
+        job.fileStore.logToMaster("Splitting file: %s of size: %s"
                 % (inputFileStoreID, length), level=logging.CRITICAL)
         # Split the file into two copies
         midPoint = getMidPoint(inputFile, 0, length)
@@ -81,7 +81,7 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
                                     preemptable=True, options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
-        job.log("Sorting file: %s of size: %s"
+        job.fileStore.logToMaster("Sorting file: %s of size: %s"
                 % (inputFileStoreID, length), level=logging.CRITICAL)
         # Sort the copy and write back to the fileStore
         shutil.copyfile(inputFile, inputFile + '.sort')
@@ -97,7 +97,7 @@ def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
         with job.fileStore.readGlobalFileStream(inputFileID1) as inputFileHandle1:
             with job.fileStore.readGlobalFileStream(inputFileID2) as inputFileHandle2:
                 merge(inputFileHandle1, inputFileHandle2, fileHandle)
-                job.log("Merging %s and %s to %s"
+                job.fileStore.logToMaster("Merging %s and %s to %s"
                         % (inputFileID1, inputFileID2, outputFileStoreID))
         # Cleanup up the input files - these deletes will occur after the completion is successful.
         job.fileStore.deleteGlobalFile(inputFileID1)

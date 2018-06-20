@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from six import iteritems
 
 import os
 import logging
@@ -156,9 +157,9 @@ class SynthesizeWDL:
 
     def write_main_wfdeclarations(self):
         main_section = ''
-        for wfname, wf in self.workflows_dictionary.iteritems():
+        for wfname, wf in iteritems(self.workflows_dictionary):
             if 'wf_declarations' in wf:
-                for var, var_expressn in wf['wf_declarations'].iteritems():
+                for var, var_expressn in iteritems(wf['wf_declarations']):
 
                     # check the json file for the expression's value
                     # this is a higher priority and overrides anything written in the .wdl
@@ -285,7 +286,7 @@ class SynthesizeWDL:
 
         scatternamespace = []
 
-        for wfname, wf in self.workflows_dictionary.iteritems():
+        for wfname, wf in iteritems(self.workflows_dictionary):
             if 'wf_declarations' in wf:
                 for var in wf['wf_declarations']:
                     scatternamespace.append(var)

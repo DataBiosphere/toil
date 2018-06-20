@@ -1843,7 +1843,7 @@ class FileID(str):
         return super(FileID, cls).__new__(cls, fileStoreID)
 
     def __init__(self, fileStoreID, size):
-        super(FileID, self).__init__(fileStoreID)
+        super(str, self).__init__(fileStoreID)
         self.size = size
 
     @classmethod

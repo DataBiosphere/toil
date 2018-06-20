@@ -15,6 +15,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from six import iteritems
 from toil.lib.ec2nodes import InstanceType
 
 
@@ -157,4 +158,4 @@ regionDict = {
               'eu-west-2': ['c4.2xlarge', 'c4.4xlarge', 'c4.8xlarge', 'c4.large', 'c4.xlarge', 'c5.18xlarge', 'c5.2xlarge', 'c5.4xlarge', 'c5.9xlarge', 'c5.large', 'c5.xlarge', 'd2.2xlarge', 'd2.4xlarge', 'd2.8xlarge', 'd2.xlarge', 'i3.16xlarge', 'i3.2xlarge', 'i3.4xlarge', 'i3.8xlarge', 'i3.large', 'i3.xlarge', 'm4.10xlarge', 'm4.16xlarge', 'm4.2xlarge', 'm4.4xlarge', 'm4.large', 'm4.xlarge', 'm5.12xlarge', 'm5.24xlarge', 'm5.2xlarge', 'm5.4xlarge', 'm5.large', 'm5.xlarge', 'r4.16xlarge', 'r4.2xlarge', 'r4.4xlarge', 'r4.8xlarge', 'r4.large', 'r4.xlarge', 't2.2xlarge', 't2.large', 't2.medium', 't2.micro', 't2.nano', 't2.small', 't2.xlarge', 'x1.16xlarge', 'x1.32xlarge'],
               'eu-west-3': ['c5.18xlarge', 'c5.2xlarge', 'c5.4xlarge', 'c5.9xlarge', 'c5.large', 'c5.xlarge', 'd2.2xlarge', 'd2.4xlarge', 'd2.8xlarge', 'd2.xlarge', 'i3.16xlarge', 'i3.2xlarge', 'i3.4xlarge', 'i3.8xlarge', 'i3.large', 'i3.xlarge', 'm5.12xlarge', 'm5.24xlarge', 'm5.2xlarge', 'm5.4xlarge', 'm5.large', 'm5.xlarge', 'r4.16xlarge', 'r4.2xlarge', 'r4.4xlarge', 'r4.8xlarge', 'r4.large', 'r4.xlarge', 't2.2xlarge', 't2.large', 't2.medium', 't2.micro', 't2.nano', 't2.small', 't2.xlarge', 'x1.16xlarge', 'x1.32xlarge']}
 
-ec2InstancesByRegion = dict((region, [E2Instances[i] for i in instances]) for region, instances in regionDict.iteritems())
+ec2InstancesByRegion = dict((region, [E2Instances[i] for i in instances]) for region, instances in iteritems(regionDict))

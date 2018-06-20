@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from past.builtins import map
 import logging
 import os
 import pipes

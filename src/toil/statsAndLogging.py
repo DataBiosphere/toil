@@ -49,7 +49,10 @@ class StatsAndLogging( object ):
     def logWithFormatting(cls, jobStoreID, jobLogs, method=logger.debug, message=None):
         if message is not None:
             method(message)
+        if isinstance(jobStoreID, bytes):
+            jobStoreID = jobStoreID.decode('utf-8')
         for line in jobLogs:
+            line = line.decode('utf-8')
             method('%s    %s', jobStoreID, line.rstrip('\n'))
 
     @classmethod
@@ -138,7 +141,7 @@ class StatsAndLogging( object ):
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
-                               total_clock=str(getTotalCpuTime() - startClock)))
+                               total_clock=str(getTotalCpuTime() - startClock)), ensure_ascii=True)
         jobStore.writeStatsAndLogging(text)
 
     def check(self):

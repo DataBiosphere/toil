@@ -1,5 +1,5 @@
 import random
-
+from six.moves import xrange
 from math import sqrt
 
 

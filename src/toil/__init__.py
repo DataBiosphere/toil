@@ -68,7 +68,7 @@ def resolveEntryPoint(entryPoint):
             return entryPoint
     else:
         # Outside a virtualenv it is hard to predict where the entry points got installed. It is
-        # the reponsibility of the user to ensure that they are present on PATH and point to the
+        # the responsibility of the user to ensure that they are present on PATH and point to the
         # correct version of Toil. This is still better than an absolute path because it gives
         # the user control over Toil's location on both leader and workers.
         return entryPoint
