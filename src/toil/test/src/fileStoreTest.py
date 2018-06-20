@@ -640,7 +640,7 @@ class hidden(object):
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
                 self.assertEqual(err.numberOfFailedJobs, 1)
-                with open(self.options.logFile, encoding='utf-8', errors='ignore') as f:
+                with open(self.options.logFile) as f:
                     logContents = f.read()
                 if CacheUnbalancedError.message in logContents:
                     self.assertEqual(expectedResult, 'Fail')
