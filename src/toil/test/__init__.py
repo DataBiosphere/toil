@@ -471,9 +471,11 @@ def needs_lsf(test_item):
 def needs_docker(test_item):
     """
     Use as a decorator before test classes or methods to only run them if
-    docker is installed.
+    docker is installed and docker-based tests are enabled.
     """
     test_item = _mark_test('docker', test_item)
+    if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
+        return unittest.skip('Skipping docker test.')(test_item)
     if next(which('docker'), None):
         return test_item
     else:
