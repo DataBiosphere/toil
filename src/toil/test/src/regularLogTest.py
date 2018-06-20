@@ -37,10 +37,10 @@ class RegularLogTest(ToilTest):
         onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
         assert onlyLogs
         for log in onlyLogs:
-            with open(log, "r") as f:
+            with open(log, "rb") as f:
                 if encoding == "gzip":
                     # Check for gzip magic header '\x1f\x8b'
-                    assert f.read().startswith('\x1f\x8b')
+                    assert f.read().startswith(b'\x1f\x8b')
                 else:
                     mime = mimetypes.guess_type(log)
                     self.assertEqual(mime[1], encoding)
