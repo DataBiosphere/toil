@@ -357,7 +357,7 @@ class AbstractJobStoreTest(object):
             stats = set()
             self.assertEquals(2, master.readStatsAndLogging(callback))
             self.assertEquals({'1', '2'}, stats)
-            largeLogEntry = os.urandom(1024 * 1024)
+            largeLogEntry = os.urandom(self._largeLogEntrySize())
             stats = set()
             worker.writeStatsAndLogging(largeLogEntry)
             self.assertEquals(1, master.readStatsAndLogging(callback))
@@ -795,6 +795,12 @@ class AbstractJobStoreTest(object):
                 self.assertTrue(os.path.isfile(path))
             finally:
                 os.unlink(path)
+
+        def _largeLogEntrySize(self):
+            """
+            Sub-classes may want to override these in order to maximize test coverage
+            """
+            return 1 * 1024 * 1024
 
         def _batchDeletionSize(self):
             return 10
