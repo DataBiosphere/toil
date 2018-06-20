@@ -66,7 +66,7 @@ class MiscTests(ToilTest):
             if random.randint(0,100) < 75:
                 # Create a fresh file in the range of 1-10 MB
                 fileSize = int(round(random.random(), 2) * 10 * 1024 * 1024)
-                with open(fileName, 'w') as fileHandle:
+                with open(fileName, 'wb') as fileHandle:
                     fileHandle.write(os.urandom(fileSize))
                 files[fileName] = fileSize
             else:

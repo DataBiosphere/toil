@@ -15,6 +15,7 @@ from __future__ import absolute_import, print_function
 from builtins import zip
 from builtins import map
 from builtins import range
+import codecs
 import os
 import random
 import unittest
@@ -282,6 +283,7 @@ class TestService(Job.Service):
                 # Try reading a line from the input file
                 try:
                     with jobStore.readFileStream(inJobStoreID) as fH:
+                        fH = codecs.getreader('utf-8')(fH)
                         line = fH.readline()
                 except:
                     logger.debug("Something went wrong reading a line")
@@ -296,7 +298,7 @@ class TestService(Job.Service):
 
                 # Write out the resulting read integer and the message              
                 with jobStore.updateFileStream(outJobStoreID) as fH:
-                    fH.write("%s %s\n" % (inputInt, messageInt))
+                    fH.write(("%s %s\n" % (inputInt, messageInt)).encode('utf-8'))
         except:
             error.set()
             raise
@@ -314,7 +316,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
     # Write the integer into the file
     logger.debug("Writing key to inJobStoreFileID")
     with job.fileStore.jobStore.updateFileStream(inJobStoreFileID) as fH:
-        fH.write("%s\n" % key)
+        fH.write(("%s\n" % key).encode('utf-8'))
 
     logger.debug("Trying to read key and message from outJobStoreFileID")
     for i in range(10): # Try 10 times over
@@ -322,6 +324,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
 
         # Try reading an integer from the input file and writing out the message
         with job.fileStore.jobStore.readFileStream(outJobStoreFileID) as fH:
+            fH = codecs.getreader('utf-8')(fH)
             line = fH.readline()
 
         tokens = line.split()
