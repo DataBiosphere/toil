@@ -23,8 +23,8 @@ The 'prepare' target installs Toil's build requirements into the current virtual
 The 'develop' target creates an editable install of Toil and its runtime requirements in the
 current virtualenv. The install is called 'editable' because changes to the source code
 immediately affect the virtualenv. Set the 'extras' variable to ensure that the 'develop' target
-installs support for extras. Consult setup.py for the list of supported extras. To install Toil
-in develop mode with all extras, run
+installs support for extras; some tests require extras to be installed. Consult setup.py for the
+list of supported extras. To install Toil in develop mode with all extras, run
 
 	make develop extras=[all]
 
