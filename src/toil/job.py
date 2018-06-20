@@ -925,7 +925,7 @@ class Job(BaseJob):
         try:
             unpickler = pickle.Unpickler(fileHandle)
             # In Python 2 with cPickle we set "find_global"
-            #unpickler.find_global = filter_main
+            unpickler.find_global = filter_main
         except AttributeError:
             # In Python 3 find_global isn't real and we are supposed to
             # subclass unpickler and override find_class. We can't just replace
