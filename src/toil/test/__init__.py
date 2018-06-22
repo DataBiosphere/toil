@@ -252,14 +252,14 @@ class ToilTest(unittest.TestCase):
 
 try:
     # noinspection PyUnresolvedReferences
-    from _pytest.mark import MarkDecorator
+    import pytest.mark
 except ImportError:
     # noinspection PyUnusedLocal
     def _mark_test(name, test_item):
         return test_item
 else:
     def _mark_test(name, test_item):
-        return MarkDecorator(name)(test_item)
+        return getattr(pytest.mark, name)(test_item)
 
 
 def needs_rsync3(test_item):
