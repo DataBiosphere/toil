@@ -160,11 +160,11 @@ class BaseJob(object):
         (1073741824, 1073741824, 1073741824)
         >>> Job._parseResource('cores', 1.1)
         1.1
-        >>> Job._parseResource('disk', 1.1)
+        >>> Job._parseResource('disk', 1.1) # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
         ...
         TypeError: The 'disk' requirement does not accept values that are of <type 'float'>
-        >>> Job._parseResource('memory', object())
+        >>> Job._parseResource('memory', object()) # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
         ...
         TypeError: The 'memory' requirement does not accept values that are of ...
