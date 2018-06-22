@@ -92,7 +92,7 @@ def runSetup():
         htcondor_reqs
 
     # htcondor is not supported by apple
-    if sys.platform != 'linux' or 'linux2':
+    if sys.platform != 'linux' and sys.platform != 'linux2':
         all_reqs.remove(htcondor)
 
     # remove the subprocess32 backport if not python2
