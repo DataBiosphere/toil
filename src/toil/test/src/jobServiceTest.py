@@ -195,7 +195,7 @@ def serviceTest(job, outFile, messageInt):
     open(outFile, 'w').close()
     randInt = random.randint(1, sys.maxsize) # We create a random number that is added to messageInt and subtracted by the serviceAccessor, to prove that
     # when service test is checkpointed and restarted there is never a connection made between an earlier service and later serviceAccessor, or vice versa.
-    job.addChildJobFn(serviceAccessor, job.addService(TestService(messageInt + randInt)), outFile, randInt)
+    job.addChildJobFn(serviceAccessor, job.addService(ToyService(messageInt + randInt)), outFile, randInt)
 
 def serviceTestRecursive(job, outFile, messages):
     """
@@ -205,12 +205,12 @@ def serviceTestRecursive(job, outFile, messages):
         #Clean out out-file
         open(outFile, 'w').close()
         randInt = random.randint(1, sys.maxsize)
-        service = TestService(messages[0] + randInt)
+        service = ToyService(messages[0] + randInt)
         child = job.addChildJobFn(serviceAccessor, job.addService(service), outFile, randInt)
 
         for i in range(1, len(messages)):
             randInt = random.randint(1, sys.maxsize)
-            service2 = TestService(messages[i] + randInt, cores=0.1)
+            service2 = ToyService(messages[i] + randInt, cores=0.1)
             child = child.addChildJobFn(serviceAccessor,
                                         job.addService(service2, parentService=service),
                                         outFile, randInt, cores=0.1)
