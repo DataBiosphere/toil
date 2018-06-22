@@ -272,7 +272,7 @@ def needs_rsync3(test_item):
     """
     test_item = _mark_test('rsync', test_item)
     try:
-        versionInfo = subprocess.check_output(['rsync', '--version'])
+        versionInfo = subprocess.check_output(['rsync', '--version']).decode('utf-8')
     except subprocess.CalledProcessError:
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
     else:

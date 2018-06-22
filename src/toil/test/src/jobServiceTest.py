@@ -47,9 +47,9 @@ class JobServiceTest(ToilTest):
         error.
         """
         job = Job()
-        service = TestServiceSerialization("woot")
+        service = ToySerializableService("woot")
         startValue = job.addService(service) # Add a first service to job
-        subService = TestServiceSerialization(startValue) # Now create a child of 
+        subService = ToySerializableService(startValue) # Now create a child of 
         # that service that takes the start value promise from the parent service
         job.addService(subService, parentService=service) # This should work if
         # serialization on services is working correctly.
@@ -86,9 +86,9 @@ class JobServiceTest(ToilTest):
         try:
             def makeWorkflow():
                 job = Job()
-                r1 = job.addService(TestServiceSerialization("woot1"))
-                r2 = job.addService(TestServiceSerialization("woot2"))
-                r3 = job.addService(TestServiceSerialization("woot3"))
+                r1 = job.addService(ToySerializableService("woot1"))
+                r2 = job.addService(ToySerializableService("woot2"))
+                r3 = job.addService(ToySerializableService("woot3"))
                 job.addChildFn(fnTest, [ r1, r2, r3 ], outFile)
                 return job
             
@@ -225,18 +225,18 @@ def serviceTestParallelRecursive(job, outFiles, messageBundles):
         open(outFile, 'w').close()
         if len(messages) > 0:
             randInt = random.randint(1, sys.maxsize)
-            service = TestService(messages[0] + randInt)
+            service = ToyService(messages[0] + randInt)
             child = job.addChildJobFn(serviceAccessor, job.addService(service), outFile, randInt)
 
             for i in range(1, len(messages)):
                 randInt = random.randint(1, sys.maxsize)
-                service2 = TestService(messages[i] + randInt, cores=0.1)
+                service2 = ToyService(messages[i] + randInt, cores=0.1)
                 child = child.addChildJobFn(serviceAccessor,
                                             job.addService(service2, parentService=service),
                                             outFile, randInt, cores=0.1)
                 service = service2
 
-class TestService(Job.Service):
+class ToyService(Job.Service):
     def __init__(self, messageInt, *args, **kwargs):
         """
         While established the service repeatedly:
@@ -341,7 +341,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
 
     assert 0 # Job failed to get info from the service
 
-class TestServiceSerialization(Job.Service):
+class ToySerializableService(Job.Service):
     def __init__(self, messageInt, *args, **kwargs):
         """
         Trivial service for testing serialization.
