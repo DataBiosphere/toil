@@ -283,6 +283,38 @@ class ClusterScalerTest(ToilTest):
         setattr(self.provisioner, 'retryPredicate', lambda _: False)
 
         self.leader = MockBatchSystemAndProvisioner(self.config, 1)
+        
+    def testRounding(self):
+        """
+        Test to make sure the ClusterScaler's rounding rounds properly.
+        """
+        
+        # Get a ClusterScaler
+        self.config.targetTime = 1
+        self.config.betaInertia = 0.0
+        self.config.maxNodes = [2, 3]
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        
+        # Exact integers round to themselves
+        self.assertEqual(scaler._round(0.0), 0)
+        self.assertEqual(scaler._round(1.0), 1)
+        self.assertEqual(scaler._round(-1.0), -1)
+        self.assertEqual(scaler._round(123456789101112131415.0), 123456789101112131415)
+        
+        # Decimals other than X.5 round to the side they are closer to
+        self.assertEqual(scaler._round(1E-10), 0)
+        self.assertEqual(scaler._round(0.5 + 1E-15), 1)
+        self.assertEqual(scaler._round(-0.9), -1)
+        self.assertEqual(scaler._round(-0.4), 0)
+        
+        # Decimals at exactly X.5 round away from 0
+        self.assertEqual(scaler._round(0.5), 1)
+        self.assertEqual(scaler._round(-0.5), -1)
+        self.assertEqual(scaler._round(2.5), 3)
+        self.assertEqual(scaler._round(-2.5), -3)
+        self.assertEqual(scaler._round(15.5), 16)
+        self.assertEqual(scaler._round(-15.5), -16)
+        self.assertEqual(scaler._round(123456789101112131415.5), 123456789101112131416)
 
     def testMaxNodes(self):
         """
