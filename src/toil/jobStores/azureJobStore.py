@@ -333,7 +333,7 @@ class AzureJobStore(AbstractJobStore):
         return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
-        with open(localFilePath) as read_fd:
+        with open(localFilePath, 'rb') as read_fd:
             with self._uploadStream(jobStoreFileID, self.files) as write_fd:
                 while True:
                     buf = read_fd.read(self._maxAzureBlockBytes)
@@ -344,7 +344,7 @@ class AzureJobStore(AbstractJobStore):
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         try:
             with self._downloadStream(jobStoreFileID, self.files) as read_fd:
-                with open(localFilePath, 'w') as write_fd:
+                with open(localFilePath, 'wb') as write_fd:
                     while True:
                         buf = read_fd.read(self._maxAzureBlockBytes)
                         write_fd.write(buf)
