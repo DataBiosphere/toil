@@ -299,7 +299,7 @@ class ClusterScalerTest(ToilTest):
         self.assertEqual(scaler._round(0.0), 0)
         self.assertEqual(scaler._round(1.0), 1)
         self.assertEqual(scaler._round(-1.0), -1)
-        self.assertEqual(scaler._round(123456789101112131415.0), 123456789101112131415)
+        self.assertEqual(scaler._round(123456789101112.13), 123456789101112)
         
         # Decimals other than X.5 round to the side they are closer to
         self.assertEqual(scaler._round(1E-10), 0)
@@ -314,7 +314,7 @@ class ClusterScalerTest(ToilTest):
         self.assertEqual(scaler._round(-2.5), -3)
         self.assertEqual(scaler._round(15.5), 16)
         self.assertEqual(scaler._round(-15.5), -16)
-        self.assertEqual(scaler._round(123456789101112131415.5), 123456789101112131416)
+        self.assertEqual(scaler._round(123456789101112.5), 123456789101113)
 
     def testMaxNodes(self):
         """
