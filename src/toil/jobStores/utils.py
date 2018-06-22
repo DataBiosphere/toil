@@ -21,7 +21,7 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
     ...     def readFrom(self, readable):
     ...         shutil.copyfileobj(readable, sys.stdout)
     >>> with MyPipe() as writable:
-    ...     writable.write('Hello, world!\\n')
+    ...     _ = writable.write('Hello, world!\\n')
     Hello, world!
 
     Each instance of this class creates a thread and invokes the readFrom method in that thread.
