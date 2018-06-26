@@ -639,13 +639,12 @@ class hidden(object):
                 F.addChild(G)
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
-                self.assertEqual(err.numberOfFailedJobs, 1)
                 with open(self.options.logFile) as f:
                     logContents = f.read()
                 if CacheUnbalancedError.message in logContents:
                     self.assertEqual(expectedResult, 'Fail')
                 else:
-                    self.fail('Toil did not raise the expected AssertionError')
+                    self.fail('Toil did not raise the expected CacheUnbalancedError but failed for some other reason')
 
         @staticmethod
         def _writeFileToJobStoreWithAsserts(job, isLocalFile, nonLocalDir=None, fileMB=1):
