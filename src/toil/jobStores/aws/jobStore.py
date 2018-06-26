@@ -233,7 +233,7 @@ class AWSJobStore(AbstractJobStore):
                                                        attributes=attributes)
     
     def _awsJobFromItem(self, item):
-        if "overlargeID" in item:
+        if item["overlargeID"]:
             assert self.fileExists(item["overlargeID"])
             #This is an overlarge job, download the actual attributes
             #from the file store
@@ -248,14 +248,15 @@ class AWSJobStore(AbstractJobStore):
 
     def _awsJobToItem(self, job):
         binary = pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)
-        if len(binary) > SDBHelper.maxBinarySize():
+        if len(binary) > SDBHelper.maxBinarySize(extraReservedChunks=1):
             #Store as an overlarge job in S3
             with self.writeFileStream() as (writable, fileID):
                 writable.write(binary)
-            item = SDBHelper.binaryToAttributes('')
+            item = SDBHelper.binaryToAttributes(None)
             item["overlargeID"] = fileID
         else:
             item = SDBHelper.binaryToAttributes(binary)
+            item["overlargeID"] = ""
         return item
 
     jobsPerBatchInsert = 25
@@ -339,7 +340,7 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 item = self.jobsDomain.get_attributes(bytes(jobStoreID), consistent_read=True)
-        if "overlargeID" in item:
+        if item["overlargeID"]:
             log.debug("Deleting job from filestore")
             self.deleteFile(item["overlargeID"])
         for attempt in retry_sdb():
