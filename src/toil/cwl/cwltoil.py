@@ -431,8 +431,8 @@ class CWLJob(Job):
         if isinstance(unitName, (list, tuple)):
             unitName = ' '.join(unitName)
         super(CWLJob, self).__init__(cores=req["cores"],
-                                     memory=(req["ram"]*(2**20)),
-                                     disk=((req["tmpdirSize"]*(2**20)) + (req["outdirSize"]*(2**20))),
+                                     memory=int(req["ram"]*(2**20)),
+                                     disk=int((req["tmpdirSize"]*(2**20)) + (req["outdirSize"]*(2**20))),
                                      unitName=unitName)
 
         self.cwljob = cwljob

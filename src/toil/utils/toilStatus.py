@@ -20,7 +20,7 @@ from __future__ import absolute_import
 from __future__ import print_function
 from six.moves import xrange
 from past.builtins import map
-from past.builtins import str
+from functools import reduce
 
 # standard library
 import logging

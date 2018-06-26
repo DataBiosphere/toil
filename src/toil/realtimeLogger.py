@@ -54,9 +54,10 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
         """
         # Unpack the data from the request
         data, socket = self.request
+        
         try:
             # Parse it as JSON
-            message_attrs = json.loads(data)
+            message_attrs = json.loads(data.decode('utf-8'))
             # Fluff it up into a proper logging record
             record = logging.makeLogRecord(message_attrs)
         except:
@@ -79,7 +80,7 @@ class JSONDatagramHandler(logging.handlers.DatagramHandler):
         """
         Actually, encode the record as bare JSON instead.
         """
-        return json.dumps(record.__dict__)
+        return json.dumps(record.__dict__).encode('utf-8')
 
 
 class RealtimeLoggerMetaclass(type):

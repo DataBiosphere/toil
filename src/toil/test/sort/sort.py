@@ -19,6 +19,7 @@ from __future__ import division
 from builtins import range
 from past.utils import old_div
 from argparse import ArgumentParser
+import codecs
 import os
 import random
 import logging
@@ -94,11 +95,14 @@ def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
     Merges the two files and places them in the output.
     """
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
+        fileHandle = codecs.getwriter('utf-8')(fileHandle)
         with job.fileStore.readGlobalFileStream(inputFileID1) as inputFileHandle1:
+            inputFileHandle1 = codecs.getreader('utf-8')(inputFileHandle1)
             with job.fileStore.readGlobalFileStream(inputFileID2) as inputFileHandle2:
-                merge(inputFileHandle1, inputFileHandle2, fileHandle)
+                inputFileHandle2 = codecs.getreader('utf-8')(inputFileHandle2)
                 job.fileStore.logToMaster("Merging %s and %s to %s"
-                        % (inputFileID1, inputFileID2, outputFileStoreID))
+                    % (inputFileID1, inputFileID2, outputFileStoreID))
+                merge(inputFileHandle1, inputFileHandle2, fileHandle)
         # Cleanup up the input files - these deletes will occur after the completion is successful.
         job.fileStore.deleteGlobalFile(inputFileID1)
         job.fileStore.deleteGlobalFile(inputFileID2)
@@ -122,14 +126,16 @@ def sort(file):
 def merge(fileHandle1, fileHandle2, outputFileHandle):
     """
     Merges together two files maintaining sorted order.
+    
+    All handles must be text-mode streams.
     """
     line2 = fileHandle2.readline()
     for line1 in fileHandle1.readlines():
-        while line2 != '' and line2 <= line1:
+        while len(line2) != 0 and line2 <= line1:
             outputFileHandle.write(line2)
             line2 = fileHandle2.readline()
         outputFileHandle.write(line1)
-    while line2 != '':
+    while len(line2) != 0:
         outputFileHandle.write(line2)
         line2 = fileHandle2.readline()
 

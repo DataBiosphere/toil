@@ -312,7 +312,7 @@ def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of
     # Python encoding issues. To work around this we print in a separate Python process. See
     # http://stackoverflow.com/questions/492483/setting-the-correct-encoding-when-piping-stdout-in-python
-    subprocess.check_call([sys.executable, '-c', "print '\\xc3\\xbc'"])
+    subprocess.check_call([sys.executable, '-c', "print('\\xc3\\xbc')"])
 
 class RunTwoJobsPerWorker(Job):
     """

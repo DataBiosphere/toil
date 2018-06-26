@@ -187,7 +187,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         try:
             with self.readSharedFileStream(self.rootJobStoreIDFileName) as f:
-                rootJobStoreID = f.read()
+                rootJobStoreID = f.read().decode('utf-8')
         except NoSuchFileException:
             raise JobException('No job has been set as the root in this job store')
         if not self.exists(rootJobStoreID):

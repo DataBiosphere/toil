@@ -1,4 +1,5 @@
 from builtins import object
+import codecs
 import logging
 import os
 import errno
@@ -19,9 +20,9 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
     >>> import sys, shutil
     >>> class MyPipe(WritablePipe):
     ...     def readFrom(self, readable):
-    ...         shutil.copyfileobj(readable, sys.stdout)
+    ...         shutil.copyfileobj(codecs.getreader('utf-8')(readable), sys.stdout)
     >>> with MyPipe() as writable:
-    ...     writable.write('Hello, world!\\n')
+    ...     _ = writable.write('Hello, world!\\n'.encode('utf-8'))
     Hello, world!
 
     Each instance of this class creates a thread and invokes the readFrom method in that thread.
@@ -83,7 +84,7 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     def _reader(self):
-        with os.fdopen(self.readable_fh, 'r') as readable:
+        with os.fdopen(self.readable_fh, 'rb') as readable:
             # FIXME: another race here, causing a redundant attempt to close in the main thread
             self.readable_fh = None  # signal to parent thread that we've taken over
             self.readFrom(readable)
@@ -96,7 +97,7 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
 
     def __enter__(self):
         self.readable_fh, writable_fh = os.pipe()
-        self.writable = os.fdopen(writable_fh, 'w')
+        self.writable = os.fdopen(writable_fh, 'wb')
         self.thread = ExceptionalThread(target=self._reader)
         self.thread.start()
         return self.writable
@@ -133,9 +134,9 @@ class ReadablePipe(with_metaclass(ABCMeta, object)):
     >>> import sys, shutil
     >>> class MyPipe(ReadablePipe):
     ...     def writeTo(self, writable):
-    ...         writable.write('Hello, world!\\n')
+    ...         writable.write('Hello, world!\\n'.encode('utf-8'))
     >>> with MyPipe() as readable:
-    ...     shutil.copyfileobj(readable, sys.stdout)
+    ...     shutil.copyfileobj(codecs.getreader('utf-8')(readable), sys.stdout)
     Hello, world!
 
     Each instance of this class creates a thread and invokes the :meth:`.writeTo` method in that
@@ -198,7 +199,7 @@ class ReadablePipe(with_metaclass(ABCMeta, object)):
 
     def _writer(self):
         try:
-            with os.fdopen(self.writable_fh, 'w') as writable:
+            with os.fdopen(self.writable_fh, 'wb') as writable:
                 self.writeTo(writable)
         except IOError as e:
             # The other side of the pipe may have been closed by the
@@ -214,7 +215,7 @@ class ReadablePipe(with_metaclass(ABCMeta, object)):
 
     def __enter__(self):
         readable_fh, self.writable_fh = os.pipe()
-        self.readable = os.fdopen(readable_fh, 'r')
+        self.readable = os.fdopen(readable_fh, 'rb')
         self.thread = ExceptionalThread(target=self._writer)
         self.thread.start()
         return self.readable

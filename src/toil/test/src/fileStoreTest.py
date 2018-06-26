@@ -221,7 +221,7 @@ class hidden(object):
             :return: None
             """
             for nlf in files:
-                with open(nlf, 'w') as nonLocalFileHandle:
+                with open(nlf, 'wb') as nonLocalFileHandle:
                     nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
             job.defer(_deleteMethods._deleteFileMethod, files[0], nlf=files[1])
             return None
@@ -235,7 +235,7 @@ class hidden(object):
             :return: None
             """
             for nlf in files:
-                with open(nlf, 'w') as nonLocalFileHandle:
+                with open(nlf, 'wb') as nonLocalFileHandle:
                     nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
             job.defer(_deleteMethods._deleteFileClassMethod, files[0], nlf=files[1])
             return None
@@ -250,7 +250,7 @@ class hidden(object):
             """
             lmd = lambda x, nlf: [os.remove(x), os.remove(nlf)]
             for nlf in files:
-                with open(nlf, 'w') as nonLocalFileHandle:
+                with open(nlf, 'wb') as nonLocalFileHandle:
                     nonLocalFileHandle.write(os.urandom(1 * 1024 * 1024))
             job.defer(lmd, files[0], nlf=files[1])
             return None
@@ -439,7 +439,7 @@ class hidden(object):
             else:
                 assert nonLocalDir is not None
                 work_dir = nonLocalDir
-            with open(os.path.join(work_dir, str(uuid4())), 'w') as testFile:
+            with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
             return job.fileStore.writeGlobalFile(testFile.name), testFile
@@ -639,13 +639,12 @@ class hidden(object):
                 F.addChild(G)
                 Job.Runner.startToil(A, self.options)
             except FailedJobsException as err:
-                self.assertEqual(err.numberOfFailedJobs, 1)
                 with open(self.options.logFile) as f:
                     logContents = f.read()
                 if CacheUnbalancedError.message in logContents:
                     self.assertEqual(expectedResult, 'Fail')
                 else:
-                    self.fail('Toil did not raise the expected AssertionError')
+                    self.fail('Toil did not raise the expected CacheUnbalancedError but failed for some other reason')
 
         @staticmethod
         def _writeFileToJobStoreWithAsserts(job, isLocalFile, nonLocalDir=None, fileMB=1):
@@ -758,7 +757,7 @@ class hidden(object):
 
             job.fileStore.logToMaster('Double writing a file into job store')
             work_dir = job.fileStore.getLocalTempDir()
-            with open(os.path.join(work_dir, str(uuid4())), 'w') as testFile:
+            with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
             job.fileStore.writeGlobalFile(testFile.name)
@@ -1143,13 +1142,13 @@ class hidden(object):
             """
             cls = hidden.AbstractCachingFileStoreTest
             if os.path.exists(os.path.join(testDir, 'testfile.test')):
-                with open(os.path.join(testDir, 'testfile.test'), 'r') as fH:
+                with open(os.path.join(testDir, 'testfile.test'), 'rb') as fH:
                     cached = unpack('d', fH.read())[0]
                 cls._requirementsConcur(job, jobDisk, cached)
                 cls._returnFileTestFn(job, jobDisk, cached, testDir, 20)
             else:
                 modifiedJobReqs, cached = cls._returnFileTestFn(job, jobDisk, 0, testDir, 20)
-                with open(os.path.join(testDir, 'testfile.test'), 'w') as fH:
+                with open(os.path.join(testDir, 'testfile.test'), 'wb') as fH:
                     fH.write(pack('d', cached))
                 os.kill(os.getpid(), signal.SIGKILL)
 
@@ -1210,7 +1209,7 @@ class hidden(object):
                 if processsingReadFile:
                     processsingReadFile = False
                     # Write a file
-                    with open(os.path.join(work_dir, str(uuid4())), 'w') as testFile:
+                    with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
                         testFile.write(os.urandom(1 * 1024 * 1024))
                     fileToDelete = job.fileStore.writeGlobalFile(testFile.name)
                     outfile = testFile.name
@@ -1234,11 +1233,11 @@ class hidden(object):
             """
             work_dir = job.fileStore.getLocalTempDir()
             # Write local file
-            with open(os.path.join(work_dir, str(uuid4())), 'w') as localFile:
+            with open(os.path.join(work_dir, str(uuid4())), 'wb') as localFile:
                 localFile.write(os.urandom(1 * 1024 * 1024))
             localFsID = job.fileStore.writeGlobalFile(localFile.name)
             # write Non-Local File
-            with open(os.path.join(nonLocalDir, str(uuid4())), 'w') as nonLocalFile:
+            with open(os.path.join(nonLocalDir, str(uuid4())), 'wb') as nonLocalFile:
                 nonLocalFile.write(os.urandom(1 * 1024 * 1024))
             nonLocalFsID = job.fileStore.writeGlobalFile(nonLocalFile.name)
             # Delete fsid of local file. The file should be deleted
