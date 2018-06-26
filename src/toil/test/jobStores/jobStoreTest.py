@@ -651,6 +651,24 @@ class AbstractJobStoreTest(object):
                 self.assertEquals(f.read(), "")
             self.master.delete(job.jobStoreID)
 
+        def testGrowingAndShrinkingJob(self):
+            """Make sure jobs update correctly if they grow/shrink."""
+            # Make some very large data, large enough to trigger
+            # overlarge job creation if that's a thing
+            # (i.e. AWSJobStore)
+            arbitraryLargeData = os.urandom(5000000)
+            job = self.master.create(self.arbitraryJob)
+            # Make the job grow
+            job.foo_attribute = arbitraryLargeData
+            self.master.update(job)
+            check_job = self.master.load(job.jobStoreID)
+            self.assertEquals(check_job.foo_attribute, arbitraryLargeData)
+            # Make the job shrink back close to its original size
+            job.foo_attribute = None
+            self.master.update(job)
+            check_job = self.master.load(job.jobStoreID)
+            self.assertEquals(check_job.foo_attribute, None)
+
         @slow
         def testLargeFile(self):
             dirPath = self._createTempDir()
