@@ -957,18 +957,14 @@ class AWSJobStore(AbstractJobStore):
             :return: the attributes dict and an integer specifying the the number of chunk
                      attributes in the dictionary that are used for storing inlined content.
             """
-            if self.content is None:
-                numChunks = 0
-                attributes = {}
-            else:
-                content = self.content
-                if self.encrypted:
-                    sseKeyPath = self.outer.sseKeyPath
-                    if sseKeyPath is None:
-                        raise AssertionError('Encryption requested but no key was provided.')
-                    content = encryption.encrypt(content, sseKeyPath)
-                attributes = self.binaryToAttributes(content)
-                numChunks = len(attributes)
+            content = self.content
+            if self.encrypted:
+                sseKeyPath = self.outer.sseKeyPath
+                if sseKeyPath is None:
+                    raise AssertionError('Encryption requested but no key was provided.')
+                content = encryption.encrypt(content, sseKeyPath)
+            attributes = self.binaryToAttributes(content)
+            numChunks = attributes['numChunks']
             attributes.update(dict(ownerID=self.ownerID,
                                    encrypted=self.encrypted,
                                    version=self.version or ''))
@@ -976,7 +972,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def _reservedAttributes(cls):
-            return 3
+            return 3 + super(AWSJobStore.FileInfo, cls)._reservedAttributes()
 
         @classmethod
         def maxInlinedSize(cls, encrypted):
