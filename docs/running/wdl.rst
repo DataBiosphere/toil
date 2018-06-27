@@ -113,8 +113,11 @@ http://toil.readthedocs.io/en/3.12.0/running/cli.html
 Running WDL with Toil Scripts
 ------------------------------------
 
-WDL workflows can be evoked in native Toil scripts. For example, if you wanted to run a WDL workflow, with 3 JSON
-files specifying different samples inputs, it could look something like::
+.. note::
+        A cromwell.jar file is needed in order to run a WDL workflow.
+
+WDL workflows can be run indirectly in native Toil scripts. For example, if you wanted to run a WDL workflow, with
+3 JSON files specifying different samples inputs, it could look something like::
 
     from toil.job import Job
     from toil.common import Toil

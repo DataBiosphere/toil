@@ -32,8 +32,8 @@ To run a CWL workflow in AWS with toil see :ref:`awscwl`.
 Running CWL with Toil Scripts
 ------------------------------------
 
-CWL workflows can be evoked in native Toil scripts. For example, if you wanted to run a CWL workflow, with 3 YML files
-specifying different samples inputs, it could look something like::
+CWL workflows can be run indirectly in native Toil scripts. For example, if you wanted to run a CWL workflow, with
+3 YML files specifying different samples inputs, it could look something like::
 
     from toil.job import Job
     from toil.common import Toil
