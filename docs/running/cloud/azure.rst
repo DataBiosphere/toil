@@ -105,3 +105,23 @@ After :ref:`prepareAzure` all you will need to do is specify the job store name 
 For example to run the sort example with Azure job store you would run ::
 
     $ python sort.py azure:<my-azure-account-name>:my-azure-jobstore
+
+Details about Launching a Cluster in Azure
+------------------------------------------
+
+Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example,
+to launch a cluster named "my-cluster" with a Standard_A2 leader in the westus zone, run ::
+
+    (venv) $ toil launch-cluster my-cluster --provisioner azure --leaderNodeType Standard_A2 --zone westus --keyPairName <your-AWS-key-pair-name>
+
+The cluster name is used to uniquely identify your cluster and will be used to
+populate the instance's ``Name`` tag. In addition, the Toil provisioner will
+automatically tag your cluster with an ``Owner`` tag that corresponds to your
+keypair name to facilitate cost tracking.
+
+The ``--zone`` parameter specifies which availability zone to launch the cluster in.
+Alternatively, you can specify this option via the ``TOIL_AZURE_ZONE`` environment variable.
+
+For more information on options try: ::
+
+    (venv) $ toil launch-cluster --help

@@ -211,8 +211,7 @@ class AzureProvisioner(AnsibleDriver):
         try:
             self.callPlaybook(self.playbook['check-cluster'], ansibleArgs, wait=True)
         except RuntimeError:
-            logger.info("The cluster could not be created. Try deleting the cluster if it already exits.")
-            raise
+            raise RuntimeError("The cluster could not be created. Try deleting the cluster if it already exits.")
 
     def destroyCluster(self):
         nodes = self._getNodes()
