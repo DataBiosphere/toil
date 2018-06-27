@@ -15,6 +15,7 @@ from __future__ import absolute_import, print_function
 from builtins import zip
 from builtins import map
 from builtins import range
+import codecs
 import os
 import random
 import unittest
@@ -46,9 +47,9 @@ class JobServiceTest(ToilTest):
         error.
         """
         job = Job()
-        service = TestServiceSerialization("woot")
+        service = ToySerializableService("woot")
         startValue = job.addService(service) # Add a first service to job
-        subService = TestServiceSerialization(startValue) # Now create a child of 
+        subService = ToySerializableService(startValue) # Now create a child of 
         # that service that takes the start value promise from the parent service
         job.addService(subService, parentService=service) # This should work if
         # serialization on services is working correctly.
@@ -85,9 +86,9 @@ class JobServiceTest(ToilTest):
         try:
             def makeWorkflow():
                 job = Job()
-                r1 = job.addService(TestServiceSerialization("woot1"))
-                r2 = job.addService(TestServiceSerialization("woot2"))
-                r3 = job.addService(TestServiceSerialization("woot3"))
+                r1 = job.addService(ToySerializableService("woot1"))
+                r2 = job.addService(ToySerializableService("woot2"))
+                r3 = job.addService(ToySerializableService("woot3"))
                 job.addChildFn(fnTest, [ r1, r2, r3 ], outFile)
                 return job
             
@@ -194,7 +195,7 @@ def serviceTest(job, outFile, messageInt):
     open(outFile, 'w').close()
     randInt = random.randint(1, sys.maxsize) # We create a random number that is added to messageInt and subtracted by the serviceAccessor, to prove that
     # when service test is checkpointed and restarted there is never a connection made between an earlier service and later serviceAccessor, or vice versa.
-    job.addChildJobFn(serviceAccessor, job.addService(TestService(messageInt + randInt)), outFile, randInt)
+    job.addChildJobFn(serviceAccessor, job.addService(ToyService(messageInt + randInt)), outFile, randInt)
 
 def serviceTestRecursive(job, outFile, messages):
     """
@@ -204,12 +205,12 @@ def serviceTestRecursive(job, outFile, messages):
         #Clean out out-file
         open(outFile, 'w').close()
         randInt = random.randint(1, sys.maxsize)
-        service = TestService(messages[0] + randInt)
+        service = ToyService(messages[0] + randInt)
         child = job.addChildJobFn(serviceAccessor, job.addService(service), outFile, randInt)
 
         for i in range(1, len(messages)):
             randInt = random.randint(1, sys.maxsize)
-            service2 = TestService(messages[i] + randInt, cores=0.1)
+            service2 = ToyService(messages[i] + randInt, cores=0.1)
             child = child.addChildJobFn(serviceAccessor,
                                         job.addService(service2, parentService=service),
                                         outFile, randInt, cores=0.1)
@@ -224,18 +225,18 @@ def serviceTestParallelRecursive(job, outFiles, messageBundles):
         open(outFile, 'w').close()
         if len(messages) > 0:
             randInt = random.randint(1, sys.maxsize)
-            service = TestService(messages[0] + randInt)
+            service = ToyService(messages[0] + randInt)
             child = job.addChildJobFn(serviceAccessor, job.addService(service), outFile, randInt)
 
             for i in range(1, len(messages)):
                 randInt = random.randint(1, sys.maxsize)
-                service2 = TestService(messages[i] + randInt, cores=0.1)
+                service2 = ToyService(messages[i] + randInt, cores=0.1)
                 child = child.addChildJobFn(serviceAccessor,
                                             job.addService(service2, parentService=service),
                                             outFile, randInt, cores=0.1)
                 service = service2
 
-class TestService(Job.Service):
+class ToyService(Job.Service):
     def __init__(self, messageInt, *args, **kwargs):
         """
         While established the service repeatedly:
@@ -282,6 +283,7 @@ class TestService(Job.Service):
                 # Try reading a line from the input file
                 try:
                     with jobStore.readFileStream(inJobStoreID) as fH:
+                        fH = codecs.getreader('utf-8')(fH)
                         line = fH.readline()
                 except:
                     logger.debug("Something went wrong reading a line")
@@ -296,7 +298,7 @@ class TestService(Job.Service):
 
                 # Write out the resulting read integer and the message              
                 with jobStore.updateFileStream(outJobStoreID) as fH:
-                    fH.write("%s %s\n" % (inputInt, messageInt))
+                    fH.write(("%s %s\n" % (inputInt, messageInt)).encode('utf-8'))
         except:
             error.set()
             raise
@@ -314,7 +316,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
     # Write the integer into the file
     logger.debug("Writing key to inJobStoreFileID")
     with job.fileStore.jobStore.updateFileStream(inJobStoreFileID) as fH:
-        fH.write("%s\n" % key)
+        fH.write(("%s\n" % key).encode('utf-8'))
 
     logger.debug("Trying to read key and message from outJobStoreFileID")
     for i in range(10): # Try 10 times over
@@ -322,6 +324,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
 
         # Try reading an integer from the input file and writing out the message
         with job.fileStore.jobStore.readFileStream(outJobStoreFileID) as fH:
+            fH = codecs.getreader('utf-8')(fH)
             line = fH.readline()
 
         tokens = line.split()
@@ -338,7 +341,7 @@ def serviceAccessor(job, communicationFiles, outFile, randInt):
 
     assert 0 # Job failed to get info from the service
 
-class TestServiceSerialization(Job.Service):
+class ToySerializableService(Job.Service):
     def __init__(self, messageInt, *args, **kwargs):
         """
         Trivial service for testing serialization.

@@ -73,11 +73,11 @@ class CheckRetryCount(Job):
         """Mark a retry in the fileStore, and return the number of retries so far."""
         try:
             with fileStore.jobStore.readSharedFileStream("checkpointRun") as f:
-                timesRun = int(f.read())
+                timesRun = int(f.read().decode('utf-8'))
         except NoSuchFileException:
             timesRun = 0
         with fileStore.jobStore.writeSharedFileStream("checkpointRun") as f:
-            f.write(str(timesRun + 1))
+            f.write(str(timesRun + 1).encode('utf-8'))
         return timesRun
 
     def run(self, fileStore):

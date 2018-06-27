@@ -142,7 +142,7 @@ class ResourceTest(ToilTest):
         # contents. This is a bit brittle since it assumes that all the data is written in a
         # single call to write(). If more calls are made we can easily concatenate them.
         zipFile = file_handle.write.call_args_list[0][0][0]
-        self.assertTrue(zipFile.startswith('PK'))  # the magic header for ZIP files
+        self.assertTrue(zipFile.startswith(b'PK'))  # the magic header for ZIP files
 
         # Check contents if requested
         if expectedContents is not None:
@@ -215,6 +215,6 @@ class ResourceTest(ToilTest):
             jobStorePath = scriptPath + '.jobStore'
             process = subprocess.Popen([scriptPath, jobStorePath], stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
-            self.assertTrue('The name of a user script/module must end in .py or .pyc.' in stderr)
+            self.assertTrue('The name of a user script/module must end in .py or .pyc.' in stderr.decode('utf-8'))
             self.assertNotEquals(0, process.returncode)
             self.assertFalse(os.path.exists(jobStorePath))

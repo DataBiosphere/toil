@@ -454,9 +454,9 @@ def buildElement(element, items, itemName):
     itemClocks = []
     itemMemory = []
     for item in items:
-        itemTimes.append(assertNonnegative(item["time"], "time"))
-        itemClocks.append(assertNonnegative(item["clock"], "clock"))
-        itemMemory.append(assertNonnegative(item["memory"], "memory"))
+        itemTimes.append(assertNonnegative(float(item["time"]), "time"))
+        itemClocks.append(assertNonnegative(float(item["clock"]), "clock"))
+        itemMemory.append(assertNonnegative(float(item["memory"]), "memory"))
     assert len(itemClocks) == len(itemTimes) == len(itemMemory)
 
     itemWaits=[]

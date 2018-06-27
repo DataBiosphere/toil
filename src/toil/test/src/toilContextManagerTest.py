@@ -71,7 +71,7 @@ class HelloWorld(Job):
 
 def childFn(job):
     with job.fileStore.writeGlobalFileStream() as (fH, fileID):
-        fH.write("Hello, World!")
+        fH.write("Hello, World!".encode('utf-8'))
         return fileID
 
 
@@ -84,6 +84,6 @@ class FollowOn(Job):
         tempDir = fileStore.getLocalTempDir()
         tempFilePath = "/".join([tempDir, 'LocalCopy'])
         with fileStore.readGlobalFileStream(self.fileId) as globalFile:
-            with open(tempFilePath, "w") as localFile:
+            with open(tempFilePath, "wb") as localFile:
                 localFile.write(globalFile.read())
         return self.fileId

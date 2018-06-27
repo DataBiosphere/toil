@@ -67,7 +67,7 @@ class Config(object):
         # Core options
         self.workflowID = None
         """This attribute uniquely identifies the job store and therefore the workflow. It is
-        necessary in order to distinguish between two consequitive workflows for which
+        necessary in order to distinguish between two consecutive workflows for which
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished sucessfully and its job store has been clean up."""
         self.workflowAttemptNumber = None

@@ -160,7 +160,7 @@ class AzureAutoscaleTest(AbstractAzureAutoscaleTest):
 
     def __init__(self, name):
         super(AzureAutoscaleTest, self).__init__(name)
-        self.clusterName = 'provisioner-test-' + bytes(uuid4())
+        self.clusterName = 'provisioner-test-' + str(uuid4())
 
     def setUp(self):
         super(AzureAutoscaleTest, self).setUp()
@@ -216,7 +216,7 @@ class AzureAutoscaleTestMultipleNodeTypes(AbstractAzureAutoscaleTest):
 
     def __init__(self, name):
         super(AzureAutoscaleTestMultipleNodeTypes, self).__init__(name)
-        self.clusterName = 'provisioner-test-' + bytes(uuid4())
+        self.clusterName = 'provisioner-test-' + str(uuid4())
 
     def setUp(self):
         super(AzureAutoscaleTestMultipleNodeTypes, self).setUp()
@@ -254,7 +254,7 @@ class AzureRestartTest(AbstractAzureAutoscaleTest):
 
     def __init__(self, name):
         super(AzureRestartTest, self).__init__(name)
-        self.clusterName = 'restart-test-' + bytes(uuid4())
+        self.clusterName = 'restart-test-' + str(uuid4())
 
     def setUp(self):
         super(AzureRestartTest, self).setUp()

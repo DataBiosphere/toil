@@ -52,7 +52,8 @@ class StatsAndLogging( object ):
         if isinstance(jobStoreID, bytes):
             jobStoreID = jobStoreID.decode('utf-8')
         for line in jobLogs:
-            line = line.decode('utf-8')
+            if isinstance(line, bytes):
+                line = line.decode('utf-8')
             method('%s    %s', jobStoreID, line.rstrip('\n'))
 
     @classmethod

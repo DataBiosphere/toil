@@ -943,7 +943,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     @googleRetry
     def _createExternalStore(self):
         from google.cloud import storage
-        bucketName = b"import-export-test-" + bytes(uuid.uuid4())
+        bucketName = ("import-export-test-" + str(uuid.uuid4()))
         storageClient = storage.Client()
         return storageClient.create_bucket(bucketName)
 

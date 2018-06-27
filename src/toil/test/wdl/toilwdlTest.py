@@ -25,7 +25,7 @@ from toil.wdl.wdl_functions import read_float
 from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, needs_docker
 import zipfile
 import shutil
 
@@ -102,9 +102,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
         unittest.TestCase.tearDown(self)
 
-    # estimated run time 7 sec; not actually slow, but this will break on travis because it does not have
-    # docker installed so we tag this so that it runs on jenkins instead.
-    @slow
+    @needs_docker
     def testMD5sum(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #1.'''
@@ -299,6 +297,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time 80 sec
     @slow
+    @needs_docker
     def testENCODE(self):
         '''Test if toilwdl produces the same outputs as known good outputs for
         a short ENCODE run.'''

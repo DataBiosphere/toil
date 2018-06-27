@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from threading import Thread, Event
 import logging
 import random
+import types
 import uuid
 from collections import defaultdict
 from mock import MagicMock
@@ -269,14 +270,51 @@ class ClusterScalerTest(ToilTest):
         self.config.targetTime = 1800
         self.config.nodeTypes = ['r3.8xlarge', 'c4.8xlarge:0.6']
         # Set up a stub provisioner with some nodeTypes and nodeShapes.
-        self.provisioner = object()
-        self.provisioner.nodeTypes = ['r3.8xlarge', 'c4.8xlarge']
-        self.provisioner.nodeShapes = [r3_8xlarge,
-                                       c4_8xlarge_preemptable]
-        self.provisioner.setStaticNodes = lambda _, __: None
-        self.provisioner.retryPredicate = lambda _: False
+        try:
+            # In Python 3 we can use a SimpleNamespace as a mock provisioner
+            self.provisioner = types.SimpleNamespace()
+        except:
+            # In Python 2 we can just tack fields onto an object
+            self.provisioner = object()
+        setattr(self.provisioner, 'nodeTypes', ['r3.8xlarge', 'c4.8xlarge'])
+        setattr(self.provisioner, 'nodeShapes', [r3_8xlarge,
+                                                 c4_8xlarge_preemptable])
+        setattr(self.provisioner, 'setStaticNodes', lambda _, __: None)
+        setattr(self.provisioner, 'retryPredicate', lambda _: False)
 
         self.leader = MockBatchSystemAndProvisioner(self.config, 1)
+        
+    def testRounding(self):
+        """
+        Test to make sure the ClusterScaler's rounding rounds properly.
+        """
+        
+        # Get a ClusterScaler
+        self.config.targetTime = 1
+        self.config.betaInertia = 0.0
+        self.config.maxNodes = [2, 3]
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        
+        # Exact integers round to themselves
+        self.assertEqual(scaler._round(0.0), 0)
+        self.assertEqual(scaler._round(1.0), 1)
+        self.assertEqual(scaler._round(-1.0), -1)
+        self.assertEqual(scaler._round(123456789101112.13), 123456789101112)
+        
+        # Decimals other than X.5 round to the side they are closer to
+        self.assertEqual(scaler._round(1E-10), 0)
+        self.assertEqual(scaler._round(0.5 + 1E-15), 1)
+        self.assertEqual(scaler._round(-0.9), -1)
+        self.assertEqual(scaler._round(-0.4), 0)
+        
+        # Decimals at exactly X.5 round away from 0
+        self.assertEqual(scaler._round(0.5), 1)
+        self.assertEqual(scaler._round(-0.5), -1)
+        self.assertEqual(scaler._round(2.5), 3)
+        self.assertEqual(scaler._round(-2.5), -3)
+        self.assertEqual(scaler._round(15.5), 16)
+        self.assertEqual(scaler._round(-15.5), -16)
+        self.assertEqual(scaler._round(123456789101112.5), 123456789101113)
 
     def testMaxNodes(self):
         """
