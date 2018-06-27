@@ -287,9 +287,6 @@ def parseBasicOptions(parser):
     if options.provisioner == 'azure':
         if os.environ.get('TOIL_AZURE_ZONE'):
             options.zone = os.environ.get('TOIL_AZURE_ZONE')
-    elif options.provisioner == 'gce':
-        if os.environ.get('TOIL_AZURE_ZONE'):
-            options.zone = os.environ.get('TOIL_AZURE_ZONE')
 
     #Set up the temp dir root
     if options.tempDirRoot == "None": # FIXME: Really, a string containing the word None?
