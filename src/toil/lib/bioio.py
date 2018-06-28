@@ -284,7 +284,7 @@ def parseBasicOptions(parser):
     setLoggingFromOptions(options)
 
     # Look for a default zone.
-    if options.provisioner == 'azure':
+    if hasattr(options, 'provisioner') and options.provisioner == 'azure':
         if os.environ.get('TOIL_AZURE_ZONE'):
             options.zone = os.environ.get('TOIL_AZURE_ZONE')
 
