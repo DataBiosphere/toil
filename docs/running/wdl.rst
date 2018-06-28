@@ -110,14 +110,16 @@ Any number of arbitrary options may also be specified.  These options will not b
 as toil options once the wdl/json files are processed.  For valid toil options, see the documentation:
 http://toil.readthedocs.io/en/3.12.0/running/cli.html
 
-Running WDL with Toil Scripts
+Running WDL within Toil Scripts
 ------------------------------------
 
 .. note::
         A cromwell.jar file is needed in order to run a WDL workflow.
 
-WDL workflows can be run indirectly in native Toil scripts. For example, if you wanted to run a WDL workflow, with
-3 JSON files specifying different samples inputs, it could look something like::
+A WDL workflow can be run indirectly in a native Toil script. However, this is not the :ref:`standard <wdl>` way to run
+WDL workflows with Toil and doing so comes at the cost of job efficency. For some use cases, such as running one process on
+multiple files, it may be useful. For example, if you want to run a WDL workflow with 3 JSON files specifying different
+samples inputs, it could look something like::
 
     from toil.job import Job
     from toil.common import Toil
