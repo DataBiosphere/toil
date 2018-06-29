@@ -153,8 +153,8 @@ class CWLTest(ToilTest):
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
         try:
-            cmd = ['bash', 'run_test.sh', 'RUNNER=toil-cwl-runner', 'DRAFT=v1.0',
-                   'TEST_N="--timeout=1800"', '-j4']
+            cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
+                   '--timeout=1800', '--basedir=' + cwlSpec]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
             subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
