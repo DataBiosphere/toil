@@ -234,7 +234,7 @@ class ToilWdlIntegrationTest(ToilTest):
                 assert declaration['type'] == 'File', declaration['type']
             if name == 'string2':
                 collection_counter.append(name)
-                assert declaration['value'] == '"x"', declaration['value']
+                assert declaration['value'] == "'x'", declaration['value']
                 assert declaration['type'] == 'String', declaration['type']
         assert collection_counter == ['bool1', 'int1', 'float1', 'file1', 'string1',
                                       'bool2', 'int2', 'float2', 'file2', 'string2']

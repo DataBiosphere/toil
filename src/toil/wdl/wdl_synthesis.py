@@ -52,7 +52,7 @@ class SynthesizeWDL:
         else:
             self.docker_user = docker_user
 
-            # only json is required; tsv/csv are optional
+        # only json is required; tsv/csv are optional
         self.json_dict = json_dict
 
         # holds task skeletons from WDL task objects
@@ -941,4 +941,3 @@ def write_AST(wdl_file, outdir=None):
             wdl_string = wdl.read()
             ast = wdl_parser.parse(wdl_string).ast()
             f.write(ast.dumps(indent=2))
-

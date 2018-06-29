@@ -278,7 +278,7 @@ def abspath_file(f, cwd):
 
 
 def read_single_file(f, tempDir, fileStore, docker=False):
-    import os, stat
+    import os
     try:
         fpath = fileStore.readGlobalFile(f[0], userPath=os.path.join(tempDir, f[1]))
     except:
