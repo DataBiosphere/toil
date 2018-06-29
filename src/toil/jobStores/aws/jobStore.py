@@ -959,7 +959,7 @@ class AWSJobStore(AbstractJobStore):
                      attributes in the dictionary that are used for storing inlined content.
             """
             content = self.content
-            if self.encrypted:
+            if self.encrypted and content is not None:
                 sseKeyPath = self.outer.sseKeyPath
                 if sseKeyPath is None:
                     raise AssertionError('Encryption requested but no key was provided.')
