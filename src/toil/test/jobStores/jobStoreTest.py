@@ -230,8 +230,6 @@ class AbstractJobStoreTest(object):
             self._testPerJobFiles(master, worker, jobNodeOnMaster)        # Test per-job files: Create empty file on master
             self._testStatsAndLogging(master, worker, jobOnMaster)        # Test stats and loggingAdd
 
-
-        # Added
         def _testChangingAndPersistingJobs(self, childJobs, master, worker):
             for childJob in childJobs:
                 childJob.logJobStoreFileID = str(uuid.uuid4())
@@ -243,7 +241,6 @@ class AbstractJobStoreTest(object):
                 self.assertEquals(master.load(childJob.jobStoreID), childJob)
                 self.assertEquals(worker.load(childJob.jobStoreID), childJob)
 
-        # Added
         def _testJobDeletions(self, childJobs, master, worker):
             for childJob in childJobs:
                 self.assertTrue(master.exists(childJob.jobStoreID))
@@ -261,7 +258,6 @@ class AbstractJobStoreTest(object):
             except NoSuchFileException:
                 pass
 
-        # Added
         def _testPerJobFiles(self, master, worker, jobNodeOnMaster):
             # First recreate job
             jobOnMaster = master.create(jobNodeOnMaster)
@@ -322,7 +318,6 @@ class AbstractJobStoreTest(object):
                 except NoSuchFileException:
                     pass
 
-        # Added
         def _testStatsAndLogging(self, master, worker, jobOnMaster):
             # Test stats and logging
             #
@@ -358,7 +353,6 @@ class AbstractJobStoreTest(object):
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             # TODO: Who deletes the shared files?
 
-        # Added
         def _testSharedFiles(self, master, worker):
             with master.writeSharedFileStream('foo') as f:
                 f.write('bar')
@@ -374,7 +368,6 @@ class AbstractJobStoreTest(object):
             self.assertUrl(master.getSharedPublicUrl('nonEncrypted'))
             self.assertRaises(NoSuchFileException, master.getSharedPublicUrl, 'missing')
 
-        # Added
         def _testExistanceAndAttributes(self, master, jobOnMaster, masterRequirements):
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, 'master1')
@@ -388,7 +381,6 @@ class AbstractJobStoreTest(object):
             self.assertEquals(jobOnMaster.predecessorNumber, 0)
             self.assertEquals(jobOnMaster.predecessorsFinished, set())
             self.assertEquals(jobOnMaster.logJobStoreFileID, None)
-
 
         def testBatchCreate(self):
             master = self.master
