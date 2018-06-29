@@ -150,6 +150,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
         sync
 
         mv "$tmpDir/rc.tmp" "$tmpDir/rc"
+        chmod -R 777 $tmpDir
         ''')
 
     bashfile_string = bashfile_string + bashfile_suffix
@@ -282,8 +283,6 @@ def read_single_file(f, tempDir, fileStore, docker=False):
         fpath = fileStore.readGlobalFile(f[0], userPath=os.path.join(tempDir, f[1]))
     except:
         fpath = os.path.join(tempDir, f[1])
-    if docker:
-        return os.path.join('/root', f[1])
     return fpath
 
 

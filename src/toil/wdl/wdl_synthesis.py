@@ -679,7 +679,7 @@ class SynthesizeWDL:
         :param job_alias: The actual job name to be written.
         :return: A string writing all of this.
         '''
-        fn_section = "        generate_docker_bashscript_file(temp_dir=tempDir, docker_dir='/root', globs=["
+        fn_section = "        generate_docker_bashscript_file(temp_dir=tempDir, docker_dir=tempDir, globs=["
         # TODO: Add glob
         # if 'outputs' in self.tasks_dictionary[job]:
         #     for output in self.tasks_dictionary[job]['outputs']:
@@ -706,10 +706,13 @@ class SynthesizeWDL:
         stdout = apiDockerCall(self, 
                                image={docker_image}, 
                                working_dir=tempDir, 
-                               parameters=["/root/{job_task_reference}_script.sh"], 
+                               parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")], 
                                entrypoint="/bin/bash", 
                                user={docker_user},
-                               volumes={{tempDir: {{"bind": "/root"}}}})
+                               stderr=True, 
+                               volumes={{tempDir: {{"bind": tempDir}}}})
+        with open(os.path.join(asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir, '{job_task_reference}.log'), 'w') as f:
+            f.write(stdout)
             ''', docker_dict, indent='        ')[1:]
 
         return docker_template
@@ -807,7 +810,6 @@ class SynthesizeWDL:
                 fn_section = fn_section + '}\n'
 
             if return_values:
-                fn_section += '        print(rvDict)\n'
                 fn_section += '        return rvDict\n\n'
 
         return fn_section
