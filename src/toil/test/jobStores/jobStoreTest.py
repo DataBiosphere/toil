@@ -136,6 +136,7 @@ class AbstractJobStoreTest(object):
             that occur in the day to day life of a job store. The purist might insist that this be
             split up into several cases and I agree wholeheartedly.
             """
+
             master = self.master
 
             # Test initial state
@@ -149,7 +150,7 @@ class AbstractJobStoreTest(object):
                                       jobName='test1', unitName='onMaster',
                                       jobStoreID=None, predecessorNumber=0)
             jobOnMaster = master.create(jobNodeOnMaster)
-            self.testExistanceAndAttributes(master, jobOnMaster, masterRequirements)
+            self._testExistanceAndAttributes(master, jobOnMaster, masterRequirements)
 
             # Create a second instance of the job store, simulating a worker ...
             worker = self._createJobStore()
@@ -198,6 +199,7 @@ class AbstractJobStoreTest(object):
             # Reload parent job on master
             jobOnMaster = master.load(jobOnMaster.jobStoreID)
             self.assertEquals(jobOnWorker, jobOnMaster)
+
             # Load children on master an check equivalence
             self.assertEquals(master.load(child1.jobStoreID), child1)
             self.assertEquals(master.load(child2.jobStoreID), child2)
@@ -205,7 +207,7 @@ class AbstractJobStoreTest(object):
             childJobs = [worker.load(childNode.jobStoreID) for childNode in jobOnMaster.stack[-1]]
 
             # Test changing and persisting job state across multiple jobs
-            self.testChangingAndPersistingJobs(childJobs, master, worker)
+            self._testChangingAndPersistingJobs(childJobs, master, worker)
 
             # Test job iterator - the results of the iterator are effected by eventual
             # consistency. We cannot guarantee all jobs will appear but we can assert that all
@@ -222,14 +224,15 @@ class AbstractJobStoreTest(object):
             master.delete(jobOnMaster.jobStoreID)
             self.assertFalse(master.exists(jobOnMaster.jobStoreID))
             self.assertFalse(worker.exists(jobOnMaster.jobStoreID))
-            self.testJobDeletions(childJobs, master, worker)
+            self._testJobDeletions(childJobs, master, worker)
 
-            self.testSharedFiles(master,worker)                         # Test shared files: Write shared file on master
-            self.testPerJobFiles(master,worker, jobNodeOnMaster)        # Test per-job files: Create empty file on master
-            self.testStatsAndLogging(master, worker, jobOnMaster)       # Test stats and logging
+            self._testSharedFiles(master, worker)                         # Test shared files: Write shared file on master
+            self._testPerJobFiles(master, worker, jobNodeOnMaster)        # Test per-job files: Create empty file on master
+            self._testStatsAndLogging(master, worker, jobOnMaster)        # Test stats and loggingAdd
+
 
         # Added
-        def testChangingAndPersistingJobs(self, childJobs, master, worker):
+        def _testChangingAndPersistingJobs(self, childJobs, master, worker):
             for childJob in childJobs:
                 childJob.logJobStoreFileID = str(uuid.uuid4())
                 childJob.remainingRetryCount = 66
@@ -241,7 +244,7 @@ class AbstractJobStoreTest(object):
                 self.assertEquals(worker.load(childJob.jobStoreID), childJob)
 
         # Added
-        def testJobDeletions(self, childJobs, master, worker):
+        def _testJobDeletions(self, childJobs, master, worker):
             for childJob in childJobs:
                 self.assertTrue(master.exists(childJob.jobStoreID))
                 self.assertTrue(worker.exists(childJob.jobStoreID))
@@ -259,7 +262,7 @@ class AbstractJobStoreTest(object):
                 pass
 
         # Added
-        def testPerJobFiles(self, master, worker, jobNodeOnMaster):
+        def _testPerJobFiles(self, master, worker, jobNodeOnMaster):
             # First recreate job
             jobOnMaster = master.create(jobNodeOnMaster)
             fileOne = worker.getEmptyFileStoreID(jobOnMaster.jobStoreID)
@@ -320,7 +323,7 @@ class AbstractJobStoreTest(object):
                     pass
 
         # Added
-        def testStatsAndLogging(self, master, worker, jobOnMaster):
+        def _testStatsAndLogging(self, master, worker, jobOnMaster):
             # Test stats and logging
             #
             stats = None
@@ -356,7 +359,7 @@ class AbstractJobStoreTest(object):
             # TODO: Who deletes the shared files?
 
         # Added
-        def testSharedFiles(self,master, worker):
+        def _testSharedFiles(self, master, worker):
             with master.writeSharedFileStream('foo') as f:
                 f.write('bar')
             # ... read that file on worker, ...
@@ -372,7 +375,7 @@ class AbstractJobStoreTest(object):
             self.assertRaises(NoSuchFileException, master.getSharedPublicUrl, 'missing')
 
         # Added
-        def testExistanceAndAttributes(self, master, jobOnMaster, masterRequirements):
+        def _testExistanceAndAttributes(self, master, jobOnMaster, masterRequirements):
             self.assertTrue(master.exists(jobOnMaster.jobStoreID))
             self.assertEquals(jobOnMaster.command, 'master1')
             self.assertEquals(jobOnMaster.memory, masterRequirements['memory'])
