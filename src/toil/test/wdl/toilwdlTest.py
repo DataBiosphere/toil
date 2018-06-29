@@ -230,7 +230,7 @@ class ToilWdlIntegrationTest(ToilTest):
                 assert declaration['type'] == 'Float', declaration['type']
             if name == 'file2':
                 collection_counter.append(name)
-                assert declaration['value'] == '"src/toil/test/wdl/test.tsv"', declaration['value']
+                assert declaration['value'] == "'src/toil/test/wdl/test.tsv'", declaration['value']
                 assert declaration['type'] == 'File', declaration['type']
             if name == 'string2':
                 collection_counter.append(name)
