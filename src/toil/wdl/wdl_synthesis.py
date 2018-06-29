@@ -708,7 +708,7 @@ class SynthesizeWDL:
                                working_dir=tempDir, 
                                parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")], 
                                entrypoint="/bin/bash", 
-                               user={docker_user},
+                               user={docker_user}, 
                                stderr=True, 
                                volumes={{tempDir: {{"bind": tempDir}}}})
         with open(os.path.join(asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir, '{job_task_reference}.log'), 'w') as f:

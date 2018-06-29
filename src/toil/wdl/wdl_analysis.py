@@ -668,7 +668,8 @@ class AnalyzeWDL:
                         raise TypeError('Parsed boolean ({}) must be expressed as "true" or "false".'
                                         ''.format(expressionAST.source_string))
                 elif expressionAST.str == 'string' and not output_expressn:
-                    return '"{string}"'.format(string=expressionAST.source_string)
+                    parsed_string = self.translate_wdl_string_to_python_string(expressionAST.source_string)
+                    return '{string}'.format(string=parsed_string)
                 else:
                     return '{string}'.format(string=expressionAST.source_string)
             elif isinstance(expressionAST, wdl_parser.Ast):
