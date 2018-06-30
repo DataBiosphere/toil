@@ -656,7 +656,7 @@ class AbstractJobStoreTest(object):
             # Make some very large data, large enough to trigger
             # overlarge job creation if that's a thing
             # (i.e. AWSJobStore)
-            arbitraryLargeData = os.urandom(5000000)
+            arbitraryLargeData = os.urandom(500000)
             job = self.master.create(self.arbitraryJob)
             # Make the job grow
             job.foo_attribute = arbitraryLargeData

@@ -231,8 +231,15 @@ class AWSJobStore(AbstractJobStore):
                             assert False
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
-    
+
+    def _checkItem(self, item):
+        if "overlargeID" not in item:
+            raise RuntimeError("overlargeID attribute isn't present: you are restarting"
+                               " an old, incompatible jobstore, or the jobstore logic is"
+                               " incorrect.")
+
     def _awsJobFromItem(self, item):
+        self._checkItem(item)
         if item["overlargeID"]:
             assert self.fileExists(item["overlargeID"])
             #This is an overlarge job, download the actual attributes
@@ -340,6 +347,7 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 item = self.jobsDomain.get_attributes(bytes(jobStoreID), consistent_read=True)
+        self._checkItem(item)
         if item["overlargeID"]:
             log.debug("Deleting job from filestore")
             self.deleteFile(item["overlargeID"])
