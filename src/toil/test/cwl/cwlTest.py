@@ -143,6 +143,7 @@ class CWLTest(ToilTest):
     def test_run_conformance(self, batchSystem=None):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
+        workDir = os.path.join(cwlSpec, 'v1.0')
         # The latest cwl git hash. Update it to get the latest tests.
         testhash = "f96bca6911b6688ff614c02dbefe819bed260a13"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
@@ -153,46 +154,22 @@ class CWLTest(ToilTest):
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
         try:
-            cmd = ["bash", "run_test.sh", "RUNNER=toil-cwl-runner",
-                   "DRAFT=v1.0", "-j4"]
+            cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
+                   '--timeout=1800', '--basedir=' + workDir]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
-            subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
+            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
-            # The CWL toolks reported failures. But some types of complainst are to be expected.
-            # Break up the output into lines
-            lines = e.output.split("\n")
-        
-            # Sometimes, on slow systems (like on Toil's Jenkins), the CWL tests will hit internal timeouts.
-            # We want to tolerate them.
-            # We count up how many tests failed for that reason.
-            # This can be removed when https://github.com/BD2KGenomics/toil/issues/2222 is fixed.
-            internal_timeout_count = 0
-            for line in lines:
-                if line.startswith("Test timed out:"):
-                    internal_timeout_count += 1
-        
-            # We set this flag to true if we think the tests failed because of timeouts and unsupported features.
-            only_unsupported_and_timeouts = False
+            only_unsupported = False
+            # check output -- if we failed but only have unsupported features, we're okay
             p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-            for line in lines:
+            for line in e.output.split("\n"):
                 m = p.search(line)
                 if m:
-                    # This is the test report line
-                    if int(m.group("failures")) == 0:
-                        # No failures. So the nonzero return code should be due to unsupported tests.
-                        if int(m.group("unsupported")) > 0:
-                            # Indeed, we can blame it on unsupported tests.
-                            only_unsupported_and_timeouts = True
-                    else:
-                        # There were failures. Can they be blamed on timeouts?
-                        if int(m.group("failures")) == internal_timeout_count:
-                            # All failures were caused by timeouts. This explains away the test failure.
-                            only_unsupported_and_timeouts = True
-                    # Whether we like the results or not, break when we have found them
-                    break
-            if not only_unsupported_and_timeouts:
-                # The tests failed for some other reason we cannot explain and should not tolerate.
+                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
+                        only_unsupported = True
+                        break
+            if not only_unsupported:
                 print(e.output)
                 raise e
 
