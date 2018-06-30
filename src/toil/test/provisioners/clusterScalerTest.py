@@ -421,6 +421,30 @@ class ClusterScalerTest(ToilTest):
         scaler.updateClusterSize(estimatedNodeCounts)
         self.assertEqual(scaler.preemptableNodeDeficit['c4.8xlarge'], 0)
 
+    def testNoLaunchingIfDeltaAlreadyMet(self):
+        """
+        Check that the scaler doesn't try to launch "0" more instances if
+        the delta was able to be met by unignoring nodes.
+        """
+        # We have only one node type for simplicity
+        self.provisioner.nodeTypes = ['c4.8xlarge']
+        self.provisioner.nodeShapes = [c4_8xlarge]
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        # Pretend there is one ignored worker in the cluster
+        self.provisioner.getProvisionedWorkers = MagicMock(
+            return_value=[Node('127.0.0.1', '127.0.0.1', 'testNode',
+                               datetime.datetime.now().isoformat(),
+                               nodeType='c4.8xlarge', preemptable=True)])
+        scaler.ignoredNodes.add('127.0.0.1')
+        # Exercise the updateClusterSize logic
+        self.provisioner.addNodes = MagicMock()
+        scaler.updateClusterSize({c4_8xlarge: 1})
+        self.assertFalse(self.provisioner.addNodes.called,
+                         "addNodes was called when no new nodes were needed")
+        self.assertEqual(len(scaler.ignoredNodes), 0,
+                         "The scaler didn't unignore an ignored node when "
+                         "scaling up")
+
     def testBetaInertia(self):
         # This is really high, but makes things easy to calculate.
         self.config.betaInertia = 0.5

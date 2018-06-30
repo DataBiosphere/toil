@@ -607,8 +607,7 @@ class ClusterScaler(object):
                     delta = numNodes - (numCurrentNodes - numIgnoredNodes)
                 else:
                     delta = numNodes - numCurrentNodes
-                if delta > 0:
-                    if numIgnoredNodes > 0:
+                if delta > 0 and numIgnoredNodes > 0:
                         # We can un-ignore a few nodes to compensate for the additional nodes we want.
                         numNodesToUnignore = min(delta, numIgnoredNodes)
                         logger.info('Unignoring %i nodes because we want to scale back up again.' % numNodesToUnignore)
@@ -616,6 +615,7 @@ class ClusterScaler(object):
                         for node in ignoredNodes[:numNodesToUnignore]:
                             self.ignoredNodes.remove(node.privateIP)
                             self.leader.batchSystem.unignoreNode(node.privateIP)
+                if delta > 0:
                     logger.info('Adding %i %s nodes to get to desired cluster size of %i.',
                                 delta,
                                 'preemptable' if preemptable else 'non-preemptable',
