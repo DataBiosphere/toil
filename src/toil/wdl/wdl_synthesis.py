@@ -733,7 +733,7 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
-                    cmd = 'str({}).strip("\\n")'.format(cmd)
+                    cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("\\n")'.format(i=cmd)
                 fn_section = fn_section + '        command{} = {}\n'.format(str(self.cmd_num), cmd)
                 cmd_array.append('command' + str(self.cmd_num))
                 self.cmd_num = self.cmd_num + 1
