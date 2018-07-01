@@ -223,11 +223,9 @@ def strip_substring(substring, strip_pattern=r'\\n'):
     :return:
     """
     substring = '%r' % substring
-    # %r creates a raw literal string but produces quotes that need to be stripped
-    if substring.startswith("'"):
-        substring = substring[1:]
-    if substring.endswith("'"):
-        substring = substring[:-1]
+    if len(substring) >= 2:
+        # %r creates a raw literal string but produces quotes that need to be stripped
+        substring = substring[1:-1]
     while substring.startswith(strip_pattern):
         substring = substring[3:]
     while substring.endswith(strip_pattern):
