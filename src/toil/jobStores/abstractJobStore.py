@@ -629,7 +629,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             # This cleans the old log file which may
             # have been left if the jobGraph is being retried after a jobGraph failure.
             if jobGraph.logJobStoreFileID != None:
-                self.delete(jobGraph.logJobStoreFileID)
+                self.deleteFile(jobGraph.logJobStoreFileID)
                 jobGraph.logJobStoreFileID = None
                 changed[0] = True
 
