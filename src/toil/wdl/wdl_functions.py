@@ -218,9 +218,9 @@ def strip_substring(substring, strip_pattern=r'\\n'):
     This modifies that to strip substrings from the end/start of strings.
     This also treats escape characters as normal characters.
 
-    :param substring:
-    :param strip_pattern:
-    :return:
+    :param substring: Any string.
+    :param strip_pattern: Any string pattern to remove from the beginning or end of 'substring'.
+    :return: The substring with the strip_pattern removed from both ends.
     """
     substring = '%r' % substring
     if len(substring) >= 2:
