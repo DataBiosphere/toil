@@ -77,7 +77,6 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import process_and_read_file
                     from toil.wdl.wdl_functions import process_infile
                     from toil.wdl.wdl_functions import process_outfile
-                    from toil.wdl.wdl_functions import strip_substring
                     from toil.wdl.wdl_functions import abspath_file
                     from toil.wdl.wdl_functions import combine_dicts
                     from toil.wdl.wdl_functions import parse_memory
@@ -734,7 +733,7 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
-                    cmd = 'strip_substring(str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore))).strip("{nl}")'.format(i=cmd, nl=r"\n")
+                    cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
                 fn_section = fn_section + '        command{} = {}\n'.format(str(self.cmd_num), cmd)
                 cmd_array.append('command' + str(self.cmd_num))
                 self.cmd_num = self.cmd_num + 1
@@ -745,7 +744,7 @@ class SynthesizeWDL:
                 fn_section += '{command} + '.format(command=command)
             if fn_section.endswith(' + '):
                 fn_section = fn_section[:-3]
-            fn_section += '\n        cmd = textwrap.dedent(strip_substring(cmd.strip("{nl}")))\n'.format(nl=r"\n")
+            fn_section += '\n        cmd = textwrap.dedent(cmd.strip("{nl}"))\n'.format(nl=r"\n")
 
         return fn_section
 
