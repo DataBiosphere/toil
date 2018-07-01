@@ -211,28 +211,6 @@ def defined(i):
     return False
 
 
-def strip_substring(substring, strip_pattern=r'\\n'):
-    """
-    Python's .strip() method removes characters only and not substrings.
-
-    This modifies that to strip substrings from the end/start of strings.
-    This also treats escape characters as normal characters.
-
-    :param substring: Any string.
-    :param strip_pattern: Any string pattern to remove from the beginning or end of 'substring'.
-    :return: The substring with the strip_pattern removed from both ends.
-    """
-    substring = '%r' % substring
-    if len(substring) >= 2:
-        # %r creates a raw literal string but produces quotes that need to be stripped
-        substring = substring[1:-1]
-    while substring.startswith(strip_pattern):
-        substring = substring[3:]
-    while substring.endswith(strip_pattern):
-        substring = substring[:-3]
-    return substring
-
-
 def process_single_outfile(f, fileStore, workDir, outDir):
     if os.path.exists(f):
         output_f_path = f
