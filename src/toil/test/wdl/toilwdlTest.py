@@ -16,6 +16,7 @@ from toil.wdl.wdl_functions import process_infile
 from toil.wdl.wdl_functions import process_outfile
 from toil.wdl.wdl_functions import abspath_file
 from toil.wdl.wdl_functions import combine_dicts
+from toil.wdl.wdl_functions import strip_substring
 from toil.wdl.wdl_functions import parse_memory
 from toil.wdl.wdl_functions import parse_cores
 from toil.wdl.wdl_functions import parse_disk
@@ -238,6 +239,24 @@ class ToilWdlIntegrationTest(ToilTest):
                 assert declaration['type'] == 'String', declaration['type']
         assert collection_counter == ['bool1', 'int1', 'float1', 'file1', 'string1',
                                       'bool2', 'int2', 'float2', 'file2', 'string2']
+
+    def testStripSubstring(substring):
+        """
+        Test strip_substring() with the default strip_pattern=r'\\n'.
+
+        :param substring: Any string.
+        :return: The input string stripped of '\\n' on both ends.
+        """
+        substring = '\\nnn\\nno correction\\n'
+        assert strip_substring(substring) == r'nn\\nno correction', strip_substring(substring)
+        substring = '\\n'
+        assert strip_substring(substring) == r'', strip_substring(substring)
+        substring = ''
+        assert strip_substring(substring) == r'', strip_substring(substring)
+        substring = '\n'
+        assert strip_substring(substring) == r'\n', strip_substring(substring)
+        substring = 'n'
+        assert strip_substring(substring) == r'n', strip_substring(substring)
 
     # estimated run time 27 sec
     @slow
