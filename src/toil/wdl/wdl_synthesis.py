@@ -52,7 +52,7 @@ class SynthesizeWDL:
         else:
             self.docker_user = docker_user
 
-            # only json is required; tsv/csv are optional
+        # only json is required; tsv/csv are optional
         self.json_dict = json_dict
 
         # holds task skeletons from WDL task objects
@@ -679,7 +679,7 @@ class SynthesizeWDL:
         :param job_alias: The actual job name to be written.
         :return: A string writing all of this.
         '''
-        fn_section = "        generate_docker_bashscript_file(temp_dir=tempDir, docker_dir='/root', globs=["
+        fn_section = "        generate_docker_bashscript_file(temp_dir=tempDir, docker_dir=tempDir, globs=["
         # TODO: Add glob
         # if 'outputs' in self.tasks_dictionary[job]:
         #     for output in self.tasks_dictionary[job]['outputs']:
@@ -706,10 +706,13 @@ class SynthesizeWDL:
         stdout = apiDockerCall(self, 
                                image={docker_image}, 
                                working_dir=tempDir, 
-                               parameters=["/root/{job_task_reference}_script.sh"], 
+                               parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")], 
                                entrypoint="/bin/bash", 
-                               user={docker_user},
-                               volumes={{tempDir: {{"bind": "/root"}}}})
+                               user={docker_user}, 
+                               stderr=True, 
+                               volumes={{tempDir: {{"bind": tempDir}}}})
+        with open(os.path.join(asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir, '{job_task_reference}.log'), 'w') as f:
+            f.write(stdout)
             ''', docker_dict, indent='        ')[1:]
 
         return docker_template
@@ -730,7 +733,7 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
-                    cmd = 'str({}).strip("\\n")'.format(cmd)
+                    cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
                 fn_section = fn_section + '        command{} = {}\n'.format(str(self.cmd_num), cmd)
                 cmd_array.append('command' + str(self.cmd_num))
                 self.cmd_num = self.cmd_num + 1
@@ -741,7 +744,7 @@ class SynthesizeWDL:
                 fn_section += '{command} + '.format(command=command)
             if fn_section.endswith(' + '):
                 fn_section = fn_section[:-3]
-            fn_section += '\n        cmd = textwrap.dedent(cmd.strip("\\n"))\n'
+            fn_section += '\n        cmd = textwrap.dedent(cmd.strip("{nl}"))\n'.format(nl=r"\n")
 
         return fn_section
 
@@ -807,7 +810,6 @@ class SynthesizeWDL:
                 fn_section = fn_section + '}\n'
 
             if return_values:
-                fn_section += '        print(rvDict)\n'
                 fn_section += '        return rvDict\n\n'
 
         return fn_section
@@ -939,4 +941,3 @@ def write_AST(wdl_file, outdir=None):
             wdl_string = wdl.read()
             ast = wdl_parser.parse(wdl_string).ast()
             f.write(ast.dumps(indent=2))
-

@@ -150,6 +150,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
         sync
 
         mv "$tmpDir/rc.tmp" "$tmpDir/rc"
+        chmod -R 777 $tmpDir
         ''')
 
     bashfile_string = bashfile_string + bashfile_suffix
@@ -203,10 +204,12 @@ def sub(a, b, c):
     import re
     return re.sub(str(a), str(b), str(c))
 
+
 def defined(i):
     if i:
         return True
     return False
+
 
 def process_single_outfile(f, fileStore, workDir, outDir):
     if os.path.exists(f):
@@ -277,13 +280,11 @@ def abspath_file(f, cwd):
 
 
 def read_single_file(f, tempDir, fileStore, docker=False):
-    import os, stat
+    import os
     try:
         fpath = fileStore.readGlobalFile(f[0], userPath=os.path.join(tempDir, f[1]))
     except:
         fpath = os.path.join(tempDir, f[1])
-    if docker:
-        return os.path.join('/root', f[1])
     return fpath
 
 
