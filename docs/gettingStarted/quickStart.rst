@@ -185,7 +185,12 @@ Running the example
    back together---is compartmentalized into a **job**. Each job can specify its own resource requirements and will
    only be run after the jobs it depends upon have run. Jobs without dependencies will be run in parallel.
 
-#. Run with custom options::
+.. note::
+        Delete ``fileToSort.txt`` before moving on to #3. The options, ``--numLines`` and ``--lineLength``,
+        specify dimensions for creating ``fileToSort.txt`` if it does not already exist. If it exists, this workflow
+        will use the existing file.
+
+3. Run with custom options::
 
       (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --workDir=/tmp/ --overwriteOutput=True
 
