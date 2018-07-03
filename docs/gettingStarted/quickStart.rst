@@ -526,7 +526,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
         **A Helpful Tip**
 
         When using AWS or Azure, setting the environment variable eliminates having to specify the ``--zone`` option
-        for each command. This will be supported for GCEin the future. ::
+        for each command. This will be supported for GCE in the future. ::
 
             (venv) $ export TOIL_AWS_ZONE=us-west-2c
 
