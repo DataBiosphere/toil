@@ -195,9 +195,9 @@ Running the example
       (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --overwriteOutput=True --workDir=/tmp/
 
    Here we see that we can add our own options to a Toil script. As noted above, the first two
-   options determine the number of lines and how many characters are in each line. ``--overwriteOutput`` tells the Toil
-   script to overwrite the existing contents of ``sortedFile.txt`` if it already exists. The ``--workDir`` option is a
-   built-in Toil option where temporary files unique to a job are kept.
+   options determine the number of lines and how many characters are in each line. ``--overwriteOutput`` causes the
+   current contents of ``sortedFile.txt`` to be overwritten, if it already exists. The last option, ``--workDir``, is an
+   option built into Toil to specify where temporary files unique to a job are kept.
 
 Describing the source code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
