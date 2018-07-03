@@ -626,11 +626,12 @@ def simpleJobFn(job, value):
 
 def fn1Test(string, outputFile):
     """
-    Function appends string to output file, then returns the next ascii character of the first
-    character in the string, e.g. if string is "AA" returns "B".
+    Function appends the next character after the last character in the given
+    string to the string, writes the string to a file, and returns it. For
+    example, if string is "AB", we will write and return "ABC".
     """
 
-    rV = string + chr(ord(string[-1]) + 1).encode('utf-8')
+    rV = string + chr(ord(string[-1]) + 1)
     with open(outputFile, 'w') as fH:
         fH.write(rV)
     return rV

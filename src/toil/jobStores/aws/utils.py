@@ -54,16 +54,16 @@ class SDBHelper(object):
 
     >>> import os
     >>> H=SDBHelper
-    >>> H.presenceIndicator()
+    >>> H.presenceIndicator() # doctest: +ALLOW_UNICODE
     u'numChunks'
     >>> H.binaryToAttributes(None)
     {u'numChunks': 0}
     >>> H.attributesToBinary({u'numChunks': 0})
     (None, 0)
-    >>> H.binaryToAttributes('')
-    {u'000': 'VQ==', u'numChunks': 1}
-    >>> H.attributesToBinary({'numChunks': 1, '000': 'VQ=='})
-    ('', 1)
+    >>> H.binaryToAttributes(b'') # doctest: +ALLOW_UNICODE +ALLOW_BYTES
+    {u'000': b'VQ==', u'numChunks': 1}
+    >>> H.attributesToBinary({u'numChunks': 1, u'000': b'VQ=='}) # doctest: +ALLOW_BYTES
+    (b'', 1)
 
     Good pseudo-random data is very likely smaller than its bzip2ed form. Subtract 1 for the type
     character, i.e  'C' or 'U', with which the string is prefixed. We should get one full chunk:
@@ -78,7 +78,7 @@ class SDBHelper(object):
     One byte more and we should overflow four bytes into the second chunk, two bytes for
     base64-encoding the additional character and two bytes for base64-padding to the next quartet.
 
-    >>> s += s[0]
+    >>> s += s[0:1]
     >>> d = H.binaryToAttributes(s)
     >>> len(d), len(d['000']), len(d['001'])
     (3, 1024, 4)
@@ -131,9 +131,9 @@ class SDBHelper(object):
         # computation because the compression ratio depends on the input.
         compressed = bz2.compress(binary)
         if len(compressed) > len(binary):
-            compressed = 'U' + binary
+            compressed = b'U' + binary
         else:
-            compressed = 'C' + compressed
+            compressed = b'C' + compressed
         encoded = base64.b64encode(compressed)
         assert len(encoded) <= cls._maxEncodedSize()
         n = cls.maxValueSize
@@ -169,14 +169,14 @@ class SDBHelper(object):
         chunks.sort()
         numChunks = int(attributes[u'numChunks'])
         if numChunks:
-            serializedJob = ''.join(v for k, v in chunks)
+            serializedJob = b''.join(v for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
-            if compressed[0] == 'C':
+            if compressed[0] == b'C'[0]:
                 binary = bz2.decompress(compressed[1:])
-            elif compressed[0] == 'U':
+            elif compressed[0] == b'U'[0]:
                 binary = compressed[1:]
             else:
-                assert False
+                raise RuntimeError('Unexpected prefix {}'.format(compressed[0]))
         else:
             binary = None
         return binary, numChunks

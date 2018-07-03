@@ -49,9 +49,9 @@ from toil.leader import FailedJobsException
 
 log = logging.getLogger(__name__)
 
-defaultLineLen = int(os.environ.get('TOIL_TEST_SORT_LINE_LEN', '10'))
-defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', '10'))
-defaultN = int(os.environ.get('TOIL_TEST_SORT_N', str(defaultLineLen * defaultLines / 5)))
+defaultLineLen = int(os.environ.get('TOIL_TEST_SORT_LINE_LEN', 10))
+defaultLines = int(os.environ.get('TOIL_TEST_SORT_LINES', 10))
+defaultN = int(os.environ.get('TOIL_TEST_SORT_N', defaultLineLen * defaultLines / 5))
 
 
 @contextmanager

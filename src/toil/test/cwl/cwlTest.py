@@ -143,6 +143,7 @@ class CWLTest(ToilTest):
     def test_run_conformance(self, batchSystem=None):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
+        workDir = os.path.join(cwlSpec, 'v1.0')
         # The latest cwl git hash. Update it to get the latest tests.
         testhash = "f96bca6911b6688ff614c02dbefe819bed260a13"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
@@ -153,11 +154,11 @@ class CWLTest(ToilTest):
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
         try:
-            cmd = ["bash", "run_test.sh", "RUNNER=toil-cwl-runner",
-                   "DRAFT=v1.0", "-j4"]
+            cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
+                   '--timeout=1800', '--basedir=' + workDir]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
-            subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
+            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
             # check output -- if we failed but only have unsupported features, we're okay

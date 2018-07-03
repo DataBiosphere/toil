@@ -97,6 +97,16 @@ class Shape(object):
                 self.cores,
                 self.disk,
                 self.preemptable)
+                
+    def __hash__(self):
+        # Since we replaced __eq__ we need to replace __hash__ as well.
+        return hash(
+            (self.wallTime,
+             self.memory,
+             self.cores,
+             self.disk,
+             self.preemptable))
+        
 
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """

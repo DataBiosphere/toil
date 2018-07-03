@@ -497,7 +497,7 @@ def containerIsRunning(container_name):
 def getContainerName(job):
     """Create a random string including the job name, and return it."""
     return '--'.join([str(job),
-                      base64.b64encode(os.urandom(9), '-_')])\
+                      base64.b64encode(os.urandom(9), b'-_').decode('utf-8')])\
                       .replace("'", '').replace('"', '').replace('_', '')
 
 

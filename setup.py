@@ -43,7 +43,7 @@ def runSetup():
     future = 'future'
     requests = 'requests==2.18.4'
     docker = 'docker==2.5.1'
-    subprocess32 = 'subprocess32==3.5.0rc1'
+    subprocess32 = 'subprocess32==3.5.2'
     dateutil = 'python-dateutil'
 
     core_reqs = [
@@ -92,7 +92,7 @@ def runSetup():
         htcondor_reqs
 
     # htcondor is not supported by apple
-    if sys.platform != 'linux' or 'linux2':
+    if sys.platform != 'linux' and sys.platform != 'linux2':
         all_reqs.remove(htcondor)
 
     # remove the subprocess32 backport if not python2

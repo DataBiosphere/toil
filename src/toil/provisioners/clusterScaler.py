@@ -370,6 +370,34 @@ class ClusterScaler(object):
 
         if not sum(config.maxNodes) > 0:
             raise RuntimeError('Not configured to create nodes of any type.')
+            
+    def _round(self, number):
+        """
+        Helper function for rounding-as-taught-in-school (X.5 rounds to X+1 if positive).
+        Python 3 now rounds 0.5 to whichever side is even (i.e. 2.5 rounds to 2).
+        
+        :param int number: a float to round.
+        :return: closest integer to number, rounding ties away from 0.
+        """
+        
+        sign = 1 if number >= 0 else -1
+        
+        rounded = int(round(number))
+        nextRounded = int(round(number + 1 * sign))
+        
+        if nextRounded == rounded:
+            # We rounded X.5 to even, and it was also away from 0.
+            return rounded
+        elif nextRounded == rounded + 1 * sign:
+            # We rounded normally (we are in Python 2)
+            return rounded
+        elif nextRounded == rounded + 2 * sign:
+            # We rounded X.5 to even, but it was towards 0.
+            # Go away from 0 instead.
+            return rounded + 1 * sign
+        else:
+            # If we get here, something has gone wrong.
+            raise RuntimeError("Could not round {}".format(number))
 
     def getAverageRuntime(self, jobName, service=False):
         if service:
@@ -447,7 +475,7 @@ class ClusterScaler(object):
         weightedEstimate = (1 - self.betaInertia) * estimatedNodeCount + \
                            self.betaInertia * self.previousWeightedEstimate[nodeShape]
         self.previousWeightedEstimate[nodeShape] = weightedEstimate
-        return int(round(weightedEstimate))
+        return self._round(weightedEstimate)
 
     def getEstimatedNodeCounts(self, queuedJobShapes, currentNodeCounts):
         """
@@ -465,7 +493,7 @@ class ClusterScaler(object):
                         "%s" % (nodeType, nodesToRunQueuedJobs[nodeShape]))
             # Actual calculation of the estimated number of nodes required
             estimatedNodeCount = 0 if nodesToRunQueuedJobs[nodeShape] == 0 \
-                else max(1, int(round(nodesToRunQueuedJobs[nodeShape])))
+                else max(1, self._round(nodesToRunQueuedJobs[nodeShape]))
             logger.info("Estimating %i nodes of shape %s" % (estimatedNodeCount, nodeShape))
 
             # Use inertia parameter to smooth out fluctuations according to an exponentially
@@ -480,7 +508,7 @@ class ClusterScaler(object):
                 # The number of nodes we provision as compensation for missing preemptable
                 # nodes is the product of the deficit (the number of preemptable nodes we did
                 # _not_ allocate) and configuration preference.
-                compensationNodes = int(round(self.preemptableNodeDeficit[nodeType] * compensation))
+                compensationNodes = self._round(self.preemptableNodeDeficit[nodeType] * compensation)
                 if compensationNodes > 0:
                     logger.info('Adding %d non-preemptable nodes of type %s to compensate for a '
                                 'deficit of %d preemptable ones.', compensationNodes,
@@ -579,8 +607,7 @@ class ClusterScaler(object):
                     delta = numNodes - (numCurrentNodes - numIgnoredNodes)
                 else:
                     delta = numNodes - numCurrentNodes
-                if delta > 0:
-                    if numIgnoredNodes > 0:
+                if delta > 0 and numIgnoredNodes > 0:
                         # We can un-ignore a few nodes to compensate for the additional nodes we want.
                         numNodesToUnignore = min(delta, numIgnoredNodes)
                         logger.info('Unignoring %i nodes because we want to scale back up again.' % numNodesToUnignore)
@@ -588,6 +615,7 @@ class ClusterScaler(object):
                         for node in ignoredNodes[:numNodesToUnignore]:
                             self.ignoredNodes.remove(node.privateIP)
                             self.leader.batchSystem.unignoreNode(node.privateIP)
+                if delta > 0:
                     logger.info('Adding %i %s nodes to get to desired cluster size of %i.',
                                 delta,
                                 'preemptable' if preemptable else 'non-preemptable',

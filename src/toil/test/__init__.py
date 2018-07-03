@@ -252,14 +252,14 @@ class ToilTest(unittest.TestCase):
 
 try:
     # noinspection PyUnresolvedReferences
-    from _pytest.mark import MarkDecorator
+    import pytest.mark
 except ImportError:
     # noinspection PyUnusedLocal
     def _mark_test(name, test_item):
         return test_item
 else:
     def _mark_test(name, test_item):
-        return MarkDecorator(name)(test_item)
+        return getattr(pytest.mark, name)(test_item)
 
 
 def needs_rsync3(test_item):
@@ -272,7 +272,7 @@ def needs_rsync3(test_item):
     """
     test_item = _mark_test('rsync', test_item)
     try:
-        versionInfo = subprocess.check_output(['rsync', '--version'])
+        versionInfo = subprocess.check_output(['rsync', '--version']).decode('utf-8')
     except subprocess.CalledProcessError:
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
     else:
@@ -471,9 +471,11 @@ def needs_lsf(test_item):
 def needs_docker(test_item):
     """
     Use as a decorator before test classes or methods to only run them if
-    docker is installed.
+    docker is installed and docker-based tests are enabled.
     """
     test_item = _mark_test('docker', test_item)
+    if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
+        return unittest.skip('Skipping docker test.')(test_item)
     if next(which('docker'), None):
         return test_item
     else:
@@ -755,9 +757,15 @@ def make_tests(generalMethod, targetClass, **kwargs):
 
 @contextmanager
 def tempFileContaining(content, suffix=''):
+    """
+    Write a file with the given contents, and keep it on disk as long as the context is active.
+    :param str content: The contents of the file.
+    :param str suffix: The extension to use for the temporary file.
+    """
     fd, path = tempfile.mkstemp(suffix=suffix)
     try:
-        os.write(fd, bytes(content))
+        encoded = content.encode('utf-8')
+        assert os.write(fd, encoded) == len(encoded)
     except:
         os.close(fd)
         raise
