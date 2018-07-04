@@ -126,6 +126,8 @@ class AbstractJobStoreTest(object):
                                         jobName='arbitrary', unitName=None,
                                         requirements=self.arbitraryRequirements)
             self.parentJobReqs = dict(memory=12, cores=34, disk=35, preemptable=True)
+            self.childJobReqs1 = dict(memory=23, cores=45, disk=46, preemptable=True)
+            self.childJobReqs2 = dict(memory=34, cores=56, disk=57, preemptable=False)
 
         def tearDown(self):
             self.jobstore.destroy()
@@ -191,6 +193,119 @@ class AbstractJobStoreTest(object):
             job2 = jobstore2.load(job1.jobStoreID)
             self.assertEquals(job1, job2)
 
+        def testPersistantFilesToDelete(self):
+            '''Make sure that loading a job to a jobstore carried over filesToDelete.'''
+
+            jobstore = self.jobstore
+
+            # Create a job.
+            jobNode = JobNode(command='master1',
+                               requirements=self.parentJobReqs,
+                               jobName='test1', unitName='onJS1',
+                               jobStoreID=None, predecessorNumber=0)
+
+            job = jobstore.create(jobNode)
+            job.filesToDelete = ['1','2']
+            jobstore.update(job)
+            self.assertEquals(jobstore.load(job.jobStoreID).filesToDelete, ['1', '2'])
+
+        # Not working, I don't understand why.
+        def testUpdateBehavior(self):
+            jobstore1 = self.jobstore
+            jobstore2 = self._createJobStore()
+
+            aJobNode = JobNode(command='parent1',
+                               requirements=self.parentJobReqs,
+                               jobName='test1', unitName='onParent',
+                               jobStoreID=None, predecessorNumber=0)
+
+
+            jobNodeOnChild1 = JobNode(command='child1',
+                                      requirements=self.childJobReqs1,
+                                      jobName='test2', unitName='onChild1',
+                                      jobStoreID=None)
+
+            jobNodeOnChild2 = JobNode(command='child2',
+                                      requirements=self.childJobReqs2,
+                                      jobName='test3', unitName='onChild2',
+                                      jobStoreID=None)
+
+            job1 = jobstore1.create(aJobNode)
+            job2 = jobstore2.load(job1.jobStoreID)
+
+            # Create child jobs
+            childJob1 = jobstore2.create(jobNodeOnChild1)
+            childJob2 = jobstore2.create(jobNodeOnChild2)
+
+            # Add them to job2.
+            job2.stack.append((childJob1, childJob2))
+            job2.filesToDelete = []
+            jobstore2.update(job2)
+
+            # Check equivalence between jobstore and worker.
+            # Should be false. While job1 and job2 share a jobStoreID, job1 has not been "refreshed".
+            self.assertNotEquals(job2, job1)
+
+            # Reload parent job on jobstore, "refreshing" the job.
+            job1 = jobstore1.load(job1.jobStoreID)
+            self.assertEquals(job2, job1)
+
+            # Load children on jobstore and check equivalence
+            self.assertEquals(jobstore.load(childJob1.jobStoreID), childJob1)
+            self.assertEquals(jobstore.load(childJob2.jobStoreID), childJob2)
+
+        def testChildLoadingEquivalence(self):
+            jobstore = self.jobstore
+
+            aJobNode = JobNode(command='parent1',
+                               requirements=self.parentJobReqs,
+                               jobName='test1', unitName='onParent',
+                               jobStoreID=None, predecessorNumber=0)
+
+            jobNodeOnChild = JobNode(command='child1',
+                                      requirements=self.childJobReqs1,
+                                      jobName='test2', unitName='onChild1',
+                                      jobStoreID=None)
+            job = jobstore.create(aJobNode)
+            childJob = jobstore.create(jobNodeOnChild)
+            job.stack.append(childJob)
+            jobstore.update(job)
+            self.assertEquals(jobstore.load(childJob.jobStoreID), childJob)
+
+        def testChangingJobStoreID(self):
+            jobstore1 = self.jobstore
+            jobstore2 = self._createJobStore()
+
+            # Create a job
+            aJobNode = JobNode(command='parent1',
+                               requirements=self.parentJobReqs,
+                               jobName='test1', unitName='onParent',
+                               jobStoreID=None, predecessorNumber=0)
+
+            parentJob1 = jobstore1.create(aJobNode)
+            jobstore2.load(parentJob1.jobStoreID)
+
+            # Create an array of child jobs
+            for i in range(0,5):
+                jobNodeOnChild1 = JobNode(command='child1',
+                                          requirements=self.childJobReqs1,
+                                          jobName='test2', unitName='onChild1',
+                                          jobStoreID=None)
+                aChildJob = jobstore1.create(jobNodeOnChild1)
+                parentJob1.stack.append(aChildJob)
+                jobstore2.load(aChildJob.jobStoreID)
+
+            # Tests if changing the jobStore ID is respected
+            for childJob in parentJob1.stack:
+                childJob.logJobStoreFileID = str(uuid.uuid4())
+                childJob.remainingRetryCount = 66
+                self.assertNotEquals(childJob, jobstore1.load(childJob.jobStoreID))
+            for childJob in parentJob1.stack:
+                jobstore2.update(childJob)
+            for childJob in parentJob1.stack:
+                self.assertEquals(jobstore1.load(childJob.jobStoreID), childJob)
+                self.assertEquals(jobstore2.load(childJob.jobStoreID), childJob)
+
 
         def test(self):
             """
@@ -201,54 +316,8 @@ class AbstractJobStoreTest(object):
             # A local jobstore object for testing.
             jobstore = self.jobstore
 
-
-
-            # Update state on job
-            #
-            # The following demonstrates the job update pattern, where files to be deleted are
-            # referenced in "filesToDelete" array, which is persisted to disk first. If things go
-            # wrong during the update, this list of files to delete is used to remove the
-            # unneeded files
-            jobOnWorker.filesToDelete = ['1', '2']
-            worker.update(jobOnWorker)
-
-            # Check jobs to delete persisted
-            self.assertEquals(jobstore.load(jobOnWorker.jobStoreID).filesToDelete, ['1', '2'])
-
-            # Create children
-            childRequirements1 = dict(memory=23, cores=45, disk=46, preemptable=True)
-            jobNodeOnChild1 = JobNode(command='child1',
-                                      requirements=childRequirements1,
-                                      jobName='test2', unitName='onChild1',
-                                      jobStoreID=None)
-            childRequirements2 = dict(memory=34, cores=56, disk=57, preemptable=False)
-            jobNodeOnChild2 = JobNode(command='master1',
-                                      requirements=childRequirements2,
-                                      jobName='test3', unitName='onChild2',
-                                      jobStoreID=None)
-            child1 = worker.create(jobNodeOnChild1)
-            child2 = worker.create(jobNodeOnChild2)
-
-            # Update parent
-            jobOnWorker.stack.append((child1, child2))
-            jobOnWorker.filesToDelete = []
-            worker.update(jobOnWorker)
-
-            # Check equivalence between jobstore and worker
-            self.assertNotEquals(jobOnWorker, jobOnMaster)
-
-            # Reload parent job on jobstore
-            jobOnMaster = jobstore.load(jobOnMaster.jobStoreID)
-            self.assertEquals(jobOnWorker, jobOnMaster)
-
-            # Load children on jobstore an check equivalence
-            self.assertEquals(jobstore.load(child1.jobStoreID), child1)
-            self.assertEquals(jobstore.load(child2.jobStoreID), child2)
-
             childJobs = [worker.load(childNode.jobStoreID) for childNode in jobOnMaster.stack[-1]]
 
-            # Test changing and persisting job state across multiple jobs
-            self._testChangingAndPersistingJobs(childJobs, jobstore, worker)
 
             # Test job iterator - the results of the iterator are effected by eventual
             # consistency. We cannot guarantee all jobs will appear but we can assert that all
@@ -270,17 +339,6 @@ class AbstractJobStoreTest(object):
             self._testSharedFiles(jobstore, worker)                         # Test shared files: Write shared file on jobstore
             self._testPerJobFiles(jobstore, worker, jobNodeOnMaster)        # Test per-job files: Create empty file on jobstore
             self._testStatsAndLogging(jobstore, worker, jobOnMaster)        # Test stats and loggingAdd
-
-        def _testChangingAndPersistingJobs(self, childJobs, master, worker):
-            for childJob in childJobs:
-                childJob.logJobStoreFileID = str(uuid.uuid4())
-                childJob.remainingRetryCount = 66
-                self.assertNotEquals(childJob, master.load(childJob.jobStoreID))
-            for childJob in childJobs:
-                worker.update(childJob)
-            for childJob in childJobs:
-                self.assertEquals(master.load(childJob.jobStoreID), childJob)
-                self.assertEquals(worker.load(childJob.jobStoreID), childJob)
 
         def _testJobDeletions(self, childJobs, master, worker):
             for childJob in childJobs:
