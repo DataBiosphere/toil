@@ -183,6 +183,18 @@ def process_array_infile(af, fileStore):
 
 
 def process_infile(f, fileStore):
+    """
+    Takes an array of files or a single file and imports into the jobstore.
+
+    This returns a tuple or an array of tuples replacing all previous path
+    strings.  Toil does not preserve a file's original name upon import and
+    so the tuple keeps track of this with the format: '(filepath, preserveThisFilename)'
+
+    :param f: String or an Array.  The smallest element must be a string,
+              so: an array of strings, an array of arrays of strings... etc.
+    :param fileStore: The filestore object that is called to load files into the filestore.
+    :return: A tuple or an array of tuples.
+    """
     # check if this has already been processed
     if isinstance(f, tuple):
         return f
