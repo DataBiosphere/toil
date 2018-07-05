@@ -55,14 +55,14 @@ class SDBHelper(object):
     >>> import os
     >>> H=SDBHelper
     >>> H.presenceIndicator() # doctest: +ALLOW_UNICODE
-    u'000'
+    u'numChunks'
     >>> H.binaryToAttributes(None)
-    {}
-    >>> H.attributesToBinary({})
+    {u'numChunks': 0}
+    >>> H.attributesToBinary({u'numChunks': 0})
     (None, 0)
     >>> H.binaryToAttributes(b'') # doctest: +ALLOW_UNICODE +ALLOW_BYTES
-    {u'000': b'VQ=='}
-    >>> H.attributesToBinary({u'000': b'VQ=='}) # doctest: +ALLOW_BYTES
+    {u'000': b'VQ==', u'numChunks': 1}
+    >>> H.attributesToBinary({u'numChunks': 1, u'000': b'VQ=='}) # doctest: +ALLOW_BYTES
     (b'', 1)
 
     Good pseudo-random data is very likely smaller than its bzip2ed form. Subtract 1 for the type
@@ -71,7 +71,7 @@ class SDBHelper(object):
     >>> s = os.urandom(H.maxRawValueSize-1)
     >>> d = H.binaryToAttributes(s)
     >>> len(d), len(d['000'])
-    (1, 1024)
+    (2, 1024)
     >>> H.attributesToBinary(d) == (s, 1)
     True
 
@@ -81,7 +81,7 @@ class SDBHelper(object):
     >>> s += s[0:1]
     >>> d = H.binaryToAttributes(s)
     >>> len(d), len(d['000']), len(d['001'])
-    (2, 1024, 4)
+    (3, 1024, 4)
     >>> H.attributesToBinary(d) == (s, 2)
     True
 
@@ -109,15 +109,15 @@ class SDBHelper(object):
         Override in subclass to reserve a certain number of attributes that can't be used for
         chunks.
         """
-        return 0
+        return 1
 
     @classmethod
     def _maxChunks(cls):
         return cls.maxAttributesPerItem - cls._reservedAttributes()
 
     @classmethod
-    def maxBinarySize(cls):
-        return cls._maxChunks() * cls.maxRawValueSize - 1  # for the 'C' or 'U' prefix
+    def maxBinarySize(cls, extraReservedChunks=0):
+        return (cls._maxChunks() - extraReservedChunks) * cls.maxRawValueSize - 1  # for the 'C' or 'U' prefix
 
     @classmethod
     def _maxEncodedSize(cls):
@@ -125,7 +125,7 @@ class SDBHelper(object):
 
     @classmethod
     def binaryToAttributes(cls, binary):
-        if binary is None: return {}
+        if binary is None: return {u'numChunks': 0}
         assert len(binary) <= cls.maxBinarySize()
         # The use of compression is just an optimization. We can't include it in the maxValueSize
         # computation because the compression ratio depends on the input.
@@ -138,7 +138,9 @@ class SDBHelper(object):
         assert len(encoded) <= cls._maxEncodedSize()
         n = cls.maxValueSize
         chunks = (encoded[i:i + n] for i in range(0, len(encoded), n))
-        return {cls._chunkName(i): chunk for i, chunk in enumerate(chunks)}
+        attributes = {cls._chunkName(i): chunk for i, chunk in enumerate(chunks)}
+        attributes.update({u'numChunks': len(attributes)})
+        return attributes
 
     @classmethod
     def _chunkName(cls, i):
@@ -155,7 +157,7 @@ class SDBHelper(object):
         Assuming that binaryToAttributes() is used with SDB's PutAttributes, the return value of
         this method could be used to detect the presence/absence of an item in SDB.
         """
-        return cls._chunkName(0)
+        return u'numChunks'
 
     @classmethod
     def attributesToBinary(cls, attributes):
@@ -165,9 +167,8 @@ class SDBHelper(object):
         """
         chunks = [(int(k), v) for k, v in iteritems(attributes) if cls._isValidChunkName(k)]
         chunks.sort()
-        numChunks = len(chunks)
+        numChunks = int(attributes[u'numChunks'])
         if numChunks:
-            assert len(set(k for k, v in chunks)) == chunks[-1][0] + 1 == numChunks
             serializedJob = b''.join(v for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
             if compressed[0] == b'C'[0]:
