@@ -213,7 +213,7 @@ class AbstractJobStoreTest(object):
         def testUpdateBehavior(self):
             jobstore1 = self.jobstore
             jobstore2 = self._createJobStore()
-            jobstore2.resume()
+            jobstore2.resume()                              # Needed to make jobstore fully functional
 
             aJobNode = JobNode(command='parent1',
                                requirements=self.parentJobReqs,
@@ -275,6 +275,7 @@ class AbstractJobStoreTest(object):
         def testChangingJobStoreID(self):
             jobstore1 = self.jobstore
             jobstore2 = self._createJobStore()
+            jobstore2.resume()                      # Needed to make jobstore fully functional
 
             # Create a job
             aJobNode = JobNode(command='parent1',
