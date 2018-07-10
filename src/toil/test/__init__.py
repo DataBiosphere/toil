@@ -635,7 +635,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
     of the form {str : type, ...} where the key represents the name of the value. The names will
     be used to represent the permutation of values passed for each parameter in the generalMethod.
 
-    :param generalMethod: A method that will be parametrized with values passed as kwargs. Note
+    :param generalMethod: A method that will be parameterized with values passed as kwargs. Note
            that the generalMethod must be a regular method.
 
     :param targetClass: This represents the class to which the generated test methods will be
@@ -719,9 +719,7 @@ def make_tests(generalMethod, targetClass, **kwargs):
             left.pop(prmValName)
 
     def insertMethodToClass():
-        """
-        Generates and inserts test methods.
-        """
+        """Generate and insert test methods."""
 
         def fx(self, prms=prms):
             if prms is not None:
