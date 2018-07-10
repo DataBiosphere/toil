@@ -549,7 +549,7 @@ class AWSProvisioner(AbstractProvisioner):
                     web.authorize(ip_protocol='udp', from_port=0, to_port=65535, src_group=web)
         out = []
         for sg in self._ctx.ec2.get_all_security_groups():
-            if sg.name == self.clusterName and vpcId is None or sg.vpc_id == vpcId:
+            if sg.name == self.clusterName and (vpcId is None or sg.vpc_id == vpcId):
                 out.append(sg)
         return out
 
