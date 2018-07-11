@@ -186,18 +186,18 @@ Running the example
    only be run after the jobs it depends upon have run. Jobs without dependencies will be run in parallel.
 
 .. note::
-        Delete ``fileToSort.txt`` before moving on to #3. The options, ``--numLines`` and ``--lineLength``,
-        specify dimensions for creating ``fileToSort.txt`` if it does not already exist. If it exists, this workflow
-        will use the existing file.
+        Delete ``fileToSort.txt`` before moving on to #3. This example introduces options that specify dimensions for
+        ``fileToSort.txt``, if it does not already exist. If it exists, this workflow will use the existing file and
+        the results will be the same as #2.
 
 3. Run with custom options::
 
       (venv) $ python sort.py file:jobStore --numLines=5000 --lineLength=10 --overwriteOutput=True --workDir=/tmp/
 
    Here we see that we can add our own options to a Toil script. As noted above, the first two
-   options determine the number of lines and how many characters are in each line. ``--overwriteOutput`` causes the
-   current contents of ``sortedFile.txt`` to be overwritten, if it already exists. The last option, ``--workDir``, is an
-   option built into Toil to specify where temporary files unique to a job are kept.
+   options, ``--numLines`` and ``--lineLength``, determine the number of lines and how many characters are in each line.
+   ``--overwriteOutput`` causes the current contents of ``sortedFile.txt`` to be overwritten, if it already exists.
+   The last option, ``--workDir``, is an option built into Toil to specify where temporary files unique to a job are kept.
 
 Describing the source code
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
