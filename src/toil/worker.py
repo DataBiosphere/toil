@@ -221,7 +221,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
-        logger.info("---TOIL WORKER OUTPUT LOG---")
+        logger.debug("---TOIL WORKER OUTPUT LOG---")
         sys.stdout.flush()
         
         logProcessContext(config)
@@ -391,9 +391,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
         # log the worker log path here so that if the file is truncated the path can still be found
         if redirectOutputToLogFile:
-            logger.info("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localWorkerTempDir)
+            logger.debug("Worker log can be found at %s. Set --cleanWorkDir to retain this log", localWorkerTempDir)
         
-        logger.info("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
+        logger.debug("Finished running the chain of jobs on this node, we ran for a total of %f seconds", time.time() - startTime)
     
     ##########################################
     #Trapping where worker goes wrong

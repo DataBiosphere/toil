@@ -79,7 +79,7 @@ def setLogLevel(level, logger=None):
     # don't want to confuse the user with those error messages.
     logging.getLogger( 'boto' ).setLevel( logging.CRITICAL )
 
-def logFile(fileName, printFunction=logger.info):
+def logFile(fileName, printFunction=logger.debug):
     """Writes out a formatted version of the given log file
     """
     printFunction("Reporting file: %s" % fileName)
@@ -93,7 +93,7 @@ def logFile(fileName, printFunction=logger.info):
         line = fileHandle.readline()
     fileHandle.close()
     
-def logStream(fileHandle, shortName, printFunction=logger.info):
+def logStream(fileHandle, shortName, printFunction=logger.debug):
     """Writes out a formatted version of the given log stream.
     """
     printFunction("Reporting file: %s" % shortName)
@@ -157,11 +157,11 @@ def setLoggingFromOptions(options):
     else:
         # Ensure that any other log level overrides are in effect even if no log level is explicitly set
         setLogLevel(getLogLevelString())
-    logger.info("Root logger is at level '%s', 'toil' logger at level '%s'.",
+    logger.debug("Root logger is at level '%s', 'toil' logger at level '%s'.",
                 getLogLevelString(logger=rootLogger), getLogLevelString(logger=toilLogger))
     if options.logFile is not None:
         addLoggingFileHandler(options.logFile, rotatingLogging=options.logRotating)
-        logger.info("Logging to file '%s'." % options.logFile)
+        logger.debug("Logging to file '%s'." % options.logFile)
 
 
 def system(command):
@@ -239,7 +239,7 @@ class TestStatus(object):
     def setSaveErrorLocation(dir):
         """Set location in which to write inputs which created test error.
         """
-        logger.info("Location to save error files in: %s" % dir)
+        logger.debug("Location to save error files in: %s" % dir)
         assert os.path.isdir(dir)
         TestStatus.SAVE_ERROR_LOCATION = dir
     setSaveErrorLocation = staticmethod(setSaveErrorLocation)

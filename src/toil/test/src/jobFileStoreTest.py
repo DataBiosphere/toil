@@ -62,7 +62,7 @@ class JobFileStoreTest(ToilTest):
             #Total length is 2 million characters (20 strings of length 100K each) 
             testStrings = dict([randomString() for i in range(stringNo)])
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "INFO"
+            options.logLevel = "DEBUG"
             options.retryCount=retryCount
             options.badWorker=badWorker
             options.badWorkerFailInterval = 1.0

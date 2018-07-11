@@ -126,13 +126,13 @@ class Leader(object):
 
         # Get a snap shot of the current state of the jobs in the jobStore
         self.toilState = ToilState(jobStore, rootJob, jobCache=jobCache)
-        logger.info("Found %s jobs to start and %i jobs with successors to run",
+        logger.debug("Found %s jobs to start and %i jobs with successors to run",
                         len(self.toilState.updatedJobs), len(self.toilState.successorCounts))
 
         # Batch system
         self.batchSystem = batchSystem
         assert len(self.batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
-        logger.info("Checked batch system has no running jobs and no updated jobs")
+        logger.debug("Checked batch system has no running jobs and no updated jobs")
 
         # Map of batch system IDs to IssuedJob tuples
         self.jobBatchSystemIDToIssuedJob = {}
@@ -212,10 +212,10 @@ class Leader(object):
                     self.innerLoop()
                 finally:
                     if self.clusterScaler is not None:
-                        logger.info('Waiting for workers to shutdown.')
+                        logger.debug('Waiting for workers to shutdown.')
                         startTime = time.time()
                         self.clusterScaler.shutdown()
-                        logger.info('Worker shutdown complete in %s seconds.', time.time() - startTime)
+                        logger.debug('Worker shutdown complete in %s seconds.', time.time() - startTime)
 
             finally:
                 # Ensure service manager thread is properly shutdown
@@ -231,12 +231,12 @@ class Leader(object):
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
-        logger.info("Finished toil run %s" %
+        logger.debug("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
                 else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))
 
         if len(self.toilState.totalFailedJobs):
-            logger.info("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
+            logger.debug("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
         # Cleanup
         if len(self.toilState.totalFailedJobs) > 0:
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
@@ -496,7 +496,7 @@ class Leader(object):
             # We only rescue jobs every N seconds, and when we have apparently
             # exhausted the current jobGraph supply
             self.reissueOverLongJobs()
-            logger.info("Reissued any over long jobs")
+            logger.debug("Reissued any over long jobs")
 
             hasNoMissingJobs = self.reissueMissingJobs()
             if hasNoMissingJobs:
@@ -504,7 +504,7 @@ class Leader(object):
             else:
                 # This means we'll try again in a minute, providing things are quiet
                 self.timeSinceJobsLastRescued += 60
-            logger.info("Rescued any (long) missing jobs")
+            logger.debug("Rescued any (long) missing jobs")
 
 
     def innerLoop(self):
@@ -541,7 +541,7 @@ class Leader(object):
             # Check for deadlocks
             self.checkForDeadlocks()
 
-        logger.info("Finished the main loop: no jobs left to run.")
+        logger.debug("Finished the main loop: no jobs left to run.")
 
         # Consistency check the toil state
         assert self.toilState.updatedJobs == set()

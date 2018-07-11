@@ -213,7 +213,7 @@ def updateStaticEC2Instances():
 
     :return: Nothing.  Writes a new 'generatedEC2Lists.py' file.
     """
-    logger.info("Updating Toil's EC2 lists to the most current version from AWS's bulk API.  "
+    logger.debug("Updating Toil's EC2 lists to the most current version from AWS's bulk API.  "
                 "This may take a while, depending on your internet connection.")
 
     dirname = os.path.dirname(__file__)

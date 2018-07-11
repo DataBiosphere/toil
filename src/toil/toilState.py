@@ -69,7 +69,7 @@ class ToilState(object):
         self.jobsToBeScheduledWithMultiplePredecessors = {}
         
         ##Algorithm to build this information
-        logger.info("(Re)building internal scheduler state")
+        logger.debug("(Re)building internal scheduler state")
         self._buildToilState(rootJob, jobStore, jobCache)
 
     def _buildToilState(self, jobGraph, jobStore, jobCache=None):

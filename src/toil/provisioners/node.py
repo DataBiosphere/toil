@@ -112,18 +112,18 @@ class Node(object):
             if time.time() - startTime > self.maxWaitTime:
                 raise RuntimeError("Key propagation failed on machine with ip %s" % self.publicIP)
             try:
-                logger.info('Attempting to establish SSH connection...')
+                logger.debug('Attempting to establish SSH connection...')
                 self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)
             except RuntimeError:
-                logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
+                logger.debug('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
                 time.sleep(10)
             else:
-                logger.info('...SSH connection established.')
+                logger.debug('...SSH connection established.')
                 # ssh succeeded
                 return
 
     def _waitForDockerDaemon(self, keyName='core'):
-        logger.info('Waiting for docker on %s to start...', self.publicIP)
+        logger.debug('Waiting for docker on %s to start...', self.publicIP)
         sleepTime = 10
         startTime = time.time()
         while True:
@@ -133,17 +133,17 @@ class Node(object):
                 output = self.sshInstance('/usr/bin/ps', 'auxww', sshOptions=['-oBatchMode=yes'], user=keyName)
                 if 'dockerd' in output:
                     # docker daemon has started
-                    logger.info('Docker daemon running')
+                    logger.debug('Docker daemon running')
                     break
                 else:
-                    logger.info('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
+                    logger.debug('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
             except RuntimeError:
                 logger.debug("Wait for docker daemon failed ssh, trying again.")
                 sleepTime += 20
 
     def _waitForAppliance(self, role, keyName='core'):
-        logger.info('Waiting for %s Toil appliance to start...', role)
+        logger.debug('Waiting for %s Toil appliance to start...', role)
         sleepTime = 20
         startTime = time.time()
         while True:
@@ -155,10 +155,10 @@ class Node(object):
                 output = self.sshInstance('/usr/bin/docker', 'ps',
                                           sshOptions=['-oBatchMode=yes'], user=keyName)
                 if role in output:
-                    logger.info('...Toil appliance started')
+                    logger.debug('...Toil appliance started')
                     break
                 else:
-                    logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
+                    logger.debug('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
             except RuntimeError:
                 # ignore exceptions, keep trying
@@ -172,13 +172,13 @@ class Node(object):
         :return: the number of unsuccessful attempts to connect to the port before a the first
         success
         """
-        logger.info('Waiting for ssh port to open...')
+        logger.debug('Waiting for ssh port to open...')
         for i in count():
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 s.settimeout(a_short_time)
                 s.connect((self.publicIP, 22))
-                logger.info('...ssh port open')
+                logger.debug('...ssh port open')
                 return i
             except socket.error:
                 pass
@@ -250,7 +250,7 @@ class Node(object):
         resultValue = popen.wait()
         # ssh has been throwing random 255 errors - why?
         if resultValue != 0:
-            logger.info('SSH Error (%s) %s' % (resultValue, stderr))
+            logger.debug('SSH Error (%s) %s' % (resultValue, stderr))
             raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
                                'exit code %s with stdout %s and stderr %s'
                                % (' '.join(args), resultValue, stdout, stderr))

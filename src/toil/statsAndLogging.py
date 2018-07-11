@@ -157,9 +157,9 @@ class StatsAndLogging( object ):
         """
         Finish up the stats/logging aggregation thread
         """
-        logger.info('Waiting for stats and logging collator thread to finish ...')
+        logger.debug('Waiting for stats and logging collator thread to finish ...')
         startTime = time.time()
         self._stop.set()
         self._worker.join()
-        logger.info('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
+        logger.debug('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
         # in addition to cleaning on exceptions, onError should clean if there are any failed jobs

@@ -127,7 +127,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         # Throws an error if cluster exists
         self._instanceGroup = self._gceDriver.ex_create_instancegroup(self.clusterName, self._zone)
-        logger.info('Launching leader')
+        logger.debug('Launching leader')
 
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
         # Therefore, dumping tags into the description.
@@ -169,7 +169,7 @@ class GCEProvisioner(AbstractProvisioner):
         leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
         if self._botoPath:
             leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
-        logger.info('Launched leader')
+        logger.debug('Launched leader')
 
     def getNodeShape(self, nodeType, preemptable=False):
         # TODO: read this value only once
@@ -237,9 +237,9 @@ class GCEProvisioner(AbstractProvisioner):
             keyPath = self._sseKey
 
         if not preemptable:
-            logger.info('Launching %s non-preemptable nodes', numNodes)
+            logger.debug('Launching %s non-preemptable nodes', numNodes)
         else:
-            logger.info('Launching %s preemptable nodes', numNodes)
+            logger.debug('Launching %s preemptable nodes', numNodes)
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
         userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
@@ -295,7 +295,7 @@ class GCEProvisioner(AbstractProvisioner):
                 self._terminateInstances(failedWorkers)
             retries += 1
 
-        logger.info('Launched %d new instance(s)', numNodes)
+        logger.debug('Launched %d new instance(s)', numNodes)
         if numNodes != workersCreated:
             logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
@@ -364,7 +364,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     def _terminateInstances(self, instances):
         def worker(driver, instance):
-            logger.info('Terminating instance: %s', instance.name)
+            logger.debug('Terminating instance: %s', instance.name)
             driver.destroy_node(instance)
 
         threads = []
@@ -373,7 +373,7 @@ class GCEProvisioner(AbstractProvisioner):
             threads.append(t)
             t.start()
 
-        logger.info('... Waiting for instance(s) to shut down...')
+        logger.debug('... Waiting for instance(s) to shut down...')
         for t in threads:
             t.join()
 

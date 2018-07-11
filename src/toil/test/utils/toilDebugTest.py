@@ -69,9 +69,9 @@ class ToilDebugFileTest(ToilTest):
             for expected_file in contents:
                 if xfile.endswith(expected_file):
                     match = match + 1
-        logger.info(files)
-        logger.info(contents)
-        logger.info(match)
+        logger.debug(files)
+        logger.debug(contents)
+        logger.debug(match)
         # C.txt will match twice (once with 'C.txt', and once with 'ABC.txt')
         assert match == 6
         os.remove(jobstoreFileContents)

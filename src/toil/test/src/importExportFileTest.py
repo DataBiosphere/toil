@@ -62,7 +62,7 @@ class ImportExportFileTest(ToilTest):
 
     def _importExport(self, restart):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
 
         if restart:
             try:
@@ -81,7 +81,7 @@ class ImportExportFileTest(ToilTest):
 
     def testImportSharedFileName(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
 
         sharedFileName = 'someSharedFile'
         with Toil(options) as toil:

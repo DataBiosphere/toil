@@ -77,7 +77,7 @@ class JobTest(ToilTest):
 
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "INFO"
+            options.logLevel = "DEBUG"
             options.retryCount = 100
             options.badWorker = 0.5
             options.badWorkerFailInterval = 0.01
@@ -117,7 +117,7 @@ class JobTest(ToilTest):
 
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "INFO"
+            options.logLevel = "DEBUG"
             options.retryCount = 100
             options.badWorker = 0.5
             options.badWorkerFailInterval = 0.01
@@ -323,22 +323,22 @@ class JobTest(ToilTest):
 
         """
 
-        logger.info('Test checkpoint job that is a leaf vertex')
+        logger.debug('Test checkpoint job that is a leaf vertex')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      expectedException=None)
 
-        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a service')
+        logger.debug('Test checkpoint job that is not a leaf vertex due to the presence of a service')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobService=TrivialService("LeafTestService"),
                                      expectedException=JobGraphDeadlockException)
 
-        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a child job')
+        logger.debug('Test checkpoint job that is not a leaf vertex due to the presence of a child job')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobChild=Job.wrapJobFn(
                                          simpleJobFn, "LeafTestChild"),
                                      expectedException=JobGraphDeadlockException)
 
-        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job')
+        logger.debug('Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobFollowOn=Job.wrapJobFn(
                                          simpleJobFn,
@@ -368,7 +368,7 @@ class JobTest(ToilTest):
 
         # Run the workflow and check for the expected behavior
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         if expectedException is None:
             Job.Runner.startToil(workflowRootJob, options)
         else:
@@ -376,7 +376,7 @@ class JobTest(ToilTest):
                 Job.Runner.startToil(workflowRootJob, options)
                 self.fail("The expected exception was not thrown")
             except expectedException as ex:
-                logger.info("The expected exception was thrown: %s", repr(ex))
+                logger.debug("The expected exception was thrown: %s", repr(ex))
 
     @slow
     def testEvaluatingRandomDAG(self):

@@ -604,7 +604,7 @@ class ScalerThreadTest(ToilTest):
                 clusterScaler.addCompletedJob(iJ, random.choice(range(1, 10)))
 
             while mock.getNumberOfJobsIssued() > 0 or mock.getNumberOfNodes() > 0:
-                logger.info("%i nodes currently provisioned" % mock.getNumberOfNodes())
+                logger.debug("%i nodes currently provisioned" % mock.getNumberOfNodes())
                 # Make sure there are no large nodes
                 self.assertEqual(mock.getNumberOfNodes(nodeType=largeNode), 0)
                 clusterScaler.check()
@@ -835,10 +835,10 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.maxWorkers[nodeShape] = max(self.maxWorkers[nodeShape], len(self.workers[nodeShape]))
 
     def _removeNodes(self, nodes):
-        logger.info("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker),
+        logger.debug("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker),
                     len(nodes))
         for node in nodes:
-            logger.info("removed node")
+            logger.debug("removed node")
             try:
                 nodeShape = self.getNodeShape(node.nodeType, node.preemptable)
                 worker = self.nodesToWorker.pop(node)
