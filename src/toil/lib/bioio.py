@@ -283,11 +283,6 @@ def parseBasicOptions(parser):
 
     setLoggingFromOptions(options)
 
-    # Look for a default zone.
-    if hasattr(options, 'provisioner') and options.provisioner == 'azure':
-        if os.environ.get('TOIL_AZURE_ZONE'):
-            options.zone = os.environ.get('TOIL_AZURE_ZONE')
-
     #Set up the temp dir root
     if options.tempDirRoot == "None": # FIXME: Really, a string containing the word None?
         options.tempDirRoot = tempfile.gettempdir()
