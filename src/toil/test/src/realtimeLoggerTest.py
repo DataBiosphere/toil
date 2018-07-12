@@ -60,5 +60,5 @@ class LogTest(Job):
         Job.__init__(self, memory=100000, cores=2, disk='3G')
 
     def run(self, fileStore):
-        Realtimelogger.info('This should be logged at info level')
+        RealtimeLogger.info('This should be logged at info level')
         RealtimeLogger.debug('This should be logged at debug level')
