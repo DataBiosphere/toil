@@ -568,16 +568,16 @@ class AbstractJobStoreTest(object):
             # overlarge job creation if that's a thing
             # (i.e. AWSJobStore)
             arbitraryLargeData = os.urandom(500000)
-            job = self.master.create(self.arbitraryJob)
+            job = self.jobstore_initialized.create(self.arbitraryJob)
             # Make the job grow
             job.foo_attribute = arbitraryLargeData
-            self.master.update(job)
-            check_job = self.master.load(job.jobStoreID)
+            self.jobstore_initialized.update(job)
+            check_job = self.jobstore_initialized.load(job.jobStoreID)
             self.assertEquals(check_job.foo_attribute, arbitraryLargeData)
             # Make the job shrink back close to its original size
             job.foo_attribute = None
-            self.master.update(job)
-            check_job = self.master.load(job.jobStoreID)
+            self.jobstore_initialized.update(job)
+            check_job = self.jobstore_initialized.load(job.jobStoreID)
             self.assertEquals(check_job.foo_attribute, None)
 
 
