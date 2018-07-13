@@ -182,7 +182,7 @@ class AbstractJobStoreTest(object):
 
         def testConfigEquality(self):
             """
-            Ensure that the command line configurations is successfully loaded and stored.
+            Ensure that the command line configurations are successfully loaded and stored.
 
             In setUp() self.jobstore1 is created and initialized. In this test,  after creating newJobStore,
             .resume() will look for a previously instantiated job store and load its config options. This is expected
@@ -199,7 +199,7 @@ class AbstractJobStoreTest(object):
             """Tests that a job loaded into one jobstore from another can be used equivalently by another."""
 
             # Create a job on the first jobstore.
-            jobNode1 = JobNode(command='master1',
+            jobNode1 = JobNode(command='jobstore1',
                                       requirements=self.parentJobReqs,
                                       jobName='test1', unitName='onJS1',
                                       jobStoreID=None, predecessorNumber=0)
@@ -237,7 +237,7 @@ class AbstractJobStoreTest(object):
             """
 
             # Create a job.
-            jobNode = JobNode(command='master1',
+            jobNode = JobNode(command='job1',
                                requirements=self.parentJobReqs,
                                jobName='test1', unitName='onJS1',
                                jobStoreID=None, predecessorNumber=0)
@@ -344,9 +344,9 @@ class AbstractJobStoreTest(object):
             """Tests the consequences of deleting jobs."""
             # A local jobstore object for testing.
             jobstore = self.jobstore_initialized
-            jobNodeOnParent = JobNode(command='master1',
+            jobNodeOnParent = JobNode(command='job1',
                                       requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onMaster',
+                                      jobName='test1', unitName='onJob',
                                       jobStoreID=None, predecessorNumber=0)
             # Create jobs
             job = jobstore.create(jobNodeOnParent)
@@ -357,7 +357,7 @@ class AbstractJobStoreTest(object):
                                       jobName='test2', unitName='onChild1',
                                       jobStoreID=None)
 
-            jobNodeOnChild2 = JobNode(command='master1',
+            jobNodeOnChild2 = JobNode(command='job1',
                                       requirements=self.childJobReqs2,
                                       jobName='test3', unitName='onChild2',
                                       jobStoreID=None)
@@ -409,7 +409,7 @@ class AbstractJobStoreTest(object):
             # ... read that file on worker, ...
             with jobstore2.readSharedFileStream('foo') as f:
                 self.assertEquals('bar', f.read())
-            # ... and read it again on master.
+            # ... and read it again on jobstore1.
             with jobstore1.readSharedFileStream('foo') as f:
                 self.assertEquals('bar', f.read())
 
@@ -423,15 +423,15 @@ class AbstractJobStoreTest(object):
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resumed_noconfig
 
-            # Create jobNodeOnMaster
-            jobNodeOnMaster = JobNode(command='master1',
+            # Create jobNodeOnJS1
+            jobNodeOnJobStore1 = JobNode(command='job1',
                                       requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onMaster',
+                                      jobName='test1', unitName='onJobStore1',
                                       jobStoreID=None, predecessorNumber=0)
 
             # First recreate job
-            jobOnMaster = jobstore1.create(jobNodeOnMaster)
-            fileOne = jobstore2.getEmptyFileStoreID(jobOnMaster.jobStoreID)
+            jobOnJobStore1 = jobstore1.create(jobNodeOnJobStore1)
+            fileOne = jobstore2.getEmptyFileStoreID(jobOnJobStore1.jobStoreID)
             # Check file exists
             self.assertTrue(jobstore2.fileExists(fileOne))
             self.assertTrue(jobstore1.fileExists(fileOne))
@@ -459,7 +459,7 @@ class AbstractJobStoreTest(object):
                     f.truncate(0)
                     f.write('two')
                 # ... and create a second file from the local file.
-                fileTwo = jobstore1.writeFile(path, jobOnMaster.jobStoreID)
+                fileTwo = jobstore1.writeFile(path, jobOnJobStore1.jobStoreID)
                 with jobstore2.readFileStream(fileTwo) as f:
                     self.assertEquals(f.read(), 'two')
                 # Now update the first file from the local file ...
@@ -469,7 +469,7 @@ class AbstractJobStoreTest(object):
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
-            with jobstore2.writeFileStream(jobOnMaster.jobStoreID) as (f, fileThree):
+            with jobstore2.writeFileStream(jobOnJobStore1.jobStoreID) as (f, fileThree):
                 f.write('three')
             with jobstore1.readFileStream(fileThree) as f:
                 self.assertEquals(f.read(), 'three')
@@ -493,12 +493,12 @@ class AbstractJobStoreTest(object):
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resumed_noconfig
 
-            jobNodeOnMaster = JobNode(command='master1',
+            jobNodeOnJobStore1 = JobNode(command='job1',
                                       requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onMaster',
+                                      jobName='test1', unitName='onJobStore1',
                                       jobStoreID=None, predecessorNumber=0)
 
-            jobOnMaster = jobstore1.create(jobNodeOnMaster)
+            jobOnJobStore1 = jobstore1.create(jobNodeOnJobStore1)
 
             # Test stats and logging
             #
@@ -537,24 +537,24 @@ class AbstractJobStoreTest(object):
             self.assertEqual(4, jobstore1.readStatsAndLogging(callback, readAll=True))
 
             # Delete parent
-            jobstore1.delete(jobOnMaster.jobStoreID)
-            self.assertFalse(jobstore1.exists(jobOnMaster.jobStoreID))
+            jobstore1.delete(jobOnJobStore1.jobStoreID)
+            self.assertFalse(jobstore1.exists(jobOnJobStore1.jobStoreID))
             # TODO: Who deletes the shared files?
 
         def testBatchCreate(self):
             """Test creation of many jobs."""
-            master = self.jobstore_initialized
-            masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+            jobstore = self.jobstore_initialized
+            jobRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
             jobGraphs = []
-            with master.batch():
+            with jobstore.batch():
                 for i in range(100):
-                    overlargeJobNodeOnMaster = JobNode(command='master-overlarge',
-                                        requirements=masterRequirements,
-                                        jobName='test-overlarge', unitName='onMaster',
+                    overlargeJobNode = JobNode(command='overlarge',
+                                        requirements=jobRequirements,
+                                        jobName='test-overlarge', unitName='onJobStore',
                                         jobStoreID=None, predecessorNumber=0)
-                    jobGraphs.append(master.create(overlargeJobNodeOnMaster))
+                    jobGraphs.append(jobstore.create(overlargeJobNode))
             for jobGraph in jobGraphs:
-                self.assertTrue(master.exists(jobGraph.jobStoreID))
+                self.assertTrue(jobstore.exists(jobGraph.jobStoreID))
 
         def testGrowingAndShrinkingJob(self):
             """Make sure jobs update correctly if they grow/shrink."""
@@ -891,28 +891,28 @@ class AbstractJobStoreTest(object):
         @slow
         def testCleanCache(self):
             # Make a bunch of jobs
-            master = self.jobstore_initialized
+            jobstore = self.jobstore_initialized
 
             # Create parent job
-            rootJob = master.createRootJob(self.arbitraryJob)
+            rootJob = jobstore.createRootJob(self.arbitraryJob)
             # Create a bunch of child jobs
             for i in range(100):
-                child = master.create(self.arbitraryJob)
+                child = jobstore.create(self.arbitraryJob)
                 rootJob.stack.append([child])
-            master.update(rootJob)
+            jobstore.update(rootJob)
 
             # See how long it takes to clean with no cache
             noCacheStart = time.time()
-            master.clean()
+            jobstore.clean()
             noCacheEnd = time.time()
 
             noCacheTime = noCacheEnd - noCacheStart
 
             # See how long it takes to clean with cache
             jobCache = {jobGraph.jobStoreID: jobGraph
-                        for jobGraph in master.jobs()}
+                        for jobGraph in jobstore.jobs()}
             cacheStart = time.time()
-            master.clean(jobCache)
+            jobstore.clean(jobCache)
             cacheEnd = time.time()
 
             cacheTime = cacheEnd - cacheStart
@@ -927,19 +927,19 @@ class AbstractJobStoreTest(object):
             # Make sure we can store large numbers of jobs
 
             # Make a bunch of jobs
-            master = self.jobstore_initialized
+            jobstore = self.jobstore_initialized
 
             # Create parent job
-            rootJob = master.createRootJob(self.arbitraryJob)
+            rootJob = jobstore.createRootJob(self.arbitraryJob)
 
             # Create a bunch of child jobs
             for i in range(3000):
-                child = master.create(self.arbitraryJob)
+                child = jobstore.create(self.arbitraryJob)
                 rootJob.stack.append(child)
-            master.update(rootJob)
+            jobstore.update(rootJob)
 
             # Pull them all back out again
-            allJobs = list(master.jobs())
+            allJobs = list(jobstore.jobs())
 
             # Make sure we have the right number of jobs. Cannot be precise because of limitations
             # on the jobs iterator for certain cloud providers
@@ -974,12 +974,12 @@ class AbstractJobStoreTest(object):
         @slow
         def testDestructionOfCorruptedJobStore(self):
             self._corruptJobStore()
-            worker = self._createJobStore()
-            worker.destroy()
-            # Note that self.master.destroy() is done as part of shutdown
+            jobstore = self._createJobStore()
+            jobstore.destroy()
+            # Note that self.jobstore_initialized.destroy() is done as part of shutdown
 
         def testDestructionIdempotence(self):
-            # Master is fully initialized
+            # Jobstore is fully initialized
             self.jobstore_initialized.destroy()
             # Create a second instance for the same physical storage but do not .initialize() or
             # .resume() it.
@@ -1229,15 +1229,15 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     @slow
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        master = self.jobstore_initialized
+        jobstore = self.jobstore_initialized
         for encrypted in (True, False):
             n = AWSJobStore.FileInfo.maxInlinedSize(encrypted)
             sizes = (1, old_div(n, 2), n - 1, n, n + 1, 2 * n)
             for size in chain(sizes, islice(reversed(sizes), 1)):
                 s = os.urandom(size)
-                with master.writeSharedFileStream('foo') as f:
+                with jobstore.writeSharedFileStream('foo') as f:
                     f.write(s)
-                with master.readSharedFileStream('foo') as f:
+                with jobstore.readSharedFileStream('foo') as f:
                     self.assertEqual(s, f.read())
 
     def testInaccessableLocation(self):
@@ -1249,22 +1249,22 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             self.assertTrue('Could not determine location' in args[0])
 
     def testOverlargeJob(self):
-        master = self.jobstore_initialized
-        masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
-        overlargeJobNodeOnMaster = JobNode(command='master-overlarge',
-                                    requirements=masterRequirements,
-                                    jobName='test-overlarge', unitName='onMaster',
+        jobstore = self.jobstore_initialized
+        jobRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
+        overlargeJobNode = JobNode(command='overlarge',
+                                    requirements=jobRequirements,
+                                    jobName='test-overlarge', unitName='onJobStore',
                                     jobStoreID=None, predecessorNumber=0)
 
         #Make the pickled size of the job larger than 256K
         with open("/dev/urandom", "r") as random:
-            overlargeJobNodeOnMaster.jobName = random.read(512 * 1024)
-        overlargeJobOnMaster = master.create(overlargeJobNodeOnMaster)
-        self.assertTrue(master.exists(overlargeJobOnMaster.jobStoreID))
-        overlargeJobOnMasterDownloaded = master.load(overlargeJobOnMaster.jobStoreID)
-        jobsOnMaster = [job for job in master.jobs()]
-        self.assertEqual(jobsOnMaster, [overlargeJobOnMaster])
-        master.delete(overlargeJobOnMaster.jobStoreID)
+            overlargeJobNode.jobName = random.read(512 * 1024)
+        overlargeJob = jobstore.create(overlargeJobNode)
+        self.assertTrue(jobstore.exists(overlargeJob.jobStoreID))
+        overlargeJobDownloaded = jobstore.load(overlargeJob.jobStoreID)
+        jobsInJobStore = [job for job in jobstore.jobs()]
+        self.assertEqual(jobsInJobStore, [overlargeJob])
+        jobstore.delete(overlargeJob.jobStoreID)
 
     def _prepareTestFile(self, bucket, size=None):
         fileName = 'testfile_%s' % uuid.uuid4()
