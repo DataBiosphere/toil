@@ -77,7 +77,7 @@ class JobTest(ToilTest):
 
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "DEBUG"
+            options.logLevel = "INFO"
             options.retryCount = 100
             options.badWorker = 0.5
             options.badWorkerFailInterval = 0.01
@@ -117,7 +117,7 @@ class JobTest(ToilTest):
 
             # Create the runner for the workflow.
             options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "DEBUG"
+            options.logLevel = "INFO"
             options.retryCount = 100
             options.badWorker = 0.5
             options.badWorkerFailInterval = 0.01
