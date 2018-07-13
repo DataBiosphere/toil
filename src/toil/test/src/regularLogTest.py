@@ -91,5 +91,5 @@ class RegularLogTest(ToilTest):
                                               './toilTest',
                                               '--clean=always',
                                               '--batchSystem=singleMachine',
-                                              '--logLevel=debug'], stderr=subprocess.STDOUT)
+                                              '--logLevel=info'], stderr=subprocess.STDOUT)
         assert "single machine batch system" in toilOutput.decode('utf-8')

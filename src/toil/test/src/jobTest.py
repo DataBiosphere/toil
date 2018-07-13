@@ -368,7 +368,7 @@ class JobTest(ToilTest):
 
         # Run the workflow and check for the expected behavior
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "DEBUG"
+        options.logLevel = "INFO"
         if expectedException is None:
             Job.Runner.startToil(workflowRootJob, options)
         else:
