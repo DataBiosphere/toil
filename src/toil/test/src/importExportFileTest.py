@@ -62,7 +62,7 @@ class ImportExportFileTest(ToilTest):
 
     def _importExport(self, restart):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "DEBUG"
+        options.logLevel = "INFO"
 
         if restart:
             try:
