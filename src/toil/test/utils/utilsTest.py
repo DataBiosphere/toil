@@ -145,7 +145,7 @@ class UtilsTest(ToilTest):
                            '; cat'
                            ]
             for test in testStrings:
-                logger.info('Testing SSH with special string: %s', test)
+                logger.debug('Testing SSH with special string: %s', test)
                 compareTo = "import sys; assert sys.argv[1]==%r" % test
                 leader.sshAppliance('python', '-', test, input=compareTo)
 

@@ -34,7 +34,7 @@ class ResumabilityTest(ToilTest):
         Tests that a toil workflow that fails once can be resumed without a NoSuchJobException.
         """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.retryCount = 0
         root = Job.wrapJobFn(parent)
         with self.assertRaises(FailedJobsException):

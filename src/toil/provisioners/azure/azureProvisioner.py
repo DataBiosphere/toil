@@ -201,7 +201,7 @@ class AzureProvisioner(AnsibleDriver):
                 logger.debug("Leader appliance failed to start, retrying. (Error %s)" % e)
 
 
-        logger.info('Launched leader')
+        logger.debug('Launched leader')
 
     def _checkIfClusterExists(self):
         """
@@ -214,7 +214,7 @@ class AzureProvisioner(AnsibleDriver):
         try:
             self.callPlaybook(self.playbook['check-cluster'], ansibleArgs, wait=True)
         except RuntimeError:
-            logger.info("The cluster could not be created. Try deleting the cluster if it already exits.")
+            logger.debug("The cluster could not be created. Try deleting the cluster if it already exits.")
             raise
 
     def destroyCluster(self):

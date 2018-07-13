@@ -134,7 +134,7 @@ def optimize_spot_bid(ctx, instance_type, spot_bid):
         _check_spot_bid(spot_bid, spot_history)
     zones = ctx.ec2.get_all_zones()
     most_stable_zone = choose_spot_zone(zones, spot_bid, spot_history)
-    logger.info("Placing spot instances in zone %s.", most_stable_zone)
+    logger.debug("Placing spot instances in zone %s.", most_stable_zone)
     return most_stable_zone
 
 

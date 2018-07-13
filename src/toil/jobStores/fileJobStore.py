@@ -104,7 +104,7 @@ class FileJobStore(AbstractJobStore):
                 shutil.rmtree(path)
                 return
             except OSError:
-                logger.info('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, dt))
+                logger.debug('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, dt))
                 time.sleep(dt)
                 dt *= 2
 

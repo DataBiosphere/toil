@@ -152,7 +152,7 @@ We could interrogate our jobstore with the stats command (which is different tha
 
 If the run was successful, this would not return much valuable information, something like ::
 
-    2018-01-11 19:31:29,739 - toil.lib.bioio - INFO - Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
+    2018-01-11 19:31:29,739 - toil.lib.bioio - DEBUG - Root logger is at level 'DEBUG', 'toil' logger at level 'DEBUG'.
     2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Parsed arguments
     2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Checking if we have files for Toil
     The root job of the job store is absent, the workflow completed successfully.

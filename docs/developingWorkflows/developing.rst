@@ -24,7 +24,7 @@ workflow::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         hello_job = Job.wrapFn(helloWorld, "Woot")
@@ -87,7 +87,7 @@ workflows. For example::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         hello_job = HelloWorld("Woot")
@@ -122,7 +122,7 @@ For example::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
 
         with Toil(options) as toil:
             if not toil.options.restart:
@@ -169,7 +169,7 @@ parse command line options for a Toil script. For example::
     if __name__=="__main__":
         parser = Job.Runner.getDefaultArgumentParser()
         options = parser.parse_args()
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         hello_job = HelloWorld("Woot")
@@ -229,7 +229,7 @@ converted to jobs. For example, the quick start example (repeated here)::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         hello_job = Job.wrapFn(helloWorld, "Woot!")
@@ -264,7 +264,7 @@ argument in a class, this allows access to the methods of the wrapping job, see
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         hello_job = Job.wrapJobFn(helloWorld, "Woot!")
@@ -310,7 +310,7 @@ earlier ``helloWorld()`` job function::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         j1 = Job.wrapJobFn(helloWorld, "first")
@@ -339,7 +339,7 @@ example::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         j1 = Job.wrapJobFn(helloWorld, "first")
@@ -367,7 +367,7 @@ specified as a DAG as follows::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         j1 = Job.wrapJobFn(helloWorld, "first")
@@ -401,7 +401,7 @@ Toil also allows jobs to be created dynamically within jobs. For example::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         with Toil(options) as toil:
@@ -435,7 +435,7 @@ the following example::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         j1 = Job.wrapJobFn(fn, 1)
@@ -491,7 +491,7 @@ patterns possible in many programming languages::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.loglevel = "INFO"
+        options.loglevel = "DEBUG"
         options.clean = "always"
 
         with Toil(options) as toil:
@@ -532,7 +532,7 @@ file staged to the job store by an earlier job::
 
     if __name__ == "__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         with Toil(options) as toil:
@@ -602,7 +602,7 @@ node and that will be cleaned up, regardless of failure, when the job finishes::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         #Create an instance of FooJob which will have at least 10 gigabytes of storage space.
@@ -670,7 +670,7 @@ example::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         with Toil(options) as toil:
@@ -725,7 +725,7 @@ Example::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         with Toil(options) as toil:
@@ -796,7 +796,7 @@ An example of a basic ``dockerCall`` is below::
 
      if __name__=="__main__":
          options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-         options.logLevel = "INFO"
+         options.logLevel = "DEBUG"
          options.clean = "always:
 
          with Toil(options) as toil:
@@ -865,7 +865,7 @@ simple, conceptual example illustrates how services work::
 
     if __name__=="__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         with Toil(options) as toil:
@@ -945,7 +945,7 @@ make ``B`` a follow-on of ``Ap``. e.g.::
         Ap.addFollowOn(B)
 
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         with Toil(options) as toil:
@@ -973,7 +973,7 @@ write::
         A.addChild(B)
 
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
         options.clean = "always"
 
         with Toil(options) as toil:

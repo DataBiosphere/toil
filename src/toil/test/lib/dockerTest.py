@@ -554,31 +554,31 @@ def _dockerKill(containerName, action):
     if running is None:
         # This means that the container doesn't exist.  We will see this if the container was run
         # with --rm and has already exited before this call.
-        logger.info('The container with name "%s" appears to have already been removed.  Nothing to '
+        logger.debug('The container with name "%s" appears to have already been removed.  Nothing to '
                      'do.', containerName)
     else:
         if action in (None, FORGO):
-            logger.info('The container with name %s continues to exist as we were asked to forgo a '
+            logger.debug('The container with name %s continues to exist as we were asked to forgo a '
                          'post-job action on it.', containerName)
         else:
-            logger.info('The container with name %s exists. Running user-specified defer functions.',
+            logger.debug('The container with name %s exists. Running user-specified defer functions.',
                          containerName)
             if running and action >= STOP:
-                logger.info('Stopping container "%s".', containerName)
+                logger.debug('Stopping container "%s".', containerName)
                 for attempt in retry(predicate=dockerPredicate):
                     with attempt:
                         subprocess.check_call(['docker', 'stop', containerName])
             else:
-                logger.info('The container "%s" was not found to be running.', containerName)
+                logger.debug('The container "%s" was not found to be running.', containerName)
             if action >= RM:
                 # If the container was run with --rm, then stop will most likely remove the
                 # container.  We first check if it is running then remove it.
                 running = containerIsRunning(containerName)
                 if running is not None:
-                    logger.info('Removing container "%s".', containerName)
+                    logger.debug('Removing container "%s".', containerName)
                     for attempt in retry(predicate=dockerPredicate):
                         with attempt:
                             subprocess.check_call(['docker', 'rm', '-f', containerName])
                 else:
-                    logger.info('The container "%s" was not found on the system.  Nothing to remove.',
+                    logger.debug('The container "%s" was not found on the system.  Nothing to remove.',
                                  containerName)

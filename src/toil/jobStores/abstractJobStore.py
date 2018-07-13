@@ -132,7 +132,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         assert config.workflowID is None
         config.workflowID = str(uuid4())
-        logger.info("The workflow ID is: '%s'" % config.workflowID)
+        logger.debug("The workflow ID is: '%s'" % config.workflowID)
         self.__config = config
         self.writeConfig()
 
@@ -499,9 +499,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                         assert serviceJobStoreID not in reachableFromRoot
                         reachableFromRoot.add(serviceJobStoreID)
 
-        logger.info("Checking job graph connectivity...")
+        logger.debug("Checking job graph connectivity...")
         getConnectedJobs(self.loadRootJob())
-        logger.info("%d jobs reachable from root." % len(reachableFromRoot))
+        logger.debug("%d jobs reachable from root." % len(reachableFromRoot))
 
         # Cleanup jobs that are not reachable from the root, and therefore orphaned
         jobsToDelete = [x for x in getJobs() if x.jobStoreID not in reachableFromRoot]
@@ -527,7 +527,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 # earlier checkpoint, so it and all its successors are
                 # already gone.
                 continue
-            logger.info("Restarting checkpointed job %s" % jobGraph)
+            logger.debug("Restarting checkpointed job %s" % jobGraph)
             deletedThisRound = jobGraph.restartCheckpoint(self)
             jobsDeletedByCheckpoints |= set(deletedThisRound)
         for jobID in jobsDeletedByCheckpoints:
@@ -638,7 +638,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 self.update(jobGraph)
 
         # Remove any crufty stats/logging files from the previous run
-        logger.info("Discarding old statistics and logs...")
+        logger.debug("Discarding old statistics and logs...")
         # We have to manually discard the stream to avoid getting
         # stuck on a blocking write from the job store.
         def discardStream(stream):
@@ -647,7 +647,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 pass
         self.readStatsAndLogging(discardStream)
 
-        logger.info("Job store is clean")
+        logger.debug("Job store is clean")
         # TODO: reloading of the rootJob may be redundant here
         return self.loadRootJob()
 
