@@ -146,24 +146,24 @@ class AbstractJobStoreTest(object):
             super(AbstractJobStoreTest.Test, self).tearDown()
 
         def testInitialState(self):
-            '''
+            """
             Ensure proper handling of nonexistant files.
 
             .exist() checks to see if a job with a given jobstoreID is stored. Given that self.jobstore1 is initialized
             before this test is run, there should be now jobs in the jobstore. Consequently, we expect a NoSuchJobException.
-            '''
+            """
 
             # Test initial state
             self.assertFalse(self.jobstore_initialized.exists('foo'))                      # There should be no saved jobs.
             self.assertRaises(NoSuchJobException, self.jobstore_initialized.load, 'foo')   # This exception should be thrown.
 
         def testJobCreation(self):
-            '''
+            """
             Test creation of a job.
 
             Does the job exist in the jobstore it is supposed to be in?
             Are its attributes what is expected?
-            '''
+            """
 
             jobstore = self.jobstore_initialized
 
@@ -188,13 +188,13 @@ class AbstractJobStoreTest(object):
             self.assertEquals(job.logJobStoreFileID, None)
 
         def testConfigEquality(self):
-            '''
+            """
             Ensure that the config attribute is successfully loaded and stored.
 
             In setUp() self.jobstore1 is created and initialized. In this test,  after creating newJobStore,
             .resume() will look for a previously instantiated job store and load its config options. This is expected
             to be equal but not the same object.
-            '''
+            """
 
 
             newJobStore = self._createJobStore()
@@ -203,7 +203,7 @@ class AbstractJobStoreTest(object):
             self.assertIsNot(newJobStore.config, self.config)
 
         def testJobLoadEquality(self):
-            '''Tests that a job loaded into one jobstore from another can be used equivalently by another.'''
+            """Tests that a job loaded into one jobstore from another can be used equivalently by another."""
 
             # Create a job on the first jobstore.
             jobNode1 = JobNode(command='master1',
@@ -218,7 +218,7 @@ class AbstractJobStoreTest(object):
             self.assertEquals(job1, job2)
 
         def testChildLoadingEquality(self):
-            '''Test that loading a child job operates as expected.'''
+            """Test that loading a child job operates as expected."""
             aJobNode = JobNode(command='parent1',
                                requirements=self.parentJobReqs,
                                jobName='test1', unitName='onParent',
@@ -235,13 +235,13 @@ class AbstractJobStoreTest(object):
             self.assertEquals(self.jobstore_initialized.load(childJob.jobStoreID), childJob)
 
         def testPersistantFilesToDelete(self):
-            '''
+            """
             Make sure that updating a job  carries over filesToDelete.
 
             The following demonstrates the job update pattern, where files to be deleted are referenced in
             "filesToDelete" array, which is persisted to disk first. If things go wrong during the update, this list of
             files to delete is used to remove the unneeded files.
-            '''
+            """
 
             # Create a job.
             jobNode = JobNode(command='master1',
@@ -255,7 +255,7 @@ class AbstractJobStoreTest(object):
             self.assertEquals(self.jobstore_initialized.load(job.jobStoreID).filesToDelete, ['1', '2'])
 
         def testUpdateBehavior(self):
-            '''Tests the proper behavior updating jobs.'''
+            """Tests the proper behavior updating jobs."""
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resume_noconfig
 
@@ -300,13 +300,14 @@ class AbstractJobStoreTest(object):
             self.assertIsNot(job1,job2)             # but should not be the same.
 
         def testChangingJobStoreID(self):
-            '''
+            """
             Tests that changing the jobStoreID makes jobs unequivalent.
 
             Create two job trees, jobstore1 & jobstore2, consisting of a parent and 5 child jobs. Change the
             jobstoreFileID on each child on jobstore1. It is expected that the children of jobstore1 and jobstore2 will
             be different. After updating the children of jobstore2, they should be equal.
-            '''
+            """
+
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resume_noconfig
 
@@ -347,7 +348,7 @@ class AbstractJobStoreTest(object):
                 self.assertEquals(jobstore2.load(childJob.jobStoreID), childJob)
 
         def testJobDeletions(self):
-            '''Tests the consequences of deleting jobs.'''
+            """Tests the consequences of deleting jobs."""
             # A local jobstore object for testing.
             jobstore = self.jobstore_initialized
             jobNodeOnParent = JobNode(command='master1',
@@ -406,7 +407,7 @@ class AbstractJobStoreTest(object):
                 pass
 
         def testSharedFiles(self):
-            '''Tests the sharing of files.'''
+            """Tests the sharing of files."""
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resume_noconfig
 
@@ -425,7 +426,7 @@ class AbstractJobStoreTest(object):
             self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
 
         def testPerJobFiles(self):
-            '''Tests the behavior of files on jobs.'''
+            """Tests the behavior of files on jobs."""
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resume_noconfig
 
@@ -495,7 +496,7 @@ class AbstractJobStoreTest(object):
                     pass
 
         def testStatsAndLogging(self):
-            '''Tests behavior of reading and writting stats and logging.'''
+            """Tests behavior of reading and writting stats and logging."""
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resume_noconfig
 
@@ -548,7 +549,7 @@ class AbstractJobStoreTest(object):
             # TODO: Who deletes the shared files?
 
         def testBatchCreate(self):
-            '''Test creation of many jobs.'''
+            """Test creation of many jobs."""
             master = self.jobstore_initialized
             masterRequirements = dict(memory=12, cores=34, disk=35, preemptable=True)
             jobGraphs = []
