@@ -112,18 +112,18 @@ class Node(object):
             if time.time() - startTime > self.maxWaitTime:
                 raise RuntimeError("Key propagation failed on machine with ip %s" % self.publicIP)
             try:
-                logger.debug('Attempting to establish SSH connection...')
+                logger.info('Attempting to establish SSH connection...')
                 self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)
             except RuntimeError:
-                logger.debug('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
+                logger.info('Connection rejected, waiting for public SSH key to be propagated. Trying again in 10s.')
                 time.sleep(10)
             else:
-                logger.debug('...SSH connection established.')
+                logger.info('...SSH connection established.')
                 # ssh succeeded
                 return
 
     def _waitForDockerDaemon(self, keyName='core'):
-        logger.debug('Waiting for docker on %s to start...', self.publicIP)
+        logger.info('Waiting for docker on %s to start...', self.publicIP)
         sleepTime = 10
         startTime = time.time()
         while True:
@@ -133,17 +133,17 @@ class Node(object):
                 output = self.sshInstance('/usr/bin/ps', 'auxww', sshOptions=['-oBatchMode=yes'], user=keyName)
                 if 'dockerd' in output:
                     # docker daemon has started
-                    logger.debug('Docker daemon running')
+                    logger.info('Docker daemon running')
                     break
                 else:
-                    logger.debug('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
+                    logger.info('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
             except RuntimeError:
-                logger.debug("Wait for docker daemon failed ssh, trying again.")
+                logger.info("Wait for docker daemon failed ssh, trying again.")
                 sleepTime += 20
 
     def _waitForAppliance(self, role, keyName='core'):
-        logger.debug('Waiting for %s Toil appliance to start...', role)
+        logger.info('Waiting for %s Toil appliance to start...', role)
         sleepTime = 20
         startTime = time.time()
         while True:
@@ -155,14 +155,14 @@ class Node(object):
                 output = self.sshInstance('/usr/bin/docker', 'ps',
                                           sshOptions=['-oBatchMode=yes'], user=keyName)
                 if role in output:
-                    logger.debug('...Toil appliance started')
+                    logger.info('...Toil appliance started')
                     break
                 else:
-                    logger.debug('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
+                    logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
             except RuntimeError:
                 # ignore exceptions, keep trying
-                logger.debug("Wait for appliance failed ssh, trying again.")
+                logger.info("Wait for appliance failed ssh, trying again.")
                 sleepTime += 20
 
     def _waitForSSHPort(self):
