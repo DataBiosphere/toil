@@ -241,7 +241,6 @@ def main():
     parser.add_argument("--version", action='version', version=version)
 
     options = parseBasicOptions(parser)
-    logger.debug("Parsed arguments")
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -258,7 +257,7 @@ def main():
     # Gather all jobs in the workflow in jobsToReport
     if options.jobs == None:
         rootJob = fetchRootJob(jobStore)
-        logger.debug('Traversing the job graph gathering jobs. This may take a couple of minutes.')
+        logger.info('Traversing the job graph gathering jobs. This may take a couple of minutes.')
         jobsToReport = traverseJobGraph(rootJob, jobStore)
 
     # Only gather jobs specified in options.jobs

@@ -231,12 +231,12 @@ class Leader(object):
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
-        logger.debug("Finished toil run %s" %
+        logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
                 else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))
 
         if len(self.toilState.totalFailedJobs):
-            logger.debug("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
+            logger.info("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
         # Cleanup
         if len(self.toilState.totalFailedJobs) > 0:
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
@@ -496,7 +496,7 @@ class Leader(object):
             # We only rescue jobs every N seconds, and when we have apparently
             # exhausted the current jobGraph supply
             self.reissueOverLongJobs()
-            logger.debug("Reissued any over long jobs")
+            logger.info("Reissued any over long jobs")
 
             hasNoMissingJobs = self.reissueMissingJobs()
             if hasNoMissingJobs:

@@ -160,7 +160,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 
 
 def process_single_infile(f, fileStore):
-    wdllogger.debug('Importing {f} into the jobstore.'.format(f=f))
+    wdllogger.info('Importing {f} into the jobstore.'.format(f=f))
     if f.startswith('http://') or f.startswith('https://') or \
             f.startswith('file://') or f.startswith('wasb://') or f.startswith('s3://'):
         filepath = fileStore.importFile(f)

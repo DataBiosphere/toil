@@ -154,7 +154,7 @@ if __name__=="__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     # options.clean = "always"
     options.stats = True
-    options.logLevel = "DEBUG"
+    options.logLevel = "INFO"
     with Toil(options) as toil:
 
         B_file0 = toil.importFile("file://" + os.path.abspath("src/toil/test/utils/ABCWorkflowDebug/B_file.txt"))

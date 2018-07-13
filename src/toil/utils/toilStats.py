@@ -92,8 +92,7 @@ def initializeOptions(parser):
 def checkOptions(options, parser):
     """ Check options, throw parser.error() if something goes wrong
     """
-    logger.debug("Parsed arguments")
-    logger.debug("Checking if we have files for toil")
+
     if options.jobStore == None:
         parser.error("Specify --jobStore")
     defaultCategories = ["time", "clock", "wait", "memory"]
@@ -117,7 +116,6 @@ def checkOptions(options, parser):
         if (options.sortField not in sortFields):
             parser.error("Unknown --sortField %s. Must be from %s"
                          % (options.sortField, str(sortFields)))
-    logger.debug("Checked arguments")
 
 def printJson(elem):
     """ Return a JSON formatted string
