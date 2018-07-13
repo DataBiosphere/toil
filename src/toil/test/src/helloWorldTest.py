@@ -19,7 +19,7 @@ from toil.test import ToilTest
 class HelloWorldTest(ToilTest):
     def testHelloWorld(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "DEBUG"
+        options.logLevel = "INFO"
         Job.Runner.startToil(HelloWorld(), options)
 
 class HelloWorld(Job):
