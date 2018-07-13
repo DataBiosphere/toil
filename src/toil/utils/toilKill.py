@@ -36,9 +36,9 @@ def main():
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)
 
-    logger.debug("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
+    logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
     ####This behaviour is now broken
     batchSystem = Toil.createBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
     for jobID in batchSystem.getIssuedBatchJobIDs(): #Just in case we do it again.
         batchSystem.killBatchJobs(jobID)
-    logger.debug("All jobs SHOULD have been killed")
+    logger.info("All jobs SHOULD have been killed")
