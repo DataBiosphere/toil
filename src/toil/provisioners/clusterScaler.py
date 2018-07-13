@@ -616,14 +616,14 @@ class ClusterScaler(object):
                             self.ignoredNodes.remove(node.privateIP)
                             self.leader.batchSystem.unignoreNode(node.privateIP)
                 if delta > 0:
-                    logger.debug('Adding %i %s nodes to get to desired cluster size of %i.',
+                    logger.info('Adding %i %s nodes to get to desired cluster size of %i.',
                                 delta,
                                 'preemptable' if preemptable else 'non-preemptable',
                                 numNodes)
                     numNodes = numCurrentNodes + self._addNodes(nodeType, numNodes=delta,
                                                                 preemptable=preemptable)
                 elif delta < 0:
-                    logger.debug('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
+                    logger.info('Removing %i %s nodes to get to desired cluster size of %i.', -delta, 'preemptable' if preemptable else 'non-preemptable', numNodes)
                     numNodes = numCurrentNodes - self._removeNodes(workerInstances,
                                                                    nodeType = nodeType,
                                                                    numNodes=-delta,

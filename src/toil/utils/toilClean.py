@@ -34,7 +34,7 @@ def main():
     try:
         jobStore = Toil.getJobStore(config.jobStore)
         jobStore.destroy()
-        logger.debug("Successfully deleted the job store: %s" % config.jobStore)
+        logger.info("Successfully deleted the job store: %s" % config.jobStore)
     except:
-        logger.debug("Failed to delete the job store: %s" % config.jobStore)
+        logger.info("Failed to delete the job store: %s" % config.jobStore)
         raise

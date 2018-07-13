@@ -79,7 +79,7 @@ def setLogLevel(level, logger=None):
     # don't want to confuse the user with those error messages.
     logging.getLogger( 'boto' ).setLevel( logging.CRITICAL )
 
-def logFile(fileName, printFunction=logger.debug):
+def logFile(fileName, printFunction=logger.info):
     """Writes out a formatted version of the given log file
     """
     printFunction("Reporting file: %s" % fileName)
@@ -93,7 +93,7 @@ def logFile(fileName, printFunction=logger.debug):
         line = fileHandle.readline()
     fileHandle.close()
     
-def logStream(fileHandle, shortName, printFunction=logger.debug):
+def logStream(fileHandle, shortName, printFunction=logger.info):
     """Writes out a formatted version of the given log stream.
     """
     printFunction("Reporting file: %s" % shortName)

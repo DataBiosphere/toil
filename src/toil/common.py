@@ -733,9 +733,9 @@ class Toil(object):
                         self.config.clean == "always"):
                 try:
                     self._jobStore.destroy()
-                    logger.debug("Successfully deleted the job store: %s" % str(self._jobStore))
+                    logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
-                    logger.debug("Failed to delete the job store: %s" % str(self._jobStore))
+                    logger.info("Failed to delete the job store: %s" % str(self._jobStore))
                     raise
         except Exception as e:
             if exc_type is None:

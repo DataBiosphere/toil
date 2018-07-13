@@ -32,7 +32,7 @@ class UserDefinedJobArgTypeTest(ToilTest):
     def setUp(self):
         super(UserDefinedJobArgTypeTest, self).setUp()
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "DEBUG"
+        options.logLevel = "INFO"
         options.foo = Foo()
         self.options = options
 

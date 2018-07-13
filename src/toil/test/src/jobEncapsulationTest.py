@@ -43,7 +43,7 @@ class JobEncapsulationTest(ToilTest):
             a.addFollowOn(e)
             # Create the runner for the workflow.
             options = T.Runner.getDefaultOptions(self._getTestJobStorePath())
-            options.logLevel = "DEBUG"
+            options.logLevel = "INFO"
             # Run the workflow, the return value being the number of failed jobs
             T.Runner.startToil(a, options)
             # Check output

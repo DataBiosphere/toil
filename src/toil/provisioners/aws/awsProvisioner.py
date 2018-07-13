@@ -407,17 +407,17 @@ class AWSProvisioner(AbstractProvisioner):
     def _terminateInstances(self, instances):
         instanceIDs = [x.id for x in instances]
         self._terminateIDs(instanceIDs)
-        logger.debug('... Waiting for instance(s) to shut down...')
+        logger.info('... Waiting for instance(s) to shut down...')
         for instance in instances:
             wait_transition(instance, {'pending', 'running', 'shutting-down'}, 'terminated')
-        logger.debug('Instance(s) terminated.')
+        logger.info('Instance(s) terminated.')
 
     @awsRetry
     def _terminateIDs(self, instanceIDs):
         assert self._ctx
-        logger.debug('Terminating instance(s): %s', instanceIDs)
+        logger.info('Terminating instance(s): %s', instanceIDs)
         self._ctx.ec2.terminate_instances(instance_ids=instanceIDs)
-        logger.debug('Instance(s) terminated.')
+        logger.info('Instance(s) terminated.')
 
     def _deleteIAMProfiles(self, instances):
         assert self._ctx
