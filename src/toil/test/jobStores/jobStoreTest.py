@@ -126,8 +126,8 @@ class AbstractJobStoreTest(object):
             # jobstore_resume_noconfig will be initialized with the config from jobstore_initialized.
             self.jobstore_initialized = self._createJobStore()
             self.jobstore_initialized.initialize(self.config)
-            self.jobstore_resume_noconfig = self._createJobStore()
-            self.jobstore_resume_noconfig.resume()
+            self.jobstore_resumed_noconfig = self._createJobStore()
+            self.jobstore_resumed_noconfig.resume()
 
             # Requirements for jobs to be created.
             self.arbitraryRequirements = {'memory': 1, 'disk': 2, 'cores': 1, 'preemptable': False}
@@ -142,20 +142,13 @@ class AbstractJobStoreTest(object):
 
         def tearDown(self):
             self.jobstore_initialized.destroy()
-            self.jobstore_resume_noconfig.destroy()
+            self.jobstore_resumed_noconfig.destroy()
             super(AbstractJobStoreTest.Test, self).tearDown()
 
         def testInitialState(self):
-            """
-            Ensure proper handling of nonexistant files.
-
-            .exist() checks to see if a job with a given jobstoreID is stored. Given that self.jobstore1 is initialized
-            before this test is run, there should be now jobs in the jobstore. Consequently, we expect a NoSuchJobException.
-            """
-
-            # Test initial state
-            self.assertFalse(self.jobstore_initialized.exists('foo'))                      # There should be no saved jobs.
-            self.assertRaises(NoSuchJobException, self.jobstore_initialized.load, 'foo')   # This exception should be thrown.
+            """Ensure proper handling of nonexistant files."""
+            self.assertFalse(self.jobstore_initialized.exists('nonexistantFile'))
+            self.assertRaises(NoSuchJobException, self.jobstore_initialized.load, 'nonexistantFile')
 
         def testJobCreation(self):
             """
@@ -189,7 +182,7 @@ class AbstractJobStoreTest(object):
 
         def testConfigEquality(self):
             """
-            Ensure that the config attribute is successfully loaded and stored.
+            Ensure that the command line configurations is successfully loaded and stored.
 
             In setUp() self.jobstore1 is created and initialized. In this test,  after creating newJobStore,
             .resume() will look for a previously instantiated job store and load its config options. This is expected
@@ -213,7 +206,7 @@ class AbstractJobStoreTest(object):
             job1 = self.jobstore_initialized.create(jobNode1)
 
             # Load it onto the second jobstore
-            job2 = self.jobstore_resume_noconfig.load(job1.jobStoreID)
+            job2 = self.jobstore_resumed_noconfig.load(job1.jobStoreID)
 
             self.assertEquals(job1, job2)
 
@@ -255,9 +248,9 @@ class AbstractJobStoreTest(object):
             self.assertEquals(self.jobstore_initialized.load(job.jobStoreID).filesToDelete, ['1', '2'])
 
         def testUpdateBehavior(self):
-            """Tests the proper behavior updating jobs."""
+            """Tests the proper behavior during updating jobs."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resume_noconfig
+            jobstore2 = self.jobstore_resumed_noconfig
 
             aJobNode = JobNode(command='parent1',
                                requirements=self.parentJobReqs,
@@ -277,7 +270,7 @@ class AbstractJobStoreTest(object):
             job1 = jobstore1.create(aJobNode)
             job2 = jobstore2.load(job1.jobStoreID)
 
-            # Create child jobs
+            # Create child jobs.
             childJob1 = jobstore2.create(jobNodeOnChild1)
             childJob2 = jobstore2.create(jobNodeOnChild2)
 
@@ -286,7 +279,7 @@ class AbstractJobStoreTest(object):
             jobstore2.update(job2)
 
             # Check equivalence between jobstore1 and jobstore2.
-            # Should be false. While job1 and job2 share a jobStoreID, job1 has not been "refreshed" to show the changes.
+            # While job1 and job2 share a jobStoreID, job1 has not been "refreshed" to show the newly added child jobs.
             self.assertNotEquals(job2, job1)
 
             # Reload parent job on jobstore, "refreshing" the job.
@@ -303,13 +296,13 @@ class AbstractJobStoreTest(object):
             """
             Tests that changing the jobStoreID makes jobs unequivalent.
 
-            Create two job trees, jobstore1 & jobstore2, consisting of a parent and 5 child jobs. Change the
-            jobstoreFileID on each child on jobstore1. It is expected that the children of jobstore1 and jobstore2 will
-            be different. After updating the children of jobstore2, they should be equal.
+            Create two job trees, jobstore1 & jobstore2 consisting of a parent and 5 child jobs. The children of
+            jobstore2 will be copied from jobstore1. Changing the jobstoreFileID on each child on jobstore1 will cause
+            them to be different jobs. After updating the children of jobstore2, they should be equal.
             """
 
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resume_noconfig
+            jobstore2 = self.jobstore_resumed_noconfig
 
             # Create a job
             aJobNode = JobNode(command='parent1',
@@ -409,7 +402,7 @@ class AbstractJobStoreTest(object):
         def testSharedFiles(self):
             """Tests the sharing of files."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resume_noconfig
+            jobstore2 = self.jobstore_resumed_noconfig
 
             with jobstore1.writeSharedFileStream('foo') as f:
                 f.write('bar')
@@ -428,7 +421,7 @@ class AbstractJobStoreTest(object):
         def testPerJobFiles(self):
             """Tests the behavior of files on jobs."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resume_noconfig
+            jobstore2 = self.jobstore_resumed_noconfig
 
             # Create jobNodeOnMaster
             jobNodeOnMaster = JobNode(command='master1',
@@ -442,14 +435,14 @@ class AbstractJobStoreTest(object):
             # Check file exists
             self.assertTrue(jobstore2.fileExists(fileOne))
             self.assertTrue(jobstore1.fileExists(fileOne))
-            # ... write to the file on worker, ...
+            # ... write to the file on jobstore2, ...
             with jobstore2.updateFileStream(fileOne) as f:
                 f.write('one')
-            # ... read the file as a stream on the master, ....
+            # ... read the file as a stream on the jobstore1, ....
             with jobstore1.readFileStream(fileOne) as f:
                 self.assertEquals(f.read(), 'one')
 
-            # ... and copy it to a temporary physical file on the master.
+            # ... and copy it to a temporary physical file on the jobstore1.
             fh, path = tempfile.mkstemp()
             try:
                 os.close(fh)
@@ -498,7 +491,7 @@ class AbstractJobStoreTest(object):
         def testStatsAndLogging(self):
             """Tests behavior of reading and writting stats and logging."""
             jobstore1 = self.jobstore_initialized
-            jobstore2 = self.jobstore_resume_noconfig
+            jobstore2 = self.jobstore_resumed_noconfig
 
             jobNodeOnMaster = JobNode(command='master1',
                                       requirements=self.parentJobReqs,
@@ -743,15 +736,15 @@ class AbstractJobStoreTest(object):
             Intended to cover the batch deletion of items in the AWSJobStore, but it doesn't hurt
             running it on the other job stores.
             """
-            master = self.jobstore_initialized
+
             n = self._batchDeletionSize()
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
-                job = master.create(self.arbitraryJob)
-                fileIDs = [master.getEmptyFileStoreID(job.jobStoreID) for _ in range(0, numFiles)]
-                master.delete(job.jobStoreID)
+                job = self.jobstore_initialized.create(self.arbitraryJob)
+                fileIDs = [self.jobstore_initialized.getEmptyFileStoreID(job.jobStoreID) for _ in range(0, numFiles)]
+                self.jobstore_initialized.delete(job.jobStoreID)
                 for fileID in fileIDs:
                     # NB: the fooStream() methods return context managers
-                    self.assertRaises(NoSuchFileException, master.readFileStream(fileID).__enter__)
+                    self.assertRaises(NoSuchFileException, self.jobstore_initialized.readFileStream(fileID).__enter__)
 
         @slow
         def testMultipartUploads(self):
