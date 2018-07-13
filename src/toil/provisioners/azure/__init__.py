@@ -14,7 +14,7 @@
 
 import os
 
-def getAlternativeAzureZone(defaultZone):
+def getAzureZone(defaultZone=None):
     '''
     Find an appropriate azure zone.
 
