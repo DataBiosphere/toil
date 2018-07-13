@@ -15,13 +15,13 @@
 import os
 
 def getAzureZone(defaultZone=None):
-    '''
+    """
     Find an appropriate azure zone.
 
     Look for an environment variable or return a default as provided.
 
     :param defaultZone: The zone specified in the leader metadata.
     :return zone:  The zone.
-    '''
+    """
 
     return os.environ.get('TOIL_AZURE_ZONE') or defaultZone
