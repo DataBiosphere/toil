@@ -157,11 +157,11 @@ def setLoggingFromOptions(options):
     else:
         # Ensure that any other log level overrides are in effect even if no log level is explicitly set
         setLogLevel(getLogLevelString())
-    logger.info("Root logger is at level '%s', 'toil' logger at level '%s'.",
+    logger.debug("Root logger is at level '%s', 'toil' logger at level '%s'.",
                 getLogLevelString(logger=rootLogger), getLogLevelString(logger=toilLogger))
     if options.logFile is not None:
         addLoggingFileHandler(options.logFile, rotatingLogging=options.logRotating)
-        logger.info("Logging to file '%s'." % options.logFile)
+        logger.debug("Logging to file '%s'." % options.logFile)
 
 
 def system(command):
@@ -239,7 +239,7 @@ class TestStatus(object):
     def setSaveErrorLocation(dir):
         """Set location in which to write inputs which created test error.
         """
-        logger.info("Location to save error files in: %s" % dir)
+        logger.debug("Location to save error files in: %s" % dir)
         assert os.path.isdir(dir)
         TestStatus.SAVE_ERROR_LOCATION = dir
     setSaveErrorLocation = staticmethod(setSaveErrorLocation)

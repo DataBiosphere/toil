@@ -457,7 +457,7 @@ class CachingFileStore(FileStore):
         self.jobSpecificFiles = {}
         self.jobName = str(self.jobGraph)
         self.jobID = sha1(self.jobName.encode('utf-8')).hexdigest()
-        logger.info('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
+        logger.debug('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
         # A variable to describe how many hard links an unused file in the cache will have.
         self.nlinkThreshold = None
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
@@ -1010,7 +1010,7 @@ class CachingFileStore(FileStore):
                                  '%s as mutable and add to ' % os.path.basename(localFilePath) +
                                  'cache. Hence only mutable copy retained.')
                 else:
-                    logger.info('CACHE: Added file with ID \'%s\' to the cache.' %
+                    logger.debug('CACHE: Added file with ID \'%s\' to the cache.' %
                                 jobStoreFileID)
                 jobState = self._JobState(cacheInfo.jobState[self.jobID])
                 jobState.addToJobSpecFiles(jobStoreFileID, localFilePath, -1, False)
@@ -1415,7 +1415,7 @@ class CachingFileStore(FileStore):
             :param lockFileHandle: The open handle to the cache lock file
             """
             while self.exists():
-                logger.info('CACHE: Waiting for another worker to download file with ID %s.'
+                logger.debug('CACHE: Waiting for another worker to download file with ID %s.'
                             % self.fileStoreID)
                 # Ensure that the process downloading the file is still alive.  The PID will
                 # be in the harbinger file.

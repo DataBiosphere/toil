@@ -241,7 +241,6 @@ def main():
     parser.add_argument("--version", action='version', version=version)
 
     options = parseBasicOptions(parser)
-    logger.info("Parsed arguments")
 
     if len(sys.argv) == 1:
         parser.print_help()
