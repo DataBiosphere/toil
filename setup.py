@@ -21,7 +21,7 @@ def runSetup():
     functionality. The `version` module is imported dynamically by importVersion() below.
     """
     boto = 'boto==2.48.0'  # Success 'boto==2.38.0'
-    boto3 = 'boto3>=1.4.7, <2.0'
+    boto3 = 'boto3>=1.7.50, <2.0'  # Success 'boto3==1.4.7'
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
     psutil = 'psutil==3.0.1'
