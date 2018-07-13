@@ -204,12 +204,12 @@ exist yet, Toil will create it for you.
                         -p CLOUDPROVIDER also accepted.  The provisioner for
                         cluster auto-scaling.  Both aws and google's gce are
                         currently supported.
-  --zone ZONE           -z ZONE also accepted.  The AWS availability zone of the master. This
-                        parameter can also be set via the TOIL_AWS_ZONE
+  --zone ZONE           -z ZONE also accepted.  The availability zone of the leader. This
+                        parameter can also be set via the TOIL_AWS_ZONE or TOIL_AZURE_ZONE
                         environment variable, or by the ec2_region_name
-                        parameter in your .boto file, or derived from the
+                        parameter in your .boto file if using AWS, or derived from the
                         instance metadata if using this utility on an existing
-                        EC2 instance. Currently: us-west-1a
+                        EC2 instance. Currently: us-west-2a
   --leaderNodeType LEADERNODETYPE
                         Non-preemptable node type to use for the cluster
                         leader.
