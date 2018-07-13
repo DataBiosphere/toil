@@ -77,7 +77,7 @@ class AzureProvisioner(AnsibleDriver):
         self._azureComputeClient = ComputeManagementClient(credentials, subscription)
         self._azureNetworkClient = NetworkManagementClient(credentials, subscription)
 
-        self._zone = getAlternativeAzureZone(metadata['compute']['location']) # zone
+        self._zone = zone
         self._onLeader = False
         if not clusterName:
             # If no clusterName, Toil must be running on the leader.
