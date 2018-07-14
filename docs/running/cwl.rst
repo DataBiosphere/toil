@@ -64,7 +64,7 @@ samples inputs, it could look something like::
 
     if __name__ == "__main__":
         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "DEBUG"
+        options.logLevel = "INFO"
         with Toil(options) as toil:
 
             # specify the folder where the cwl and yml files live

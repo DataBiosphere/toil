@@ -617,16 +617,16 @@ class AbstractJobStoreTest(object):
             try:
                 store = self.externalStoreCache[self]
             except KeyError:
-                logger.info('Creating new external store for %s', self)
+                logger.debug('Creating new external store for %s', self)
                 store = self.externalStoreCache[self] = self._createExternalStore()
             else:
-                logger.info('Reusing external store for %s', self)
+                logger.debug('Reusing external store for %s', self)
             return store
 
         @classmethod
         def cleanUpExternalStores(cls):
             for test, store in iteritems(cls.externalStoreCache):
-                logger.info('Cleaning up external store for %s.', test)
+                logger.debug('Cleaning up external store for %s.', test)
                 test._cleanUpExternalStore(store)
 
         mpTestPartSize = 5 << 20
@@ -917,7 +917,7 @@ class AbstractJobStoreTest(object):
 
             cacheTime = cacheEnd - cacheStart
 
-            logger.info("Without cache: %f, with cache: %f.", noCacheTime, cacheTime)
+            logger.debug("Without cache: %f, with cache: %f.", noCacheTime, cacheTime)
 
             # Running with the cache should be faster.
             self.assertTrue(cacheTime <= noCacheTime)

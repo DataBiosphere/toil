@@ -201,7 +201,7 @@ class AzureProvisioner(AnsibleDriver):
                 logger.debug("Leader appliance failed to start, retrying. (Error %s)" % e)
 
 
-        logger.info('Launched leader')
+        logger.debug('Launched leader')
 
     def _checkIfClusterExists(self):
         """
