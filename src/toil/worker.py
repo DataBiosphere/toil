@@ -32,6 +32,8 @@ import logging
 import shutil
 from threading import Thread
 
+logging.basicConfig()
+
 try:
     import cPickle as pickle
 except ImportError:
@@ -115,6 +117,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     :param bool redirectOutputToLogFile: Redirect standard out and standard error to a log file
     """
     logging.basicConfig()
+    setLogLevel(config.logLevel)
 
     ##########################################
     #Create the worker killer, if requested
@@ -154,8 +157,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-
-    setLogLevel(config.logLevel)
 
     toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
 
