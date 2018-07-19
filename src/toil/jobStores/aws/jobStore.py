@@ -478,8 +478,6 @@ class AWSJobStore(AbstractJobStore):
                 region = bucket_location_to_region(location)
         except S3ResponseError as e:
             if e.error_code == 'AccessDenied':
-                log.warn("Could not determine location of bucket hosting URL '%s', reverting "
-                         "to generic S3 endpoint.", url.geturl())
                 s3 = boto.connect_s3()
             else:
                 raise
