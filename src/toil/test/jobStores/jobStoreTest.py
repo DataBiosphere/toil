@@ -1245,8 +1245,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         with patch('toil.jobStores.aws.jobStore.log') as mock_log:
             jobStoreID = self.jobstore_initialized.importFile(url)
             self.assertTrue(self.jobstore_initialized.fileExists(jobStoreID))
-            args, kwargs = mock_log.warn.call_args
-            self.assertTrue('Could not determine location' in args[0])
 
     def testOverlargeJob(self):
         jobstore = self.jobstore_initialized
