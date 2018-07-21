@@ -162,9 +162,26 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 def process_single_infile(f, fileStore):
     wdllogger.info('Importing {f} into the jobstore.'.format(f=f))
     if f.startswith('http://') or f.startswith('https://') or \
-            f.startswith('file://') or f.startswith('wasb://') or f.startswith('s3://'):
+            f.startswith('file://') or f.startswith('wasb://'):
         filepath = fileStore.importFile(f)
         preserveThisFilename = os.path.basename(f)
+    elif f.startswith('s3://'):
+        try:
+            filepath = fileStore.importFile(f)
+            preserveThisFilename = os.path.basename(f)
+        except:
+            from toil.lib.ec2nodes import EC2Regions
+            success = False
+            for region in EC2Regions:
+                try:
+                    html_path = 'http://s3.{}.amazonaws.com/'.format(region) + f[5:]
+                    filepath = fileStore.importFile(html_path)
+                    preserveThisFilename = os.path.basename(f)
+                    success = True
+                except:
+                    pass
+            if not success:
+                raise RuntimeError('Unable to import: ' + f)
     elif f.startswith('gs://'):
         f = 'https://storage.googleapis.com/' + f[5:]
         filepath = fileStore.importFile(f)
