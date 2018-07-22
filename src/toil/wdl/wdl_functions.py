@@ -335,6 +335,10 @@ def read_file(f, tempDir, fileStore, docker=False):
 
 
 def process_and_read_file(f, tempDir, fileStore, docker=False):
+    if not f:
+        # in the case of "optional" files
+        # TODO: handle this at compile time, not here and change to the empty string
+        return None
     processed_file = process_infile(f, fileStore)
     return read_file(processed_file, tempDir, fileStore, docker=docker)
 
