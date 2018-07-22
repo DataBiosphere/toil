@@ -294,8 +294,9 @@ def abspath_array_file(af, cwd):
 
 
 def abspath_file(f, cwd):
-    # for "optional" files
     if not f:
+        # in the case of "optional" files (same treatment in 'process_and_read_file()')
+        # TODO: handle this at compile time, not here
         return ''
     # check if this has already been processed
     if isinstance(f, tuple):
@@ -339,7 +340,7 @@ def read_file(f, tempDir, fileStore, docker=False):
 
 def process_and_read_file(f, tempDir, fileStore, docker=False):
     if not f:
-        # in the case of "optional" files
+        # in the case of "optional" files (same treatment in 'abspath_file()')
         # TODO: handle this at compile time, not here and change to the empty string
         return None
     processed_file = process_infile(f, fileStore)
