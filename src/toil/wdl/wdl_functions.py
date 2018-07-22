@@ -294,6 +294,9 @@ def abspath_array_file(af, cwd):
 
 
 def abspath_file(f, cwd):
+    # for "optional" files
+    if not f:
+        return ''
     # check if this has already been processed
     if isinstance(f, tuple):
         return f
