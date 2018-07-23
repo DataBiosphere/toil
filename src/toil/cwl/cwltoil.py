@@ -946,6 +946,8 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--tmp-outdir-prefix", type=Text,
                         help="Path prefix for intermediate output directories",
                         default="tmp")
+    parser.add_argument("--force-docker-pull", action="store_true", default=False, dest="force_docker_pull",
+                        help="Pull latest docker image even if it is locally present")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -1051,10 +1053,12 @@ def main(args=None, stdout=sys.stdout):
 
             try:
                 make_opts = copy.deepcopy(vars(options))
-                make_opts.update({'tool': t, 'jobobj': {},
-                    'use_container': use_container,
-                    'tmpdir': os.path.realpath(outdir),
-                    'job_script_provider': job_script_provider})
+                make_opts.update({'tool': t,
+                                  'jobobj': {},
+                                  'use_container': use_container,
+                                  'tmpdir': os.path.realpath(outdir),
+                                  'job_script_provider': job_script_provider,
+                                  'force_docker_pull': options.force_docker_pull})
 
                 (wf1, wf2) = makeJob(**make_opts)
             except cwltool.process.UnsupportedRequirement as e:
