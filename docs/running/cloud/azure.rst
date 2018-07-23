@@ -112,7 +112,7 @@ Details about Launching a Cluster in Azure
 Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example,
 to launch a cluster named "my-cluster" with a Standard_A2 leader in the westus zone, run ::
 
-    (venv) $ toil launch-cluster my-cluster --provisioner azure --leaderNodeType Standard_A2 --zone westus --keyPairName <your-AWS-key-pair-name>
+    (venv) $ toil launch-cluster my-cluster --provisioner azure --leaderNodeType Standard_A2 --zone westus --keyPairName <your-Azure-key-pair-name>
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. In addition, the Toil provisioner will
