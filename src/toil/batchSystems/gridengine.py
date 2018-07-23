@@ -36,9 +36,6 @@ logger = logging.getLogger(__name__)
 
 class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
-    def memFree(self):
-        return self.boss.config.useMemFree
-
     class Worker(AbstractGridEngineBatchSystem.Worker):
 
         """
