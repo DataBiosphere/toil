@@ -154,7 +154,6 @@ class AbstractAzureAutoscaleTest(ToilTest):
         # TODO: Add a check to make sure everything is cleaned up.
 
 
-
 @pytest.mark.timeout(3000)
 class AzureAutoscaleTest(AbstractAzureAutoscaleTest):
 
