@@ -30,7 +30,7 @@ from toil.provisioners import NoSuchClusterException
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
-from toil.provisioners.azure import getAlternativeAzureZone
+from toil.provisioners.azure import getAzureZone
 
 
 logger = logging.getLogger(__name__)
