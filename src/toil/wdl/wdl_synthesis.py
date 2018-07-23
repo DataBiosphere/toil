@@ -744,7 +744,6 @@ class SynthesizeWDL:
                             command{num} = {cmd}
                         except:
                             command{num} = ''\n''', {'cmd': cmd, 'num': self.cmd_num}, indent='        ')
-                # fn_section = fn_section + '        command{} = {}\n'.format(str(self.cmd_num), cmd)
                 cmd_array.append('command' + str(self.cmd_num))
                 self.cmd_num = self.cmd_num + 1
 
