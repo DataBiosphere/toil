@@ -36,6 +36,9 @@ logger = logging.getLogger(__name__)
 
 class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
+    def memFree(self):
+        return self.boss.config.useMemFree
+
     class Worker(AbstractGridEngineBatchSystem.Worker):
 
         """
@@ -105,7 +108,11 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             reqline = list()
             if mem is not None:
                 memStr = str(old_div(mem, 1024)) + 'K'
-                reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
+                if self.boss.config.useMemFree:
+                    # for UGE instead of SGE; see #2309
+                    reqline += ['mem_free=' + memStr, 'h_vmem=' + memStr]
+                else:
+                    reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
             if len(reqline) > 0:
                 qsubline.extend(['-hard', '-l', ','.join(reqline)])
             sgeArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
