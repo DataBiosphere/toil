@@ -46,6 +46,7 @@ class GCEProvisioner(AbstractProvisioner):
     def __init__(self, clusterName, zone, nodeStorage, sseKey):
         super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage)
         self._sseKey = sseKey
+        self._zone = self.getGCEZone(zone)
 
         # If the clusterName is not given, then Toil must be running on the leader
         # and should read the settings from the instance meta-data.
@@ -477,3 +478,14 @@ class GCEProvisioner(AbstractProvisioner):
         for status in status_list:
             node_list.append(status['node'])
         return node_list
+
+    def getGCEZone(self, defaultZone=None):
+        """
+        Find an appropriate GCE zone.
+
+        Look for an environment variable or return a default as provided.
+
+        :param defaultZone: The default zone to be returned if there is no environment variable specifying it.
+        :return zone:  The zone.
+        """
+        return os.environ.get('TOIL_GCE_ZONE') or defaultZone
