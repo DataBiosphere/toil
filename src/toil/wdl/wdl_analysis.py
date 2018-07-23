@@ -634,7 +634,7 @@ class AnalyzeWDL:
             if typeAST.name == 'Type':
                 return self.parse_declaration_type(typeAST.attr('subtype'))
             elif typeAST.name == 'OptionalType':
-                return typeAST.attr('innerType').source_string
+                return self.parse_declaration_type(typeAST.attr('innerType'))
             else:
                 raise NotImplementedError
         elif isinstance(typeAST, wdl_parser.AstList):
