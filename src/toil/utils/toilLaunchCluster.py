@@ -16,7 +16,7 @@ Launches a toil leader instance with the specified provisioner
 """
 import logging
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
-from toil.utils import addBasicProvisionerOptions
+from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
 from toil import applianceSelf
@@ -133,6 +133,9 @@ def main():
         owner = config.owner
     elif config.keyPairName:
         owner = config.keyPairName
+
+    # Check to see if the user specified a zone. If not, see if one is stored in an environment variable.
+    config.zone = config.zone or getZoneFromEnv(config.provisioner)
 
     cluster = clusterFactory(provisioner=config.provisioner,
                              clusterName=config.clusterName,
