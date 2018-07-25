@@ -11,17 +11,3 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-import os
-
-def getAzureZone(defaultZone=None):
-    """
-    Find an appropriate azure zone.
-
-    Look for an environment variable or return a default as provided.
-
-    :param defaultZone: The zone specified in the leader metadata.
-    :return zone:  The zone.
-    """
-
-    return os.environ.get('TOIL_AZURE_ZONE') or defaultZone
