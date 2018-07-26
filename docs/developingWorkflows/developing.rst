@@ -569,7 +569,7 @@ multiple jobs' output values::
 FileID
 ------
 
-This object is a small wrapper around Python's builtin string class. It is used to
+The :class:`toil.fileStore.FileID` class is a small wrapper around Python's builtin string class. It is used to
 represent a file's ID in the file store, and has a ``size`` attribute that is the
 file's size in bytes. This object is returned by ``importFile`` and ``writeGlobalFile``.
 
