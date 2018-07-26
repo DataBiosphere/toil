@@ -477,8 +477,7 @@ class CWLJob(Job):
             'tmp_outdir_prefix': tmp_outdir_prefix,
             'tmpdir_prefix': fileStore.getLocalTempDir(),
             'make_fs_access': functools.partial(ToilFsAccess, fileStore=fileStore),
-            'toil_get_file': functools.partial(toilGetFile, fileStore, index, existing),
-            'no_match_user': False})
+            'toil_get_file': functools.partial(toilGetFile, fileStore, index, existing)})
         del opts['job_order']
 
         # Run the tool
@@ -948,6 +947,8 @@ def main(args=None, stdout=sys.stdout):
                         default="tmp")
     parser.add_argument("--force-docker-pull", action="store_true", default=False, dest="force_docker_pull",
                         help="Pull latest docker image even if it is locally present")
+    parser.add_argument("--no-match-user", action="store_true", default=False,
+                        help="Disable passing the current uid to `docker run --user`")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -1058,7 +1059,8 @@ def main(args=None, stdout=sys.stdout):
                                   'use_container': use_container,
                                   'tmpdir': os.path.realpath(outdir),
                                   'job_script_provider': job_script_provider,
-                                  'force_docker_pull': options.force_docker_pull})
+                                  'force_docker_pull': options.force_docker_pull,
+                                  'no_match_user': options.no_match_user})
 
                 (wf1, wf2) = makeJob(**make_opts)
             except cwltool.process.UnsupportedRequirement as e:
