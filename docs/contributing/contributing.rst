@@ -74,23 +74,34 @@ For more information, see the `pytest documentation`_.
 Running Integration Tests
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-These tests are generally only run using in our CI workflow due to their resource requirments and cost. However, they
-can be made the available for local testing:
+These tests are generally only run using in our CI workflow due to their resource requirements and cost. However, they
+can be made available for local testing:
 
- - Running tests that make use of Docker (e.g. autoscaling tests and Docker tests)
-   require an appliance image to be hosted. This process first requires :ref:`quaySetup`.
-   Then to build and host the appliance image run the ``make`` targets ``docker``
-   and ``push_docker`` respectively. ::
+ - Running tests that make use of Docker (e.g. autoscaling tests and Docker tests) require an appliance image to be
+   hosted. First, make sure you have gone through the set up found in :ref:`quaySetup`.
+   Then to build and host the appliance image run the ``make`` target ``push_docker``. ::
 
-        $ make docker; make push_docker
+        $ make push_docker
 
  - Running integration tests require activation via an environment variable as well as exporting information relevant to
-   the desired tests. For example, to prepare for running Azure related integration tests in the ``westus`` region::
+   the desired tests. Enable the integration tests::
+
+        $ export TOIL_TEST_INTEGRATIVE=True
+
+ - Finally, set the environment variables for keyname and desired zone::
+
+        $ export TOIL_X_KEYNAME=[Your Keyname]
+        $ export TOIL_X_ZONE=[Desired Zone]
+
+   Where ``X`` is one of our currently supported cloud providers (``AZURE``, ``GCE``, ``AWS``).
+
+ - For example, to prepare for running Azure related integration tests in the ``westus`` region::
 
        $ export TOIL_TEST_INTEGRATIVE=True
        $ export TOIL_AZURE_KEYNAME=[Your keyname]
        $ export TOIL_AZURE_ZONE=westus
-  - See the above sections for guidance on running tests.
+
+ - See the above sections for guidance on running tests.
 
 Test Environment Variables
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
