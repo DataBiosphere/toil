@@ -24,21 +24,16 @@ environment variables are set (see :ref:`test_env_vars`).
 |                         | the terminal as expected.                         |
 +-------------------------+---------------------------------------------------+
 
-Run all tests (including slow tests):
-
-::
+Run all tests (including slow tests)::
 
     $ make test
 
-Run only quick tests (as of Sep 18, 2017, this was < 30 minutes):
 
-::
+Run only quick tests (as of Jul 25, 2018, this was ~ 20 minutes)::
 
     $ export TOIL_TEST_QUICK=True; make test
 
-Run an individual test with
-
-::
+Run an individual test with::
 
     $ make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
@@ -59,22 +54,14 @@ involving both the Parasol feature and the Azure extra, use the following::
 
     $ make test tests="-m 'not azure and not parasol' src"
 
-Running Tests (pytest)
-~~~~~~~~~~~~~~~~~~~~~~
+
+
+Running Tests with pytest
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Often it is simpler to use pytest directly, instead of calling the ``make`` wrapper.
-This usually works as expected, but some tests need some manual preparation.
-
- - Running tests that make use of Docker (e.g. autoscaling tests and Docker tests)
-   require an appliance image to be hosted. This process first requires :ref:`quaySetup`.
-   Then to build and host the appliance image run the ``make`` targets ``docker``
-   and ``push_docker`` respectively.
-
- - Running integration tests require setting the environment variable ::
-
-       export TOIL_TEST_INTEGRATIVE=True
-
-To run a specific test with pytest, use the following::
+This usually works as expected, but some tests need some manual preparation. To run a specific test with pytest,
+use the following::
 
     python -m pytest src/toil/test/sort/sortTest.py::SortTest::testSort
 
@@ -83,6 +70,38 @@ For more information, see the `pytest documentation`_.
 .. _pytest documentation: https://docs.pytest.org/en/latest/
 
 .. _test_env_vars:
+
+Running Integration Tests
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+These tests are generally only run using in our CI workflow due to their resource requirements and cost. However, they
+can be made available for local testing:
+
+ - Running tests that make use of Docker (e.g. autoscaling tests and Docker tests) require an appliance image to be
+   hosted. First, make sure you have gone through the set up found in :ref:`quaySetup`.
+   Then to build and host the appliance image run the ``make`` target ``push_docker``. ::
+
+        $ make push_docker
+
+ - Running integration tests require activation via an environment variable as well as exporting information relevant to
+   the desired tests. Enable the integration tests::
+
+        $ export TOIL_TEST_INTEGRATIVE=True
+
+ - Finally, set the environment variables for keyname and desired zone::
+
+        $ export TOIL_X_KEYNAME=[Your Keyname]
+        $ export TOIL_X_ZONE=[Desired Zone]
+
+   Where ``X`` is one of our currently supported cloud providers (``AZURE``, ``GCE``, ``AWS``).
+
+ - For example, to prepare for running Azure related integration tests in the ``westus`` region::
+
+       $ export TOIL_TEST_INTEGRATIVE=True
+       $ export TOIL_AZURE_KEYNAME=[Your keyname]
+       $ export TOIL_AZURE_ZONE=westus
+
+ - See the above sections for guidance on running tests.
 
 Test Environment Variables
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
