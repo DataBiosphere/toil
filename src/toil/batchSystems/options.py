@@ -123,9 +123,9 @@ def addOptions(addOptionFn, config):
                 "The default (equal to the number of cores) is a maximum of "
                 "{} concurrent local housekeeping jobs.".format(localCores))
     addOptionFn("--manualMemArgs", default=False, action='store_true', dest="manualMemArgs",
-                help="When running on UGE instead of SGE, use the options: "
-                     "'mem_free=MEMORY' & 'h_vmem=MEMORY' instead of: "
-                     "'hv=MEMORY' & 'h_vmem=MEMORY'.")
+                help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to "
+                     "the qsub call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply "
+                     "alternative arguments.  Requires that TOIL_GRIDGENGINE_ARGS be set.")
 
     for o in _options:
         o(addOptionFn, config)
