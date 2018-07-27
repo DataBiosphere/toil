@@ -108,7 +108,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 if not self.boss.config.manualMemArgs:
                     # for UGE instead of SGE; see #2309
                     reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
-                elif self.boss.config.manualMemArgs and sgeArgs:
+                elif self.boss.config.manualMemArgs and not sgeArgs:
                     raise ValueError("--manualMemArgs set to True, but TOIL_GRIDGENGINE_ARGS is not set."
                                      "Please set TOIL_GRIDGENGINE_ARGS to specify memory allocation for "
                                      "your system.  Default adds the arguments: vf=<mem> h_vmem=<mem> "
