@@ -122,7 +122,7 @@ def addOptions(addOptionFn, config):
                 "run on the local system. "
                 "The default (equal to the number of cores) is a maximum of "
                 "{} concurrent local housekeeping jobs.".format(localCores))
-    addOptionFn("--useMemFree", default=False, action='store_true', dest="useMemFree",
+    addOptionFn("--manualMemArgs", default=False, action='store_true', dest="manualMemArgs",
                 help="When running on UGE instead of SGE, use the options: "
                      "'mem_free=MEMORY' & 'h_vmem=MEMORY' instead of: "
                      "'hv=MEMORY' & 'h_vmem=MEMORY'.")
@@ -140,6 +140,7 @@ def setDefaultOptions(config):
     config.environment = {}
     config.statePollingWait = 1  # seconds
     config.maxLocalJobs = multiprocessing.cpu_count()
+    config.manualMemArgs = False
 
     # single machine
     config.scale = 1
