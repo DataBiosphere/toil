@@ -1838,9 +1838,10 @@ class NonCachingFileStore(FileStore):
 
 class FileID(str):
     """
-    A class to wrap the job store file id returned by writeGlobalFile and any attributes we may want
-    to add to it.
+    A small wrapper around Python's builtin string class. It is used to represent a file's ID in the file store, and
+    has a size attribute that is the file's size in bytes. This object is returned by importFile and writeGlobalFile.
     """
+
     def __new__(cls, fileStoreID, *args):
         return super(FileID, cls).__new__(cls, fileStoreID)
 
