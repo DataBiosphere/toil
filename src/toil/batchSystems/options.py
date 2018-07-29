@@ -79,14 +79,13 @@ def _mesosOptions(addOptionFn, config=None):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP() + ':5050',
                 help=("The host and port of the Mesos master separated by colon. (default: %(default)s)"))
 
+
 # Built in batch systems that have options
-_OPTIONS = [
+_options = [
     _parasolOptions,
     _singleMachineOptions,
     _mesosOptions
     ]
-
-_options = list(_OPTIONS)
 
 
 def addOptionsDefinition(optionsDefinition):
@@ -123,6 +122,10 @@ def addOptions(addOptionFn, config):
                 "run on the local system. "
                 "The default (equal to the number of cores) is a maximum of "
                 "{} concurrent local housekeeping jobs.".format(localCores))
+    addOptionFn("--manualMemArgs", default=False, action='store_true', dest="manualMemArgs",
+                help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to "
+                     "the qsub call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply "
+                     "alternative arguments.  Requires that TOIL_GRIDGENGINE_ARGS be set.")
 
     for o in _options:
         o(addOptionFn, config)
@@ -137,6 +140,7 @@ def setDefaultOptions(config):
     config.environment = {}
     config.statePollingWait = 1  # seconds
     config.maxLocalJobs = multiprocessing.cpu_count()
+    config.manualMemArgs = False
 
     # single machine
     config.scale = 1

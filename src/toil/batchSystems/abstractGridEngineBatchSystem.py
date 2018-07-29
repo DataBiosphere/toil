@@ -281,6 +281,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(AbstractGridEngineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+        self.config = config
 
         self.currentJobs = set()
 
