@@ -43,7 +43,7 @@ def runSetup():
     future = 'future'
     requests = 'requests==2.18.4'
     docker = 'docker==2.5.1'
-    subprocess32 = 'subprocess32==3.5.2'
+    subprocess32 = 'subprocess32<=3.5.2'
     dateutil = 'python-dateutil'
 
     core_reqs = [
