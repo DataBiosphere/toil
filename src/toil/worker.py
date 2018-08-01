@@ -451,7 +451,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     # Now our file handles are in exactly the state they were in before.
 
     #Copy back the log file to the global dir, if needed
-    if workerFailed:
+    if workerFailed and redirectOutputToLogFile:
         jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID)
         jobGraph.chainedJobs = listOfJobs
         with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
