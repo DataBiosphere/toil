@@ -26,7 +26,7 @@ def getZoneFromEnv(provisioner):
     """
     Find the zone specified in an environment variable.
 
-    The user can specify zones in environment variables in leiu of writing them at the commandline every time.
+    The user can specify zones in environment variables in lieu of writing them at the commandline every time.
     Given a provisioner, this method will look for the stored value and return it.
     :param str provisioner: One of the supported provisioners ('azure', 'aws', 'gce')
     :rtype: str
