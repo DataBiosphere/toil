@@ -42,7 +42,7 @@ class ImportExportFileTest(ToilTest):
                 inputFileID = toil.importFile('file://' + srcFile)
                 # Make sure that importFile returns the fileID wrapper
                 self.assertIsInstance(inputFileID, FileID)
-                self.assertEqual(getDirSizeRecursively(srcFile), inputFileID.size)
+                self.assertEqual(os.stat(srcFile).st_size, inputFileID.size)
 
                 # Write a boolean that determines whether the job fails.
                 with toil._jobStore.writeFileStream() as (f, failFileID):
