@@ -95,7 +95,7 @@ class UtilsTest(ToilTest):
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
-            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro',
+            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro', '--zone=us-west-2a',
                     '--keyPairName=' + keyName, clusterName])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
@@ -109,7 +109,7 @@ class UtilsTest(ToilTest):
             # launch master with same name
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
                     '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
-                    '--provisioner=aws', '--logLevel=DEBUG'])
+                    '--provisioner=aws', '--zone=us-west-2a','--logLevel=DEBUG'])
 
             cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
             leader = cluster.getLeader()

@@ -205,11 +205,11 @@ exist yet, Toil will create it for you.
                         cluster auto-scaling.  Both aws and google's gce are
                         currently supported.
   --zone ZONE           -z ZONE also accepted.  The availability zone of the leader. This
-                        parameter can also be set via the TOIL_AWS_ZONE or TOIL_AZURE_ZONE
-                        environment variable, or by the ec2_region_name
+                        parameter can also be set via the TOIL_AWS_ZONE or TOIL_AZURE_ZONE, or TOIL_GCE_ZONE
+                        environment variables, or by the ec2_region_name
                         parameter in your .boto file if using AWS, or derived from the
                         instance metadata if using this utility on an existing
-                        EC2 instance. Currently: us-west-2a
+                        EC2 instance.
   --leaderNodeType LEADERNODETYPE
                         Non-preemptable node type to use for the cluster
                         leader.

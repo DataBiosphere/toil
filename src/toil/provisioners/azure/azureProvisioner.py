@@ -33,7 +33,6 @@ from toil.provisioners import NoSuchClusterException
 from azure.common.credentials import ServicePrincipalCredentials
 from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
-from toil.provisioners.azure import getAzureZone
 
 
 logger = logging.getLogger(__name__)
@@ -79,8 +78,6 @@ class AzureProvisioner(AnsibleDriver):
         credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
         self._azureComputeClient = ComputeManagementClient(credentials, subscription)
         self._azureNetworkClient = NetworkManagementClient(credentials, subscription)
-
-        self._zone = getAzureZone() or zone
         self._onLeader = False
         if not clusterName:
             # If no clusterName, Toil must be running on the leader.
@@ -102,7 +99,7 @@ class AzureProvisioner(AnsibleDriver):
         metadata = json.loads(dataStr)
 
         # set values from the leader meta-data
-        self._zone = self._zone or getAzureZone(metadata['compute']['location'])
+        self._zone = metadata['compute']['location']
         self.clusterName = metadata['compute']['resourceGroupName']
         tagsStr = metadata['compute']['tags']
         tags = dict(item.split(":") for item in tagsStr.split(";"))
