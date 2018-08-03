@@ -23,6 +23,7 @@ from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow
 from toil.fileStore import FileID
+from toil.common import getDirSizeRecursively
 
 
 class ImportExportFileTest(ToilTest):
@@ -41,7 +42,7 @@ class ImportExportFileTest(ToilTest):
                 inputFileID = toil.importFile('file://' + srcFile)
                 # Make sure that importFile returns the fileID wrapper
                 self.assertIsInstance(inputFileID, FileID)
-                self.assertEqual(os.stat(srcFile).st_size, inputFileID.size)
+                self.assertEqual(getDirSizeRecursively(srcFile), inputFileID.size)
 
                 # Write a boolean that determines whether the job fails.
                 with toil._jobStore.writeFileStream() as (f, failFileID):
