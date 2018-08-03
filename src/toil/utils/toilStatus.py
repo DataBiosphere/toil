@@ -30,6 +30,7 @@ import sys
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
+from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from toil.job import JobException
 from toil.version import version
 
@@ -248,7 +249,10 @@ def main():
 
     config = Config()
     config.setOptions(options)
-    jobStore = Toil.resumeJobStore(config.jobStore)
+    try:
+        jobStore = Toil.resumeJobStore(config.jobStore)
+    except NoSuchJobStoreException:
+        print('No job store found.')
 
     ##########################################
     # Gather the jobs to report
