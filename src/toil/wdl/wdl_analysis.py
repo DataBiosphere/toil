@@ -922,7 +922,7 @@ class AnalyzeWDL:
         if name.source_string == 'glob':
             return es + es_params + ', tempDir)'
         elif name.source_string == 'size':
-            return es + es_params + ', fileStore)'
+            return es + es_params + ', fileStore=fileStore)'
         else:
             return es + es_params + ')'
 
