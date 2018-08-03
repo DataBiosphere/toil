@@ -128,12 +128,19 @@ class ToilWdlIntegrationTest(ToilTest):
     def testFn_Size(self):
         """Test the wdl built-in functional equivalent of 'size()',
         which returns a file's size based on the path."""
-        small_file = size(os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl'))
-        larger_file = size(self.encode_data)
-        larger_file_in_mb = size(self.encode_data, 'mb')
-        assert small_file >= 4096, small_file
-        assert larger_file >= 70000000, larger_file
-        assert larger_file_in_mb >= 70, larger_file_in_mb
+        from toil.job import Job
+        from toil.common import Toil
+        options = Job.Runner.getDefaultOptions('./toilWorkflowRun')
+        options.clean = 'always'
+        with Toil(options) as toil:
+            small = process_infile(os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl'), toil)
+            small_file = size(small)
+            large = process_infile(self.encode_data, toil)
+            larger_file = size(large)
+            larger_file_in_mb = size(large, 'mb')
+            assert small_file >= 4096, small_file
+            assert larger_file >= 70000000, larger_file
+            assert larger_file_in_mb >= 70, larger_file_in_mb
 
     # estimated run time <1 sec
     def testFn_Glob(self):

@@ -43,9 +43,17 @@ class SynthesizeWDL:
     then write the main and all of its subsections.
     '''
 
-    def __init__(self, tasks_dictionary, workflows_dictionary, output_directory, json_dict, docker_user):
+    def __init__(self,
+                 tasks_dictionary,
+                 workflows_dictionary,
+                 output_directory,
+                 json_dict,
+                 docker_user,
+                 jobstore=None):
         self.output_directory = output_directory
         self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
+
+        self.jobstore = jobstore if jobstore else './toilWorkflowRun'
 
         if docker_user != 'None':
             self.docker_user = "'" + docker_user + "'"
@@ -100,12 +108,11 @@ class SynthesizeWDL:
                     import logging
                     
                     asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir = os.getcwd()
-                    asldijoiu23r8u34q89fho934t8u34fjobstore_path = os.path.abspath("./toilWorkflowRun/tmp")
 
                     logger = logging.getLogger(__name__)
 
 
-                        ''')[1:]
+                        ''', {'jobstore': self.jobstore})[1:]
         return module_string
 
     def write_main(self):
@@ -149,10 +156,10 @@ class SynthesizeWDL:
     def write_main_header(self):
         main_header = heredoc_wdl('''
             if __name__=="__main__":
-                options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
+                options = Job.Runner.getDefaultOptions("{jobstore}")
                 options.clean = 'always'
-                with Toil(options) as toil:
-            ''')
+                with Toil(options) as fileStore:
+            ''', {'jobstore': self.jobstore})
         return main_header
 
     def write_main_wfdeclarations(self):
@@ -175,7 +182,7 @@ class SynthesizeWDL:
                         main_section += '        {} = None\n'.format(var)
                     # import filepath into jobstore
                     elif var_expressn['value'] and (var_expressn['type'] == 'File'):
-                        main_section += '        {} = process_infile({}, toil)\n'.format(var, var_expressn['value'])
+                        main_section += '        {} = process_infile({}, fileStore)\n'.format(var, var_expressn['value'])
                     # normal declaration
                     else:
                         main_section += '        {} = {}\n'.format(var, var_expressn['value'])
@@ -207,7 +214,7 @@ class SynthesizeWDL:
                     main_section += '        if {}:\n'.format(self.workflows_dictionary[wf][assignment]['expression'])
                     main_section += self.write_main_jobwrappers_if(self.workflows_dictionary[wf][assignment]['body'])
 
-        main_section += '\n        toil.start(job0)\n'
+        main_section += '\n        fileStore.start(job0)\n'
 
         return main_section
 

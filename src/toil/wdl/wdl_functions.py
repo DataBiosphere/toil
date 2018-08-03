@@ -429,7 +429,7 @@ def parse_disk(disk):
                 return parse_memory(d[0]) if parse_memory(d[0]) > 2147483648 else 2147483648
         return total_disk if total_disk > 2147483648 else 2147483648
     except:
-        return 2147483648 # toil's default
+        return 2147483648  # toil's default
 
 
 def is_number(s):
@@ -440,20 +440,17 @@ def is_number(s):
         return False
 
 
-def size(f, unit='B', d=None):
+def size(f, unit='B', fileStore=None):
     """
     Returns the size of a file in bytes.
 
     :param f: Filename
-    :param d: The directory containing the file to be sized.
     :param unit: Return the byte size in these units (gigabytes, etc.).
     :return:
     """
-    if isinstance(f, tuple) and d:
-        f = os.path.join(d, f[0])
     divisor = return_bytes(unit)
-    return (float(subprocess.check_output(['du', '-s', f],
-            env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode('ascii')) * 512) / divisor
+    fileID = process_infile(f, fileStore)[0]
+    return fileID.size / divisor
 
 
 def select_first(values):

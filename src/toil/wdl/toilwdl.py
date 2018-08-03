@@ -65,8 +65,9 @@ def main():
     parser = argparse.ArgumentParser(description='Runs WDL files with toil.')
     parser.add_argument('wdl_file', help='A WDL workflow file.')
     parser.add_argument('secondary_file', help='A secondary data file (json).')
+    parser.add_argument("--jobStore", type=str, required=False, default=None)
     parser.add_argument('-o',
-                        '--output_directory',
+                        '--outdir',
                         required=False,
                         default=os.getcwd(),
                         help='Optionally specify the directory that outputs '
@@ -91,18 +92,18 @@ def main():
 
     wdl_file_path = os.path.abspath(args.wdl_file)
     args.secondary_file = os.path.abspath(args.secondary_file)
-    args.output_directory = os.path.abspath(args.output_directory)
+    args.outdir = os.path.abspath(args.outdir)
 
     if args.dev_mode:
-        write_AST(wdl_file_path, args.output_directory)
+        write_AST(wdl_file_path, args.outdir)
 
-    aWDL = AnalyzeWDL(wdl_file_path, args.secondary_file, args.output_directory)
+    aWDL = AnalyzeWDL(wdl_file_path, args.secondary_file, args.outdir)
 
     # read secondary file; create dictionary to hold variables
     if args.secondary_file.endswith('.json'):
         aWDL.dict_from_JSON(args.secondary_file)
     elif args.secondary_file.endswith('.yml') or args.secondary_file.endswith('.yaml'):
-        aWDL.dict_from_YML(args.secondary_file) # json only atm
+        aWDL.dict_from_YML(args.secondary_file)  # json only atm
     else:
         raise RuntimeError('Unsupported Secondary File Type.  Use json.')
 
@@ -115,9 +116,10 @@ def main():
 
     sWDL = SynthesizeWDL(aWDL.tasks_dictionary,
                          aWDL.workflows_dictionary,
-                         args.output_directory,
+                         args.outdir,
                          aWDL.json_dict,
-                         args.docker_user)
+                         args.docker_user,
+                         args.jobStore)
 
     # use the AST dictionaries to write 4 strings
     # these are the future 4 sections of the compiled toil python file
@@ -131,15 +133,16 @@ def main():
                            main_section,
                            sWDL.output_file)
 
-    wdllogger.debug('WDL file compiled to toil script.  Running now.')
-
     if args.dev_mode:
+        wdllogger.debug('WDL file compiled to toil script.')
         sWDL.write_mappings(aWDL)
     else:
+        wdllogger.debug('WDL file compiled to toil script.  Running now.')
         cmd = ['python', sWDL.output_file]
         cmd.extend(wdl_run_args)
         subprocess.check_call(cmd)
         os.remove(sWDL.output_file)
+
 
 if __name__ == '__main__':
     main()

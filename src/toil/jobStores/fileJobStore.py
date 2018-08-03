@@ -42,6 +42,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              JobStoreExistsException,
                                              NoSuchJobStoreException)
 from toil.jobGraph import JobGraph
+from toil.common import getDirSizeRecursively
 
 logger = logging.getLogger( __name__ )
 
@@ -218,7 +219,7 @@ class FileJobStore(AbstractJobStore):
             if sharedFileName is None:
                 absPath = self._getUniqueName(url.path)  # use this to get a valid path to write to in job store
                 self._copyOrLink(url, absPath)
-                return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
+                return FileID(self._getRelativePath(absPath), getDirSizeRecursively(absPath))
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
