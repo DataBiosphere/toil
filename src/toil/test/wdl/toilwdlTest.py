@@ -138,7 +138,7 @@ class ToilWdlIntegrationTest(ToilTest):
             large = process_infile(self.encode_data, toil)
             larger_file = size(large)
             larger_file_in_mb = size(large, 'mb')
-            assert small_file >= 4096, small_file
+            assert small_file >= 1800, small_file
             assert larger_file >= 70000000, larger_file
             assert larger_file_in_mb >= 70, larger_file_in_mb
 
