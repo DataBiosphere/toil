@@ -253,7 +253,6 @@ def main():
         jobStore = Toil.resumeJobStore(config.jobStore)
     except NoSuchJobStoreException:
         print('No job store found.')
-        exit(0)
 
     ##########################################
     # Gather the jobs to report
