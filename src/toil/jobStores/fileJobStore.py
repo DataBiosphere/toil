@@ -218,6 +218,8 @@ class FileJobStore(AbstractJobStore):
             if sharedFileName is None:
                 absPath = self._getUniqueName(url.path)  # use this to get a valid path to write to in job store
                 self._copyOrLink(url, absPath)
+                # TODO: os.stat(absPath).st_size consistently gives values lower than
+                # getDirSizeRecursively()
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
