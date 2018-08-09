@@ -71,6 +71,9 @@ class FileJobStore(AbstractJobStore):
         # Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
         self.linkImports = None
+        
+    def __repr__(self):
+        return 'FileJobStore({})'.format(self.jobStoreDir)
 
     def initialize(self, config):
         try:
@@ -162,6 +165,7 @@ class FileJobStore(AbstractJobStore):
                 else:
                     # Remove the given directory
                     shutil.rmtree(path, False, handle_error)
+                assert(not os.path.exists(path))
                 return
             except OSError:
                 logger.error('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, delay))
@@ -169,7 +173,14 @@ class FileJobStore(AbstractJobStore):
                 delay *= 2
 
         # Final attempt, pass any Exceptions up to caller.
-        shutil.rmtree(path, False, handle_error)
+        if not os.path.isdir(path):
+            # Remove the given normal file
+            os.remove(path)
+        else:
+            # Remove the given directory
+            shutil.rmtree(path)
+            
+        assert(not os.path.exists(path))
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
