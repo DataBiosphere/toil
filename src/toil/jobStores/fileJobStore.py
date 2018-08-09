@@ -110,16 +110,16 @@ class FileJobStore(AbstractJobStore):
         for open_file in us.open_files():
             paths_and_fds.append((open_file.path, open_file.fd))
         logger.error('We have {} files open'.format(len(paths_and_fds)))
-        for path, fd in paths_and_fds:
-            logger.error('We have {} open as FD {}'.format(path, fd))
+        for file_path, file_fd in paths_and_fds:
+            logger.error('We have {} open as FD {}'.format(file_path, file_fd))
             
-            with open(path, 'r') as sampler:
+            with open(file_path, 'r') as sampler:
                 # Show a sample of what is in the file
                 logger.error('Sample data: "{}"\n\n'.format(sampler.read(50)))
         
         
-        def handle_error(function, path, excinfo):
-            logger.error('Error in {} on {}'.format(function, path))
+        def handle_error(function, fail_path, excinfo):
+            logger.error('Error in {} on {}'.format(function, fail_path))
             logger.error('Exception: {}'.format(excinfo))
             
             logger.error('We are PID {}'.format(os.getpid()))
@@ -132,9 +132,10 @@ class FileJobStore(AbstractJobStore):
                     try:
                         # Some processes we are not allowed to look at, so we ignore errors
                         for open_file in process.open_files():
-                            if open_file.path == path:
+                            if open_file.path == fail_path:
                                 # This process has this file open
-                                logger.error('Process {} ({}) has {} open as FD {}'.format(process.pid, process.cmdline(), path, open_file.fd))
+                                logger.error('Process {} ({}) has {} open as FD {}'.format(process.pid,
+                                    process.cmdline(), fail_path, open_file.fd))
                                 
                                 if process.pid == os.getpid():
                                     # Manually close the relevant file descriptor we have open
@@ -161,26 +162,32 @@ class FileJobStore(AbstractJobStore):
             try:
                 if not os.path.isdir(path):
                     # Remove the given normal file
+                    logger.error('Remove file {}'.format(path))
                     os.remove(path)
                 else:
                     # Remove the given directory
+                    logger.error('Remove directory {}'.format(path))
                     shutil.rmtree(path, False, handle_error)
                 assert(not os.path.exists(path))
-                return
+                break
             except OSError:
                 logger.error('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, delay))
                 time.sleep(delay)
                 delay *= 2
 
-        # Final attempt, pass any Exceptions up to caller.
-        if not os.path.isdir(path):
-            # Remove the given normal file
-            os.remove(path)
-        else:
-            # Remove the given directory
-            shutil.rmtree(path)
+        if os.path.exists(path):
+
+            # Final attempt, pass any Exceptions up to caller.
+            if not os.path.isdir(path):
+                # Remove the given normal file
+                os.remove(path)
+            else:
+                # Remove the given directory
+                shutil.rmtree(path)
             
         assert(not os.path.exists(path))
+        
+        logger.error('Now {} is gone'.format(path))
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
