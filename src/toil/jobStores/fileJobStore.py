@@ -364,6 +364,15 @@ class FileJobStore(AbstractJobStore):
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
+        fd, absPath = self._getTempFile(jobStoreID)
+        relPath = self._getRelativePath(absPath)
+        with open(absPath, 'wb') as f:
+            logger.debug('Write file stream {}'.format(relPath))
+            yield f, relPath
+        os.close(fd)  # Close the os level file descriptor
+        return
+                
+    
         # Record the name of the job/function writing the file in the file name
         try:
             # It ought to be third-to-last on the stack, above us and the context manager stuff
