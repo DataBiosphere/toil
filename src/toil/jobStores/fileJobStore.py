@@ -28,7 +28,6 @@ import stat
 import errno
 import time
 import traceback
-import psutil
 try:
     import cPickle as pickle
 except ImportError:
@@ -103,59 +102,10 @@ class FileJobStore(AbstractJobStore):
         https://github.com/hashdist/hashdist
         """
         
-        # First list all our open files
-        us = psutil.Process()
-        paths_and_fds = []
-        for open_file in us.open_files():
-            paths_and_fds.append((open_file.path, open_file.fd))
-        logger.error('We have {} files open'.format(len(paths_and_fds)))
-        for file_path, file_fd in paths_and_fds:
-            logger.error('We have {} open as FD {}'.format(file_path, file_fd))
-        
-        def handle_error(function, fail_path, excinfo):
-            logger.error('Error in {} on {}'.format(function, fail_path))
-            logger.error('Exception: {}'.format(excinfo))
-            
-            logger.error('We are PID {}'.format(os.getpid()))
-            
-            if function == os.remove:
-                # This is a stuck file
-                
-                # Go hunting for who might have it open.
-                for process in psutil.process_iter():
-                    try:
-                        # Some processes we are not allowed to look at, so we ignore errors
-                        for open_file in process.open_files():
-                            if open_file.path == fail_path:
-                                # This process has this file open
-                                logger.error('Process {} ({}) has {} open as FD {}'.format(process.pid,
-                                    process.cmdline(), fail_path, open_file.fd))
-
-                                if process.pid == os.getpid():
-                                    # Manually close the relevant file descriptor we have open
-                                    # TODO: Work out how we could possibly have an FD open
-                                    logger.error('We have it open. Close FD {}'.format(open_file.fd))
-                                    os.close(open_file.fd)
-                                else:
-                                    # Try killing it
-                                    logger.error('Kill {} to free up file'.format(process.pid))
-                                    os.kill(process.pid, 9)
-                    except psutil.AccessDenied:
-                        pass
-                                
-                            
-            raise OSError()
-        
         delay = 1
         for _ in range(max_retries):
             try:
-                if not os.path.isdir(path):
-                    # Remove the given normal file
-                    os.remove(path)
-                else:
-                    # Remove the given directory
-                    shutil.rmtree(path, False, handle_error)
-                assert(not os.path.exists(path))
+                shutil.rmtree(path)
                 break
             except OSError:
                 logger.error('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, delay))
@@ -163,16 +113,8 @@ class FileJobStore(AbstractJobStore):
                 delay *= 2
 
         if os.path.exists(path):
-
             # Final attempt, pass any Exceptions up to caller.
-            if not os.path.isdir(path):
-                # Remove the given normal file
-                os.remove(path)
-            else:
-                # Remove the given directory
-                shutil.rmtree(path)
-            
-        assert(not os.path.exists(path))
+            shutil.rmtree(path)
         
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
@@ -359,20 +301,10 @@ class FileJobStore(AbstractJobStore):
         absPath = self._getUniqueName(localFilePath, jobStoreID, sourceFunctionName)
         relPath = self._getRelativePath(absPath)
         shutil.copyfile(localFilePath, absPath)
-        logger.debug('Write file {}'.format(self._getRelativePath(relPath)))
         return relPath
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
-        fd, absPath = self._getTempFile(jobStoreID)
-        relPath = self._getRelativePath(absPath)
-        with open(absPath, 'wb') as f:
-            logger.debug('Write file stream {}'.format(relPath))
-            yield f, relPath
-        os.close(fd)  # Close the os level file descriptor
-        return
-                
-    
         # Record the name of the job/function writing the file in the file name
         try:
             # It ought to be third-to-last on the stack, above us and the context manager stuff
@@ -390,7 +322,9 @@ class FileJobStore(AbstractJobStore):
         relPath = self._getRelativePath(absPath)
 
         with open(absPath, 'wb') as f:
-            logger.debug('Write file stream {}'.format(relPath))
+            # Don't yield while holding an open file descriptor to the temp
+            # file. That can result in temp files still being open when we try
+            # to clean ourselves up, somehow, for certain workloads.
             yield f, relPath
 
     def getEmptyFileStoreID(self, jobStoreID=None):
@@ -398,12 +332,10 @@ class FileJobStore(AbstractJobStore):
             return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
-        logger.debug('Update file {} with {}'.format(jobStoreFileID, localFilePath))
         self._checkJobStoreFileID(jobStoreFileID)
         shutil.copyfile(localFilePath, self._getAbsPath(jobStoreFileID))
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
-        logger.debug('Read file {} to {}'.format(jobStoreFileID, localFilePath))
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getAbsPath(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
@@ -455,7 +387,6 @@ class FileJobStore(AbstractJobStore):
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
-        logger.debug('Update file stream {}'.format(jobStoreFileID))
         self._checkJobStoreFileID(jobStoreFileID)
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
@@ -465,7 +396,6 @@ class FileJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
-        logger.debug('Read file stream {}'.format(jobStoreFileID))
         self._checkJobStoreFileID(jobStoreFileID)
         with open(self._getAbsPath(jobStoreFileID), 'rb') as f:
             yield f
