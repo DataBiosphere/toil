@@ -103,7 +103,6 @@ class FileJobStore(AbstractJobStore):
         https://github.com/hashdist/hashdist
         """
         
-        
         # First list all our open files
         us = psutil.Process()
         paths_and_fds = []
@@ -112,11 +111,6 @@ class FileJobStore(AbstractJobStore):
         logger.error('We have {} files open'.format(len(paths_and_fds)))
         for file_path, file_fd in paths_and_fds:
             logger.error('We have {} open as FD {}'.format(file_path, file_fd))
-            
-            with open(file_path, 'r') as sampler:
-                # Show a sample of what is in the file
-                logger.error('Sample data: "{}"\n\n'.format(sampler.read(50)))
-        
         
         def handle_error(function, fail_path, excinfo):
             logger.error('Error in {} on {}'.format(function, fail_path))
@@ -136,7 +130,7 @@ class FileJobStore(AbstractJobStore):
                                 # This process has this file open
                                 logger.error('Process {} ({}) has {} open as FD {}'.format(process.pid,
                                     process.cmdline(), fail_path, open_file.fd))
-                                
+
                                 if process.pid == os.getpid():
                                     # Manually close the relevant file descriptor we have open
                                     # TODO: Work out how we could possibly have an FD open
@@ -150,11 +144,6 @@ class FileJobStore(AbstractJobStore):
                         pass
                                 
                             
-            # See what we have open
-            our_process = psutil.Process()
-            for open_file in our_process.open_files():
-                logger.error('We opened: {}'.format(open_file))
-            
             raise OSError()
         
         delay = 1
@@ -162,11 +151,9 @@ class FileJobStore(AbstractJobStore):
             try:
                 if not os.path.isdir(path):
                     # Remove the given normal file
-                    logger.error('Remove file {}'.format(path))
                     os.remove(path)
                 else:
                     # Remove the given directory
-                    logger.error('Remove directory {}'.format(path))
                     shutil.rmtree(path, False, handle_error)
                 assert(not os.path.exists(path))
                 break
@@ -187,8 +174,6 @@ class FileJobStore(AbstractJobStore):
             
         assert(not os.path.exists(path))
         
-        logger.error('Now {} is gone'.format(path))
-
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
             self.robust_rmtree(self.jobStoreDir)
@@ -358,37 +343,58 @@ class FileJobStore(AbstractJobStore):
         return url.scheme.lower() == 'file'
 
     def writeFile(self, localFilePath, jobStoreID=None):
-
-        # log the name of the function writing the file in (the job creating it)
+        # Record the name of the job/function writing the file in the file name
         try:
-            sourceFunctionName = traceback.extract_stack()[0][3].split("(")[0]
+            # It ought to be third-to-last on the stack, above us and the FileStore. Probably.
+            sourceFunctionName = traceback.extract_stack()[-3][2]
         except:
-            sourceFunctionName = "x"
+            sourceFunctionName = "UNKNOWNJOB"
             # make sure the function name fetched has no spaces or oddities
+        finally:
+            pass
         if re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
             pass
         else:
-            sourceFunctionName = "x"
+            sourceFunctionName = "ODDLYNAMEDJOB"
         absPath = self._getUniqueName(localFilePath, jobStoreID, sourceFunctionName)
+        relPath = self._getRelativePath(absPath)
         shutil.copyfile(localFilePath, absPath)
-        return self._getRelativePath(absPath)
+        logger.debug('Write file {}'.format(self._getRelativePath(relPath)))
+        return relPath
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
-        fd, absPath = self._getTempFile(jobStoreID)
+        # Record the name of the job/function writing the file in the file name
+        try:
+            # It ought to be third-to-last on the stack, above us and the context manager stuff
+            sourceFunctionName = traceback.extract_stack()[-3][2]
+        except:
+            sourceFunctionName = "UNKNOWNJOB"
+            # make sure the function name fetched has no spaces or oddities
+        finally:
+            pass
+        if re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
+            pass
+        else:
+            sourceFunctionName = "ODDLYNAMEDJOB"
+        absPath = self._getUniqueName('stream', jobStoreID, sourceFunctionName)
+        relPath = self._getRelativePath(absPath)
+
         with open(absPath, 'wb') as f:
-            yield f, self._getRelativePath(absPath)
-        os.close(fd)  # Close the os level file descriptor
+            logger.debug('Write file stream {}'.format(relPath))
+            yield f, relPath
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         with self.writeFileStream(jobStoreID) as (fileHandle, jobStoreFileID):
             return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
+        logger.debug('Update file {} with {}'.format(jobStoreFileID, localFilePath))
         self._checkJobStoreFileID(jobStoreFileID)
         shutil.copyfile(localFilePath, self._getAbsPath(jobStoreFileID))
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
+        logger.debug('Read file {} to {}'.format(jobStoreFileID, localFilePath))
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getAbsPath(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
@@ -440,6 +446,7 @@ class FileJobStore(AbstractJobStore):
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
+        logger.debug('Update file stream {}'.format(jobStoreFileID))
         self._checkJobStoreFileID(jobStoreFileID)
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
@@ -449,6 +456,7 @@ class FileJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
+        logger.debug('Read file stream {}'.format(jobStoreFileID))
         self._checkJobStoreFileID(jobStoreFileID)
         with open(self._getAbsPath(jobStoreFileID), 'rb') as f:
             yield f
@@ -617,14 +625,8 @@ class FileJobStore(AbstractJobStore):
         if jobStoreID != None:
             # Make a temporary file within the job's directory
             self._checkJobStoreId(jobStoreID)
-            fd, name = tempfile.mkstemp(suffix=".tmp",
-                                        dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
-            logger.error('Open temp file {} as fd {}'.format(name, fd))
-            traceback.print_stack()
-            return fd, name
+            return tempfile.mkstemp(suffix=".tmp",
+                                dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
         else:
             # Make a temporary file within the temporary file structure
-            fd, name = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self._getTempSharedDir())
-            logger.error('Open temp file {} as fd {}'.format(name, fd))
-            traceback.print_stack()
-            return fd, name
+            return tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self._getTempSharedDir())

@@ -537,7 +537,7 @@ class CachingFileStore(FileStore):
         # If the file is from the scope of local temp dir
         if absLocalFileName.startswith(self.localTempDir):
             # If the job store is of type FileJobStore and the job store and the local temp dir
-            # are on the same file system, then we want to hard link the files istead of copying
+            # are on the same file system, then we want to hard link the files instead of copying
             # barring the case where the file being written was one that was previously read
             # from the file store. In that case, you want to copy to the file store so that
             # the two have distinct nlink counts.
