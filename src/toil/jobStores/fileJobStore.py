@@ -617,8 +617,14 @@ class FileJobStore(AbstractJobStore):
         if jobStoreID != None:
             # Make a temporary file within the job's directory
             self._checkJobStoreId(jobStoreID)
-            return tempfile.mkstemp(suffix=".tmp",
-                                dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
+            fd, name = tempfile.mkstemp(suffix=".tmp",
+                                        dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
+            logger.error('Open temp file {} as fd {}'.format(name, fd))
+            traceback.print_stack()
+            return fd, name
         else:
             # Make a temporary file within the temporary file structure
-            return tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self._getTempSharedDir())
+            fd, name = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self._getTempSharedDir())
+            logger.error('Open temp file {} as fd {}'.format(name, fd))
+            traceback.print_stack()
+            return fd, name
