@@ -96,14 +96,28 @@ class FileJobStore(AbstractJobStore):
         occurs.  If the final attempt fails, the Exception is propagated
         to the caller.
 
-        Borrowed and slightly modified from:
+        Borrowing patterns from:
         https://github.com/hashdist/hashdist
         """
         
         
+        # First list all our open files
+        us = psutil.Process()
+        paths_and_fds = []
+        for open_file in us.open_files():
+            paths_and_fds.append((open_file.path, open_file.fd))
+        logger.error('We have {} files open'.format(len(paths_and_fds)))
+        for path, fd in paths_and_fds:
+            logger.error('We have {} open as FD {}'.format(path, fd))
+            
+            with open(path, 'r') as sampler:
+                # Show a sample of what is in the file
+                logger.error('Sample data: "{}"\n\n'.format(sampler.read(50)))
+        
         
         def handle_error(function, path, excinfo):
-            logger.error('Error removing {}'.format(path))
+            logger.error('Error in {} on {}'.format(function, path))
+            logger.error('Exception: {}'.format(excinfo))
             
             logger.error('We are PID {}'.format(os.getpid()))
             
@@ -119,11 +133,15 @@ class FileJobStore(AbstractJobStore):
                                 # This process has this file open
                                 logger.error('Process {} ({}) has {} open as FD {}'.format(process.pid, process.cmdline(), path, open_file.fd))
                                 
-                                if process.pid != os.getpid():
+                                if process.pid == os.getpid():
+                                    # Manually close the relevant file descriptor we have open
+                                    # TODO: Work out how we could possibly have an FD open
+                                    logger.error('We have it open. Close FD {}'.format(open_file.fd))
+                                    os.close(open_file.fd)
+                                else:
                                     # Try killing it
-                                    #logger.error('Kill {} to free up file'.format(process.pid))
-                                    #os.kill(process.pid, 9)
-                                    pass
+                                    logger.error('Kill {} to free up file'.format(process.pid))
+                                    os.kill(process.pid, 9)
                     except psutil.AccessDenied:
                         pass
                                 
@@ -135,15 +153,20 @@ class FileJobStore(AbstractJobStore):
             
             raise OSError()
         
-        dt = 1
+        delay = 1
         for _ in range(max_retries):
             try:
-                shutil.rmtree(path, False, handle_error)
+                if not os.path.isdir(path):
+                    # Remove the given normal file
+                    os.remove(path)
+                else:
+                    # Remove the given directory
+                    shutil.rmtree(path, False, handle_error)
                 return
             except OSError:
-                logger.error('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, dt))
-                time.sleep(dt)
-                dt *= 2
+                logger.error('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, delay))
+                time.sleep(delay)
+                delay *= 2
 
         # Final attempt, pass any Exceptions up to caller.
         shutil.rmtree(path, False, handle_error)
