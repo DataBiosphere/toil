@@ -53,10 +53,10 @@ def runSetup():
         requests,
         docker,
         dateutil,
-        subprocess32]
+        subprocess32,
+        psutil]
 
     mesos_reqs = [
-        psutil,
         protobuf]
     aws_reqs = [
         boto,

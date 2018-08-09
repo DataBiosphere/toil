@@ -28,6 +28,7 @@ import stat
 import errno
 import time
 import traceback
+import psutil
 try:
     import cPickle as pickle
 except ImportError:
@@ -88,7 +89,7 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchJobStoreException(self.jobStoreDir)
         super(FileJobStore, self).resume()
 
-    def robust_rmtree(self, path, max_retries=7):
+    def robust_rmtree(self, path, max_retries=3):
         """Robustly tries to delete paths.
 
         Retries several times (with increasing delays) if an OSError
@@ -98,18 +99,54 @@ class FileJobStore(AbstractJobStore):
         Borrowed and slightly modified from:
         https://github.com/hashdist/hashdist
         """
+        
+        
+        
+        def handle_error(function, path, excinfo):
+            logger.error('Error removing {}'.format(path))
+            
+            logger.error('We are PID {}'.format(os.getpid()))
+            
+            if function == os.remove:
+                # This is a stuck file
+                
+                # Go hunting for who might have it open.
+                for process in psutil.process_iter():
+                    try:
+                        # Some processes we are not allowed to look at, so we ignore errors
+                        for open_file in process.open_files():
+                            if open_file.path == path:
+                                # This process has this file open
+                                logger.error('Process {} ({}) has {} open as FD {}'.format(process.pid, process.cmdline(), path, open_file.fd))
+                                
+                                if process.pid != os.getpid():
+                                    # Try killing it
+                                    #logger.error('Kill {} to free up file'.format(process.pid))
+                                    #os.kill(process.pid, 9)
+                                    pass
+                    except psutil.AccessDenied:
+                        pass
+                                
+                            
+            # See what we have open
+            our_process = psutil.Process()
+            for open_file in our_process.open_files():
+                logger.error('We opened: {}'.format(open_file))
+            
+            raise OSError()
+        
         dt = 1
         for _ in range(max_retries):
             try:
-                shutil.rmtree(path)
+                shutil.rmtree(path, False, handle_error)
                 return
             except OSError:
-                logger.debug('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, dt))
+                logger.error('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, dt))
                 time.sleep(dt)
                 dt *= 2
 
         # Final attempt, pass any Exceptions up to caller.
-        shutil.rmtree(path)
+        shutil.rmtree(path, False, handle_error)
 
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
