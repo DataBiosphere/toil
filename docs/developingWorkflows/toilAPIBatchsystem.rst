@@ -26,7 +26,7 @@ requirements, and another - for resources requirements (without the `-l` prefix)
     export TOIL_TORQUE_REQS="walltime=1:00:00"
 
 For GridEngine (SGE, UGE), there is an additional environmental variable to define the
-`parallel environment <https://blogs.oracle.com/templedf/entry/configuring_a_new_parallel_environment>`_
+`parallel environment <http://www.softpanorama.org/HPC/Grid_engine/parallel_environment.shtml#Important_details>`_
 for running multicore jobs::
 
     export TOIL_GRIDENGINE_PE='smp'
