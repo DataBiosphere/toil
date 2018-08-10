@@ -284,43 +284,38 @@ class FileJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'file'
 
-    def writeFile(self, localFilePath, jobStoreID=None):
+    def _getUserCodeFunctionName(self):
+        """
+        Get the name of the function 4 levels up the stack (above this
+        function, our caller, and whatever Toil code delegated to the JobStore
+        implementation). Returns a string usable in a filename, and returns a
+        placeholder string if the function name is unsuitable or can't be
+        gotten.
+        """
+        
         # Record the name of the job/function writing the file in the file name
         try:
-            # It ought to be third-to-last on the stack, above us and the FileStore. Probably.
-            sourceFunctionName = traceback.extract_stack()[-3][2]
+            # It ought to be fourth-to-last on the stack, above us, the write
+            # function, and the FileStore or context manager. Probably.
+            sourceFunctionName = traceback.extract_stack()[-4][2]
         except:
             sourceFunctionName = "UNKNOWNJOB"
             # make sure the function name fetched has no spaces or oddities
-        finally:
-            pass
-        if re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
-            pass
-        else:
+        if not re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
             sourceFunctionName = "ODDLYNAMEDJOB"
-        absPath = self._getUniqueName(localFilePath, jobStoreID, sourceFunctionName)
+            
+        return sourceFunctionName
+
+    def writeFile(self, localFilePath, jobStoreID=None):
+        absPath = self._getUniqueName(localFilePath, jobStoreID, self._getUserCodeFunctionName())
         relPath = self._getRelativePath(absPath)
         shutil.copyfile(localFilePath, absPath)
         return relPath
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
-        # Record the name of the job/function writing the file in the file name
-        try:
-            # It ought to be third-to-last on the stack, above us and the context manager stuff
-            sourceFunctionName = traceback.extract_stack()[-3][2]
-        except:
-            sourceFunctionName = "UNKNOWNJOB"
-            # make sure the function name fetched has no spaces or oddities
-        finally:
-            pass
-        if re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
-            pass
-        else:
-            sourceFunctionName = "ODDLYNAMEDJOB"
-        absPath = self._getUniqueName('stream', jobStoreID, sourceFunctionName)
+        absPath = self._getUniqueName('stream', jobStoreID, self._getUserCodeFunctionName())
         relPath = self._getRelativePath(absPath)
-
         with open(absPath, 'wb') as f:
             # Don't yield while holding an open file descriptor to the temp
             # file. That can result in temp files still being open when we try
