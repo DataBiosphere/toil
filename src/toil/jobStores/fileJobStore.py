@@ -70,6 +70,9 @@ class FileJobStore(AbstractJobStore):
         # Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
         self.linkImports = None
+        
+    def __repr__(self):
+        return 'FileJobStore({})'.format(self.jobStoreDir)
 
     def initialize(self, config):
         try:
@@ -88,29 +91,31 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchJobStoreException(self.jobStoreDir)
         super(FileJobStore, self).resume()
 
-    def robust_rmtree(self, path, max_retries=7):
+    def robust_rmtree(self, path, max_retries=3):
         """Robustly tries to delete paths.
 
         Retries several times (with increasing delays) if an OSError
         occurs.  If the final attempt fails, the Exception is propagated
         to the caller.
 
-        Borrowed and slightly modified from:
+        Borrowing patterns from:
         https://github.com/hashdist/hashdist
         """
-        dt = 1
+        
+        delay = 1
         for _ in range(max_retries):
             try:
                 shutil.rmtree(path)
-                return
+                break
             except OSError:
-                logger.debug('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, dt))
-                time.sleep(dt)
-                dt *= 2
+                logger.debug('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, delay))
+                time.sleep(delay)
+                delay *= 2
 
-        # Final attempt, pass any Exceptions up to caller.
-        shutil.rmtree(path)
-
+        if os.path.exists(path):
+            # Final attempt, pass any Exceptions up to caller.
+            shutil.rmtree(path)
+        
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
             self.robust_rmtree(self.jobStoreDir)
@@ -279,28 +284,43 @@ class FileJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'file'
 
-    def writeFile(self, localFilePath, jobStoreID=None):
-
-        # log the name of the function writing the file in (the job creating it)
+    def _getUserCodeFunctionName(self):
+        """
+        Get the name of the function 4 levels up the stack (above this
+        function, our caller, and whatever Toil code delegated to the JobStore
+        implementation). Returns a string usable in a filename, and returns a
+        placeholder string if the function name is unsuitable or can't be
+        gotten.
+        """
+        
+        # Record the name of the job/function writing the file in the file name
         try:
-            sourceFunctionName = traceback.extract_stack()[0][3].split("(")[0]
+            # It ought to be fourth-to-last on the stack, above us, the write
+            # function, and the FileStore or context manager. Probably.
+            sourceFunctionName = traceback.extract_stack()[-4][2]
         except:
-            sourceFunctionName = "x"
+            sourceFunctionName = "UNKNOWNJOB"
             # make sure the function name fetched has no spaces or oddities
-        if re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
-            pass
-        else:
-            sourceFunctionName = "x"
-        absPath = self._getUniqueName(localFilePath, jobStoreID, sourceFunctionName)
+        if not re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
+            sourceFunctionName = "ODDLYNAMEDJOB"
+            
+        return sourceFunctionName
+
+    def writeFile(self, localFilePath, jobStoreID=None):
+        absPath = self._getUniqueName(localFilePath, jobStoreID, self._getUserCodeFunctionName())
+        relPath = self._getRelativePath(absPath)
         shutil.copyfile(localFilePath, absPath)
-        return self._getRelativePath(absPath)
+        return relPath
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
-        fd, absPath = self._getTempFile(jobStoreID)
+        absPath = self._getUniqueName('stream', jobStoreID, self._getUserCodeFunctionName())
+        relPath = self._getRelativePath(absPath)
         with open(absPath, 'wb') as f:
-            yield f, self._getRelativePath(absPath)
-        os.close(fd)  # Close the os level file descriptor
+            # Don't yield while holding an open file descriptor to the temp
+            # file. That can result in temp files still being open when we try
+            # to clean ourselves up, somehow, for certain workloads.
+            yield f, relPath
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         with self.writeFileStream(jobStoreID) as (fileHandle, jobStoreFileID):
