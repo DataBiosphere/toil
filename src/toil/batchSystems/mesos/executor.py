@@ -44,7 +44,7 @@ from toil.resource import Resource
 log = logging.getLogger(__name__)
 
 
-class MesosExecutor(mesos.interface.Executor):
+class MesosExecutor(object):
     """
     Part of Toil's Mesos framework, runs on a Mesos slave. A Toil job is passed to it via the
     task.data field, and launched via call(toil.command).
