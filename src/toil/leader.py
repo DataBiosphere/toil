@@ -25,6 +25,7 @@ from builtins import object
 from builtins import super
 import logging
 import time
+import os
 
 try:
     import cPickle as pickle
@@ -230,6 +231,21 @@ class Leader(object):
 
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
+
+        if self.toilState.totalFailedJobs:
+            # Log the failed jobs.
+            localLog = os.path.join(os.getcwd(), 'failed.log')
+            with open(localLog, 'w') as failLog:
+                failLog.write('Failed Jobs for workflow ')
+                for job in self.toilState.totalFailedJobs:
+                    failLog.write(job.jobStoreID)
+
+            self.jobStore.importFile('file://' + localLog, 'failed.log')
+        else:
+            localLog = os.path.join(os.getcwd(), 'succeeded.log')
+            with open(localLog, 'w') as succeedLog:
+                succeedLog.write('This workflow completed successfully.')
+                self.jobStore.importFile('file://' + localLog, 'succeeded.log')
 
         logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
