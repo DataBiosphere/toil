@@ -39,9 +39,10 @@ from six import iteritems, itervalues
 
 import mesos.interface
 import mesos.native
-from toil.lib.memoize import strict_bool
 from mesos.interface import mesos_pb2
+from pymesos import MesosSchedulerDriver, Scheduler, encode_data
 
+from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchSystemLocalSupport,
@@ -53,7 +54,7 @@ log = logging.getLogger(__name__)
 
 class MesosBatchSystem(BatchSystemLocalSupport,
                        AbstractScalableBatchSystem,
-                       mesos.interface.Scheduler):
+                       Scheduler):
     """
     A Toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos
     tasks over a cluster of slave nodes. A Mesos framework consists of a scheduler and an

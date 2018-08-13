@@ -23,28 +23,21 @@ import signal
 import sys
 import threading
 import logging
-from toil import subprocess
-import traceback
-from time import sleep, time
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
 import psutil
-import mesos.interface
+import traceback
+import time
+from addict import Dict
+from pymesos.interface import MesosExecutorDriver, Executor, decode_data
+
+from toil import subprocess, pickle
 from toil.lib.expando import Expando
-from mesos.interface import mesos_pb2
-import mesos.native
-from struct import pack
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.resource import Resource
 
 log = logging.getLogger(__name__)
 
 
-class MesosExecutor(object):
+class MesosExecutor(Executor):
     """
     Part of Toil's Mesos framework, runs on a Mesos slave. A Toil job is passed to it via the
     task.data field, and launched via call(toil.command).
@@ -129,24 +122,26 @@ class MesosExecutor(object):
                                         workers=len(self.runningTasks))
             driver.sendFrameworkMessage(repr(message))
             # Prevent workers launched together from repeatedly hitting the leader at the same time
-            sleep(random.randint(45, 75))
+            time.sleep(random.randint(45, 75))
 
     def launchTask(self, driver, task):
         """
         Invoked by SchedulerDriver when a Mesos task should be launched by this executor
         """
-
         def runTask():
+
             log.debug("Running task %s", task.task_id.value)
-            sendUpdate(mesos_pb2.TASK_RUNNING)
+            startTime = time.time()
+            sendUpdate(task, 'TASK_RUNNING', wallTime=0)
+
+            # try to unpickle the task
             try:
                 taskData = pickle.loads(task.data)
             except:
                 exc_info = sys.exc_info()
-                log.error('Exception while unpickling task:', exc_info=exc_info)
+                log.error('Exception while unpickling task: ', exc_info=exc_info)
                 exc_type, exc_value, exc_trace = exc_info
-                sendUpdate(mesos_pb2.TASK_FAILED, wallTime=None,
-                           message=''.join(traceback.format_exception_only(exc_type, exc_value)))
+                sendUpdate(task, 'TASK_FAILED', wallTime=0, msg=''.join(traceback.format_exception_only(exc_type, exc_value)))
                 return
 
             # This is where task.data is first invoked. Using this position to setup cleanupInfo
@@ -154,28 +149,32 @@ class MesosExecutor(object):
                 assert self.workerCleanupInfo == taskData.workerCleanupInfo
             else:
                 self.workerCleanupInfo = taskData.workerCleanupInfo
-            startTime = time()
+
+            # try to invoke a run on the unpickled task
             try:
-                popen = runJob(taskData)
-                self.runningTasks[task.task_id.value] = popen.pid
+                process = runJob(taskData)
+                self.runningTasks[task.task_id.value] = process.pid
                 try:
-                    exitStatus = popen.wait()
-                    wallTime = time() - startTime
+                    exitStatus = process.wait()
+                    wallTime = time.time() - startTime
                     if 0 == exitStatus:
-                        sendUpdate(mesos_pb2.TASK_FINISHED, wallTime)
+                        sendUpdate(task, 'TASK_FINISHED', wallTime)
                     elif -9 == exitStatus:
-                        sendUpdate(mesos_pb2.TASK_KILLED, wallTime)
+                        sendUpdate(task, 'TASK_KILLED', wallTime)
                     else:
-                        sendUpdate(mesos_pb2.TASK_FAILED, wallTime, message=str(exitStatus))
+                        sendUpdate(task, 'TASK_FAILED', wallTime, msg=str(exitStatus))
                 finally:
                     del self.runningTasks[task.task_id.value]
             except:
-                wallTime = time() - startTime
+                wallTime = time.time() - startTime
                 exc_info = sys.exc_info()
                 log.error('Exception while running task:', exc_info=exc_info)
                 exc_type, exc_value, exc_trace = exc_info
-                sendUpdate(mesos_pb2.TASK_FAILED, wallTime,
-                           message=''.join(traceback.format_exception_only(exc_type, exc_value)))
+                sendUpdate(task, 'TASK_FAILED', wallTime=wallTime, msg=''.join(traceback.format_exception_only(exc_type, exc_value)))
+
+            wallTime = time.time() - startTime
+            sendUpdate(task, 'TASK_FINISHED', wallTime)
+
 
         def runJob(job):
             """
@@ -191,16 +190,13 @@ class MesosExecutor(object):
                                         preexec_fn=lambda: os.setpgrp(),
                                         shell=True, env=dict(os.environ, **job.environment))
 
-        def sendUpdate(taskState, wallTime=None, message=''):
-            log.debug('Sending task status update ...')
-            status = mesos_pb2.TaskStatus()
-            status.task_id.value = task.task_id.value
-            status.message = message
-            status.state = taskState
-            if wallTime is not None:
-                status.data = pack('d', wallTime)
-            driver.sendStatusUpdate(status)
-            log.debug('... done sending task status update.')
+        def sendUpdate(task, taskState, wallTime=None, msg=''):
+            update = Dict()
+            update.task_id.value = task.task_id.value
+            update.state = taskState
+            update.timestamp = wallTime
+            update.message = msg
+            driver.sendStatusUpdate(update)
 
         thread = threading.Thread(target=runTask)
         thread.start()
@@ -212,11 +208,12 @@ class MesosExecutor(object):
         log.debug("Received message from framework: {}".format(message))
 
 
-def main(executorClass=MesosExecutor):
+def main():
     logging.basicConfig(level=logging.DEBUG)
     log.debug("Starting executor")
-    executor = executorClass()
-    driver = mesos.native.MesosExecutorDriver(executor)
-    exit_value = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
-    assert len(executor.runningTasks) == 0
-    sys.exit(exit_value)
+    driver = MesosExecutorDriver(MesosExecutor(), use_addict=True)
+    driver.run()
+    # TODO: find behavior analogous to the comments below
+    # exit_value = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
+    # assert len(executor.runningTasks) == 0
+    # sys.exit(exit_value)
