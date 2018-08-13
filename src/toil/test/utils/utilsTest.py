@@ -21,7 +21,6 @@ import sys
 import uuid
 import shutil
 import tempfile
-import subprocess
 from subprocess32 import DEVNULL, Popen
 import psutil
 import pytest
@@ -29,8 +28,6 @@ import pytest
 import toil
 import logging
 import toil.test.sort.sort
-from toil.leader import FailedJobsException
-from toil.test.sort import sort
 from toil import subprocess
 from toil import resolveEntryPoint
 from toil.job import Job
@@ -205,8 +202,6 @@ class UtilsTest(ToilTest):
         options.numLines = 50
         options.lineLength = 20  # Ensures that there is enough time to get a running response from before it finshes.
         return options
-
-
 
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
