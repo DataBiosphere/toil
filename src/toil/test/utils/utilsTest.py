@@ -206,10 +206,22 @@ class UtilsTest(ToilTest):
         options.lineLength = 20  # Ensures that there is enough time to get a running response from before it finshes.
         return options
 
+
+
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
-        pass
+        jobstoreName = 'pidStatusTest'
+        jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
 
+        cmd = ['python', '-m', 'sort.sort', 'file:' + jobstoreName, '--clean', 'never']  # Requires working dir toil/src/toil/test
+        wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
+        sleep(2)  # Need to let jobstore be created before checking its contents.
+        self.assertEquals(ToilStatus.getPIDStatus(jobstoreLoc),'RUNNING')
+        wf.wait()
+        self.assertEquals(ToilStatus.getPIDStatus(jobstoreLoc), 'COMPLETED')
+        os.remove(os.path.join(jobstoreLoc,'pid.log'))
+        self.assertEquals(ToilStatus.getPIDStatus(jobstoreLoc), 'QUEUED')
+        shutil.rmtree(jobstoreLoc)
 
     def testGetStatusFailedWorkflow(self):
         """Test that ToilStatus.getStatus() behaves as expected with a workflow that fails."""
@@ -224,7 +236,7 @@ class UtilsTest(ToilTest):
             if type == 'toil':
                 cmd = ['python', '-m', 'sort.sort', 'file:' + jobstoreName, '--clean', 'never', '--badWorker','1']
                 wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
-                sleep(2)  # Need to let jobstore be created before checking its contents with ToilStatus.getStatus()
+                sleep(2)  # Need to let the jobstore be created before checking its contents.
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
                 wf.wait()
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'ERROR')
@@ -254,7 +266,7 @@ class UtilsTest(ToilTest):
             if type == 'toil':
                 cmd = ['python', '-m', 'sort.sort', 'file:' + jobstoreName, '--clean', 'never']
                 wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
-                sleep(2)  # Need to let jobstore be created before checking its contents with ToilStatus.getStatus()
+                sleep(2)  # Need to let jobstore be created before checking its contents.
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
                 wf.wait()
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'COMPLETED')

@@ -25,6 +25,7 @@ from functools import reduce
 # standard library
 import logging
 import sys
+import os
 
 # toil imports
 from toil.lib.bioio import getBasicOptionParser
@@ -158,17 +159,21 @@ class ToilStatus():
 
     @staticmethod
     def getPIDStatus(jobStoreName):
-        """Determine the status of a process with a particular pid."""
+        """
+        Determine the status of a process with a particular pid.
+
+        Checks to see if a process exists or not.
+        """
         jobstore = Toil.resumeJobStore(jobStoreName)
         try:
-            with jobstore.readSharedFileStream('pid.log', 'r') as pidFile:
-                pid = pidFile.read()
+            with jobstore.readSharedFileStream('pid.log') as pidFile:
+                pid = int(pidFile.read())
                 try:
-                    os.kill(pid,0)  # Does not kill process when 0 is passed.
-                except OSError:
-                    return 'RUNNING'
+                    os.kill(pid, 0)  # Does not kill process when 0 is passed.
+                except OSError:  # Process not found, must be done.
+                    return 'COMPLETED'
                 else:
-                    return 'COMPLETE'
+                    return 'RUNNING'
         except NoSuchFileException:
             return 'QUEUED'
 
