@@ -32,7 +32,7 @@ from toil import subprocess
 from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow, needs_cwl
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow, needs_cwl, needs_docker
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.utils.toilStatus import ToilStatus
@@ -219,7 +219,7 @@ class UtilsTest(ToilTest):
         shutil.rmtree(jobstoreLoc)
 
     @needs_cwl
-    @integrative
+    @needs_docker
     def testGetStatusFailedWorkflow(self):
         """Test that ToilStatus.getStatus() behaves as expected with a workflow that fails."""
         workflows = {'toil': None,
@@ -251,7 +251,7 @@ class UtilsTest(ToilTest):
             shutil.rmtree(jobstoreLoc)
 
     @needs_cwl
-    @integrative
+    @needs_docker
     def testGetStatusSuccessfulWorkflow(self):
         """Test that ToilStatus.getStatus() behaves as expected with a workflow that succeeds."""
         workflows = {'toil': None,
