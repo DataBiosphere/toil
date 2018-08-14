@@ -208,7 +208,7 @@ class UtilsTest(ToilTest):
         jobstoreName = 'pidStatusTest'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
 
-        cmd = ['python', '-m', 'toil,test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']  # Requires working dir toil/src/toil/test
+        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']  # Requires working dir toil/src/toil/test
         wf = Popen(cmd)
         sleep(2)  # Need to let jobstore be created before checking its contents.
         self.assertEquals(ToilStatus.getPIDStatus(jobstoreLoc),'RUNNING')
