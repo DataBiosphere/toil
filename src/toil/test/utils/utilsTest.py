@@ -229,7 +229,7 @@ class UtilsTest(ToilTest):
             jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
 
             if type == 'toil':
-                cmd = ['python', '-m', 'sort.sort', 'file:' + jobstoreName, '--clean', 'never', '--badWorker','1']
+                cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never', '--badWorker','1']
                 wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
                 sleep(2)  # Need to let the jobstore be created before checking its contents.
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
@@ -259,7 +259,7 @@ class UtilsTest(ToilTest):
             jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
 
             if type == 'toil':
-                cmd = ['python', '-m', 'sort.sort', 'file:' + jobstoreName, '--clean', 'never']
+                cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']
                 wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
                 sleep(2)  # Need to let jobstore be created before checking its contents.
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
