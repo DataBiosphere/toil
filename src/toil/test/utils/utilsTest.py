@@ -219,6 +219,7 @@ class UtilsTest(ToilTest):
         shutil.rmtree(jobstoreLoc)
 
     @needs_cwl
+    @integrative
     def testGetStatusFailedWorkflow(self):
         """Test that ToilStatus.getStatus() behaves as expected with a workflow that fails."""
         workflows = {'toil': None,
@@ -250,6 +251,7 @@ class UtilsTest(ToilTest):
             shutil.rmtree(jobstoreLoc)
 
     @needs_cwl
+    @integrative
     def testGetStatusSuccessfulWorkflow(self):
         """Test that ToilStatus.getStatus() behaves as expected with a workflow that succeeds."""
         workflows = {'toil': None,
