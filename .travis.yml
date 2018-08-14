@@ -6,3 +6,5 @@ install:
   - make develop extras=[aws,google,cwl] # adding extras to avoid import errors
 script:
   - TOIL_TEST_QUICK=True make test_offline
+services:
+  - docker
