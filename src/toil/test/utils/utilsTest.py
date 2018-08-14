@@ -33,7 +33,7 @@ from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
 from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
-from toil.test.sort.sortTest import makeFileToSort
+from toil.test.sort.sortTest import makeFileToSort, needs_cwl
 from toil.utils.toilStats import getStats, processData
 from toil.utils.toilStatus import ToilStatus
 from toil.common import Toil, Config
@@ -217,7 +217,8 @@ class UtilsTest(ToilTest):
         os.remove(os.path.join(jobstoreLoc,'pid.log'))
         self.assertEquals(ToilStatus.getPIDStatus(jobstoreLoc), 'QUEUED')
         shutil.rmtree(jobstoreLoc)
-
+    
+    @needs_cwl
     def testGetStatusFailedWorkflow(self):
         """Test that ToilStatus.getStatus() behaves as expected with a workflow that fails."""
         workflows = {'toil': None,
@@ -247,7 +248,8 @@ class UtilsTest(ToilTest):
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'ERROR')
 
             shutil.rmtree(jobstoreLoc)
-
+    
+    @needs_cwl
     def testGetStatusSuccessfulWorkflow(self):
         """Test that ToilStatus.getStatus() behaves as expected with a workflow that succeeds."""
         workflows = {'toil': None,
