@@ -21,7 +21,7 @@ import sys
 import uuid
 import shutil
 import tempfile
-from subprocess32 import DEVNULL, Popen
+from subprocess32 import Popen
 import psutil
 import pytest
 
@@ -208,8 +208,8 @@ class UtilsTest(ToilTest):
         jobstoreName = 'pidStatusTest'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
 
-        cmd = ['python', '-m', 'sort.sort', 'file:' + jobstoreName, '--clean', 'never']  # Requires working dir toil/src/toil/test
-        wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
+        cmd = ['python', '-m', 'toil,test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']  # Requires working dir toil/src/toil/test
+        wf = Popen(cmd)
         sleep(2)  # Need to let jobstore be created before checking its contents.
         self.assertEquals(ToilStatus.getPIDStatus(jobstoreLoc),'RUNNING')
         wf.wait()
@@ -230,14 +230,14 @@ class UtilsTest(ToilTest):
 
             if type == 'toil':
                 cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never', '--badWorker','1']
-                wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
+                wf = Popen(cmd)
                 sleep(2)  # Need to let the jobstore be created before checking its contents.
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
                 wf.wait()
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'ERROR')
             else:
                 cmd = ['toil-cwl-runner', '--jobStore', jobstoreLoc, '--clean', 'never', '--badWorker','1', files[0], '--reverse', '--input',files[1]]
-                wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
+                wf = Popen(cmd)
                 wfRun = psutil.Process(pid=wf.pid)
                 sleep(2)
                 wfRun.suspend()
@@ -260,14 +260,14 @@ class UtilsTest(ToilTest):
 
             if type == 'toil':
                 cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']
-                wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
+                wf = Popen(cmd)
                 sleep(2)  # Need to let jobstore be created before checking its contents.
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
                 wf.wait()
                 self.assertEquals(ToilStatus.getStatus(jobstoreLoc), 'COMPLETED')
             else:
                 cmd = ['toil-cwl-runner', '--jobStore', jobstoreLoc, '--clean', 'never', files[0], '--reverse', '--input',files[1]]
-                wf = Popen(cmd, stdout=DEVNULL, stderr=DEVNULL)
+                wf = Popen(cmd)
                 wfRun = psutil.Process(pid=wf.pid)
                 sleep(2)
                 wfRun.suspend()
