@@ -754,7 +754,6 @@ class Toil(object):
         :param toil.job.Job rootJob: The root job of the workflow
         :return: The root job's return value
         """
-
         self._assertContextManagerUsed()
         self._writePIDFile()
         if self.config.restart:
