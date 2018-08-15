@@ -228,7 +228,6 @@ class Leader(object):
             if self.toilMetrics:
                 self.toilMetrics.shutdown()
 
-
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
@@ -239,7 +238,6 @@ class Leader(object):
                 failLog.write('Failed Jobs for workflow ')
                 for job in self.toilState.totalFailedJobs:
                     failLog.write(job.jobStoreID)
-
             self.jobStore.importFile('file://' + localLog, 'failed.log')
         else:
             localLog = os.path.join(os.getcwd(), 'succeeded.log')
