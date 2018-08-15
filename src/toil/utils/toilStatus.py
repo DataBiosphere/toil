@@ -51,14 +51,12 @@ class ToilStatus():
             self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
     def print_dot_chart(self):
-        '''Print a dot output graph representing the workflow.'''
+        """Print a dot output graph representing the workflow."""
         print("digraph toil_graph {")
         print("# This graph was created from job-store: %s" % self.jobStoreName)
 
         # Make job IDs to node names map
-        jobsToNodeNames = dict(
-            zip(map(lambda job: job.jobStoreID, self.jobsToReport),
-                range(len(self.jobsToReport))))
+        jobsToNodeNames = dict(enumerate(map(lambda job: job.jobStoreID, self.jobsToReport)))
 
         # Print the nodes
         for job in set(self.jobsToReport):
@@ -67,7 +65,7 @@ class ToilStatus():
 
         # Print the edges
         for job in set(self.jobsToReport):
-            for jobList, level in zip(job.stack, xrange(len(job.stack))):
+            for level, jobList  in enumerate(job.stack):
                 for childJob in jobList:
                     # Check, b/c successor may be finished / not in the set of jobs
                     if childJob.jobStoreID in jobsToNodeNames:
@@ -77,7 +75,7 @@ class ToilStatus():
         print("}")
 
     def printJobLog(self):
-        '''Takes a list of jobs, finds their log files, and prints them to the terminal.'''
+        """Takes a list of jobs, finds their log files, and prints them to the terminal."""
         for job in self.jobsToReport:
             if job.logJobStoreFileID is not None:
                 msg = "LOG_FILE_OF_JOB:%s LOG: =======>\n" % job
@@ -89,16 +87,16 @@ class ToilStatus():
             print(msg)
 
     def printJobChildren(self):
-        '''Takes a list of jobs, and prints their successors.'''
+        """Takes a list of jobs, and prints their successors."""
         for job in self.jobsToReport:
             children = "CHILDREN_OF_JOB:%s " % job
-            for jobList, level in zip(job.stack, xrange(len(job.stack))):
+            for level, jobList in enumerate(job.stack):
                 for childJob in jobList:
                     children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
             print(children)
 
     def printAggregateJobStats(self, properties, childNumber):
-        '''Prints a job's ID, log file, remaining tries, and other properties.'''
+        """Prints a job's ID, log file, remaining tries, and other properties."""
         for job in self.jobsToReport:
             lf = lambda x: "%s:%s" % (x, str(x in properties))
             print("\t".join(("JOB:%s" % job,
@@ -109,16 +107,21 @@ class ToilStatus():
                              lf("HAS_SERVICES"), lf("IS_SERVICE"))))
 
     def report_on_jobs(self):
-        '''Gathers information about jobs such as its child jobs and status.'''
+        """
+        Gathers information about jobs such as its child jobs and status.
+
+        :returns jobStats: Pairings of a useful category and a list of jobs which fall into it.
+        :rtype dict:
+        """
         hasChildren = []
         readyToRun = []
         zombies = []
         hasLogFile = []
         hasServices = []
         services = []
+        properties = set()
 
         for job in self.jobsToReport:
-            properties = set()
             if job.logJobStoreFileID is not None:
                 hasLogFile.append(job)
 
@@ -126,21 +129,17 @@ class ToilStatus():
             if childNumber > 0:  # Total number of successors > 0
                 hasChildren.append(job)
                 properties.add("HAS_CHILDREN")
-
-            elif job.command != None:
+            elif job.command is not None:
                 # Job has no children and a command to run. Indicates job could be run.
                 readyToRun.append(job)
                 properties.add("READY_TO_RUN")
-
             else:
                 # Job has no successors and no command, so is a zombie job.
                 zombies.append(job)
                 properties.add("IS_ZOMBIE")
-
             if job.services:
                 hasServices.append(job)
                 properties.add("HAS_SERVICES")
-
             if job.startJobStoreID or job.terminateJobStoreID or job.errorJobStoreID:
                 # These attributes are only set in service jobs
                 services.append(job)
@@ -154,7 +153,6 @@ class ToilStatus():
                     'hasLogFile': hasLogFile,
                     'properties': properties,
                     'childNumber': childNumber}
-
         return jobStats
 
     @staticmethod
@@ -207,26 +205,31 @@ class ToilStatus():
 
 
     def fetchRootJob(self):
-        '''
+        """
         Fetches the root job from the jobStore that provides context for all other jobs.
 
         Exactly the same as the jobStore.loadRootJob() function, but with a different
         exit message if the root job is not found (indicating the workflow ran successfully
         to completion and certain stats cannot be gathered from it meaningfully such
         as which jobs are left to run).
-        '''
+
+        :raises JobException: if the root job does not exist.
+        """
         try:
 
             return self.jobStore.loadRootJob()
         except JobException:
-            print('Root job is absent.  The workflow may have completed successfully.', file=sys.stderr)
+            print('Root job is absent. The workflow may have completed successfully.', file=sys.stderr)
             raise
 
     def fetchUserJobs(self, jobs):
-        '''
+        """
         Takes a user input array of jobs, verifies that they are in the jobStore
         and returns the array of jobsToReport.
-        '''
+
+        :param list jobs: A list of jobs to be verified.
+        :returns jobsToReport: A list of jobs which are verified to be in the jobStore.
+        """
         jobsToReport = []
         for jobID in jobs:
             try:
@@ -237,7 +240,14 @@ class ToilStatus():
         return jobsToReport
 
     def traverseJobGraph(self, rootJob, jobsToReport=None, foundJobStoreIDs=None):
-        '''Find all current jobs in the jobStore and return them as an Array.'''
+        """
+        Find all current jobs in the jobStore and return them as an Array.
+
+        :param jobNode rootJob: The root job of the workflow.
+        :param list jobsToReport: A list of jobNodes to be added to and returned.
+        :param set foundJobStoreIDs: A set of jobStoreIDs used to keep track of jobStoreIDs encountered in traversal.
+        :returns jobsToReport: The list of jobs currently in the job graph.
+        """
         if jobsToReport is None:
             jobsToReport = []
 
@@ -252,17 +262,18 @@ class ToilStatus():
         # Traverse jobs in stack
         for jobs in rootJob.stack:
             for successorJobStoreID in [x.jobStoreID for x in jobs]:
-                if (successorJobStoreID not in foundJobStoreIDs and self.jobStore.exists(
-                        successorJobStoreID)):
+                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.exists(successorJobStoreID):
                     self.traverseJobGraph(self.jobStore.load(successorJobStoreID), jobsToReport, foundJobStoreIDs)
 
         # Traverse service jobs
         for jobs in rootJob.services:
             for serviceJobStoreID in [x.jobStoreID for x in jobs]:
                 if self.jobStore.exists(serviceJobStoreID):
-                    assert serviceJobStoreID not in foundJobStoreIDs
+                    if serviceJobStoreID in foundJobStoreIDs:
+                        raise RuntimeError('Service job was unexpectedly found while traversing ')
                     foundJobStoreIDs.add(serviceJobStoreID)
                     jobsToReport.append(self.jobStore.load(serviceJobStoreID))
+
         return jobsToReport
 
 
