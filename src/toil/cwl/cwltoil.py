@@ -457,7 +457,7 @@ def _makeNestedTempDir(top,seed,levels=2):
         tempDir = os.path.join(tempDir, validDirs[i])
         if not os.path.exists(tempDir):
             try:
-                os.mkdir(tempDir)
+                os.makedirs(tempDir)
             except os.error:
                 if not os.path.exists(tempDir): # In the case that a collision occurs and
                     # it is created while we wait then we ignore
