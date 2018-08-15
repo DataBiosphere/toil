@@ -12,9 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Tool for reporting on job status.
-"""
-
 # python 2/3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
@@ -38,8 +35,8 @@ from toil.version import version
 logger = logging.getLogger(__name__)
 
 class ToilStatus():
-
-    def __init__(self, jobStoreName, specifiedJobs=None):
+    """Tool for reporting on job status."""
+    def __init__(self, jobStoreName, specifiedJobs=[]):
         self.jobStoreName = jobStoreName
         self.jobStore = Toil.resumeJobStore(jobStoreName)
 
@@ -163,6 +160,9 @@ class ToilStatus():
         Determine the status of a process with a particular pid.
 
         Checks to see if a process exists or not.
+
+        :return: A string indicating the status of the PID of the workflow as stored in the jobstore.
+        :rtype: str
         """
         jobstore = Toil.resumeJobStore(jobStoreName)
         try:
@@ -175,7 +175,8 @@ class ToilStatus():
                 else:
                     return 'RUNNING'
         except NoSuchFileException:
-            return 'QUEUED'
+            pass
+        return 'QUEUED'
 
     @staticmethod
     def getStatus(jobStoreName):
@@ -186,9 +187,9 @@ class ToilStatus():
         with failed jobs, 'failed.log' is created, otherwise 'succeeded.log' is written. If neither of these exist,
         the leader is still running jobs.
 
-        :returns status: A string indicating the status of the workflow. ['COMPLETED','RUNNING','ERROR']
+        :return: A string indicating the status of the workflow. ['COMPLETED','RUNNING','ERROR']
+        :rtype: str
         """
-
         jobstore = Toil.resumeJobStore(jobStoreName)
         try:
             with jobstore.readSharedFileStream('succeeded.log') as successful:
@@ -199,7 +200,6 @@ class ToilStatus():
                     return 'ERROR'
             except NoSuchFileException:
                 pass
-
         return 'RUNNING'
 
 
