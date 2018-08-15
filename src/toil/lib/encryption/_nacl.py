@@ -26,20 +26,20 @@ def encrypt(message, keyPath):
 
     :param message: The message to be encrypted.
     :param keyPath: A path to a file containing a 256-bit key (and nothing else).
-    :type message: str
+    :type message: bytes
     :type keyPath: str
-    :rtype: str
+    :rtype: bytes
 
     A constant overhead is added to every encrypted message (for the nonce and MAC).
     >>> import tempfile
     >>> k = tempfile.mktemp()
-    >>> with open(k, 'w') as f:
-    ...     f.write(nacl.utils.random(SecretBox.KEY_SIZE))
-    >>> message = 'test'
+    >>> with open(k, 'wb') as f:
+    ...     _ = f.write(nacl.utils.random(SecretBox.KEY_SIZE))
+    >>> message = 'test'.encode('utf-8')
     >>> len(encrypt(message, k)) == overhead + len(message)
     True
     """
-    with open(keyPath) as f:
+    with open(keyPath, 'rb') as f:
         key = f.read()
     if len(key) != SecretBox.KEY_SIZE:
         raise ValueError("Key is %d bytes, but must be exactly %d bytes" % (len(key),
@@ -61,26 +61,27 @@ def decrypt(ciphertext, keyPath):
 
     :param ciphertext: The encrypted message (as a string).
     :param keyPath: A path to a file containing a 256-bit key (and nothing else).
+    :type ciphertext: bytes
     :type keyPath: str
-    :rtype: str
+    :rtype: bytes
 
     Raises an error if ciphertext was modified
     >>> import tempfile
     >>> k = tempfile.mktemp()
-    >>> with open(k, 'w') as f:
-    ...     f.write(nacl.utils.random(SecretBox.KEY_SIZE))
-    >>> ciphertext = encrypt("testMessage", k)
-    >>> ciphertext = chr(ord(ciphertext[0]) ^ 1) + ciphertext[1:]
-    >>> decrypt(ciphertext, k)
+    >>> with open(k, 'wb') as f:
+    ...     _ = f.write(nacl.utils.random(SecretBox.KEY_SIZE))
+    >>> ciphertext = encrypt("testMessage".encode('utf-8'), k)
+    >>> ciphertext = b'5' + ciphertext[1:]
+    >>> decrypt(ciphertext, k) # doctest: +IGNORE_EXCEPTION_DETAIL
     Traceback (most recent call last):
     ...
     CryptoError: Decryption failed. Ciphertext failed verification
 
     Otherwise works correctly
-    >>> decrypt(encrypt("testMessage", k), k)
-    'testMessage'
+    >>> decrypt(encrypt("testMessage".encode('utf-8'), k), k).decode('utf-8') # doctest: +ALLOW_UNICODE
+    u'testMessage'
     """
-    with open(keyPath) as f:
+    with open(keyPath, 'rb') as f:
         key = f.read()
     if len(key) != SecretBox.KEY_SIZE:
         raise ValueError("Key is %d bytes, but must be exactly %d bytes" % (len(key),

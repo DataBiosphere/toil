@@ -60,6 +60,6 @@ def main():
 
     # Run the job locally
     jobID = options.jobID[0]
-    logger.info("Going to run the following job locally: %s", jobID)
+    logger.debug("Going to run the following job locally: %s", jobID)
     workerScript(jobStore, config, jobID, jobID, redirectOutputToLogFile=False)
-    logger.info("Ran the following job locally: %s", jobID)
+    logger.debug("Ran the following job locally: %s", jobID)

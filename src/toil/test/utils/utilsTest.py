@@ -95,7 +95,7 @@ class UtilsTest(ToilTest):
         try:
             # --provisioner flag should default to aws, so we're not explicitly
             # specifying that here
-            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro',
+            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro', '--zone=us-west-2a',
                     '--keyPairName=' + keyName, clusterName])
         finally:
             system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
@@ -109,12 +109,12 @@ class UtilsTest(ToilTest):
             # launch master with same name
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
                     '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
-                    '--provisioner=aws', '--logLevel=DEBUG'])
+                    '--provisioner=aws', '--zone=us-west-2a','--logLevel=DEBUG'])
 
             cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
             leader = cluster.getLeader()
             # test leader tags
-            for key in tags.keys():
+            for key in list(tags.keys()):
                 self.assertEqual(tags[key], leader.tags.get(key))
 
             # Test strict host key checking
@@ -145,7 +145,7 @@ class UtilsTest(ToilTest):
                            '; cat'
                            ]
             for test in testStrings:
-                logger.info('Testing SSH with special string: %s', test)
+                logger.debug('Testing SSH with special string: %s', test)
                 compareTo = "import sys; assert sys.argv[1]==%r" % test
                 leader.sshAppliance('python', '-', test, input=compareTo)
 
@@ -312,7 +312,7 @@ def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of
     # Python encoding issues. To work around this we print in a separate Python process. See
     # http://stackoverflow.com/questions/492483/setting-the-correct-encoding-when-piping-stdout-in-python
-    subprocess.check_call([sys.executable, '-c', "print '\\xc3\\xbc'"])
+    subprocess.check_call([sys.executable, '-c', "print('\\xc3\\xbc')"])
 
 class RunTwoJobsPerWorker(Job):
     """

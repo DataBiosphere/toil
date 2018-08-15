@@ -211,7 +211,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._deleteIAMProfiles(instances=instancesToTerminate)
             self._terminateInstances(instances=instancesToTerminate)
         if len(instances) == len(instancesToTerminate):
-            logger.info('Deleting security group...')
+            logger.debug('Deleting security group...')
             removed = False
             for attempt in retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
@@ -226,7 +226,7 @@ class AWSProvisioner(AbstractProvisioner):
                                 else:
                                     raise
             if removed:
-                logger.info('... Succesfully deleted security group')
+                logger.debug('... Succesfully deleted security group')
         else:
             assert len(instances) > len(instancesToTerminate)
             # the security group can't be deleted until all nodes are terminated
@@ -269,11 +269,11 @@ class AWSProvisioner(AbstractProvisioner):
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
                 # every request in this method
                 if not preemptable:
-                    logger.info('Launching %s non-preemptable nodes', numNodes)
+                    logger.debug('Launching %s non-preemptable nodes', numNodes)
                     instancesLaunched = create_ondemand_instances(self._ctx.ec2, image_id=self._discoverAMI(),
                                                                   spec=kwargs, num_instances=numNodes)
                 else:
-                    logger.info('Launching %s preemptable nodes', numNodes)
+                    logger.debug('Launching %s preemptable nodes', numNodes)
                     kwargs['placement'] = getSpotZone(spotBid, instanceType.name, self._ctx)
                     # force generator to evaluate
                     instancesLaunched = list(create_spot_instances(ec2=self._ctx.ec2,
@@ -300,7 +300,7 @@ class AWSProvisioner(AbstractProvisioner):
                             tags=i.tags)
                 node.waitForNode('toil_worker')
                 node.coreRsync([self._sseKey, ':' + self._sseKey], applianceName='toil_worker')
-        logger.info('Launched %s new instance(s)', numNodes)
+        logger.debug('Launched %s new instance(s)', numNodes)
         return len(instancesLaunched)
 
     def getProvisionedWorkers(self, nodeType, preemptable):
@@ -370,9 +370,9 @@ class AWSProvisioner(AbstractProvisioner):
                           name=leader.id, launchTime=leader.launch_time, nodeType=None,
                           preemptable=False, tags=leader.tags)
         if wait:
-            logger.info("Waiting for toil_leader to enter 'running' state...")
+            logger.debug("Waiting for toil_leader to enter 'running' state...")
             wait_instances_running(self._ctx.ec2, [leader])
-            logger.info('... toil_leader is running')
+            logger.debug('... toil_leader is running')
             self._waitForIP(leader)
             leaderNode.waitForNode('toil_leader')
 
@@ -396,12 +396,12 @@ class AWSProvisioner(AbstractProvisioner):
 
         :type instance: boto.ec2.instance.Instance
         """
-        logger.info('Waiting for ip...')
+        logger.debug('Waiting for ip...')
         while True:
             time.sleep(a_short_time)
             instance.update()
             if instance.ip_address or instance.public_dns_name:
-                logger.info('...got ip')
+                logger.debug('...got ip')
                 break
 
     def _terminateInstances(self, instances):
@@ -549,7 +549,7 @@ class AWSProvisioner(AbstractProvisioner):
                     web.authorize(ip_protocol='udp', from_port=0, to_port=65535, src_group=web)
         out = []
         for sg in self._ctx.ec2.get_all_security_groups():
-            if sg.name == self.clusterName and vpcId is None or sg.vpc_id == vpcId:
+            if sg.name == self.clusterName and (vpcId is None or sg.vpc_id == vpcId):
                 out.append(sg)
         return out
 

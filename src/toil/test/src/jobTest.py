@@ -44,18 +44,6 @@ class JobTest(ToilTest):
         super(JobTest, cls).setUpClass()
         logging.basicConfig(level=logging.DEBUG)
 
-
-    def testResourceRequirements(self):
-        """
-        Runs a trivial job that ensures that default and user specified resource
-        requirements are actually used.
-        """
-        options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
-        options.clean = 'always'
-        options.logLevel = 'debug'
-        with Toil(options) as toil:
-            toil.start(Job.wrapJobFn(checkRequirements, memory='1000M'))
-
     @slow
     def testStatic(self):
         """
@@ -323,18 +311,6 @@ class JobTest(ToilTest):
 
         self.runNewCheckpointIsLeafVertexTest(createWorkflow)
 
-    def testTempDir(self):
-        """
-        test that job.tempDir works as expected and make use of job.log for logging
-        """
-        message = "I love rachael price"
-
-        options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        with Toil(options) as workflow:
-            j = sillyTestJob(message)
-            j.addChildJobFn(seriousTestJob, message)
-            workflow.start(j)
-
     def runNewCheckpointIsLeafVertexTest(self, createWorkflowFn):
         """
         Test verification that a checkpoint job is a leaf vertex using both
@@ -347,22 +323,22 @@ class JobTest(ToilTest):
 
         """
 
-        logger.info('Test checkpoint job that is a leaf vertex')
+        logger.debug('Test checkpoint job that is a leaf vertex')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      expectedException=None)
 
-        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a service')
+        logger.debug('Test checkpoint job that is not a leaf vertex due to the presence of a service')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobService=TrivialService("LeafTestService"),
                                      expectedException=JobGraphDeadlockException)
 
-        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a child job')
+        logger.debug('Test checkpoint job that is not a leaf vertex due to the presence of a child job')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobChild=Job.wrapJobFn(
                                          simpleJobFn, "LeafTestChild"),
                                      expectedException=JobGraphDeadlockException)
 
-        logger.info('Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job')
+        logger.debug('Test checkpoint job that is not a leaf vertex due to the presence of a follow-on job')
         self.runCheckpointVertexTest(*createWorkflowFn(),
                                      checkpointJobFollowOn=Job.wrapJobFn(
                                          simpleJobFn,
@@ -400,7 +376,7 @@ class JobTest(ToilTest):
                 Job.Runner.startToil(workflowRootJob, options)
                 self.fail("The expected exception was not thrown")
             except expectedException as ex:
-                logger.info("The expected exception was thrown: %s", repr(ex))
+                logger.debug("The expected exception was thrown: %s", repr(ex))
 
     @slow
     def testEvaluatingRandomDAG(self):
@@ -650,8 +626,9 @@ def simpleJobFn(job, value):
 
 def fn1Test(string, outputFile):
     """
-    Function appends string to output file, then returns the next ascii character of the first
-    character in the string, e.g. if string is "AA" returns "B".
+    Function appends the next character after the last character in the given
+    string to the string, writes the string to a file, and returns it. For
+    example, if string is "AB", we will write and return "ABC".
     """
 
     rV = string + chr(ord(string[-1]) + 1)
@@ -702,54 +679,10 @@ def diamond(job):
 
 
 def child(job):
-    pass
-
-
-class sillyTestJob(Job):
-    """
-    all this job does is write a message to a tempFile
-    in the tempDir (which is deleted)
-    """
-    def __init__(self, message):
-        Job.__init__(self)
-        self.message = message
-
-    @staticmethod
-    def sillify(message):
-        """
-        Turns "this serious help message" into "shis serious selp sessage"
-        """
-        return ' '.join(['s' + word if word[0] in 'aeiou' else 's' + word[1:] for word in message.split()])
-
-    def run(self, fileStore):
-        file1 = self.tempDir + 'sillyFile.txt'
-        self.log('first filename is {}'.format(file1))
-        file2 = self.tempDir + 'sillyFile.txt'
-        self.log('second filename is {}'.format(file1))
-        # make sure we get the same thing every time
-        assert file1 == file2
-
-        # write to the tempDir to be sure that everything works
-        with open(file1, 'w') as fd:
-            fd.write(self.sillify(self.message))
-
-
-def seriousTestJob(job, message):
-    # testing job.temDir for functionJobs
-    with open(job.tempDir + 'seriousFile.txt', 'w') as fd:
-        fd.write("The unadulterated message is:")
-        fd.write(message)
-    # and logging
-    job.log("message has been written")
-
-
-def checkRequirements(job):
-    # insure default resource requirements are being set correctly
     assert job.cores is not None
     assert job.disk is not None
-    assert job.preemptable is not None
-    # insure user specified resource requirements are being set correctly
     assert job.memory is not None
+    assert job.preemptable is not None
 
 
 def errorChild(job):

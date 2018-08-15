@@ -37,7 +37,6 @@ logger = logging.getLogger(__name__)
 class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
     class Worker(AbstractGridEngineBatchSystem.Worker):
-
         """
         Grid Engine-specific AbstractGridEngineWorker methods
         """
@@ -103,12 +102,19 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                                          for k, v in self.boss.environment.items()))
 
             reqline = list()
+            sgeArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
             if mem is not None:
                 memStr = str(old_div(mem, 1024)) + 'K'
-                reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
+                if not self.boss.config.manualMemArgs:
+                    # for UGE instead of SGE; see #2309
+                    reqline += ['vf=' + memStr, 'h_vmem=' + memStr]
+                elif self.boss.config.manualMemArgs and not sgeArgs:
+                    raise ValueError("--manualMemArgs set to True, but TOIL_GRIDGENGINE_ARGS is not set."
+                                     "Please set TOIL_GRIDGENGINE_ARGS to specify memory allocation for "
+                                     "your system.  Default adds the arguments: vf=<mem> h_vmem=<mem> "
+                                     "to qsub.")
             if len(reqline) > 0:
                 qsubline.extend(['-hard', '-l', ','.join(reqline)])
-            sgeArgs = os.getenv('TOIL_GRIDENGINE_ARGS')
             if sgeArgs:
                 sgeArgs = sgeArgs.split()
                 for arg in sgeArgs:
@@ -131,7 +137,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
     @classmethod
     def obtainSystemConstants(cls):
         def byteStrip(s):
-            return s.encode().strip()
+            return s.encode('utf-8').strip()
         lines = [_f for _f in map(byteStrip, subprocess.check_output(["qhost"]).split('\n')) if _f]
         line = lines[0]
         items = line.strip().split()

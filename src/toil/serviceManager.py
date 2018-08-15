@@ -153,14 +153,14 @@ class ServiceManager( object ):
         Cleanly terminate worker threads starting and killing services. Will block
         until all services are started and blocked.
         """
-        logger.info('Waiting for service manager thread to finish ...')
+        logger.debug('Waiting for service manager thread to finish ...')
         startTime = time.time()
         self._terminate.set()
         self._serviceStarter.join()
         # Kill any services still running to avoid deadlock
         for services in list(self.toilState.servicesIssued.values()):
             self.killServices(services, error=True)
-        logger.info('... finished shutting down the service manager. Took %s seconds', time.time() - startTime)
+        logger.debug('... finished shutting down the service manager. Took %s seconds', time.time() - startTime)
 
     @staticmethod
     def _startServices(jobGraphsWithServicesToStart,

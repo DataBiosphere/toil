@@ -49,7 +49,11 @@ class StatsAndLogging( object ):
     def logWithFormatting(cls, jobStoreID, jobLogs, method=logger.debug, message=None):
         if message is not None:
             method(message)
+        if isinstance(jobStoreID, bytes):
+            jobStoreID = jobStoreID.decode('utf-8')
         for line in jobLogs:
+            if isinstance(line, bytes):
+                line = line.decode('utf-8')
             method('%s    %s', jobStoreID, line.rstrip('\n'))
 
     @classmethod
@@ -138,7 +142,7 @@ class StatsAndLogging( object ):
 
         # Finish the stats file
         text = json.dumps(dict(total_time=str(time.time() - startTime),
-                               total_clock=str(getTotalCpuTime() - startClock)))
+                               total_clock=str(getTotalCpuTime() - startClock)), ensure_ascii=True)
         jobStore.writeStatsAndLogging(text)
 
     def check(self):
@@ -153,9 +157,9 @@ class StatsAndLogging( object ):
         """
         Finish up the stats/logging aggregation thread
         """
-        logger.info('Waiting for stats and logging collator thread to finish ...')
+        logger.debug('Waiting for stats and logging collator thread to finish ...')
         startTime = time.time()
         self._stop.set()
         self._worker.join()
-        logger.info('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
+        logger.debug('... finished collating stats and logs. Took %s seconds', time.time() - startTime)
         # in addition to cleaning on exceptions, onError should clean if there are any failed jobs

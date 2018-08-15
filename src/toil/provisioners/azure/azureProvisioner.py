@@ -11,7 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import ConfigParser
+from past.builtins import map
+try:
+    import ConfigParser
+except ImportError:
+    import configparser as ConfigParser
 import logging
 import os.path
 import tempfile
@@ -74,7 +78,6 @@ class AzureProvisioner(AnsibleDriver):
         credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
         self._azureComputeClient = ComputeManagementClient(credentials, subscription)
         self._azureNetworkClient = NetworkManagementClient(credentials, subscription)
-
         self._onLeader = False
         if not clusterName:
             # If no clusterName, Toil must be running on the leader.
@@ -197,7 +200,7 @@ class AzureProvisioner(AnsibleDriver):
                 logger.debug("Leader appliance failed to start, retrying. (Error %s)" % e)
 
 
-        logger.info('Launched leader')
+        logger.debug('Launched leader')
 
     def _checkIfClusterExists(self):
         """

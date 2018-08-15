@@ -43,7 +43,7 @@ class AnsibleDriver(AbstractProvisioner):
         command.append(" ".join(["=".join(i) for i in ansibleArgs.items()]))  # Arguments being passed to playbook
         command.append(playbook)
 
-        logger.info("Executing Ansible call `%s`", " ".join(command))
+        logger.debug("Executing Ansible call `%s`", " ".join(command))
         p = subprocess.Popen(command)
         if wait:
             p.communicate()

@@ -1,4 +1,5 @@
 from __future__ import absolute_import, print_function
+from past.builtins import map
 from toil.version import version
 import pkg_resources
 import os

@@ -1,5 +1,6 @@
 # coding=utf-8
-import hashlib
+from six import iteritems
+from past.builtins import map
 from contextlib import contextmanager
 import json
 import os
@@ -49,8 +50,9 @@ class Context(object):
         :param namespace: The prefix for names of EC2 resources. The namespace is string starting
         in '/' followed by zero or more components, separated by '/'. Components are non-empty
         strings consisting only of alphanumeric characters, '.', '-' or '_' and that don't start
-        with '_'. The namespace argument will be encoded as ASCII. Unicode strings that can't be
-        encoded as ASCII will be rejected.
+        with '_'. The namespace argument is restricted to ASCII and will be converted to a
+        non-unicode string if available. Unicode strings that can't be encoded as ASCII will be
+        rejected.
 
         A note about our namespaces vs IAM's resource paths. IAM paths don't provide namespace
         isolation. In other words, it is not possible to have two users of the same name in two
@@ -106,13 +108,13 @@ class Context(object):
         ....
         ValueError: Invalid namespace '/_foo/'
 
-        >>> Context('us-west-1b', namespace=u'/foo/').namespace
+        >>> Context('us-west-1b', namespace=u'/foo/').namespace # doctest: +ALLOW_UNICODE
         '/foo/'
 
-        >>> Context('us-west-1b', namespace=u'/föo/').namespace
+        >>> Context('us-west-1b', namespace=u'/föo/').namespace # doctest: +ELLIPSIS
         Traceback (most recent call last):
         ....
-        ValueError: 'ascii' codec can't encode characters in position 2-3: ordinal not in range(128)
+        ValueError: 'ascii' codec can't encode ...: ordinal not in range(128)
 
         >>> import string
         >>> component = string.ascii_letters + string.digits + '-_.'
@@ -138,11 +140,13 @@ class Context(object):
         if namespace is None:
             raise ValueError('Need namespace')
         try:
-            namespace = namespace.encode('ascii')
+            # Encode the namespace as ASCII, so we know it is representable in ASCII.
+            # But keep using it as text.
+            namespace.encode('ascii')
         except UnicodeEncodeError as e:
             raise ValueError(e)
 
-        namespace = self.resolve_me(namespace)
+        namespace = self.resolve_me(str(namespace))
 
         if not re.match(self.namespace_re, namespace):
             raise ValueError("Invalid namespace '%s'" % namespace)
@@ -263,13 +267,13 @@ class Context(object):
         '/'
         >>> ctx.absolute_name('/')
         '/'
-        >>> ctx.absolute_name('_bar')
+        >>> ctx.absolute_name('_bar') # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
-        ....
+        ...
         InvalidPathError: Invalid path '/_bar'
-        >>> ctx.absolute_name('/_bar')
+        >>> ctx.absolute_name('/_bar') # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
-        ....
+        ...
         InvalidPathError: Invalid path '/_bar'
 
         >>> ctx = Context( 'us-west-1b', namespace='/foo/' )
@@ -285,13 +289,13 @@ class Context(object):
         '/foo/'
         >>> ctx.absolute_name('/')
         '/'
-        >>> ctx.absolute_name('_bar')
+        >>> ctx.absolute_name('_bar') # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
-        ....
+        ...
         InvalidPathError: Invalid path '/foo/_bar'
-        >>> ctx.absolute_name('/_bar')
+        >>> ctx.absolute_name('/_bar') # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
-        ....
+        ...
         InvalidPathError: Invalid path '/_bar'
         """
         if self.is_absolute_name(name):
@@ -324,17 +328,17 @@ class Context(object):
         'foo'
 
         Illegal paths that would introduce ambiguity need to raise an exception
-        >>> ctx.to_aws_name('/_')
-        Traceback (most recent call last):
-        ....
+        >>> ctx.to_aws_name('/_') # doctest: +IGNORE_EXCEPTION_DETAIL
+        Traceback (most recent call last): 
+        ...
         InvalidPathError: Invalid path '/_'
-        >>> ctx.to_aws_name('/_/')
+        >>> ctx.to_aws_name('/_/') # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
-        ....
+        ...
         InvalidPathError: Invalid path '/_/'
-        >>> ctx.from_aws_name('___')
-        Traceback (most recent call last):
-        ....
+        >>> ctx.from_aws_name('___') # doctest: +IGNORE_EXCEPTION_DETAIL
+        Traceback (most recent call last): 
+        ...
         InvalidPathError: Invalid path '/_/'
 
         >>> ctx.to_aws_name( 'foo_bar')
@@ -560,7 +564,7 @@ class Context(object):
         keypairs = dict((keypair.name, keypair) for keypair in self.ec2.get_all_key_pairs())
         for glob in globs:
             i = len(result)
-            for name, keypair in keypairs.iteritems():
+            for name, keypair in iteritems(keypairs):
                 if fnmatch.fnmatch(name, glob):
                     result.append(keypair)
 
@@ -693,11 +697,11 @@ class Context(object):
                                 list_policies, delete_policy, get_policy, put_policy):
         # Delete superfluous policies
         policy_names = set(list_policies(entity_name).policy_names)
-        for policy_name in policy_names.difference(set(policies.keys())):
+        for policy_name in policy_names.difference(set(list(policies.keys()))):
             delete_policy(entity_name, policy_name)
 
         # Create expected policies
-        for policy_name, policy in policies.iteritems():
+        for policy_name, policy in iteritems(policies):
             current_policy = None
             try:
                 current_policy = json.loads(urllib.unquote(

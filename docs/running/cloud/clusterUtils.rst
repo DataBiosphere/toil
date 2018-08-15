@@ -10,21 +10,21 @@ are used for :ref:`runningAWS` and are comprised of ``toil launch-cluster``, ``t
 
 Cluster commands specific to ``toil`` are:
 
-    ``status`` - Reports runtime and resource usage for all jobs in a specified jobstore (workflow must have originally been run using the --stats option).
+    ``status`` --- Reports runtime and resource usage for all jobs in a specified jobstore (workflow must have originally been run using the -\\-stats option).
 
-    ``stats`` - Inspects a job store to see which jobs have failed, run successfully, etc.
+    ``stats`` --- Inspects a job store to see which jobs have failed, run successfully, etc.
 
-    ``destroy-cluster`` - For autoscaling.  Terminates the specified cluster and associated resources.
+    ``destroy-cluster`` --- For autoscaling.  Terminates the specified cluster and associated resources.
 
-    ``launch-cluster`` - For autoscaling.  This is used to launch a toil leader instance with the specified provisioner.
+    ``launch-cluster`` --- For autoscaling.  This is used to launch a toil leader instance with the specified provisioner.
 
-    ``rsync-cluster`` - For autoscaling.  Used to transfer files to a cluster launched with ``toil launch-cluster``.
+    ``rsync-cluster`` --- For autoscaling.  Used to transfer files to a cluster launched with ``toil launch-cluster``.
 
-    ``ssh-cluster`` - SSHs into the toil appliance container running on the leader of the cluster.
+    ``ssh-cluster`` --- SSHs into the toil appliance container running on the leader of the cluster.
 
-    ``clean`` - Delete the job store used by a previous Toil workflow invocation.
+    ``clean`` --- Delete the job store used by a previous Toil workflow invocation.
 
-    ``kill`` - Kills any running jobs in a rogue toil.
+    ``kill`` --- Kills any running jobs in a rogue toil.
 
 For information on a specific utility run::
 
@@ -97,8 +97,8 @@ Where ``discoverfiles.py`` is the following:
         main()
 
 Notice the ``displayName`` key, which can rename a job, giving it an alias when it is finally displayed in stats.
-Running this workflow file should record three job names then: ``sysFiles`` (job1), ``userFiles`` (job2), and ``discoverFiles`` (job3).
-To see the runtime and resources used for each job when it was run, type::
+Running this workflow file should record three job names: ``sysFiles`` (job1), ``userFiles`` (job2), and ``discoverFiles`` (job3).
+To see the runtime and resources used for each job when it was run, type ::
 
     toil stats file:my-jobstore
 
@@ -133,7 +133,7 @@ This should output the following:
             n |      min    med*     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total |      min     med     ave     max   total
             1 |     0.07    0.07    0.07    0.07    0.07 |     0.07    0.07    0.07    0.07    0.07 |     0.00    0.00    0.00    0.00    0.00 |      76K     76K     76K     76K     76K
 
-Once we're done, we can clean up the job store by running:
+Once we're done, we can clean up the job store by running
 
 ::
 
@@ -142,7 +142,7 @@ Once we're done, we can clean up the job store by running:
 Stats Command
 -------------
 
-Continuing the example from the status section above, if we ran our workflow with the command::
+Continuing the example from the status section above, if we ran our workflow with the command ::
 
     toil discoverfiles.py file:my-jobstore --stats
 
@@ -150,7 +150,7 @@ We could interrogate our jobstore with the stats command (which is different tha
 
     toil stats file:my-jobstore
 
-If the run was successful, this would not return much valuable information, something like::
+If the run was successful, this would not return much valuable information, something like ::
 
     2018-01-11 19:31:29,739 - toil.lib.bioio - INFO - Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
     2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Parsed arguments
@@ -181,15 +181,15 @@ Launch-Cluster Command
 ----------------------
 
 Running ``toil launch-cluster`` starts up a leader for a cluster. Workers can be
-added to the initial cluster by specifying the ``-w`` option.  An example would be: ::
+added to the initial cluster by specifying the ``-w`` option.  An example would be ::
 
     $ toil launch-cluster my-cluster --leaderNodeType t2.small -z us-west-2a --keyPairName your-AWS-key-pair-name --nodeTypes m3.large,t2.micro -w 1,4
 
-Options are listed below.  These can also be displayed by running: ::
+Options are listed below.  These can also be displayed by running ::
 
     $ toil launch-cluster --help
 
-Launch-cluster's main positional argument is the clusterName.  This is simply the name of your cluster.  If it does not
+launch-cluster's main positional argument is the clusterName.  This is simply the name of your cluster.  If it does not
 exist yet, Toil will create it for you.
 
 **Launch-Cluster Options**
@@ -204,12 +204,12 @@ exist yet, Toil will create it for you.
                         -p CLOUDPROVIDER also accepted.  The provisioner for
                         cluster auto-scaling.  Both aws and google's gce are
                         currently supported.
-  --zone ZONE           -z ZONE also accepted.  The AWS availability zone of the master. This
-                        parameter can also be set via the TOIL_AWS_ZONE
-                        environment variable, or by the ec2_region_name
-                        parameter in your .boto file, or derived from the
+  --zone ZONE           -z ZONE also accepted.  The availability zone of the leader. This
+                        parameter can also be set via the TOIL_AWS_ZONE or TOIL_AZURE_ZONE, or TOIL_GCE_ZONE
+                        environment variables, or by the ec2_region_name
+                        parameter in your .boto file if using AWS, or derived from the
                         instance metadata if using this utility on an existing
-                        EC2 instance. Currently: us-west-1a
+                        EC2 instance.
   --leaderNodeType LEADERNODETYPE
                         Non-preemptable node type to use for the cluster
                         leader.
@@ -256,7 +256,7 @@ exist yet, Toil will create it for you.
 
 **Logging Options**
 
-  --logOff              Same as --logCritical
+  --logOff              Same as -\\-logCritical
   --logCritical         Turn on logging at level CRITICAL and above. (default
                         is INFO)
   --logError            Turn on logging at level ERROR and above. (default is
@@ -287,7 +287,7 @@ can be done as follows::
 This will open a shell on the Toil leader and is used to start an
 :ref:`Autoscaling` run. Issues with docker prevent using ``screen`` and ``tmux``
 when sshing the cluster (The shell doesn't know that it is a TTY which prevents
-it from allocating a new screen session). This can be worked around via::
+it from allocating a new screen session). This can be worked around via ::
 
     $ script
     $ screen
@@ -336,6 +336,6 @@ residual resources may still be in use in the background. To delete a cluster ru
 Kill Command
 ------------
 
-To kill all currently running jobs for a given jobstore, use the command::
+To kill all currently running jobs for a given jobstore, use the command ::
 
     toil kill file:my-jobstore

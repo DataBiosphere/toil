@@ -40,8 +40,8 @@ class GCEProvisioner(AbstractProvisioner):
     """
 
     NODE_BOTO_PATH = "/root/.boto" # boto file path on instances
-    SOURCE_IMAGE = bytes('https://www.googleapis.com/compute/v1/projects/coreos-cloud/global'
-                         '/images/coreos-stable-1576-4-0-v20171206')
+    SOURCE_IMAGE = (b'https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/'
+                    b'images/coreos-stable-1576-4-0-v20171206')
 
     def __init__(self, clusterName, zone, nodeStorage, sseKey):
         super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage)
@@ -127,7 +127,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         # Throws an error if cluster exists
         self._instanceGroup = self._gceDriver.ex_create_instancegroup(self.clusterName, self._zone)
-        logger.info('Launching leader')
+        logger.debug('Launching leader')
 
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
         # Therefore, dumping tags into the description.
@@ -146,7 +146,7 @@ class GCEProvisioner(AbstractProvisioner):
             'diskSizeGb' : leaderStorage }
         disk.update({'boot': True,
              'autoDelete': True })
-        name= 'l' + bytes(uuid.uuid4())
+        name= 'l' + str(uuid.uuid4())
         leader = self._gceDriver.create_node(name, leaderNodeType, imageType,
                                             location=self._zone,
                                             ex_service_accounts=sa_scopes,
@@ -169,7 +169,7 @@ class GCEProvisioner(AbstractProvisioner):
         leaderNode.injectFile(self._credentialsPath, GoogleJobStore.nodeServiceAccountJson, 'toil_leader')
         if self._botoPath:
             leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
-        logger.info('Launched leader')
+        logger.debug('Launched leader')
 
     def getNodeShape(self, nodeType, preemptable=False):
         # TODO: read this value only once
@@ -237,9 +237,9 @@ class GCEProvisioner(AbstractProvisioner):
             keyPath = self._sseKey
 
         if not preemptable:
-            logger.info('Launching %s non-preemptable nodes', numNodes)
+            logger.debug('Launching %s non-preemptable nodes', numNodes)
         else:
-            logger.info('Launching %s preemptable nodes', numNodes)
+            logger.debug('Launching %s preemptable nodes', numNodes)
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
         userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
@@ -295,7 +295,7 @@ class GCEProvisioner(AbstractProvisioner):
                 self._terminateInstances(failedWorkers)
             retries += 1
 
-        logger.info('Launched %d new instance(s)', numNodes)
+        logger.debug('Launched %d new instance(s)', numNodes)
         if numNodes != workersCreated:
             logger.error("Failed to launch %d worker(s)", numNodes-workersCreated)
         return workersCreated
@@ -364,7 +364,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     def _terminateInstances(self, instances):
         def worker(driver, instance):
-            logger.info('Terminating instance: %s', instance.name)
+            logger.debug('Terminating instance: %s', instance.name)
             driver.destroy_node(instance)
 
         threads = []
@@ -373,7 +373,7 @@ class GCEProvisioner(AbstractProvisioner):
             threads.append(t)
             t.start()
 
-        logger.info('... Waiting for instance(s) to shut down...')
+        logger.debug('... Waiting for instance(s) to shut down...')
         for t in threads:
             t.join()
 
@@ -448,7 +448,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         for i in range(number):
             name = 'wp' if ex_preemptible else 'wn'
-            name += bytes(uuid.uuid4()) #'%s-%03d' % (base_name, i)
+            name += str(uuid.uuid4()) #'%s-%03d' % (base_name, i)
             status = {'name': name, 'node_response': None, 'node': None}
             status_list.append(status)
 

@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from future import standard_library
 standard_library.install_aliases()
 from builtins import object
+from builtins import super
 import os
 import os.path
 import json
@@ -53,9 +54,10 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
         """
         # Unpack the data from the request
         data, socket = self.request
+        
         try:
             # Parse it as JSON
-            message_attrs = json.loads(data)
+            message_attrs = json.loads(data.decode('utf-8'))
             # Fluff it up into a proper logging record
             record = logging.makeLogRecord(message_attrs)
         except:
@@ -78,7 +80,7 @@ class JSONDatagramHandler(logging.handlers.DatagramHandler):
         """
         Actually, encode the record as bare JSON instead.
         """
-        return json.dumps(record.__dict__)
+        return json.dumps(record.__dict__).encode('utf-8')
 
 
 class RealtimeLoggerMetaclass(type):
@@ -228,7 +230,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
         suppressed on the workers. Note that this is different from passing level='OFF',
         which is equivalent to level='CRITICAL' and does not disable the server.
         """
-        super(RealtimeLogger, self).__init__()
+        super().__init__()
         self.__level = level
         self.__batchSystem = batchSystem
 

@@ -35,8 +35,11 @@ def which( name, path=None ):
     given name in a directory on the given path or the PATH environment variable if no path was
     passed
 
-    >>> next( which('ls') )
+    >>> old_path = os.environ['PATH']
+    >>> os.environ['PATH'] = '/bin'
+    >>> next( which('ls') ) # Note that this will fail on distributions with creative filesystem layouts
     '/bin/ls'
+    >>> os.environ['PATH'] = old_path
     >>> list( which('asdalskhvxjvkjhsdasdnbmfiewwewe') )
     []
     >>> list( which('ls', path=()) )

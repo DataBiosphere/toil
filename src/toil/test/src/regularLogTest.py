@@ -37,10 +37,10 @@ class RegularLogTest(ToilTest):
         onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
         assert onlyLogs
         for log in onlyLogs:
-            with open(log, "r") as f:
+            with open(log, "rb") as f:
                 if encoding == "gzip":
                     # Check for gzip magic header '\x1f\x8b'
-                    assert f.read().startswith('\x1f\x8b')
+                    assert f.read().startswith(b'\x1f\x8b')
                 else:
                     mime = mimetypes.guess_type(log)
                     self.assertEqual(mime[1], encoding)
@@ -53,7 +53,7 @@ class RegularLogTest(ToilTest):
                                               './toilTest',
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
-        assert helloWorld.childMessage in toilOutput
+        assert helloWorld.childMessage in toilOutput.decode('utf-8')
 
     def testWriteLogs(self):
         toilOutput = subprocess.check_output([sys.executable,
@@ -83,7 +83,7 @@ class RegularLogTest(ToilTest):
                                               './toilTest',
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
-        assert helloWorld.parentMessage in toilOutput
+        assert helloWorld.parentMessage in toilOutput.decode('utf-8')
 
     def testRegularLog(self):
         toilOutput = subprocess.check_output([sys.executable,
@@ -91,5 +91,5 @@ class RegularLogTest(ToilTest):
                                               './toilTest',
                                               '--clean=always',
                                               '--batchSystem=singleMachine',
-                                              '--logLevel=info'], stderr=subprocess.STDOUT)
-        assert "single machine batch system" in toilOutput
+                                              '--logLevel=debug'], stderr=subprocess.STDOUT)
+        assert "single machine batch system" in toilOutput.decode('utf-8')

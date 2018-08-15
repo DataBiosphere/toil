@@ -17,7 +17,7 @@ Preparing your Azure environment
 
 Follow the steps below to prepare your Azure environment for running a Toil workflow.
 
-#. Create an `Azure account`_ and an `Azure storage account`_.
+#. Create an `Azure account`_ and an `Azure storage account`_
 
 #. Locate your Azure storage account key and then store it in one of the following locations:
     - ``AZURE_ACCOUNT_KEY_<account>`` environment variable
@@ -51,7 +51,7 @@ Follow the steps below to prepare your Azure environment for running a Toil work
    then "Access Control (IAM)", then "+ Add", then selecting "Owner" from the "Role" drop-down menu on the right,
    then typing in the name of your app under "Select" and add permissions.
 
-#. Create an SSH keypair if one doesn't exist (see: `add SSH`_).
+#. Create an SSH keypair if one doesn't exist (see: `add SSH`_)
 
 .. note::
    You do not need to upload your key pair to Azure as with AWS.
@@ -71,7 +71,7 @@ Running a Workflow with Autoscaling
 The steps to run a Azure workflow are similar to those of AWS (:ref:`Autoscaling`), except you will
 need to explicitly specify the ``--provisioner azure`` option which otherwise defaults to ``aws``.
 
-#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`.
+#. Download :download:`sort.py <../../../src/toil/test/sort/sort.py>`
 
 #. Launch the leader node in Azure using the :ref:`launchCluster` command. ::
 
@@ -81,16 +81,16 @@ need to explicitly specify the ``--provisioner azure`` option which otherwise de
    default location is ~/.ssh/id_rsa.pub. The --keyPairName option is used to indicate the instances owner.
    See `add SSH`_.
 
-#. Upload the sort example and ssh into the leader. ::
+#. Upload the sort example and ssh into the leader::
 
     (venv) $ toil rsync-cluster --provisioner azure <CLUSTER-NAME> sort.py :/root
     (venv) $ toil ssh-cluster --provisioner azure <CLUSTER-NAME>
 
-#. Run the workflow. ::
+#. Run the workflow::
 
     $ python /root/sort.py  azure:<AZURE-STORAGE-ACCOUNT>:<JOBSTORE-NAME> --provisioner azure --batchSystem mesos --nodeTypes Standard_A2 --maxNodes 2
 
-#. Cleanup ::
+#. Clean up::
 
     $ exit  # this exits the ssh from the leader node
     (venv) $ toil destroy-cluster --provisioner azure <CLUSTER-NAME>
@@ -105,3 +105,23 @@ After :ref:`prepareAzure` all you will need to do is specify the job store name 
 For example to run the sort example with Azure job store you would run ::
 
     $ python sort.py azure:<my-azure-account-name>:my-azure-jobstore
+
+Details about Launching a Cluster in Azure
+------------------------------------------
+
+Using the provisioner to launch a Toil leader instance is simple using the ``launch-cluster`` command. For example,
+to launch a cluster named "my-cluster" with a Standard_A2 leader in the westus zone, run ::
+
+    (venv) $ toil launch-cluster my-cluster --provisioner azure --leaderNodeType Standard_A2 --zone westus --keyPairName <your-Azure-key-pair-name>
+
+The cluster name is used to uniquely identify your cluster and will be used to
+populate the instance's ``Name`` tag. In addition, the Toil provisioner will
+automatically tag your cluster with an ``Owner`` tag that corresponds to your
+keypair name to facilitate cost tracking.
+
+The ``--zone`` parameter specifies which availability zone to launch the cluster in.
+Alternatively, you can specify this option via the ``TOIL_AZURE_ZONE`` environment variable.
+
+For more information on options try: ::
+
+    (venv) $ toil launch-cluster --help

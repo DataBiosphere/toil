@@ -18,9 +18,9 @@
 # python 2/3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
-# TODO: change functions to support python 3 str and map
-# from builtins import map
-# from builtins import str
+from six.moves import xrange
+from past.builtins import map
+from functools import reduce
 
 # standard library
 import logging
@@ -30,6 +30,7 @@ import sys
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
+from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from toil.job import JobException
 from toil.version import version
 
@@ -241,7 +242,6 @@ def main():
     parser.add_argument("--version", action='version', version=version)
 
     options = parseBasicOptions(parser)
-    logger.info("Parsed arguments")
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -249,7 +249,10 @@ def main():
 
     config = Config()
     config.setOptions(options)
-    jobStore = Toil.resumeJobStore(config.jobStore)
+    try:
+        jobStore = Toil.resumeJobStore(config.jobStore)
+    except NoSuchJobStoreException:
+        print('No job store found.')
 
     ##########################################
     # Gather the jobs to report

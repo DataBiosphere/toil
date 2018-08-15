@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from abc import ABCMeta, abstractmethod
+from past.builtins import map
 from builtins import object
 from itertools import count
 import logging
@@ -130,7 +130,7 @@ class Node(object):
             if time.time() - startTime > self.maxWaitTime:
                 raise RuntimeError("Docker daemon failed to start on machine with ip %s" % self.publicIP)
             try:
-                output = self.sshInstance('/usr/bin/ps', 'aux', sshOptions=['-oBatchMode=yes'], user=keyName)
+                output = self.sshInstance('/usr/bin/ps', 'auxww', sshOptions=['-oBatchMode=yes'], user=keyName)
                 if 'dockerd' in output:
                     # docker daemon has started
                     logger.info('Docker daemon running')
@@ -139,7 +139,7 @@ class Node(object):
                     logger.info('... Still waiting for docker daemon, trying in %s sec...' % sleepTime)
                     time.sleep(sleepTime)
             except RuntimeError:
-                logger.debug("Wait for docker daemon failed ssh, trying again.")
+                logger.info("Wait for docker daemon failed ssh, trying again.")
                 sleepTime += 20
 
     def _waitForAppliance(self, role, keyName='core'):
@@ -162,7 +162,7 @@ class Node(object):
                     time.sleep(sleepTime)
             except RuntimeError:
                 # ignore exceptions, keep trying
-                logger.debug("Wait for appliance failed ssh, trying again.")
+                logger.info("Wait for appliance failed ssh, trying again.")
                 sleepTime += 20
 
     def _waitForSSHPort(self):
@@ -172,13 +172,13 @@ class Node(object):
         :return: the number of unsuccessful attempts to connect to the port before a the first
         success
         """
-        logger.info('Waiting for ssh port to open...')
+        logger.debug('Waiting for ssh port to open...')
         for i in count():
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 s.settimeout(a_short_time)
                 s.connect((self.publicIP, 22))
-                logger.info('...ssh port open')
+                logger.debug('...ssh port open')
                 return i
             except socket.error:
                 pass
@@ -250,7 +250,7 @@ class Node(object):
         resultValue = popen.wait()
         # ssh has been throwing random 255 errors - why?
         if resultValue != 0:
-            logger.info('SSH Error (%s) %s' % (resultValue, stderr))
+            logger.debug('SSH Error (%s) %s' % (resultValue, stderr))
             raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
                                'exit code %s with stdout %s and stderr %s'
                                % (' '.join(args), resultValue, stdout, stderr))

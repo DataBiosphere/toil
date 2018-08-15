@@ -22,7 +22,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import object
-from past.utils import old_div
+from builtins import super
 import logging
 import time
 
@@ -69,7 +69,7 @@ logger = logging.getLogger( __name__ )
 # Exception thrown by the Leader class when one or more jobs fails
 ####################################################
 
-class FailedJobsException( Exception ):
+class FailedJobsException(Exception):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
         msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
         try:
@@ -79,12 +79,12 @@ class FailedJobsException( Exception ):
                 if job.logJobStoreFileID:
                     msg += "\n=========> Failed job %s \n" % jobNode
                     with job.getLogFileHandle(jobStore) as fH:
-                        msg += fH.read()
+                        msg += fH.read().decode('utf-8')
                     msg += "<=========\n"
         # catch failures to prepare more complex details and only return the basics
         except:
             logger.exception('Exception when compiling information about failed jobs')
-        super( FailedJobsException, self ).__init__(msg)
+        super().__init__()
         self.jobStoreLocator = jobStoreLocator
         self.numberOfFailedJobs = len(failedJobs)
 
@@ -93,10 +93,10 @@ class FailedJobsException( Exception ):
 # resources to run the workflow
 ####################################################
 
-class DeadlockException( Exception ):
+class DeadlockException(Exception):
     def __init__(self, msg):
         msg = "Deadlock encountered: " + msg
-        super( DeadlockException, self ).__init__(msg)
+        super().__init__()
 
 ####################################################
 ##Following class represents the leader
@@ -126,15 +126,15 @@ class Leader(object):
 
         # Get a snap shot of the current state of the jobs in the jobStore
         self.toilState = ToilState(jobStore, rootJob, jobCache=jobCache)
-        logger.info("Found %s jobs to start and %i jobs with successors to run",
+        logger.debug("Found %s jobs to start and %i jobs with successors to run",
                         len(self.toilState.updatedJobs), len(self.toilState.successorCounts))
 
         # Batch system
         self.batchSystem = batchSystem
         assert len(self.batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
-        logger.info("Checked batch system has no running jobs and no updated jobs")
+        logger.debug("Checked batch system has no running jobs and no updated jobs")
 
-        # Map of batch system IDs to IsseudJob tuples
+        # Map of batch system IDs to IssuedJob tuples
         self.jobBatchSystemIDToIssuedJob = {}
 
         # Number of preempetable jobs currently being run by batch system
@@ -204,7 +204,7 @@ class Leader(object):
             try:
 
                 # Create cluster scaling processes if not None
-                if self.clusterScaler != None:
+                if self.clusterScaler is not None:
                     self.clusterScaler.start()
 
                 try:
@@ -212,10 +212,10 @@ class Leader(object):
                     self.innerLoop()
                 finally:
                     if self.clusterScaler is not None:
-                        logger.info('Waiting for workers to shutdown')
+                        logger.debug('Waiting for workers to shutdown.')
                         startTime = time.time()
                         self.clusterScaler.shutdown()
-                        logger.info('Worker shutdown complete in %s seconds', time.time() - startTime)
+                        logger.debug('Worker shutdown complete in %s seconds.', time.time() - startTime)
 
             finally:
                 # Ensure service manager thread is properly shutdown
@@ -232,7 +232,8 @@ class Leader(object):
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
         logger.info("Finished toil run %s" %
-                     ("successfully" if len(self.toilState.totalFailedJobs) == 0 else ("with %s failed jobs" % len(self.toilState.totalFailedJobs))))
+                     ("successfully." if not self.toilState.totalFailedJobs \
+                else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))
 
         if len(self.toilState.totalFailedJobs):
             logger.info("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
@@ -503,18 +504,20 @@ class Leader(object):
             else:
                 # This means we'll try again in a minute, providing things are quiet
                 self.timeSinceJobsLastRescued += 60
-            logger.info("Rescued any (long) missing jobs")
+            logger.debug("Rescued any (long) missing jobs")
 
 
     def innerLoop(self):
         """
         The main loop for processing jobs by the leader.
         """
-        logger.info("Starting the main loop")
         self.timeSinceJobsLastRescued = time.time()
 
-        while self._anythingLeftToDo():
-            if len(self.toilState.updatedJobs) > 0:
+        while self.toilState.updatedJobs or \
+              self.getNumberOfJobsIssued() or \
+              self.serviceManager.jobsIssuedToServiceManager:
+
+            if self.toilState.updatedJobs:
                 self._processReadyJobs()
 
             # deal with service-related jobs
@@ -522,7 +525,7 @@ class Leader(object):
             self._processJobsWithRunningServices()
 
             # check in with the batch system
-            updatedJobTuple = self.batchSystem.getUpdatedBatchJob(2)
+            updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
             if updatedJobTuple is not None:
                 self._gatherUpdatedJobs(updatedJobTuple)
             else:
@@ -538,7 +541,7 @@ class Leader(object):
             # Check for deadlocks
             self.checkForDeadlocks()
 
-        logger.info("Finished the main loop: no jobs left to run")
+        logger.debug("Finished the main loop: no jobs left to run.")
 
         # Consistency check the toil state
         assert self.toilState.updatedJobs == set()
@@ -557,8 +560,8 @@ class Leader(object):
         totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
         # If there are no updated jobs and at least some jobs running
         if totalServicesIssued >= totalRunningJobs and len(self.toilState.updatedJobs) == 0 and totalRunningJobs > 0:
-            serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.values()) if isinstance(x, ServiceJobNode)]
-            runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.isRunning(x)])
+            serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.keys()) if isinstance(self.jobBatchSystemIDToIssuedJob[x], ServiceJobNode)]
+            runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.isRunning(self.jobBatchSystemIDToIssuedJob[x])])
             assert len(runningServiceJobs) <= totalRunningJobs
 
             # If all the running jobs are active services then we have a potential deadlock
@@ -578,15 +581,15 @@ class Leader(object):
             self.potentialDeadlockedJobs = set()
             self.potentialDeadlockTime = 0
 
-    def _anythingLeftToDo(self):
-        return (len(self.toilState.updatedJobs) > 0) or (self.getNumberOfJobsIssued() > 0) or (self.serviceManager.jobsIssuedToServiceManager > 0)
-
     def issueJob(self, jobNode):
         """
         Add a job to the queue of jobs
         """
         jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
-                                    jobNode.jobName, self.jobStoreLocator, jobNode.jobStoreID))
+                                    jobNode.jobName,
+                                    self.jobStoreLocator,
+                                    jobNode.jobStoreID))
+        # jobBatchSystemID is an int that is an incremented counter for each job
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
         if jobNode.preemptable:
@@ -650,12 +653,6 @@ class Leader(object):
             return len(self.jobBatchSystemIDToIssuedJob) - self.preemptableJobsIssued
 
 
-    def getJobStoreID(self, jobBatchSystemID):
-        """
-        Gets the job file associated the a given id
-        """
-        return self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID
-
     def removeJob(self, jobBatchSystemID):
         """
         Removes a job from the system.
@@ -684,12 +681,6 @@ class Leader(object):
             jobs = [job for job in jobs if job.preemptable == preemptable]
         return jobs
 
-    def getJobIDs(self):
-        """
-        Gets the set of jobs currently issued.
-        """
-        return list(self.jobBatchSystemIDToIssuedJob.keys())
-
     def killJobs(self, jobsToKill):
         """
         Kills the given set of jobs and then sends them for processing
@@ -709,14 +700,13 @@ class Leader(object):
         """
         maxJobDuration = self.config.maxJobDuration
         jobsToKill = []
-        if maxJobDuration < 10000000:  # We won't bother doing anything if the rescue
-            # time is more than 16 weeks.
+        if maxJobDuration < 10000000:  # We won't bother doing anything if rescue time > 16 weeks.
             runningJobs = self.batchSystem.getRunningBatchJobIDs()
             for jobBatchSystemID in list(runningJobs.keys()):
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
                     logger.warn("The job: %s has been running for: %s seconds, more than the "
                                 "max job duration: %s, we'll kill it",
-                                str(self.getJobStoreID(jobBatchSystemID)),
+                                str(self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID),
                                 str(runningJobs[jobBatchSystemID]),
                                 str(maxJobDuration))
                     jobsToKill.append(jobBatchSystemID)
@@ -730,9 +720,9 @@ class Leader(object):
         then we pass the job to processFinishedJob.
         """
         runningJobs = set(self.batchSystem.getIssuedBatchJobIDs())
-        jobBatchSystemIDsSet = set(self.getJobIDs())
+        jobBatchSystemIDsSet = set(list(self.jobBatchSystemIDToIssuedJob.keys()))
         #Clean up the reissueMissingJobs_missingHash hash, getting rid of jobs that have turned up
-        missingJobIDsSet = set(self.reissueMissingJobs_missingHash.keys())
+        missingJobIDsSet = set(list(self.reissueMissingJobs_missingHash.keys()))
         for jobBatchSystemID in missingJobIDsSet.difference(jobBatchSystemIDsSet):
             self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
             logger.warn("Batch system id: %s is no longer missing", str(jobBatchSystemID))
@@ -740,7 +730,7 @@ class Leader(object):
         #no unexpected jobs running
         jobsToKill = []
         for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(runningJobs)):
-            jobStoreID = self.getJobStoreID(jobBatchSystemID)
+            jobStoreID = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID
             if jobBatchSystemID in self.reissueMissingJobs_missingHash:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] += 1
             else:
@@ -789,7 +779,7 @@ class Leader(object):
                 else:
                     raise
             if jobGraph.logJobStoreFileID is not None:
-                with jobGraph.getLogFileHandle( self.jobStore ) as logFileStream:
+                with jobGraph.getLogFileHandle(self.jobStore) as logFileStream:
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
                     # http://stackoverflow.com/a/15233739
@@ -824,7 +814,6 @@ class Leader(object):
         Returns the set of found successors. This set is added to alreadySeenSuccessors.
         """
         successors = set()
-
         def successorRecursion(jobGraph):
             # For lists of successors
             for successorList in jobGraph.stack:
@@ -832,20 +821,17 @@ class Leader(object):
                 # For each successor in list of successors
                 for successorJobNode in successorList:
 
-                    # Id of the successor
-                    successorJobStoreID = successorJobNode.jobStoreID
-
                     # If successor not already visited
-                    if successorJobStoreID not in alreadySeenSuccessors:
+                    if successorJobNode.jobStoreID not in alreadySeenSuccessors:
 
                         # Add to set of successors
-                        successors.add(successorJobStoreID)
-                        alreadySeenSuccessors.add(successorJobStoreID)
+                        successors.add(successorJobNode.jobStoreID)
+                        alreadySeenSuccessors.add(successorJobNode.jobStoreID)
 
                         # Recurse if job exists
                         # (job may not exist if already completed)
-                        if jobStore.exists(successorJobStoreID):
-                            successorRecursion(jobStore.load(successorJobStoreID))
+                        if jobStore.exists(successorJobNode.jobStoreID):
+                            successorRecursion(jobStore.load(successorJobNode.jobStoreID))
 
         successorRecursion(jobGraph) # Recurse from jobGraph
 
@@ -982,6 +968,3 @@ class Leader(object):
                     # Now we know the job is done we can add it to the list of updated job files
                     assert predecessorJob not in self.toilState.updatedJobs
                     self.toilState.updatedJobs.add((predecessorJob, 0))
-
-                    logger.debug('Job %s has all its non-service successors completed or totally '
-                                 'failed', predecessorJob)

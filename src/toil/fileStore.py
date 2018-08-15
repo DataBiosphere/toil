@@ -305,7 +305,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
             """
             # Read the value from the cache state file then initialize and instance of
             # _CacheState with it.
-            with open(fileName, 'r') as fH:
+            with open(fileName, 'rb') as fH:
                 infoDict = dill.load(fH)
             return cls(infoDict)
 
@@ -316,7 +316,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
 
             :param str fileName: Path to the state file.
             """
-            with open(fileName + '.tmp', 'w') as fH:
+            with open(fileName + '.tmp', 'wb') as fH:
                 # Based on answer by user "Mark" at:
                 # http://stackoverflow.com/questions/2709800/how-to-pickle-yourself
                 # We can't pickle nested classes. So we have to pickle the variables of the class
@@ -456,8 +456,8 @@ class CachingFileStore(FileStore):
         # dictionary.
         self.jobSpecificFiles = {}
         self.jobName = str(self.jobGraph)
-        self.jobID = sha1(self.jobName).hexdigest()
-        logger.info('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
+        self.jobID = sha1(self.jobName.encode('utf-8')).hexdigest()
+        logger.debug('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
         # A variable to describe how many hard links an unused file in the cache will have.
         self.nlinkThreshold = None
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
@@ -537,7 +537,7 @@ class CachingFileStore(FileStore):
         # If the file is from the scope of local temp dir
         if absLocalFileName.startswith(self.localTempDir):
             # If the job store is of type FileJobStore and the job store and the local temp dir
-            # are on the same file system, then we want to hard link the files istead of copying
+            # are on the same file system, then we want to hard link the files instead of copying
             # barring the case where the file being written was one that was previously read
             # from the file store. In that case, you want to copy to the file store so that
             # the two have distinct nlink counts.
@@ -566,7 +566,7 @@ class CachingFileStore(FileStore):
                 # (and the file was unable to be cached/was evicted from the cache).
                 harbingerFile = self.HarbingerFile(self, fileStoreID=jobStoreFileID)
                 harbingerFile.write()
-                fileHandle = open(absLocalFileName, 'r')
+                fileHandle = open(absLocalFileName, 'rb')
                 with self._pendingFileWritesLock:
                     self._pendingFileWrites.add(jobStoreFileID)
                 # A file handle added to the queue allows the asyncWrite threads to remove their
@@ -738,7 +738,7 @@ class CachingFileStore(FileStore):
         # If fileStoreID is in the cache provide a handle from the local cache
         if self._fileIsCached(fileStoreID):
             logger.debug('CACHE: Cache hit on file with ID \'%s\'.' % fileStoreID)
-            return open(self.encodedFileID(fileStoreID), 'r')
+            return open(self.encodedFileID(fileStoreID), 'rb')
         else:
             logger.debug('CACHE: Cache miss on file with ID \'%s\'.' % fileStoreID)
             return self.jobStore.readFileStream(fileStoreID)
@@ -849,7 +849,7 @@ class CachingFileStore(FileStore):
         """
         This is a context manager to acquire a lock on the Lock file that will be used to
         prevent synchronous cache operations between workers.
-        :yields: File descriptor for cache lock file in r+ mode
+        :yields: File descriptor for cache lock file in w mode
         """
         cacheLockFile = open(self.cacheLockFile, 'w')
         try:
@@ -943,8 +943,10 @@ class CachingFileStore(FileStore):
         :return: outCachedFile: A path to the hashed file in localCacheDir
         :rtype: str
         """
-        outCachedFile = os.path.join(self.localCacheDir,
-                                     base64.urlsafe_b64encode(jobStoreFileID))
+        
+        base64Text = base64.urlsafe_b64encode(jobStoreFileID.encode('utf-8')).decode('utf-8')
+        
+        outCachedFile = os.path.join(self.localCacheDir, base64Text)
         return outCachedFile
 
     def _fileIsCached(self, jobStoreFileID):
@@ -963,10 +965,10 @@ class CachingFileStore(FileStore):
         """
         fileDir, fileName = os.path.split(cachedFilePath)
         assert fileDir == self.localCacheDir, 'Can\'t decode uncached file names'
-        # We convert to byes here because base64 can't work with unicode
-        # Its probably worth, later, converting all file name variables to str
-        # rather than unicode.
-        return base64.urlsafe_b64decode(bytes(fileName))
+        # We encode and decode here because base64 can't work with unencoded text
+        # Its probably worth, later, converting all file name variables to bytes
+        # and not text.
+        return base64.urlsafe_b64decode(fileName.encode('utf-8')).decode('utf-8')
 
     def addToCache(self, localFilePath, jobStoreFileID, callingFunc, mutable=False):
         """
@@ -1008,7 +1010,7 @@ class CachingFileStore(FileStore):
                                  '%s as mutable and add to ' % os.path.basename(localFilePath) +
                                  'cache. Hence only mutable copy retained.')
                 else:
-                    logger.info('CACHE: Added file with ID \'%s\' to the cache.' %
+                    logger.debug('CACHE: Added file with ID \'%s\' to the cache.' %
                                 jobStoreFileID)
                 jobState = self._JobState(cacheInfo.jobState[self.jobID])
                 jobState.addToJobSpecFiles(jobStoreFileID, localFilePath, -1, False)
@@ -1413,7 +1415,7 @@ class CachingFileStore(FileStore):
             :param lockFileHandle: The open handle to the cache lock file
             """
             while self.exists():
-                logger.info('CACHE: Waiting for another worker to download file with ID %s.'
+                logger.debug('CACHE: Waiting for another worker to download file with ID %s.'
                             % self.fileStoreID)
                 # Ensure that the process downloading the file is still alive.  The PID will
                 # be in the harbinger file.
@@ -1795,15 +1797,15 @@ class NonCachingFileStore(FileStore):
 
     @staticmethod
     def _readJobState(jobStateFileName):
-        with open(jobStateFileName) as fH:
+        with open(jobStateFileName, 'rb') as fH:
             state = dill.load(fH)
         return state
 
     def _registerDeferredFunction(self, deferredFunction):
-        with open(self.jobStateFile) as fH:
+        with open(self.jobStateFile, 'rb') as fH:
             jobState = dill.load(fH)
         jobState['deferredFunctions'].append(deferredFunction)
-        with open(self.jobStateFile + '.tmp', 'w') as fH:
+        with open(self.jobStateFile + '.tmp', 'wb') as fH:
             dill.dump(jobState, fH)
         os.rename(self.jobStateFile + '.tmp', self.jobStateFile)
         logger.debug('Registered "%s" with job "%s".', deferredFunction, self.jobName)
@@ -1821,7 +1823,7 @@ class NonCachingFileStore(FileStore):
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir,
                     'deferredFunctions': []}
-        with open(jobStateFile + '.tmp', 'w') as fH:
+        with open(jobStateFile + '.tmp', 'wb') as fH:
             dill.dump(jobState, fH)
         os.rename(jobStateFile + '.tmp', jobStateFile)
         return jobStateFile
@@ -1836,14 +1838,17 @@ class NonCachingFileStore(FileStore):
 
 class FileID(str):
     """
-    A class to wrap the job store file id returned by writeGlobalFile and any attributes we may want
-    to add to it.
+    A small wrapper around Python's builtin string class. It is used to represent a file's ID in the file store, and
+    has a size attribute that is the file's size in bytes. This object is returned by importFile and writeGlobalFile.
     """
+
     def __new__(cls, fileStoreID, *args):
         return super(FileID, cls).__new__(cls, fileStoreID)
 
     def __init__(self, fileStoreID, size):
-        super(FileID, self).__init__(fileStoreID)
+        # Don't pass an argument to parent class's __init__.
+        # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
+        super(FileID, self).__init__()
         self.size = size
 
     @classmethod

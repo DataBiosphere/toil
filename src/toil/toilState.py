@@ -17,9 +17,9 @@ from __future__ import absolute_import
 from builtins import object
 import logging
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
-class ToilState( object ):
+class ToilState(object):
     """
     Represents a snapshot of the jobs in the jobStore. Used by the leader to manage the batch.
     """
@@ -27,10 +27,10 @@ class ToilState( object ):
         """
         Loads the state from the jobStore, using the rootJob 
         as the source of the job graph.
-        
+
         The jobCache is a map from jobStoreIDs to jobGraphs or None. Is used to
         speed up the building of the state.
-        
+
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore 
         :param toil.jobWrapper.JobGraph rootJob
         """
@@ -51,7 +51,7 @@ class ToilState( object ):
         self.servicesIssued = { }
         
         # Jobs that are ready to be processed
-        self.updatedJobs = set( )
+        self.updatedJobs = set()
         
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
@@ -69,7 +69,6 @@ class ToilState( object ):
         self.jobsToBeScheduledWithMultiplePredecessors = {}
         
         ##Algorithm to build this information
-        logger.info("(Re)building internal scheduler state")
         self._buildToilState(rootJob, jobStore, jobCache)
 
     def _buildToilState(self, jobGraph, jobStore, jobCache=None):
@@ -80,23 +79,22 @@ class ToilState( object ):
         If jobCache is passed, it must be a dict from job ID to JobGraph
         object. Jobs will be loaded from the cache (which can be downloaded from
         the jobStore in a batch) instead of piecemeal when recursed into.
+
+        :param jobGraph: Object representing a job.
+        :param jobStore: Object inheriting toil.jobStores.abstractJobStore.AbstractJobStore.
+        :param jobCache:
+        :return:
         """
 
         def getJob(jobId):
             if jobCache is not None:
-                try:
+                if jobId in jobCache:
                     return jobCache[jobId]
-                except ValueError:
-                    return jobStore.load(jobId)
-            else:
-                return jobStore.load(jobId)
+            return jobStore.load(jobId)
 
         # If the jobGraph has a command, is a checkpoint, has services or is ready to be
         # deleted it is ready to be processed
-        if (jobGraph.command is not None
-            or jobGraph.checkpoint is not None
-            or len(jobGraph.services) > 0
-            or len(jobGraph.stack) == 0):
+        if jobGraph.command is not None or jobGraph.checkpoint is not None or jobGraph.services or not jobGraph.stack:
             logger.debug('Found job to run: %s, with command: %s, with checkpoint: %s, '
                          'with  services: %s, with stack: %s', jobGraph.jobStoreID,
                          jobGraph.command is not None, jobGraph.checkpoint is not None,

@@ -77,7 +77,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             disk = float(disk)/1024 # disk in KB
 
             # Workaround for HTCondor Python bindings Unicode conversion bug
-            command = command.encode('utf8')
+            command = command.encode('utf-8')
 
             # Execute the entire command as /bin/sh -c "command"
             # TODO: Transfer the jobStore directory if using a local file store with a relative path.

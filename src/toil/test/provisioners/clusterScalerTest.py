@@ -24,6 +24,7 @@ from contextlib import contextmanager
 from threading import Thread, Event
 import logging
 import random
+import types
 import uuid
 from collections import defaultdict
 from mock import MagicMock
@@ -248,6 +249,19 @@ class BinPackingTest(ToilTest):
         # Hopefully we didn't assign just one node to cover all those jobs.
         self.assertNotEqual(self.bpf.getRequiredNodes(), {r3_8xlarge: 1, c4_8xlarge_preemptable: 0})
 
+    def testJobTooLargeForAllNodes(self):
+        """
+        If a job is too large for all node types, the scaler should print a
+        warning, but definitely not crash.
+        """
+        # Takes more RAM than an r3.8xlarge
+        largerThanR3 = Shape(wallTime=3600,
+                             memory=h2b('360G'),
+                             cores=32,
+                             disk=h2b('600G'),
+                             preemptable=False)
+        self.bpf.addJobShape(largerThanR3)
+        # If we got here we didn't crash.
 
 class ClusterScalerTest(ToilTest):
     def setUp(self):
@@ -256,14 +270,51 @@ class ClusterScalerTest(ToilTest):
         self.config.targetTime = 1800
         self.config.nodeTypes = ['r3.8xlarge', 'c4.8xlarge:0.6']
         # Set up a stub provisioner with some nodeTypes and nodeShapes.
-        self.provisioner = object()
-        self.provisioner.nodeTypes = ['r3.8xlarge', 'c4.8xlarge']
-        self.provisioner.nodeShapes = [r3_8xlarge,
-                                       c4_8xlarge_preemptable]
-        self.provisioner.setStaticNodes = lambda _, __: None
-        self.provisioner.retryPredicate = lambda _: False
+        try:
+            # In Python 3 we can use a SimpleNamespace as a mock provisioner
+            self.provisioner = types.SimpleNamespace()
+        except:
+            # In Python 2 we can just tack fields onto an object
+            self.provisioner = object()
+        setattr(self.provisioner, 'nodeTypes', ['r3.8xlarge', 'c4.8xlarge'])
+        setattr(self.provisioner, 'nodeShapes', [r3_8xlarge,
+                                                 c4_8xlarge_preemptable])
+        setattr(self.provisioner, 'setStaticNodes', lambda _, __: None)
+        setattr(self.provisioner, 'retryPredicate', lambda _: False)
 
         self.leader = MockBatchSystemAndProvisioner(self.config, 1)
+        
+    def testRounding(self):
+        """
+        Test to make sure the ClusterScaler's rounding rounds properly.
+        """
+        
+        # Get a ClusterScaler
+        self.config.targetTime = 1
+        self.config.betaInertia = 0.0
+        self.config.maxNodes = [2, 3]
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        
+        # Exact integers round to themselves
+        self.assertEqual(scaler._round(0.0), 0)
+        self.assertEqual(scaler._round(1.0), 1)
+        self.assertEqual(scaler._round(-1.0), -1)
+        self.assertEqual(scaler._round(123456789101112.13), 123456789101112)
+        
+        # Decimals other than X.5 round to the side they are closer to
+        self.assertEqual(scaler._round(1E-10), 0)
+        self.assertEqual(scaler._round(0.5 + 1E-15), 1)
+        self.assertEqual(scaler._round(-0.9), -1)
+        self.assertEqual(scaler._round(-0.4), 0)
+        
+        # Decimals at exactly X.5 round away from 0
+        self.assertEqual(scaler._round(0.5), 1)
+        self.assertEqual(scaler._round(-0.5), -1)
+        self.assertEqual(scaler._round(2.5), 3)
+        self.assertEqual(scaler._round(-2.5), -3)
+        self.assertEqual(scaler._round(15.5), 16)
+        self.assertEqual(scaler._round(-15.5), -16)
+        self.assertEqual(scaler._round(123456789101112.5), 123456789101113)
 
     def testMaxNodes(self):
         """
@@ -369,6 +420,30 @@ class ClusterScalerTest(ToilTest):
         self.provisioner.addNodes = MagicMock(return_value=5)
         scaler.updateClusterSize(estimatedNodeCounts)
         self.assertEqual(scaler.preemptableNodeDeficit['c4.8xlarge'], 0)
+
+    def testNoLaunchingIfDeltaAlreadyMet(self):
+        """
+        Check that the scaler doesn't try to launch "0" more instances if
+        the delta was able to be met by unignoring nodes.
+        """
+        # We have only one node type for simplicity
+        self.provisioner.nodeTypes = ['c4.8xlarge']
+        self.provisioner.nodeShapes = [c4_8xlarge]
+        scaler = ClusterScaler(self.provisioner, self.leader, self.config)
+        # Pretend there is one ignored worker in the cluster
+        self.provisioner.getProvisionedWorkers = MagicMock(
+            return_value=[Node('127.0.0.1', '127.0.0.1', 'testNode',
+                               datetime.datetime.now().isoformat(),
+                               nodeType='c4.8xlarge', preemptable=True)])
+        scaler.ignoredNodes.add('127.0.0.1')
+        # Exercise the updateClusterSize logic
+        self.provisioner.addNodes = MagicMock()
+        scaler.updateClusterSize({c4_8xlarge: 1})
+        self.assertFalse(self.provisioner.addNodes.called,
+                         "addNodes was called when no new nodes were needed")
+        self.assertEqual(len(scaler.ignoredNodes), 0,
+                         "The scaler didn't unignore an ignored node when "
+                         "scaling up")
 
     def testBetaInertia(self):
         # This is really high, but makes things easy to calculate.
@@ -529,7 +604,7 @@ class ScalerThreadTest(ToilTest):
                 clusterScaler.addCompletedJob(iJ, random.choice(range(1, 10)))
 
             while mock.getNumberOfJobsIssued() > 0 or mock.getNumberOfNodes() > 0:
-                logger.info("%i nodes currently provisioned" % mock.getNumberOfNodes())
+                logger.debug("%i nodes currently provisioned" % mock.getNumberOfNodes())
                 # Make sure there are no large nodes
                 self.assertEqual(mock.getNumberOfNodes(nodeType=largeNode), 0)
                 clusterScaler.check()
@@ -760,10 +835,10 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         self.maxWorkers[nodeShape] = max(self.maxWorkers[nodeShape], len(self.workers[nodeShape]))
 
     def _removeNodes(self, nodes):
-        logger.info("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker),
+        logger.debug("Removing nodes. %s workers and %s to terminate.", len(self.nodesToWorker),
                     len(nodes))
         for node in nodes:
-            logger.info("removed node")
+            logger.debug("removed node")
             try:
                 nodeShape = self.getNodeShape(node.nodeType, node.preemptable)
                 worker = self.nodesToWorker.pop(node)

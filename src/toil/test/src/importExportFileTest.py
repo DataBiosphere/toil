@@ -23,6 +23,7 @@ from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow
 from toil.fileStore import FileID
+from toil.common import getDirSizeRecursively
 
 
 class ImportExportFileTest(ToilTest):
@@ -46,13 +47,13 @@ class ImportExportFileTest(ToilTest):
                 # Write a boolean that determines whether the job fails.
                 with toil._jobStore.writeFileStream() as (f, failFileID):
                     self.failFileID = failFileID
-                    f.write(str(fail))
+                    f.write(str(fail).encode('utf-8'))
 
                 outputFileID = toil.start(RestartingJob(inputFileID, self.failFileID))
             else:
                 # Set up job for failure
                 with toil._jobStore.updateFileStream(self.failFileID) as f:
-                    f.write('False')
+                    f.write('False'.encode('utf-8'))
 
                 outputFileID = toil.restart()
 
@@ -81,7 +82,7 @@ class ImportExportFileTest(ToilTest):
 
     def testImportSharedFileName(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
-        options.logLevel = "INFO"
+        options.logLevel = "DEBUG"
 
         sharedFileName = 'someSharedFile'
         with Toil(options) as toil:
@@ -90,7 +91,7 @@ class ImportExportFileTest(ToilTest):
                 f.write('some data')
             toil.importFile('file://' + srcFile, sharedFileName=sharedFileName)
             with toil._jobStore.readSharedFileStream(sharedFileName) as f:
-                self.assertEquals(f.read(), 'some data')
+                self.assertEquals(f.read().decode('utf-8'), 'some data')
 
 
 class RestartingJob(Job):
@@ -101,11 +102,11 @@ class RestartingJob(Job):
 
     def run(self, fileStore):
         with fileStore.readGlobalFileStream(self.failFileID) as failValue:
-            if failValue.read() == 'True':
+            if failValue.read().decode('utf-8') == 'True':
                 raise RuntimeError('planned exception')
             else:
                 with fileStore.readGlobalFileStream(self.inputFileID) as fi:
                     with fileStore.writeGlobalFileStream() as (fo, outputFileID):
-                        fo.write(fi.read() + 'World!')
+                        fo.write((fi.read().decode('utf-8') + 'World!').encode('utf-8'))
                         return outputFileID
 

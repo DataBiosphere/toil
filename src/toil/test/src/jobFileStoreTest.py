@@ -13,6 +13,7 @@
 # limitations under the License.
 from __future__ import absolute_import
 from builtins import range
+import codecs
 import random
 import os
 import errno
@@ -107,6 +108,9 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
             else:
                 #Check the local file is as we expect
                 with job.fileStore.readGlobalFileStream(fileStoreID) as fH:
+                    # File streams are binary in Python 3 and can't do readline.
+                    # But a StreamReader for UTF-8 is exactly the adapter we need.
+                    fH = codecs.getreader('utf-8')(fH)
                     string = fH.readline()
                     
             #Check the string we get back is what we expect
@@ -134,7 +138,7 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
         else:
             #Use the writeGlobalFileStream method to write the file
             with job.fileStore.writeGlobalFileStream() as (fH, fileStoreID):
-                fH.write(testString)
+                fH.write(testString.encode('utf-8'))
                 outputFileStoreIds.append(fileStoreID)
 
     if chainLength > 0:
@@ -154,7 +158,7 @@ def simpleFileStoreJob(job):
 
     testID2 = None
     with job.fileStore.writeGlobalFileStream() as (f, fileID):
-        f.write(streamingFileStoreString)
+        f.write(streamingFileStoreString.encode('utf-8'))
         testID2 = fileID
 
     job.addChildJobFn(fileStoreChild, testID1, testID2)
@@ -162,7 +166,7 @@ def simpleFileStoreJob(job):
 
 def fileStoreChild(job, testID1, testID2):
     with job.fileStore.readGlobalFileStream(testID1) as f:
-        assert(f.read() == fileStoreString)
+        assert(f.read().decode('utf-8') == fileStoreString)
 
     localFilePath = os.path.join(job.fileStore.getLocalTempDir(), "childTemp.txt")
     job.fileStore.readGlobalFile(testID2, localFilePath)

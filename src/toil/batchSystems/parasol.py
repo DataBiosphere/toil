@@ -65,7 +65,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                 command = next(which(command))
             except StopIteration:
                 raise RuntimeError("Can't find %s on PATH." % command)
-        logger.info('Using Parasol at %s', command)
+        logger.debug('Using Parasol at %s', command)
         self.parasolCommand = command
         jobStoreType, path = Toil.parseLocator(config.jobStore)
         if jobStoreType != 'file':
@@ -182,7 +182,7 @@ class ParasolBatchSystem(BatchSystemSupport):
             if match is None:
                 # This is because parasol add job will return success, even if the job was not
                 # properly issued!
-                logger.info('We failed to properly add the job, we will try again after a 5s.')
+                logger.debug('We failed to properly add the job, we will try again after a 5s.')
                 time.sleep(5)
             else:
                 jobID = int(match.group(1))
@@ -209,7 +209,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                     self.runningJobs.remove(jobID)
                 exitValue = self._runParasol(['remove', 'job', str(jobID)],
                                              autoRetry=False)[0]
-                logger.info("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
+                logger.debug("Tried to remove jobID: %i, with exit value: %i" % (jobID, exitValue))
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 break

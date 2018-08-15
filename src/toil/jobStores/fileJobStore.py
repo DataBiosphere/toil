@@ -15,7 +15,6 @@
 # python 2/3 compatibility
 from __future__ import absolute_import
 from builtins import range
-from six.moves import xrange
 
 # standard library
 from contextlib import contextmanager
@@ -72,6 +71,9 @@ class FileJobStore(AbstractJobStore):
         # Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
         self.linkImports = None
+        
+    def __repr__(self):
+        return 'FileJobStore({})'.format(self.jobStoreDir)
 
     def initialize(self, config):
         try:
@@ -90,29 +92,31 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchJobStoreException(self.jobStoreDir)
         super(FileJobStore, self).resume()
 
-    def robust_rmtree(self, path, max_retries=7):
+    def robust_rmtree(self, path, max_retries=3):
         """Robustly tries to delete paths.
 
         Retries several times (with increasing delays) if an OSError
         occurs.  If the final attempt fails, the Exception is propagated
         to the caller.
 
-        Borrowed and slightly modified from:
+        Borrowing patterns from:
         https://github.com/hashdist/hashdist
         """
-        dt = 1
+        
+        delay = 1
         for _ in range(max_retries):
             try:
                 shutil.rmtree(path)
-                return
+                break
             except OSError:
-                logger.info('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, dt))
-                time.sleep(dt)
-                dt *= 2
+                logger.debug('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, delay))
+                time.sleep(delay)
+                delay *= 2
 
-        # Final attempt, pass any Exceptions up to caller.
-        shutil.rmtree(path)
-
+        if os.path.exists(path):
+            # Final attempt, pass any Exceptions up to caller.
+            shutil.rmtree(path)
+        
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
             self.robust_rmtree(self.jobStoreDir)
@@ -191,7 +195,7 @@ class FileJobStore(AbstractJobStore):
         self._checkJobStoreId(jobStoreID)
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
-        with open(jobFile, 'r') as fileHandle:
+        with open(jobFile, 'rb') as fileHandle:
             job = pickle.load(fileHandle)
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
@@ -206,7 +210,7 @@ class FileJobStore(AbstractJobStore):
         # The file is then moved to its correct path.
         # Atomicity guarantees use the fact the underlying file systems "move"
         # function is atomic.
-        with open(self._getJobFileName(job.jobStoreID) + ".new", 'w') as f:
+        with open(self._getJobFileName(job.jobStoreID) + ".new", 'wb') as f:
             pickle.dump(job, f)
         # This should be atomic for the file system
         os.rename(self._getJobFileName(job.jobStoreID) + ".new", self._getJobFileName(job.jobStoreID))
@@ -221,7 +225,7 @@ class FileJobStore(AbstractJobStore):
         # Walk through list of temporary directories searching for jobs
         for tempDir in self._tempDirectories():
             for i in os.listdir(tempDir):
-                if i.startswith( 'job' ):
+                if i.startswith('job'):
                     try:
                         yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
                     except NoSuchJobException:
@@ -245,6 +249,8 @@ class FileJobStore(AbstractJobStore):
             if sharedFileName is None:
                 absPath = self._getUniqueName(url.path)  # use this to get a valid path to write to in job store
                 self._copyOrLink(url, absPath)
+                # TODO: os.stat(absPath).st_size consistently gives values lower than
+                # getDirSizeRecursively()
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
@@ -304,28 +310,43 @@ class FileJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'file'
 
-    def writeFile(self, localFilePath, jobStoreID=None):
-
-        # log the name of the function writing the file in (the job creating it)
+    def _getUserCodeFunctionName(self):
+        """
+        Get the name of the function 4 levels up the stack (above this
+        function, our caller, and whatever Toil code delegated to the JobStore
+        implementation). Returns a string usable in a filename, and returns a
+        placeholder string if the function name is unsuitable or can't be
+        gotten.
+        """
+        
+        # Record the name of the job/function writing the file in the file name
         try:
-            sourceFunctionName = traceback.extract_stack()[0][3].split("(")[0]
+            # It ought to be fourth-to-last on the stack, above us, the write
+            # function, and the FileStore or context manager. Probably.
+            sourceFunctionName = traceback.extract_stack()[-4][2]
         except:
-            sourceFunctionName = "x"
+            sourceFunctionName = "UNKNOWNJOB"
             # make sure the function name fetched has no spaces or oddities
-        if re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
-            pass
-        else:
-            sourceFunctionName = "x"
-        absPath = self._getUniqueName(localFilePath, jobStoreID, sourceFunctionName)
+        if not re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
+            sourceFunctionName = "ODDLYNAMEDJOB"
+            
+        return sourceFunctionName
+
+    def writeFile(self, localFilePath, jobStoreID=None):
+        absPath = self._getUniqueName(localFilePath, jobStoreID, self._getUserCodeFunctionName())
+        relPath = self._getRelativePath(absPath)
         shutil.copyfile(localFilePath, absPath)
-        return self._getRelativePath(absPath)
+        return relPath
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
-        fd, absPath = self._getTempFile(jobStoreID)
-        with open(absPath, 'w') as f:
-            yield f, self._getRelativePath(absPath)
-        os.close(fd)  # Close the os level file descriptor
+        absPath = self._getUniqueName('stream', jobStoreID, self._getUserCodeFunctionName())
+        relPath = self._getRelativePath(absPath)
+        with open(absPath, 'wb') as f:
+            # Don't yield while holding an open file descriptor to the temp
+            # file. That can result in temp files still being open when we try
+            # to clean ourselves up, somehow, for certain workloads.
+            yield f, relPath
 
     def getEmptyFileStoreID(self, jobStoreID=None):
         with self.writeFileStream(jobStoreID) as (fileHandle, jobStoreFileID):
@@ -391,13 +412,13 @@ class FileJobStore(AbstractJobStore):
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
-        with open(self._getAbsPath(jobStoreFileID), 'w') as f:
+        with open(self._getAbsPath(jobStoreFileID), 'wb') as f:
             yield f
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
-        with open(self._getAbsPath(jobStoreFileID), 'r') as f:
+        with open(self._getAbsPath(jobStoreFileID), 'rb') as f:
             yield f
 
     ##########################################
@@ -412,14 +433,14 @@ class FileJobStore(AbstractJobStore):
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         # the isProtected parameter has no effect on the fileStore
         assert self._validateSharedFileName( sharedFileName )
-        with open(self._getSharedFilePath(sharedFileName), 'w') as f:
+        with open(self._getSharedFilePath(sharedFileName), 'wb') as f:
             yield f
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName):
         assert self._validateSharedFileName( sharedFileName )
         try:
-            with open(os.path.join(self.jobStoreDir, sharedFileName), 'r') as f:
+            with open(os.path.join(self.jobStoreDir, sharedFileName), 'rb') as f:
                 yield f
         except IOError as e:
             if e.errno == errno.ENOENT:
@@ -428,9 +449,10 @@ class FileJobStore(AbstractJobStore):
                 raise
 
     def writeStatsAndLogging(self, statsAndLoggingString):
-        # Temporary files are placed in the set of temporary files/directoies
+        # Temporary files are placed in the set of temporary files/directories
         fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
-        with open(tempStatsFile, "w") as f:
+        writeFormat = 'w' if isinstance(statsAndLoggingString, str) else 'wb'
+        with open(tempStatsFile, writeFormat) as f:
             f.write(statsAndLoggingString)
         os.close(fd)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
@@ -442,7 +464,7 @@ class FileJobStore(AbstractJobStore):
                 if tempFile.startswith('stats'):
                     absTempFile = os.path.join(tempDir, tempFile)
                     if readAll or not tempFile.endswith('.new'):
-                        with open(absTempFile, 'r') as fH:
+                        with open(absTempFile, 'rb') as fH:
                             callback(fH)
                         numberOfFilesProcessed += 1
                         newName = tempFile.rsplit('.', 1)[0] + '.new'
@@ -457,6 +479,7 @@ class FileJobStore(AbstractJobStore):
 
     def _getAbsPath(self, relativePath):
         """
+        :param str relativePath: path relative to self.tempFilesDir.
         :rtype : string, string is the absolute path to a file path relative
         to the self.tempFilesDir.
         """

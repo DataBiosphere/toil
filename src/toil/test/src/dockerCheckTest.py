@@ -14,7 +14,7 @@
 
 from __future__ import absolute_import, print_function
 from toil.test import ToilTest, needs_appliance
-from toil import checkDockerImageExists
+from toil import checkDockerImageExists, parseDockerAppliance
 from docker.errors import ImageNotFound
 
 # requires internet
@@ -81,3 +81,21 @@ class dockerCheckTests(ToilTest):
         nonexistent_google_repo = 'gcr.io/google-containers/--------:---'
         with self.assertRaises(ImageNotFound):
             checkDockerImageExists(nonexistent_google_repo)
+
+    def testApplianceParser(self):
+        """Test that a specified appliance is parsed correctly."""
+        docker_list = ['ubuntu:latest',
+                       'ubuntu',
+                       'broadinstitute/genomes-in-the-cloud:2.0.0',
+                       'quay.io/ucsc_cgl/toil:latest',
+                       'gcr.io/google-containers/busybox:latest']
+        parsings = []
+        for image in docker_list:
+            registryName, imageName, tag = parseDockerAppliance(image)
+            parsings.append([registryName, imageName, tag])
+        expected_parsings = [['docker.io', 'ubuntu', 'latest'],
+                             ['docker.io', 'ubuntu', 'latest'],
+                             ['docker.io', 'broadinstitute/genomes-in-the-cloud', '2.0.0'],
+                             ['quay.io', 'ucsc_cgl/toil', 'latest'],
+                             ['gcr.io', 'google-containers/busybox', 'latest']]
+        assert parsings == expected_parsings
