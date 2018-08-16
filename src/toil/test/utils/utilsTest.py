@@ -360,7 +360,7 @@ class UtilsTest(ToilTest):
                     self.fail()  # Exceeded a reasonable number of restarts
                 totalTrys += 1
 
-                # Check the toil status command does not issue an exception
+        # Check the toil status command does not issue an exception
         system(self.statusCommand())
 
         # Check we can run 'toil stats'
