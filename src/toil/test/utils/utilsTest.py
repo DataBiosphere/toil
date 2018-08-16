@@ -221,14 +221,12 @@ class UtilsTest(ToilTest):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
 
-        Run a Toil workflow, with the badWorker option set to force a failure, in a subprocess. While this workflow
-        could be called by importing and evoking its main function, doing so would remove the opprotunity to test
-        the 'RUNNING' functionality of getStatus(). The workflow is allowed to continue for 2 seconds to allow its
-        jobstore to  be created. A 'RUNNING' responses is expected. The process is allowed to continue to failure and
-        'ERROR' is expected in return.
+        While this workflow could be called by importing and evoking its main function, doing so would remove the
+        opprotunity to test the 'RUNNING' functionality of getStatus().
         """
         jobstoreName = 'failing-toil-js'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
+        # --badWorker is set to force failure.
         cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never', '--badWorker', '1']
         wf = Popen(cmd)
         time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
@@ -240,14 +238,7 @@ class UtilsTest(ToilTest):
     @needs_cwl
     @needs_docker
     def testGetStatusFailedCWLWF(self):
-        """
-        Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow.
-
-        Run a cwl workflow, with the badWorker option set to force a failure, in a subprocess. The workflow is allowed
-        to continue for 2 seconds to allow its jobstore to  be created. Pausing the process at this point allows
-        getStatus() to check the jobstore without the workflow  completing. A 'RUNNING' responses is expected. The
-        process is resumed, allowed to continue to completion and, 'ERROR' is expected in return.
-        """
+        """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
         files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
         jobstoreName = 'failing-cwl-js'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
@@ -255,11 +246,11 @@ class UtilsTest(ToilTest):
                '--reverse', '--input', files[1]]
         wf = Popen(cmd)
         wfRun = psutil.Process(pid=wf.pid)
-        time.sleep(2)
-        wfRun.suspend()
+        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
+        wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
         self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
         wfRun.resume()
-        time.sleep(10)
+        wf.wait()
         self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'ERROR')
         shutil.rmtree(jobstoreLoc)
 
@@ -267,10 +258,8 @@ class UtilsTest(ToilTest):
         """
         Test that ToilStatus.getStatus() behaves as expected with a successful Toil workflow.
 
-        Run a Toil workflow in a subprocess. While this workflow  could be called by importing and evoking its main
-        function, doing so would remove the opprotunity to test the 'RUNNING' functionality of getStatus(). The workflow
-        is allowed to continue for 2 seconds to allow its jobstore to  be created. A 'RUNNING' responses is expected.
-        The process is allowed to continue to completion and, 'ERROR' is expected in return.
+        While this workflow could be called by importing and evoking its main function, doing so would remove the
+        opprotunity to test the 'RUNNING' functionality of getStatus().
         """
         jobstoreName = 'successful-toil-js'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
@@ -285,14 +274,8 @@ class UtilsTest(ToilTest):
     @needs_cwl
     @needs_docker
     def testGetStatusSuccessfulCWLWF(self):
-        """
-        Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow.
-
-        Run a cwl workflow in a subprocess. The workflow is allowed to continue for 2 seconds to allow its jobstore to
-        be created. Pausing the process at this point allows getStatus() to check the jobstore without the workflow
-        completing. A 'RUNNING' responses is expected. The process is resumed, allowed to continue to completion and,
-        'COMPLETED' is expected in return.
-        """
+        """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
+        # Run a cwl workflow in a subprocess.
         files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
         jobstoreName = 'successful-cwl-js'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
@@ -300,14 +283,13 @@ class UtilsTest(ToilTest):
                files[1]]
         wf = Popen(cmd)
         wfRun = psutil.Process(pid=wf.pid)
-        time.sleep(2)
-        wfRun.suspend()
+        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
+        wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
         self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
         wfRun.resume()
-        time.sleep(5)
+        wf.wait()
         self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'COMPLETED')
         shutil.rmtree(jobstoreLoc)
-
 
     @slow
     def testUtilsSort(self):
@@ -315,7 +297,6 @@ class UtilsTest(ToilTest):
         Tests the status and stats commands of the toil command line utility using the
         sort example with the --restart flag.
         """
-
         # Get the sort command to run
         toilCommand = [sys.executable,
                        '-m', toil.test.sort.sort.__name__,

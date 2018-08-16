@@ -203,7 +203,6 @@ class ToilStatus():
                 pass
         return 'RUNNING'
 
-
     def fetchRootJob(self):
         """
         Fetches the root job from the jobStore that provides context for all other jobs.
@@ -216,7 +215,6 @@ class ToilStatus():
         :raises JobException: if the root job does not exist.
         """
         try:
-
             return self.jobStore.loadRootJob()
         except JobException:
             print('Root job is absent. The workflow may have completed successfully.', file=sys.stderr)
