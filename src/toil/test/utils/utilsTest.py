@@ -207,7 +207,7 @@ class UtilsTest(ToilTest):
         jobstoreName = 'pidStatusTest'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
 
-        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']  # Requires working dir toil/src/toil/test
+        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']
         wf = Popen(cmd)
         time.sleep(2)  # Need to let jobstore be created before checking its contents.
         self.assertEqual(ToilStatus.getPIDStatus(jobstoreLoc),'RUNNING')
@@ -248,7 +248,7 @@ class UtilsTest(ToilTest):
         getStatus() to check the jobstore without the workflow  completing. A 'RUNNING' responses is expected. The
         process is resumed, allowed to continue to completion and, 'ERROR' is expected in return.
         """
-        files = ['cwl/sorttool.cwl', 'cwl/whale.txt']
+        files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
         jobstoreName = 'failing-cwl-js'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
         cmd = ['toil-cwl-runner', '--jobStore', jobstoreLoc, '--clean', 'never', '--badWorker', '1', files[0],
@@ -293,7 +293,7 @@ class UtilsTest(ToilTest):
         completing. A 'RUNNING' responses is expected. The process is resumed, allowed to continue to completion and,
         'COMPLETED' is expected in return.
         """
-        files = ['cwl/sorttool.cwl', 'cwl/whale.txt']
+        files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
         jobstoreName = 'successful-cwl-js'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
         cmd = ['toil-cwl-runner', '--jobStore', jobstoreLoc, '--clean', 'never', files[0], '--reverse', '--input',
