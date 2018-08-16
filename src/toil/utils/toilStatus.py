@@ -39,11 +39,11 @@ logger = logging.getLogger(__name__)
 
 class ToilStatus():
     """Tool for reporting on job status."""
-    def __init__(self, jobStoreName, specifiedJobs=[]):
+    def __init__(self, jobStoreName, specifiedJobs=None):
         self.jobStoreName = jobStoreName
         self.jobStore = Toil.resumeJobStore(jobStoreName)
 
-        if not specifiedJobs:
+        if specifiedJobs is None:
             rootJob = self.fetchRootJob()
             logger.info('Traversing the job graph gathering jobs. This may take a couple of minutes.')
             self.jobsToReport = self.traverseJobGraph(rootJob)
@@ -329,6 +329,8 @@ def main():
         status = ToilStatus(config.jobStore, options.jobs)
     except NoSuchJobStoreException:
         print('No job store found.')
+        return
+    except JobException:  # Workflow likely complete, user informed in ToilStatus()
         return
 
     jobStats = status.report_on_jobs()
