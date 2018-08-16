@@ -28,6 +28,7 @@ import stat
 import errno
 import time
 import traceback
+import time
 try:
     import cPickle as pickle
 except ImportError:
@@ -147,9 +148,34 @@ class FileJobStore(AbstractJobStore):
             self.update(jobGraph)
         self._batchedJobGraphs = None
 
+    def waitForExists(self, jobStoreID, maxTries=35, sleepTime=1):
+        """Spin-wait and block for a file to appear before returning False if it does not.
+        
+        The total max wait time is maxTries * sleepTime. The current default is
+        tuned to match Linux NFS defaults where the client's cache of the directory
+        listing on the server is supposed to become coherent within 30 sec.
+        Delayes beyond that would probably indicate a pathologically slow file system
+        that just should not be used for the jobStore.
+        
+        The warning will be sent to the log only on the first retry.
+        
+        In practice, the need for retries happens rarely, but it does happen
+        over the course of large workflows with a jobStore on a busy NFS."""
+        for iTry in range(1,maxTries+1):
+            jobFile = self._getJobFileName(jobStoreID)
+            if os.path.exists(jobFile):
+                return True
+            if iTry >= maxTries:
+                return False
+            elif iTry == 1:
+                logger.warning(("Job file `{}` for job `{}` does not exist (yet). We will try #{} more times with {}s "
+                        "intervals.").format(jobFile, jobStoreID, maxTries - iTry, sleepTime))
+            time.sleep(sleepTime)
+        return False
+
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
-
+    
     def getPublicUrl(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStorePath = self._getAbsPath(jobStoreFileID)
@@ -482,7 +508,7 @@ class FileJobStore(AbstractJobStore):
         """
         Raises a NoSuchJobException if the jobStoreID does not exist.
         """
-        if not self.exists(jobStoreID):
+        if not self.waitForExists(jobStoreID,30):
             raise NoSuchJobException(jobStoreID)
 
     def _checkJobStoreFileID(self, jobStoreFileID):
