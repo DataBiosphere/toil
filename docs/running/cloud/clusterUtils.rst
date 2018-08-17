@@ -49,16 +49,16 @@ The cluster utilities can be used for :ref:`runningGCE` and :ref:`runningAWS`.
 
 .. _cli_status:
 
-Status Command
+Stats Command
 --------------
 
-To use the status command, a workflow must first be run using the ``--stats`` option.  Using this command makes certain
+To use the stats command, a workflow must first be run using the ``--stats`` option.  Using this command makes certain
 that toil does not delete the job store, no matter what other options are specified (i.e. normally the option
 ``--clean=always`` would delete the job, but ``--stats`` will override this).
 
 An example of this would be running the following::
 
-    toil discoverfiles.py file:my-jobstore --stats
+    python discoverfiles.py file:my-jobstore --stats
 
 Where ``discoverfiles.py`` is the following:
 
@@ -139,16 +139,16 @@ Once we're done, we can clean up the job store by running
 
    toil clean file:my-jobstore
 
-Stats Command
--------------
+Status Command
+--------------
 
-Continuing the example from the status section above, if we ran our workflow with the command ::
+Continuing the example from the stats section above, if we ran our workflow with the command ::
 
-    toil discoverfiles.py file:my-jobstore --stats
+    python discoverfiles.py file:my-jobstore --stats
 
-We could interrogate our jobstore with the stats command (which is different than the ``--stats`` option), for example::
+We could interrogate our jobstore with the status command, for example::
 
-    toil stats file:my-jobstore
+    toil status file:my-jobstore
 
 If the run was successful, this would not return much valuable information, something like ::
 

@@ -53,6 +53,7 @@ def runSetup():
         requests,
         docker,
         dateutil,
+        psutil,
         subprocess32]
 
     mesos_reqs = [

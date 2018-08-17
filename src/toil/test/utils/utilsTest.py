@@ -15,12 +15,14 @@
 from __future__ import absolute_import
 
 from builtins import str
+import time
 import os
 import sys
 import uuid
 import shutil
 import tempfile
-
+from subprocess32 import Popen
+import psutil
 import pytest
 
 import toil
@@ -30,9 +32,10 @@ from toil import subprocess
 from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow, needs_cwl, needs_docker
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
+from toil.utils.toilStatus import ToilStatus
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
 
@@ -183,6 +186,110 @@ class UtilsTest(ToilTest):
                 shutil.rmtree(tmpDir)
             except NameError:
                 pass
+    def _createSortOptions(self, jobstoreLoc, fails=False):
+        options = Job.Runner.getDefaultOptions(jobstoreLoc)
+        options.badWorker = fails
+        options.clean = 'never'  # Will delete jobstore after the testing is done.
+        options.logLevel = 'info'
+        options.overwriteOutput = True
+        options.outputFile = self.outputFile
+        options.fileToSort = None
+        options.downCheckpoints = False
+        options.N = self.N
+        options.debugWorker = False
+        options.sleepDuration = 15
+        options.numLines = 50
+        options.lineLength = 20  # Ensures that there is enough time to get a running response from before it finshes.
+        return options
+
+    def testGetPIDStatus(self):
+        """Test that ToilStatus.getPIDStatus() behaves as expected."""
+        jobstoreName = 'pidStatusTest'
+        jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
+
+        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']
+        wf = Popen(cmd)
+        time.sleep(2)  # Need to let jobstore be created before checking its contents.
+        self.assertEqual(ToilStatus.getPIDStatus(jobstoreLoc),'RUNNING')
+        wf.wait()
+        self.assertEqual(ToilStatus.getPIDStatus(jobstoreLoc), 'COMPLETED')
+        os.remove(os.path.join(jobstoreLoc,'pid.log'))
+        self.assertEqual(ToilStatus.getPIDStatus(jobstoreLoc), 'QUEUED')
+        shutil.rmtree(jobstoreLoc)
+
+    def testGetStatusFailedToilWF(self):
+        """
+        Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
+
+        While this workflow could be called by importing and evoking its main function, doing so would remove the
+        opprotunity to test the 'RUNNING' functionality of getStatus().
+        """
+        jobstoreName = 'failing-toil-js'
+        jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
+        # --badWorker is set to force failure.
+        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never', '--badWorker', '1']
+        wf = Popen(cmd)
+        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
+        self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
+        wf.wait()
+        self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'ERROR')
+        shutil.rmtree(jobstoreLoc)
+
+    @needs_cwl
+    @needs_docker
+    def testGetStatusFailedCWLWF(self):
+        """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
+        files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
+        jobstoreName = 'failing-cwl-js'
+        jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
+        cmd = ['toil-cwl-runner', '--jobStore', jobstoreLoc, '--clean', 'never', '--badWorker', '1', files[0],
+               '--reverse', '--input', files[1]]
+        wf = Popen(cmd)
+        wfRun = psutil.Process(pid=wf.pid)
+        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
+        wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
+        self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
+        wfRun.resume()
+        wf.wait()
+        self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'ERROR')
+        shutil.rmtree(jobstoreLoc)
+
+    def testGetStatusSuccessfulToilWF(self):
+        """
+        Test that ToilStatus.getStatus() behaves as expected with a successful Toil workflow.
+
+        While this workflow could be called by importing and evoking its main function, doing so would remove the
+        opprotunity to test the 'RUNNING' functionality of getStatus().
+        """
+        jobstoreName = 'successful-toil-js'
+        jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
+        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']
+        wf = Popen(cmd)
+        time.sleep(2)  # Need to let jobstore be created before checking its contents.
+        self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
+        wf.wait()
+        self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'COMPLETED')
+        shutil.rmtree(jobstoreLoc)
+
+    @needs_cwl
+    @needs_docker
+    def testGetStatusSuccessfulCWLWF(self):
+        """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
+        # Run a cwl workflow in a subprocess.
+        files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
+        jobstoreName = 'successful-cwl-js'
+        jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
+        cmd = ['toil-cwl-runner', '--jobStore', jobstoreLoc, '--clean', 'never', files[0], '--reverse', '--input',
+               files[1]]
+        wf = Popen(cmd)
+        wfRun = psutil.Process(pid=wf.pid)
+        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
+        wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
+        self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
+        wfRun.resume()
+        wf.wait()
+        self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'COMPLETED')
+        shutil.rmtree(jobstoreLoc)
 
     @slow
     def testUtilsSort(self):
@@ -190,7 +297,6 @@ class UtilsTest(ToilTest):
         Tests the status and stats commands of the toil command line utility using the
         sort example with the --restart flag.
         """
-
         # Get the sort command to run
         toilCommand = [sys.executable,
                        '-m', toil.test.sort.sort.__name__,
@@ -235,7 +341,7 @@ class UtilsTest(ToilTest):
                     self.fail()  # Exceeded a reasonable number of restarts
                 totalTrys += 1
 
-                # Check the toil status command does not issue an exception
+        # Check the toil status command does not issue an exception
         system(self.statusCommand())
 
         # Check we can run 'toil stats'
