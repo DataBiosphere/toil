@@ -84,6 +84,8 @@ def main():
                              'with (and the permissions set on any output files produced).  '
                              'Default is "root".  Setting this to None will set this to '
                              'the current user.')
+    parser.add_argument("--destBucket", type=str, required=False, default=False,
+                        help="Specify a cloud bucket endpoint for output files.")
 
     # wdl_run_args is an array containing all of the unknown arguments not
     # specified by the parser in this main.  All of these will be passed down in
@@ -119,7 +121,8 @@ def main():
                          args.outdir,
                          aWDL.json_dict,
                          args.docker_user,
-                         args.jobStore)
+                         args.jobStore,
+                         args.destBucket)
 
     # use the AST dictionaries to write 4 strings
     # these are the future 4 sections of the compiled toil python file
