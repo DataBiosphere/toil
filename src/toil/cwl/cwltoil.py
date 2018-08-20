@@ -42,6 +42,8 @@ import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.command_line_tool
 
+from cwltool.loghandler import _logger as cwllogger
+from cwltool.loghandler import defaultStreamHandler
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
                                 normalizeFilesDirs)
@@ -62,8 +64,6 @@ import six
 from toil.job import Job, Promise
 from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
-
-cwllogger = logging.getLogger("cwltool")
 
 # Define internal jobs we should avoid submitting to batch systems and logging
 CWL_INTERNAL_JOBS = ("CWLJobWrapper", "CWLWorkflow", "CWLScatter", "CWLGather",
@@ -981,6 +981,7 @@ def visitSteps(t, op):
 
 def main(args=None, stdout=sys.stdout):
     """Main method for toil-cwl-runner."""
+    cwllogger.removeHandler(defaultStreamHandler)
     config = Config()
     config.cwl = True
     parser = argparse.ArgumentParser()
