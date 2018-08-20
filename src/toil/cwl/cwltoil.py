@@ -32,6 +32,14 @@ import functools
 from typing import Text, Mapping, MutableSequence
 import hashlib
 
+# Python 3 compatibility imports
+from six import iteritems, string_types
+from six.moves.urllib import parse as urlparse
+import six
+
+from schema_salad import validate
+import schema_salad.ref_resolver
+
 import cwltool.errors
 import cwltool.load_tool
 import cwltool.main
@@ -49,17 +57,11 @@ from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 normalizeFilesDirs)
 from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
                              collectFilesAndDirs, add_sizes)
+from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
 from cwltool.utils import aslist
 from cwltool.mutation import MutationManager
-import schema_salad.validate as validate
-import schema_salad.ref_resolver
-
-# Python 3 compatibility imports
-from six import iteritems, string_types
-from six.moves.urllib import parse as urlparse
-import six
 
 from toil.job import Job, Promise
 from toil.common import Config, Toil, addOptions
@@ -96,7 +98,6 @@ class MergeInputs(object):
     @abc.abstractmethod
     def resolve(self):
         """Resolves the inputs."""
-        raise NotImplementedError()
 
 
 class MergeInputsNested(MergeInputs):
@@ -488,7 +489,7 @@ def _makeNestedTempDir(top, seed, levels=2):
 
 
 class CWLJob(Job):
-    """Execute a CWL tool using cwltool.main.single_job_executor"""
+    """Execute a CWL tool using cwltool.executors.SingleJobExecutor"""
 
     def __init__(self, tool, cwljob, runtime_context, step_inputs=None):
         self.cwltool = remove_pickle_problems(tool)
@@ -527,6 +528,13 @@ class CWLJob(Job):
         fill_in_defaults(
             self.step_inputs, cwljob,
             self.runtime_context.make_fs_access(""))
+        for inp_id in cwljob.keys():
+            found = False
+            for field in self.cwltool.inputs_record_schema['fields']:
+                if field['name'] == inp_id:
+                    found = True
+            if not found:
+                cwljob.pop(inp_id)
 
         # Exports temporary directory for batch systems that reset TMPDIR
         os.environ["TMPDIR"] = os.path.realpath(
@@ -546,7 +554,7 @@ class CWLJob(Job):
         runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
         runtime_context.make_fs_access = functools.partial(
-                 ToilFsAccess, file_store=file_store)
+            ToilFsAccess, file_store=file_store)
         runtime_context.toil_get_file = functools.partial(
             toil_get_file, file_store, index, existing)
         # Run the tool
@@ -1078,6 +1086,8 @@ def main(args=None, stdout=sys.stdout):
     runtime_context.find_default_container = functools.partial(
         find_default_container, options)
     runtime_context.workdir = workdir
+    runtime_context.move_outputs = "leave"
+    runtime_context.rm_tmpdir = False
     loading_context = cwltool.context.LoadingContext(vars(options))
 
     with Toil(options) as toil:
@@ -1091,32 +1101,47 @@ def main(args=None, stdout=sys.stdout):
                 "outdirMin": toil.config.defaultDisk / (2**20),
                 "tmpdirMin": 0
             }]
-            try:
-                loading_context.construct_tool_object = toil_make_tool
-                loading_context.resolver = cwltool.resolver.tool_resolver
-                loading_context.strict = not options.not_strict
-                t = cwltool.load_tool.load_tool(
-                    options.cwltool, loading_context)
-            except cwltool.process.UnsupportedRequirement as err:
-                logging.error(err)
-                return 33
-
-            if isinstance(t, int):
-                return t
-
+            loading_context.construct_tool_object = toil_make_tool
+            loading_context.resolver = cwltool.resolver.tool_resolver
+            loading_context.strict = not options.not_strict
             options.workflow = options.cwltool
             options.job_order = options.cwljob
-            _, tool_file_uri = cwltool.main.resolve_tool_uri(
+            uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
                 options.cwltool, loading_context.resolver,
                 loading_context.fetcher_constructor)
             options.tool_help = None
             options.debug = options.logLevel == "DEBUG"
-            job, options.basedir, loader = cwltool.main.load_job_order(
-                options, sys.stdin, None, [], tool_file_uri)
-            job = cwltool.main.init_job_order(job, options, t, loader,
-                                              sys.stdout)
+            job_order_object, options.basedir, jobloader = \
+                cwltool.main.load_job_order(
+                    options, sys.stdin, loading_context.fetcher_constructor,
+                    loading_context.overrides_list, tool_file_uri)
+            document_loader, workflowobj, uri = \
+                cwltool.load_tool.fetch_document(
+                    uri, loading_context.resolver,
+                    loading_context.fetcher_constructor)
+            document_loader, avsc_names, processobj, metadata, uri = \
+                cwltool.load_tool.validate_document(
+                    document_loader, workflowobj, uri,
+                    loading_context.enable_dev, loading_context.strict, False,
+                    loading_context.fetcher_constructor, False,
+                    loading_context.overrides_list,
+                    do_validate=loading_context.do_validate)
+            loading_context.overrides_list.extend(
+                metadata.get("cwltool:overrides", []))
+            try:
+                tool = cwltool.load_tool.make_tool(
+                    document_loader, avsc_names, metadata, uri,
+                    loading_context)
+            except cwltool.process.UnsupportedRequirement as err:
+                logging.error(err)
+                return 33
+            runtime_context.secret_store = SecretStore()
+            initialized_job_order = cwltool.main.init_job_order(
+                job_order_object, options, tool, jobloader, sys.stdout,
+                secret_store=runtime_context.secret_store)
             fs_access = cwltool.stdfsaccess.StdFsAccess(options.basedir)
-            fill_in_defaults(t.tool["inputs"], job, fs_access)
+            fill_in_defaults(
+                tool.tool["inputs"], initialized_job_order, fs_access)
 
             def path_to_loc(obj):
                 if "location" not in obj and "path" in obj:
@@ -1134,9 +1159,9 @@ def main(args=None, stdout=sys.stdout):
                     uploadFile, toil.importFile, fileindex, existing,
                     skip_broken=True))
 
-            t.visit(import_files)
+            tool.visit(import_files)
 
-            for inp in t.tool["inputs"]:
+            for inp in tool.tool["inputs"]:
                 def set_secondary(fileobj):
                     if isinstance(fileobj, Mapping) \
                             and fileobj.get("class") == "File":
@@ -1150,11 +1175,12 @@ def main(args=None, stdout=sys.stdout):
                         for entry in fileobj:
                             set_secondary(entry)
 
-                if shortname(inp["id"]) in job and inp.get("secondaryFiles"):
-                    set_secondary(job[shortname(inp["id"])])
+                if shortname(inp["id"]) in initialized_job_order \
+                        and inp.get("secondaryFiles"):
+                    set_secondary(initialized_job_order[shortname(inp["id"])])
 
-            import_files(job)
-            visitSteps(t, import_files)
+            import_files(initialized_job_order)
+            visitSteps(tool, import_files)
 
             try:
                 runtime_context.use_container = use_container
@@ -1164,12 +1190,12 @@ def main(args=None, stdout=sys.stdout):
                 runtime_context.job_script_provider = job_script_provider
                 runtime_context.force_docker_pull = options.force_docker_pull
                 runtime_context.no_match_user = options.no_match_user
-                (wf1, _) = makeJob(t, {}, None, runtime_context)
+                (wf1, _) = makeJob(tool, {}, None, runtime_context)
             except cwltool.process.UnsupportedRequirement as err:
                 logging.error(err)
                 return 33
 
-            wf1.cwljob = job
+            wf1.cwljob = initialized_job_order
             outobj = toil.start(wf1)
 
         outobj = resolve_indirect(outobj)
