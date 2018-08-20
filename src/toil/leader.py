@@ -27,11 +27,6 @@ import logging
 import time
 import os
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
 from toil.lib.humanize import bytes2human
 from toil import resolveEntryPoint
 try:

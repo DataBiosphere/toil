@@ -159,7 +159,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
                     _setEnv('ADDRESS', '%s:%i' % (ip, port))
                     _setEnv('LEVEL', level)
                 else:
-                    log.info('Real-time logging disabled')
+                    log.debug('Real-time logging disabled')
             else:
                 if level:
                     log.warn('Ignoring nested request to start real-time logging')
