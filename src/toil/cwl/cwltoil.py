@@ -50,6 +50,7 @@ from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
 from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
 from cwltool.utils import aslist
+from cwltool.mutation import MutationManager
 import schema_salad.validate as validate
 import schema_salad.ref_resolver
 
@@ -1188,6 +1189,7 @@ def main(args=None, stdout=sys.stdout):
             visit_class(outobj, ("File",), functools.partial(
                 compute_checksums, cwltool.stdfsaccess.StdFsAccess("")))
 
+        visit_class(outobj, ("File", ), MutationManager().unset_generation)
         stdout.write(json.dumps(outobj, indent=4))
 
     return 0
