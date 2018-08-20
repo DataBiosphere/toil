@@ -49,7 +49,8 @@ class SynthesizeWDL:
                  output_directory,
                  json_dict,
                  docker_user,
-                 jobstore=None):
+                 jobstore=None,
+                 destBucket=None):
         self.output_directory = output_directory
         self.output_file = os.path.join(self.output_directory, 'toilwdl_compiled.py')
 
@@ -70,6 +71,9 @@ class SynthesizeWDL:
 
         # unique iterator to add to cmd names
         self.cmd_num = 0
+
+        # deposit WDL outputs into a cloud bucket; optional
+        self.destBucket = destBucket
 
     def write_modules(self):
         # string used to write imports to the file
@@ -151,6 +155,11 @@ class SynthesizeWDL:
         jobs_to_write = self.write_main_jobwrappers()
         main_section = main_section + jobs_to_write
 
+        # loop to export all outputs to a cloud bucket
+        if self.destBucket:
+            main_destbucket = self.write_main_destbucket()
+            main_section = main_section + main_destbucket
+
         return main_section
 
     def write_main_header(self):
@@ -216,6 +225,23 @@ class SynthesizeWDL:
 
         main_section += '\n        fileStore.start(job0)\n'
 
+        return main_section
+
+    def write_main_destbucket(self):
+        '''
+        Writes out a loop for exporting outputs to a cloud bucket.
+
+        :return: A string representing this.
+        '''
+        main_section = heredoc_wdl('''
+            outdir = '{outdir}'
+            onlyfiles = [os.path.join(outdir, f) for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
+            for output_f_path in onlyfiles:
+                output_file = fileStore.writeGlobalFile(output_f_path)
+                preserveThisFilename = os.path.basename(output_f_path)
+                destUrl = '/'.join(s.strip('/') for s in [destBucket, preserveThisFilename])
+                fileStore.exportFile(output_file, destUrl)
+            ''', {'outdir': self.output_directory}, indent='    ')
         return main_section
 
     def fetch_ignoredifs(self, assignments, breaking_assignment):
