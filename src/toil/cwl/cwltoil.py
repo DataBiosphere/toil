@@ -1067,9 +1067,6 @@ def main(args=None, stdout=sys.stdout):
         raise NoSuchJobStoreException(
             'Please specify a jobstore with the --jobStore option when specifying a provisioner.')
 
-    if options.jobStore and not options.provisioner:
-        raise RuntimeError('Please specify a provisioner with the --provisioner option when specifying a jobstore.')
-
     use_container = not options.no_container
 
     if options.logLevel:
