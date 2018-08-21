@@ -50,6 +50,7 @@ import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.command_line_tool
 
+from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
@@ -1061,6 +1062,14 @@ def main(args=None, stdout=sys.stdout):
 
     # we use workdir as jobStore:
     options = parser.parse_args([workdir] + args)
+
+    if options.provisioner and not options.jobStore:
+        raise NoSuchJobStoreException(
+            'Please specify a jobstore with the --jobStore option when specifying a provisioner.')
+
+    if options.jobStore and not options.provisioner:
+        raise NoSuchJobStoreException(
+            'Please specify a provisioner with the --provisioner option when specifying a jobstore.')
 
     use_container = not options.no_container
 
