@@ -92,7 +92,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             """
             with self.runningJobsLock:
                 self.runningJobs.remove(jobID)
-            del self.allocatedCpus[jobID]
             del self.batchJobIDs[jobID]
 
         def createJobs(self, newJob):
@@ -107,8 +106,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             if newJob is not None:
                 self.waitingJobs.append(newJob)
             # Launch jobs as necessary:
-            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs) \
-                    and len(self.runningJobs) < int(self.boss.maxCores):
+            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
                 jobID, cpu, memory, command = self.waitingJobs.pop(0)
 
