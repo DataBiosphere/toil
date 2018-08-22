@@ -349,8 +349,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
     >>> with open(path,'w') as f: 
     ...     _ = f.write('from toil.resource import ModuleDescriptor\\n'
     ...                 'print(ModuleDescriptor.forModule(__name__))')
-    >>> subprocess.check_output([ sys.executable, path ]) # doctest: +ELLIPSIS
-    "ModuleDescriptor(dirPath='...', name='foo', fromVirtualEnv=False)\\n"
+    >>> subprocess.check_output([ sys.executable, path ]) # doctest: +ELLIPSIS +ALLOW_BYTES
+    b"ModuleDescriptor(dirPath='...', name='foo', fromVirtualEnv=False)\\n"
 
     >>> from shutil import rmtree
     >>> rmtree( dirPath )
