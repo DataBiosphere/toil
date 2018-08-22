@@ -27,12 +27,15 @@ logger = logging.getLogger(__name__)
 def main():
     parser = getBasicOptionParser()
     parser = addBasicProvisionerOptions(parser)
-    parser.add_argument("--insecure", dest='insecure', action='store_true', required=False,
+    parser.add_argument("--insecure", action='store_true',
                         help="Temporarily disable strict host key checking.")
+    parser.add_argument("--sshOption", dest='sshOptions', default=[], action='append',
+                        help="Pass an additional option to the SSH command.")
     parser.add_argument('args', nargs=argparse.REMAINDER)
     config = parseBasicOptions(parser)
     cluster = clusterFactory(provisioner=config.provisioner,
                              clusterName=config.clusterName,
                              zone=config.zone)
     command = config.args if config.args else ['bash']
-    cluster.getLeader().sshAppliance(*command, strict=not config.insecure, tty=sys.stdin.isatty())
+    cluster.getLeader().sshAppliance(*command, strict=not config.insecure, tty=sys.stdin.isatty(),
+                                     sshOptions=config.sshOptions)
