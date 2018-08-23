@@ -22,6 +22,11 @@ from builtins import next
 from contextlib import contextmanager
 import time
 import urllib.request, urllib.error, urllib.parse
+try:
+    from httplib import BadStatusLine
+except ImportError:
+    # This has moved in Python 3
+    from http.client import BadStatusLine
 import logging
 
 log = logging.getLogger( __name__ )
@@ -137,7 +142,19 @@ default_timeout = 300
 
 
 def retryable_http_error( e ):
-    return isinstance( e, urllib.error.HTTPError ) and e.code in ('503', '408', '500')
+    """
+    Determine if an error encountered during an HTTP download is likely to go away if we try again.
+    """
+    if isinstance( e, urllib.error.HTTPError ) and e.code in ('503', '408', '500'):
+        # The server returned one of:
+        # 503 Service Unavailable
+        # 408 Request Timeout
+        # 500 Internal Server Error
+        return True
+    if isinstance( e, BadStatusLine ):
+        # The server didn't return a valid response at all
+        return True
+    return False
 
 
 def retry_http( delays=default_delays, timeout=default_timeout, predicate=retryable_http_error ):
@@ -150,6 +167,16 @@ def retry_http( delays=default_delays, timeout=default_timeout, predicate=retrya
     Traceback (most recent call last):
     ...
     HTTPError: HTTP Error 408: some message
+    >>> i > 1
+    True
+    >>> i = 0
+    >>> for attempt in retry_http(timeout=5):  # doctest: +IGNORE_EXCEPTION_DETAIL
+    ...     with attempt:
+    ...         i += 1
+    ...         raise BadStatusLine('sad-cloud.gif')
+    Traceback (most recent call last):
+    ...
+    BadStatusLine: sad-cloud.gif
     >>> i > 1
     True
     """
