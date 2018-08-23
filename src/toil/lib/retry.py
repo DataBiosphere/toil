@@ -176,6 +176,7 @@ def retry_http( delays=default_delays, timeout=default_timeout, predicate=retrya
     ...         raise BadStatusLine('sad-cloud.gif')
     Traceback (most recent call last):
     ...
+    BadStatusLine: sad-cloud.gif
     >>> i > 1
     True
     """
