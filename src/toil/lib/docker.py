@@ -2,7 +2,12 @@ from __future__ import absolute_import
 from past.builtins import map
 import logging
 import os
-import pipes
+try:
+    # In Python 3 we have this quote
+    from shlex import quote
+except ImportError:
+    # But in 2.7 we have this deprecated one
+    from pipes import quote
 from toil import subprocess
 import docker
 import base64
@@ -169,7 +174,7 @@ def subprocessDockerCall(job,
     if len(parameters) > 0 and type(parameters[0]) is list:
         # When piping, all arguments now get merged into a single string to bash -c.
         # We try to support spaces in paths by wrapping them all in quotes first.
-        chain_params = [' '.join(p) for p in [list(map(pipes.quote, q)) for q in parameters]]
+        chain_params = [' '.join(p) for p in [list(map(quote, q)) for q in parameters]]
         # Use bash's set -eo pipefail to detect and abort on a failure in any command in the chain
         call = baseDockerCall + ['--entrypoint', '/bin/bash',  tool, '-c',
                                  'set -eo pipefail && {}'.format(' | '.join(chain_params))]
@@ -317,7 +322,7 @@ def apiDockerCall(job,
         if entrypoint is None:
             entrypoint = ['/bin/bash', '-c']
         chain_params = \
-            [' '.join((pipes.quote(arg) for arg in command)) \
+            [' '.join((quote(arg) for arg in command)) \
              for command in parameters]
         command = ' | '.join(chain_params)
         pipe_prefix = "set -eo pipefail && "
@@ -325,13 +330,13 @@ def apiDockerCall(job,
         logger.debug("Calling docker with: " + repr(command))
 
     # If 'parameters' is a normal list, join all elements into a single string
-    # element.
-    # Example: ['echo','the', 'Oread'] becomes: ['echo the Oread']
+    # element, quoting and escaping each element.
+    # Example: ['echo','the Oread'] becomes: ["echo 'the Oread'"]
     # Note that this is still a list, and the docker API prefers this as best
     # practice:
     # http://docker-py.readthedocs.io/en/stable/containers.html
     elif len(parameters) > 0 and type(parameters) is list:
-        command = ' '.join(parameters)
+        command = ' '.join((quote(arg) for arg in parameters))
         logger.debug("Calling docker with: " + repr(command))
 
     # If the 'parameters' lists are empty, they are respecified as None, which
