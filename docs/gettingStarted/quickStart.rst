@@ -473,7 +473,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Now run the CWL workflow::
 
-      (venv) $ toil-cwl-runner /tmp/example.cwl /tmp/example-job.yaml
+      (venv) $ toil-cwl-runner --provisioner aws --jobStore aws:us-west-2a:any-name /tmp/example.cwl /tmp/example-job.yaml
 
    ..  tip::
 
