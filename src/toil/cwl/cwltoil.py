@@ -29,6 +29,7 @@ import sys
 import logging
 import copy
 import functools
+import shutil
 from typing import Text, Mapping, MutableSequence
 import hashlib
 
@@ -453,6 +454,16 @@ class CWLJobWrapper(Job):
         self.addChild(realjob)
         return realjob.rv()
 
+def _addStagingTag(dir):
+    """
+    Add a prefix to the innermost directory of a path used for cleaning up toil files.
+
+    This is being used as a workaround for cleaning up files incidentially created after restarting a workflow.
+    """
+    parts = dir.split('/')[1:]
+    parts[0] = '/' + parts[0]
+    parts[1] = 'toil-staging-' + parts[1]
+    return os.path.join(parts[0], parts[1])
 
 def _makeNestedTempDir(top, seed, levels=2):
     """
@@ -474,7 +485,7 @@ def _makeNestedTempDir(top, seed, levels=2):
     """
     # Valid chars for the creation of temporary directories
     validDirs = hashlib.md5(six.b(str(seed))).hexdigest()
-    tempDir = top
+    tempDir = _addStagingTag(top)
     for i in range(max(min(levels, len(validDirs)), 1)):
         tempDir = os.path.join(tempDir, validDirs[i])
         if not os.path.exists(tempDir):
@@ -986,6 +997,17 @@ def visitSteps(t, op):
             op(s.tool)
             visitSteps(s.embedded_tool, op)
 
+def cleanLeakyDirs():
+    """
+    Remove specially designated 'toil-staging-...' directories and files.
+
+    This, in conjunction with CWLJob._addStagingTag, removes directories that are incidentially recreated after restarting
+    a job. A CWLJob is created with a workingDir attribute specified in main(). When this job fails, it is pickled, saved
+    into the jobstore, and the directory specified by workingDir is cleaned up in the batchsystem.
+    """
+    for dir in os.listdir('/tmp'):
+        if dir.startswith('toil-staging'):
+            shutil.rmtree(os.path.join('/tmp', dir))
 
 def main(args=None, stdout=sys.stdout):
     """Main method for toil-cwl-runner."""
@@ -1104,30 +1126,34 @@ def main(args=None, stdout=sys.stdout):
             loading_context.construct_tool_object = toil_make_tool
             loading_context.resolver = cwltool.resolver.tool_resolver
             loading_context.strict = not options.not_strict
+
             options.workflow = options.cwltool
             options.job_order = options.cwljob
-            uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
-                options.cwltool, loading_context.resolver,
-                loading_context.fetcher_constructor)
             options.tool_help = None
             options.debug = options.logLevel == "DEBUG"
-            job_order_object, options.basedir, jobloader = \
-                cwltool.main.load_job_order(
-                    options, sys.stdin, loading_context.fetcher_constructor,
-                    loading_context.overrides_list, tool_file_uri)
-            document_loader, workflowobj, uri = \
-                cwltool.load_tool.fetch_document(
-                    uri, loading_context.resolver,
-                    loading_context.fetcher_constructor)
-            document_loader, avsc_names, processobj, metadata, uri = \
-                cwltool.load_tool.validate_document(
-                    document_loader, workflowobj, uri,
-                    loading_context.enable_dev, loading_context.strict, False,
-                    loading_context.fetcher_constructor, False,
-                    loading_context.overrides_list,
-                    do_validate=loading_context.do_validate)
+
+            uri, tool_file_uri = cwltool.load_tool.resolve_tool_uri(
+                                                                    options.cwltool, loading_context.resolver,
+                                                                    loading_context.fetcher_constructor)
+
+            job_order_object, options.basedir, jobloader = cwltool.main.load_job_order(
+                                                                    options, sys.stdin, loading_context.fetcher_constructor,
+                                                                    loading_context.overrides_list, tool_file_uri)
+
+            document_loader, workflowobj, uri = cwltool.load_tool.fetch_document(
+                                                                    uri, loading_context.resolver,
+                                                                    loading_context.fetcher_constructor)
+
+            document_loader, avsc_names, processobj, metadata, uri = cwltool.load_tool.validate_document(
+                                                                    document_loader, workflowobj, uri,
+                                                                    loading_context.enable_dev, loading_context.strict, False,
+                                                                    loading_context.fetcher_constructor, False,
+                                                                    loading_context.overrides_list,
+                                                                    do_validate=loading_context.do_validate)
+
             loading_context.overrides_list.extend(
                 metadata.get("cwltool:overrides", []))
+
             try:
                 tool = cwltool.load_tool.make_tool(
                     document_loader, avsc_names, metadata, uri,
@@ -1135,13 +1161,14 @@ def main(args=None, stdout=sys.stdout):
             except cwltool.process.UnsupportedRequirement as err:
                 logging.error(err)
                 return 33
+
             runtime_context.secret_store = SecretStore()
             initialized_job_order = cwltool.main.init_job_order(
-                job_order_object, options, tool, jobloader, sys.stdout,
-                secret_store=runtime_context.secret_store)
+                                                        job_order_object, options, tool, jobloader, sys.stdout,
+                                                        secret_store=runtime_context.secret_store)
+
             fs_access = cwltool.stdfsaccess.StdFsAccess(options.basedir)
-            fill_in_defaults(
-                tool.tool["inputs"], initialized_job_order, fs_access)
+            fill_in_defaults(tool.tool["inputs"], initialized_job_order, fs_access)
 
             def path_to_loc(obj):
                 if "location" not in obj and "path" in obj:
@@ -1150,11 +1177,11 @@ def main(args=None, stdout=sys.stdout):
 
             def import_files(tool):
                 visit_class(tool, ("File", "Directory"), path_to_loc)
-                visit_class(tool, ("File", ), functools.partial(
-                    add_sizes, fs_access))
+                visit_class(tool, ("File", ), functools.partial(add_sizes, fs_access))
+
                 normalizeFilesDirs(tool)
-                adjustDirObjs(tool, functools.partial(
-                    get_listing, fs_access, recursive=True))
+
+                adjustDirObjs(tool, functools.partial(get_listing, fs_access, recursive=True))
                 adjustFileObjs(tool, functools.partial(
                     uploadFile, toil.importFile, fileindex, existing,
                     skip_broken=True))
@@ -1185,11 +1212,11 @@ def main(args=None, stdout=sys.stdout):
             try:
                 runtime_context.use_container = use_container
                 runtime_context.tmpdir = os.path.realpath(tmpdir_prefix)
-                runtime_context.tmp_outdir_prefix = os.path.realpath(
-                    tmp_outdir_prefix)
+                runtime_context.tmp_outdir_prefix = os.path.realpath(tmp_outdir_prefix)
                 runtime_context.job_script_provider = job_script_provider
                 runtime_context.force_docker_pull = options.force_docker_pull
                 runtime_context.no_match_user = options.no_match_user
+
                 (wf1, _) = makeJob(tool, {}, None, runtime_context)
             except cwltool.process.UnsupportedRequirement as err:
                 logging.error(err)
@@ -1218,6 +1245,8 @@ def main(args=None, stdout=sys.stdout):
 
         visit_class(outobj, ("File", ), MutationManager().unset_generation)
         stdout.write(json.dumps(outobj, indent=4))
+
+        cleanLeakyDirs()
 
     return 0
 
