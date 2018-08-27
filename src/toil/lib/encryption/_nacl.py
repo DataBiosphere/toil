@@ -83,7 +83,7 @@ def decrypt(ciphertext, keyPath):
     >>> decrypt(encrypt("testMessage".encode('utf-8'), k), k).decode('utf-8') # doctest: +ALLOW_UNICODE
     u'testMessage'
 
-    >>> import import os
+    >>> import os
     >>> os.remove(k)
     """
     with open(keyPath, 'rb') as f:
