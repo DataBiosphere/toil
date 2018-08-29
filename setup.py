@@ -119,7 +119,7 @@ def runSetup():
             'cwl': cwl_reqs,
             'wdl': wdl_reqs,
             'htcondor': htcondor_reqs,
-            'all': all_reqs},
+            'all:sys_platform!="darwin"': all_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
                                # Note that we intentionally include the top-level `test` package for
