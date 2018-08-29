@@ -111,7 +111,7 @@ def runSetup():
         license="Apache License v2.0",
         install_requires=core_reqs,
         extras_require={
-            'mesos': mesos_reqs,
+            'mesos:sys_platform!="darwin"': mesos_reqs,
             'aws': aws_reqs,
             'azure': azure_reqs,
             'encryption': encryption_reqs,
