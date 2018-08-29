@@ -45,6 +45,8 @@ def runSetup():
     docker = 'docker==2.5.1'
     subprocess32 = 'subprocess32<=3.5.2'
     dateutil = 'python-dateutil'
+    pytest = 'pytest==3.7.4'
+    pytest_cov = 'pytest-cov==2.5.1'
 
     core_reqs = [
         dill,
@@ -54,7 +56,9 @@ def runSetup():
         docker,
         dateutil,
         psutil,
-        subprocess32]
+        subprocess32,
+        pytest,
+        pytest_cov]
 
     mesos_reqs = [
         psutil,
