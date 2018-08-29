@@ -309,6 +309,7 @@ class Job(BaseJob):
         self._promiseJobStore = None
         self._fileStore = None
         self._tempDir = None
+        self._succeeded = True
 
     def run(self, fileStore):
         """

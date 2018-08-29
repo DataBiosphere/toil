@@ -523,7 +523,6 @@ class CWLJob(Job):
         self.step_inputs = step_inputs or self.cwltool.tool["inputs"]
         self.workdir = runtime_context.workdir
         self.openTempDirs = []
-        self.failed = False
 
     def run(self, file_store):
         cwljob = resolve_indirect(self.cwljob)
@@ -562,6 +561,7 @@ class CWLJob(Job):
         (output, status) = cwltool.executors.SingleJobExecutor().execute(
             self.cwltool, cwljob, runtime_context, cwllogger)
         if status != "success":
+            self._succeeded = False
             raise cwltool.errors.WorkflowException(status)
 
         adjustDirObjs(output, functools.partial(
@@ -573,11 +573,6 @@ class CWLJob(Job):
             index, existing))
 
         return output
-
-    def __del__(self):
-        if not self.failed:
-            for tempDir in self.openTempDirs:
-                shutil.rmtree(tempDir)
 
 def makeJob(tool, jobobj, step_inputs, runtime_context):
     """Create the correct Toil Job object for the CWL tool (workflow, job, or job
@@ -992,6 +987,13 @@ def visitSteps(t, op):
             visitSteps(s.embedded_tool, op)
 
 
+def cleanTempDirs(job):
+    """Remove temporarly created directories."""
+    if job._succeeded:
+        for tempDir in job.openTempDirs:
+            shutil.rmtree(tempDir)
+
+
 def main(args=None, stdout=sys.stdout):
     """Main method for toil-cwl-runner."""
     cwllogger.removeHandler(defaultStreamHandler)
@@ -1201,6 +1203,8 @@ def main(args=None, stdout=sys.stdout):
                 return 33
 
             wf1.cwljob = initialized_job_order
+            if wf1 is CWLJob:  # Clean up temporary directories only created with CWLJobs.
+                wf1.addFollowOnFn(cleanTempDirs, wf1)
             outobj = toil.start(wf1)
 
         outobj = resolve_indirect(outobj)
