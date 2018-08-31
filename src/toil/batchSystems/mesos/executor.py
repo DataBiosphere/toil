@@ -28,7 +28,7 @@ import traceback
 import time
 
 import addict
-from pymesos.interface import MesosExecutorDriver, Executor, decode_data
+from pymesos import MesosExecutorDriver, Executor, decode_data
 
 from toil import subprocess, pickle
 from toil.lib.expando import Expando
