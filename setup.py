@@ -87,18 +87,17 @@ def runSetup():
     htcondor_reqs = [
         htcondor]
 
+    # htcondor is not supported by apple
+    # this is tricky to conditionally support in 'all' due
+    # to how wheels work, so it is not included in all and
+    # must be explicitly installed as an extra
     all_reqs = \
         mesos_reqs + \
         aws_reqs + \
         azure_reqs + \
         encryption_reqs + \
         google_reqs + \
-        cwl_reqs + \
-        htcondor_reqs
-
-    # htcondor is not supported by apple
-    if sys.platform != 'linux' and sys.platform != 'linux2':
-        all_reqs.remove(htcondor)
+        cwl_reqs
 
     # remove the subprocess32 backport if not python2
     if not sys.version_info[0] == 2:
@@ -122,7 +121,7 @@ def runSetup():
             'google': google_reqs,
             'cwl': cwl_reqs,
             'wdl': wdl_reqs,
-            'htcondor': htcondor_reqs,
+            'htcondor:sys_platform!="darwin"': htcondor_reqs,
             'all': all_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
