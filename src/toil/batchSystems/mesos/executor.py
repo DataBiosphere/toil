@@ -26,7 +26,8 @@ import logging
 import psutil
 import traceback
 import time
-from addict import Dict
+
+import addict
 from pymesos.interface import MesosExecutorDriver, Executor, decode_data
 
 from toil import subprocess, pickle
@@ -191,7 +192,7 @@ class MesosExecutor(Executor):
                                         shell=True, env=dict(os.environ, **job.environment))
 
         def sendUpdate(task, taskState, wallTime=None, msg=''):
-            update = Dict()
+            update = addict.Dict()
             update.task_id.value = task.task_id.value
             update.state = taskState
             update.timestamp = wallTime
@@ -211,9 +212,12 @@ class MesosExecutor(Executor):
 def main():
     logging.basicConfig(level=logging.DEBUG)
     log.debug("Starting executor")
-    driver = MesosExecutorDriver(MesosExecutor(), use_addict=True)
-    driver.run()
-    # TODO: find behavior analogous to the comments below
-    # exit_value = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
-    # assert len(executor.runningTasks) == 0
-    # sys.exit(exit_value)
+    executor = MesosExecutor()
+    driver = MesosExecutorDriver(executor, use_addict=True)
+    driver.start()
+    driver_result = driver.join()
+    
+    exit_value = 0 if driver_result == 'DRIVER_STOPPED' else 1
+    assert len(executor.runningTasks) == 0
+    sys.exit(exit_value)
+
