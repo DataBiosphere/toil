@@ -561,7 +561,6 @@ class CWLJob(Job):
         (output, status) = cwltool.executors.SingleJobExecutor().execute(
             self.cwltool, cwljob, runtime_context, cwllogger)
         if status != "success":
-            self._succeeded = False
             raise cwltool.errors.WorkflowException(status)
 
         adjustDirObjs(output, functools.partial(
