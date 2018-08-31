@@ -151,7 +151,7 @@ test_offline: check_venv check_build_reqs
 # The auto-deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
 	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
-	    $(python) -m pytest $(pytest_args_local) $(tests)
+	    $(python) -m pytest --cov=toil $(pytest_args_local) $(tests)
 
 # For running integration tests locally in series (uses the -s argument for pyTest)
 integration_test_local: check_venv check_build_reqs sdist push_docker
