@@ -37,9 +37,7 @@ except ImportError:
 from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
-import mesos.interface
-import mesos.native
-from mesos.interface import mesos_pb2
+from addict import Dict
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data
 
 from toil.lib.memoize import strict_bool
@@ -207,7 +205,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             self.intendedKill.add(jobID)
             # FIXME: a bit too expensive for my taste
             if jobID in self.getIssuedBatchJobIDs():
-                taskId = mesos_pb2.TaskID()
+                taskId = addict.Dict()
                 taskId.value = str(jobID)
                 self.driver.killTask(taskId)
             else:
@@ -270,10 +268,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     def _buildExecutor(self):
         """
-        Creates and returns an ExecutorInfo instance representing our executor implementation.
+        Creates and returns an ExecutorInfo-shaped object representing our executor implementation.
         """
         # The executor program is installed as a setuptools entry point by setup.py
-        info = mesos_pb2.ExecutorInfo()
+        info = addict.Dict()
         info.name = "toil"
         info.command.value = resolveEntryPoint('_toil_mesos_executor')
         info.executor_id.value = "toil-%i" % os.getpid()
@@ -284,15 +282,16 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         The Mesos driver thread which handles the scheduler's communication with the Mesos master
         """
-        framework = mesos_pb2.FrameworkInfo()
+        framework = addict.Dict()
         framework.user = ""  # Have Mesos fill in the current user.
         framework.name = "toil"
         framework.principal = framework.name
-        self.driver = mesos.native.MesosSchedulerDriver(self,
-                                                        framework,
-                                                        self._resolveAddress(self.mesosMasterAddress),
-                                                        True)  # enable implicit acknowledgements
-        assert self.driver.start() == mesos_pb2.DRIVER_RUNNING
+        # Make the driver which implements most of the scheduler logic and calls back to us for the user-defined parts.
+        # Make sure it will call us with nice namespace-y addicts
+        self.driver = MesosSchedulerDriver(self, framework,
+                                           self._resolveAddress(self.mesosMasterAddress),
+                                           use_addict=True, implicit_acknowledgements=True)
+        self.driver.start()
 
     @staticmethod
     def _resolveAddress(address):
@@ -323,8 +322,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         log.debug("Joining Mesos driver")
         driver_result = self.driver.join()
         log.debug("Joined Mesos driver")
-        if driver_result != mesos_pb2.DRIVER_STOPPED:
-            raise RuntimeError("Mesos driver failed with %i", driver_result)
+        if driver_result != 'DRIVER_STOPPED':
+            raise RuntimeError("Mesos driver failed with %s", driver_result)
 
     def registered(self, driver, frameworkId, masterInfo):
         """
@@ -503,7 +502,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         Build the Mesos task object for a given the Toil job and Mesos offer
         """
-        task = mesos_pb2.TaskInfo()
+        task = addict.Dict()
         task.task_id.value = str(job.jobID)
         task.slave_id.value = offer.slave_id.value
         task.name = job.name
@@ -511,13 +510,13 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         task.executor.MergeFrom(self.executor)
 
         cpus = task.resources.add()
-        cpus.name = "cpus"
-        cpus.type = mesos_pb2.Value.SCALAR
+        cpus.name = 'cpus'
+        cpus.type = 'SCALAR'
         cpus.scalar.value = job.resources.cores
 
         disk = task.resources.add()
-        disk.name = "disk"
-        disk.type = mesos_pb2.Value.SCALAR
+        disk.name = 'disk'
+        disk.type = 'SCALAR'
         if toMiB(job.resources.disk) > 1:
             disk.scalar.value = toMiB(job.resources.disk)
         else:
@@ -525,8 +524,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                         job.jobID, job.resources.disk)
             disk.scalar.value = 1
         mem = task.resources.add()
-        mem.name = "mem"
-        mem.type = mesos_pb2.Value.SCALAR
+        mem.name = 'mem'
+        mem.type = 'SCALAR'
         if toMiB(job.resources.memory) > 1:
             mem.scalar.value = toMiB(job.resources.memory)
         else:
@@ -545,8 +544,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         slave sending the status update is lost/fails during that time).
         """
         jobID = int(update.task_id.value)
-        stateName = mesos_pb2.TaskState.Name(update.state)
-        log.debug("Job %i is in state '%s'.", jobID, stateName)
+        log.debug("Job %i is in state '%s'.", jobID, update.state)
 
         def jobEnded(_exitStatus, wallTime=None):
             try:
@@ -571,9 +569,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 log.warning("Job %i returned exit code %i from unknown host.",
                             jobID, _exitStatus)
 
-        if update.state == mesos_pb2.TASK_FINISHED:
+        if update.state == 'TASK_FINISHED':
             jobEnded(0, wallTime=unpack('d', update.data)[0])
-        elif update.state == mesos_pb2.TASK_FAILED:
+        elif update.state == 'TASK_FAILED':
             try:
                 exitStatus = int(update.message)
             except ValueError:
@@ -582,9 +580,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             else:
                 log.warning('Job %i failed with exit status %i', jobID, exitStatus)
             jobEnded(exitStatus)
-        elif update.state in (mesos_pb2.TASK_LOST, mesos_pb2.TASK_KILLED, mesos_pb2.TASK_ERROR):
+        elif update.state in ('TASK_LOST', 'TASK_KILLED', 'TASK_ERROR'):
             log.warning("Job %i is in unexpected state %s with message '%s'.",
-                        jobID, stateName, update.message)
+                        jobID, update.state, update.message)
             jobEnded(255)
 
     def frameworkMessage(self, driver, executorId, slaveId, message):
