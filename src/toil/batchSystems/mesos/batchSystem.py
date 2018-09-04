@@ -37,7 +37,7 @@ except ImportError:
 from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
-from addict import Dict
+import addict
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data
 
 from toil.lib.memoize import strict_bool
