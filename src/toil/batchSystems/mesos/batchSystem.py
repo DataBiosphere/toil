@@ -471,6 +471,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     def _trackOfferedNodes(self, offers):
         for offer in offers:
+            log.debug('Processing offer %s' % offer)
+            # All SlaveID messages are required to have a value according to the Mesos Protobuf file.
+            assert(offer.slave_id.has_key('value'))
             try:
                 nodeAddress = socket.gethostbyname(offer.hostname)
             except:
