@@ -543,7 +543,9 @@ class CWLJob(Job):
         outdir = os.path.join(file_store.getLocalTempDir(), "out")
         os.mkdir(outdir)
         top_tmp_outdir = self.workdir or os.environ["TMPDIR"]
-        tmp_outdir_prefix = os.path.join(_makeNestedTempDir(top=top_tmp_outdir, seed=outdir, levels=2), "out_tmpdir")
+        tmp_outdir_prefix = os.path.join(
+            _makeNestedTempDir(top=top_tmp_outdir, seed=outdir, levels=2),
+            "out_tmpdir")
         self.openTempDirs.append(top_tmp_outdir)
 
         index = {}
