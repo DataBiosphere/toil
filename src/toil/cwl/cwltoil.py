@@ -994,6 +994,7 @@ def cleanTempDirs(job):
         for tempDir in job.openTempDirs:
             if os.path.exists(tempDir):
                 shutil.rmtree(tempDir)
+        job.openTempDirs = []
 
 
 def main(args=None, stdout=sys.stdout):
