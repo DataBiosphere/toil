@@ -137,7 +137,7 @@ class MesosExecutor(Executor):
 
             # try to unpickle the task
             try:
-                taskData = pickle.loads(task.data)
+                taskData = pickle.loads(decode_data(task.data))
             except:
                 exc_info = sys.exc_info()
                 log.error('Exception while unpickling task: ', exc_info=exc_info)
@@ -217,7 +217,8 @@ def main():
     driver.start()
     driver_result = driver.join()
     
-    exit_value = 0 if driver_result == 'DRIVER_STOPPED' else 1
+    # Tolerate a None in addition to the code the docs suggest we should receive from join()
+    exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
     assert len(executor.runningTasks) == 0
     sys.exit(exit_value)
 

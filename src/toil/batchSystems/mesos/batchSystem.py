@@ -323,8 +323,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         log.debug("Joining Mesos driver")
         driver_result = self.driver.join()
         log.debug("Joined Mesos driver")
-        if driver_result != 'DRIVER_STOPPED':
-            raise RuntimeError("Mesos driver failed with %s", driver_result)
+        if driver_result is not None and driver_result != 'DRIVER_STOPPED':
+            # TODO: The docs say join should return a code, but it keeps returning
+            # None when apparently successful. So tolerate that here too.
+            raise RuntimeError("Mesos driver failed with %s" % driver_result)
 
     def registered(self, driver, frameworkId, masterInfo):
         """
@@ -472,7 +474,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     def _trackOfferedNodes(self, offers):
         for offer in offers:
-            log.debug('Processing offer %s' % offer)
             # All AgentID messages are required to have a value according to the Mesos Protobuf file.
             assert(offer.agent_id.has_key('value'))
             try:
