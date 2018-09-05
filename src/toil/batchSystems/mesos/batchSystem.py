@@ -24,6 +24,7 @@ import pwd
 import socket
 import time
 import sys
+import base64
 from contextlib import contextmanager
 from struct import unpack
 
@@ -509,7 +510,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         task.task_id.value = str(job.jobID)
         task.agent_id.value = offer.agent_id.value
         task.name = job.name
-        task.data = pickle.dumps(job)
+        task.data = encode_data(pickle.dumps(job))
         task.executor = addict.Dict(self.executor)
 
         task.resources = []
@@ -579,7 +580,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                             jobID, _exitStatus)
 
         if update.state == 'TASK_FINISHED':
-            jobEnded(0, wallTime=unpack('d', update.data)[0])
+            jobEnded(0, wallTime=unpack('d', base64.b64decode(update.data))[0])
         elif update.state == 'TASK_FAILED':
             try:
                 exitStatus = int(update.message)
