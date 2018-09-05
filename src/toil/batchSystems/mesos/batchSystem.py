@@ -510,7 +510,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         task.agent_id.value = offer.agent_id.value
         task.name = job.name
         task.data = pickle.dumps(job)
-        task.executor.MergeFrom(self.executor)
+        task.executor = addict.Dict(self.executor)
 
         cpus = task.resources.add()
         cpus.name = 'cpus'
