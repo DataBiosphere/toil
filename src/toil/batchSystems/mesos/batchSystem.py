@@ -512,12 +512,16 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         task.data = pickle.dumps(job)
         task.executor = addict.Dict(self.executor)
 
-        cpus = task.resources.add()
+        task.resources = []
+
+        task.resources.append(addict.Dict())
+        cpus = task.resources[-1]
         cpus.name = 'cpus'
         cpus.type = 'SCALAR'
         cpus.scalar.value = job.resources.cores
 
-        disk = task.resources.add()
+        task.resources.append(addict.Dict())
+        disk = task.resources[-1]
         disk.name = 'disk'
         disk.type = 'SCALAR'
         if toMiB(job.resources.disk) > 1:
@@ -526,7 +530,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             log.warning("Job %s uses less disk than Mesos requires. Rounding %s up to 1 MiB.",
                         job.jobID, job.resources.disk)
             disk.scalar.value = 1
-        mem = task.resources.add()
+        
+        task.resources.append(addict.Dict())
+        mem = task.resources[-1]
         mem.name = 'mem'
         mem.type = 'SCALAR'
         if toMiB(job.resources.memory) > 1:
