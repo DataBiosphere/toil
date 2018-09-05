@@ -990,9 +990,10 @@ def visitSteps(t, op):
 
 def cleanTempDirs(job):
     """Remove temporarly created directories."""
-    if job._succeeded:
+    if job is CWLJob and job._succeeded:  # Only CWLJobs have this attribute.
         for tempDir in job.openTempDirs:
-            shutil.rmtree(tempDir)
+            if os.path.exists(tempDir):
+                shutil.rmtree(tempDir)
 
 
 def main(args=None, stdout=sys.stdout):
