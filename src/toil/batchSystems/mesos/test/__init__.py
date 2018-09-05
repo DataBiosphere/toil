@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 class MesosTestSupport(object):
     """
-    A mixin for test cases that need a running Mesos master and slave on the local host
+    A mixin for test cases that need a running Mesos master and agent on the local host
     """
 
     def _startMesos(self, numCores=None):
@@ -26,12 +26,12 @@ class MesosTestSupport(object):
         shutil.rmtree('/tmp/mesos', ignore_errors=True)
         self.master = self.MesosMasterThread(numCores)
         self.master.start()
-        self.slave = self.MesosSlaveThread(numCores)
-        self.slave.start()
+        self.agent = self.MesosAgentThread(numCores)
+        self.agent.start()
 
     def _stopMesos(self):
-        self.slave.popen.kill()
-        self.slave.join()
+        self.agent.popen.kill()
+        self.agent.join()
         self.master.popen.kill()
         self.master.join()
 
@@ -73,7 +73,7 @@ class MesosTestSupport(object):
                     '--port=5050',
                     '--allocation_interval=500ms']
 
-    class MesosSlaveThread(MesosThread):
+    class MesosAgentThread(MesosThread):
         def mesosCommand(self):
             # NB: The --resources parameter forces this test to use a predictable number of
             # cores, independent of how many cores the system running the test actually has.

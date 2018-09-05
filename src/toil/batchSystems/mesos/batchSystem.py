@@ -55,11 +55,11 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                        Scheduler):
     """
     A Toil batch system implementation that uses Apache Mesos to distribute toil jobs as Mesos
-    tasks over a cluster of slave nodes. A Mesos framework consists of a scheduler and an
+    tasks over a cluster of agent nodes. A Mesos framework consists of a scheduler and an
     executor. This class acts as the scheduler and is typically run on the master node that also
     runs the Mesos master process with which the scheduler communicates via a driver component.
-    The executor is implemented in a separate class. It is run on each slave node and
-    communicates with the Mesos slave process via another driver object. The scheduler may also
+    The executor is implemented in a separate class. It is run on each agent node and
+    communicates with the Mesos agent process via another driver object. The scheduler may also
     be run on a separate node from the master, which we then call somewhat ambiguously the driver
     node.
     """
@@ -73,10 +73,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         return True
 
     class ExecutorInfo(object):
-        def __init__(self, nodeAddress, slaveId, nodeInfo, lastSeen):
+        def __init__(self, nodeAddress, agentId, nodeInfo, lastSeen):
             super(MesosBatchSystem.ExecutorInfo, self).__init__()
             self.nodeAddress = nodeAddress
-            self.slaveId = slaveId
+            self.agentId = agentId
             self.nodeInfo = nodeInfo
             self.lastSeen = lastSeen
 
@@ -133,7 +133,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # properties of our executor running on that node. Only an approximation of the truth.
         self.executors = {}
 
-        # A set of Mesos slave IDs, one for each slave running on a non-preemptable node. Only an
+        # A set of Mesos agent IDs, one for each agent running on a non-preemptable node. Only an
         #  approximation of the truth. Recently launched nodes may be absent from this set for a
         # while and a node's absence from this set does not imply its preemptability. But it is
         # generally safer to assume a node is preemptable since non-preemptability is a stronger
@@ -346,7 +346,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 assert preemptable is None, "Attribute 'preemptable' occurs more than once."
                 preemptable = strict_bool(attribute.text.value)
         if preemptable is None:
-            log.debug('Slave not marked as either preemptable or not. Assuming non-preemptable.')
+            log.debug('Agent not marked as either preemptable or not. Assuming non-preemptable.')
             preemptable = False
         for resource in offer.resources:
             if resource.name == "cpus":
@@ -367,15 +367,15 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         for task in runnableTasks:
             resourceKey = int(task.task_id.value)
             resources = self.taskResources[resourceKey]
-            slaveIP = socket.gethostbyname(offer.hostname)
+            agentIP = socket.gethostbyname(offer.hostname)
             try:
-                self.hostToJobIDs[slaveIP].append(resourceKey)
+                self.hostToJobIDs[agentIP].append(resourceKey)
             except KeyError:
-                self.hostToJobIDs[slaveIP] = [resourceKey]
+                self.hostToJobIDs[agentIP] = [resourceKey]
 
             self.runningJobMap[int(task.task_id.value)] = TaskData(startTime=time.time(),
-                                                                   slaveID=offer.slave_id.value,
-                                                                   slaveIP=slaveIP,
+                                                                   agentID=offer.agent_id.value,
+                                                                   agentIP=agentIP,
                                                                    executorID=task.executor.executor_id.value,
                                                                    cores=resources.cores,
                                                                    memory=resources.memory)
@@ -408,7 +408,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             runnableTasks = []
             # TODO: In an offer, can there ever be more than one resource with the same name?
             offerCores, offerMemory, offerDisk, offerPreemptable = self._parseOffer(offer)
-            log.debug('Got offer %s for a %spreemptable slave with %.2f MiB memory, %.2f core(s) '
+            log.debug('Got offer %s for a %spreemptable agent with %.2f MiB memory, %.2f core(s) '
                       'and %.2f MiB of disk.', offer.id.value, '' if offerPreemptable else 'non-',
                       offerMemory, offerCores, offerDisk)
             remainingCores = offerCores
@@ -444,7 +444,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     # report that remaining jobs cannot be run with the current resourcesq:
                     log.debug('Offer %(offer)s not suitable to run the tasks with requirements '
                               '%(requirements)r. Mesos offered %(memory)s memory, %(cores)s cores '
-                              'and %(disk)s of disk on a %(non)spreemptable slave.',
+                              'and %(disk)s of disk on a %(non)spreemptable agent.',
                               dict(offer=offer.id.value,
                                    requirements=jobType.__dict__,
                                    non='' if offerPreemptable else 'non-',
@@ -472,25 +472,25 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def _trackOfferedNodes(self, offers):
         for offer in offers:
             log.debug('Processing offer %s' % offer)
-            # All SlaveID messages are required to have a value according to the Mesos Protobuf file.
-            assert(offer.slave_id.has_key('value'))
+            # All AgentID messages are required to have a value according to the Mesos Protobuf file.
+            assert(offer.agent_id.has_key('value'))
             try:
                 nodeAddress = socket.gethostbyname(offer.hostname)
             except:
                 log.deug("Failed to resolve hostname %s" % offer.hostname)
                 raise
-            self._registerNode(nodeAddress, offer.slave_id.value)
+            self._registerNode(nodeAddress, offer.agent_id.value)
             preemptable = False
             for attribute in offer.attributes:
                 if attribute.name == 'preemptable':
                     preemptable = strict_bool(attribute.text.value)
             if preemptable:
                 try:
-                    self.nonPreemptableNodes.remove(offer.slave_id.value)
+                    self.nonPreemptableNodes.remove(offer.agent_id.value)
                 except KeyError:
                     pass
             else:
-                self.nonPreemptableNodes.add(offer.slave_id.value)
+                self.nonPreemptableNodes.add(offer.agent_id.value)
 
     def _filterOfferedNodes(self, offers):
         if not self.nodeFilter:
@@ -507,7 +507,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         task = addict.Dict()
         task.task_id.value = str(job.jobID)
-        task.slave_id.value = offer.slave_id.value
+        task.agent_id.value = offer.agent_id.value
         task.name = job.name
         task.data = pickle.dumps(job)
         task.executor.MergeFrom(self.executor)
@@ -539,12 +539,12 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     def statusUpdate(self, driver, update):
         """
-        Invoked when the status of a task has changed (e.g., a slave is lost and so the task is
+        Invoked when the status of a task has changed (e.g., a agent is lost and so the task is
         lost, a task finishes and an executor sends a status update saying so, etc). Note that
         returning from this callback _acknowledges_ receipt of this status update! If for
         whatever reason the scheduler aborts during this callback (or the process exits) another
         status update will be delivered (note, however, that this is currently not true if the
-        slave sending the status update is lost/fails during that time).
+        agent sending the status update is lost/fails during that time).
         """
         jobID = int(update.task_id.value)
         log.debug("Job %i is in state '%s'.", jobID, update.state)
@@ -557,9 +557,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             else:
                 self.killedJobIds.add(jobID)
             self.updatedJobsQueue.put((jobID, _exitStatus, wallTime))
-            slaveIP = None
+            agentIP = None
             try:
-                slaveIP = self.runningJobMap[jobID].slaveIP
+                agentIP = self.runningJobMap[jobID].agentIP
             except KeyError:
                 log.warning("Job %i returned exit code %i but isn't tracked as running.",
                             jobID, _exitStatus)
@@ -567,7 +567,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 del self.runningJobMap[jobID]
 
             try:
-                self.hostToJobIDs[slaveIP].remove(jobID)
+                self.hostToJobIDs[agentIP].remove(jobID)
             except KeyError:
                 log.warning("Job %i returned exit code %i from unknown host.",
                             jobID, _exitStatus)
@@ -588,17 +588,17 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                         jobID, update.state, update.message)
             jobEnded(255)
 
-    def frameworkMessage(self, driver, executorId, slaveId, message):
+    def frameworkMessage(self, driver, executorId, agentId, message):
         """
         Invoked when an executor sends a message.
         """
-        log.debug('Got framework message from executor %s running on slave %s: %s',
-                  executorId.value, slaveId.value, message)
+        log.debug('Got framework message from executor %s running on agent %s: %s',
+                  executorId.value, agentId.value, message)
         message = ast.literal_eval(message)
         assert isinstance(message, dict)
         # Handle the mandatory fields of a message
         nodeAddress = message.pop('address')
-        executor = self._registerNode(nodeAddress, slaveId.value)
+        executor = self._registerNode(nodeAddress, agentId.value)
         # Handle optional message fields
         for k, v in iteritems(message):
             if k == 'nodeInfo':
@@ -612,11 +612,11 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             else:
                 raise RuntimeError("Unknown message field '%s'." % k)
 
-    def _registerNode(self, nodeAddress, slaveId):
+    def _registerNode(self, nodeAddress, agentId):
         executor = self.executors.get(nodeAddress)
-        if executor is None or executor.slaveId != slaveId:
+        if executor is None or executor.agentId != agentId:
             executor = self.ExecutorInfo(nodeAddress=nodeAddress,
-                                         slaveId=slaveId,
+                                         agentId=agentId,
                                          nodeInfo=None,
                                          lastSeen=time.time())
             self.executors[nodeAddress] = executor
@@ -630,7 +630,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 for nodeAddress, executor in iteritems(self.executors)
                 if time.time() - executor.lastSeen < timeout
                 and (preemptable is None
-                     or preemptable == (executor.slaveId not in self.nonPreemptableNodes))}
+                     or preemptable == (executor.agentId not in self.nonPreemptableNodes))}
 
     def reregistered(self, driver, masterInfo):
         """
@@ -638,7 +638,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         log.debug('Registered with new master')
 
-    def executorLost(self, driver, executorId, slaveId, status):
+    def executorLost(self, driver, executorId, agentId, status):
         """
         Invoked when an executor has exited/terminated.
         """

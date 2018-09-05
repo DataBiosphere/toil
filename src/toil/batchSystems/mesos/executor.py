@@ -40,7 +40,7 @@ log = logging.getLogger(__name__)
 
 class MesosExecutor(Executor):
     """
-    Part of Toil's Mesos framework, runs on a Mesos slave. A Toil job is passed to it via the
+    Part of Toil's Mesos framework, runs on a Mesos agent. A Toil job is passed to it via the
     task.data field, and launched via call(toil.command).
     """
 
@@ -56,28 +56,28 @@ class MesosExecutor(Executor):
         if not os.getenv('TOIL_WORKDIR'):
             os.environ['TOIL_WORKDIR'] = os.getcwd()
 
-    def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
+    def registered(self, driver, executorInfo, frameworkInfo, agentInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
         log.debug("Registered with framework")
-        self.address = socket.gethostbyname(slaveInfo.hostname)
+        self.address = socket.gethostbyname(agentInfo.hostname)
         nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver])
         nodeInfoThread.daemon = True
         nodeInfoThread.start()
 
-    def reregistered(self, driver, slaveInfo):
+    def reregistered(self, driver, agentInfo):
         """
-        Invoked when the executor re-registers with a restarted slave.
+        Invoked when the executor re-registers with a restarted agent.
         """
         log.debug("Re-registered")
 
     def disconnected(self, driver):
         """
-        Invoked when the executor becomes "disconnected" from the slave (e.g., the slave is being
+        Invoked when the executor becomes "disconnected" from the agent (e.g., the agent is being
         restarted due to an upgrade).
         """
-        log.critical("Disconnected from slave")
+        log.critical("Disconnected from agent")
 
     def killTask(self, driver, taskId):
         """
