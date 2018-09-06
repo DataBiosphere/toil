@@ -40,7 +40,7 @@ from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
 import addict
-from pymesos import MesosSchedulerDriver, Scheduler, encode_data
+from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
 
 from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
@@ -601,6 +601,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         Invoked when an executor sends a message.
         """
+        
+        # Take it out of base 64 encoding from Protobuf
+        message = decode_data(message)
+        
         log.debug('Got framework message from executor %s running on agent %s: %s',
                   executorId.value, agentId.value, message)
         message = ast.literal_eval(message)

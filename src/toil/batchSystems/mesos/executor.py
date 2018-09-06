@@ -28,7 +28,7 @@ import traceback
 import time
 
 import addict
-from pymesos import MesosExecutorDriver, Executor, decode_data
+from pymesos import MesosExecutorDriver, Executor, decode_data, encode_data
 
 from toil import subprocess, pickle
 from toil.lib.expando import Expando
@@ -121,7 +121,7 @@ class MesosExecutor(Executor):
                                         coresTotal=psutil.cpu_count(),
                                         memoryTotal=psutil.virtual_memory().total,
                                         workers=len(self.runningTasks))
-            driver.sendFrameworkMessage(repr(message))
+            driver.sendFrameworkMessage(encode_data(repr(message)))
             # Prevent workers launched together from repeatedly hitting the leader at the same time
             time.sleep(random.randint(45, 75))
 
