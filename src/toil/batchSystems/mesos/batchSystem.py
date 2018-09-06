@@ -582,7 +582,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                             jobID, _exitStatus)
 
         if update.state == 'TASK_FINISHED':
-            jobEnded(0, wallTime=unpack('d', base64.b64decode(update.data))[0])
+            # We get the running time of the job via the timestamp, which is in job-local time in seconds
+            assert(update.has_key('timestamp'))
+            jobEnded(0, wallTime=update.timestamp)
         elif update.state == 'TASK_FAILED':
             try:
                 exitStatus = int(update.message)
