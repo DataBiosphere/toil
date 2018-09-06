@@ -650,7 +650,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         Invoked when an executor has exited/terminated.
         """
-        log.warning("Executor '%s' lost.", executorId)
+        log.warning("Executor '%s' lost.", executorId.value)
 
     @classmethod
     def setOptions(cl, setOption):

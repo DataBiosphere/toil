@@ -111,7 +111,7 @@ class MesosExecutor(Executor):
             # The psutil documentation recommends that we ignore the value returned by the first
             # invocation of cpu_percent(). However, we do want to send a sign of life early after
             # starting (e.g. to unblock the provisioner waiting for an instance to come up) so
-            # the first message we send omits the load info.
+            # we call it once and discard the value.
             if message is None:
                 message = Expando(address=self.address)
                 psutil.cpu_percent()
