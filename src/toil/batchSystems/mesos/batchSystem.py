@@ -29,8 +29,10 @@ import getpass
 
 try:
     from urllib2 import urlopen
+    from urllib import urlencode
 except ImportError:
     from urllib.request import urlopen
+    from urllib.parse import urlencode
 
 from contextlib import contextmanager
 from struct import unpack
@@ -146,14 +148,17 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         
         # A dictionary mapping back from agent ID to the last observed IP address of its node.
         self.agentsByID = {}
-
-        # A set of Mesos agent IDs, one for each agent running on a non-preemptable node. Only an
-        #  approximation of the truth. Recently launched nodes may be absent from this set for a
-        # while and a node's absence from this set does not imply its preemptability. But it is
-        # generally safer to assume a node is preemptable since non-preemptability is a stronger
-        # requirement. If we tracked the set of preemptable nodes instead, we'd have to use
-        # absence as an indicator of non-preemptability and could therefore be misled into
-        # believeing that a recently launched preemptable node was non-preemptable.
+        
+        # A set of Mesos agent IDs, one for each agent running on a
+        # non-preemptable node. Only an approximation of the truth. Recently
+        # launched nodes may be absent from this set for a while and a node's
+        # absence from this set does not imply its preemptability. But it is
+        # generally safer to assume a node is preemptable since
+        # non-preemptability is a stronger requirement. If we tracked the set
+        # of preemptable nodes instead, we'd have to use absence as an
+        # indicator of non-preemptability and could therefore be misled into
+        # believeing that a recently launched preemptable node was
+        # non-preemptable.
         self.nonPreemptableNodes = set()
 
         self.executor = self._buildExecutor()
@@ -570,8 +575,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         agent sending the status update is lost/fails during that time).
         """
         jobID = int(update.task_id.value)
-        log.debug("Job %i is in state '%s'.", jobID, update.state)
-
+        log.debug("Job %i is in state '%s' due to '%s'.", jobID, update.state, update.reason)
+        
         def jobEnded(_exitStatus, wallTime=None):
             try:
                 self.killJobIds.remove(jobID)
@@ -609,9 +614,14 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 log.warning('Job %i failed with exit status %i', jobID, exitStatus)
             jobEnded(exitStatus)
         elif update.state in ('TASK_LOST', 'TASK_KILLED', 'TASK_ERROR'):
-            log.warning("Job %i is in unexpected state %s with message '%s'.",
-                        jobID, update.state, update.message)
+            log.warning("Job %i is in unexpected state %s with message '%s' due to '%s'.",
+                        jobID, update.state, update.message, update.reason)
             jobEnded(255)
+            
+            if update.reason == 'REASON_EXECUTOR_TERMINATED':
+                # The task broke (probably TASK_LOST) because the executor died out from underneath it.
+                self._handleFailedExecutor(update.agent_id.value, update.executor_id.value,
+                                           update.container_status.container_id.value)
 
     def frameworkMessage(self, driver, executorId, agentId, message):
         """
@@ -675,25 +685,28 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         Invoked when the scheduler re-registers with a newly elected Mesos master.
         """
         log.debug('Registered with new master')
-
-    def executorLost(self, driver, executorId, agentId, status):
-        """
-        Invoked when an executor has exited/terminated.
-        """
-        log.warning("Executor '%s' lost with status '%s'.", executorId.value, status)
         
-        # This can happen if Mesos is having trouble running our executor
-        # itself, in addition to if nodes are getting terminated. So we have
-        # some code to try and retrieve the executor log, if the node is still
-        # up.
+    def _handleFailedExecutor(self, agentID, executorID, containerID):
+        """
+        Should be called when a job fails due to the failure of an executor. It
+        would make more sense to be called from the executorLost method, but
+        that method doesn't have access to a container ID.
+        
+        Gets the log from the given container that ran on the given executor on
+        the given agent, if the agent is still up, and dumps it to our log. All
+        IDs are strings.
+        
+        Useful for debigging failing executor code.
+        """
+        
+        log.warning("Handling failure of executor '%s' in container '%s' on agent '%s'.",
+                    executorID, containerID, agentID)
+        
         try:
-            # Unpack all the IDs
-            executorId = executorId.value
-            agentId = agentId.value
             
             # Look up the IP. We should always know it unless we get answers
             # back without having accepted offers.
-            agentAddress = self.agentsByID[agentId]
+            agentAddress = self.agentsByID[agentID]
             
             # For now we assume the agent is always on the same port. We could
             # maybe sniff this from the URL that comes in the offer but it's
@@ -701,22 +714,32 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             agentPort = 5051
             
             # According to
-            # http://mesos.apache.org/documentation/latest/sandbox/ this is the
-            # request we need to make to fetch the error log.
-            errorLogURL = "http://%s:%d/files/download?path=slaves/%s/frameworks/%s/executors/%s/runs/latest/stderr" % \
-                (agentAddress, agentPort, agentId, self.frameworkId, executorId)
+            # http://mesos.apache.org/documentation/latest/sandbox/ we can use
+            # the web API to fetch the error log. But it turns out we need to
+            # specify the full path on the remote host (which we just guess)
+            # And also the latest symlink won't work so we need the container
+            # ID.
+            logPath = "/var/lib/mesos/slaves/%s/frameworks/%s/executors/%s/runs/%s/stderr" % \
+                (agentID, self.frameworkId, executorID, containerID)
+            
+            errorLogURL = "http://%s:%d/files/download?path=%s" % \
+                (agentAddress, agentPort, urlencode(logPath))
                 
-            log.warning("Attempting to retrieve executor log %s", errorLogURL)
+            log.warning("Attempting to retrieve executor error log: %s", errorLogURL)
                 
             for line in urlopen(errorLogURL):
                 # Warn all the lines of the executor's error log
                 log.warning("Executor: %s", line)
                 
         except Exception as e:
-            log.warning("Could not retrieve exceutor log due to: %s", e)
-        
-        
+            log.warning("Could not retrieve exceutor log due to: '%s'.", e)
 
+    def executorLost(self, driver, executorId, agentId, status):
+        """
+        Invoked when an executor has exited/terminated.
+        """
+        log.warning("Executor '%s' reported lost with status '%s'.", executorId.value, status)
+        
     @classmethod
     def setOptions(cl, setOption):
         setOption("mesosMasterAddress", None, None, 'localhost:5050')
