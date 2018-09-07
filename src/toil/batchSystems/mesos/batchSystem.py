@@ -714,33 +714,34 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             filesQueryURL = errorLogURL = "http://%s:%d/files/debug" % \
                 (agentAddress, agentPort)
                 
-            # Download all the files, which are in an object from mounted name to real name
+            # Download all the root mount points, which are in an object from
+            # mounted name to real name
             filesDict = json.loads(urlopen(filesQueryURL).read())
             
-            # Look for the right file
-            stderrFilename = None
+            # Generate filenames for each container pointing to where stderr should be
+            stderrFilenames = []
             for filename in filesDict.iterkeys():
                 if (self.frameworkId in filename and agentID in filename and
-                    executorID in filename and filename.endswith("stderr")):
-                    # Found it
-                    stderrFilename = filename
-                    break
+                    executorID in filename):
                     
-            if stderrFilename is None:
-                log.warning("Could not find stderr log in '%s'." % filesDict)
+                    stderrFilenames.append("%s/stderr" % filename)
+                    
+            if len(stderrFilenames) == 0:
+                log.warning("Could not find any containers in '%s'." % filesDict)
                 return
             
-            # According to
-            # http://mesos.apache.org/documentation/latest/sandbox/ we can use
-            # the web API to fetch the error log.
-            errorLogURL = "http://%s:%d/files/download?path=%s" % \
-                (agentAddress, agentPort, urlencode(stderrFilename))
-                
-            log.warning("Attempting to retrieve executor error log: %s", errorLogURL)
-                
-            for line in urlopen(errorLogURL):
-                # Warn all the lines of the executor's error log
-                log.warning("Executor: %s", line)
+            for stderrFilename in stderrFilenames:
+                # According to
+                # http://mesos.apache.org/documentation/latest/sandbox/ we can use
+                # the web API to fetch the error log.
+                errorLogURL = "http://%s:%d/files/download?path=%s" % \
+                    (agentAddress, agentPort, urlencode(stderrFilename))
+                    
+                log.warning("Attempting to retrieve executor error log: %s", errorLogURL)
+                    
+                for line in urlopen(errorLogURL):
+                    # Warn all the lines of the executor's error log
+                    log.warning("Executor: %s", line)
                 
         except Exception as e:
             log.warning("Could not retrieve exceutor log due to: '%s'.", e)
