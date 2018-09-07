@@ -26,6 +26,12 @@ import time
 import sys
 import base64
 import getpass
+
+try:
+    from urllib2 import urlopen
+except ImportError:
+    from urllib.request import urlopen
+
 from contextlib import contextmanager
 from struct import unpack
 
@@ -130,10 +136,16 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         # The Mesos driver used by this scheduler
         self.driver = None
+        
+        # The string framework ID that we are assigned when registering with the Mesos master
+        self.frameworkId = None
 
         # A dictionary mapping a node's IP to an ExecutorInfo object describing important
         # properties of our executor running on that node. Only an approximation of the truth.
         self.executors = {}
+        
+        # A dictionary mapping back from agent ID to the last observed IP address of its node.
+        self.agentsByID = {}
 
         # A set of Mesos agent IDs, one for each agent running on a non-preemptable node. Only an
         #  approximation of the truth. Recently launched nodes may be absent from this set for a
@@ -334,6 +346,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         Invoked when the scheduler successfully registers with a Mesos master
         """
         log.debug("Registered with framework ID %s", frameworkId.value)
+        # Save the framework ID
+        self.frameworkId = frameworkId.value
 
     def _declineAllOffers(self, driver, offers):
         for offer in offers:
@@ -627,7 +641,12 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             else:
                 raise RuntimeError("Unknown message field '%s'." % k)
 
-    def _registerNode(self, nodeAddress, agentId):
+    def _registerNode(self, nodeAddress, agentId, nodePort=5051):
+        """
+        Called when we get communication from an agent. Remembers the
+        information about the agent by address, and the agent address by agent
+        ID.
+        """
         executor = self.executors.get(nodeAddress)
         if executor is None or executor.agentId != agentId:
             executor = self.ExecutorInfo(nodeAddress=nodeAddress,
@@ -637,6 +656,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             self.executors[nodeAddress] = executor
         else:
             executor.lastSeen = time.time()
+            
+        # Record the IP under the agent id
+        self.agentsByID[agentId] = nodeAddress
+            
         return executor
 
     def getNodes(self, preemptable=None, timeout=600):
@@ -657,7 +680,42 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         Invoked when an executor has exited/terminated.
         """
-        log.warning("Executor '%s' lost.", executorId.value)
+        log.warning("Executor '%s' lost with status '%s'.", executorId.value, status)
+        
+        # This can happen if Mesos is having trouble running our executor
+        # itself, in addition to if nodes are getting terminated. So we have
+        # some code to try and retrieve the executor log, if the node is still
+        # up.
+        try:
+            # Unpack all the IDs
+            executorId = executorId.value
+            agentId = agentId.value
+            
+            # Look up the IP. We should always know it unless we get answers
+            # back without having accepted offers.
+            agentAddress = self.agentsByID[agentId]
+            
+            # For now we assume the agent is always on the same port. We could
+            # maybe sniff this from the URL that comes in the offer but it's
+            # not guaranteed to be there.
+            agentPort = 5051
+            
+            # According to
+            # http://mesos.apache.org/documentation/latest/sandbox/ this is the
+            # request we need to make to fetch the error log.
+            errorLogURL = "http://%s:%d/files/download?path=slaves/%s/frameworks/%s/executors/%s/runs/latest/stderr" % \
+                (agentAddress, agentPort, agentId, self.frameworkId, executorId)
+                
+            log.warning("Attempting to retrieve executor log %s", errorLogURL)
+                
+            for line in urlopen(errorLogURL):
+                # Warn all the lines of the executor's error log
+                log.warning("Executor: %s", line)
+                
+        except Exception as e:
+            log.warning("Could not retrieve exceutor log due to: %s", e)
+        
+        
 
     @classmethod
     def setOptions(cl, setOption):
