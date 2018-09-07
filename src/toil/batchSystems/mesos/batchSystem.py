@@ -27,13 +27,14 @@ import sys
 import base64
 import getpass
 import json
+import traceback
 
 try:
     from urllib2 import urlopen
-    from urllib import urlencode
+    from urllib import quote_plus
 except ImportError:
     from urllib.request import urlopen
-    from urllib.parse import urlencode
+    from urllib.parse import quote_plus
 
 from contextlib import contextmanager
 from struct import unpack
@@ -735,7 +736,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 # http://mesos.apache.org/documentation/latest/sandbox/ we can use
                 # the web API to fetch the error log.
                 errorLogURL = "http://%s:%d/files/download?path=%s" % \
-                    (agentAddress, agentPort, urlencode(stderrFilename))
+                    (agentAddress, agentPort, quote_plus(stderrFilename))
                     
                 log.warning("Attempting to retrieve executor error log: %s", errorLogURL)
                     
@@ -745,6 +746,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 
         except Exception as e:
             log.warning("Could not retrieve exceutor log due to: '%s'.", e)
+            log.warning(traceback.format_exc())
 
     def executorLost(self, driver, executorId, agentId, status):
         """
