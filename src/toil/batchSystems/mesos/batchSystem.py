@@ -26,6 +26,7 @@ import time
 import sys
 import base64
 import getpass
+import json
 
 try:
     from urllib2 import urlopen
@@ -618,11 +619,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                         jobID, update.state, update.message, update.reason)
             jobEnded(255)
             
-            if update.reason == 'REASON_EXECUTOR_TERMINATED':
-                # The task broke (probably TASK_LOST) because the executor died out from underneath it.
-                self._handleFailedExecutor(update.agent_id.value, update.executor_id.value,
-                                           update.container_status.container_id.value)
-
     def frameworkMessage(self, driver, executorId, agentId, message):
         """
         Invoked when an executor sends a message.
@@ -686,21 +682,19 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         log.debug('Registered with new master')
         
-    def _handleFailedExecutor(self, agentID, executorID, containerID):
+    def _handleFailedExecutor(self, agentID, executorID):
         """
-        Should be called when a job fails due to the failure of an executor. It
-        would make more sense to be called from the executorLost method, but
-        that method doesn't have access to a container ID.
+        Should be called when we find out an executor has failed.
         
-        Gets the log from the given container that ran on the given executor on
-        the given agent, if the agent is still up, and dumps it to our log. All
-        IDs are strings.
+        Gets the log from some container (since we are never handed a container
+        ID) that ran on the given executor on the given agent, if the agent is
+        still up, and dumps it to our log. All IDs are strings.
         
-        Useful for debigging failing executor code.
+        Useful for debugging failing executor code.
         """
         
-        log.warning("Handling failure of executor '%s' in container '%s' on agent '%s'.",
-                    executorID, containerID, agentID)
+        log.warning("Handling failure of executor '%s' on agent '%s'.",
+                    executorID, agentID)
         
         try:
             
@@ -713,17 +707,34 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             # not guaranteed to be there.
             agentPort = 5051
             
+            # We need the container ID to read the log, but we are never given
+            # it, and I can't find a good way to list it, because the API only
+            # seems to report running containers. So we dump all the avaiilable
+            # files with /files/debug and look for one that looks right.
+            filesQueryURL = errorLogURL = "http://%s:%d/files/debug" % \
+                (agentAddress, agentPort)
+                
+            # Download all the files, which are in an object from mounted name to real name
+            filesDict = json.loads(urlopen(filesQueryURL).read())
+            
+            # Look for the right file
+            stderrFilename = None
+            for filename in filesDict.iterkeys():
+                if (self.frameworkId in filename and agentID in filename and
+                    executorID in filename and filename.endswith("stderr")):
+                    # Found it
+                    stderrFilename = filename
+                    break
+                    
+            if stderrFilename is None:
+                log.warning("Could not find stderr log in '%s'." % filesDict)
+                return
+            
             # According to
             # http://mesos.apache.org/documentation/latest/sandbox/ we can use
-            # the web API to fetch the error log. But it turns out we need to
-            # specify the full path on the remote host (which we just guess)
-            # And also the latest symlink won't work so we need the container
-            # ID.
-            logPath = "/var/lib/mesos/slaves/%s/frameworks/%s/executors/%s/runs/%s/stderr" % \
-                (agentID, self.frameworkId, executorID, containerID)
-            
+            # the web API to fetch the error log.
             errorLogURL = "http://%s:%d/files/download?path=%s" % \
-                (agentAddress, agentPort, urlencode(logPath))
+                (agentAddress, agentPort, urlencode(stderrFilename))
                 
             log.warning("Attempting to retrieve executor error log: %s", errorLogURL)
                 
@@ -736,9 +747,11 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     def executorLost(self, driver, executorId, agentId, status):
         """
-        Invoked when an executor has exited/terminated.
+        Invoked when an executor has exited/terminated abnormally.
         """
         log.warning("Executor '%s' reported lost with status '%s'.", executorId.value, status)
+        
+        self._handleFailedExecutor(agentId.value, executorId.value)
         
     @classmethod
     def setOptions(cl, setOption):
