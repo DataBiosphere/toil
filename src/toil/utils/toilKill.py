@@ -45,7 +45,7 @@ def main():
         jobStore = Toil.resumeJobStore(config.jobStore)
         logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
         # TODO: This behaviour is now broken src: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
-        batchSystem = Toil.createBatchSystem(jobStore.config)  # This should automatically kill the existing jobs.. so we're good.
+        batchSystem = Toil.createBatchSystem(jobStore.config)  # Should automatically kill existing jobs, so we're good.
         for jobID in batchSystem.getIssuedBatchJobIDs():  # Just in case we do it again.
             batchSystem.killBatchJobs(jobID)
         logger.info("All jobs SHOULD have been killed")
@@ -56,7 +56,7 @@ def main():
             pid2kill = f.read().strip()
         try:
             os.kill(int(pid2kill), signal.SIGKILL)
-            logger.info("Toil process: %s successfully terminated." % str(pid2kill))
+            logger.info("Toil process %s successfully terminated." % str(pid2kill))
         except OSError:
-            logger.error("Toil process: %s could not be terminated." % str(pid2kill))
+            logger.error("Toil process %s could not be terminated." % str(pid2kill))
             raise
