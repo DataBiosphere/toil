@@ -742,7 +742,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     
                 for line in urlopen(errorLogURL):
                     # Warn all the lines of the executor's error log
-                    log.warning("Executor: %s", line)
+                    log.warning("Executor: %s", line.rstrip())
                 
         except Exception as e:
             log.warning("Could not retrieve exceutor log due to: '%s'.", e)

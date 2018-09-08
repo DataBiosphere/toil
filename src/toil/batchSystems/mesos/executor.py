@@ -212,6 +212,16 @@ class MesosExecutor(Executor):
 def main():
     logging.basicConfig(level=logging.DEBUG)
     log.debug("Starting executor")
+    log.debug("Executor environment:")
+    for var, val in os.environ.iteritems():
+        log.debug("%s=%s", var, val)
+        
+    if not os.environ.has_key("MESOS_AGENT_ENDPOINT"):
+        # Some Mesos setups in our tests somehow lack this variable. Provide a
+        # fake one to maybe convince the executor driver to work.
+        os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get("MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051")
+        log.warning("Had to fake MESOS_AGENT_ENDPOINT as %s" % os.environ["MESOS_AGENT_ENDPOINT"])
+    
     executor = MesosExecutor()
     driver = MesosExecutorDriver(executor, use_addict=True)
     driver.start()
