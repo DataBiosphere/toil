@@ -54,6 +54,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
             """
             Thread.__init__(self)
+            self.boss.config.statePollingWait = self.boss.config.statePollingWait or self.boss.getWaitDuration()
             self.newJobsQueue = newJobsQueue
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
@@ -392,7 +393,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
     @classmethod
     def getWaitDuration(self):
-        return 5
+        return 1
 
     def sleepSeconds(self, sleeptime=1):
         """ Helper function to drop on all state-querying functions to avoid over-querying.
