@@ -21,12 +21,14 @@ import sys
 import uuid
 import shutil
 import tempfile
-from subprocess32 import Popen
 import psutil
 import pytest
+import logging
+
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+sys.path.insert(0, pkg_root)  # noqa
 
 import toil
-import logging
 import toil.test.sort.sort
 from toil import subprocess
 from toil import resolveEntryPoint
@@ -208,7 +210,7 @@ class UtilsTest(ToilTest):
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
 
         cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']
-        wf = Popen(cmd)
+        wf = subprocess.Popen(cmd)
         time.sleep(2)  # Need to let jobstore be created before checking its contents.
         self.assertEqual(ToilStatus.getPIDStatus(jobstoreLoc),'RUNNING')
         wf.wait()
@@ -228,7 +230,7 @@ class UtilsTest(ToilTest):
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
         # --badWorker is set to force failure.
         cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never', '--badWorker', '1']
-        wf = Popen(cmd)
+        wf = subprocess.Popen(cmd)
         time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
         self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
         wf.wait()
@@ -244,7 +246,7 @@ class UtilsTest(ToilTest):
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
         cmd = ['toil-cwl-runner', '--jobStore', jobstoreLoc, '--clean', 'never', '--badWorker', '1', files[0],
                '--reverse', '--input', files[1]]
-        wf = Popen(cmd)
+        wf = subprocess.Popen(cmd)
         wfRun = psutil.Process(pid=wf.pid)
         time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
         wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
@@ -264,7 +266,7 @@ class UtilsTest(ToilTest):
         jobstoreName = 'successful-toil-js'
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
         cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + jobstoreName, '--clean', 'never']
-        wf = Popen(cmd)
+        wf = subprocess.Popen(cmd)
         time.sleep(2)  # Need to let jobstore be created before checking its contents.
         self.assertEqual(ToilStatus.getStatus(jobstoreLoc), 'RUNNING')
         wf.wait()
@@ -281,7 +283,7 @@ class UtilsTest(ToilTest):
         jobstoreLoc = os.path.join(os.getcwd(), jobstoreName)
         cmd = ['toil-cwl-runner', '--jobStore', jobstoreLoc, '--clean', 'never', files[0], '--reverse', '--input',
                files[1]]
-        wf = Popen(cmd)
+        wf = subprocess.Popen(cmd)
         wfRun = psutil.Process(pid=wf.pid)
         time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
         wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
