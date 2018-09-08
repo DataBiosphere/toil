@@ -38,6 +38,8 @@ def encrypt(message, keyPath):
     >>> message = 'test'.encode('utf-8')
     >>> len(encrypt(message, k)) == overhead + len(message)
     True
+    >>> import os
+    >>> os.remove(k)
     """
     with open(keyPath, 'rb') as f:
         key = f.read()
@@ -80,6 +82,9 @@ def decrypt(ciphertext, keyPath):
     Otherwise works correctly
     >>> decrypt(encrypt("testMessage".encode('utf-8'), k), k).decode('utf-8') # doctest: +ALLOW_UNICODE
     u'testMessage'
+
+    >>> import os
+    >>> os.remove(k)
     """
     with open(keyPath, 'rb') as f:
         key = f.read()

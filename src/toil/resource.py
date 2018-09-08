@@ -352,6 +352,9 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
     >>> subprocess.check_output([ sys.executable, path ]) # doctest: +ELLIPSIS +ALLOW_BYTES
     b"ModuleDescriptor(dirPath='...', name='foo', fromVirtualEnv=False)\\n"
 
+    >>> from shutil import rmtree
+    >>> rmtree( dirPath )
+
     Now test a collision. 'collections' is part of the standard library in Python 2 and 3.
     >>> dirPath = tempfile.mkdtemp()
     >>> path = os.path.join( dirPath, 'collections.py' )
@@ -364,7 +367,6 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
     1
 
     Clean up
-    >>> from shutil import rmtree
     >>> rmtree( dirPath )
     """
 
