@@ -1073,6 +1073,10 @@ def main(args=None, stdout=sys.stdout):
     # we use workdir as jobStore:
     options = parser.parse_args([workdir] + args)
 
+    # if tmpdir_prefix is not the default value, set workDir too
+    if options.tmpdir_prefix != 'tmp':
+        options.workDir = options.tmpdir_prefix
+
     if options.provisioner and not options.jobStore:
         raise NoSuchJobStoreException(
             'Please specify a jobstore with the --jobStore option when specifying a provisioner.')
