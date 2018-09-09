@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Kills any running jobs trees in a rogue toil.
-"""
+"""Kills rogue toil processes."""
 from __future__ import absolute_import
 import logging
 import os
@@ -36,8 +35,6 @@ def main():
     options = parseBasicOptions(parser)
     config = Config()
     config.setOptions(options)
-
-    #
     config.jobStore = config.jobStore[5:] if config.jobStore.startswith('file:') else config.jobStore
 
     # ':' means an aws/google/azure jobstore; use the old (broken?) method
