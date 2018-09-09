@@ -22,7 +22,7 @@ pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noq
 sys.path.insert(0, pkg_root)  # noqa
 
 from toil import subprocess
-from toil.test import ToilTest
+from toil.test import ToilTest, needs_cwl
 
 class ToilKillTest(ToilTest):
     """A set of test cases for toilwdl.py"""
@@ -36,6 +36,7 @@ class ToilKillTest(ToilTest):
         """Default tearDown for unittest."""
         unittest.TestCase.tearDown(self)
 
+    @needs_cwl
     def testCWLToilKill(self):
         """Test "toil kill" on a CWL workflow with a 100 second sleep."""
         jobstore = os.path.join(os.getcwd(), 'testkill')
