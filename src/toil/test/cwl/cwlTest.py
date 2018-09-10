@@ -15,22 +15,23 @@ from __future__ import absolute_import
 from __future__ import print_function
 import json
 import os
-from toil import subprocess
+import sys
 import unittest
 import re
 import shutil
+import zipfile
 import pytest
 from future.moves.urllib.request import urlretrieve
-import zipfile
-
-# Python 3 compatibility imports
 from six.moves import StringIO
 from six import u as str
 
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+sys.path.insert(0, pkg_root)  # noqa
+
+from toil import subprocess
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
                        needs_torque)
-
 
 
 @needs_cwl
