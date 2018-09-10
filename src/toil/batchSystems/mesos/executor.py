@@ -220,6 +220,8 @@ def main():
         # fake one to maybe convince the executor driver to work.
         os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get("MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051")
         log.warning("Had to fake MESOS_AGENT_ENDPOINT as %s" % os.environ["MESOS_AGENT_ENDPOINT"])
+        
+    log.debug("Virtual memory info in executor: %s" % psutil.virtual_memory())
     
     executor = MesosExecutor()
     log.degug('Made executor')
