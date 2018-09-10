@@ -25,36 +25,34 @@ from toil import subprocess
 from toil.test import ToilTest, needs_cwl
 
 class ToilKillTest(ToilTest):
-    """A set of test cases for toilwdl.py"""
+    """A set of test cases for "toil kill"."""
 
     def setUp(self):
         """Shared test variables."""
         self.cwl = os.path.abspath('ABCWorkflowDebug/sleep.cwl')
         self.yaml = os.path.abspath('ABCWorkflowDebug/sleep.yaml')
+        self.jobstore = os.path.join(os.getcwd(), 'testkill')
 
     def tearDown(self):
         """Default tearDown for unittest."""
+        if os.path.exists(self.jobstore):
+            shutil.rmtree(self.jobstore)
+        if os.path.exists('tmp'):
+            shutil.rmtree('tmp')
         unittest.TestCase.tearDown(self)
 
     @needs_cwl
     def testCWLToilKill(self):
         """Test "toil kill" on a CWL workflow with a 100 second sleep."""
-        jobstore = os.path.join(os.getcwd(), 'testkill')
 
-        run_cmd = ['toil-cwl-runner', '--jobStore', jobstore, self.cwl, self.yaml]
-        kill_cmd = ['toil', 'kill', jobstore]
+        run_cmd = ['toil-cwl-runner', '--jobStore', self.jobstore, self.cwl, self.yaml]
+        kill_cmd = ['toil', 'kill', self.jobstore]
 
         subprocess.Popen(run_cmd)
         time.sleep(2)
         p = subprocess.Popen(kill_cmd, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         assert 'successfully terminated' in stderr, stderr
-
-        # clean up
-        if os.path.exists(jobstore):
-            shutil.rmtree(jobstore)
-        if os.path.exists('tmp'):
-            shutil.rmtree('tmp')
 
 
 if __name__ == "__main__":
