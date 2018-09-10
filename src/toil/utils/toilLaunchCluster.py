@@ -15,6 +15,7 @@
 Launches a toil leader instance with the specified provisioner
 """
 import logging
+import time
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
 from toil.provisioners import clusterFactory
@@ -139,7 +140,7 @@ def main():
 
     if not config.zone:
         raise RuntimeError('Please provide a value for --zone or set a default in the TOIL_' +
-                           config.provisioner.upper() + '_ZONE enviroment variable.')
+                           config.provisioner.upper() + '_ZONE environment variable.')
 
     cluster = clusterFactory(provisioner=config.provisioner,
                              clusterName=config.clusterName,
@@ -161,4 +162,3 @@ def main():
     for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
                                            spotBid=spotBid)
-

@@ -149,6 +149,14 @@ class AWSProvisioner(AbstractProvisioner):
         instances = create_ondemand_instances(self._ctx.ec2, image_id=self._discoverAMI(),
                                                   spec=specKwargs, num_instances=1)
 
+        # Add cluster to list of clusters after it is created.
+        # Errors might occur later in this function that would prevent the instance from successfully setting up.
+        # However, the instance still exists and should be added to the list of created clusters.
+        self.addClusterToList(name=self.clusterName,
+                              provisioner='aws',
+                              zone=self._zone,
+                              instanceType=leaderNodeType)
+
         # wait for the leader to finish setting up
         leader = instances[0]
         wait_instances_running(self._ctx.ec2, [leader])

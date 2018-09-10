@@ -156,6 +156,14 @@ class GCEProvisioner(AbstractProvisioner):
                                             description=self._tags,
                                             ex_preemptible=False)
 
+        # Add cluster to list of clusters after it is created.
+        # Errors might occur later in this function that would prevent the instance from successfully setting up.
+        # However, the instance still exists and should be added to the list of created clusters.
+        self.addClusterToList(name=self.clusterName,
+                              provisioner='gce',
+                              zone=self._zone,
+                              instanceType=leaderNodeType)
+
         self._instanceGroup.add_instances([leader])
         self._leaderPrivateIP = leader.private_ips[0] # needed if adding workers
         #self.subnetID = leader.subnet_id #TODO: get subnetID

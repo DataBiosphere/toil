@@ -16,6 +16,7 @@ from builtins import object
 from functools import total_ordering
 import logging
 import os.path
+import time
 from toil import subprocess
 from toil import applianceSelf
 
@@ -241,6 +242,13 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         :param clusterName: identifier of the cluster to terminate.
         """
         raise NotImplementedError
+
+    def addClusterToList(self, name, provisioner, zone, instanceType):
+        """Save information about launched clusters to a local file to be displayed later."""
+        now = time.strftime("%Y-%m-%d %H:%M")
+        with open('/tmp/toilClusterList.txt', 'a+') as f:
+            f.write('{}\t{}\t{}\t{}\t{}\n'.format(name, provisioner, zone, instanceType, now))
+            log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, zone, name))
 
     def _setSSH(self):
         """

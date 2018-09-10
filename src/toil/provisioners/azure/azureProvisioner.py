@@ -142,6 +142,14 @@ class AzureProvisioner(AnsibleDriver):
         }
         self.callPlaybook(self.playbook['create-cluster'], clusterArgs, wait=True)
 
+        # Add cluster to list of clusters after it is created.
+        # Errors might occur later in this function that would prevent the instance from successfully setting up.
+        # However, the instance still exists and should be added to the list of created clusters.
+        self.addClusterToList(name=self.clusterName,
+                              provisioner='azure',
+                              zone=self._zone,
+                              instanceType=leaderNodeType)
+
         ansibleArgs = {
             'vmsize': leaderNodeType,
             'resgrp': self.clusterName,  # The resource group, which represents the cluster.

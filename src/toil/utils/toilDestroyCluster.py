@@ -14,9 +14,22 @@
 """
 Terminates the specified cluster and associated resources
 """
+import os
 from toil.provisioners import clusterFactory
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions
+
+def removeClusterFromList(name, provisioner, zone):
+    """Remove a given cluster's information from the list of active clusters."""
+    if os.path.exists('/tmp/toilClusterList.txt'):
+        with open('/tmp/toilClusterList.txt.new', 'w') as new:
+            with open('/tmp/toilClusterList.txt', 'r') as old:
+                for line in old:
+                    if not line.startswith('{}\t{}\t{}'.format(name, provisioner, zone)):
+                        new.write(line)
+
+        os.remove('/tmp/toilClusterList.txt')
+        os.rename('/tmp/toilClusterList.txt.new', '/tmp/toilClusterList.txt')
 
 def main():
     parser = getBasicOptionParser()
@@ -26,3 +39,11 @@ def main():
                              clusterName=config.clusterName,
                              zone=config.zone)
     cluster.destroyCluster()
+
+    # Removing the entry here ensures that destroyCluster() is successful before removing the entry. In contrast,
+    # the entries are added to this file via AbstractProvisioner.addClusterToList(). They are added in the provisioner,
+    # immediately after their creation, to ensure they are tracked despite an error later on in
+    # AbstractProvisioner.launchCluster().
+    removeClusterFromList(name=config.clusterName,
+                          provisioner=config.provisioner,
+                          zone=config.zone)
