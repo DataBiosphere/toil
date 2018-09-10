@@ -31,7 +31,7 @@ class ToilKillTest(ToilTest):
         """Shared test variables."""
         self.cwl = os.path.abspath('ABCWorkflowDebug/sleep.cwl')
         self.yaml = os.path.abspath('ABCWorkflowDebug/sleep.yaml')
-        self.jobstore = os.path.join(os.getcwd(), 'testkill')
+        self.jobstore = os.path.abspath('ABCWorkflowDebug/testkill')
 
     def tearDown(self):
         """Default tearDown for unittest."""
