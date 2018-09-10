@@ -54,6 +54,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
             """
             Thread.__init__(self)
+            self.boss = boss
             self.boss.config.statePollingWait = self.boss.config.statePollingWait or self.boss.getWaitDuration()
             self.newJobsQueue = newJobsQueue
             self.updatedJobsQueue = updatedJobsQueue
@@ -62,7 +63,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             self.waitingJobs = list()
             self.runningJobs = set()
             self.runningJobsLock = Lock()
-            self.boss = boss
             self.batchJobIDs = dict()
             self._checkOnJobsCache = None
             self._checkOnJobsTimestamp = None
