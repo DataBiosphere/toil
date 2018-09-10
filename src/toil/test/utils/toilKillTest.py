@@ -49,7 +49,7 @@ class ToilKillTest(ToilTest):
         kill_cmd = ['toil', 'kill', self.jobstore]
 
         subprocess.Popen(run_cmd)
-        time.sleep(2)
+        time.sleep(4)
         p = subprocess.Popen(kill_cmd, stderr=subprocess.PIPE)
         stdout, stderr = p.communicate()
         assert 'successfully terminated' in stderr, stderr
