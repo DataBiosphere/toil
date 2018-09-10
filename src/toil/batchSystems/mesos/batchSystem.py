@@ -577,7 +577,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         agent sending the status update is lost/fails during that time).
         """
         jobID = int(update.task_id.value)
-        log.debug("Job %i is in state '%s' due to '%s'.", jobID, update.state, update.reason)
+        log.debug("Job %i is in state '%s' due to reason '%s'.", jobID, update.state, update.reason)
         
         def jobEnded(_exitStatus, wallTime=None):
             try:
@@ -611,14 +611,18 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 exitStatus = int(update.message)
             except ValueError:
                 exitStatus = 255
-                log.warning("Job %i failed with message '%s'", jobID, update.message)
+                log.warning("Job %i failed with message '%s' due to reason '%s'.", jobID, update.message, update.reason)
             else:
-                log.warning('Job %i failed with exit status %i', jobID, exitStatus)
+                log.warning("Job %i failed with exit status %i and message '%s' due to reason '%s'.", jobID, exitStatus,
+                            update.message, update.reason)
             jobEnded(exitStatus)
         elif update.state in ('TASK_LOST', 'TASK_KILLED', 'TASK_ERROR'):
-            log.warning("Job %i is in unexpected state %s with message '%s' due to '%s'.",
+            log.warning("Job %i is in unexpected state %s with message '%s' due to reason '%s'.",
                         jobID, update.state, update.message, update.reason)
             jobEnded(255)
+            
+        if update.has_key('limitation'):
+            log.warning("Job limit info: %s" % update.limitation)
             
     def frameworkMessage(self, driver, executorId, agentId, message):
         """

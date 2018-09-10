@@ -49,6 +49,7 @@ class MesosExecutor(Executor):
         self.popenLock = threading.Lock()
         self.runningTasks = {}
         self.workerCleanupInfo = None
+        log.degug('Preparing system for resource download')
         Resource.prepareSystem()
         self.address = None
         # Setting this value at this point will ensure that the toil workflow directory will go to
@@ -121,6 +122,7 @@ class MesosExecutor(Executor):
                                         coresTotal=psutil.cpu_count(),
                                         memoryTotal=psutil.virtual_memory().total,
                                         workers=len(self.runningTasks))
+            log.debug("Send framework message: %s" % message)
             driver.sendFrameworkMessage(encode_data(repr(message)))
             # Prevent workers launched together from repeatedly hitting the leader at the same time
             time.sleep(random.randint(45, 75))
@@ -212,10 +214,7 @@ class MesosExecutor(Executor):
 def main():
     logging.basicConfig(level=logging.DEBUG)
     log.debug("Starting executor")
-    log.debug("Executor environment:")
-    for var, val in os.environ.iteritems():
-        log.debug("%s=%s", var, val)
-        
+
     if not os.environ.has_key("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a
         # fake one to maybe convince the executor driver to work.
@@ -223,9 +222,13 @@ def main():
         log.warning("Had to fake MESOS_AGENT_ENDPOINT as %s" % os.environ["MESOS_AGENT_ENDPOINT"])
     
     executor = MesosExecutor()
+    log.degug('Made executor')
     driver = MesosExecutorDriver(executor, use_addict=True)
+    log.degug('Made driver')
     driver.start()
+    log.degug('Started driver')
     driver_result = driver.join()
+    log.degug('Joined driver')
     
     # Tolerate a None in addition to the code the docs suggest we should receive from join()
     exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
