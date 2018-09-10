@@ -49,7 +49,7 @@ class MesosExecutor(Executor):
         self.popenLock = threading.Lock()
         self.runningTasks = {}
         self.workerCleanupInfo = None
-        log.degug('Preparing system for resource download')
+        log.debug('Preparing system for resource download')
         Resource.prepareSystem()
         self.address = None
         # Setting this value at this point will ensure that the toil workflow directory will go to
@@ -224,13 +224,13 @@ def main():
     log.debug("Virtual memory info in executor: %s" % repr(psutil.virtual_memory()))
     
     executor = MesosExecutor()
-    log.degug('Made executor')
+    log.debug('Made executor')
     driver = MesosExecutorDriver(executor, use_addict=True)
-    log.degug('Made driver')
+    log.debug('Made driver')
     driver.start()
-    log.degug('Started driver')
+    log.debug('Started driver')
     driver_result = driver.join()
-    log.degug('Joined driver')
+    log.debug('Joined driver')
     
     # Tolerate a None in addition to the code the docs suggest we should receive from join()
     exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
