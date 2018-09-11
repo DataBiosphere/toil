@@ -45,7 +45,8 @@ def loadModules():
                             toilSshCluster,
                             toilRsyncCluster,
                             toilDebugFile,
-                            toilDebugJob)
+                            toilDebugJob,
+                            toilInstances)
     commandMapping = { "-".join(
                      map(lambda x : x.lower(), re.findall('[A-Z][^A-Z]*', name)
                      )) : module for name, module in iteritems(locals())}

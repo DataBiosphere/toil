@@ -222,6 +222,7 @@ class GCEProvisioner(AbstractProvisioner):
         # remove group
         instanceGroup = self._gceDriver.ex_get_instancegroup(self.clusterName, zone=self._zone)
         instanceGroup.destroy()
+        self.removeClusterFromList(name=self.clusterName, provisioner='gce', zone=self._zone)
 
     def terminateNodes(self, nodes):
         nodeNames = [n.name for n in nodes]

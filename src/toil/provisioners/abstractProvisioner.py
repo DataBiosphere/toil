@@ -250,6 +250,22 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             f.write('{}\t{}\t{}\t{}\t{}\n'.format(name, provisioner, zone, instanceType, now))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, zone, name))
 
+    def removeClusterFromList(self, name, provisioner, zone):
+        """Remove a given cluster's information from the list of active clusters."""
+        if os.path.exists('/tmp/toilClusterList.txt'):
+            with open('/tmp/toilClusterList.txt.new', 'w') as new:
+                with open('/tmp/toilClusterList.txt', 'r') as old:
+                    for line in old:
+                        if not line.startswith('{}\t{}\t{}'.format(name, provisioner, zone)):
+                            print('{} does not start with {}\t{}\t{}'.format(line, name, provisioner, zone))
+                            new.write(line)
+
+            os.remove('/tmp/toilClusterList.txt')
+            if os.stat('/tmp/toilClusterList.txt.new').st_size == 0:
+                os.remove('/tmp/toilClusterList.txt.new')
+            else:
+                os.rename('/tmp/toilClusterList.txt.new', '/tmp/toilClusterList.txt')
+
     def _setSSH(self):
         """
         Generate a key pair, save it in /root/.ssh/id_rsa.pub, and return the public key.

@@ -235,6 +235,7 @@ class AWSProvisioner(AbstractProvisioner):
                                     raise
             if removed:
                 logger.debug('... Succesfully deleted security group')
+                self.removeClusterFromList(name=self.clusterName,provisioner='aws', zone=self._zone)
         else:
             assert len(instances) > len(instancesToTerminate)
             # the security group can't be deleted until all nodes are terminated

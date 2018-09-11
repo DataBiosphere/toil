@@ -231,6 +231,7 @@ class AzureProvisioner(AnsibleDriver):
             'resgrp': self.clusterName,
         }
         self.callPlaybook(self.playbook['destroy'], ansibleArgs, wait=True)
+        self.removeClusterFromList(name=self.clusterName, provisioner='azure', zone=self._zone)
 
     def addNodes(self, nodeType, numNodes, preemptable=False, spotBid=None):
         assert self._leaderPrivateIP # for getCloudConfigUserData
