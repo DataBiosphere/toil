@@ -265,7 +265,6 @@ def main():
     log.debug('DATA rlimit: %s', str(resource.getrlimit(resource.RLIMIT_DATA)))
     log.debug('STACK rlimit: %s', str(resource.getrlimit(resource.RLIMIT_STACK)))
     log.debug('RSS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_RSS)))
-    log.debug('VMEM rlimit: %s', str(resource.getrlimit(resource.RLIMIT_VMEM)))
     log.debug('AS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_AS)))
     
                     
