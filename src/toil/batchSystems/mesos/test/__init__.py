@@ -52,18 +52,31 @@ class MesosTestSupport(object):
             self.popen.wait()
             log.info('Exiting %s', self.__class__.__name__)
 
-        def findMesosBinary(self, name):
-            try:
-                return next(which(name))
-            except StopIteration:
+        def findMesosBinary(self, names):
+            if isinstance(names, basestring):
+                # Handle a single string
+                names = [names]
+        
+            for name in names:
                 try:
-                    # Special case for users of PyCharm on OS X. This is where Homebrew installs
-                    # it. It's hard to set PATH for PyCharm (or any GUI app) on OS X so let's
-                    # make it easy for those poor souls.
-                    return next(which(name, path=['/usr/local/sbin']))
+                    return next(which(name))
                 except StopIteration:
-                    raise RuntimeError("Cannot find the '%s' binary. Make sure Mesos is installed "
-                                       "and it's 'bin' directory is present on the PATH." % name)
+                    try:
+                        # Special case for users of PyCharm on OS X. This is where Homebrew installs
+                        # it. It's hard to set PATH for PyCharm (or any GUI app) on OS X so let's
+                        # make it easy for those poor souls.
+                        return next(which(name, path=['/usr/local/sbin']))
+                    except StopIteration:
+                        pass
+            
+            # If we get here, nothing we cna use is present. We need to complain.
+            if len(names) == 1:
+                sought = "binary '%s'" % names[0]
+            else:
+                sought = 'any binary in %s' % str(names)
+            
+            raise RuntimeError("Cannot find %s. Make sure Mesos is installed "
+                                "and it's 'bin' directory is present on the PATH." % sought)
 
     class MesosMasterThread(MesosThread):
         def mesosCommand(self):
@@ -77,9 +90,13 @@ class MesosTestSupport(object):
         def mesosCommand(self):
             # NB: The --resources parameter forces this test to use a predictable number of
             # cores, independent of how many cores the system running the test actually has.
-            return [self.findMesosBinary('mesos-slave'),
+            # We also make sure to point it explicitly at the right temp work directory, and
+            # to disable systemd support because we have to be root to make systemd make us
+            # things and we probably aren't when testing.
+            return [self.findMesosBinary(['mesos-agent', 'mesos-slave']),
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',
                     '--resources=cpus(*):%i' % self.numCores,
-                    '--work_dir=/tmp/mesos']
+                    '--work_dir=/tmp/mesos',
+                    '--no-systemd_enable_support']
