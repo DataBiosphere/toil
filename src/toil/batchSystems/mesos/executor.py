@@ -17,6 +17,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 import os
+import os.path
 import random
 import socket
 import signal
@@ -26,6 +27,11 @@ import logging
 import psutil
 import traceback
 import time
+
+try:
+    from urllib2 import urlopen
+except ImportError:
+    from urllib.request import urlopen
 
 import addict
 from pymesos import MesosExecutorDriver, Executor, decode_data, encode_data
@@ -224,7 +230,23 @@ def main():
         os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get("MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051")
         log.warning("Had to fake MESOS_AGENT_ENDPOINT as %s" % os.environ["MESOS_AGENT_ENDPOINT"])
         
+    try:
+        urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
+        log.debug("Toggled agent log level")
+    except Exception as e:
+        log.debug("Failed to toggle agent log level")
+        pass
+        
+    log.debug("Agent state: %s", urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
+    
     log.debug("Virtual memory info in executor: %s" % repr(psutil.virtual_memory()))
+    
+    if os.path.exists('/sys/fs/cgroup/memory'):
+        # Mesos limits our memory with a cgroup, so we should report on that.
+        for filename in os.listdir('/sys/fs/cgroup/memory'):
+            log.debug('cgroup memory info from %s:' % filename)
+            for line in open(os.path.join('/sys/fs/cgroup/memory', filename)):
+                log.debug(line.rstrip())
     
     executor = MesosExecutor()
     log.debug('Made executor')
