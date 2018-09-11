@@ -245,9 +245,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
 
     def addClusterToList(self, name, provisioner, zone, instanceType):
         """Save information about launched clusters to a local file to be displayed later."""
-        now = time.strftime("%Y-%m-%d %H:%M")
+        date, clock = time.strftime("%Y-%m-%d %H:%M").split(' ')
         with open('/tmp/toilClusterList.txt', 'a+') as f:
-            f.write('{}\t{}\t{}\t{}\t{}\n'.format(name, provisioner, zone, instanceType, now))
+            f.write('{}\t{}\t{}\t{}\t{}\t{}\n'.format(name, provisioner, zone, instanceType, date, clock))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, zone, name))
 
     def removeClusterFromList(self, name, provisioner, zone):

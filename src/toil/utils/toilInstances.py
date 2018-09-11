@@ -25,6 +25,7 @@ def main():
     parser.add_argument('-p', '--provisioners', dest="provisioners", choices=['aws', 'gce', 'azure'], nargs='*',
                         help='Provisioners from which instances will be displayed.')
     parser.add_argument('-n', '--name', dest='name', nargs='*', help='The name of the instance to be displayed.') # TODO allow unix-like matching of expressions: ab* matches abcd and abc
+    parser.add_argument('-d', '--date', dest='date', help='The date the instance was created. (YYYY-MM-DD format)')
 
     reqs = dict()
     for k, v in vars(parser.parse_args()).items():
@@ -34,12 +35,12 @@ def main():
                 'provisioners': 1,
                 'zone': 2,
                 'instanceType': 3,
-                'time': 4}
-
-    matches = []
+                'date': 4,
+                'time': 5}
 
     if os.path.exists('/tmp/toilClusterList.txt'):
         with open('/tmp/toilClusterList.txt', 'r') as f:
+            matches = []
             for line in f:
                 parts = line.split('\t')
                 match = True
@@ -48,10 +49,10 @@ def main():
                         match = False
                         break
                 if match:
-                    matches.append(line)
+                    matches.append(line.rstrip('\n'))
 
         if matches:
-            print('NAME\tPROVISIONER\tZONE\tTYPE\tCREATED')
+            print('NAME\tPROVISIONER\tZONE\tTYPE\tDATE\tTIME')
             for entry in matches:
                 print(entry)
         else:
