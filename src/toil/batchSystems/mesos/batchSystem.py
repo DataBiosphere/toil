@@ -727,7 +727,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             
             # Generate filenames for each container pointing to where stderr should be
             stderrFilenames = []
-            # And look for the actual agent logs
+            # And look for the actual agent logs.
             agentLogFilenames = []
             for filename in filesDict.iterkeys():
                 if (self.frameworkId in filename and agentID in filename and
@@ -737,34 +737,48 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 elif filename.endswith("log"):
                     agentLogFilenames.append(filename)
                     
+            if '/slave/log' not in agentLogFilenames:
+                # Look here even if not reported.
+                agentLogFilenames.append('/slave/log')
+                    
             if len(stderrFilenames) == 0:
                 log.warning("Could not find any containers in '%s'." % filesDict)
             
             for stderrFilename in stderrFilenames:
-                # According to
-                # http://mesos.apache.org/documentation/latest/sandbox/ we can use
-                # the web API to fetch the error log.
-                errorLogURL = "http://%s:%d/files/download?path=%s" % \
-                    (agentAddress, agentPort, quote_plus(stderrFilename))
-                    
-                log.warning("Attempting to retrieve executor error log: %s", errorLogURL)
-                    
-                for line in urlopen(errorLogURL):
-                    # Warn all the lines of the executor's error log
-                    log.warning("Executor: %s", line.rstrip())
+                try:
+            
+                    # According to
+                    # http://mesos.apache.org/documentation/latest/sandbox/ we can use
+                    # the web API to fetch the error log.
+                    errorLogURL = "http://%s:%d/files/download?path=%s" % \
+                        (agentAddress, agentPort, quote_plus(stderrFilename))
+                        
+                    log.warning("Attempting to retrieve executor error log: %s", errorLogURL)
+                        
+                    for line in urlopen(errorLogURL):
+                        # Warn all the lines of the executor's error log
+                        log.warning("Executor: %s", line.rstrip())
+                        
+                except Exception as e:
+                    log.warning("Could not retrieve exceutor log due to: '%s'.", e)
+                    log.warning(traceback.format_exc())
                     
             for agentLogFilename in agentLogFilenames:
-                agentLogURL = "http://%s:%d/files/download?path=%s" % \
-                    (agentAddress, agentPort, quote_plus(agentLogFilename))
+                try:
+                    agentLogURL = "http://%s:%d/files/download?path=%s" % \
+                        (agentAddress, agentPort, quote_plus(agentLogFilename))
+                        
+                    log.warning("Attempting to retrieve agent log: %s", agentLogURL)
                     
-                log.warning("Attempting to retrieve agent log: %s", agentLogURL)
-                    
-                for line in urlopen(agentLogURL):
-                    # Warn all the lines of the agent's log
-                    log.warning("Agent: %s", line.rstrip())
+                    for line in urlopen(agentLogURL):
+                        # Warn all the lines of the agent's log
+                        log.warning("Agent: %s", line.rstrip())
+                except Exception as e:
+                    log.warning("Could not retrieve agent log due to: '%s'.", e)
+                    log.warning(traceback.format_exc())
                 
         except Exception as e:
-            log.warning("Could not retrieve exceutor log due to: '%s'.", e)
+            log.warning("Could not retrieve logs due to: '%s'.", e)
             log.warning(traceback.format_exc())
 
     def executorLost(self, driver, executorId, agentId, status):

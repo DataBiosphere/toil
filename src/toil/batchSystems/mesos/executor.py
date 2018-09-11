@@ -28,6 +28,7 @@ import psutil
 import traceback
 import time
 import json
+import resource
 
 try:
     from urllib2 import urlopen
@@ -247,15 +248,26 @@ def main():
     log.debug("Virtual memory info in executor: %s" % repr(psutil.virtual_memory()))
     
     if os.path.exists('/sys/fs/cgroup/memory'):
-        # Mesos limits our memory with a cgroup, so we should report on that.
+        # Mesos can limit memory with a cgroup, so we should report on that.
         for (dirpath, dirnames, filenames) in os.walk('/sys/fs/cgroup/memory', followlinks=True):
             for filename in filenames:
+                if 'limit_in_bytes' not in filename:
+                    continue
                 log.debug('cgroup memory info from %s:' % os.path.join(dirpath, filename))
                 try:
                     for line in open(os.path.join(dirpath, filename)):
                         log.debug(line.rstrip())
                 except Exception as e:
                     log.debug("Failed to read file")
+                    
+    # Mesos can also impose rlimit limits, including on things that really
+    # ought to not be limited, like virtual address space size.
+    log.debug('DATA rlimit: %s', str(resource.getrlimit(resource.RLIMIT_DATA)))
+    log.debug('STACK rlimit: %s', str(resource.getrlimit(resource.RLIMIT_STACK)))
+    log.debug('RSS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_RSS)))
+    log.debug('VMEM rlimit: %s', str(resource.getrlimit(resource.RLIMIT_VMEM)))
+    log.debug('AS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_AS)))
+    
                     
     executor = MesosExecutor()
     log.debug('Made executor')
