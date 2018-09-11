@@ -81,4 +81,5 @@ class MesosTestSupport(object):
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',
-                    '--resources=cpus(*):%i' % self.numCores]
+                    '--resources=cpus(*):%i' % self.numCores,
+                    '--work_dir=/tmp/mesos']
