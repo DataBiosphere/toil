@@ -459,8 +459,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     # TODO: ... so we can understand why it exists.
                     assert int(task.task_id.value) not in self.runningJobMap
                     runnableTasksOfType.append(task)
-                    log.debug("Preparing to launch Mesos task %s using offer %s ...",
-                              task.task_id.value, offer.id.value)
+                    log.debug("Preparing to launch Mesos task %s with %.2f cores, %.2f MiB memory, and %.2f MiB disk using offer %s ...",
+                              task.task_id.value, jobType.cores, toMiB(jobType.memory), toMiB(jobType.disk), offer.id.value)
                     remainingCores -= jobType.cores
                     remainingMemory -= toMiB(jobType.memory)
                     remainingDisk -= toMiB(jobType.disk)

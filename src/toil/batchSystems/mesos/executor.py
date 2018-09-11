@@ -56,7 +56,7 @@ class MesosExecutor(Executor):
         # the mesos sandbox if the user hasn't specified --workDir on the command line.
         if not os.getenv('TOIL_WORKDIR'):
             os.environ['TOIL_WORKDIR'] = os.getcwd()
-
+            
     def registered(self, driver, executorInfo, frameworkInfo, agentInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
@@ -122,7 +122,7 @@ class MesosExecutor(Executor):
                                         coresTotal=psutil.cpu_count(),
                                         memoryTotal=psutil.virtual_memory().total,
                                         workers=len(self.runningTasks))
-            log.debug("Send framework message: %s" % message)
+            log.debug("Send framework message: %s", message)
             driver.sendFrameworkMessage(encode_data(repr(message)))
             # Prevent workers launched together from repeatedly hitting the leader at the same time
             time.sleep(random.randint(45, 75))
@@ -131,6 +131,9 @@ class MesosExecutor(Executor):
         """
         Invoked by SchedulerDriver when a Mesos task should be launched by this executor
         """
+        
+        log.debug("Asked to launch task %s", repr(task))
+        
         def runTask():
 
             log.debug("Running task %s", task.task_id.value)
@@ -226,6 +229,18 @@ def main():
     executor = MesosExecutor()
     log.debug('Made executor')
     driver = MesosExecutorDriver(executor, use_addict=True)
+    
+    old_on_event = driver.on_event
+    
+    def patched_on_event(event):
+        """
+        Intercept and log all pymesos events.
+        """
+        log.debug("Event: %s", repr(event))
+        old_on_event(event)
+        
+    driver.on_event = patched_on_event
+    
     log.debug('Made driver')
     driver.start()
     log.debug('Started driver')
