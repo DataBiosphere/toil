@@ -47,6 +47,7 @@ def runSetup():
     dateutil = 'python-dateutil'
     pytest = 'pytest==3.7.4'
     pytest_cov = 'pytest-cov==2.5.1'
+    pandas = 'pandas==0.23.4'
 
     core_reqs = [
         dill,
@@ -58,7 +59,8 @@ def runSetup():
         psutil,
         subprocess32,
         pytest,
-        pytest_cov]
+        pytest_cov,
+        pandas]
 
     mesos_reqs = [
         psutil,

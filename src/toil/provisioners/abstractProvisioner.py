@@ -246,25 +246,28 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     def addClusterToList(self, name, provisioner, zone, instanceType):
         """Save information about launched clusters to a local file to be displayed later."""
         date, clock = time.strftime("%Y-%m-%d %H:%M").split(' ')
-        with open('/tmp/toilClusterList.txt', 'a+') as f:
-            f.write('{}\t{}\t{}\t{}\t{}\t{}\n'.format(name, provisioner, zone, instanceType, date, clock))
+        with open('/tmp/toilClusterList.csv', 'a+') as f:
+            if os.stat('/tmp/toilClusterList.csv').st_size == 0:
+                f.write('name,provisioner,zone,type,date,time\n') # Write header.
+            f.write('{},{},{},{},{},{}\n'.format(name, provisioner, zone, instanceType, date, clock))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, zone, name))
 
     def removeClusterFromList(self, name, provisioner, zone):
         """Remove a given cluster's information from the list of active clusters."""
-        if os.path.exists('/tmp/toilClusterList.txt'):
-            with open('/tmp/toilClusterList.txt.new', 'w') as new:
-                with open('/tmp/toilClusterList.txt', 'r') as old:
+        if os.path.exists('/tmp/toilClusterList.csv'):
+            # Copy from old to new .csv
+            with open('/tmp/toilClusterList.csv.new', 'w') as new:
+                with open('/tmp/toilClusterList.csv', 'r') as old:
                     for line in old:
-                        if not line.startswith('{}\t{}\t{}'.format(name, provisioner, zone)):
-                            print('{} does not start with {}\t{}\t{}'.format(line, name, provisioner, zone))
+                        if not line.startswith('{},{},{}'.format(name, provisioner, zone)):
                             new.write(line)
+            os.remove('/tmp/toilClusterList.csv')
 
-            os.remove('/tmp/toilClusterList.txt')
-            if os.stat('/tmp/toilClusterList.txt.new').st_size == 0:
-                os.remove('/tmp/toilClusterList.txt.new')
-            else:
-                os.rename('/tmp/toilClusterList.txt.new', '/tmp/toilClusterList.txt')
+            with open('/tmp/toilClusterList.csv.new') as f:
+                if len(f.readlines()) == 1:  # The only line is the header...
+                    os.remove('/tmp/toilClusterList.csv.new')
+                else:
+                    os.rename('/tmp/toilClusterList.csv.new', '/tmp/toilClusterList.csv')
 
     def _setSSH(self):
         """
