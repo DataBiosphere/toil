@@ -27,6 +27,7 @@ import logging
 import psutil
 import traceback
 import time
+import json
 
 try:
     from urllib2 import urlopen
@@ -235,19 +236,27 @@ def main():
         log.debug("Toggled agent log level")
     except Exception as e:
         log.debug("Failed to toggle agent log level")
-        pass
         
-    log.debug("Agent state: %s", urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
+    # Parse the agent state
+    agent_state = json.loads(urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
+    if agent_state.has_key('completed_frameworks'):
+        # Drop the completed frameworks whichg grow over time
+        del agent_state['completed_frameworks']
+    log.debug("Agent state: %s", str(agent_state))
     
     log.debug("Virtual memory info in executor: %s" % repr(psutil.virtual_memory()))
     
     if os.path.exists('/sys/fs/cgroup/memory'):
         # Mesos limits our memory with a cgroup, so we should report on that.
-        for filename in os.listdir('/sys/fs/cgroup/memory'):
-            log.debug('cgroup memory info from %s:' % filename)
-            for line in open(os.path.join('/sys/fs/cgroup/memory', filename)):
-                log.debug(line.rstrip())
-    
+        for (dirpath, dirnames, filenames) in os.walk('/sys/fs/cgroup/memory', followlinks=True):
+            for filename in filenames:
+                log.debug('cgroup memory info from %s:' % os.path.join(dirpath, filename))
+                try:
+                    for line in open(os.path.join(dirpath, filename)):
+                        log.debug(line.rstrip())
+                except Exception as e:
+                    log.debug("Failed to read file")
+                    
     executor = MesosExecutor()
     log.debug('Made executor')
     driver = MesosExecutorDriver(executor, use_addict=True)
