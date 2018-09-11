@@ -723,17 +723,22 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             # mounted name to real name
             filesDict = json.loads(urlopen(filesQueryURL).read())
             
+            log.debug('Available files: %s', repr(filesDict.keys()))
+            
             # Generate filenames for each container pointing to where stderr should be
             stderrFilenames = []
+            # And look for the actual agent logs
+            agentLogFilenames = []
             for filename in filesDict.iterkeys():
                 if (self.frameworkId in filename and agentID in filename and
                     executorID in filename):
                     
                     stderrFilenames.append("%s/stderr" % filename)
+                elif 'log' in filename:
+                    agentLogFilenames.append(filename)
                     
             if len(stderrFilenames) == 0:
                 log.warning("Could not find any containers in '%s'." % filesDict)
-                return
             
             for stderrFilename in stderrFilenames:
                 # According to
@@ -747,6 +752,16 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 for line in urlopen(errorLogURL):
                     # Warn all the lines of the executor's error log
                     log.warning("Executor: %s", line.rstrip())
+                    
+            for agentLogFilename in agentLogFilenames:
+                agentLogURL = "http://%s:%d/files/download?path=%s" % \
+                    (agentAddress, agentPort, quote_plus(agentLogFilename))
+                    
+                log.warning("Attempting to retrieve agent log: %s", agentLogURL)
+                    
+                for line in urlopen(agentLogURL):
+                    # Warn all the lines of the agent's log
+                    log.warning("Agent: %s", line.rstrip())
                 
         except Exception as e:
             log.warning("Could not retrieve exceutor log due to: '%s'.", e)
