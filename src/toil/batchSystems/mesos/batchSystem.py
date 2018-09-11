@@ -734,7 +734,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     executorID in filename):
                     
                     stderrFilenames.append("%s/stderr" % filename)
-                elif 'log' in filename:
+                elif filename.endswith("log"):
                     agentLogFilenames.append(filename)
                     
             if len(stderrFilenames) == 0:
