@@ -19,6 +19,7 @@ import os.path
 import time
 from toil import subprocess
 from toil import applianceSelf
+from toil import version
 
 from future.utils import with_metaclass
 
@@ -246,10 +247,11 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     def addClusterToList(self, name, provisioner, zone, instanceType):
         """Save information about launched clusters to a local file to be displayed later."""
         date, clock = time.strftime("%Y-%m-%d %H:%M").split(' ')
+        appliance = version.dockerTag
         with open('/tmp/toilClusterList.csv', 'a+') as f:
             if os.stat('/tmp/toilClusterList.csv').st_size == 0:
-                f.write('name,provisioner,zone,type,date,time\n') # Write header.
-            f.write('{},{},{},{},{},{}\n'.format(name, provisioner, zone, instanceType, date, clock))
+                f.write('name,provisioner,zone,type,date,time,appliance\n') # Write header.
+            f.write('{},{},{},{},{},{},{}\n'.format(name, provisioner, zone, instanceType, date, clock, appliance))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, zone, name))
 
     def removeClusterFromList(self, name, provisioner, zone):

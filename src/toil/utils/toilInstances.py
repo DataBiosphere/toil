@@ -52,7 +52,7 @@ def main():
 
     if os.path.exists('/tmp/toilClusterList.csv'):
         df = pd.read_csv('/tmp/toilClusterList.csv')
-        df.columns = ['name', 'provisioner', 'zone', 'type', 'date', 'time']
+        df.columns = ['name', 'provisioner', 'zone', 'type', 'date', 'time', 'appliance']
 
         for k, v in reqs.items():
             if v:
