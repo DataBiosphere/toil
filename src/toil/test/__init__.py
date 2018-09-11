@@ -406,7 +406,7 @@ def needs_mesos(test_item):
     test_item = _mark_test('mesos', test_item)
     try:
         # noinspection PyUnresolvedReferences
-        import mesos.native
+        import pymesos
         import psutil
     except ImportError:
         return unittest.skip(
