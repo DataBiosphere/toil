@@ -244,17 +244,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-    # def applianceName(self):
-    #     try:
-    #         app = os.environ['TOIL_APPLIANCE_SELF']
-    #     except KeyError:
-    #         try:
-    #             app = os.environ['TOIL_DOCKER_REGISTRY']
-    #         except KeyError:
-    #             app = os.path.join(version.dockerRegistry, version.dockerShortTag)
-    #
-    #     return app
-
     def addClusterToList(self, name, provisioner, zone, instanceType):
         """Save information about launched clusters to a local file to be displayed later."""
         date, clock = time.strftime("%Y-%m-%d %H:%M").split(' ')
