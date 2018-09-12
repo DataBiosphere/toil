@@ -265,20 +265,26 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             with open('/tmp/toilClusterList.csv', 'r') as old:
                 for line in old:
                     if line.startswith('{},{},{}'.format(self.clusterName, provisioner, self._zone)):
-                        new.write(self.updateEntry(line, status, append))
+                        # If cluster failed before creation, remove it from the list.
+                        if status != 'broken' or line.split(',')[6] != 'initializing':
+                            new.write(self.updateEntry(line, status, append))
                     else:
                         new.write(line)
 
         os.remove('/tmp/toilClusterList.csv')
-        os.rename('/tmp/toilClusterList.csv.new', '/tmp/toilClusterList.csv')
+        with open('/tmp/toilClusterList.csv.new') as f:
+            if len(f.readlines()) == 1:  # The only line is the header...
+                os.remove('/tmp/toilClusterList.csv.new')
+            else:
+                os.rename('/tmp/toilClusterList.csv.new', '/tmp/toilClusterList.csv')
 
     # TODO BEN all of the args here except provisioner are attributes of this class.
     def addClusterToList(self, name, provisioner, zone, instanceType):
         """
         Save information about launched clusters to a local file to be displayed later.
 
-        The functions updateStatusInList, updateEntry, and removeClusterFromList, as well as toil/src/toil/utils/toilInstances.py rely on the order of the columns made
-        here.
+        The functions updateStatusInList, updateEntry, and removeClusterFromList, as well as
+        toil/src/toil/utils/toilInstances.py rely on the order of the columns made here.
         """
         date, clock = time.strftime("%Y-%m-%d %H:%M").split(' ')
         appliance = applianceSelf()

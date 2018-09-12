@@ -152,6 +152,8 @@ class GCEProvisioner(AbstractProvisioner):
         disk.update({'boot': True,
              'autoDelete': True })
         name= 'l' + str(uuid.uuid4())
+
+        self.updateStatusInList('creating', 'gce')
         leader = self._gceDriver.create_node(name, leaderNodeType, imageType,
                                             location=self._zone,
                                             ex_service_accounts=sa_scopes,
@@ -160,8 +162,7 @@ class GCEProvisioner(AbstractProvisioner):
                                             ex_disks_gce_struct = [disk],
                                             description=self._tags,
                                             ex_preemptible=False)
-
-        self.updateStatusInList('created', 'gce')
+        self.updateStatusInList('configuring', 'gce')
 
         self._instanceGroup.add_instances([leader])
         self._leaderPrivateIP = leader.private_ips[0] # needed if adding workers
@@ -177,7 +178,6 @@ class GCEProvisioner(AbstractProvisioner):
         if self._botoPath:
             leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
         logger.debug('Launched leader')
-        self.updateStatusInList('running', 'gce')
 
     def getNodeShape(self, nodeType, preemptable=False):
         # TODO: read this value only once

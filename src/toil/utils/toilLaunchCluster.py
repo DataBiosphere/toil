@@ -157,10 +157,10 @@ def main():
                               publicKeyFile=config.publicKeyFile,
                               azureStorageCredentials=config.azureStorageCredentials)
     except Exception:
-        cluster.updateStatusInList('failed', config.provisioner, append=True)
+        cluster.updateStatusInList('broken', config.provisioner)
         raise
     except KeyboardInterrupt:
-        cluster.updateStatusInList('failed', config.provisioner, append=True)
+        cluster.updateStatusInList('broken', config.provisioner)
         raise
     else:
         cluster.updateStatusInList('running', config.provisioner)

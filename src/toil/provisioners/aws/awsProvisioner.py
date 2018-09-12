@@ -152,9 +152,11 @@ class AWSProvisioner(AbstractProvisioner):
                   'placement': self._zone}
         if self._vpcSubnet:
             specKwargs["subnet_id"] = self._vpcSubnet
+
         instances = create_ondemand_instances(self._ctx.ec2, image_id=self._discoverAMI(),
                                                   spec=specKwargs, num_instances=1)
-        self.updateStatusInList('created', 'aws')
+        self.updateStatusInList('configuring', 'aws')
+
         # wait for the leader to finish setting up
         leader = instances[0]
         wait_instances_running(self._ctx.ec2, [leader])
@@ -163,7 +165,6 @@ class AWSProvisioner(AbstractProvisioner):
                           name=leader.id, launchTime=leader.launch_time, nodeType=leaderNodeType,
                           preemptable=False, tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
-        self.updateStatusInList('running', 'aws')
 
         defaultTags = {'Name': self.clusterName, 'Owner': owner}
         if kwargs['userTags']:

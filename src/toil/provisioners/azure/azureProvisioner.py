@@ -145,11 +145,11 @@ class AzureProvisioner(AnsibleDriver):
             'resgrp': self.clusterName,  # The resource group, which represents the cluster.
             'region': self._zone
         }
+
+        self.updateStatusInList('creating', 'azure')
         self.callPlaybook(self.playbook['create-cluster'], clusterArgs, wait=True)
 
-        self.updateStatusInList('created', 'azure')
-
-
+        self.updateStatusInList('configuring', 'azure')
         ansibleArgs = {
             'vmsize': leaderNodeType,
             'resgrp': self.clusterName,  # The resource group, which represents the cluster.
@@ -161,7 +161,7 @@ class AzureProvisioner(AnsibleDriver):
         }
         # Ansible reads the cloud-config script from a file.
         with tempfile.NamedTemporaryFile(delete=False) as t:
-            userData =  self._getCloudConfigUserData('leader')
+            userData = self._getCloudConfigUserData('leader')
             t.write(userData)
             ansibleArgs['cloudconfig'] = t.name
 
@@ -207,9 +207,7 @@ class AzureProvisioner(AnsibleDriver):
                     raise e
                 logger.debug("Leader appliance failed to start, retrying. (Error %s)" % e)
 
-
         logger.debug('Launched leader')
-        self.updateStatusInList('running', 'azure')
 
     def _checkIfClusterExists(self):
         """
