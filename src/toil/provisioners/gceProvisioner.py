@@ -129,10 +129,7 @@ class GCEProvisioner(AbstractProvisioner):
         self._instanceGroup = self._gceDriver.ex_create_instancegroup(self.clusterName, self._zone)
         logger.debug('Launching leader')
 
-        self.addClusterToList(name=self.clusterName,
-                              provisioner='gce',
-                              zone=self._zone,
-                              instanceType=leaderNodeType)
+        self.addClusterToList(provisioner='gce', instanceType=leaderNodeType)
 
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
         # Therefore, dumping tags into the description.

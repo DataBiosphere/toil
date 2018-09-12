@@ -130,10 +130,7 @@ class AWSProvisioner(AbstractProvisioner):
         if 'keyName' not in kwargs:
             raise RuntimeError("A keyPairName is required for the AWS provisioner.")
 
-        self.addClusterToList(name=self.clusterName,
-                              provisioner='aws',
-                              zone=self._zone,
-                              instanceType=leaderNodeType)
+        self.addClusterToList(provisioner='aws', instanceType=leaderNodeType)
 
         self._keyName = kwargs['keyName']
         self._vpcSubnet = kwargs['vpcSubnet'] if 'vpcSubnet' in kwargs else None

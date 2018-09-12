@@ -278,8 +278,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             else:
                 os.rename('/tmp/toilClusterList.csv.new', '/tmp/toilClusterList.csv')
 
-    # TODO BEN all of the args here except provisioner are attributes of this class.
-    def addClusterToList(self, name, provisioner, zone, instanceType):
+    def addClusterToList(self, provisioner, instanceType):
         """
         Save information about launched clusters to a local file to be displayed later.
 
@@ -291,9 +290,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         with open('/tmp/toilClusterList.csv', 'a+') as f:
             if os.stat('/tmp/toilClusterList.csv').st_size == 0:
                 f.write('name,provisioner,zone,type,date,time,status,appliance\n') # Write header.
-            f.write('{},{},{},{},{},{},{},{}\n'.format(name, provisioner, zone, instanceType, date, clock,
+            f.write('{},{},{},{},{},{},{},{}\n'.format(self.clusterName, provisioner, self._zone, instanceType, date, clock,
                                                        'initializing', appliance))
-            log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, zone, name))
+            log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, self._zone, self.clusterName))
 
     def removeClusterFromList(self, name, provisioner, zone):
         """Remove a given cluster's information from the list of active clusters."""

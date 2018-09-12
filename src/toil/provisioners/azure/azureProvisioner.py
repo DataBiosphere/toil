@@ -135,10 +135,7 @@ class AzureProvisioner(AnsibleDriver):
         self._checkValidClusterName()
         self._checkIfClusterExists()
 
-        self.addClusterToList(name=self.clusterName,
-                              provisioner='azure',
-                              zone=self._zone,
-                              instanceType=leaderNodeType)
+        self.addClusterToList(provisioner='azure', instanceType=leaderNodeType)
 
         # Create the cluster.
         clusterArgs = {
