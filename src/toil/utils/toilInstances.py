@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 
 def valsToList(reqs):
-    """Turn the values of a dictionary into a list. (Assumes each value is a string or evaluates to False.)"""
+    """Turn the values of a dictionary into a list. (Assumes values are a string with commas or evaluates to False.)"""
     for k, v in reqs.items():
         if v:
             reqs[k] = reqs[k][0].split(',')
@@ -33,9 +33,12 @@ def main():
     parser.add_argument('-p', '--provisioners', dest="provisioner", nargs='*', type=str,
                         help='Provisioners from which instances will be displayed.')
     parser.add_argument('-n', '--name', dest='name', nargs='*', type=str,
-                        help='The name of the instance to be displayed.') # TODO allow unix-like matching of expressions: ab* matches abcd and abc
+                        help='The name of the instance to be displayed.') # TODO allow unix-like matching of expressions ex: ab* matches abcd and abc
     parser.add_argument('-d', '--date', dest='date', nargs='*', type=str,
                         help='The date the instance was created. (YYYY-MM-DD format)')
+    parser.add_argument('-s', '--status', dest='status', nargs='*', type=str,
+                        help='Statuses of the instance: initializing(-failed), created(-failed), running')
+
 
     # Change 'arg1,arg2...argN' to ['arg1','arg2',...,'argN'] for easy filtering below.
     reqs = valsToList(vars(parser.parse_args()))
@@ -52,7 +55,7 @@ def main():
 
     if os.path.exists('/tmp/toilClusterList.csv'):
         df = pd.read_csv('/tmp/toilClusterList.csv')
-        df.columns = ['name', 'provisioner', 'zone', 'type', 'date', 'time', 'appliance']
+        df.columns = ['name', 'provisioner', 'zone', 'type', 'date', 'time', 'status', 'appliance']
 
         for k, v in reqs.items():
             if v:
@@ -62,8 +65,6 @@ def main():
             print('No matching instances...')
         else:
             df.columns = [i.upper() for i in df.columns]
-            # print(df.to_string(justify='right', col_space=20, index=False))
-            # ^ This should be the line but there is a bug with pandas that makes the formatting look weird.
             print(df.to_string(justify='left', col_space=20, index=False))
     else:
         log.debug('/tmp/toilClusterList.csv does not exist')

@@ -244,14 +244,49 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
+    def updateEntry(self, entry, status, append):
+        """
+        Splice a new status into a string representing an entry in /tmp/toilClusterList.csv.
+
+        Assumes that the status column in second to last.
+        """
+        r = entry.rfind(',')
+        l = entry.rfind(',', 0, r)  # Find positions of commas bookending the status entry.
+
+        if append:
+            newEntry = entry[:r] + '-{}'.format(str(status)) + entry[r:]
+        else:
+            newEntry = entry[:l] + ',{}'.format(str(status)) + entry[r:]
+        return newEntry
+
+    def updateStatusInList(self, status, provisioner, append=False):
+        """Update the status of an entry in /tmp/toilClusterList.csv"""
+        with open('/tmp/toilClusterList.csv.new', 'w') as new:
+            with open('/tmp/toilClusterList.csv', 'r') as old:
+                for line in old:
+                    if line.startswith('{},{},{}'.format(self.clusterName, provisioner, self._zone)):
+                        new.write(self.updateEntry(line, status, append))
+                    else:
+                        new.write(line)
+
+        os.remove('/tmp/toilClusterList.csv')
+        os.rename('/tmp/toilClusterList.csv.new', '/tmp/toilClusterList.csv')
+
+    # TODO BEN all of the args here except provisioner are attributes of this class.
     def addClusterToList(self, name, provisioner, zone, instanceType):
-        """Save information about launched clusters to a local file to be displayed later."""
+        """
+        Save information about launched clusters to a local file to be displayed later.
+
+        The functions updateStatusInList, updateEntry, and removeClusterFromList, as well as toil/src/toil/utils/toilInstances.py rely on the order of the columns made
+        here.
+        """
         date, clock = time.strftime("%Y-%m-%d %H:%M").split(' ')
         appliance = applianceSelf()
         with open('/tmp/toilClusterList.csv', 'a+') as f:
             if os.stat('/tmp/toilClusterList.csv').st_size == 0:
-                f.write('name,provisioner,zone,type,date,time,appliance\n') # Write header.
-            f.write('{},{},{},{},{},{},{}\n'.format(name, provisioner, zone, instanceType, date, clock, appliance))
+                f.write('name,provisioner,zone,type,date,time,status,appliance\n') # Write header.
+            f.write('{},{},{},{},{},{},{},{}\n'.format(name, provisioner, zone, instanceType, date, clock,
+                                                       'initializing', appliance))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, zone, name))
 
     def removeClusterFromList(self, name, provisioner, zone):

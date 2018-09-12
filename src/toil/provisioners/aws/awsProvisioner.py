@@ -129,6 +129,12 @@ class AWSProvisioner(AbstractProvisioner):
         """
         if 'keyName' not in kwargs:
             raise RuntimeError("A keyPairName is required for the AWS provisioner.")
+
+        self.addClusterToList(name=self.clusterName,
+                              provisioner='aws',
+                              zone=self._zone,
+                              instanceType=leaderNodeType)
+
         self._keyName = kwargs['keyName']
         self._vpcSubnet = kwargs['vpcSubnet'] if 'vpcSubnet' in kwargs else None
 
@@ -148,15 +154,7 @@ class AWSProvisioner(AbstractProvisioner):
             specKwargs["subnet_id"] = self._vpcSubnet
         instances = create_ondemand_instances(self._ctx.ec2, image_id=self._discoverAMI(),
                                                   spec=specKwargs, num_instances=1)
-
-        # Add cluster to list of clusters after it is created.
-        # Errors might occur later in this function that would prevent the instance from successfully setting up.
-        # However, the instance still exists and should be added to the list of created clusters.
-        self.addClusterToList(name=self.clusterName,
-                              provisioner='aws',
-                              zone=self._zone,
-                              instanceType=leaderNodeType)
-
+        self.updateStatusInList('created', 'aws')
         # wait for the leader to finish setting up
         leader = instances[0]
         wait_instances_running(self._ctx.ec2, [leader])
@@ -165,6 +163,7 @@ class AWSProvisioner(AbstractProvisioner):
                           name=leader.id, launchTime=leader.launch_time, nodeType=leaderNodeType,
                           preemptable=False, tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
+        self.updateStatusInList('running', 'aws')
 
         defaultTags = {'Name': self.clusterName, 'Owner': owner}
         if kwargs['userTags']:
@@ -233,9 +232,9 @@ class AWSProvisioner(AbstractProvisioner):
                                     pass
                                 else:
                                     raise
+            self.removeClusterFromList(name=self.clusterName, provisioner='aws', zone=self._zone)
             if removed:
                 logger.debug('... Succesfully deleted security group')
-                self.removeClusterFromList(name=self.clusterName,provisioner='aws', zone=self._zone)
         else:
             assert len(instances) > len(instancesToTerminate)
             # the security group can't be deleted until all nodes are terminated

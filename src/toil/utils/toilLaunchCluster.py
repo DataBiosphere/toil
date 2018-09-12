@@ -146,16 +146,24 @@ def main():
                              clusterName=config.clusterName,
                              zone=config.zone,
                              nodeStorage=config.nodeStorage)
-
-    cluster.launchCluster(leaderNodeType=config.leaderNodeType,
-                          leaderStorage=config.leaderStorage,
-                          owner=owner,
-                          keyName=config.keyPairName,
-                          botoPath=config.botoPath,
-                          userTags=tagsDict,
-                          vpcSubnet=config.vpcSubnet,
-                          publicKeyFile=config.publicKeyFile,
-                          azureStorageCredentials=config.azureStorageCredentials)
+    try:
+        cluster.launchCluster(leaderNodeType=config.leaderNodeType,
+                              leaderStorage=config.leaderStorage,
+                              owner=owner,
+                              keyName=config.keyPairName,
+                              botoPath=config.botoPath,
+                              userTags=tagsDict,
+                              vpcSubnet=config.vpcSubnet,
+                              publicKeyFile=config.publicKeyFile,
+                              azureStorageCredentials=config.azureStorageCredentials)
+    except Exception:
+        cluster.updateStatusInList('failed', config.provisioner, append=True)
+        raise
+    except KeyboardInterrupt:
+        cluster.updateStatusInList('failed', config.provisioner, append=True)
+        raise
+    else:
+        cluster.updateStatusInList('running', config.provisioner)
 
     for nodeType, workers in zip(nodeTypes, numNodes):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)

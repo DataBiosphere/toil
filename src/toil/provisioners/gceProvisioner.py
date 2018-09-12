@@ -129,6 +129,11 @@ class GCEProvisioner(AbstractProvisioner):
         self._instanceGroup = self._gceDriver.ex_create_instancegroup(self.clusterName, self._zone)
         logger.debug('Launching leader')
 
+        self.addClusterToList(name=self.clusterName,
+                              provisioner='gce',
+                              zone=self._zone,
+                              instanceType=leaderNodeType)
+
         # GCE doesn't have a dictionary tags field. The tags field is just a string list.
         # Therefore, dumping tags into the description.
         tags = {'Owner': self._keyName, 'clusterName': self.clusterName}
@@ -156,13 +161,7 @@ class GCEProvisioner(AbstractProvisioner):
                                             description=self._tags,
                                             ex_preemptible=False)
 
-        # Add cluster to list of clusters after it is created.
-        # Errors might occur later in this function that would prevent the instance from successfully setting up.
-        # However, the instance still exists and should be added to the list of created clusters.
-        self.addClusterToList(name=self.clusterName,
-                              provisioner='gce',
-                              zone=self._zone,
-                              instanceType=leaderNodeType)
+        self.updateStatusInList('created', 'gce')
 
         self._instanceGroup.add_instances([leader])
         self._leaderPrivateIP = leader.private_ips[0] # needed if adding workers
@@ -178,6 +177,7 @@ class GCEProvisioner(AbstractProvisioner):
         if self._botoPath:
             leaderNode.injectFile(self._botoPath, self.NODE_BOTO_PATH, 'toil_leader')
         logger.debug('Launched leader')
+        self.updateStatusInList('running', 'gce')
 
     def getNodeShape(self, nodeType, preemptable=False):
         # TODO: read this value only once
