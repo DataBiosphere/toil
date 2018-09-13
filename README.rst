@@ -11,7 +11,7 @@ programming.
 * Google Groups discussion `forum`_ and videochat `invite list`_.
 
 .. _website: http://toil.ucsc-cgl.org/
-.. _Read the Docs: http://toil.readthedocs.org/
+.. _Read the Docs: https://toil.readthedocs.io/en/latest
 .. _forum: https://groups.google.com/forum/#!forum/toil-community
 .. _invite list: https://groups.google.com/forum/#!forum/toil-community-videochats
 .. _blog: https://toilpipelines.wordpress.com/
