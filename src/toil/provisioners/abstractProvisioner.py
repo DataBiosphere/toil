@@ -20,6 +20,7 @@ import time
 from toil import subprocess
 from toil import applianceSelf
 from toil import version
+#from toil.provisioners import AbstractProvisioner.removeClusterFromList
 
 from future.utils import with_metaclass
 
@@ -244,7 +245,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-    def updateEntry(self, entry, status, append):
+    # Ready to move
+    def updateEntry(self, entry, status):
         """
         Splice a new status into a string representing an entry in /tmp/toilClusterList.csv.
 
@@ -253,13 +255,10 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         r = entry.rfind(',')
         l = entry.rfind(',', 0, r)  # Find positions of commas bookending the status entry.
 
-        if append:
-            newEntry = entry[:r] + '-{}'.format(str(status)) + entry[r:]
-        else:
-            newEntry = entry[:l] + ',{}'.format(str(status)) + entry[r:]
+        newEntry = entry[:l] + ',{}'.format(str(status)) + entry[r:]
         return newEntry
 
-    def updateStatusInList(self, status, provisioner, append=False):
+    def updateStatusInList(self, status, provisioner):
         """Update the status of an entry in /tmp/toilClusterList.csv"""
         with open('/tmp/toilClusterList.csv.new', 'w') as new:
             with open('/tmp/toilClusterList.csv', 'r') as old:
@@ -267,7 +266,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                     if line.startswith('{},{},{}'.format(self.clusterName, provisioner, self._zone)):
                         # If cluster failed before creation, remove it from the list.
                         if status != 'broken' or line.split(',')[6] != 'initializing':
-                            new.write(self.updateEntry(line, status, append))
+                            new.write(self.updateEntry(line, status))
                     else:
                         new.write(line)
 
@@ -294,7 +293,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                                                        'initializing', appliance))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, self._zone, self.clusterName))
 
-    def removeClusterFromList(self, name, provisioner, zone):
+    @staticmethod
+    def removeClusterFromList(name, provisioner, zone):
         """Remove a given cluster's information from the list of active clusters."""
         if os.path.exists('/tmp/toilClusterList.csv'):
             # Copy from old to new .csv

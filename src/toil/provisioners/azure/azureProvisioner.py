@@ -145,8 +145,8 @@ class AzureProvisioner(AnsibleDriver):
 
         self.updateStatusInList('creating', 'azure')
         self.callPlaybook(self.playbook['create-cluster'], clusterArgs, wait=True)
-
         self.updateStatusInList('configuring', 'azure')
+
         ansibleArgs = {
             'vmsize': leaderNodeType,
             'resgrp': self.clusterName,  # The resource group, which represents the cluster.
