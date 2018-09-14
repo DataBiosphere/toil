@@ -26,82 +26,115 @@ import json
 logger = logging.getLogger()
 logger.setLevel('CRITICAL')
 
-# These have messages during importing.
-from azure.common.credentials import ServicePrincipalCredentials
-from azure.mgmt.resource import ResourceManagementClient
 
-def azureIsDead(row):
-    """Determine if an Azure instance exists."""
-    azureCredentials = ConfigParser.SafeConfigParser()
-    azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
+class instance(object):
+    """An abstract class used to template commonly done operations using libcloud."""
+    def __init__(self, provisioner, zone, name):
+        self.provisioner = provisioner
+        self.zone = zone
+        self.name = name
 
-    client_id = azureCredentials.get("default", "client_id")
-    secret = azureCredentials.get("default", "secret")
-    tenant = azureCredentials.get("default", "tenant")
-    subscription = azureCredentials.get("default", "subscription_id")
+    @property
+    def driver(self):
+        """Create the driver object needed for most operations."""
+        raise NotImplementedError
 
-    d = get_driver(Provider.AZURE_ARM)
-    driver = d(tenant_id=tenant, subscription_id=subscription, key=client_id, secret=secret)
+    @property
+    def exists(self):
+        """Determine if a particular instance exists."""
+        raise NotImplementedError
 
-    match = [x for x in driver.ex_list_resource_groups() if x.name == row['name'] and x.location == row['zone']]
 
-    # credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
-    # client = ResourceManagementClient(credentials, subscription)
-    # match = [x for x in client.resource_groups.list() if x.name == row['name'] and x.location == row['zone']]
+class AzureInstance(instance):
+    def __init__(self, provisioner, zone, name):
+        super(AzureInstance, self).__init__(provisioner, zone, name)
+        azureCredentials = ConfigParser.SafeConfigParser()
+        azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
 
-    return not bool(match)
+        self.client_id = azureCredentials.get("default", "client_id")
+        self.secret = azureCredentials.get("default", "secret")
+        self.tenant = azureCredentials.get("default", "tenant")
+        self.subscription = azureCredentials.get("default", "subscription_id")
 
-def awsIsDead(row):
-    """Determine if an AWS instance exists."""
-    credentials = ConfigParser.SafeConfigParser()
-    credentials.read(os.path.expanduser("~/.aws/credentials"))
+    @property
+    def driver(self):
+        d = get_driver(Provider.AZURE_ARM)
+        return d(tenant_id=self.tenant, subscription_id=self.subscription, key=self.client_id, secret=self.secret)
 
-    id = credentials.get('default', 'aws_access_key_id')
-    key = credentials.get('default', 'aws_secret_access_key')
+    @property
+    def list(self):
+        """Get a list of all accessable resource groups."""
+        return self.driver.ex_list_resource_groups()
 
-    d = get_driver(Provider.EC2)
-    driver = d(id, key, region=row['zone'][:-1])
+    @property
+    def exists(self):
+        # TODO Find a more direct approach.
+        match = [x for x in self.list if x.name == self.name and x.location == self.zone]
+        return bool(match)
 
-    match = driver.list_nodes(ex_filters={'instance.group-name': row['name'],
-                                          'instance-state-name': ['pending', 'running']})
-    return not bool(match)
 
-def gceIsDead(row):
-    """Determine if a GCE instance exists."""
-    credentialsPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-    with open(credentialsPath, 'r') as f:
-        credentials = json.loads(f.read())
+class AWSInstance(instance):
+    def __init__(self, provisioner, zone, name):
+        super(AWSInstance, self).__init__(provisioner, zone, name)
+        credentials = ConfigParser.SafeConfigParser()
+        credentials.read(os.path.expanduser("~/.aws/credentials"))
 
-    email = credentials['client_email']
-    projectID = credentials['project_id']
+        self.id = credentials.get('default', 'aws_access_key_id')
+        self.key = credentials.get('default', 'aws_secret_access_key')
 
-    d = get_driver(Provider.GCE)
-    driver = d(email, credentialsPath, project=projectID, datacenter=row['zone'])
+    @property
+    def driver(self):
+        d = get_driver(Provider.EC2)
+        return d(self.id, self.key, region=self.zone[:-1])
 
-    try:
-        driver.ex_get_instancegroup(row['name'],zone=row['zone'])
-    except:
-        dead = True
-    else:
-        dead = False
+    @property
+    def exists(self):
+        match = self.driver.list_nodes(ex_filters={'instance.group-name': self.name,
+                                                   'instance-state-name': ['pending', 'running']})
+        return bool(match)
 
-    return dead
 
-def deadInstance(row):
+class GCEInstance(instance):
+    def __init__(self, provisioner, zone, name):
+        super(GCEInstance, self).__init__(provisioner, zone, name)
+        self.credentialsPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+        with open(self.credentialsPath, 'r') as f:
+            credentials = json.loads(f.read())
+
+        self.email = credentials['client_email']
+        self.projectID = credentials['project_id']
+
+    @property
+    def driver(self):
+        d = get_driver(Provider.GCE)
+        return d(self.email, self.credentialsPath, project=self.projectID, datacenter=self.zone)
+
+    @property
+    def exists(self):
+        try:
+            self.driver.ex_get_instancegroup(self.name, zone=self.zone)
+        except:
+            status = False
+        else:
+            status = True
+        return status
+
+def instanceExists(row):
     """Determine if an instance on one of Toil's supported platforms exists."""
-    if row['provisioner'] == 'aws':
-        isDead = awsIsDead(row)
-    elif row['provisioner'] == 'gce':
-        isDead = gceIsDead(row)
-    else:  # Is Azure instance.
-        isDead = azureIsDead(row)
-        pass
-    return isDead
+    instanceType = {'aws': AWSInstance,
+                    'azure': AzureInstance,
+                    'gce': GCEInstance}
+
+    prov = row['provisioner']
+    zone = row['zone']
+    name = row['name']
+
+    return instanceType[prov](provisioner=prov, zone=zone, name=name).exists
 
 def filterDeadInstances(df):
     """Remove entries of a Pandas DataFrame which carry information about cloud instances that do not exist."""
     for i, row in df.iterrows():
-        if deadInstance(row):
+        if not instanceExists(row):
             AbstractProvisioner.removeClusterFromList(row['name'], row['provisioner'], row['zone'])
             df = df.drop(index=i)
     return df
@@ -114,7 +147,6 @@ def valsToList(reqs):
     return reqs
 
 def main():
-    #logging.basicConfig(level=logging.CRITICAL)
     if os.path.exists('/tmp/toilClusterList.csv'):
         parser = ArgumentParser()
         parser.add_argument('-p', '--provisioners', dest="provisioner", nargs='*', type=str,
