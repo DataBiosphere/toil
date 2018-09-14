@@ -282,7 +282,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         Save information about launched clusters to a local file to be displayed later.
 
         The functions updateStatusInList, updateEntry, and removeClusterFromList, as well as
-        toil/src/toil/utils/toilInstances.py rely on the order of the columns made here.
+        toil/src/toil/utils/toilPs.py rely on the order of the columns made here.
         """
         created = time.strftime("%Y-%m-%d %H:%M")
         appliance = applianceSelf()
