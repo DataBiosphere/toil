@@ -29,10 +29,11 @@ logger.setLevel('CRITICAL')
 
 class instance(object):
     """An abstract class used to template commonly done operations using libcloud."""
-    def __init__(self, provisioner, zone, name):
+    def __init__(self, provisioner, zone, name, status):
         self.provisioner = provisioner
         self.zone = zone
         self.name = name
+        self.status = status
 
     @property
     def driver(self):
@@ -46,8 +47,8 @@ class instance(object):
 
 
 class AzureInstance(instance):
-    def __init__(self, provisioner, zone, name):
-        super(AzureInstance, self).__init__(provisioner, zone, name)
+    def __init__(self, provisioner, zone, name, status):
+        super(AzureInstance, self).__init__(provisioner, zone, name, status)
         azureCredentials = ConfigParser.SafeConfigParser()
         azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
 
@@ -68,14 +69,17 @@ class AzureInstance(instance):
 
     @property
     def exists(self):
-        # TODO Find a more direct approach.
-        match = [x for x in self.list if x.name == self.name and x.location == self.zone]
+        if self.status == 'initilizing':
+            match = True
+        else:
+            # TODO Find a more direct approach.
+            match = [x for x in self.list if x.name == self.name and x.location == self.zone]
         return bool(match)
 
 
 class AWSInstance(instance):
-    def __init__(self, provisioner, zone, name):
-        super(AWSInstance, self).__init__(provisioner, zone, name)
+    def __init__(self, provisioner, zone, name, status):
+        super(AWSInstance, self).__init__(provisioner, zone, name, status)
         credentials = ConfigParser.SafeConfigParser()
         credentials.read(os.path.expanduser("~/.aws/credentials"))
 
@@ -89,14 +93,17 @@ class AWSInstance(instance):
 
     @property
     def exists(self):
-        match = self.driver.list_nodes(ex_filters={'instance.group-name': self.name,
+        if self.status == 'configuring':
+            match = True
+        else:
+            match = self.driver.list_nodes(ex_filters={'instance.group-name': self.name,
                                                    'instance-state-name': ['pending', 'running']})
         return bool(match)
 
 
 class GCEInstance(instance):
-    def __init__(self, provisioner, zone, name):
-        super(GCEInstance, self).__init__(provisioner, zone, name)
+    def __init__(self, provisioner, zone, name, status):
+        super(GCEInstance, self).__init__(provisioner, zone, name, status)
         self.credentialsPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
         with open(self.credentialsPath, 'r') as f:
             credentials = json.loads(f.read())
@@ -111,12 +118,15 @@ class GCEInstance(instance):
 
     @property
     def exists(self):
-        try:
-            self.driver.ex_get_instancegroup(self.name, zone=self.zone)
-        except:
-            status = False
-        else:
+        if self.status == 'initilizing':
             status = True
+        else:
+            try:
+                self.driver.ex_get_instancegroup(self.name, zone=self.zone)
+            except:
+                status = False
+            else:
+                status = True
         return status
 
 def instanceExists(row):
@@ -128,8 +138,9 @@ def instanceExists(row):
     prov = row['provisioner']
     zone = row['zone']
     name = row['name']
+    status = row['status']
 
-    return instanceType[prov](provisioner=prov, zone=zone, name=name).exists
+    return instanceType[prov](provisioner=prov, zone=zone, name=name, status=status).exists
 
 def filterDeadInstances(df):
     """Remove entries of a Pandas DataFrame which carry information about cloud instances that do not exist."""
@@ -142,7 +153,7 @@ def filterDeadInstances(df):
 def valsToList(reqs):
     """Turn the values of a dictionary into a list. (Assumes values are a string with commas or evaluates to False.)"""
     for k, v in reqs.items():
-        if v:
+        if v and isinstance(v, list):
             reqs[k] = reqs[k][0].split(',')
     return reqs
 
@@ -153,17 +164,18 @@ def main():
                             help='Provisioners from which instances will be displayed.')
         parser.add_argument('-n', '--name', dest='name', nargs='*', type=str,
                             help='The name of the instance to be displayed.') # TODO allow unix-like matching of expressions ex: ab* matches abcd and abc
-        parser.add_argument('-d', '--date', dest='date', nargs='*', type=str,
-                            help='The date the instance was created. (YYYY-MM-DD format)')
         parser.add_argument('-s', '--status', dest='status', nargs='*', type=str,
                             help='Statuses of the instance: Initializing, Creating, Configuring, Running, and Broken.')  #TODO flush out these defs.
         parser.add_argument('-t', '--sort', dest='sort', nargs='*', type=str,
                             help='Columns to sort on.')  #TODO flush out these defs.
+        parser.add_argument('-c', '--chronological', dest='chron', action='store_true', default=False,
+                            help='Display instances chronological order')
 
-        nonfilteringArgs = ['sort']
+        nonfilteringArgs = ['sort', 'chron']
         # Change 'arg1,arg2...argN' to ['arg1','arg2',...,'argN'] for easy filtering below.
         filters = valsToList(vars(parser.parse_args()))
         nonfiltering = {key : filters[key] for key in filters if key in nonfilteringArgs}
+        #raise RuntimeError(nonfiltering)
         filters = {key: filters[key] for key in filters if key not in nonfiltering}
 
         # While this type of checking could be done utilizing the 'choices' argument of add_argument(), it is being done
@@ -176,7 +188,7 @@ def main():
                 filters['provisioner'] = [x for x in filters['provisioner'] if x not in invalids]
                 print('Invalid provisioner(s): {}. Please choose from {}'.format(','.join(invalids), supportedProvisioners))
 
-        columnNames = ['name', 'provisioner', 'zone', 'type', 'date', 'time', 'status', 'appliance']
+        columnNames = ['name', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
         df = pd.read_csv('/tmp/toilClusterList.csv')
         df = filterDeadInstances(df)
 
@@ -187,9 +199,11 @@ def main():
         if df.empty:
             print('No matching instances...')
         else:
-            # QC of columns to sort by
+
+            df = df.sort_values(by='created', ascending=nonfiltering['chron'])
+
             if nonfiltering['sort']:
-                invalids = [x for x in nonfiltering['sort'] if x not in columnNames]
+                invalids = [x for x in nonfiltering['sort'] if x not in columnNames]  # QC of column names.
                 if invalids:
                     nonfiltering['sort'] = [x for x in nonfiltering['sort'] if x not in invalids]
                     print('Invalid column(s): {}. Please choose from {}'.format(','.join(invalids), columnNames))

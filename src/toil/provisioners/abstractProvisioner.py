@@ -284,12 +284,12 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         The functions updateStatusInList, updateEntry, and removeClusterFromList, as well as
         toil/src/toil/utils/toilInstances.py rely on the order of the columns made here.
         """
-        date, clock = time.strftime("%Y-%m-%d %H:%M").split(' ')
+        created = time.strftime("%Y-%m-%d %H:%M")
         appliance = applianceSelf()
         with open('/tmp/toilClusterList.csv', 'a+') as f:
             if os.stat('/tmp/toilClusterList.csv').st_size == 0:
-                f.write('name,provisioner,zone,type,date,time,status,appliance\n') # Write header.
-            f.write('{},{},{},{},{},{},{},{}\n'.format(self.clusterName, provisioner, self._zone, instanceType, date, clock,
+                f.write('name,provisioner,zone,type,created,status,appliance\n') # Write header.
+            f.write('{},{},{},{},{},{},{}\n'.format(self.clusterName, provisioner, self._zone, instanceType, created,
                                                        'initializing', appliance))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, self._zone, self.clusterName))
 
