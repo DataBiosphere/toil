@@ -40,22 +40,26 @@ def azureIsDead(row):
     tenant = azureCredentials.get("default", "tenant")
     subscription = azureCredentials.get("default", "subscription_id")
 
-    credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
-    client = ResourceManagementClient(credentials, subscription)
+    d = get_driver(Provider.AZURE_ARM)
+    driver = d(tenant_id=tenant, subscription_id=subscription, key=client_id, secret=secret)
 
-    match = [x for x in client.resource_groups.list() if x.name == row['name'] and x.location == row['zone']]
+    match = [x for x in driver.ex_list_resource_groups() if x.name == row['name'] and x.location == row['zone']]
+
+    # credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
+    # client = ResourceManagementClient(credentials, subscription)
+    # match = [x for x in client.resource_groups.list() if x.name == row['name'] and x.location == row['zone']]
 
     return not bool(match)
 
 def awsIsDead(row):
-    """Determine if an AWS instance exists"""
-    awsCredentials = ConfigParser.SafeConfigParser()
-    awsCredentials.read(os.path.expanduser("~/.aws/credentials"))
+    """Determine if an AWS instance exists."""
+    credentials = ConfigParser.SafeConfigParser()
+    credentials.read(os.path.expanduser("~/.aws/credentials"))
+
+    id = credentials.get('default', 'aws_access_key_id')
+    key = credentials.get('default', 'aws_secret_access_key')
 
     d = get_driver(Provider.EC2)
-    id = awsCredentials.get('default', 'aws_access_key_id')
-    key = awsCredentials.get('default', 'aws_secret_access_key')
-
     driver = d(id, key, region=row['zone'][:-1])
 
     match = driver.list_nodes(ex_filters={'instance.group-name': row['name'],
@@ -64,36 +68,32 @@ def awsIsDead(row):
 
 def gceIsDead(row):
     """Determine if a GCE instance exists."""
+    credentialsPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    with open(credentialsPath, 'r') as f:
+        credentials = json.loads(f.read())
 
-    jsonPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
-    with open(jsonPath, 'r') as f:
-        gceCredentials = json.loads(f.read())
-
-    email = gceCredentials['client_email']
-    projectID = gceCredentials['project_id']
+    email = credentials['client_email']
+    projectID = credentials['project_id']
 
     d = get_driver(Provider.GCE)
-    driver = d(email, jsonPath, project=projectID, datacenter=row['zone'])
+    driver = d(email, credentialsPath, project=projectID, datacenter=row['zone'])
 
     try:
         driver.ex_get_instancegroup(row['name'],zone=row['zone'])
     except:
-        match = False
+        dead = True
     else:
-        match = True
-    return not match
+        dead = False
 
-    # create driver
-    # check
-
+    return dead
 
 def deadInstance(row):
-    """Determine if an instance on one of Toil's supporter platforms exists"""
+    """Determine if an instance on one of Toil's supported platforms exists."""
     if row['provisioner'] == 'aws':
         isDead = awsIsDead(row)
     elif row['provisioner'] == 'gce':
         isDead = gceIsDead(row)
-    else:
+    else:  # Is Azure instance.
         isDead = azureIsDead(row)
         pass
     return isDead
