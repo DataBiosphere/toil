@@ -16,41 +16,86 @@
 import logging
 import os
 from argparse import ArgumentParser
-import subprocess32
 import pandas as pd
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
+import ConfigParser
+from libcloud.compute.types import Provider
+from libcloud.compute.providers import get_driver
+import json
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger()
+logger.setLevel('CRITICAL')
 
-def checkAzureInstance(row):
-    """Determine if an azure instance exists"""
-    playbook = os.path.abspath('src/toil/provisioners/azure/create-azure-resourcegroup.yml')
-    cmd = 'ansible-playbook -v --tags=all --extra-vars resgrp={}, region={} {}'.format(row['name'],
-                                                                                       row['zone'], playbook)
+# These have messages during importing.
+from azure.common.credentials import ServicePrincipalCredentials
+from azure.mgmt.resource import ResourceManagementClient
+
+def azureIsDead(row):
+    """Determine if an Azure instance exists."""
+    azureCredentials = ConfigParser.SafeConfigParser()
+    azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
+
+    client_id = azureCredentials.get("default", "client_id")
+    secret = azureCredentials.get("default", "secret")
+    tenant = azureCredentials.get("default", "tenant")
+    subscription = azureCredentials.get("default", "subscription_id")
+
+    credentials = ServicePrincipalCredentials(client_id=client_id, secret=secret, tenant=tenant)
+    client = ResourceManagementClient(credentials, subscription)
+
+    match = [x for x in client.resource_groups.list() if x.name == row['name'] and x.location == row['zone']]
+
+    return not bool(match)
+
+def awsIsDead(row):
+    """Determine if an AWS instance exists"""
+    awsCredentials = ConfigParser.SafeConfigParser()
+    awsCredentials.read(os.path.expanduser("~/.aws/credentials"))
+
+    d = get_driver(Provider.EC2)
+    id = awsCredentials.get('default', 'aws_access_key_id')
+    key = awsCredentials.get('default', 'aws_secret_access_key')
+
+    driver = d(id, key, region=row['zone'][:-1])
+
+    match = driver.list_nodes(ex_filters={'instance.group-name': row['name'],
+                                          'instance-state-name': ['pending', 'running']})
+    return not bool(match)
+
+def gceIsDead(row):
+    """Determine if a GCE instance exists."""
+
+    jsonPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+    with open(jsonPath, 'r') as f:
+        gceCredentials = json.loads(f.read())
+
+    email = gceCredentials['client_email']
+    projectID = gceCredentials['project_id']
+
+    d = get_driver(Provider.GCE)
+    driver = d(email, jsonPath, project=projectID, datacenter=row['zone'])
+
     try:
-        p = subprocess32.Popen(cmd)
-        p.communicate()
-    except RuntimeError:
-        dead = True
+        driver.ex_get_instancegroup(row['name'],zone=row['zone'])
+    except:
+        match = False
     else:
-        dead = False
-    return dead
+        match = True
+    return not match
 
-def checkAWSInstance(row):
-    pass
-
-def checkGCEInstance(row):
-    pass
+    # create driver
+    # check
 
 
 def deadInstance(row):
     """Determine if an instance on one of Toil's supporter platforms exists"""
     if row['provisioner'] == 'aws':
-        isDead = checkAWSInstance(row)
+        isDead = awsIsDead(row)
     elif row['provisioner'] == 'gce':
-        isDead = checkGCEInstance(row)
+        isDead = gceIsDead(row)
     else:
-        isDead = checkAzureInstance(row)
+        isDead = azureIsDead(row)
+        pass
     return isDead
 
 def filterDeadInstances(df):
@@ -58,7 +103,7 @@ def filterDeadInstances(df):
     for i, row in df.iterrows():
         if deadInstance(row):
             AbstractProvisioner.removeClusterFromList(row['name'], row['provisioner'], row['zone'])
-            df.drop(index=i)
+            df = df.drop(index=i)
     return df
 
 def valsToList(reqs):
@@ -69,6 +114,7 @@ def valsToList(reqs):
     return reqs
 
 def main():
+    #logging.basicConfig(level=logging.CRITICAL)
     if os.path.exists('/tmp/toilClusterList.csv'):
         parser = ArgumentParser()
         parser.add_argument('-p', '--provisioners', dest="provisioner", nargs='*', type=str,
@@ -98,9 +144,9 @@ def main():
                 filters['provisioner'] = [x for x in filters['provisioner'] if x not in invalids]
                 print('Invalid provisioner(s): {}. Please choose from {}'.format(','.join(invalids), supportedProvisioners))
 
-        df = pd.read_csv('/tmp/toilClusterList.csv')
-        #df = filterDeadInstances(df)
         columnNames = ['name', 'provisioner', 'zone', 'type', 'date', 'time', 'status', 'appliance']
+        df = pd.read_csv('/tmp/toilClusterList.csv')
+        df = filterDeadInstances(df)
 
         for k, v in filters.items():
             if v:
@@ -120,5 +166,5 @@ def main():
             df.columns = [i.upper() for i in columnNames]  # Uppercase for displaying.
             print(df.to_string(justify='left', col_space=20, index=False))
     else:
-        log.debug('/tmp/toilClusterList.csv does not exist')
+        logger.debug('/tmp/toilClusterList.csv does not exist')
         print('Toil is not tracking any instances.')

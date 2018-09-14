@@ -34,20 +34,9 @@ def not_found(e):
     return e.error_code.endswith('.NotFound')
 
 
-def retry_ec2(
-        retry_after=a_short_time,
-        retry_for=10 *
-        a_short_time,
-        retry_while=not_found):
+def retry_ec2(retry_after=a_short_time, retry_for=10 * a_short_time, retry_while=not_found):
     t = retry_after
-    return retry(
-        delays=(
-            t,
-            t,
-            t * 2,
-            t * 4),
-        timeout=retry_for,
-        predicate=retry_while)
+    return retry( delays=(t, t, t * 2, t * 4), timeout=retry_for, predicate=retry_while)
 
 
 class EC2VolumeHelper(object):
