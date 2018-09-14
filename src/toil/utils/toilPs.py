@@ -175,7 +175,6 @@ def main():
         # Change 'arg1,arg2...argN' to ['arg1','arg2',...,'argN'] for easy filtering below.
         filters = valsToList(vars(parser.parse_args()))
         nonfiltering = {key : filters[key] for key in filters if key in nonfilteringArgs}
-        #raise RuntimeError(nonfiltering)
         filters = {key: filters[key] for key in filters if key not in nonfiltering}
 
         # While this type of checking could be done utilizing the 'choices' argument of add_argument(), it is being done
@@ -199,9 +198,7 @@ def main():
         if df.empty:
             print('No matching instances...')
         else:
-
             df = df.sort_values(by='created', ascending=nonfiltering['chron'])
-
             if nonfiltering['sort']:
                 invalids = [x for x in nonfiltering['sort'] if x not in columnNames]  # QC of column names.
                 if invalids:
