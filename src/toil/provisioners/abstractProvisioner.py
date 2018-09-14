@@ -288,7 +288,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         appliance = applianceSelf()
         with open('/tmp/toilClusterList.csv', 'a+') as f:
             if os.stat('/tmp/toilClusterList.csv').st_size == 0:
-                f.write('name,provisioner,zone,type,created,status,appliance\n') # Write header.
+                f.write('clustername,provisioner,zone,type,created,status,appliance\n') # Write header.
             f.write('{},{},{},{},{},{},{}\n'.format(self.clusterName, provisioner, self._zone, instanceType, created,
                                                        'initializing', appliance))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, self._zone, self.clusterName))

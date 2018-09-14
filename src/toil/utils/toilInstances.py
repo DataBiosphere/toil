@@ -69,7 +69,7 @@ class AzureInstance(instance):
 
     @property
     def exists(self):
-        if self.status == 'initilizing':
+        if self.status == 'initializing':
             match = True
         else:
             # TODO Find a more direct approach.
@@ -93,7 +93,7 @@ class AWSInstance(instance):
 
     @property
     def exists(self):
-        if self.status == 'configuring':
+        if self.status == 'initializing':
             match = True
         else:
             match = self.driver.list_nodes(ex_filters={'instance.group-name': self.name,
@@ -118,7 +118,7 @@ class GCEInstance(instance):
 
     @property
     def exists(self):
-        if self.status == 'initilizing':
+        if self.status == 'initializing':
             status = True
         else:
             try:
@@ -137,7 +137,7 @@ def instanceExists(row):
 
     prov = row['provisioner']
     zone = row['zone']
-    name = row['name']
+    name = row['clustername']
     status = row['status']
 
     return instanceType[prov](provisioner=prov, zone=zone, name=name, status=status).exists
@@ -146,7 +146,7 @@ def filterDeadInstances(df):
     """Remove entries of a Pandas DataFrame which carry information about cloud instances that do not exist."""
     for i, row in df.iterrows():
         if not instanceExists(row):
-            AbstractProvisioner.removeClusterFromList(row['name'], row['provisioner'], row['zone'])
+            AbstractProvisioner.removeClusterFromList(row['clustername'], row['provisioner'], row['zone'])
             df = df.drop(index=i)
     return df
 
@@ -188,7 +188,7 @@ def main():
                 filters['provisioner'] = [x for x in filters['provisioner'] if x not in invalids]
                 print('Invalid provisioner(s): {}. Please choose from {}'.format(','.join(invalids), supportedProvisioners))
 
-        columnNames = ['name', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
+        columnNames = ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
         df = pd.read_csv('/tmp/toilClusterList.csv')
         df = filterDeadInstances(df)
 
