@@ -258,7 +258,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     @staticmethod
     def clusterListPath():
         """Return the location of the file holding information about instances launched with launch cluster."""
-        return '/tmp/toilClusterList.csv'
+        return os.path.join(os.path.expanduser('~'), '.toilClusterList.csv')
 
     def updateStatusInList(self, status, provisioner):
         """Update the status of an entry in /tmp/toilClusterList.csv"""
