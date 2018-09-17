@@ -219,7 +219,7 @@ def main():
 
     columnNames = ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
 
-    blankRow = False  # Empty data frames don't print nicely with column names. Adding this row will make printing easier.
+    blankRow = False  # Empty data frames don't print nicely. Adding this row will make printing easier.
     if os.path.exists(listPath):
         df = pd.read_csv(listPath)
         df = filterDeadInstances(df)
