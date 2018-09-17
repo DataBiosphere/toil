@@ -305,7 +305,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
 
         if os.path.exists(oldList):
             # Copy from old to new .csv
-            with open('/tmp/toilClusterList.csv.new', 'w') as new:
+            with open(newList, 'w') as new:
                 with open(oldList, 'r') as old:
                     for line in old:
                         if not line.startswith('{},{},{}'.format(name, provisioner, zone)):

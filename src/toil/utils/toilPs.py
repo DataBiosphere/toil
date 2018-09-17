@@ -20,13 +20,14 @@ from toil.provisioners.abstractProvisioner import AbstractProvisioner
 import ConfigParser
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
+from libcloud.common.google import ResourceNotFoundError
 import json
 
 logger = logging.getLogger()
 logger.setLevel('CRITICAL')
 
 
-class instance(object):
+class Instance(object):
     """An abstract class used to template commonly done operations using libcloud."""
     def __init__(self, provisioner, zone, name, status):
         self.provisioner = provisioner
@@ -45,7 +46,7 @@ class instance(object):
         raise NotImplementedError
 
 
-class AzureInstance(instance):
+class AzureInstance(Instance):
     """A class for executing commonly done operations in the Azure cloud using libcloud."""
     def __init__(self, provisioner, zone, name, status):
         super(AzureInstance, self).__init__(provisioner, zone, name, status)
@@ -84,7 +85,7 @@ class AzureInstance(instance):
         return bool(match)
 
 
-class AWSInstance(instance):
+class AWSInstance(Instance):
     """A class for executing commonly done operations in the AWS cloud using libcloud."""
     def __init__(self, provisioner, zone, name, status):
         super(AWSInstance, self).__init__(provisioner, zone, name, status)
@@ -112,11 +113,11 @@ class AWSInstance(instance):
             match = True
         else:
             match = self.driver.list_nodes(ex_filters={'instance.group-name': self.name,
-                                                   'instance-state-name': ['pending', 'running']})
+                                                       'instance-state-name': ['pending', 'running']})
         return bool(match)
 
 
-class GCEInstance(instance):
+class GCEInstance(Instance):
     """A class for executing commonly done operations in the Google Compute Engine cloud using libcloud."""
     def __init__(self, provisioner, zone, name, status):
         super(GCEInstance, self).__init__(provisioner, zone, name, status)
@@ -146,7 +147,7 @@ class GCEInstance(instance):
         else:
             try:
                 self.driver.ex_get_instancegroup(self.name, zone=self.zone)
-            except:
+            except ResourceNotFoundError:
                 status = False
             else:
                 status = True
@@ -156,8 +157,8 @@ class GCEInstance(instance):
 def instanceExists(row):
     """Determine if an instance on one of Toil's supported cloud platforms exists."""
     instanceClass = {'aws': AWSInstance,
-                    'azure': AzureInstance,
-                    'gce': GCEInstance}
+                     'azure': AzureInstance,
+                     'gce': GCEInstance}
 
     prov = row['provisioner']
     zone = row['zone']
@@ -186,61 +187,63 @@ def valsToList(reqs):
 
 def main():
     listPath = AbstractProvisioner.clusterListPath()
+
+    parser = ArgumentParser()
+    parser.add_argument('-p', '--provisioners', dest="provisioner", nargs='*', type=str,
+                        help='Provisioners from which instances will be displayed.')
+    parser.add_argument('-n', '--name', dest='name', nargs='*', type=str,
+                        help='The name of the instance to be displayed.') # TODO allow unix-like matching of expressions ex: ab* matches abcd and abc
+    parser.add_argument('-s', '--status', dest='status', nargs='*', type=str,
+                        help='Statuses of the instance: Initializing, Creating, Configuring, Running, and Broken.')  #TODO flush out these defs.
+    parser.add_argument('-t', '--sort', dest='sort', nargs='*', type=str,
+                        help='Columns to sort on.')  #TODO flush out these defs.
+    parser.add_argument('-c', '--chronological', dest='chron', action='store_true', default=False,
+                        help='Display instances chronological order')
+
+    nonfilteringArgs = ['sort', 'chron']
+
+    # Change {arg: 'val1,val2...valN'} to {arg: ['val1','val2',...,'valN']} for easy filtering below.
+    filters = valsToList(vars(parser.parse_args()))
+    nonfiltering = {key: filters[key] for key in filters if key in nonfilteringArgs}
+    filters = {key: filters[key] for key in filters if key not in nonfiltering}
+
+    # While this type of checking could be done utilizing the 'choices' argument of add_argument(), it is being done
+    # this way to maintain a CLI argument input style consistent with Toil.
+    # (The cartesian product of 'aws', 'gce', 'azure' would have to be the value of the 'choices' argument.)
+    supportedProvisioners = ['aws', 'gce', 'azure']
+    if filters['provisioner']:
+        invalids = [x for x in filters['provisioner'] if x not in supportedProvisioners]
+        if invalids:
+            filters['provisioner'] = [x for x in filters['provisioner'] if x not in invalids]
+            print('Invalid provisioner(s): {}. Please choose from {}'.format(','.join(invalids), supportedProvisioners))
+
+    columnNames = ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
+
+    blankRow = False  # Empty data frames don't print nicely with column names. Adding this row will make printing easier.
     if os.path.exists(listPath):
-        parser = ArgumentParser()
-        parser.add_argument('-p', '--provisioners', dest="provisioner", nargs='*', type=str,
-                            help='Provisioners from which instances will be displayed.')
-        parser.add_argument('-n', '--name', dest='name', nargs='*', type=str,
-                            help='The name of the instance to be displayed.') # TODO allow unix-like matching of expressions ex: ab* matches abcd and abc
-        parser.add_argument('-s', '--status', dest='status', nargs='*', type=str,
-                            help='Statuses of the instance: Initializing, Creating, Configuring, Running, and Broken.')  #TODO flush out these defs.
-        parser.add_argument('-t', '--sort', dest='sort', nargs='*', type=str,
-                            help='Columns to sort on.')  #TODO flush out these defs.
-        parser.add_argument('-c', '--chronological', dest='chron', action='store_true', default=False,
-                            help='Display instances chronological order')
-
-        nonfilteringArgs = ['sort', 'chron']
-        # Change 'arg1,arg2...argN' to ['arg1','arg2',...,'argN'] for easy filtering below.
-        filters = valsToList(vars(parser.parse_args()))
-        nonfiltering = {key : filters[key] for key in filters if key in nonfilteringArgs}
-        filters = {key: filters[key] for key in filters if key not in nonfiltering}
-
-        # While this type of checking could be done utilizing the 'choices' argument of add_argument(), it is being done
-        # this way to maintain a CLI argument input style consistent with Toil.
-        # (The cartesian product of 'aws', 'gce', 'azure' would have to be the value of the 'choices' argument.)
-        supportedProvisioners = ['aws', 'gce', 'azure']
-        if filters['provisioner']:
-            invalids = [x for x in filters['provisioner'] if x not in supportedProvisioners]
-            if invalids:
-                filters['provisioner'] = [x for x in filters['provisioner'] if x not in invalids]
-                print('Invalid provisioner(s): {}. Please choose from {}'.format(','.join(invalids), supportedProvisioners))
-
-        columnNames = ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
         df = pd.read_csv(listPath)
         df = filterDeadInstances(df)
 
-        if os.path.exists(listPath):  # All entries could have been removed in filterDeadInstances().
-            for k, v in filters.items():
-                if v:
-                    df = df[df[k].isin(v)]  # Filter rows by each requirement.
+        for k, v in filters.items():
+            if v:
+                df = df[df[k].isin(v)]  # Filter rows by each requirement.
 
-            if df.empty:
-                print('No matching instances...')
-            else:
-                df = df.sort_values(by='created', ascending=nonfiltering['chron'])
-                if nonfiltering['sort']:
-                    invalids = [x for x in nonfiltering['sort'] if x not in columnNames]  # QC of column names.
-                    if invalids:
-                        nonfiltering['sort'] = [x for x in nonfiltering['sort'] if x not in invalids]
-                        print('Invalid column(s): {}. Please choose from {}'.format(','.join(invalids), columnNames))
-                    df = df.sort_values(by=nonfiltering['sort'])
-
-                df.columns = [i.upper() for i in columnNames]  # Uppercase for displaying.
-                print(df.to_string(justify='left', col_space=20, index=False))
+        if df.empty:
+            blankRow = True
         else:
-            logger.debug('All entries from /tmp/toilClusterList.csv were considered dead and removed.')
-            print('Toil is not tracking any instances.')
-
+            df = df.sort_values(by='created', ascending=nonfiltering['chron'])
+            if nonfiltering['sort']:
+                invalids = [x for x in nonfiltering['sort'] if x not in columnNames]  # QC of column names.
+                if invalids:
+                    nonfiltering['sort'] = [x for x in nonfiltering['sort'] if x not in invalids]
+                    print('Invalid column(s): {}. Please choose from {}'.format(','.join(invalids), columnNames))
+                df = df.sort_values(by=nonfiltering['sort'])
     else:
-        logger.debug('/tmp/toilClusterList.csv does not exist')
-        print('Toil is not tracking any instances.')
+        blankRow = True
+
+    if blankRow:
+        df = pd.DataFrame()
+        df = df.append(pd.Series(['', '', '', '', '', '', '']), ignore_index=True)  # Allows assigning column names for printing.
+
+    df.columns = [i.upper() for i in columnNames]  # Uppercase for displaying.
+    print(df.to_string(justify='left', col_space=20, index=False))
