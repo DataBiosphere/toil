@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Displays information about instances opened with Toil."""
-
 import logging
 import os
 from argparse import ArgumentParser
@@ -47,18 +46,20 @@ class instance(object):
 
 
 class AzureInstance(instance):
+    """A class for executing commonly done operations in the Azure cloud using libcloud."""
     def __init__(self, provisioner, zone, name, status):
         super(AzureInstance, self).__init__(provisioner, zone, name, status)
-        azureCredentials = ConfigParser.SafeConfigParser()
-        azureCredentials.read(os.path.expanduser("~/.azure/credentials"))
+        credentials = ConfigParser.SafeConfigParser()
+        credentials.read(os.path.expanduser("~/.azure/credentials"))
 
-        self.client_id = azureCredentials.get("default", "client_id")
-        self.secret = azureCredentials.get("default", "secret")
-        self.tenant = azureCredentials.get("default", "tenant")
-        self.subscription = azureCredentials.get("default", "subscription_id")
+        self.client_id = credentials.get("default", "client_id")
+        self.secret = credentials.get("default", "secret")
+        self.tenant = credentials.get("default", "tenant")
+        self.subscription = credentials.get("default", "subscription_id")
 
     @property
     def driver(self):
+        """Create the driver object needed for most operations."""
         d = get_driver(Provider.AZURE_ARM)
         return d(tenant_id=self.tenant, subscription_id=self.subscription, key=self.client_id, secret=self.secret)
 
@@ -69,6 +70,12 @@ class AzureInstance(instance):
 
     @property
     def exists(self):
+        """
+        Determine if a particular instance exists in the Azure cloud.
+
+        An instance with a status of 'initializing' has not been created yet. However, it should be treated as if it
+        did; it should not be removed from the list while its being setup.
+        """
         if self.status == 'initializing':
             match = True
         else:
@@ -78,6 +85,7 @@ class AzureInstance(instance):
 
 
 class AWSInstance(instance):
+    """A class for executing commonly done operations in the AWS cloud using libcloud."""
     def __init__(self, provisioner, zone, name, status):
         super(AWSInstance, self).__init__(provisioner, zone, name, status)
         credentials = ConfigParser.SafeConfigParser()
@@ -88,11 +96,18 @@ class AWSInstance(instance):
 
     @property
     def driver(self):
+        """Create the driver object needed for most operations."""
         d = get_driver(Provider.EC2)
         return d(self.id, self.key, region=self.zone[:-1])
 
     @property
     def exists(self):
+        """
+        Determine if a particular instance exists in the AWS cloud.
+
+        An instance with a status of 'initializing' has not been created yet. However, it should be treated as if it
+        did; it should not be removed from the list while its being setup.
+        """
         if self.status == 'initializing':
             match = True
         else:
@@ -102,6 +117,7 @@ class AWSInstance(instance):
 
 
 class GCEInstance(instance):
+    """A class for executing commonly done operations in the Google Compute Engine cloud using libcloud."""
     def __init__(self, provisioner, zone, name, status):
         super(GCEInstance, self).__init__(provisioner, zone, name, status)
         self.credentialsPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
@@ -113,11 +129,18 @@ class GCEInstance(instance):
 
     @property
     def driver(self):
+        """Create the driver object needed for most operations."""
         d = get_driver(Provider.GCE)
         return d(self.email, self.credentialsPath, project=self.projectID, datacenter=self.zone)
 
     @property
     def exists(self):
+        """
+        Determine if a particular instance exists in the Google Compute Engine cloud.
+
+        An instance with a status of 'initializing' has not been created yet. However, it should be treated as if it
+        did; it should not be removed from the list while its being setup.
+        """
         if self.status == 'initializing':
             status = True
         else:
@@ -129,9 +152,10 @@ class GCEInstance(instance):
                 status = True
         return status
 
+
 def instanceExists(row):
-    """Determine if an instance on one of Toil's supported platforms exists."""
-    instanceType = {'aws': AWSInstance,
+    """Determine if an instance on one of Toil's supported cloud platforms exists."""
+    instanceClass = {'aws': AWSInstance,
                     'azure': AzureInstance,
                     'gce': GCEInstance}
 
@@ -140,7 +164,8 @@ def instanceExists(row):
     name = row['clustername']
     status = row['status']
 
-    return instanceType[prov](provisioner=prov, zone=zone, name=name, status=status).exists
+    return instanceClass[prov](provisioner=prov, zone=zone, name=name, status=status).exists
+
 
 def filterDeadInstances(df):
     """Remove entries of a Pandas DataFrame which carry information about cloud instances that do not exist."""
@@ -150,12 +175,14 @@ def filterDeadInstances(df):
             df = df.drop(index=i)
     return df
 
+
 def valsToList(reqs):
     """Turn the values of a dictionary into a list. (Assumes values are a string with commas or evaluates to False.)"""
     for k, v in reqs.items():
         if v and isinstance(v, list):
             reqs[k] = reqs[k][0].split(',')
     return reqs
+
 
 def main():
     if os.path.exists('/tmp/toilClusterList.csv'):

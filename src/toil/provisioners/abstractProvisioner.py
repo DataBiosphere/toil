@@ -19,8 +19,6 @@ import os.path
 import time
 from toil import subprocess
 from toil import applianceSelf
-from toil import version
-#from toil.provisioners import AbstractProvisioner.removeClusterFromList
 
 from future.utils import with_metaclass
 
@@ -245,7 +243,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-    # Ready to move
     def updateEntry(self, entry, status):
         """
         Splice a new status into a string representing an entry in /tmp/toilClusterList.csv.
