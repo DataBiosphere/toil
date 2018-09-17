@@ -185,7 +185,8 @@ def valsToList(reqs):
 
 
 def main():
-    if os.path.exists('/tmp/toilClusterList.csv'):
+    listPath = AbstractProvisioner.clusterListPath()
+    if os.path.exists(listPath):
         parser = ArgumentParser()
         parser.add_argument('-p', '--provisioners', dest="provisioner", nargs='*', type=str,
                             help='Provisioners from which instances will be displayed.')
@@ -215,10 +216,10 @@ def main():
                 print('Invalid provisioner(s): {}. Please choose from {}'.format(','.join(invalids), supportedProvisioners))
 
         columnNames = ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
-        df = pd.read_csv('/tmp/toilClusterList.csv')
+        df = pd.read_csv(listPath)
         df = filterDeadInstances(df)
 
-        if os.path.exists('/tmp/toilClusterList.csv'):  # All entries could have been removed in filterDeadInstances().
+        if os.path.exists(listPath):  # All entries could have been removed in filterDeadInstances().
             for k, v in filters.items():
                 if v:
                     df = df[df[k].isin(v)]  # Filter rows by each requirement.

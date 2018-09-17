@@ -255,10 +255,18 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         newEntry = entry[:l] + ',{}'.format(str(status)) + entry[r:]
         return newEntry
 
+    @staticmethod
+    def clusterListPath():
+        """Return the location of the file holding information about instances launched with launch cluster."""
+        return '/tmp/toilClusterList.csv'
+
     def updateStatusInList(self, status, provisioner):
         """Update the status of an entry in /tmp/toilClusterList.csv"""
-        with open('/tmp/toilClusterList.csv.new', 'w') as new:
-            with open('/tmp/toilClusterList.csv', 'r') as old:
+        oldList = self.clusterListPath()
+        newList = self.clusterListPath() + '.new'
+
+        with open(newList, 'w') as new:
+            with open(oldList, 'r') as old:
                 for line in old:
                     if line.startswith('{},{},{}'.format(self.clusterName, provisioner, self._zone)):
                         # If cluster failed before creation, remove it from the list.
@@ -267,12 +275,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                     else:
                         new.write(line)
 
-        os.remove('/tmp/toilClusterList.csv')
-        with open('/tmp/toilClusterList.csv.new') as f:
-            if len(f.readlines()) == 1:  # The only line is the header...
-                os.remove('/tmp/toilClusterList.csv.new')
-            else:
-                os.rename('/tmp/toilClusterList.csv.new', '/tmp/toilClusterList.csv')
+        os.remove(oldList)
+        os.rename(newList, oldList)
+
 
     def addClusterToList(self, provisioner, instanceType):
         """
@@ -283,30 +288,31 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         created = time.strftime("%Y-%m-%d %H:%M")
         appliance = applianceSelf()
-        with open('/tmp/toilClusterList.csv', 'a+') as f:
-            if os.stat('/tmp/toilClusterList.csv').st_size == 0:
+        clusterList = self.clusterListPath()
+
+        with open(clusterList, 'a+') as f:
+            if os.stat(clusterList).st_size == 0:
                 f.write('clustername,provisioner,zone,type,created,status,appliance\n') # Write header.
             f.write('{},{},{},{},{},{},{}\n'.format(self.clusterName, provisioner, self._zone, instanceType, created,
-                                                       'initializing', appliance))
+                                                    'initializing', appliance))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, self._zone, self.clusterName))
 
     @staticmethod
     def removeClusterFromList(name, provisioner, zone):
         """Remove a given cluster's information from the list of active clusters."""
-        if os.path.exists('/tmp/toilClusterList.csv'):
+        oldList = AbstractProvisioner.clusterListPath()
+        newList = AbstractProvisioner.clusterListPath() + '.new'
+
+        if os.path.exists(oldList):
             # Copy from old to new .csv
             with open('/tmp/toilClusterList.csv.new', 'w') as new:
-                with open('/tmp/toilClusterList.csv', 'r') as old:
+                with open(oldList, 'r') as old:
                     for line in old:
                         if not line.startswith('{},{},{}'.format(name, provisioner, zone)):
                             new.write(line)
-            os.remove('/tmp/toilClusterList.csv')
+            os.remove(oldList)
+            os.rename(newList, oldList)
 
-            with open('/tmp/toilClusterList.csv.new') as f:
-                if len(f.readlines()) == 1:  # The only line is the header...
-                    os.remove('/tmp/toilClusterList.csv.new')
-                else:
-                    os.rename('/tmp/toilClusterList.csv.new', '/tmp/toilClusterList.csv')
 
     def _setSSH(self):
         """
