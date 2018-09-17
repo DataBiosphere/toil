@@ -218,23 +218,28 @@ def main():
         df = pd.read_csv('/tmp/toilClusterList.csv')
         df = filterDeadInstances(df)
 
-        for k, v in filters.items():
-            if v:
-                df = df[df[k].isin(v)]  # Filter rows by each requirement.
+        if os.path.exists('/tmp/toilClusterList.csv'):  # All entries could have been removed in filterDeadInstances().
+            for k, v in filters.items():
+                if v:
+                    df = df[df[k].isin(v)]  # Filter rows by each requirement.
 
-        if df.empty:
-            print('No matching instances...')
+            if df.empty:
+                print('No matching instances...')
+            else:
+                df = df.sort_values(by='created', ascending=nonfiltering['chron'])
+                if nonfiltering['sort']:
+                    invalids = [x for x in nonfiltering['sort'] if x not in columnNames]  # QC of column names.
+                    if invalids:
+                        nonfiltering['sort'] = [x for x in nonfiltering['sort'] if x not in invalids]
+                        print('Invalid column(s): {}. Please choose from {}'.format(','.join(invalids), columnNames))
+                    df = df.sort_values(by=nonfiltering['sort'])
+
+                df.columns = [i.upper() for i in columnNames]  # Uppercase for displaying.
+                print(df.to_string(justify='left', col_space=20, index=False))
         else:
-            df = df.sort_values(by='created', ascending=nonfiltering['chron'])
-            if nonfiltering['sort']:
-                invalids = [x for x in nonfiltering['sort'] if x not in columnNames]  # QC of column names.
-                if invalids:
-                    nonfiltering['sort'] = [x for x in nonfiltering['sort'] if x not in invalids]
-                    print('Invalid column(s): {}. Please choose from {}'.format(','.join(invalids), columnNames))
-                df = df.sort_values(by=nonfiltering['sort'])
+            logger.debug('All entries from /tmp/toilClusterList.csv were considered dead and removed.')
+            print('Toil is not tracking any instances.')
 
-            df.columns = [i.upper() for i in columnNames]  # Uppercase for displaying.
-            print(df.to_string(justify='left', col_space=20, index=False))
     else:
         logger.debug('/tmp/toilClusterList.csv does not exist')
         print('Toil is not tracking any instances.')
