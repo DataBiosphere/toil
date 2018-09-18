@@ -260,6 +260,20 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """Return the location of the file holding information about instances launched with launch cluster."""
         return os.path.join(os.path.expanduser('~'), '.toilClusterList.csv')
 
+    @staticmethod
+    def columnNames(asStr=False):
+        """
+        Return the column headers used in the file tracking information about launched clusters.
+
+        :param asStr: a bool indicating if the return type should be a list or string
+        :returns: The column headers as a list or string
+        """
+        if asStr:
+            return 'clustername,provisioner,zone,type,created,status,appliance\n'
+        else:
+            return ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
+
+
     def updateStatusInList(self, status, provisioner):
         """Update the status of an entry in /tmp/toilClusterList.csv"""
         oldList = self.clusterListPath()
@@ -292,7 +306,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
 
         with open(clusterList, 'a+') as f:
             if os.stat(clusterList).st_size == 0:
-                f.write('clustername,provisioner,zone,type,created,status,appliance\n') # Write header.
+                f.write(AbstractProvisioner.columnNames(asStr=True)) # Write header.
             f.write('{},{},{},{},{},{},{}\n'.format(self.clusterName, provisioner, self._zone, instanceType, created,
                                                     'initializing', appliance))
             log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, self._zone, self.clusterName))

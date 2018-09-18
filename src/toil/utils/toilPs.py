@@ -165,7 +165,13 @@ def instanceExists(row):
     name = row['clustername']
     status = row['status']
 
-    return instanceClass[prov](provisioner=prov, zone=zone, name=name, status=status).exists
+    try:
+        instanceType = instanceClass[prov]
+    except KeyError:
+        configLoc = os.path.join(os.path.expanduser('~'), '.toilClusterList.csv')
+        raise RuntimeError('{} contains an entry with an invalid provisioner: {}'.format(configLoc, prov)) # TODO Create MalformedConfig exception
+
+    return instanceType(provisioner=prov, zone=zone, name=name, status=status).exists
 
 
 def filterDeadInstances(df):
@@ -184,66 +190,86 @@ def valsToList(reqs):
             reqs[k] = reqs[k][0].split(',')
     return reqs
 
+def sortByArgs(df, nonfilters):
+    """Sort a dataframe."""
+    columnNames = AbstractProvisioner.columnNames()
+    df = df.sort_values(by='created', ascending=nonfilters['chron'])
+    if nonfilters['sort']:
+        invalids = [x for x in nonfilters['sort'] if x not in columnNames]  # QC of column names.
+        if invalids:
+            nonfilters['sort'] = [x for x in nonfilters['sort'] if x not in invalids]
+            print('Invalid column(s): {}. Please choose from {}'.format(','.join(invalids), columnNames))
+        df = df.sort_values(by=nonfilters['sort'])
+
+    return df
+
+def filterBadProvisioners(provisioners):
+    """
+    Check that the provisioners specified are valid.
+
+    While this type of checking could be done utilizing the 'choices' argument of add_argument(), it is being done
+    this way to maintain a CLI argument input style consistent with Toil.
+    (The cartesian product of 'aws', 'gce', 'azure' would have to be the value of the 'choices' argument.)
+    """
+    supportedProvisioners = ['aws', 'gce', 'azure']
+    invalids = [x for x in provisioners if x not in supportedProvisioners]
+    if invalids:
+        provisioners = [x for x in provisioners if x not in invalids]
+        print('Invalid provisioner(s): {}. Please choose from {}'.format(','.join(invalids), supportedProvisioners))
+    return provisioners
+
+def filterByArgs(df, filters):
+    """Filter a dataframe given a dictionary of filters."""
+    for k, v in filters.items():
+        if v:
+            df = df[df[k].isin(v)]  # Filter rows by each requirement.
+    return df
+
+def printDF(df):
+    """Print a dataframe nicely. Adds a blank row for printing column headers with empty dataframes."""
+    if df.empty:
+        blank = pd.Series(['', '', '', '', '', '', ''], index=list(df))
+        df = df.append(blank, ignore_index=True)  # Allows assigning column names for printing.
+
+    df.columns = [i.upper() for i in list(df)]
+
+    print(df.to_string(justify='left', col_space=20, index=False))
 
 def main():
     listPath = AbstractProvisioner.clusterListPath()
+    columnNames = AbstractProvisioner.columnNames()
 
     parser = ArgumentParser()
+    # Filtering Args. Arugments used to filter out rows of the data frame.
     parser.add_argument('-p', '--provisioners', dest="provisioner", nargs='*', type=str,
                         help='Provisioners from which instances will be displayed.')
     parser.add_argument('-n', '--name', dest='name', nargs='*', type=str,
                         help='The name of the instance to be displayed.') # TODO allow unix-like matching of expressions ex: ab* matches abcd and abc
     parser.add_argument('-s', '--status', dest='status', nargs='*', type=str,
                         help='Statuses of the instance: Initializing, Creating, Configuring, Running, and Broken.')  #TODO flush out these defs.
+
+    # Nonfiltering Args. Arugments not used to filter our rows of the dataframe.
     parser.add_argument('-t', '--sort', dest='sort', nargs='*', type=str,
                         help='Columns to sort on.')  #TODO flush out these defs.
     parser.add_argument('-c', '--chronological', dest='chron', action='store_true', default=False,
                         help='Display instances chronological order')
-
     nonfilteringArgs = ['sort', 'chron']
 
-    # Change {arg: 'val1,val2...valN'} to {arg: ['val1','val2',...,'valN']} for easy filtering below.
+    # Change {arg: 'val1,val2...valN'} to {arg: ['val1','val2',...,'valN']} for easy filtering in filterByArgs().
     filters = valsToList(vars(parser.parse_args()))
-    nonfiltering = {key: filters[key] for key in filters if key in nonfilteringArgs}
-    filters = {key: filters[key] for key in filters if key not in nonfiltering}
+    nonfilters = {key: filters[key] for key in filters if key in nonfilteringArgs}
+    filters = {key: filters[key] for key in filters if key not in nonfilters}
 
-    # While this type of checking could be done utilizing the 'choices' argument of add_argument(), it is being done
-    # this way to maintain a CLI argument input style consistent with Toil.
-    # (The cartesian product of 'aws', 'gce', 'azure' would have to be the value of the 'choices' argument.)
-    supportedProvisioners = ['aws', 'gce', 'azure']
-    if filters['provisioner']:
-        invalids = [x for x in filters['provisioner'] if x not in supportedProvisioners]
-        if invalids:
-            filters['provisioner'] = [x for x in filters['provisioner'] if x not in invalids]
-            print('Invalid provisioner(s): {}. Please choose from {}'.format(','.join(invalids), supportedProvisioners))
+    if 'provisioners' in filters:
+        filters['provisioners'] = filterBadProvisioners(filters['provisioners'])
 
-    columnNames = ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
-
-    blankRow = False  # Empty data frames don't print nicely. Adding this row will make printing easier.
     if os.path.exists(listPath):
         df = pd.read_csv(listPath)
         df = filterDeadInstances(df)
-
-        for k, v in filters.items():
-            if v:
-                df = df[df[k].isin(v)]  # Filter rows by each requirement.
-
-        if df.empty:
-            blankRow = True
-        else:
-            df = df.sort_values(by='created', ascending=nonfiltering['chron'])
-            if nonfiltering['sort']:
-                invalids = [x for x in nonfiltering['sort'] if x not in columnNames]  # QC of column names.
-                if invalids:
-                    nonfiltering['sort'] = [x for x in nonfiltering['sort'] if x not in invalids]
-                    print('Invalid column(s): {}. Please choose from {}'.format(','.join(invalids), columnNames))
-                df = df.sort_values(by=nonfiltering['sort'])
+        df = filterByArgs(df, filters)
+        if not df.empty:
+            df = sortByArgs(df, nonfilters)
     else:
-        blankRow = True
+        df = pd.DataFrame(columns=[i.upper() for i in columnNames])
 
-    if blankRow:
-        df = pd.DataFrame()
-        df = df.append(pd.Series(['', '', '', '', '', '', '']), ignore_index=True)  # Allows assigning column names for printing.
-
-    df.columns = [i.upper() for i in columnNames]  # Uppercase for displaying.
-    print(df.to_string(justify='left', col_space=20, index=False))
+    printDF(df)
