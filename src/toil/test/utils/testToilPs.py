@@ -14,7 +14,7 @@
 """Tests for toilPs.py"""
 from toil.test import ToilTest
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
-from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.utils.toilPs import filterDeadInstances, filterByArgs, sortByArgs, instanceExists, GCEInstance
 from toil import applianceSelf
 import os
@@ -31,11 +31,13 @@ class ToilPsTest(ToilTest):
         self.removeLines = []
         self.listPath = AbstractProvisioner.clusterListPath()
 
-        self.prov = 'azure'
-        self.zone = 'westus'
-        self.instance = 'Standard_A2'  # Instance type is arbitrary.
+        self.prov = 'aws'  # Arbitrary
+        self.zone = 'us-west-2a'  # Must be aws valid zone.
+        self.instance = 't2.micro'  # Arbitrary.
         self.clusterName = str(uuid.uuid4())  # To ensure this entry will not get mixed up with any the user has created.
-        self.testProvisioner = AzureProvisioner(self.clusterName, self.zone, 5)  # Any provisioner will suffice. nodeStorage arg (5) is arbitrary.
+
+        # nodeStorage arg (5), and  sseKey arg ('') are arbitrary as they will not be used in these tests
+        self.testProvisioner = AWSProvisioner(self.clusterName, self.zone, 5, '')
 
     def tearDown(self):
         super(ToilPsTest, self).tearDown()
