@@ -23,7 +23,7 @@ from contextlib import contextmanager
 import pandas as pd
 from datetime import datetime
 
-#@integrative
+@integrative
 class ToilPsTest(ToilTest):
 
     def setUp(self):
