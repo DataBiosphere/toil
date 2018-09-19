@@ -12,29 +12,60 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for toilPs.py"""
-from toil.test import ToilTest, needs_aws, needs_google
+from toil.test import ToilTest
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
-from toil.utils.toilPs import filterDeadInstances, filterByArgs, printDF, sortByArgs, instanceExists, GCEInstance
+from toil.provisioners.azure.azureProvisioner import AzureProvisioner
+from toil.utils.toilPs import filterDeadInstances, filterByArgs, sortByArgs, instanceExists, GCEInstance
+from toil import applianceSelf
 import os
-from toil import subprocess
 import uuid
 from contextlib import contextmanager
 import pandas as pd
 from datetime import datetime
-import time
 
 
 class ToilPsTest(ToilTest):
 
     def setUp(self):
         super(ToilPsTest, self).setUp()
+        self.removeLines = []
+        self.listPath = AbstractProvisioner.clusterListPath()
+
+        self.prov = 'azure'
+        self.zone = 'westus'
+        self.instance = 'Standard_A2'  # Instance type is arbitrary.
+        self.clusterName = str(uuid.uuid4())  # To ensure this entry will not get mixed up with any the user has created.
+        self.testProvisioner = AzureProvisioner(self.clusterName, self.zone, 5)  # Any provisioner will suffice. nodeStorage arg (5) is arbitrary.
 
     def tearDown(self):
         super(ToilPsTest, self).tearDown()
+        for line in self.removeLines:
+            self.removeEntryFromList(line)
+
+    def removeEntryFromList(self, target):
+        """
+        Remove an entry which contains a target substring from the list.
+
+        :param target: A string to search the file for.
+        """
+        oldPath = self.listPath
+        newPath = self.listPath + '.new'
+        with open(oldPath, 'r') as old:
+            with open(newPath, 'w') as new:
+                for line in old:
+                    if target not in line:
+                        new.write(line)
+
+        os.remove(oldPath)
+        os.rename(newPath, oldPath)
 
     @contextmanager
-    def autoFalse(self, instanceClass):
-        """Force the exists method of a class inheriting toil.utils.toilPs.Instance to always return false."""
+    def neverExists(self, instanceClass):
+        """
+        Force the exists method of a class inheriting toil.utils.toilPs.Instance to always return false.
+
+        :param instanceClass: Any class with an 'exists' method.
+        """
         def alwaysFalse():
             return False
         original = instanceClass.exists
@@ -43,8 +74,12 @@ class ToilPsTest(ToilTest):
         instanceClass.exists = original
 
     @contextmanager
-    def autoTrue(self, instanceClass):
-        """Force the exists method of a class inheriting toil.utils.toilPs.Instance to always return true."""
+    def alwaysExists(self, instanceClass):
+        """
+        Force the exists method of a class inheriting toil.utils.toilPs.Instance to always return true.
+
+        :param instanceClass: Any class with an 'exists' method.
+        """
         def alwaysTrue():
             return True
         original = instanceClass.exists
@@ -60,7 +95,7 @@ class ToilPsTest(ToilTest):
 
         # filterDeadInstaces relies on libcloud to determine if an instance exists.
         # This context manager prevents you from having to create an instance just to see if it exists.
-        with self.autoTrue(GCEInstance):
+        with self.alwaysExists(GCEInstance):
             df = filterDeadInstances(df)
 
         self.assertEqual('test1', df['clustername'][0])
@@ -72,35 +107,32 @@ class ToilPsTest(ToilTest):
 
         # filterDeadInstaces relies on libcloud to determine if an instance exists.
         # This context manager prevents you from having to create an instance just to see if it exists.
-        with self.autoFalse(GCEInstance):  # The instance class is irrelevant.
+        with self.neverExists(GCEInstance):  # The instance class is irrelevant.
             df = filterDeadInstances(df)
 
         self.assertTrue(df.empty)
 
     def testInstanceExistsFalse(self):
         """Test if instanceExists correctly identifies an existant instance."""
-        row = {'provisioner': 'aws', 'zone': 'us-west-2a',
-               'clustername': 'test', 'status': 'running'}
+        row = {'provisioner': 'aws', 'zone': 'us-west-2a', 'clustername': 'test', 'status': 'running'}
 
         # instanceExists relies on libcloud to determine if an instance exists.
         # This context manager prevents you from having to create an instance just to see if it exists.
-        with self.autoFalse(GCEInstance):
+        with self.neverExists(GCEInstance):
             self.assertFalse(instanceExists(row))
 
     def testInstanceExistsTrue(self):
         """Test if instanceExists correctly identifies an nonexistant instance."""
-        row = {'provisioner': 'gce', 'zone': 'us-west-2a',
-               'clustername': 'test', 'status': 'running'}
+        row = {'provisioner': 'gce', 'zone': 'us-west-2a', 'clustername': 'test', 'status': 'running'}
 
         # instanceExists relies on libcloud to determine if an instance exists.
         # This context manager prevents you from having to create an instance just to see if it exists.
-        with self.autoTrue(GCEInstance):
+        with self.alwaysExists(GCEInstance):
             self.assertTrue(instanceExists(row))
 
     def testInstanceExistsError(self):
         """Test if instanceExists correctly throws a RuntimeError when an invalid provisioner is provided."""
-        row = {'provisioner': 'fake', 'zone': 'us-west-2a',
-               'clustername': 'test', 'status': 'running'}
+        row = {'provisioner': 'fake', 'zone': 'us-west-2a', 'clustername': 'test', 'status': 'running'}
 
         self.assertRaises(RuntimeError, instanceExists, row)
 
@@ -112,8 +144,8 @@ class ToilPsTest(ToilTest):
                 1: ['pass', 'aws', 'us-west-2a', 't2.micro', 'now', 'broken', 'quay.io/fake'],
                 2: ['fail', 'azure', 'westus', 'Standard_A2', 'now', 'running', 'quay.io/fake'],
                 3: ['alsoPass', 'azure', 'westus', 'Standard_A2', 'now', 'running', 'quay.io/fake']}
-        df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
 
+        df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
         df = filterByArgs(df, filters)
 
         self.assertNotIn('fail', list(df['clustername']))
@@ -125,8 +157,8 @@ class ToilPsTest(ToilTest):
         data = {0: ['pass', 'gce', 'us-west1-a', 'n1-standard-1', 'now', 'broken', 'quay.io/fake'],
                 1: ['pass', 'aws', 'us-west-2a', 't2.micro', 'now', 'broken', 'quay.io/fake'],
                 2: ['fail', 'azure', 'westus', 'Standard_A2', 'now', 'running', 'quay.io/fake']}
-        df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
 
+        df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
         df = filterByArgs(df, filters)
 
         self.assertNotIn('fail', list(df['clustername']))
@@ -138,8 +170,8 @@ class ToilPsTest(ToilTest):
         data = {0: ['pass', 'gce', 'us-west1-a', 'n1-standard-1', 'now', 'broken', 'quay.io/fake'],
                 1: ['pass', 'aws', 'us-west-2a', 't2.micro', 'now', 'initializing', 'quay.io/fake'],
                 2: ['fail', 'azure', 'westus', 'Standard_A2', 'now', 'running', 'quay.io/fake']}
-        df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
 
+        df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
         df = filterByArgs(df, filters)
 
         self.assertNotIn('fail', list(df['clustername']))
@@ -152,12 +184,11 @@ class ToilPsTest(ToilTest):
         data = {0: ['2', 'gce', 'us-west1-a', 'n1-standard-1', 'now', 'initializing', 'quay.io/fake'],
                 1: ['0', 'aws', 'us-west-2a', 't2.micro', 'now', 'initializing', 'quay.io/fake'],
                 2: ['1', 'azure', 'westus', 'Standard_A2', 'now', 'initializing', 'quay.io/fake']}
-        df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
 
+        df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
         df = sortByArgs(df, filters)
 
         order = list(df['clustername'])
-
         for i in range(3):
             self.assertEqual(str(i), order[i])
 
@@ -175,8 +206,8 @@ class ToilPsTest(ToilTest):
 
         df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
         df = sortByArgs(df, filters)
-        order = list(df['clustername'])
 
+        order = list(df['clustername'])
         for i in range(6):
             self.assertEqual(str(i), order[i])
 
@@ -194,8 +225,8 @@ class ToilPsTest(ToilTest):
 
         df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
         df = sortByArgs(df, filters)
-        order = list(df['clustername'])
 
+        order = list(df['clustername'])
         for i in range(6):
             self.assertEqual(str(i), order[i])
 
@@ -213,49 +244,62 @@ class ToilPsTest(ToilTest):
 
         df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
         df = sortByArgs(df, filters)
-        order = list(df['clustername'])
 
+        order = list(df['clustername'])
         for i in range(6):
             self.assertEqual(str(i), order[i])
 
+    def entryFromList(self, clusterName):
+        """
+        Find the first entry which contains a given substring.
 
-    # @contextmanager
-    # def gceNode(self, name, zone='us-west1-a'):
-    #     """A context manager for doing an operation that requires a GCE cluster to exist for a brief time."""
-    #     driver = GCEInstance('gce', zone, name, 'running').driver
-    #     driver.ex_create_instancegroup(name, 'us-west1-a')
-    #     yield
-    #     group = driver.ex_get_instancegroup(name, zone=zone)
-    #     group.destroy()
-    #
-    # def getPsOutput(self):
-    #     p = subprocess.Popen(['toil', 'ps'], stdout=subprocess.PIPE)
-    #     out, err = p.communicate()
-    #     return out
-    #
-    # @needs_aws
-    # def testLaunchedClusterAddsToListAWS(self):
-    #     clusterName = 'cluster-utils-test' + str(uuid.uuid4())
-    #     keyName = os.getenv('TOIL_AWS_KEYNAME')
-    #
-    #     cmd = ['toil', 'launch-cluster', '--leaderNodeType=t2.micro', '--zone=us-west-2a',
-    #             '--keyPairName=' + keyName, clusterName]
-    #     p = subprocess.Popen(cmd)
-    #
-    #     time.sleep(5)  # Wait for launch cluster to proceed far enough to add cluster to the list.
-    #
-    #     found = False
-    #     with open(AbstractProvisioner.clusterListPath(), 'r') as f:
-    #         for line in f:
-    #             if clusterName in line:
-    #                 found = True
-    #                 break
-    #
-    #     self.assertTrue(found)
-    #     p.kill()
+        Note that any entry beyond the first will not be found. If searching by clustername, use uuid's to ensure accuracy.
+        :param clusterName: A substring
+        """
+        entry = ''
+        with open(self.listPath, 'r') as f:
+            for line in f:
+                if clusterName in line:
+                    entry = line
+                    break
+        return entry
 
-# Do this in testAbstractProvisioner.py?
-# Test addClusterToList
-# Test removeClusterFromList
-# Test updateStatusInList
-# Test updateEntry
+    def testAddClusterToList(self):
+        """Tests that addClusterToList adds an entry to the list as expected."""
+        self.testProvisioner.addClusterToList(self.prov, self.instance)
+        self.removeLines.append(self.clusterName)  # Ensure that this entry is removed despite test result.
+
+        row = self.entryFromList(self.clusterName)
+        self.assertTrue(bool(row))
+        entries = row.split(',')
+
+        # The 'created' information is inaccessable to the test and cannont be confirmed.
+        key = [self.clusterName, self.prov, self.zone, self.instance, 'initializing', applianceSelf() + '\n']
+        indeciesToCheck = [0, 1, 2, 3, 5, 6]
+        for val, index in zip(key, indeciesToCheck):
+            self.assertEqual(val, entries[index])
+
+    def testUpdateStatusInListRetains(self):
+        """Tests that updateStatusInList removes an entry transitioning between 'initilaizing' and a non-broken statuses."""
+        self.testProvisioner.addClusterToList(self.prov, self.instance)
+        self.removeLines.append(self.clusterName)  # Ensure that this entry is removed despite test result.
+        self.testProvisioner.updateStatusInList('running', self.prov)
+
+        entry = self.entryFromList(self.clusterName)
+        self.assertIn('running', entry)
+
+    def testUpdateStatusInListRemoves(self):
+        """Tests that updateStatusInList removes an entry transitioning between 'initilaizing' and 'broken' statuses."""
+        self.testProvisioner.addClusterToList(self.prov, self.instance)
+        self.removeLines.append(self.clusterName)  # Ensure that this entry is removed despite test result.
+        self.testProvisioner.updateStatusInList('broken', self.prov)
+
+        entry = self.entryFromList(self.clusterName)
+        self.assertFalse(bool(entry))
+
+    def testUpdateEntry(self):
+        """Test that updateEntry updates a string as expected."""
+        original = 'test,azure,westus,Standard_A2,now,configuring,quay.io/fake'
+        expected = 'test,azure,westus,Standard_A2,now,running,quay.io/fake'
+        new = self.testProvisioner.updateEntry(original, 'running')
+        self.assertEqual(expected, new)

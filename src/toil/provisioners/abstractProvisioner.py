@@ -273,7 +273,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         else:
             return ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
 
-
     def updateStatusInList(self, status, provisioner):
         """Update the status of an entry in /tmp/toilClusterList.csv"""
         oldList = self.clusterListPath()
@@ -284,14 +283,14 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                 for line in old:
                     if line.startswith('{},{},{}'.format(self.clusterName, provisioner, self._zone)):
                         # If cluster failed before creation, remove it from the list.
-                        if status != 'broken' or line.split(',')[6] != 'initializing':
+                        current = line.split(',')[5]
+                        if status != 'broken' or current != 'initializing':
                             new.write(self.updateEntry(line, status))
                     else:
                         new.write(line)
 
         os.remove(oldList)
         os.rename(newList, oldList)
-
 
     def addClusterToList(self, provisioner, instanceType):
         """
@@ -304,8 +303,14 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         appliance = applianceSelf()
         clusterList = self.clusterListPath()
 
+        # If the file doesnt exist yet, write the header.
+        if not os.path.exists(clusterList):
+            writeHeader = True
+        else:
+            writeHeader = False
+
         with open(clusterList, 'a+') as f:
-            if os.stat(clusterList).st_size == 0:
+            if writeHeader:
                 f.write(AbstractProvisioner.columnNames(asStr=True)) # Write header.
             f.write('{},{},{},{},{},{},{}\n'.format(self.clusterName, provisioner, self._zone, instanceType, created,
                                                     'initializing', appliance))
@@ -326,7 +331,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                             new.write(line)
             os.remove(oldList)
             os.rename(newList, oldList)
-
 
     def _setSSH(self):
         """
