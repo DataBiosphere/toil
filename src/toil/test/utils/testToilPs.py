@@ -15,7 +15,7 @@
 from toil.test import ToilTest
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-from toil.utils.toilPs import filterDeadInstances, filterByArgs, sortByArgs, instanceExists, GCEInstance
+from toil.utils.toilPs import filterDeadInstances, filterByArgs, sortByArgs, instanceExists, AWSInstance
 from toil import applianceSelf
 import os
 import uuid
@@ -91,25 +91,25 @@ class ToilPsTest(ToilTest):
 
     def testFilterDeadInstanceExists(self):
         """Test that filterDeadInstance does not remove an existant instance from a pandas DataFrame."""
-        data = {0: ['test1', 'gce', 'us-west1-a', 'n1-standard-1', 'now', 'running', 'quay.io/fake']}
+        data = {0: ['test1', 'aws', 'us-west-2a', 't2.micro', 'now', 'running', 'quay.io/fake']}
 
         df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
 
         # filterDeadInstaces relies on libcloud to determine if an instance exists.
         # This context manager prevents you from having to create an instance just to see if it exists.
-        with self.alwaysExists(GCEInstance):
+        with self.alwaysExists(AWSInstance):
             df = filterDeadInstances(df)
 
         self.assertEqual('test1', df['clustername'][0])
 
     def testFilterDeadInstanceNonExistant(self):
         """Test that filterDeadInstance removes a non-existant instance."""
-        data = {0: ['test1', 'gce', 'us-west1-a', 'n1-standard-1', 'now', 'running', 'quay.io/fake']}
+        data = {0: ['test1', 'aws', 'us-west-2a', 't2.micro', 'now', 'running', 'quay.io/fake']}
         df = pd.DataFrame.from_dict(data, orient='index', columns=AbstractProvisioner.columnNames())
 
         # filterDeadInstaces relies on libcloud to determine if an instance exists.
         # This context manager prevents you from having to create an instance just to see if it exists.
-        with self.neverExists(GCEInstance):  # The instance class is irrelevant.
+        with self.neverExists(AWSInstance):  # The instance class is irrelevant.
             df = filterDeadInstances(df)
 
         self.assertTrue(df.empty)
@@ -120,16 +120,16 @@ class ToilPsTest(ToilTest):
 
         # instanceExists relies on libcloud to determine if an instance exists.
         # This context manager prevents you from having to create an instance just to see if it exists.
-        with self.neverExists(GCEInstance):
+        with self.neverExists(AWSInstance):
             self.assertFalse(instanceExists(row))
 
     def testInstanceExistsTrue(self):
         """Test if instanceExists correctly identifies an nonexistant instance."""
-        row = {'provisioner': 'gce', 'zone': 'us-west-2a', 'clustername': 'test', 'status': 'running'}
+        row = {'provisioner': 'aws', 'zone': 'us-west-2a', 'clustername': 'test', 'status': 'running'}
 
         # instanceExists relies on libcloud to determine if an instance exists.
         # This context manager prevents you from having to create an instance just to see if it exists.
-        with self.alwaysExists(GCEInstance):
+        with self.alwaysExists(AWSInstance):
             self.assertTrue(instanceExists(row))
 
     def testInstanceExistsError(self):
