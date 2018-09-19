@@ -14,7 +14,7 @@
 """Tests for toilPs.py"""
 from toil.test import ToilTest, integrative
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
-from toil.provisioners.aws.awsProvisioner import AWSProvisioner
+from toil.provisioners.gceProvisioner import GCEProvisioner
 from toil.utils.toilPs import filterDeadInstances, filterByArgs, sortByArgs, instanceExists, AWSInstance
 from toil import applianceSelf, subprocess
 import os
@@ -37,7 +37,7 @@ class ToilPsTest(ToilTest):
         self.clusterName = str(uuid.uuid4())  # To ensure this entry will not get mixed up with any the user has created.
 
         # nodeStorage arg (5), and  sseKey arg ('') are arbitrary as they will not be used in these tests
-        self.testProvisioner = AWSProvisioner(self.clusterName, self.zone, 5, '')
+        self.testProvisioner = GCEProvisioner(self.clusterName, self.zone, 5, '')
 
     def tearDown(self):
         super(ToilPsTest, self).tearDown()
