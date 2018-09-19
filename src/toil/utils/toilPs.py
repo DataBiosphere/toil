@@ -59,8 +59,8 @@ class AzureInstance(Instance):
             self.tenant = credentials.get("default", "tenant")
             self.subscription = credentials.get("default", "subscription_id")
         except ConfigParser.NoSectionError:
-            azureSetupUrl = 'https://toil.readthedocs.io/en/latest/running/cloud/amazon.html#preparing-your-aws-environment'
-            raise RuntimeError('Improperly formatted or nonexistant AWS credentials. Please see {} for instructions on'
+            azureSetupUrl = 'https://toil.readthedocs.io/en/3.15.0/running/cloud/azure.html#preparing-your-azure-environment'
+            raise RuntimeError('Improperly formatted or nonexistant Azure credentials. Please see {} for instructions on'
                                'properly integrating Toil and AWS.'.format(azureSetupUrl))
     @property
     def driver(self):

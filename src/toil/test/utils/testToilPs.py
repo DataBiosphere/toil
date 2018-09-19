@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Tests for toilPs.py"""
-from toil.test import ToilTest
+from toil.test import ToilTest, integrative
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.utils.toilPs import filterDeadInstances, filterByArgs, sortByArgs, instanceExists, AWSInstance
@@ -23,7 +23,7 @@ from contextlib import contextmanager
 import pandas as pd
 from datetime import datetime
 
-
+@integrative
 class ToilPsTest(ToilTest):
 
     def setUp(self):
