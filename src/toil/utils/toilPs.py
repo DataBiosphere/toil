@@ -53,11 +53,15 @@ class AzureInstance(Instance):
         credentials = ConfigParser.SafeConfigParser()
         credentials.read(os.path.expanduser("~/.azure/credentials"))
 
-        self.client_id = credentials.get("default", "client_id")
-        self.secret = credentials.get("default", "secret")
-        self.tenant = credentials.get("default", "tenant")
-        self.subscription = credentials.get("default", "subscription_id")
-
+        try:
+            self.client_id = credentials.get("default", "client_id")
+            self.secret = credentials.get("default", "secret")
+            self.tenant = credentials.get("default", "tenant")
+            self.subscription = credentials.get("default", "subscription_id")
+        except ConfigParser.NoSectionError:
+            azureSetupUrl = 'https://toil.readthedocs.io/en/latest/running/cloud/amazon.html#preparing-your-aws-environment'
+            raise RuntimeError('Improperly formatted or nonexistant AWS credentials. Please see {} for instructions on'
+                               'properly integrating Toil and AWS.'.format(azureSetupUrl))
     @property
     def driver(self):
         """Create the driver object needed for most operations."""
@@ -92,8 +96,13 @@ class AWSInstance(Instance):
         credentials = ConfigParser.SafeConfigParser()
         credentials.read(os.path.expanduser("~/.aws/credentials"))
 
-        self.id = credentials.get('default', 'aws_access_key_id')
-        self.key = credentials.get('default', 'aws_secret_access_key')
+        try:
+            self.id = credentials.get('default', 'aws_access_key_id')
+            self.key = credentials.get('default', 'aws_secret_access_key')
+        except ConfigParser.NoSectionError:
+            awsSetupUrl = 'https://toil.readthedocs.io/en/latest/running/cloud/amazon.html#preparing-your-aws-environment'
+            raise RuntimeError('Improperly formatted or nonexistant AWS credentials. Please see {} for instructions on'
+                               'properly integrating Toil and AWS.'.format(awsSetupUrl))
 
     @property
     def driver(self):
@@ -122,6 +131,12 @@ class GCEInstance(Instance):
     def __init__(self, provisioner, zone, name, status):
         super(GCEInstance, self).__init__(provisioner, zone, name, status)
         self.credentialsPath = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+
+        if not self.credentialsPath:
+            googleSetupUrl = 'https://toil.readthedocs.io/en/latest/running/cloud/gce.html#preparing-your-google-environment'
+            raise RuntimeError('No credentials were found for Google. Please see {} for instructions for properly '
+                               'integrating Toil and Google.'.format(googleSetupUrl))
+
         with open(self.credentialsPath, 'r') as f:
             credentials = json.loads(f.read())
 
