@@ -16,7 +16,7 @@ from toil.test import ToilTest
 from toil.provisioners.abstractProvisioner import AbstractProvisioner
 from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.utils.toilPs import filterDeadInstances, filterByArgs, sortByArgs, instanceExists, AWSInstance
-from toil import applianceSelf
+from toil import applianceSelf, subprocess
 import os
 import uuid
 from contextlib import contextmanager
@@ -305,3 +305,11 @@ class ToilPsTest(ToilTest):
         expected = 'test,azure,westus,Standard_A2,now,running,quay.io/fake'
         new = self.testProvisioner.updateEntry(original, 'running')
         self.assertEqual(expected, new)
+
+    def testToilPsFromCommandline(self):
+        """Test that the ps utility is able to be used from the commandline."""
+        cmd = ['toil', 'ps']
+        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        out, err = p.communicate()
+
+        self.assertFalse(err)
