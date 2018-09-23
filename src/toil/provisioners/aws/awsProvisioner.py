@@ -341,7 +341,7 @@ class AWSProvisioner(AbstractProvisioner):
         for attempt in retry(predicate= lambda e : isinstance(e, SSLError)):
             # SSLError is thrown when get_all_images times out
             with attempt:
-                amis = self._ctx.ec2.get_all_images(owners=['679593333241'])
+                amis = self._ctx.ec2.get_all_images(image_ids=['ami-08df0d44720a4b071'])
 
         coreOSAMI = [ami for ami in amis if descriptionMatches(ami)]
         logger.debug('Found the following matching AMIs: %s', coreOSAMI)
