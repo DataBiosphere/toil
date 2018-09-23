@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,27 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import, print_function
 from builtins import str
 from builtins import range
 import unittest
 import os
 import random
+import shutil
 from contextlib import contextmanager
 from uuid import uuid4
 import logging
+
 from toil import subprocess
-
-# Python 3 compatibility imports
-import errno
-from six.moves import xrange
-
 from toil import resolveEntryPoint
-
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.common import Toil
-from toil.job import Job, JobException
+from toil.job import Job
 from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.sort import merge, sort, copySubRangeOfFile, getMidPoint, makeFileToSort, main
@@ -61,13 +56,8 @@ def runMain(options):
     """
     main(options)
     yield
-    try:
+    if os.path.exists(options.outputFile):
         os.remove(options.outputFile)
-    except OSError as e:
-        if e.errno == errno.ENOENT:
-            pass
-        else:
-            raise
 
 
 @slow
@@ -79,6 +69,13 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def setUp(self):
         super(SortTest, self).setUp()
         self.tempDir = self._createTempDir(purpose='tempDir')
+        self.outputFile = os.path.join(self.tempDir, 'sortedFile.txt')
+        self.inputFile = os.path.join(self.tempDir, "fileToSort.txt")
+
+    def tearDown(self):
+        ToilTest.tearDown(self)
+        if os.path.exists(self.tempDir):
+            shutil.rmtree(self.tempDir)
 
     def _toilSort(self, jobStoreLocator, batchSystem,
                   lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
@@ -118,16 +115,15 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                     options.mesosMasterAddress = 'localhost:5050'
                 options.downCheckpoints = downCheckpoints
                 options.N = N
-                options.outputFile = os.path.join(self.tempDir, 'sortedFile.txt')
+                options.outputFile = self.outputFile
+                options.fileToSort = self.inputFile
                 options.overwriteOutput = True
 
                 # Make the file to sort
-                tempSortFile = os.path.join(self.tempDir, "fileToSort.txt")
-                makeFileToSort(tempSortFile, lines=lines, lineLen=lineLen)
-                options.fileToSort = tempSortFile
+                makeFileToSort(options.fileToSort, lines=lines, lineLen=lineLen)
 
                 # First make our own sorted version
-                with open(tempSortFile, 'r') as fileHandle:
+                with open(options.fileToSort, 'r') as fileHandle:
                     l = fileHandle.readlines()
                     l.sort()
 
@@ -310,11 +306,10 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     def testGetMidPoint(self):
         for test in range(self.testNo):
-            tempFile = os.path.join(self.tempDir, "fileToSort.txt")
-            makeFileToSort(tempFile)
-            l = open(tempFile, 'r').read()
-            fileSize = os.path.getsize(tempFile)
-            midPoint = getMidPoint(tempFile, 0, fileSize)
+            makeFileToSort(self.inputFile)
+            l = open(self.inputFile, 'r').read()
+            fileSize = os.path.getsize(self.inputFile)
+            midPoint = getMidPoint(self.inputFile, 0, fileSize)
             print("the mid point is %i of a file of %i bytes" % (midPoint, fileSize))
             assert midPoint < fileSize
             assert l[midPoint] == '\n'

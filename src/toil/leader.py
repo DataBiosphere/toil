@@ -230,15 +230,16 @@ class Leader(object):
             # Log the failed jobs.
             localLog = os.path.join(os.getcwd(), 'failed.log')
             with open(localLog, 'w') as failLog:
-                failLog.write('Failed Jobs for workflow ')
                 for job in self.toilState.totalFailedJobs:
                     failLog.write(job.jobStoreID)
+                    failLog.write('\n')
             self.jobStore.importFile('file://' + localLog, 'failed.log')
         else:
             localLog = os.path.join(os.getcwd(), 'succeeded.log')
             with open(localLog, 'w') as succeedLog:
                 succeedLog.write('This workflow completed successfully.')
-                self.jobStore.importFile('file://' + localLog, 'succeeded.log')
+            self.jobStore.importFile('file://' + localLog, 'succeeded.log')
+        os.remove(localLog)
 
         logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \

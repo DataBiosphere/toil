@@ -68,8 +68,15 @@ class UtilsTest(ToilTest):
             self.correctSort.sort()
 
     def tearDown(self):
+        cruft = ['failed.log', 'fileToSort.txt',
+                 'output.txt', 'sortedFile.txt',
+                 'succeeded.log', 'tmp/']
+        if os.path.exists(self.tempDir):
+            shutil.rmtree(self.tempDir)
+        for i in cruft:
+            if os.path.exists(i):
+                os.remove(i)
         ToilTest.tearDown(self)
-        system("rm -rf %s" % self.tempDir)
 
     @property
     def toilMain(self):
