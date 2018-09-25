@@ -332,7 +332,7 @@ class AWSProvisioner(AbstractProvisioner):
     @memoize
     def _discoverAMI(self):
         def descriptionMatches(ami):
-            return ami.description is not None and 'stable 1745.7.0' in ami.description
+            return ami.description is not None and 'stable 1688.5.3' in ami.description
         coreOSAMI = os.environ.get('TOIL_AWS_AMI')
         if coreOSAMI is not None:
             return coreOSAMI
@@ -341,7 +341,7 @@ class AWSProvisioner(AbstractProvisioner):
         for attempt in retry(predicate= lambda e : isinstance(e, SSLError)):
             # SSLError is thrown when get_all_images times out
             with attempt:
-                amis = self._ctx.ec2.get_all_images(image_ids=['ami-6ae5a712'])
+                amis = self._ctx.ec2.get_all_images(image_ids=['ami-70d5b608'])
 
         coreOSAMI = [ami for ami in amis if descriptionMatches(ami)]
         logger.debug('Found the following matching AMIs: %s', coreOSAMI)
