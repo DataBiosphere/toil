@@ -70,9 +70,11 @@ class UtilsTest(ToilTest):
     def tearDown(self):
         cruft = ['failed.log', 'fileToSort.txt',
                  'output.txt', 'sortedFile.txt',
-                 'succeeded.log', 'tmp/']
+                 'succeeded.log']
         if os.path.exists(self.tempDir):
             shutil.rmtree(self.tempDir)
+        if os.path.exists('tmp/'):
+            shutil.rmtree('tmp/')
         for i in cruft:
             if os.path.exists(i):
                 os.remove(i)
