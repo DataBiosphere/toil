@@ -226,23 +226,6 @@ class Leader(object):
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
-        if self.toilState.totalFailedJobs:
-            # Log the failed jobs.
-            localLog = os.path.join(os.getcwd(), 'failed.log')
-            with open(localLog, 'w') as failLog:
-                for job in self.toilState.totalFailedJobs:
-                    failLog.write(job.jobStoreID)
-                    failLog.write('\n')
-            self.jobStore.importFile('file://' + localLog, 'failed.log')
-        else:
-            localLog = os.path.join(os.getcwd(), 'succeeded.log')
-            with open(localLog, 'w') as succeedLog:
-                succeedLog.write('This workflow completed successfully.')
-            self.jobStore.importFile('file://' + localLog, 'succeeded.log')
-        # remove the local log once imported into the jobStore
-        if os.path.exists(localLog):
-            os.remove(localLog)
-
         logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
                 else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))

@@ -307,12 +307,13 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
     def testGetMidPoint(self):
         for test in range(self.testNo):
             makeFileToSort(self.inputFile)
-            l = open(self.inputFile, 'r').read()
+            with open(self.inputFile, 'r') as f:
+                sorted_contents = f.read()
             fileSize = os.path.getsize(self.inputFile)
             midPoint = getMidPoint(self.inputFile, 0, fileSize)
             print("the mid point is %i of a file of %i bytes" % (midPoint, fileSize))
             assert midPoint < fileSize
-            assert l[midPoint] == '\n'
+            assert sorted_contents[midPoint] == '\n'
             assert midPoint >= 0
 
     # Support methods
