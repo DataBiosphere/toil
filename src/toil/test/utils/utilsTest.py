@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,17 +11,13 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
-
 from builtins import str
-import time
 import os
 import sys
 import uuid
 import shutil
 import tempfile
-import psutil
 import pytest
 import logging
 
@@ -34,13 +30,11 @@ from toil import subprocess
 from toil import resolveEntryPoint
 from toil.job import Job
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow, needs_cwl, needs_docker
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
-from toil.utils.toilStatus import ToilStatus
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
-
 
 logger = logging.getLogger(__name__)
 
@@ -68,16 +62,8 @@ class UtilsTest(ToilTest):
             self.correctSort.sort()
 
     def tearDown(self):
-        cruft = ['failed.log', 'fileToSort.txt',
-                 'output.txt', 'sortedFile.txt',
-                 'succeeded.log']
         if os.path.exists(self.tempDir):
             shutil.rmtree(self.tempDir)
-        if os.path.exists('tmp/'):
-            shutil.rmtree('tmp/')
-        for i in cruft:
-            if os.path.exists(i):
-                os.remove(i)
         ToilTest.tearDown(self)
 
     @property
@@ -197,6 +183,7 @@ class UtilsTest(ToilTest):
                 shutil.rmtree(tmpDir)
             except NameError:
                 pass
+
     def _createSortOptions(self, jobstoreLoc, fails=False):
         options = Job.Runner.getDefaultOptions(jobstoreLoc)
         options.badWorker = fails
