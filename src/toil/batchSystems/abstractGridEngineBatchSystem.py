@@ -25,6 +25,7 @@ from abc import ABCMeta, abstractmethod
 from six.moves.queue import Empty, Queue
 from future.utils import with_metaclass
 
+from toil import subprocess
 from toil.lib.objects import abstractclassmethod
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport
@@ -116,7 +117,22 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 logger.debug("Running %r", subLine)
 
                 # submit job and get batch system ID
-                batchJobID = self.submitJob(subLine)
+                success = False
+                retries = 3
+                latest_err = None
+                while not success and retries:
+                    try:
+                        batchJobID = self.submitJob(subLine)
+                        success = True
+                    except subprocess.CalledProcessError as err:
+                        latest_err = err
+                        logger.error(
+                            "submitJob failed with code %d: %s",
+                            err.returncode, err.output)
+                    finally:
+                        retries -= 1
+                if latest_err:
+                    raise latest_err
                 logger.debug("Submitted job %s", str(batchJobID))
 
                 # Store dict for mapping Toil job ID to batch job ID
@@ -165,7 +181,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             while killList:
                 for jobID in list(killList):
                     batchJobID = self.getBatchSystemID(jobID)
-                    if self.getJobExitCode(batchJobID) is not None:
+                    if self.getJobExitCodeWithRetries(batchJobID) is not None:
                         logger.debug('Adding jobID %s to killedJobsQueue', jobID)
                         self.killedJobsQueue.put(jobID)
                         killList.remove(jobID)
@@ -188,7 +204,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             activity = False
             for jobID in list(self.runningJobs):
                 batchJobID = self.getBatchSystemID(jobID)
-                status = self.getJobExitCode(batchJobID)
+                status = self.getJobExitCodeWithRetries(batchJobID)
                 if status is not None:
                     activity = True
                     self.updatedJobsQueue.put((jobID, status))
@@ -275,6 +291,30 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             """
             raise NotImplementedError()
 
+        def getJobExitCodeWithRetries(self, batchJobID):
+            """
+            Returns job exit code. Implementation-specific; called by
+            AbstractGridEngineWorker.checkOnJobs()
+
+            :param string batchjobID: batch system job ID
+            """
+            exit_code = None
+            retries = 3
+            latest_err = None
+            while not exit_code and retries:
+                try:
+                    exit_code = self.getJobExitCode(batchJobID)
+                except subprocess.CalledProcessError as err:
+                    latest_err = err
+                    logger.error(
+                        "getJobExitCode failed with code %d: %s",
+                        err.returncode, err.output)
+                finally:
+                    retries -= 1
+            if latest_err:
+                raise latest_err
+            return exit_code
+
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(AbstractGridEngineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         self.config = config
@@ -346,16 +386,33 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         return list(self.getIssuedLocalJobIDs()) + list(self.currentJobs)
 
     def getRunningBatchJobIDs(self):
-        """Retrieve running job IDs from local and batch scheduler.
+        """
+        Retrieve running job IDs from local and batch scheduler.
 
         Respects statePollingWait and will return cached results if not within
         time period to talk with the scheduler.
         """
-        if (self._getRunningBatchJobIDsTimestamp and
-             (datetime.now() - self._getRunningBatchJobIDsTimestamp).total_seconds() < self.config.statePollingWait):
+        if (self._getRunningBatchJobIDsTimestamp and (
+                datetime.now() -
+                self._getRunningBatchJobIDsTimestamp).total_seconds() <
+                self.config.statePollingWait):
             batchIds = self._getRunningBatchJobIDsCache
         else:
-            batchIds = self.worker.getRunningJobIDs()
+            retries = 3
+            latest_err = None
+            batchIds = None
+            while not batchIds and retries:
+                try:
+                    batchIds = self.worker.getRunningJobIDs()
+                except subprocess.CalledProcessError as err:
+                    latest_err = err
+                    logger.error(
+                        "getRunningJobIDs failed with code %d: %s",
+                        err.returncode, err.output)
+                finally:
+                    retries -= 1
+                if latest_err:
+                    raise latest_err
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
         batchIds.update(self.getRunningLocalJobIDs())
