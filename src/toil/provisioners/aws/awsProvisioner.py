@@ -99,7 +99,7 @@ class AWSProvisioner(AbstractProvisioner):
         if not zone:
             self._zone = getCurrentAWSZone()
         if clusterName:
-            self._buildContext() # create connection (self._ctx)
+            self._buildContext()  # create connection (self._ctx)
         else:
             self._readClusterSettings()
 
@@ -336,12 +336,12 @@ class AWSProvisioner(AbstractProvisioner):
         coreOSAMI = os.environ.get('TOIL_AWS_AMI')
         if coreOSAMI is not None:
             return coreOSAMI
-        # that ownerID corresponds to coreOS
 
-        for attempt in retry(predicate= lambda e : isinstance(e, SSLError)):
+        for attempt in retry(predicate=lambda e: isinstance(e, SSLError)):
             # SSLError is thrown when get_all_images times out
             with attempt:
-                amis = self._ctx.ec2.get_all_images(image_ids=['ami-70d5b608'])
+                # 679593333241 is the aws marketplace account
+                amis = self._ctx.ec2.get_all_images(owners=['679593333241'])
 
         coreOSAMI = [ami for ami in amis if descriptionMatches(ami)]
         logger.debug('Found the following matching AMIs: %s', coreOSAMI)
