@@ -230,7 +230,6 @@ class Leader(object):
             # Log the failed jobs.
             localLog = os.path.join(os.getcwd(), 'failed.log')
             with open(localLog, 'w') as failLog:
-                failLog.write('Failed Jobs for workflow ')
                 for job in self.toilState.totalFailedJobs:
                     failLog.write(job.jobStoreID)
                     failLog.write('\n')
@@ -240,6 +239,7 @@ class Leader(object):
             with open(localLog, 'w') as succeedLog:
                 succeedLog.write('This workflow completed successfully.')
             self.jobStore.importFile('file://' + localLog, 'succeeded.log')
+        # remove the local log once imported into the jobStore
         if os.path.exists(localLog):
             os.remove(localLog)
 
