@@ -73,9 +73,9 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         self.inputFile = os.path.join(self.tempDir, "fileToSort.txt")
 
     def tearDown(self):
-        ToilTest.tearDown(self)
         if os.path.exists(self.tempDir):
             shutil.rmtree(self.tempDir)
+        ToilTest.tearDown(self)
 
     def _toilSort(self, jobStoreLocator, batchSystem,
                   lines=defaultLines, N=defaultN, testNo=1, lineLen=defaultLineLen,
