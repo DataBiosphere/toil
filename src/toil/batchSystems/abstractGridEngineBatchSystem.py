@@ -117,20 +117,18 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 logger.debug("Running %r", subLine)
 
                 # submit job and get batch system ID
-                success = False
+                batchJobID = None
                 retries = 3
                 latest_err = None
-                while not success and retries:
+                while not batchJobID and retries:
+                    retries -= 1
                     try:
                         batchJobID = self.submitJob(subLine)
-                        success = True
                     except subprocess.CalledProcessError as err:
                         latest_err = err
                         logger.error(
                             "submitJob failed with code %d: %s",
                             err.returncode, err.output)
-                    finally:
-                        retries -= 1
                 if latest_err:
                     raise latest_err
                 logger.debug("Submitted job %s", str(batchJobID))
@@ -302,6 +300,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             retries = 3
             latest_err = None
             while not exit_code and retries:
+                retries -= 1
                 try:
                     exit_code = self.getJobExitCode(batchJobID)
                 except subprocess.CalledProcessError as err:
@@ -309,8 +308,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                     logger.error(
                         "getJobExitCode failed with code %d: %s",
                         err.returncode, err.output)
-                finally:
-                    retries -= 1
             if latest_err:
                 raise latest_err
             return exit_code
@@ -402,6 +399,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             latest_err = None
             batchIds = None
             while not batchIds and retries:
+                retries -= 1
                 try:
                     batchIds = self.worker.getRunningJobIDs()
                 except subprocess.CalledProcessError as err:
@@ -409,8 +407,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                     logger.error(
                         "getRunningJobIDs failed with code %d: %s",
                         err.returncode, err.output)
-                finally:
-                    retries -= 1
                 if latest_err:
                     raise latest_err
             self._getRunningBatchJobIDsCache = batchIds
