@@ -129,7 +129,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                         logger.error(
                             "submitJob failed with code %d: %s",
                             err.returncode, err.output)
-                if latest_err:
+                if not batchJobID and latest_err:
                     raise latest_err
                 logger.debug("Submitted job %s", str(batchJobID))
 
@@ -308,7 +308,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                     logger.error(
                         "getJobExitCode failed with code %d: %s",
                         err.returncode, err.output)
-            if latest_err:
+            if not exit_code and latest_err:
                 raise latest_err
             return exit_code
 
@@ -407,7 +407,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                     logger.error(
                         "getRunningJobIDs failed with code %d: %s",
                         err.returncode, err.output)
-                if latest_err:
+                if not batchIds and latest_err:
                     raise latest_err
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
