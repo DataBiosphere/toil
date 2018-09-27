@@ -755,7 +755,7 @@ class Toil(object):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
-        self._writePIDFile()
+        self.writePIDFile()
         if self.config.restart:
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
@@ -792,7 +792,7 @@ class Toil(object):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
-        self._writePIDFile()
+        self.writePIDFile()
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
@@ -1074,7 +1074,7 @@ class Toil(object):
         if not self._inContextManager:
             raise ToilContextManagerException()
 
-    def _writePIDFile(self):
+    def writePIDFile(self):
         """
         Write a the pid of this process to a file in the jobstore.
 
