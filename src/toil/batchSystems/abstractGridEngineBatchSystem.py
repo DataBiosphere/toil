@@ -33,6 +33,21 @@ from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport
 logger = logging.getLogger(__name__)
 
 
+def with_retries(operation, *args, **kwargs):
+    retries = 3
+    latest_err = None
+    while retries:
+        retries -= 1
+        try:
+            return operation(*args, **kwargs)
+        except subprocess.CalledProcessError as err:
+            latest_err = err
+            logger.error(
+                "Operation %s failed with code %d: %s",
+                operation, err.returncode, err.output)
+    raise latest_err
+
+
 class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
@@ -116,21 +131,6 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 subLine = self.prepareSubmission(cpu, memory, jobID, command)
                 logger.debug("Running %r", subLine)
 
-                # submit job and get batch system ID
-                batchJobID = None
-                retries = 3
-                latest_err = None
-                while not batchJobID and retries:
-                    retries -= 1
-                    try:
-                        batchJobID = self.submitJob(subLine)
-                    except subprocess.CalledProcessError as err:
-                        latest_err = err
-                        logger.error(
-                            "submitJob failed with code %d: %s",
-                            err.returncode, err.output)
-                if not batchJobID and latest_err:
-                    raise latest_err
                 logger.debug("Submitted job %s", str(batchJobID))
 
                 # Store dict for mapping Toil job ID to batch job ID
@@ -179,7 +179,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             while killList:
                 for jobID in list(killList):
                     batchJobID = self.getBatchSystemID(jobID)
-                    if self.getJobExitCodeWithRetries(batchJobID) is not None:
+                    if with_retries(selfgetJobExitCode, batchJobID) is not None:
                         logger.debug('Adding jobID %s to killedJobsQueue', jobID)
                         self.killedJobsQueue.put(jobID)
                         killList.remove(jobID)
@@ -202,7 +202,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             activity = False
             for jobID in list(self.runningJobs):
                 batchJobID = self.getBatchSystemID(jobID)
-                status = self.getJobExitCodeWithRetries(batchJobID)
+                status = with_retries(self.getJobExitCode, batchJobID)
                 if status is not None:
                     activity = True
                     self.updatedJobsQueue.put((jobID, status))
@@ -296,21 +296,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
             :param string batchjobID: batch system job ID
             """
-            exit_code = None
-            retries = 3
-            latest_err = None
-            while not exit_code and retries:
-                retries -= 1
-                try:
-                    exit_code = self.getJobExitCode(batchJobID)
-                except subprocess.CalledProcessError as err:
-                    latest_err = err
-                    logger.error(
-                        "getJobExitCode failed with code %d: %s",
-                        err.returncode, err.output)
-            if not exit_code and latest_err:
-                raise latest_err
-            return exit_code
+            exit_code = with_retries(self.getJobExitCode, batchJobID)
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(AbstractGridEngineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
@@ -395,20 +381,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 self.config.statePollingWait):
             batchIds = self._getRunningBatchJobIDsCache
         else:
-            retries = 3
-            latest_err = None
-            batchIds = None
-            while not batchIds and retries:
-                retries -= 1
-                try:
-                    batchIds = self.worker.getRunningJobIDs()
-                except subprocess.CalledProcessError as err:
-                    latest_err = err
-                    logger.error(
-                        "getRunningJobIDs failed with code %d: %s",
-                        err.returncode, err.output)
-                if not batchIds and latest_err:
-                    raise latest_err
+            batchIDs = with_retries(self.workfer.getRunningJobIDs)
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
         batchIds.update(self.getRunningLocalJobIDs())
