@@ -29,6 +29,7 @@ import sys
 import logging
 import copy
 import functools
+import shutil
 from typing import Text, Mapping, MutableSequence
 import hashlib
 
@@ -454,7 +455,6 @@ class CWLJobWrapper(Job):
         self.addChild(realjob)
         return realjob.rv()
 
-
 def _makeNestedTempDir(top, seed, levels=2):
     """
     Gets a temporary directory in the hierarchy of directories under a given
@@ -523,6 +523,7 @@ class CWLJob(Job):
         self.runtime_context = runtime_context
         self.step_inputs = step_inputs or self.cwltool.tool["inputs"]
         self.workdir = runtime_context.workdir
+        self.openTempDirs = []
 
     def run(self, file_store):
         cwljob = resolve_indirect(self.cwljob)
@@ -546,6 +547,7 @@ class CWLJob(Job):
         tmp_outdir_prefix = os.path.join(
             _makeNestedTempDir(top=top_tmp_outdir, seed=outdir, levels=2),
             "out_tmpdir")
+        self.openTempDirs.append(top_tmp_outdir)
 
         index = {}
         existing = {}
@@ -573,7 +575,6 @@ class CWLJob(Job):
             index, existing))
 
         return output
-
 
 def makeJob(tool, jobobj, step_inputs, runtime_context):
     """Create the correct Toil Job object for the CWL tool (workflow, job, or job
@@ -988,6 +989,15 @@ def visitSteps(t, op):
             visitSteps(s.embedded_tool, op)
 
 
+def cleanTempDirs(job):
+    """Remove temporarly created directories."""
+    if job is CWLJob and job._succeeded:  # Only CWLJobs have this attribute.
+        for tempDir in job.openTempDirs:
+            if os.path.exists(tempDir):
+                shutil.rmtree(tempDir)
+        job.openTempDirs = []
+
+
 def main(args=None, stdout=sys.stdout):
     """Main method for toil-cwl-runner."""
     cwllogger.removeHandler(defaultStreamHandler)
@@ -1062,6 +1072,10 @@ def main(args=None, stdout=sys.stdout):
 
     # we use workdir as jobStore:
     options = parser.parse_args([workdir] + args)
+
+    # if tmpdir_prefix is not the default value, set workDir too
+    if options.tmpdir_prefix != 'tmp':
+        options.workDir = options.tmpdir_prefix
 
     if options.provisioner and not options.jobStore:
         raise NoSuchJobStoreException(
@@ -1201,6 +1215,8 @@ def main(args=None, stdout=sys.stdout):
                 return 33
 
             wf1.cwljob = initialized_job_order
+            if wf1 is CWLJob:  # Clean up temporary directories only created with CWLJobs.
+                wf1.addFollowOnFn(cleanTempDirs, wf1)
             outobj = toil.start(wf1)
 
         outobj = resolve_indirect(outobj)

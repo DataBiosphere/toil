@@ -187,7 +187,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # "Native extensions" for SLURM (see DRMAA or SAGA)
             nativeConfig = os.getenv('TOIL_SLURM_ARGS')
             if nativeConfig is not None:
-                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_RESOURCES env. variable: {}".format(nativeConfig))
+                logger.debug("Native SLURM options appended to sbatch from TOIL_SLURM_ARGS env. variable: {}".format(nativeConfig))
                 if ("--mem" in nativeConfig) or ("--cpus-per-task" in nativeConfig):
                     raise ValueError("Some resource arguments are incompatible: {}".format(nativeConfig))
 
@@ -218,7 +218,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def getWaitDuration(cls):
-        return 1.0
+        return 1
 
     @classmethod
     def obtainSystemConstants(cls):
