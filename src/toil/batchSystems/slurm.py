@@ -71,9 +71,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)
                 return result
-            except subprocess.CalledProcessError as e:
-                logger.error("sbatch command failed with code %d: %s", e.returncode, e.output)
-                raise e
             except OSError as e:
                 logger.error("sbatch command failed")
                 raise e
