@@ -19,6 +19,7 @@ import os.path
 import time
 from toil import subprocess
 from toil import applianceSelf
+import json
 
 from future.utils import with_metaclass
 
@@ -243,22 +244,10 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError
 
-    def updateEntry(self, entry, status):
-        """
-        Splice a new status into a string representing an entry in /tmp/toilClusterList.csv.
-
-        Assumes that the status column in second to last.
-        """
-        r = entry.rfind(',')
-        l = entry.rfind(',', 0, r)  # Find positions of commas bookending the status entry.
-
-        newEntry = entry[:l] + ',{}'.format(str(status)) + entry[r:]
-        return newEntry
-
     @staticmethod
     def clusterListPath():
         """Return the location of the file holding information about instances launched with launch cluster."""
-        return os.path.join(os.path.expanduser('~'), '.toilClusterList.csv')
+        return os.path.join(os.path.expanduser('~'), '.toilClusterList.json')
 
     @staticmethod
     def columnNames(asStr=False):
@@ -274,63 +263,74 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             return ['clustername', 'provisioner', 'zone', 'type', 'created', 'status', 'appliance']
 
     def updateStatusInList(self, status, provisioner):
-        """Update the status of an entry in /tmp/toilClusterList.csv"""
-        oldList = self.clusterListPath()
-        newList = self.clusterListPath() + '.new'
+        """Update the status of an entry in ~/toilClusterList.json"""
 
-        with open(newList, 'w') as new:
-            with open(oldList, 'r') as old:
-                for line in old:
-                    if line.startswith('{},{},{}'.format(self.clusterName, provisioner, self._zone)):
-                        # If cluster failed before creation, remove it from the list.
-                        current = line.split(',')[5]
-                        if status != 'broken' or current != 'initializing':
-                            new.write(self.updateEntry(line, status))
-                    else:
-                        new.write(line)
+        with open(self.clusterListPath(), 'r') as list:
+            clusters = json.load(list)
 
-        os.remove(oldList)
-        os.rename(newList, oldList)
+        clusters[provisioner][self._zone][self.clusterName]['status'] = status
+
+        with open(self.clusterListPath(), 'w') as list:
+            json.dump(clusters, list)
+
+    def createJSONStructure(self):
+        """
+        Create the template for the json storing information about existing clusters.
+
+        The structure is as follows:
+            { Provisioner:
+                { Zone :
+                    { clusterName:
+                        { 'Cluster': 'Info' }
+                    }
+                }
+            }
+
+        This function only creates the first two levels to facilitate adding entries in
+        AbstractProvisioner.addClusterToList.
+        """
+
+        skeleton = {'aws': dict(),
+                    'gce': dict(),
+                    'azure': dict()}
+
+        with open(self.clusterListPath(), 'w') as list:
+            json.dump(skeleton, list)
 
     def addClusterToList(self, provisioner, instanceType):
-        """
-        Save information about launched clusters to a local file to be displayed later.
-
-        The functions updateStatusInList, updateEntry, and removeClusterFromList, as well as
-        toil/src/toil/utils/toilPs.py rely on the order of the columns made here.
-        """
-        created = time.strftime("%Y-%m-%d %H:%M")
-        appliance = applianceSelf()
+        """Save information about launched clusters to a local file to be displayed later."""
         clusterList = self.clusterListPath()
 
-        # If the file doesnt exist yet, write the header.
+        # If the file doesnt exist yet, write the skeleton.
         if not os.path.exists(clusterList):
-            writeHeader = True
-        else:
-            writeHeader = False
+            self.createJSONStructure()
 
-        with open(clusterList, 'a+') as f:
-            if writeHeader:
-                f.write(AbstractProvisioner.columnNames(asStr=True)) # Write header.
-            f.write('{},{},{},{},{},{},{}\n'.format(self.clusterName, provisioner, self._zone, instanceType, created,
-                                                    'initializing', appliance))
-            log.debug('Now tracking the {} instance in {}: {}'.format(provisioner, self._zone, self.clusterName))
+        with open(clusterList, 'r') as list:
+            clusters = json.load(list)
+
+        newEntry = {self.clusterName: {'instanceType': instanceType,
+                                       'created': time.strftime("%Y-%m-%d %H:%M"),
+                                       'status': 'initializing',
+                                       'appliance': applianceSelf()}}
+
+        clusters[provisioner][self._zone] = newEntry
+
+        with open(clusterList, 'w') as list:
+            json.dump(clusters, list)
 
     @staticmethod
     def removeClusterFromList(name, provisioner, zone):
         """Remove a given cluster's information from the list of active clusters."""
-        oldList = AbstractProvisioner.clusterListPath()
-        newList = AbstractProvisioner.clusterListPath() + '.new'
+        listPath = AbstractProvisioner.clusterListPath()
 
-        if os.path.exists(oldList):
-            # Copy from old to new .csv
-            with open(newList, 'w') as new:
-                with open(oldList, 'r') as old:
-                    for line in old:
-                        if not line.startswith('{},{},{}'.format(name, provisioner, zone)):
-                            new.write(line)
-            os.remove(oldList)
-            os.rename(newList, oldList)
+        if os.path.exists(listPath):
+            with open(listPath, 'r') as list:
+                clusters = json.load(list)
+
+            del clusters[provisioner][zone][name]
+
+            with open(listPath, 'w') as list:
+                json.dump(clusters, list)
 
     def _setSSH(self):
         """

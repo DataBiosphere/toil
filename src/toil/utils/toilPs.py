@@ -250,6 +250,25 @@ def printDF(df):
 
     print(df.to_string(justify='left', col_space=20, index=False))
 
+def dataDictToDF(path):
+    """Transforms the dictionary used to store cluster information into one a Pandas Dataframe can be initialized with."""
+    entries = []
+
+    with open(path, 'r') as clusters:
+        data = json.load(clusters)
+
+    for prov in data:
+        for zone in data[prov]:
+            for name in data[prov][zone]:
+                type = data[prov][zone][name]['instanceType']
+                created = data[prov][zone][name]['created']
+                status = data[prov][zone][name]['status']
+                appliance = data[prov][zone][name]['appliance']
+                entries.append((name, prov, zone, type, created, status, appliance))
+
+    df = pd.DataFrame.from_records(entries, columns=AbstractProvisioner.columnNames())
+    return df
+
 def main():
     listPath = AbstractProvisioner.clusterListPath()
     columnNames = AbstractProvisioner.columnNames()
@@ -279,7 +298,7 @@ def main():
         filters['provisioners'] = filterBadProvisioners(filters['provisioners'])
 
     if os.path.exists(listPath):
-        df = pd.read_csv(listPath)
+        df = dataDictToDF(listPath)
         df = filterDeadInstances(df)
         df = filterByArgs(df, filters)
         if not df.empty:
@@ -288,3 +307,6 @@ def main():
         df = pd.DataFrame(columns=[i.upper() for i in columnNames])
 
     printDF(df)
+
+# if __name__ == '__main__':
+#     main()
