@@ -183,9 +183,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             return bsubline
 
     def getWaitDuration(self):
-        """We give LSF a second to catch its breath (in seconds)
-        """
-        return 15
+        """We give LSF a second to catch its breath (in seconds)"""
+        return 8
 
     @classmethod
     def obtainSystemConstants(cls):

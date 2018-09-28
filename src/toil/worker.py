@@ -419,6 +419,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         jobGraph = jobStore.load(jobStoreID)
         jobGraph.setupJobAfterFailure(config)
         workerFailed = True
+        if job and jobGraph.remainingRetryCount == 0:
+            job._succeeded = False
 
     ##########################################
     #Cleanup
