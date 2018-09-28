@@ -254,17 +254,17 @@ def dataDictToDF(path):
     """Transforms the dictionary used to store cluster information into one a Pandas Dataframe can be initialized with."""
     entries = []
 
-    with open(path, 'r') as clusters:
-        data = json.load(clusters)
+    with open(path, 'r') as f:
+        data = json.load(f)
 
     for prov in data:
         for zone in data[prov]:
             for name in data[prov][zone]:
-                type = data[prov][zone][name]['instanceType']
+                instanceType = data[prov][zone][name]['instanceType']
                 created = data[prov][zone][name]['created']
                 status = data[prov][zone][name]['status']
                 appliance = data[prov][zone][name]['appliance']
-                entries.append((name, prov, zone, type, created, status, appliance))
+                entries.append((name, prov, zone, instanceType, created, status, appliance))
 
     df = pd.DataFrame.from_records(entries, columns=AbstractProvisioner.columnNames())
     return df
@@ -307,6 +307,3 @@ def main():
         df = pd.DataFrame(columns=[i.upper() for i in columnNames])
 
     printDF(df)
-
-# if __name__ == '__main__':
-#     main()

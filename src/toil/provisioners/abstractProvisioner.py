@@ -265,15 +265,15 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     def updateStatusInList(self, status, provisioner):
         """Update the status of an entry in ~/toilClusterList.json"""
 
-        with open(self.clusterListPath(), 'r') as list:
-            clusters = json.load(list)
+        with open(self.clusterListPath(), 'r') as f:
+            clusters = json.load(f)
 
         clusters[provisioner][self._zone][self.clusterName]['status'] = status
 
-        with open(self.clusterListPath(), 'w') as list:
-            json.dump(clusters, list)
+        with open(self.clusterListPath(), 'w') as f:
+            json.dump(clusters, f)
 
-    def createJSONStructure(self):
+    def createJSONStructure(self, path):
         """
         Create the template for the json storing information about existing clusters.
 
@@ -294,8 +294,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
                     'gce': dict(),
                     'azure': dict()}
 
-        with open(self.clusterListPath(), 'w') as list:
-            json.dump(skeleton, list)
+        with open(path, 'w') as f:
+            json.dump(skeleton, f)
 
     def addClusterToList(self, provisioner, instanceType):
         """Save information about launched clusters to a local file to be displayed later."""
@@ -303,10 +303,10 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
 
         # If the file doesnt exist yet, write the skeleton.
         if not os.path.exists(clusterList):
-            self.createJSONStructure()
+            self.createJSONStructure(clusterList)
 
-        with open(clusterList, 'r') as list:
-            clusters = json.load(list)
+        with open(clusterList, 'r') as f:
+            clusters = json.load(f)
 
         newEntry = {self.clusterName: {'instanceType': instanceType,
                                        'created': time.strftime("%Y-%m-%d %H:%M"),
@@ -315,8 +315,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
 
         clusters[provisioner][self._zone] = newEntry
 
-        with open(clusterList, 'w') as list:
-            json.dump(clusters, list)
+        with open(clusterList, 'w') as f:
+            json.dump(clusters, f)
 
     @staticmethod
     def removeClusterFromList(name, provisioner, zone):
@@ -324,13 +324,14 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         listPath = AbstractProvisioner.clusterListPath()
 
         if os.path.exists(listPath):
-            with open(listPath, 'r') as list:
-                clusters = json.load(list)
+            with open(listPath, 'r') as f:
+                clusters = json.load(f)
 
-            del clusters[provisioner][zone][name]
+            if clusters[provisioner][zone][name]:
+                del clusters[provisioner][zone][name]
 
-            with open(listPath, 'w') as list:
-                json.dump(clusters, list)
+            with open(listPath, 'w') as f:
+                json.dump(clusters, f)
 
     def _setSSH(self):
         """
