@@ -57,7 +57,8 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
     class Worker(with_metaclass(ABCMeta, Thread)):
 
-        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
+        def __init__(self, newJobsQueue, updatedJobsQueue, killQueue,
+                     killedJobsQueue, boss):
             """
             Abstract worker interface class. All instances are created with five
             initial arguments (below). Note the Queue instances passed are empty.
@@ -66,12 +67,14 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             :param updatedJobsQueue: a Queue of jobs that have been updated
             :param killQueue: a Queue of active jobs that need to be killed
             :param killedJobsQueue: Queue of killed jobs for this worker
-            :param boss: the AbstractGridEngineBatchSystem instance that controls this AbstractGridEngineWorker
+            :param boss: the AbstractGridEngineBatchSystem instance that
+                         controls this AbstractGridEngineWorker
 
             """
             Thread.__init__(self)
             self.boss = boss
-            self.boss.config.statePollingWait = self.boss.config.statePollingWait or self.boss.getWaitDuration()
+            self.boss.config.statePollingWait = \
+                self.boss.config.statePollingWait or self.boss.getWaitDuration()
             self.newJobsQueue = newJobsQueue
             self.updatedJobsQueue = updatedJobsQueue
             self.killQueue = killQueue
@@ -113,8 +116,9 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
 
         def createJobs(self, newJob):
             """
-            Create a new job with the Toil job ID. Implementation-specific; called
-            by AbstractGridEngineWorker.run()
+            Create a new job with the Toil job ID.
+
+            Implementation-specific; called by AbstractGridEngineWorker.run()
 
             :param string newJob: Toil job ID
             """
@@ -123,14 +127,15 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             if newJob is not None:
                 self.waitingJobs.append(newJob)
             # Launch jobs as necessary:
-            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
+            while len(self.waitingJobs) > 0 and \
+                    len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
                 jobID, cpu, memory, command = self.waitingJobs.pop(0)
 
                 # prepare job submission command
                 subLine = self.prepareSubmission(cpu, memory, jobID, command)
                 logger.debug("Running %r", subLine)
-
+                batchJobID = with_retries(self.submitJob, subLine)
                 logger.debug("Submitted job %s", str(batchJobID))
 
                 # Store dict for mapping Toil job ID to batch job ID
@@ -179,7 +184,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             while killList:
                 for jobID in list(killList):
                     batchJobID = self.getBatchSystemID(jobID)
-                    if with_retries(selfgetJobExitCode, batchJobID) is not None:
+                    if with_retries(self.getJobExitCode, batchJobID) is not None:
                         logger.debug('Adding jobID %s to killedJobsQueue', jobID)
                         self.killedJobsQueue.put(jobID)
                         killList.remove(jobID)
@@ -289,17 +294,9 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             """
             raise NotImplementedError()
 
-        def getJobExitCodeWithRetries(self, batchJobID):
-            """
-            Returns job exit code. Implementation-specific; called by
-            AbstractGridEngineWorker.checkOnJobs()
-
-            :param string batchjobID: batch system job ID
-            """
-            exit_code = with_retries(self.getJobExitCode, batchJobID)
-
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(AbstractGridEngineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super(AbstractGridEngineBatchSystem, self).__init__(
+            config, maxCores, maxMemory, maxDisk)
         self.config = config
 
         self.currentJobs = set()
@@ -314,8 +311,8 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         self.killQueue = Queue()
         self.killedJobsQueue = Queue()
         # get the associated worker class here
-        self.worker = self.Worker(self.newJobsQueue, self.updatedJobsQueue, self.killQueue,
-                              self.killedJobsQueue, self)
+        self.worker = self.Worker(self.newJobsQueue, self.updatedJobsQueue,
+                                  self.killQueue, self.killedJobsQueue, self)
         self.worker.start()
         self._getRunningBatchJobIDsTimestamp = None
         self._getRunningBatchJobIDsCache = {}
@@ -381,7 +378,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 self.config.statePollingWait):
             batchIds = self._getRunningBatchJobIDsCache
         else:
-            batchIDs = with_retries(self.workfer.getRunningJobIDs)
+            batchIds = with_retries(self.workfer.getRunningJobIDs)
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
         batchIds.update(self.getRunningLocalJobIDs())
@@ -415,7 +412,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
     def setEnv(self, name, value=None):
         if value and ',' in value:
             raise ValueError(type(self).__name__ + " does not support commata in environment variable values")
-        return super(AbstractGridEngineBatchSystem,self).setEnv(name, value)
+        return super(AbstractGridEngineBatchSystem, self).setEnv(name, value)
 
     @classmethod
     def getWaitDuration(self):
