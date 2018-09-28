@@ -378,7 +378,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 self.config.statePollingWait):
             batchIds = self._getRunningBatchJobIDsCache
         else:
-            batchIds = with_retries(self.workfer.getRunningJobIDs)
+            batchIds = with_retries(self.worker.getRunningJobIDs)
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
         batchIds.update(self.getRunningLocalJobIDs())
