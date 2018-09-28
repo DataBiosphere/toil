@@ -61,7 +61,7 @@ class AzureInstance(Instance):
         except ConfigParser.NoSectionError:
             azureSetupUrl = 'https://toil.readthedocs.io/en/3.15.0/running/cloud/azure.html#preparing-your-azure-environment'
             raise RuntimeError('Improperly formatted or nonexistant Azure credentials. Please see {} for instructions on'
-                               'properly integrating Toil and AWS.'.format(azureSetupUrl))
+                               'properly integrating Toil and Azure.'.format(azureSetupUrl))
     @property
     def driver(self):
         """Create the driver object needed for most operations."""

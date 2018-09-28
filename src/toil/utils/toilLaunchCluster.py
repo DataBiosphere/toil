@@ -21,11 +21,23 @@ from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
 from toil import applianceSelf
-
+from contextlib import contextmanager
 from toil.jobStores import azure_credential_file_path as credential_file_path
 
 logger = logging.getLogger(__name__)
 
+@contextmanager
+def updatStatusInList(cluster, provisioner):
+    try:
+        yield
+    except Exception:
+        cluster.updateStatusInList('broken', provisioner)
+        raise
+    except KeyboardInterrupt:
+        cluster.updateStatusInList('broken', provisioner)
+        raise
+    else:
+        cluster.updateStatusInList('running', provisioner)
 
 def createTagsDict(tagList):
     tagsDict = dict()
@@ -146,7 +158,8 @@ def main():
                              clusterName=config.clusterName,
                              zone=config.zone,
                              nodeStorage=config.nodeStorage)
-    try:
+
+    with updatStatusInList(cluster, config.provisioner):
         cluster.launchCluster(leaderNodeType=config.leaderNodeType,
                               leaderStorage=config.leaderStorage,
                               owner=owner,
@@ -156,14 +169,7 @@ def main():
                               vpcSubnet=config.vpcSubnet,
                               publicKeyFile=config.publicKeyFile,
                               azureStorageCredentials=config.azureStorageCredentials)
-    except Exception:
-        cluster.updateStatusInList('broken', config.provisioner)
-        raise
-    except KeyboardInterrupt:
-        cluster.updateStatusInList('broken', config.provisioner)
-        raise
-    else:
-        cluster.updateStatusInList('running', config.provisioner)
+
 
     for nodeType, workers in zip(nodeTypes, numNodes):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
