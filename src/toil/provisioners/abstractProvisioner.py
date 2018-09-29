@@ -327,7 +327,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             with open(listPath, 'r') as f:
                 clusters = json.load(f)
 
-            if clusters[provisioner][zone][name]:
+            if name in clusters[provisioner][zone]:
                 del clusters[provisioner][zone][name]
 
             with open(listPath, 'w') as f:
