@@ -268,7 +268,8 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         with open(self.clusterListPath(), 'r') as f:
             clusters = json.load(f)
 
-        clusters[provisioner][self._zone][self.clusterName]['status'] = status
+        if self.clusterName in clusters[provisioner][self._zone]:
+            clusters[provisioner][self._zone][self.clusterName]['status'] = status
 
         with open(self.clusterListPath(), 'w') as f:
             json.dump(clusters, f)
