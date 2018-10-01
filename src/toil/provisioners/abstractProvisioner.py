@@ -268,7 +268,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         with open(self.clusterListPath(), 'r') as f:
             clusters = json.load(f)
 
-        if self.clusterName in clusters[provisioner][self._zone]:
+        # For some reason, on when Jenkins launches a cluster the zone variable is not set.
+        # Checking self._zone insures that the tests pass.
+        if self._zone and clusters[provisioner][self._zone].get(self.clusterName, None):
             clusters[provisioner][self._zone][self.clusterName]['status'] = status
 
         with open(self.clusterListPath(), 'w') as f:
@@ -328,7 +330,9 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             with open(listPath, 'r') as f:
                 clusters = json.load(f)
 
-            if name in clusters[provisioner][zone]:
+            # For some reason, on when Jenkins launches a cluster the zone variable is not set.
+            # Checking zone insures that the tests pass.
+            if zone and clusters[provisioner][zone].get(name, None):
                 del clusters[provisioner][zone][name]
 
             with open(listPath, 'w') as f:
@@ -352,11 +356,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         # confirm it really is an RSA public key
         assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
         return masterPublicKey
-
-
-
-
-
 
 
     cloudConfigTemplate = """#cloud-config
