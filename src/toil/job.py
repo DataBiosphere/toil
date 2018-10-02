@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -309,6 +309,7 @@ class Job(BaseJob):
         self._promiseJobStore = None
         self._fileStore = None
         self._tempDir = None
+        self._succeeded = True
 
     def run(self, fileStore):
         """

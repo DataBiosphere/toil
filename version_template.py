@@ -25,7 +25,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import at module level unless you want the imported value to be included in the output
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
-baseVersion = '3.18.0a1'
+baseVersion = '3.19.0a1'
 
 cgcloudVersion = '1.6.0a1.dev393'
 
@@ -109,7 +109,7 @@ def buildNumber():
 def currentCommit():
     from subprocess import check_output
     try:
-        output = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0]
+        output = str(check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0])
     except:
         # Return this we are not in a git environment.
         return '000'

@@ -216,8 +216,13 @@ class Node(object):
             kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] \
                                  + kwargs.get('sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
-        # Forward port 3000 for grafana dashboard
-        commandTokens.extend(['-L', '3000:localhost:3000', '-L', '9090:localhost:9090'])
+        # Forward ports:
+        # 3000 for Grafana dashboard
+        # 9090 for Prometheus dashboard
+        # 5050 for Mesos dashboard (although to talk to agents you will need a proxy)
+        commandTokens.extend(['-L', '3000:localhost:3000', \
+                              '-L', '9090:localhost:9090', \
+                              '-L', '5050:localhost:5050'])
         if sshOptions:
             # add specified options to ssh command
             assert isinstance(sshOptions, list)

@@ -165,9 +165,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         self.executor = self._buildExecutor()
 
-        self.lastReconciliation = time.time()
-        self.reconciliationPeriod = 120
-
         # These control how frequently to log a message that would indicate if no jobs are
         # currently able to run on the offers given. This can happen if the cluster is busy
         # or if the nodes in the cluster simply don't have enough resources to run the jobs
@@ -285,7 +282,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         Gets the period of time to wait (floating point, in seconds) between checking for
         missing/overlong jobs.
         """
-        return self.reconciliationPeriod
+        return 1
 
     def _buildExecutor(self):
         """

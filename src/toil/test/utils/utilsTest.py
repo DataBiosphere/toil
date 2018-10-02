@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,20 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
-
 from builtins import str
 import os
 import sys
 import uuid
 import shutil
 import tempfile
-
 import pytest
+import logging
+
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+sys.path.insert(0, pkg_root)  # noqa
 
 import toil
-import logging
 import toil.test.sort.sort
 from toil import subprocess
 from toil import resolveEntryPoint
@@ -35,7 +35,6 @@ from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
-
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +62,9 @@ class UtilsTest(ToilTest):
             self.correctSort.sort()
 
     def tearDown(self):
+        if os.path.exists(self.tempDir):
+            shutil.rmtree(self.tempDir)
         ToilTest.tearDown(self)
-        system("rm -rf %s" % self.tempDir)
 
     @property
     def toilMain(self):
@@ -184,13 +184,28 @@ class UtilsTest(ToilTest):
             except NameError:
                 pass
 
+    def _createSortOptions(self, jobstoreLoc, fails=False):
+        options = Job.Runner.getDefaultOptions(jobstoreLoc)
+        options.badWorker = fails
+        options.clean = 'never'  # Will delete jobstore after the testing is done.
+        options.logLevel = 'info'
+        options.overwriteOutput = True
+        options.outputFile = self.outputFile
+        options.fileToSort = None
+        options.downCheckpoints = False
+        options.N = self.N
+        options.debugWorker = False
+        options.sleepDuration = 15
+        options.numLines = 50
+        options.lineLength = 20  # Ensures that there is enough time to get a running response from before it finshes.
+        return options
+
     @slow
     def testUtilsSort(self):
         """
         Tests the status and stats commands of the toil command line utility using the
         sort example with the --restart flag.
         """
-
         # Get the sort command to run
         toilCommand = [sys.executable,
                        '-m', toil.test.sort.sort.__name__,
@@ -235,7 +250,7 @@ class UtilsTest(ToilTest):
                     self.fail()  # Exceeded a reasonable number of restarts
                 totalTrys += 1
 
-                # Check the toil status command does not issue an exception
+        # Check the toil status command does not issue an exception
         system(self.statusCommand())
 
         # Check we can run 'toil stats'

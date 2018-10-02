@@ -72,7 +72,7 @@ def apply_conf_file(fn, conf_filename):
 
 def per_core_reserve_from_stream(stream):
     for k, v in tokenize_conf_stream(stream):
-        if k == "RESOURCE_RESERVE_PER_SLOT":
+        if k in {"RESOURCE_RESERVE_PER_SLOT", "RESOURCE_RESERVE_PER_TASK"}:
             return v.upper()
     return None
 
