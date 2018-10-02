@@ -109,7 +109,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
         self.mesosMasterAddress = config.mesosMasterAddress
 
-        # Written to when Mesos kills tasks, as directed by Toil
+        # Written to when Mesos kills tasks, as directed by Toil.
+        # Jobs must not enter this set until they are removed from runningJobMap.
         self.killedJobIds = set()
 
         # The IDs of job to be killed
@@ -213,29 +214,51 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         return jobID
 
     def killBatchJobs(self, jobIDs):
+    
+        # Some jobs may be local. Kill them first.
         self.killLocalJobs(jobIDs)
-        # FIXME: probably still racy
+        
+        # The driver thread does the actual work of killing the remote jobs.
+        # We have to give it instructions, and block until the jobs are killed.
         assert self.driver is not None
+        
+        # This is the set of jobs that this invocation has asked to be killed,
+        # but which haven't been killed yet.
         localSet = set()
+        
         for jobID in jobIDs:
+            # Queue the job up to be killed
             self.killJobIds.add(jobID)
             localSet.add(jobID)
+            # Record that we meant to kill it, in case it finishes up by itself.
             self.intendedKill.add(jobID)
-            # FIXME: a bit too expensive for my taste
+            
             if jobID in self.getIssuedBatchJobIDs():
+                # Since the job has been issued, we have to kill it
                 taskId = addict.Dict()
                 taskId.value = str(jobID)
+                log.debug("Kill issued job %s" % str(jobID))
                 self.driver.killTask(taskId)
             else:
+                # This job was never issued. Maybe it is a local job.
+                # We don't have to kill it.
+                log.debug("Skip non-issued job %s" % str(jobID))
                 self.killJobIds.remove(jobID)
                 localSet.remove(jobID)
+        # Now localSet just has the non-local/issued jobs that we asked to kill
         while localSet:
+            # Wait until they are all dead
             intersection = localSet.intersection(self.killedJobIds)
             if intersection:
                 localSet -= intersection
+                # When jobs are killed that we asked for, clear them out of
+                # killedJobIds where the other thread put them
                 self.killedJobIds -= intersection
             else:
                 time.sleep(1)
+        # Now all the jobs we asked to kill are dead. We know they are no
+        # longer running, because that update happens before their IDs go into
+        # killedJobIds. So we can safely return.
 
     def getIssuedBatchJobIDs(self):
         jobIds = set(self.jobQueues.jobIDs())
@@ -577,12 +600,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         log.debug("Job %i is in state '%s' due to reason '%s'.", jobID, update.state, update.reason)
         
         def jobEnded(_exitStatus, wallTime=None):
-            try:
-                self.killJobIds.remove(jobID)
-            except KeyError:
-                pass
-            else:
-                self.killedJobIds.add(jobID)
+            """
+            Notify external observers of the job ending.
+            """
             self.updatedJobsQueue.put((jobID, _exitStatus, wallTime))
             agentIP = None
             try:
@@ -591,6 +611,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 log.warning("Job %i returned exit code %i but isn't tracked as running.",
                             jobID, _exitStatus)
             else:
+                # Mark the job as no longer running. We MUST do this BEFORE
+                # saying we killed the job, or it will be possible for another
+                # thread to kill a job and then see it as running.
                 del self.runningJobMap[jobID]
 
             try:
@@ -598,6 +621,17 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             except KeyError:
                 log.warning("Job %i returned exit code %i from unknown host.",
                             jobID, _exitStatus)
+                            
+            try:
+                self.killJobIds.remove(jobID)
+            except KeyError:
+                pass
+            else:
+                # We were asked to kill this job, so say that we have done so.
+                # We do this LAST, after all status updates for the job have
+                # been handled, to ensure a consistent view of the scheduler
+                # state from other threads.
+                self.killedJobIds.add(jobID)
 
         if update.state == 'TASK_FINISHED':
             # We get the running time of the job via the timestamp, which is in job-local time in seconds
