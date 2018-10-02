@@ -93,6 +93,8 @@ SHELL=bash
 python=python2.7
 pip=pip2.7
 tests=src
+# Test just the Mesos batch system
+tests=src/toil/test/batchSystems/batchSystemTest.py::MesosBatchSystemTest
 tests_local=src/toil/test
 # do slightly less than travis timeout of 10 min.
 pytest_args_local=-vv --timeout=530
