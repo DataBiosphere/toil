@@ -204,10 +204,13 @@ class MesosExecutor(Executor):
             if job.userScript:
                 job.userScript.register()
             log.debug("Invoking command: '%s'", job.command)
+            # Construct the job's environment
+            jobEnv = dict(os.environ, **job.environment)
+            log.debug('Using environment variables: %s', jobEnv.keys())
             with self.popenLock:
                 return subprocess.Popen(job.command,
                                         preexec_fn=lambda: os.setpgrp(),
-                                        shell=True, env=dict(os.environ, **job.environment))
+                                        shell=True, env=jobEnv)
 
         def sendUpdate(task, taskState, wallTime=None, msg=''):
             update = addict.Dict()
