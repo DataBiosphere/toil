@@ -60,6 +60,7 @@ class MesosExecutor(Executor):
         log.debug('Preparing system for resource download')
         Resource.prepareSystem()
         self.address = None
+        self.id = None
         # Setting this value at this point will ensure that the toil workflow directory will go to
         # the mesos sandbox if the user hasn't specified --workDir on the command line.
         if not os.getenv('TOIL_WORKDIR'):
@@ -69,7 +70,11 @@ class MesosExecutor(Executor):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
-        log.debug("Registered with framework")
+        
+        # Get the ID we have been assigned, if we have it
+        self.id = executorInfo.executor_id.get('value', None)
+        
+        log.debug("Registered executor %s with framework", self.id)
         self.address = socket.gethostbyname(agentInfo.hostname)
         nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver])
         nodeInfoThread.daemon = True
@@ -207,6 +212,9 @@ class MesosExecutor(Executor):
         def sendUpdate(task, taskState, wallTime=None, msg=''):
             update = addict.Dict()
             update.task_id.value = task.task_id.value
+            if self.id is not None:
+                # Sign our messages as from us, since the driver doesn't do it.
+                update.executor_id.value = self.id
             update.state = taskState
             update.timestamp = wallTime
             update.message = msg

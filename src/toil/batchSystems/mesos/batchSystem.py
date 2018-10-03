@@ -654,7 +654,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             if str(update.reason) == '{}':
                 log.warning("Entire update: %s", update)
                 # We see weird failures like this on Google. Try dumping the sandbox logs
-                self._handleFailedExecutor(update.agent_id.value, update.executor_id.value)
+                # If we don't have an executor ID, dump them all.
+                self._handleFailedExecutor(update.agent_id.value, update.executor_id.get('value', None))
             
             jobEnded(exitStatus)
         elif update.state in ('TASK_LOST', 'TASK_KILLED', 'TASK_ERROR'):
@@ -728,13 +729,15 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         log.debug('Registered with new master')
         
-    def _handleFailedExecutor(self, agentID, executorID):
+    def _handleFailedExecutor(self, agentID, executorID=None):
         """
         Should be called when we find out an executor has failed.
         
         Gets the log from some container (since we are never handed a container
         ID) that ran on the given executor on the given agent, if the agent is
         still up, and dumps it to our log. All IDs are strings.
+        
+        If executorID is None, dumps all executors from the agent.
         
         Useful for debugging failing executor code.
         """
@@ -772,7 +775,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             agentLogFilenames = []
             for filename in filesDict.iterkeys():
                 if (self.frameworkId in filename and agentID in filename and
-                    executorID in filename):
+                    (executorID is None or executorID in filename)):
                     
                     stderrFilenames.append("%s/stderr" % filename)
                 elif filename.endswith("log"):
@@ -826,9 +829,12 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         Invoked when an executor has exited/terminated abnormally.
         """
-        log.warning("Executor '%s' reported lost with status '%s'.", executorId.value, status)
         
-        self._handleFailedExecutor(agentId.value, executorId.value)
+        failedId = executorId.get('value', None)
+        
+        log.warning("Executor '%s' reported lost with status '%s'.", failedId, status)
+        
+        self._handleFailedExecutor(agentId.value, failedId)
         
     @classmethod
     def setOptions(cl, setOption):
