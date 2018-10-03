@@ -27,6 +27,7 @@ import shutil
 
 from toil.common import Toil
 from toil.job import Job
+from toil.realtimeLogger import RealtimeLogger
 
 defaultLines = 1000
 defaultLineLen = 50
@@ -38,7 +39,7 @@ def setup(job, inputFile, N, downCheckpoints, options):
     Sets up the sort.
     Returns the FileID of the sorted file
     """
-    job.fileStore.logToMaster("Starting the merge sort")
+    RealtimeLogger.info("Starting the merge sort")
     return job.addChildJobFn(down,
                              inputFile, N,
                              downCheckpoints,
@@ -60,7 +61,7 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
     length = os.path.getsize(inputFile)
     if length > N:
         # We will subdivide the file
-        job.fileStore.logToMaster("Splitting file: %s of size: %s"
+        RealtimeLogger.info("Splitting file: %s of size: %s"
                 % (inputFileStoreID, length), level=logging.CRITICAL)
         # Split the file into two copies
         midPoint = getMidPoint(inputFile, 0, length)
@@ -82,7 +83,7 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
                                     preemptable=True, options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
-        job.fileStore.logToMaster("Sorting file: %s of size: %s"
+        RealtimeLogger.info("Sorting file: %s of size: %s"
                 % (inputFileStoreID, length), level=logging.CRITICAL)
         # Sort the copy and write back to the fileStore
         shutil.copyfile(inputFile, inputFile + '.sort')
@@ -100,7 +101,7 @@ def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
             inputFileHandle1 = codecs.getreader('utf-8')(inputFileHandle1)
             with job.fileStore.readGlobalFileStream(inputFileID2) as inputFileHandle2:
                 inputFileHandle2 = codecs.getreader('utf-8')(inputFileHandle2)
-                job.fileStore.logToMaster("Merging %s and %s to %s"
+                RealtimeLogger.info("Merging %s and %s to %s"
                     % (inputFileID1, inputFileID2, outputFileStoreID))
                 merge(inputFileHandle1, inputFileHandle2, fileHandle)
         # Cleanup up the input files - these deletes will occur after the completion is successful.

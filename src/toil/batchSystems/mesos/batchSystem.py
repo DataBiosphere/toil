@@ -642,10 +642,20 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 exitStatus = int(update.message)
             except ValueError:
                 exitStatus = 255
-                log.warning("Job %i failed with message '%s' due to reason '%s'.", jobID, update.message, update.reason)
+                log.warning("Job %i failed with message '%s' due to reason '%s' on executor '%s' on agent '%s'.",
+                            jobID, update.message, update.reason,
+                            update.executor_id, update.agent_id)
             else:
-                log.warning("Job %i failed with exit status %i and message '%s' due to reason '%s'.", jobID, exitStatus,
-                            update.message, update.reason)
+                log.warning("Job %i failed with exit status %i and message '%s' due to reason '%s' on executor '%s' on agent '%s'.",
+                            jobID, exitStatus,
+                            update.message, update.reason,
+                            update.executor_id, update.agent_id)
+            
+            if str(update.reason) == '{}':
+                log.warning("Entire update: %s", update)
+                # We see weird failures like this on Google. Try dumping the sandbox logs
+                self._handleFailedExecutor(update.agent_id.value, update.executor_id.value)
+            
             jobEnded(exitStatus)
         elif update.state in ('TASK_LOST', 'TASK_KILLED', 'TASK_ERROR'):
             log.warning("Job %i is in unexpected state %s with message '%s' due to reason '%s'.",
