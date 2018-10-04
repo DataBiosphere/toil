@@ -157,7 +157,7 @@ If the run was successful, this would not return much valuable information, some
     2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Checking if we have files for Toil
     The root job of the job store is absent, the workflow completed successfully.
 
-Otherwise, the ``stats`` command should return the following:
+Otherwise, the ``status`` command should return the following:
 
     There are ``x`` unfinished jobs, ``y`` parent jobs with children, ``z`` jobs with services, ``a`` services, and ``b`` totally failed jobs currently in  ``c``.
 
