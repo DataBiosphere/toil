@@ -358,7 +358,7 @@ starting from the previously failed jobs. We can restart the pipeline by running
 
 We can also change the number of times Toil will attempt to retry a failed job::
 
-   (venv) $ python sort.py --retryCount 2 --restart --overwriteOutput=True
+   (venv) $ python sort.py file:jobStore --retryCount 2 --restart --overwriteOutput=True
 
 You'll now see Toil attempt to rerun the failed job until it runs out of tries.
 ``--retryCount`` is useful for non-systemic errors, like downloading a file that
@@ -369,7 +369,7 @@ line 30, or remove it, and then run
 
 ::
 
-    (venv) $ python sort.py --restart --overwriteOutput=True
+    (venv) $ python sort.py file:jobStore --restart --overwriteOutput=True
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
