@@ -4,6 +4,7 @@ import logging
 import os
 import subprocess
 import sys
+import time
 
 log = logging.getLogger(__name__)
 
@@ -73,41 +74,72 @@ def run_parallel_to_xml(suite, args):
         os.unlink(name)
     num_failures = 0
     index = itertools.count()
-    pids = set()
-    pids_to_keyword = {}
+    
+    # Keep track of the running popen objects by keyword
+    keyword_to_process = {}
     try:
         for keyword in suite:
             if keyword:
-                process = run_to_xml(keyword, str(next(index)), args)
-                pids.add(process.pid)
-                pids_to_keyword[process.pid] = keyword
-        while pids:
-            pid, status = os.wait()
-            pids.remove(pid)
-            if os.WIFEXITED(status):
-                status = os.WEXITSTATUS(status)
-                if status:
-                    num_failures += 1
-                    log.info('Test keyword %s failed: %s', pids_to_keyword[pid], pytest_errors[status])
-                else:
-                    log.info('Test keyword %s passed successfully', pids_to_keyword[pid])
-            else:
-                num_failures += 1
-                log.info('Test keyword %s failed: abnormal exit', pids_to_keyword[pid])
-
-            del pids_to_keyword[pid]
+                keyword_to_process[keyword] = run_to_xml(keyword, str(next(index)), args)
+                
+        # We will periodically poll to see what is running, and every so many
+        # loops we will announce it, so watching the Jenkins log isn't boring.
+        loops = 0
+                
+        while len(keyword_to_process) > 0:
+            # Make a list of finished keywords
+            finished = []
+            for keyword, process in keyword_to_process.iteritems():
+                if process.poll() is not None:
+                    # This keyword has finished!
+                    finished.append(keyword)
+                    status = process.returncode
+                    
+                    if status > 0:
+                        num_failures += 1
+                        if status < len(pytest_errors):
+                            log.info('Test keyword %s failed: %s', keyword, pytest_errors[status])
+                        else:
+                            log.info('Test keyword %s failed with unassigned exit code %d', keyword, status)
+                    elif status == 0:
+                        log.info('Test keyword %s passed successfully', keyword)
+                    else:
+                        # We got a signal
+                        num_failures += 1
+                        log.info('Test keyword %s failed with code %d: abnormal exit', keyword, status)
+            
+            for keyword in finished:
+                # Clean up the popen objects for finished test runs
+                del keyword_to_process[keyword]
+                
+            if loops % 30 == 0:
+                # Announce what is still running about every 5 minutes
+                log.info('Still running at %d: %s', loops, str(list(keyword_to_process.keys())))
+                
+            loops += 1
+            time.sleep(10)
+                
     except:
-        for pid in pids:
-            os.kill(pid, 15)
+        for process in keyword_to_process.values():
+            process.terminate()
         raise
 
     if None in suite:
         everything_else = ' and '.join('not (%s)' % keyword
                                        for keyword in itertools.chain(*test_suites.values()))
+        log.info('Starting other tests')
         process = run_to_xml(everything_else, str(next(index)), args)
-        if process.wait():
+        
+        loops = 0
+        while process.poll() is None:
+            if loops % 30 == 0:
+                log.info('Still running other tests at %d', loops)
+            loops += 1
+            time.sleep(10)
+        if process.returncode:
             num_failures += 1
             log.info('Test keyword %s failed which was running in series', everything_else)
+        log.info('Finished other tests')
 
     import xml.etree.ElementTree as ET
     testsuites = ET.Element('testsuites')
