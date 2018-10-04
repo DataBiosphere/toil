@@ -81,8 +81,8 @@ Where ``discoverfiles.py`` is the following:
         options = Job.Runner.getDefaultArgumentParser().parse_args()
 
         job1 = discoverFiles(path="/", displayName='sysFiles')
-        job2 = discoverFiles(path="/home/lifeisaboutfishtacos", displayName='userFiles')
-        job3 = discoverFiles(path="/home/andbeeftacos")
+        job2 = discoverFiles(path=os.path.expanduser("~"), displayName='userFiles')
+        job3 = discoverFiles(path="/home/")
 
         job1.addChild(job2)
         job2.addChild(job3)
