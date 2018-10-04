@@ -1,4 +1,7 @@
 from __future__ import absolute_import
+from future import standard_library
+standard_library.install_aliases()
+
 from builtins import next
 from builtins import object
 from abc import ABCMeta, abstractmethod
@@ -7,7 +10,11 @@ import shutil
 import threading
 from toil import subprocess
 import multiprocessing
+from urllib.error import URLError
+from six.moves.urllib.request import urlopen
+from contextlib import closing
 
+from toil.lib.retry import retry
 from toil.lib.processes import which
 from toil.lib.threading import ExceptionalThread
 from future.utils import with_metaclass
@@ -28,11 +35,24 @@ class MesosTestSupport(object):
         self.master.start()
         self.agent = self.MesosAgentThread(numCores)
         self.agent.start()
+        
+        # Wait for the master to come up.
+        # Bad Things will happen if the master is not yet ready when Toil tries to use it.
+        for attempt in retry(predicate=lambda e: isinstance(e, URLError)):
+            with attempt:
+                log.info('Checking if Mesos is ready...')
+                with closing(urlopen('http://localhost:5050/version')) as content:
+                    content.read()
+        
+        log.info('Mesos is ready! Running test.')
 
     def _stopMesos(self):
-        self.agent.popen.kill()
+        # Terminate Mesos instead of killing it. We want to give Mesos a chance
+        # to shut down properly; not doing so may prevent us from immediately
+        # starting Mesos again on the same port for another test.
+        self.agent.popen.terminate()
         self.agent.join()
-        self.master.popen.kill()
+        self.master.popen.terminate()
         self.master.join()
 
     class MesosThread(with_metaclass(ABCMeta, ExceptionalThread)):
