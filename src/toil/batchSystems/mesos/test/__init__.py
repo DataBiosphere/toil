@@ -39,7 +39,7 @@ class MesosTestSupport(object):
         
         # Wait for the master to come up.
         # Bad Things will happen if the master is not yet ready when Toil tries to use it.
-        for attempt in retry(predicate=lambda e: return True):
+        for attempt in retry(predicate=lambda e: True):
             with attempt:
                 log.info('Checking if Mesos is ready...')
                 with closing(urlopen('http://127.0.0.1:5050/version')) as content:
