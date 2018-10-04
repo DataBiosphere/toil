@@ -196,13 +196,13 @@ exist yet, Toil will create it for you.
 
   --help                -h also accepted.  Displays this help menu.
   --tempDirRoot TEMPDIRROOT
-                        Path to where temporary directory containing all temp
+                        Path to the temporary directory where all temp
                         files are created, by default uses the current working
                         directory as the base.
   --version             Display version.
   --provisioner CLOUDPROVIDER
                         -p CLOUDPROVIDER also accepted.  The provisioner for
-                        cluster auto-scaling.  Both aws and google's gce are
+                        cluster auto-scaling.  Both AWS and GCE are
                         currently supported.
   --zone ZONE           -z ZONE also accepted.  The availability zone of the leader. This
                         parameter can also be set via the TOIL_AWS_ZONE or TOIL_AZURE_ZONE, or TOIL_GCE_ZONE
@@ -215,7 +215,7 @@ exist yet, Toil will create it for you.
                         leader.
   --keyPairName KEYPAIRNAME
                         The name of the AWS or ssh key pair to include on the
-                        instance
+                        instance.
   --boto BOTOPATH       The path to the boto credentials directory. This is
                         transferred to all nodes in order to access the AWS
                         jobStore from non-AWS instances.
@@ -234,12 +234,12 @@ exist yet, Toil will create it for you.
   --nodeTypes NODETYPES
                         Comma-separated list of node types to create while
                         launching the leader. The syntax for each node type
-                        depends on the provisioner used. For the aws
+                        depends on the provisioner used. For the AWS
                         provisioner this is the name of an EC2 instance type
-                        followed by a colon and the price in dollar to bid for
+                        followed by a colon and the price in dollars to bid for
                         a spot instance, for example 'c3.8xlarge:0.42'. Must
                         also provide the --workers argument to specify how
-                        many workers of each node type to create
+                        many workers of each node type to create.
   --workers WORKERS
                         -w WORKERS also accepted.  Comma-separated list of the
                         number of workers of each node type to launch alongside
@@ -256,7 +256,7 @@ exist yet, Toil will create it for you.
 
 **Logging Options**
 
-  --logOff              Same as -\\-logCritical
+  --logOff              Same as -\\-logCritical.
   --logCritical         Turn on logging at level CRITICAL and above. (default
                         is INFO)
   --logError            Turn on logging at level ERROR and above. (default is
@@ -270,7 +270,7 @@ exist yet, Toil will create it for you.
   --logLevel LOGLEVEL   Log at given level (may be either OFF (or CRITICAL),
                         ERROR, WARN (or WARNING), INFO or DEBUG). (default is
                         INFO)
-  --logFile LOGFILE     File to log in
+  --logFile LOGFILE     File to log in.
   --rotatingLogging     Turn on rotating logging, which prevents log files
                         getting too big.
 
