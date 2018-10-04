@@ -651,12 +651,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                             update.message, update.reason,
                             update.executor_id, update.agent_id)
             
-            if str(update.reason) == '{}':
-                log.warning("Entire update: %s", update)
-                # We see weird failures like this on Google. Try dumping the sandbox logs
-                # If we don't have an executor ID, dump them all.
-                self._handleFailedExecutor(update.agent_id.value, update.executor_id.get('value', None))
-            
             jobEnded(exitStatus)
         elif update.state in ('TASK_LOST', 'TASK_KILLED', 'TASK_ERROR'):
             log.warning("Job %i is in unexpected state %s with message '%s' due to reason '%s'.",
