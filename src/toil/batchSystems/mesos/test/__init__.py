@@ -13,6 +13,7 @@ import multiprocessing
 from urllib.error import URLError
 from six.moves.urllib.request import urlopen
 from contextlib import closing
+import time
 
 from toil.lib.retry import retry
 from toil.lib.processes import which
@@ -38,21 +39,33 @@ class MesosTestSupport(object):
         
         # Wait for the master to come up.
         # Bad Things will happen if the master is not yet ready when Toil tries to use it.
-        for attempt in retry(predicate=lambda e: isinstance(e, URLError)):
+        for attempt in retry(predicate=lambda e: return True):
             with attempt:
                 log.info('Checking if Mesos is ready...')
-                with closing(urlopen('http://localhost:5050/version')) as content:
+                with closing(urlopen('http://127.0.0.1:5050/version')) as content:
                     content.read()
         
         log.info('Mesos is ready! Running test.')
 
+    def _stopProcess(self, process, timeout=10):
+        """
+        Gracefully stop a process on a timeout, given the Popen object for the process.
+        """
+        
+        process.terminate()
+        waited = 0
+        while waited < timeout and process.poll() is None:
+            time.sleep(1)
+            waited += 1
+        if process.poll() is None:
+            # It didn't shut down gracefully
+            log.warning('Forcibly killing child which ignored SIGTERM')
+            process.kill()
+
     def _stopMesos(self):
-        # Terminate Mesos instead of killing it. We want to give Mesos a chance
-        # to shut down properly; not doing so may prevent us from immediately
-        # starting Mesos again on the same port for another test.
-        self.agent.popen.terminate()
+        self._stopProcess(self.agent.popen)
         self.agent.join()
-        self.master.popen.terminate()
+        self._stopProcess(self.master.popen)
         self.master.join()
 
     class MesosThread(with_metaclass(ABCMeta, ExceptionalThread)):
