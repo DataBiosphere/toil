@@ -70,12 +70,12 @@ Commandline Options
                         to a file. The default location for this file is the
                         current working directory, but an absolute path can
                         also be passed to specify where this file should be
-                        written. This options only applies when using scalable
+                        written. This option only applies when using scalable
                         batch systems.
   --restart             If -\\-restart is specified then will attempt to restart
                         existing workflow at the location pointed to by the
                         -\\-jobStore option. Will raise an exception if the
-                        workflow does not exist
+                        workflow does not exist.
 
 **Logging Options**
 
@@ -246,7 +246,7 @@ the logging module:
 
   --disableCaching      Disables caching in the file store. This flag must be
                         set to use a batch system that does not support
-                        caching such as Grid Engine, Parasol, LSF, or Slurm
+                        caching such as Grid Engine, Parasol, LSF, or Slurm.
   --disableChaining     Disables chaining of jobs (chaining uses one job's
                         resource allocation for its successor job if
                         possible).
@@ -268,7 +268,7 @@ the logging module:
   --writeLogsGzip FILEPATH
                         Identical to -\\-writeLogs except the logs files are
                         gzipped on the leader.
-  --realTimeLogging     Enable real-time logging from workers to masters
+  --realTimeLogging     Enable real-time logging from workers to masters.
   --sseKey SSEKEY       Path to file containing 32 character key to be used
                         for server-side encryption on awsJobStore or
                         googleJobStore. SSE will not be used if this flag is
