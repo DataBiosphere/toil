@@ -82,7 +82,7 @@ To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
 |                             | mindful of your Azure subscription's core      |
 |                             | limits. Also be mindful of how many cores and  |
 |                             | how much disk and memory your Toil jobs will   |
-|                             | need: if any requirements is greater than that |
+|                             | need: if any requirements are greater than that |
 |                             | provided by an entire node, a job may never be |
 |                             | schduled to run.                               |
 +-----------------------------+------------------------------------------------+
@@ -212,10 +212,10 @@ Launch a Toil Mesos Cluster
    installing, but when they do they will report in to Mesos and begin running
    any scheduled jobs.
 
-#. Whan you are done running your jobs, go back to the Azure portal, find the
+#. When you are done running your jobs, go back to the Azure portal, find the
    Resource Group you created for your cluster, and delete it. This will destroy
    all the VMs and any data stored on them, and stop Microsoft charging you
-   money for keeping the cluster around. As long as you used a separate Asure
+   money for keeping the cluster around. As long as you used a separate Azure
    Storage account in a different Resource Group, any information kept in the
    job stores and file stores you were using will be retained.
 
