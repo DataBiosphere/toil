@@ -313,6 +313,14 @@ def needs_aws(test_item):
                                  "this test.")(test_item)
 
 
+def travis_test(test_item):
+    test_item = _mark_test('travis', test_item)
+    if os.environ.get('TRAVIS') != 'true':
+        return unittest.skip("Set TRAVIS='true' to include this test.")(test_item)
+    else:
+        return test_item
+
+
 def file_begins_with(path, prefix):
     with open(path) as f:
         return f.read(len(prefix)) == prefix
@@ -406,7 +414,7 @@ def needs_mesos(test_item):
     test_item = _mark_test('mesos', test_item)
     try:
         # noinspection PyUnresolvedReferences
-        import mesos.native
+        import pymesos
         import psutil
     except ImportError:
         return unittest.skip(

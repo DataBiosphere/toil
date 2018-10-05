@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -159,7 +159,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
                     _setEnv('ADDRESS', '%s:%i' % (ip, port))
                     _setEnv('LEVEL', level)
                 else:
-                    log.info('Real-time logging disabled')
+                    log.debug('Real-time logging disabled')
             else:
                 if level:
                     log.warn('Ignoring nested request to start real-time logging')

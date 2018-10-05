@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,11 +25,7 @@ from builtins import object
 from builtins import super
 import logging
 import time
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+import os
 
 from toil.lib.humanize import bytes2human
 from toil import resolveEntryPoint
@@ -227,7 +223,6 @@ class Leader(object):
             if self.toilMetrics:
                 self.toilMetrics.shutdown()
 
-
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
@@ -240,7 +235,6 @@ class Leader(object):
         # Cleanup
         if len(self.toilState.totalFailedJobs) > 0:
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
-
 
         return self.jobStore.getRootJobReturnValue()
 

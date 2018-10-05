@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -755,6 +755,7 @@ class Toil(object):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
+        self.writePIDFile()
         if self.config.restart:
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
@@ -791,6 +792,7 @@ class Toil(object):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
+        self.writePIDFile()
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
@@ -1071,6 +1073,17 @@ class Toil(object):
     def _assertContextManagerUsed(self):
         if not self._inContextManager:
             raise ToilContextManagerException()
+
+    def writePIDFile(self):
+        """
+        Write a the pid of this process to a file in the jobstore.
+
+        Overwriting the current contents of pid.log is a feature, not a bug of this method.
+        Other methods will rely on always having the most current pid available.
+        So far there is no reason to store any old pids.
+        """
+        with self._jobStore.writeSharedFileStream('pid.log') as f:
+            f.write(str(os.getpid()))
 
 
 class ToilRestartException(Exception):

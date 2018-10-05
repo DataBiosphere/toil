@@ -43,7 +43,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 self.waitingJobs.append(newJob)
 
             # Queue jobs as necessary:
-            while len(self.waitingJobs) > 0:
+            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
                 jobID, cpu, memory, disk, jobName, command = self.waitingJobs.pop(0)
 
@@ -63,9 +63,6 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
                 # Add to queue of queued ("running") jobs
                 self.runningJobs.add(jobID)
-
-                # Add to allocated resources
-                self.allocatedCpus[jobID] = int(math.ceil(cpu))
 
             return activity
 

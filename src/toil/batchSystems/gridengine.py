@@ -132,7 +132,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def getWaitDuration(cls):
-        return 0.0
+        return 1
 
     @classmethod
     def obtainSystemConstants(cls):

@@ -667,6 +667,9 @@ class AbstractJobStoreTest(object):
                 dstUrl = other._prepareTestFile(store)
                 self.jobstore_initialized.exportFile(jobStoreFileID, dstUrl)
                 self.assertEqual(fileMD5, other._hashTestFile(dstUrl))
+                if otherCls.__name__ == 'FileJobStoreTest':  # Remove local Files
+                    os.remove(srcUrl[7:])
+                    os.remove(dstUrl[7:])
 
             make_tests(testImportExportFile, cls, otherCls=activeTestClassesByName,
                        size=dict(zero=0,
@@ -694,6 +697,8 @@ class AbstractJobStoreTest(object):
                 with self.jobstore_initialized.readSharedFileStream('foo') as f:
                     fileMD5 = hashlib.md5(f.read()).hexdigest()
                 self.assertEqual(fileMD5, srcMd5)
+                if otherCls.__name__ == 'FileJobStoreTest':  # Remove local Files
+                    os.remove(srcUrl[7:])
 
             make_tests(testImportSharedFile,
                        cls,

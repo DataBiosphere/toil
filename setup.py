@@ -24,8 +24,8 @@ def runSetup():
     boto3 = 'boto3>=1.7.50, <2.0'
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
+    pymesos = 'pymesos==0.3.7'
     psutil = 'psutil==3.0.1'
-    protobuf = 'protobuf==3.5.1'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     azureAnsible = 'ansible[azure]==2.5.0a1'
     azureStorage = 'azure-storage==0.35.1'
@@ -34,7 +34,7 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20180518123035'
+    cwltool = 'cwltool==1.0.20180820141117'
     schemaSalad = 'schema-salad>=2.6, <3'
     galaxyLib = 'galaxy-lib==17.9.3'
     htcondor = 'htcondor>=8.6.0'
@@ -45,6 +45,8 @@ def runSetup():
     docker = 'docker==2.5.1'
     subprocess32 = 'subprocess32<=3.5.2'
     dateutil = 'python-dateutil'
+    pytest = 'pytest==3.7.4'
+    pytest_cov = 'pytest-cov==2.5.1'
 
     core_reqs = [
         dill,
@@ -53,11 +55,14 @@ def runSetup():
         requests,
         docker,
         dateutil,
-        subprocess32]
+        psutil,
+        subprocess32,
+        pytest,
+        pytest_cov]
 
     mesos_reqs = [
-        psutil,
-        protobuf]
+        pymesos,
+        psutil]
     aws_reqs = [
         boto,
         boto3,
@@ -82,18 +87,17 @@ def runSetup():
     htcondor_reqs = [
         htcondor]
 
+    # htcondor is not supported by apple
+    # this is tricky to conditionally support in 'all' due
+    # to how wheels work, so it is not included in all and
+    # must be explicitly installed as an extra
     all_reqs = \
         mesos_reqs + \
         aws_reqs + \
         azure_reqs + \
         encryption_reqs + \
         google_reqs + \
-        cwl_reqs + \
-        htcondor_reqs
-
-    # htcondor is not supported by apple
-    if sys.platform != 'linux' and sys.platform != 'linux2':
-        all_reqs.remove(htcondor)
+        cwl_reqs
 
     # remove the subprocess32 backport if not python2
     if not sys.version_info[0] == 2:
@@ -117,7 +121,7 @@ def runSetup():
             'google': google_reqs,
             'cwl': cwl_reqs,
             'wdl': wdl_reqs,
-            'htcondor': htcondor_reqs,
+            'htcondor:sys_platform!="darwin"': htcondor_reqs,
             'all': all_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',

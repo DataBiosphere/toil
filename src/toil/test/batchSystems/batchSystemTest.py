@@ -100,6 +100,7 @@ class hidden(object):
             config = Config()
             from uuid import uuid4
             config.workflowID = str(uuid4())
+            config.cleanWorkDir = 'always'
             return config
 
         def _createConfig(self):
