@@ -354,7 +354,7 @@ Equivalently defines the workflow, where the functions
 :func:`toil.job.Job.addChildJobFn` and :func:`toil.job.Job.addFollowOnJobFn`
 are used to create job functions as children or follow-ons of an earlier job.
 
-Jobs graphs are not limited to trees, and can express arbitrary directed acylic
+Jobs graphs are not limited to trees, and can express arbitrary directed acyclic
 graphs. For a precise definition of legal graphs see
 :func:`toil.job.Job.checkJobGraphForDeadlocks`. The previous example could be
 specified as a DAG as follows::
