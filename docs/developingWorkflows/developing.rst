@@ -717,9 +717,9 @@ Example::
             Job.__init__(self,  memory="2G", cores=2, disk="3G")
             self.inputFileID = inputFileID
 
-        with fileStore.readGlobalFileStream(self.inputFileID) as fi:
-            with fileStore.writeGlobalFileStream() as (fo, outputFileID):
-                fo.write(fi.read() + 'World!')
+            with fileStore.readGlobalFileStream(self.inputFileID) as fi:
+                with fileStore.writeGlobalFileStream() as (fo, outputFileID):
+                    fo.write(fi.read() + 'World!')
             return outputFileID
 
 
