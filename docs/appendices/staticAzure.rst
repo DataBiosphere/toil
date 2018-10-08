@@ -82,7 +82,7 @@ To use the template to set up a Toil Mesos cluster on Azure, follow these steps.
 |                             | mindful of your Azure subscription's core      |
 |                             | limits. Also be mindful of how many cores and  |
 |                             | how much disk and memory your Toil jobs will   |
-|                             | need: if any requirements are greater than that |
+|                             | need: if any requirements are greater than that|
 |                             | provided by an entire node, a job may never be |
 |                             | schduled to run.                               |
 +-----------------------------+------------------------------------------------+
