@@ -77,7 +77,7 @@ Job chaining
 
 The scheduling of successor jobs is partially managed by the worker, reducing the
 number of individual jobs the leader needs to process. Currently this is very
-simple: if the there is a single next successor job to run and it's resources fit within the
+simple: if the there is a single next successor job to run and its resources fit within the
 resources of the current job and closely match the resources of the current job then
 the job is run immediately on the worker without returning to the leader. Further extensions
 of this strategy are possible, but for many workflows which define a series of serial successors
@@ -143,7 +143,7 @@ Toil support for Common Workflow Language
 The CWL document and input document are loaded using the 'cwltool.load_tool'
 module.  This performs normalization and URI expansion (for example, relative
 file references are turned into absolute file URIs), validates the document
-againsted the CWL schema, initializes Python objects corresponding to major
+against the CWL schema, initializes Python objects corresponding to major
 document elements (command line tools, workflows, workflow steps), and performs
 static type checking that sources and sinks have compatible types.
 
