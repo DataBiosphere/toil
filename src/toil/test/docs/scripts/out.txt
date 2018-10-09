@@ -1,0 +1,667 @@
+WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203347099648).
+INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+INFO:toil.realtimeLogger:Real-time logging disabled
+INFO:toil.leader:Issued job 'initialize_jobs' R/q/jobOZqdLq with job batch system ID: 0 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+2018-10-17 09:21:05,770 - toil.leader - INFO - Issued job 'initialize_jobs' R/q/jobOZqdLq with job batch system ID: 0 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+INFO:toil.leader:Job ended successfully: 'initialize_jobs' R/q/jobOZqdLq
+2018-10-17 09:21:06,958 - toil.leader - INFO - Job ended successfully: 'initialize_jobs' R/q/jobOZqdLq
+INFO:toil.leader:Issued job 'runQC' g/F/jobasM9jb with job batch system ID: 1 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+2018-10-17 09:21:06,963 - toil.leader - INFO - Issued job 'runQC' g/F/jobasM9jb with job batch system ID: 1 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+INFO:toil.leader:Issued job 'runQC' Y/9/jobpRhQSS with job batch system ID: 2 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+2018-10-17 09:21:06,972 - toil.leader - INFO - Issued job 'runQC' Y/9/jobpRhQSS with job batch system ID: 2 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+INFO:toil.leader:Issued job 'runQC' T/t/jobvdGwll with job batch system ID: 3 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+2018-10-17 09:21:06,986 - toil.leader - INFO - Issued job 'runQC' T/t/jobvdGwll with job batch system ID: 3 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+INFO:toil.statsAndLogging:Got message from job at time 10-17-2018 09:21:07: initialize_jobs
+2018-10-17 09:21:07,288 - toil.statsAndLogging - INFO - Got message from job at time 10-17-2018 09:21:07: initialize_jobs
+INFO:toil.leader:Job ended successfully: 'runQC' Y/9/jobpRhQSS
+2018-10-17 09:21:17,275 - toil.leader - INFO - Job ended successfully: 'runQC' Y/9/jobpRhQSS
+WARNING:toil.leader:The job seems to have left a log file, indicating failure: 'runQC' Y/9/jobpRhQSS
+2018-10-17 09:21:17,278 - toil.leader - WARNING - The job seems to have left a log file, indicating failure: 'runQC' Y/9/jobpRhQSS
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+2018-10-17 09:21:17,278 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:17,278 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:17,278 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:17,278 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+2018-10-17 09:21:17,278 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+WARNING:toil.leader:Y/9/jobpRhQSS    DEBUG:rdflib:RDFLib Version: 4.2.2
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    DEBUG:rdflib:RDFLib Version: 4.2.2
+WARNING:toil.leader:Y/9/jobpRhQSS    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl'
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl'
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl'
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl'
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346640896).
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346640896).
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.realtimeLogger:Real-time logging disabled
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.realtimeLogger:Real-time logging disabled
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' echo s/L/jobWJgktw with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' echo s/L/jobWJgktw with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:Y/9/jobpRhQSS    2018-10-17 09:21:12,583 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' echo s/L/jobWJgktw with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    2018-10-17 09:21:12,583 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' echo s/L/jobWJgktw with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' echo s/L/jobWJgktw
+2018-10-17 09:21:17,279 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' echo s/L/jobWJgktw
+WARNING:toil.leader:Y/9/jobpRhQSS    2018-10-17 09:21:14,772 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' echo s/L/jobWJgktw
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS    2018-10-17 09:21:14,772 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/t1ITt8o/hello.cwl' echo s/L/jobWJgktw
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.leader:Finished toil run successfully.
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.leader:Finished toil run successfully.
+WARNING:toil.leader:Y/9/jobpRhQSS    2018-10-17 09:21:15,608 - toil.leader - INFO - Finished toil run successfully.
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS    2018-10-17 09:21:15,608 - toil.leader - INFO - Finished toil run successfully.
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10c1f5b10>
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10c1f5b10>
+WARNING:toil.leader:Y/9/jobpRhQSS    {
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS    {
+WARNING:toil.leader:Y/9/jobpRhQSS        "output": {
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS        "output": {
+WARNING:toil.leader:Y/9/jobpRhQSS            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "basename": "output.txt", 
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS            "basename": "output.txt", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "nameext": ".txt", 
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS            "nameext": ".txt", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "nameroot": "output", 
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS            "nameroot": "output", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "http://commonwl.org/cwltool#generation": 0, 
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS            "http://commonwl.org/cwltool#generation": 0, 
+WARNING:toil.leader:Y/9/jobpRhQSS            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/output.txt", 
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/output.txt", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "class": "File", 
+2018-10-17 09:21:17,280 - toil.leader - WARNING - Y/9/jobpRhQSS            "class": "File", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "size": 13
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS            "size": 13
+WARNING:toil.leader:Y/9/jobpRhQSS        }
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS        }
+WARNING:toil.leader:Y/9/jobpRhQSS    }2018-10-17 09:21:17,036 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10c1f5b10>
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS    }2018-10-17 09:21:17,036 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10c1f5b10>
+WARNING:toil.leader:Y/9/jobpRhQSS    Traceback (most recent call last):
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS    Traceback (most recent call last):
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+WARNING:toil.leader:Y/9/jobpRhQSS        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+WARNING:toil.leader:Y/9/jobpRhQSS        returnValues = self._run(jobGraph, fileStore)
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS        returnValues = self._run(jobGraph, fileStore)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+WARNING:toil.leader:Y/9/jobpRhQSS        return self.run(fileStore)
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS        return self.run(fileStore)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+WARNING:toil.leader:Y/9/jobpRhQSS        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+2018-10-17 09:21:17,281 - toil.leader - WARNING - Y/9/jobpRhQSS        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+WARNING:toil.leader:Y/9/jobpRhQSS        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+WARNING:toil.leader:Y/9/jobpRhQSS        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+WARNING:toil.leader:Y/9/jobpRhQSS        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+WARNING:toil.leader:Y/9/jobpRhQSS    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/cwlExampleFiles'
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp7hDdWR/2dadb018-96ba-4821-8834-f2cf4ea258f9/cwlExampleFiles'
+WARNING:toil.leader:Y/9/jobpRhQSS    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' Y/9/jobpRhQSS with ID Y/9/jobpRhQSS to 1
+2018-10-17 09:21:17,282 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' Y/9/jobpRhQSS with ID Y/9/jobpRhQSS to 1
+INFO:toil.leader:Issued job 'runQC' Y/9/jobpRhQSS with job batch system ID: 4 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+2018-10-17 09:21:17,283 - toil.leader - INFO - Issued job 'runQC' Y/9/jobpRhQSS with job batch system ID: 4 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+INFO:toil.leader:Job ended successfully: 'runQC' g/F/jobasM9jb
+2018-10-17 09:21:17,289 - toil.leader - INFO - Job ended successfully: 'runQC' g/F/jobasM9jb
+WARNING:toil.leader:The job seems to have left a log file, indicating failure: 'runQC' g/F/jobasM9jb
+2018-10-17 09:21:17,291 - toil.leader - WARNING - The job seems to have left a log file, indicating failure: 'runQC' g/F/jobasM9jb
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+2018-10-17 09:21:17,291 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:17,292 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:17,292 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:17,292 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+2018-10-17 09:21:17,292 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+WARNING:toil.leader:g/F/jobasM9jb    DEBUG:rdflib:RDFLib Version: 4.2.2
+2018-10-17 09:21:17,292 - toil.leader - WARNING - g/F/jobasM9jb    DEBUG:rdflib:RDFLib Version: 4.2.2
+WARNING:toil.leader:g/F/jobasM9jb    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl'
+2018-10-17 09:21:17,292 - toil.leader - WARNING - g/F/jobasM9jb    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl'
+WARNING:toil.leader:g/F/jobasM9jb    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl'
+2018-10-17 09:21:17,293 - toil.leader - WARNING - g/F/jobasM9jb    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl'
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+2018-10-17 09:21:17,293 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+2018-10-17 09:21:17,293 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346825216).
+2018-10-17 09:21:17,293 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346825216).
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:17,293 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.realtimeLogger:Real-time logging disabled
+2018-10-17 09:21:17,293 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.realtimeLogger:Real-time logging disabled
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' echo 3/2/jobMn4SAK with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:17,293 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' echo 3/2/jobMn4SAK with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:g/F/jobasM9jb    2018-10-17 09:21:12,518 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' echo 3/2/jobMn4SAK with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:17,294 - toil.leader - WARNING - g/F/jobasM9jb    2018-10-17 09:21:12,518 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' echo 3/2/jobMn4SAK with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' echo 3/2/jobMn4SAK
+2018-10-17 09:21:17,294 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' echo 3/2/jobMn4SAK
+WARNING:toil.leader:g/F/jobasM9jb    2018-10-17 09:21:15,237 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' echo 3/2/jobMn4SAK
+2018-10-17 09:21:17,294 - toil.leader - WARNING - g/F/jobasM9jb    2018-10-17 09:21:15,237 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/tduRHNI/hello.cwl' echo 3/2/jobMn4SAK
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.leader:Finished toil run successfully.
+2018-10-17 09:21:17,294 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.leader:Finished toil run successfully.
+WARNING:toil.leader:g/F/jobasM9jb    2018-10-17 09:21:15,553 - toil.leader - INFO - Finished toil run successfully.
+2018-10-17 09:21:17,294 - toil.leader - WARNING - g/F/jobasM9jb    2018-10-17 09:21:15,553 - toil.leader - INFO - Finished toil run successfully.
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x108782b10>
+2018-10-17 09:21:17,294 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x108782b10>
+WARNING:toil.leader:g/F/jobasM9jb    {
+2018-10-17 09:21:17,295 - toil.leader - WARNING - g/F/jobasM9jb    {
+WARNING:toil.leader:g/F/jobasM9jb        "output": {
+2018-10-17 09:21:17,295 - toil.leader - WARNING - g/F/jobasM9jb        "output": {
+WARNING:toil.leader:g/F/jobasM9jb            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+2018-10-17 09:21:17,295 - toil.leader - WARNING - g/F/jobasM9jb            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+WARNING:toil.leader:g/F/jobasM9jb            "basename": "output.txt", 
+2018-10-17 09:21:17,295 - toil.leader - WARNING - g/F/jobasM9jb            "basename": "output.txt", 
+WARNING:toil.leader:g/F/jobasM9jb            "nameext": ".txt", 
+2018-10-17 09:21:17,295 - toil.leader - WARNING - g/F/jobasM9jb            "nameext": ".txt", 
+WARNING:toil.leader:g/F/jobasM9jb            "nameroot": "output", 
+2018-10-17 09:21:17,295 - toil.leader - WARNING - g/F/jobasM9jb            "nameroot": "output", 
+WARNING:toil.leader:g/F/jobasM9jb            "http://commonwl.org/cwltool#generation": 0, 
+2018-10-17 09:21:17,295 - toil.leader - WARNING - g/F/jobasM9jb            "http://commonwl.org/cwltool#generation": 0, 
+WARNING:toil.leader:g/F/jobasM9jb            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/output.txt", 
+2018-10-17 09:21:17,296 - toil.leader - WARNING - g/F/jobasM9jb            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/output.txt", 
+WARNING:toil.leader:g/F/jobasM9jb            "class": "File", 
+2018-10-17 09:21:17,296 - toil.leader - WARNING - g/F/jobasM9jb            "class": "File", 
+WARNING:toil.leader:g/F/jobasM9jb            "size": 13
+2018-10-17 09:21:17,296 - toil.leader - WARNING - g/F/jobasM9jb            "size": 13
+WARNING:toil.leader:g/F/jobasM9jb        }
+2018-10-17 09:21:17,296 - toil.leader - WARNING - g/F/jobasM9jb        }
+WARNING:toil.leader:g/F/jobasM9jb    }2018-10-17 09:21:17,036 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x108782b10>
+2018-10-17 09:21:17,296 - toil.leader - WARNING - g/F/jobasM9jb    }2018-10-17 09:21:17,036 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x108782b10>
+WARNING:toil.leader:g/F/jobasM9jb    Traceback (most recent call last):
+2018-10-17 09:21:17,296 - toil.leader - WARNING - g/F/jobasM9jb    Traceback (most recent call last):
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+2018-10-17 09:21:17,297 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+WARNING:toil.leader:g/F/jobasM9jb        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+2018-10-17 09:21:17,297 - toil.leader - WARNING - g/F/jobasM9jb        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+2018-10-17 09:21:17,297 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+WARNING:toil.leader:g/F/jobasM9jb        returnValues = self._run(jobGraph, fileStore)
+2018-10-17 09:21:17,297 - toil.leader - WARNING - g/F/jobasM9jb        returnValues = self._run(jobGraph, fileStore)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+2018-10-17 09:21:17,297 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+WARNING:toil.leader:g/F/jobasM9jb        return self.run(fileStore)
+2018-10-17 09:21:17,297 - toil.leader - WARNING - g/F/jobasM9jb        return self.run(fileStore)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+2018-10-17 09:21:17,297 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+WARNING:toil.leader:g/F/jobasM9jb        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+2018-10-17 09:21:17,298 - toil.leader - WARNING - g/F/jobasM9jb        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+2018-10-17 09:21:17,298 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+WARNING:toil.leader:g/F/jobasM9jb        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+2018-10-17 09:21:17,298 - toil.leader - WARNING - g/F/jobasM9jb        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+2018-10-17 09:21:17,298 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+WARNING:toil.leader:g/F/jobasM9jb        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+2018-10-17 09:21:17,298 - toil.leader - WARNING - g/F/jobasM9jb        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+2018-10-17 09:21:17,298 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+WARNING:toil.leader:g/F/jobasM9jb        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+2018-10-17 09:21:17,298 - toil.leader - WARNING - g/F/jobasM9jb        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+WARNING:toil.leader:g/F/jobasM9jb    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/cwlExampleFiles'
+2018-10-17 09:21:17,299 - toil.leader - WARNING - g/F/jobasM9jb    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpKjo2_O/e20b46b4-24ae-4a5d-ab4b-f6eeeeeea097/cwlExampleFiles'
+WARNING:toil.leader:g/F/jobasM9jb    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+2018-10-17 09:21:17,304 - toil.leader - WARNING - g/F/jobasM9jb    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' g/F/jobasM9jb with ID g/F/jobasM9jb to 1
+2018-10-17 09:21:17,305 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' g/F/jobasM9jb with ID g/F/jobasM9jb to 1
+INFO:toil.leader:Issued job 'runQC' g/F/jobasM9jb with job batch system ID: 5 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+2018-10-17 09:21:17,308 - toil.leader - INFO - Issued job 'runQC' g/F/jobasM9jb with job batch system ID: 5 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+INFO:toil.leader:Job ended successfully: 'runQC' Y/9/jobpRhQSS
+2018-10-17 09:21:24,227 - toil.leader - INFO - Job ended successfully: 'runQC' Y/9/jobpRhQSS
+WARNING:toil.leader:The job seems to have left a log file, indicating failure: 'runQC' Y/9/jobpRhQSS
+2018-10-17 09:21:24,231 - toil.leader - WARNING - The job seems to have left a log file, indicating failure: 'runQC' Y/9/jobpRhQSS
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+2018-10-17 09:21:24,231 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:24,231 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:24,231 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:24,231 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+2018-10-17 09:21:24,232 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+WARNING:toil.leader:Y/9/jobpRhQSS    DEBUG:rdflib:RDFLib Version: 4.2.2
+2018-10-17 09:21:24,232 - toil.leader - WARNING - Y/9/jobpRhQSS    DEBUG:rdflib:RDFLib Version: 4.2.2
+WARNING:toil.leader:Y/9/jobpRhQSS    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl'
+2018-10-17 09:21:24,232 - toil.leader - WARNING - Y/9/jobpRhQSS    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl'
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl'
+2018-10-17 09:21:24,232 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl'
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+2018-10-17 09:21:24,232 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+2018-10-17 09:21:24,232 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346477056).
+2018-10-17 09:21:24,233 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346477056).
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:24,233 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.realtimeLogger:Real-time logging disabled
+2018-10-17 09:21:24,233 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.realtimeLogger:Real-time logging disabled
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' echo u/2/jobuRRbfJ with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:24,233 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' echo u/2/jobuRRbfJ with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:Y/9/jobpRhQSS    2018-10-17 09:21:21,594 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' echo u/2/jobuRRbfJ with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:24,233 - toil.leader - WARNING - Y/9/jobpRhQSS    2018-10-17 09:21:21,594 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' echo u/2/jobuRRbfJ with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' echo u/2/jobuRRbfJ
+2018-10-17 09:21:24,233 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' echo u/2/jobuRRbfJ
+WARNING:toil.leader:Y/9/jobpRhQSS    2018-10-17 09:21:23,462 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' echo u/2/jobuRRbfJ
+2018-10-17 09:21:24,233 - toil.leader - WARNING - Y/9/jobpRhQSS    2018-10-17 09:21:23,462 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/t6tx_vw/hello.cwl' echo u/2/jobuRRbfJ
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.leader:Finished toil run successfully.
+2018-10-17 09:21:24,234 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.leader:Finished toil run successfully.
+WARNING:toil.leader:Y/9/jobpRhQSS    2018-10-17 09:21:23,620 - toil.leader - INFO - Finished toil run successfully.
+2018-10-17 09:21:24,234 - toil.leader - WARNING - Y/9/jobpRhQSS    2018-10-17 09:21:23,620 - toil.leader - INFO - Finished toil run successfully.
+WARNING:toil.leader:Y/9/jobpRhQSS    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x1106fab10>
+2018-10-17 09:21:24,235 - toil.leader - WARNING - Y/9/jobpRhQSS    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x1106fab10>
+WARNING:toil.leader:Y/9/jobpRhQSS    {
+2018-10-17 09:21:24,237 - toil.leader - WARNING - Y/9/jobpRhQSS    {
+WARNING:toil.leader:Y/9/jobpRhQSS        "output": {
+2018-10-17 09:21:24,238 - toil.leader - WARNING - Y/9/jobpRhQSS        "output": {
+WARNING:toil.leader:Y/9/jobpRhQSS            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+2018-10-17 09:21:24,239 - toil.leader - WARNING - Y/9/jobpRhQSS            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "basename": "output.txt", 
+2018-10-17 09:21:24,240 - toil.leader - WARNING - Y/9/jobpRhQSS            "basename": "output.txt", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "nameext": ".txt", 
+2018-10-17 09:21:24,240 - toil.leader - WARNING - Y/9/jobpRhQSS            "nameext": ".txt", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "nameroot": "output", 
+2018-10-17 09:21:24,240 - toil.leader - WARNING - Y/9/jobpRhQSS            "nameroot": "output", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "http://commonwl.org/cwltool#generation": 0, 
+2018-10-17 09:21:24,240 - toil.leader - WARNING - Y/9/jobpRhQSS            "http://commonwl.org/cwltool#generation": 0, 
+WARNING:toil.leader:Y/9/jobpRhQSS            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/output.txt", 
+2018-10-17 09:21:24,240 - toil.leader - WARNING - Y/9/jobpRhQSS            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/output.txt", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "class": "File", 
+2018-10-17 09:21:24,240 - toil.leader - WARNING - Y/9/jobpRhQSS            "class": "File", 
+WARNING:toil.leader:Y/9/jobpRhQSS            "size": 13
+2018-10-17 09:21:24,241 - toil.leader - WARNING - Y/9/jobpRhQSS            "size": 13
+WARNING:toil.leader:Y/9/jobpRhQSS        }
+2018-10-17 09:21:24,241 - toil.leader - WARNING - Y/9/jobpRhQSS        }
+WARNING:toil.leader:Y/9/jobpRhQSS    }2018-10-17 09:21:24,028 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x1106fab10>
+2018-10-17 09:21:24,241 - toil.leader - WARNING - Y/9/jobpRhQSS    }2018-10-17 09:21:24,028 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x1106fab10>
+WARNING:toil.leader:Y/9/jobpRhQSS    Traceback (most recent call last):
+2018-10-17 09:21:24,241 - toil.leader - WARNING - Y/9/jobpRhQSS    Traceback (most recent call last):
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+2018-10-17 09:21:24,241 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+WARNING:toil.leader:Y/9/jobpRhQSS        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+2018-10-17 09:21:24,241 - toil.leader - WARNING - Y/9/jobpRhQSS        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+2018-10-17 09:21:24,241 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+WARNING:toil.leader:Y/9/jobpRhQSS        returnValues = self._run(jobGraph, fileStore)
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS        returnValues = self._run(jobGraph, fileStore)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+WARNING:toil.leader:Y/9/jobpRhQSS        return self.run(fileStore)
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS        return self.run(fileStore)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+WARNING:toil.leader:Y/9/jobpRhQSS        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+WARNING:toil.leader:Y/9/jobpRhQSS        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+WARNING:toil.leader:Y/9/jobpRhQSS        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+WARNING:toil.leader:Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+WARNING:toil.leader:Y/9/jobpRhQSS        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+2018-10-17 09:21:24,242 - toil.leader - WARNING - Y/9/jobpRhQSS        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+WARNING:toil.leader:Y/9/jobpRhQSS    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/cwlExampleFiles'
+2018-10-17 09:21:24,243 - toil.leader - WARNING - Y/9/jobpRhQSS    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpqVtdNB/797d8b2d-decd-43cf-ad27-4641c9e5f967/cwlExampleFiles'
+WARNING:toil.leader:Y/9/jobpRhQSS    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+2018-10-17 09:21:24,243 - toil.leader - WARNING - Y/9/jobpRhQSS    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+WARNING:toil.leader:Y/9/jobpRhQSS    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' Y/9/jobpRhQSS with ID Y/9/jobpRhQSS to 0
+2018-10-17 09:21:24,243 - toil.leader - WARNING - Y/9/jobpRhQSS    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' Y/9/jobpRhQSS with ID Y/9/jobpRhQSS to 0
+WARNING:toil.leader:Job 'runQC' Y/9/jobpRhQSS with ID Y/9/jobpRhQSS is completely failed
+2018-10-17 09:21:24,243 - toil.leader - WARNING - Job 'runQC' Y/9/jobpRhQSS with ID Y/9/jobpRhQSS is completely failed
+INFO:toil.leader:Job ended successfully: 'runQC' T/t/jobvdGwll
+2018-10-17 09:21:24,261 - toil.leader - INFO - Job ended successfully: 'runQC' T/t/jobvdGwll
+WARNING:toil.leader:The job seems to have left a log file, indicating failure: 'runQC' T/t/jobvdGwll
+2018-10-17 09:21:24,262 - toil.leader - WARNING - The job seems to have left a log file, indicating failure: 'runQC' T/t/jobvdGwll
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+2018-10-17 09:21:24,263 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:24,263 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:24,263 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:24,263 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+WARNING:toil.leader:T/t/jobvdGwll    DEBUG:rdflib:RDFLib Version: 4.2.2
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    DEBUG:rdflib:RDFLib Version: 4.2.2
+WARNING:toil.leader:T/t/jobvdGwll    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl'
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl'
+WARNING:toil.leader:T/t/jobvdGwll    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl'
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl'
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346288640).
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346288640).
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.realtimeLogger:Real-time logging disabled
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.realtimeLogger:Real-time logging disabled
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' echo s/F/jobjzgrOy with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:24,264 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' echo s/F/jobjzgrOy with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:T/t/jobvdGwll    2018-10-17 09:21:21,738 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' echo s/F/jobjzgrOy with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:24,265 - toil.leader - WARNING - T/t/jobvdGwll    2018-10-17 09:21:21,738 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' echo s/F/jobjzgrOy with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' echo s/F/jobjzgrOy
+2018-10-17 09:21:24,265 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' echo s/F/jobjzgrOy
+WARNING:toil.leader:T/t/jobvdGwll    2018-10-17 09:21:23,455 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' echo s/F/jobjzgrOy
+2018-10-17 09:21:24,265 - toil.leader - WARNING - T/t/jobvdGwll    2018-10-17 09:21:23,455 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/t2lrxgY/hello.cwl' echo s/F/jobjzgrOy
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.leader:Finished toil run successfully.
+2018-10-17 09:21:24,265 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.leader:Finished toil run successfully.
+WARNING:toil.leader:T/t/jobvdGwll    2018-10-17 09:21:23,744 - toil.leader - INFO - Finished toil run successfully.
+2018-10-17 09:21:24,265 - toil.leader - WARNING - T/t/jobvdGwll    2018-10-17 09:21:23,744 - toil.leader - INFO - Finished toil run successfully.
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10266fb10>
+2018-10-17 09:21:24,265 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10266fb10>
+WARNING:toil.leader:T/t/jobvdGwll    {
+2018-10-17 09:21:24,265 - toil.leader - WARNING - T/t/jobvdGwll    {
+WARNING:toil.leader:T/t/jobvdGwll        "output": {
+2018-10-17 09:21:24,265 - toil.leader - WARNING - T/t/jobvdGwll        "output": {
+WARNING:toil.leader:T/t/jobvdGwll            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+2018-10-17 09:21:24,266 - toil.leader - WARNING - T/t/jobvdGwll            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+WARNING:toil.leader:T/t/jobvdGwll            "basename": "output.txt", 
+2018-10-17 09:21:24,266 - toil.leader - WARNING - T/t/jobvdGwll            "basename": "output.txt", 
+WARNING:toil.leader:T/t/jobvdGwll            "nameext": ".txt", 
+2018-10-17 09:21:24,266 - toil.leader - WARNING - T/t/jobvdGwll            "nameext": ".txt", 
+WARNING:toil.leader:T/t/jobvdGwll            "nameroot": "output", 
+2018-10-17 09:21:24,266 - toil.leader - WARNING - T/t/jobvdGwll            "nameroot": "output", 
+WARNING:toil.leader:T/t/jobvdGwll            "http://commonwl.org/cwltool#generation": 0, 
+2018-10-17 09:21:24,266 - toil.leader - WARNING - T/t/jobvdGwll            "http://commonwl.org/cwltool#generation": 0, 
+WARNING:toil.leader:T/t/jobvdGwll            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/output.txt", 
+2018-10-17 09:21:24,266 - toil.leader - WARNING - T/t/jobvdGwll            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/output.txt", 
+WARNING:toil.leader:T/t/jobvdGwll            "class": "File", 
+2018-10-17 09:21:24,266 - toil.leader - WARNING - T/t/jobvdGwll            "class": "File", 
+WARNING:toil.leader:T/t/jobvdGwll            "size": 13
+2018-10-17 09:21:24,267 - toil.leader - WARNING - T/t/jobvdGwll            "size": 13
+WARNING:toil.leader:T/t/jobvdGwll        }
+2018-10-17 09:21:24,267 - toil.leader - WARNING - T/t/jobvdGwll        }
+WARNING:toil.leader:T/t/jobvdGwll    }2018-10-17 09:21:24,081 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10266fb10>
+2018-10-17 09:21:24,267 - toil.leader - WARNING - T/t/jobvdGwll    }2018-10-17 09:21:24,081 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10266fb10>
+WARNING:toil.leader:T/t/jobvdGwll    Traceback (most recent call last):
+2018-10-17 09:21:24,267 - toil.leader - WARNING - T/t/jobvdGwll    Traceback (most recent call last):
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+2018-10-17 09:21:24,267 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+WARNING:toil.leader:T/t/jobvdGwll        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+WARNING:toil.leader:T/t/jobvdGwll        returnValues = self._run(jobGraph, fileStore)
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll        returnValues = self._run(jobGraph, fileStore)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+WARNING:toil.leader:T/t/jobvdGwll        return self.run(fileStore)
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll        return self.run(fileStore)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+WARNING:toil.leader:T/t/jobvdGwll        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+WARNING:toil.leader:T/t/jobvdGwll        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+2018-10-17 09:21:24,268 - toil.leader - WARNING - T/t/jobvdGwll        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+2018-10-17 09:21:24,269 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+WARNING:toil.leader:T/t/jobvdGwll        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+2018-10-17 09:21:24,269 - toil.leader - WARNING - T/t/jobvdGwll        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+2018-10-17 09:21:24,269 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+WARNING:toil.leader:T/t/jobvdGwll        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+2018-10-17 09:21:24,269 - toil.leader - WARNING - T/t/jobvdGwll        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+WARNING:toil.leader:T/t/jobvdGwll    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/cwlExampleFiles'
+2018-10-17 09:21:24,269 - toil.leader - WARNING - T/t/jobvdGwll    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpIAL1A1/3490b07c-6ed7-4a48-b62a-6ff9756de500/cwlExampleFiles'
+WARNING:toil.leader:T/t/jobvdGwll    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+2018-10-17 09:21:24,269 - toil.leader - WARNING - T/t/jobvdGwll    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' T/t/jobvdGwll with ID T/t/jobvdGwll to 1
+2018-10-17 09:21:24,269 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' T/t/jobvdGwll with ID T/t/jobvdGwll to 1
+INFO:toil.leader:Issued job 'runQC' T/t/jobvdGwll with job batch system ID: 6 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+2018-10-17 09:21:24,270 - toil.leader - INFO - Issued job 'runQC' T/t/jobvdGwll with job batch system ID: 6 and cores: 1, disk: 2.0 G, and memory: 2.0 G
+INFO:toil.leader:Job ended successfully: 'runQC' g/F/jobasM9jb
+2018-10-17 09:21:31,353 - toil.leader - INFO - Job ended successfully: 'runQC' g/F/jobasM9jb
+WARNING:toil.leader:The job seems to have left a log file, indicating failure: 'runQC' g/F/jobasM9jb
+2018-10-17 09:21:31,360 - toil.leader - WARNING - The job seems to have left a log file, indicating failure: 'runQC' g/F/jobasM9jb
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+2018-10-17 09:21:31,360 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+WARNING:toil.leader:g/F/jobasM9jb    DEBUG:rdflib:RDFLib Version: 4.2.2
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    DEBUG:rdflib:RDFLib Version: 4.2.2
+WARNING:toil.leader:g/F/jobasM9jb    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl'
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl'
+WARNING:toil.leader:g/F/jobasM9jb    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl'
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl'
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+2018-10-17 09:21:31,361 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346173952).
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203346173952).
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.realtimeLogger:Real-time logging disabled
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.realtimeLogger:Real-time logging disabled
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' echo P/y/jobnRqjQW with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' echo P/y/jobnRqjQW with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:g/F/jobasM9jb    2018-10-17 09:21:28,723 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' echo P/y/jobnRqjQW with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    2018-10-17 09:21:28,723 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' echo P/y/jobnRqjQW with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' echo P/y/jobnRqjQW
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' echo P/y/jobnRqjQW
+WARNING:toil.leader:g/F/jobasM9jb    2018-10-17 09:21:30,528 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' echo P/y/jobnRqjQW
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    2018-10-17 09:21:30,528 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/t6j_f7K/hello.cwl' echo P/y/jobnRqjQW
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.leader:Finished toil run successfully.
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.leader:Finished toil run successfully.
+WARNING:toil.leader:g/F/jobasM9jb    2018-10-17 09:21:30,745 - toil.leader - INFO - Finished toil run successfully.
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    2018-10-17 09:21:30,745 - toil.leader - INFO - Finished toil run successfully.
+WARNING:toil.leader:g/F/jobasM9jb    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10bc36b10>
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10bc36b10>
+WARNING:toil.leader:g/F/jobasM9jb    {
+2018-10-17 09:21:31,362 - toil.leader - WARNING - g/F/jobasM9jb    {
+WARNING:toil.leader:g/F/jobasM9jb        "output": {
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb        "output": {
+WARNING:toil.leader:g/F/jobasM9jb            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+WARNING:toil.leader:g/F/jobasM9jb            "basename": "output.txt", 
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb            "basename": "output.txt", 
+WARNING:toil.leader:g/F/jobasM9jb            "nameext": ".txt", 
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb            "nameext": ".txt", 
+WARNING:toil.leader:g/F/jobasM9jb            "nameroot": "output", 
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb            "nameroot": "output", 
+WARNING:toil.leader:g/F/jobasM9jb            "http://commonwl.org/cwltool#generation": 0, 
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb            "http://commonwl.org/cwltool#generation": 0, 
+WARNING:toil.leader:g/F/jobasM9jb            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/output.txt", 
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/output.txt", 
+WARNING:toil.leader:g/F/jobasM9jb            "class": "File", 
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb            "class": "File", 
+WARNING:toil.leader:g/F/jobasM9jb            "size": 13
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb            "size": 13
+WARNING:toil.leader:g/F/jobasM9jb        }
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb        }
+WARNING:toil.leader:g/F/jobasM9jb    }2018-10-17 09:21:31,167 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10bc36b10>
+2018-10-17 09:21:31,363 - toil.leader - WARNING - g/F/jobasM9jb    }2018-10-17 09:21:31,167 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10bc36b10>
+WARNING:toil.leader:g/F/jobasM9jb    Traceback (most recent call last):
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb    Traceback (most recent call last):
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+WARNING:toil.leader:g/F/jobasM9jb        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+WARNING:toil.leader:g/F/jobasM9jb        returnValues = self._run(jobGraph, fileStore)
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb        returnValues = self._run(jobGraph, fileStore)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+WARNING:toil.leader:g/F/jobasM9jb        return self.run(fileStore)
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb        return self.run(fileStore)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+WARNING:toil.leader:g/F/jobasM9jb        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+WARNING:toil.leader:g/F/jobasM9jb        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+2018-10-17 09:21:31,364 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+WARNING:toil.leader:g/F/jobasM9jb        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+2018-10-17 09:21:31,365 - toil.leader - WARNING - g/F/jobasM9jb        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+WARNING:toil.leader:g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+2018-10-17 09:21:31,365 - toil.leader - WARNING - g/F/jobasM9jb      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+WARNING:toil.leader:g/F/jobasM9jb        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+2018-10-17 09:21:31,365 - toil.leader - WARNING - g/F/jobasM9jb        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+WARNING:toil.leader:g/F/jobasM9jb    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/cwlExampleFiles'
+2018-10-17 09:21:31,365 - toil.leader - WARNING - g/F/jobasM9jb    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmp__AuF4/3c8de342-69aa-4fc1-8044-b197df4a2945/cwlExampleFiles'
+WARNING:toil.leader:g/F/jobasM9jb    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+2018-10-17 09:21:31,365 - toil.leader - WARNING - g/F/jobasM9jb    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+WARNING:toil.leader:g/F/jobasM9jb    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' g/F/jobasM9jb with ID g/F/jobasM9jb to 0
+2018-10-17 09:21:31,365 - toil.leader - WARNING - g/F/jobasM9jb    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' g/F/jobasM9jb with ID g/F/jobasM9jb to 0
+WARNING:toil.leader:Job 'runQC' g/F/jobasM9jb with ID g/F/jobasM9jb is completely failed
+2018-10-17 09:21:31,365 - toil.leader - WARNING - Job 'runQC' g/F/jobasM9jb with ID g/F/jobasM9jb is completely failed
+INFO:toil.leader:Job ended successfully: 'runQC' T/t/jobvdGwll
+2018-10-17 09:21:31,384 - toil.leader - INFO - Job ended successfully: 'runQC' T/t/jobvdGwll
+WARNING:toil.leader:The job seems to have left a log file, indicating failure: 'runQC' T/t/jobvdGwll
+2018-10-17 09:21:31,387 - toil.leader - WARNING - The job seems to have left a log file, indicating failure: 'runQC' T/t/jobvdGwll
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+2018-10-17 09:21:31,387 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.worker:---TOIL WORKER OUTPUT LOG---
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:31,387 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:31,387 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+2018-10-17 09:21:31,387 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.resource:'JTRES_7dbdee5b5ea3fe9a1f5558375b3643ae' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+2018-10-17 09:21:31,388 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.fileStore:LOG-TO-MASTER: runQC
+WARNING:toil.leader:T/t/jobvdGwll    DEBUG:rdflib:RDFLib Version: 4.2.2
+2018-10-17 09:21:31,388 - toil.leader - WARNING - T/t/jobvdGwll    DEBUG:rdflib:RDFLib Version: 4.2.2
+WARNING:toil.leader:T/t/jobvdGwll    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl'
+2018-10-17 09:21:31,388 - toil.leader - WARNING - T/t/jobvdGwll    Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl'
+WARNING:toil.leader:T/t/jobvdGwll    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl'
+2018-10-17 09:21:31,388 - toil.leader - WARNING - T/t/jobvdGwll    INFO:cwltool:Resolved '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' to 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl'
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+2018-10-17 09:21:31,388 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxCores to CPU count of system (4).
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+2018-10-17 09:21:31,388 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxMemory to physically available memory (4294967296).
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203345981440).
+2018-10-17 09:21:31,389 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.batchSystems.singleMachine:Limiting maxDisk to physically available disk (203345981440).
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+2018-10-17 09:21:31,389 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil:Running Toil version 3.17.0-585383ed5c4453b556269818571d3c7419c613b0.
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.realtimeLogger:Real-time logging disabled
+2018-10-17 09:21:31,389 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.realtimeLogger:Real-time logging disabled
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' echo r/s/jobrTzNf7 with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:31,389 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.leader:Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' echo r/s/jobrTzNf7 with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:T/t/jobvdGwll    2018-10-17 09:21:28,829 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' echo r/s/jobrTzNf7 with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+2018-10-17 09:21:31,389 - toil.leader - WARNING - T/t/jobvdGwll    2018-10-17 09:21:28,829 - toil.leader - INFO - Issued job 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' echo r/s/jobrTzNf7 with job batch system ID: 0 and cores: 1, disk: 3.0 G, and memory: 2.0 G
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' echo r/s/jobrTzNf7
+2018-10-17 09:21:31,390 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.leader:Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' echo r/s/jobrTzNf7
+WARNING:toil.leader:T/t/jobvdGwll    2018-10-17 09:21:30,527 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' echo r/s/jobrTzNf7
+2018-10-17 09:21:31,390 - toil.leader - WARNING - T/t/jobvdGwll    2018-10-17 09:21:30,527 - toil.leader - INFO - Job ended successfully: 'file:///var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/tEZxfZK/hello.cwl' echo r/s/jobrTzNf7
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.leader:Finished toil run successfully.
+2018-10-17 09:21:31,390 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.leader:Finished toil run successfully.
+WARNING:toil.leader:T/t/jobvdGwll    2018-10-17 09:21:30,855 - toil.leader - INFO - Finished toil run successfully.
+2018-10-17 09:21:31,390 - toil.leader - WARNING - T/t/jobvdGwll    2018-10-17 09:21:30,855 - toil.leader - INFO - Finished toil run successfully.
+WARNING:toil.leader:T/t/jobvdGwll    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10b399b10>
+2018-10-17 09:21:31,390 - toil.leader - WARNING - T/t/jobvdGwll    INFO:toil.common:Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10b399b10>
+WARNING:toil.leader:T/t/jobvdGwll    {
+2018-10-17 09:21:31,391 - toil.leader - WARNING - T/t/jobvdGwll    {
+WARNING:toil.leader:T/t/jobvdGwll        "output": {
+2018-10-17 09:21:31,391 - toil.leader - WARNING - T/t/jobvdGwll        "output": {
+WARNING:toil.leader:T/t/jobvdGwll            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+2018-10-17 09:21:31,391 - toil.leader - WARNING - T/t/jobvdGwll            "checksum": "sha1$47a013e660d408619d894b20806b1d5086aab03b", 
+WARNING:toil.leader:T/t/jobvdGwll            "basename": "output.txt", 
+2018-10-17 09:21:31,391 - toil.leader - WARNING - T/t/jobvdGwll            "basename": "output.txt", 
+WARNING:toil.leader:T/t/jobvdGwll            "nameext": ".txt", 
+2018-10-17 09:21:31,392 - toil.leader - WARNING - T/t/jobvdGwll            "nameext": ".txt", 
+WARNING:toil.leader:T/t/jobvdGwll            "nameroot": "output", 
+2018-10-17 09:21:31,392 - toil.leader - WARNING - T/t/jobvdGwll            "nameroot": "output", 
+WARNING:toil.leader:T/t/jobvdGwll            "http://commonwl.org/cwltool#generation": 0, 
+2018-10-17 09:21:31,392 - toil.leader - WARNING - T/t/jobvdGwll            "http://commonwl.org/cwltool#generation": 0, 
+WARNING:toil.leader:T/t/jobvdGwll            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/output.txt", 
+2018-10-17 09:21:31,392 - toil.leader - WARNING - T/t/jobvdGwll            "location": "file:///private/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/output.txt", 
+WARNING:toil.leader:T/t/jobvdGwll            "class": "File", 
+2018-10-17 09:21:31,392 - toil.leader - WARNING - T/t/jobvdGwll            "class": "File", 
+WARNING:toil.leader:T/t/jobvdGwll            "size": 13
+2018-10-17 09:21:31,392 - toil.leader - WARNING - T/t/jobvdGwll            "size": 13
+WARNING:toil.leader:T/t/jobvdGwll        }
+2018-10-17 09:21:31,393 - toil.leader - WARNING - T/t/jobvdGwll        }
+WARNING:toil.leader:T/t/jobvdGwll    }2018-10-17 09:21:31,215 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10b399b10>
+2018-10-17 09:21:31,393 - toil.leader - WARNING - T/t/jobvdGwll    }2018-10-17 09:21:31,215 - toil.common - INFO - Successfully deleted the job store: <toil.jobStores.fileJobStore.FileJobStore object at 0x10b399b10>
+WARNING:toil.leader:T/t/jobvdGwll    Traceback (most recent call last):
+2018-10-17 09:21:31,393 - toil.leader - WARNING - T/t/jobvdGwll    Traceback (most recent call last):
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+2018-10-17 09:21:31,393 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/worker.py", line 314, in workerScript
+WARNING:toil.leader:T/t/jobvdGwll        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+2018-10-17 09:21:31,393 - toil.leader - WARNING - T/t/jobvdGwll        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+2018-10-17 09:21:31,393 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1350, in _runner
+WARNING:toil.leader:T/t/jobvdGwll        returnValues = self._run(jobGraph, fileStore)
+2018-10-17 09:21:31,394 - toil.leader - WARNING - T/t/jobvdGwll        returnValues = self._run(jobGraph, fileStore)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+2018-10-17 09:21:31,394 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1295, in _run
+WARNING:toil.leader:T/t/jobvdGwll        return self.run(fileStore)
+2018-10-17 09:21:31,394 - toil.leader - WARNING - T/t/jobvdGwll        return self.run(fileStore)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+2018-10-17 09:21:31,394 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/job.py", line 1479, in run
+WARNING:toil.leader:T/t/jobvdGwll        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+2018-10-17 09:21:31,394 - toil.leader - WARNING - T/t/jobvdGwll        rValue = userFunction(*((self,) + tuple(self._args)), **self._kwargs)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+2018-10-17 09:21:31,394 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlexample.py", line 22, in runQC
+WARNING:toil.leader:T/t/jobvdGwll        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+2018-10-17 09:21:31,395 - toil.leader - WARNING - T/t/jobvdGwll        job.fileStore.readGlobalFile(output_file, userPath=os.path.join(outputs_dir, "sample_" + output_num + "_" + output_filename))
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+2018-10-17 09:21:31,395 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/fileStore.py", line 1661, in readGlobalFile
+WARNING:toil.leader:T/t/jobvdGwll        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+2018-10-17 09:21:31,395 - toil.leader - WARNING - T/t/jobvdGwll        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+WARNING:toil.leader:T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+2018-10-17 09:21:31,395 - toil.leader - WARNING - T/t/jobvdGwll      File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/jobStores/fileJobStore.py", line 318, in readFile
+WARNING:toil.leader:T/t/jobvdGwll        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+2018-10-17 09:21:31,395 - toil.leader - WARNING - T/t/jobvdGwll        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+WARNING:toil.leader:T/t/jobvdGwll    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/cwlExampleFiles'
+2018-10-17 09:21:31,395 - toil.leader - WARNING - T/t/jobvdGwll    OSError: [Errno 2] No such file or directory: '/var/folders/v7/95zhz6px2hb4ts22wkwx3c400000gp/T/toil-bf71298e-ab4b-4d67-a737-d0abc018a76e-247032755114664/tmpW0ETSo/658ea8d5-a0c3-40ff-9b2d-e3b2bdd5054c/cwlExampleFiles'
+WARNING:toil.leader:T/t/jobvdGwll    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+2018-10-17 09:21:31,396 - toil.leader - WARNING - T/t/jobvdGwll    ERROR:toil.worker:Exiting the worker because of a failed job on host eduroam-169-233-199-5.ucsc.edu
+WARNING:toil.leader:T/t/jobvdGwll    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' T/t/jobvdGwll with ID T/t/jobvdGwll to 0
+2018-10-17 09:21:31,396 - toil.leader - WARNING - T/t/jobvdGwll    WARNING:toil.jobGraph:Due to failure we are reducing the remaining retry count of job 'runQC' T/t/jobvdGwll with ID T/t/jobvdGwll to 0
+WARNING:toil.leader:Job 'runQC' T/t/jobvdGwll with ID T/t/jobvdGwll is completely failed
+2018-10-17 09:21:31,396 - toil.leader - WARNING - Job 'runQC' T/t/jobvdGwll with ID T/t/jobvdGwll is completely failed
+INFO:toil.leader:Finished toil run with 4 failed jobs.
+2018-10-17 09:21:36,081 - toil.leader - INFO - Finished toil run with 4 failed jobs.
+INFO:toil.leader:Failed jobs at end of the run: 'runQC' T/t/jobvdGwll 'runQC' Y/9/jobpRhQSS 'runQC' g/F/jobasM9jb 'initialize_jobs' R/q/jobOZqdLq
+2018-10-17 09:21:36,083 - toil.leader - INFO - Failed jobs at end of the run: 'runQC' T/t/jobvdGwll 'runQC' Y/9/jobpRhQSS 'runQC' g/F/jobasM9jb 'initialize_jobs' R/q/jobOZqdLq
+Traceback (most recent call last):
+  File "cwlexample.py", line 51, in <module>
+    toil.start(job0)
+  File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/common.py", line 783, in start
+    return self._runMainLoop(rootJobGraph)
+  File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/common.py", line 1057, in _runMainLoop
+    jobCache=self._jobCache).run()
+  File "/Users/cbseuser/venv/lib/python2.7/site-packages/toil/leader.py", line 242, in run
+    raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
+toil.leader.FailedJobsException

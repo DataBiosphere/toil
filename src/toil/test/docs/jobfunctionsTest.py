@@ -8,24 +8,27 @@ sys.path.insert(0, pkg_root)  # noqa
 
 from toil import subprocess
 from toil.test import ToilTest
-# import toil.test.docs.scripts.helloWorld
 
 class ToilWdlIntegrationTest(ToilTest):
-    """A set of test cases for toilwdl.py"""
+    # a test for jobfunctions.py
 
     def setUp(self):
-        self.program = os.path.abspath("scripts/helloWorld.py")
-        pass
+        self.program = os.path.abspath("scripts/jobfunctions.py")
 
     def tearDown(self):
-        pass
-
         unittest.TestCase.tearDown(self)
+
+    def testExitCode(self):
+        out = subprocess.call(["python", self.program, "file:my-jobstore", "--clean=always"])
+        assert out == 0, out
 
     def testOutput(self):
         out = subprocess.check_output(['python', self.program, 'file:my-jobstore', '--clean=always'])
-        expectedOut = "Hello, world!, here's a message: You did it!"
-        assert out.strip() == expectedOut, out
+        expectedOut = "Hello world, I have a message: Woot!\n"
+
+        # Search for the expected output among all the log messages
+        p = out.find(expectedOut)
+        assert p > -1, p
 
 if __name__ == "__main__":
     unittest.main()  # run all tests
