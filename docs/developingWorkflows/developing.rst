@@ -30,9 +30,18 @@ Job Basics
 The atomic unit of work in a Toil workflow is a :class:`~toil.job.Job`.
 User scripts inherit from this base class to define units of work. For example,
 here is a more long-winded class-based version of the job in the quick start
-example:
+example::
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/jobbasics.py
+    from toil.job import Job
+
+    class HelloWorld(Job):
+        def __init__(self, message):
+            Job.__init__(self,  memory="2G", cores=2, disk="3G")
+            self.message = message
+
+        def run(self, fileStore):
+            return "Hello, world!, here's a message: %s" % self.message
+
 
 In the example a class, HelloWorld, is defined. The constructor requests 2
 gigabytes of memory, 2 cores and 3 gigabytes of local disk to complete the work.
@@ -92,7 +101,7 @@ To allow command line control of the options we can use the
 method to create a :class:`argparse.ArgumentParser` object which can be used to
 parse command line options for a Toil script. For example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/arguments.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_arguments.py
 
 Creates a fully fledged script with all the options Toil exposed as command
 line arguments. Running this script with "--help" will print the full list of
@@ -244,7 +253,7 @@ can also be achieved statically by passing around references to the return
 variables of jobs. In Toil this is achieved with promises, as illustrated in
 the following example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/promises.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_promises.py
 
 Running this workflow results in three log messages from the jobs: ``i is 1``
 from ``j1``, ``i is 2`` from ``j2`` and ``i is 3`` from ``j3``.
@@ -275,28 +284,9 @@ Promises also support indexing of return values::
 
 Promises can be quite useful. For example, we can combine dynamic job creation
 with promises to achieve a job creation process that mimics the functional
-patterns possible in many programming languages::
+patterns possible in many programming languages:
 
-    from toil.common import Toil
-    from toil.job import Job
-
-    def binaryStrings(job, depth, message=""):
-        if depth > 0:
-            s = [ job.addChildJobFn(binaryStrings, depth-1, message + "0").rv(),
-                  job.addChildJobFn(binaryStrings, depth-1, message + "1").rv() ]
-            return job.addFollowOnFn(merge, s).rv()
-        return [message]
-
-    def merge(strings):
-        return strings[0] + strings[1]
-
-    if __name__=="__main__":
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.loglevel = "INFO"
-        options.clean = "always"
-
-        with Toil(options) as toil:
-            print toil.start(Job.wrapJobFn(binaryStrings, depth=5))
+.. literalinclude:: ../../src/toil/test/docs/scripts/promises2.py
 
 The return value ``l`` of the workflow is a list of all binary strings of
 length 10, computed recursively. Although a toy example, it demonstrates how
@@ -309,36 +299,9 @@ Promised requirements are a special case of :ref:`promises` that allow a job's
 return value to be used as another job's resource requirements.
 
 This is useful when, for example, a job's storage requirement is determined by a
-file staged to the job store by an earlier job::
+file staged to the job store by an earlier job:
 
-    from toil.common import Toil
-    from toil.job import Job, PromisedRequirement
-    import os
-
-    def parentJob(job):
-        downloadJob = Job.wrapJobFn(stageFn, "File://"+os.path.realpath(__file__), cores=0.1, memory='32M', disk='1M')
-        job.addChild(downloadJob)
-
-        analysis = Job.wrapJobFn(analysisJob, fileStoreID=downloadJob.rv(0),
-                                 disk=PromisedRequirement(downloadJob.rv(1)))
-        job.addFollowOn(analysis)
-
-    def stageFn(job, url, cores=1):
-        importedFile = job.fileStore.importFile(url)
-        return importedFile, importedFile.size
-
-    def analysisJob(job, fileStoreID, cores=2):
-        # now do some analysis on the file
-        pass
-
-    if __name__ == "__main__":
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
-        options.clean = "always"
-
-        with Toil(options) as toil:
-            toil.start(Job.wrapJobFn(parentJob))
-
+.. literalinclude:: ../../src/toil/test/docs/scripts/requirements.py
 
 Note that this also makes use of the ``size`` attribute of the :ref:`FileID` object.
 This promised requirements mechanism can also be used in combination with an aggregator for
@@ -388,30 +351,9 @@ and resumption on failure.
 The :func:`toil.job.Job.run` method has a file store instance as an argument.
 The following example shows how this can be used to create temporary files that
 persist for the length of the job, be placed in a specified local disk of the
-node and that will be cleaned up, regardless of failure, when the job finishes::
+node and that will be cleaned up, regardless of failure, when the job finishes:
 
-    from toil.common import Toil
-    from toil.job import Job
-
-    class LocalFileStoreJob(Job):
-        def run(self, fileStore):
-            # self.TempDir will always contain the name of a directory within the allocated disk space reserved for the job
-            scratchDir = self.tempDir
-
-            # Similarly create a temporary file.
-            scratchFile = fileStore.getLocalTempFile()
-
-    if __name__=="__main__":
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
-        options.clean = "always"
-
-        #Create an instance of FooJob which will have at least 10 gigabytes of storage space.
-        j = LocalFileStoreJob(disk="10G")
-
-        #Run the workflow
-        with Toil(options) as toil:
-            toil.start(j)
+.. literalinclude:: ../../src/toil/test/docs/scripts/managing.py
 
 Job functions can also access the file store for the job. The equivalent of the
 ``LocalFileStoreJob`` class is ::
@@ -426,56 +368,9 @@ Note that the ``fileStore`` attribute is accessed as an attribute of the
 In addition to temporary files that exist for the duration of a job, the file
 store allows the creation of files in a *global* store, which persists during
 the workflow and are globally accessible (hence the name) between jobs. For
-example::
+example:
 
-    from toil.common import Toil
-    from toil.job import Job
-    import os
-
-    def globalFileStoreJobFn(job):
-        job.log("The following example exercises all the methods provided"
-                " by the toil.fileStore.FileStore class")
-
-        # Create a local temporary file.
-        scratchFile = job.fileStore.getLocalTempFile()
-
-        # Write something in the scratch file.
-        with open(scratchFile, 'w') as fH:
-            fH.write("What a tangled web we weave")
-
-        # Write a copy of the file into the file-store; fileID is the key that can be used to retrieve the file.
-        # This write is asynchronous by default
-        fileID = job.fileStore.writeGlobalFile(scratchFile)
-
-        # Write another file using a stream; fileID2 is the
-        # key for this second file.
-        with job.fileStore.writeGlobalFileStream(cleanup=True) as (fH, fileID2):
-            fH.write("Out brief candle")
-
-        # Now read the first file; scratchFile2 is a local copy of the file that is read-only by default.
-        scratchFile2 = job.fileStore.readGlobalFile(fileID)
-
-        # Read the second file to a desired location: scratchFile3.
-        scratchFile3 = os.path.join(job.tempDir, "foo.txt")
-        job.fileStore.readGlobalFile(fileID2, userPath=scratchFile3)
-
-        # Read the second file again using a stream.
-        with job.fileStore.readGlobalFileStream(fileID2) as fH:
-            print fH.read() #This prints "Out brief candle"
-
-        # Delete the first file from the global file-store.
-        job.fileStore.deleteGlobalFile(fileID)
-
-        # It is unnecessary to delete the file keyed by fileID2 because we used the cleanup flag,
-        # which removes the file after this job and all its successors have run (if the file still exists)
-
-    if __name__=="__main__":
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
-        options.clean = "always"
-
-        with Toil(options) as toil:
-            toil.start(Job.wrapJobFn(globalFileStoreJobFn))
+.. literalinclude:: ../../src/toil/test/docs/scripts/managing2.py
 
 The example demonstrates the global read, write and delete functionality of the
 file-store, using both local copies of the files and streams to read and write
@@ -508,36 +403,9 @@ the job store. If the workflow was configured such that it not be cleaned up on
 a failed run, the file will persist in the job store and needs not be staged
 again when the workflow is resumed.
 
-Example::
+Example:
 
-    from toil.common import Toil
-    from toil.job import Job
-
-    class HelloWorld(Job):
-        def __init__(self, inputFileID):
-            Job.__init__(self,  memory="2G", cores=2, disk="3G")
-            self.inputFileID = inputFileID
-
-            with fileStore.readGlobalFileStream(self.inputFileID) as fi:
-                with fileStore.writeGlobalFileStream() as (fo, outputFileID):
-                    fo.write(fi.read() + 'World!')
-            return outputFileID
-
-
-    if __name__=="__main__":
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
-        options.clean = "always"
-
-        with Toil(options) as toil:
-            if not toil.options.restart:
-                inputFileID = toil.importFile('file:///some/local/path')
-                outputFileID = toil.start(HelloWorld(inputFileID))
-            else:
-                outputFileID = toil.restart()
-
-            toil.exportFile(outputFileID, 'file:///some/other/local/path')
-
+.. literalinclude:: ../../src/toil/test/docs/scripts/staging.py
 
 Using Docker Containers in Toil
 -------------------------------
@@ -586,22 +454,9 @@ An example of a basic ``dockerCall`` is below::
                 workDir=job.tempDir,
                 parameters=['index', '/data/reference.fa'])
 
-``dockerCall`` can also be added to workflows like any other job function::
+``dockerCall`` can also be added to workflows like any other job function:
 
-     from toil.job import Job
- 
-     align = Job.wrapJobFn(dockerCall,
-                           tool='quay.io/ucsc_cgl/bwa',
-                           workDir=job.tempDir,
-                           parameters=['index', '/data/reference.fa']))
-
-     if __name__=="__main__":
-         options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-         options.logLevel = "INFO"
-         options.clean = "always:
-
-         with Toil(options) as toil:
-            toil.start(align)
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_docker.py
 
 `cgl-docker-lib`_ contains ``dockerCall``-compatible Dockerized tools that are
 commonly used in bioinformatics analysis. 
@@ -633,44 +488,9 @@ concurrently with a workflow. The :class:`toil.job.Job.Service` class provides
 a simple mechanism for spawning such a service within a Toil workflow, allowing
 precise specification of the start and end time of the service, and providing
 start and end methods to use for initialization and cleanup. The following
-simple, conceptual example illustrates how services work::
+simple, conceptual example illustrates how services work:
 
-    from toil.common import Toil
-    from toil.job import Job
-
-    class DemoService(Job.Service):
-
-        def start(self, fileStore):
-            # Start up a database/service here
-            # Return a value that enables another process to connect to the database
-            return "loginCredentials"
-
-        def check(self):
-            # A function that if it returns False causes the service to quit
-            # If it raises an exception the service is killed and an error is reported
-            return True
-
-        def stop(self, fileStore):
-            # Cleanup the database here
-            pass
-
-    j = Job()
-    s = DemoService()
-    loginCredentialsPromise = j.addService(s)
-
-    def dbFn(loginCredentials):
-        # Use the login credentials returned from the service's start method to connect to the service
-        pass
-
-    j.addChildFn(dbFn, loginCredentialsPromise)
-
-    if __name__=="__main__":
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
-        options.clean = "always"
-
-        with Toil(options) as toil:
-            toil.start(j)
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_services.py
 
 In this example the DemoService starts a database in the start method,
 returning an object from the start method indicating how a client job would
@@ -726,59 +546,14 @@ Encapsulation
 Let ``A`` be a root job potentially with children and follow-ons. Without an
 encapsulated job the simplest way to specify a job ``B`` which runs after ``A``
 and all its successors is to create a parent of ``A``, call it ``Ap``, and then
-make ``B`` a follow-on of ``Ap``. e.g.::
+make ``B`` a follow-on of ``Ap``. e.g.:
 
-    from toil.common import Toil
-    from toil.job import Job
-
-    if __name__=="__main__":
-        # A is a job with children and follow-ons, for example:
-        A = Job()
-        A.addChild(Job())
-        A.addFollowOn(Job())
-
-        # B is a job which needs to run after A and its successors
-        B = Job()
-
-        # The way to do this without encapsulation is to make a parent of A, Ap, and make B a follow-on of Ap.
-        Ap = Job()
-        Ap.addChild(A)
-        Ap.addFollowOn(B)
-
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
-        options.clean = "always"
-
-        with Toil(options) as toil:
-            print toil.start(Ap)
+.. literalinclude:: ../../src/toil/test/docs/scripts/encapsulation.py
 
 An *encapsulated job* ``E(A)`` of ``A`` saves making ``Ap``, instead we can
-write::
+write:
 
-    from toil.common import Toil
-    from toil.job import Job
-
-    if __name__=="__main__":
-        # A
-        A = Job()
-        A.addChild(Job())
-        A.addFollowOn(Job())
-
-        # Encapsulate A
-        A = A.encapsulate()
-
-        # B is a job which needs to run after A and its successors
-        B = Job()
-
-        # With encapsulation A and its successor subgraph appear to be a single job, hence:
-        A.addChild(B)
-
-        options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-        options.logLevel = "INFO"
-        options.clean = "always"
-
-        with Toil(options) as toil:
-            print toil.start(A)
+.. literalinclude:: ../../src/toil/test/docs/scripts/encapsulation2.py
 
 Note the call to :func:`toil.job.Job.encapsulate` creates the
 :class:`toil.job.Job.EncapsulatedJob`.

@@ -6,7 +6,7 @@ def helloWorld(message, memory="2G", cores=2, disk="3G"):
 
 if __name__=="__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
-    options.logLevel = "INFO"
+    options.logLevel = "OFF"
     options.clean = "always"
 
     hello_job = Job.wrapFn(helloWorld, "Woot")

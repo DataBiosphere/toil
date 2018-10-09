@@ -12,7 +12,7 @@ class HelloWorld(Job):
 if __name__=="__main__":
     parser = Job.Runner.getDefaultArgumentParser()
     options = parser.parse_args()
-    options.logLevel = "INFO"
+    options.logLevel = "OFF"
     options.clean = "always"
 
     hello_job = HelloWorld("Woot")

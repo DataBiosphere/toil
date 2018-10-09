@@ -29,12 +29,12 @@ if __name__ == "__main__":
 
     with Toil(options) as toil:
 
-        # specify the folder where the cwl and yml files live
-        inputs_dir = "/tmp/"
+        # specify the folder where the wdl and json files live
+        inputs_dir = "wdlExampleFiles/"
         # specify where you wish the outputs to be written
-        outputs_dir = "/tmp/"
+        outputs_dir = "wdlExampleFiles/"
         # specify the location of your cromwell jar
-        jar_loc = "cromwell.jar"
+        jar_loc = os.path.abspath("wdlExampleFiles/cromwell-35.jar")
 
         job0 = Job.wrapJobFn(initialize_jobs)
 
@@ -49,7 +49,7 @@ if __name__ == "__main__":
             i = i + 1
             json_file = toil.importFile("file://" + os.path.join(inputs_dir, json))
             json_filename = json
-            job = Job.wrapJobFn(runQC, wdl_file, wdl_filename, json_file, json_filename, outputs_dir, jar_loc,output_num=str(i))
+            job = Job.wrapJobFn(runQC, wdl_file, wdl_filename, json_file, json_filename, outputs_dir, jar_loc, output_num=str(i))
             job0.addChild(job)
 
         toil.start(job0)
