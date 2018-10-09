@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -67,7 +67,7 @@ class Config(object):
         # Core options
         self.workflowID = None
         """This attribute uniquely identifies the job store and therefore the workflow. It is
-        necessary in order to distinguish between two consequitive workflows for which
+        necessary in order to distinguish between two consecutive workflows for which
         self.jobStore is the same, e.g. when a job store name is reused after a previous run has
         finished sucessfully and its job store has been clean up."""
         self.workflowAttemptNumber = None
@@ -755,6 +755,7 @@ class Toil(object):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
+        self.writePIDFile()
         if self.config.restart:
             raise ToilRestartException('A Toil workflow can only be started once. Use '
                                        'Toil.restart() to resume it.')
@@ -791,6 +792,7 @@ class Toil(object):
         :return: The root job's return value
         """
         self._assertContextManagerUsed()
+        self.writePIDFile()
         if not self.config.restart:
             raise ToilRestartException('A Toil workflow must be initiated with Toil.start(), '
                                        'not restart().')
@@ -905,7 +907,7 @@ class Toil(object):
             raise RuntimeError('%s currently does not support shared caching.  Set the '
                                '--disableCaching flag if you want to '
                                'use this batch system.' % config.batchSystem)
-        logger.info('Using the %s' %
+        logger.debug('Using the %s' %
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
 
         return batchSystemClass(**kwargs)
@@ -922,7 +924,7 @@ class Toil(object):
         if userScript is not None:
             # This branch is hit when a workflow is being started
             if userScript.belongsToToil:
-                logger.info('User script %s belongs to Toil. No need to auto-deploy it.', userScript)
+                logger.debug('User script %s belongs to Toil. No need to auto-deploy it.', userScript)
                 userScript = None
             else:
                 if (self._batchSystem.supportsAutoDeployment() and
@@ -945,10 +947,10 @@ class Toil(object):
                 with self._jobStore.readSharedFileStream('userScript') as f:
                     userScript = safeUnpickleFromStream(f)
             except NoSuchFileException:
-                logger.info('User script neither set explicitly nor present in the job store.')
+                logger.debug('User script neither set explicitly nor present in the job store.')
                 userScript = None
         if userScript is None:
-            logger.info('No user script to auto-deploy.')
+            logger.debug('No user script to auto-deploy.')
         else:
             logger.debug('Saving user script %s as a resource', userScript)
             userScriptResource = userScript.saveAsResourceTo(self._jobStore)
@@ -989,16 +991,16 @@ class Toil(object):
         """
         # Dump out the environment of this process in the environment pickle file.
         with self._jobStore.writeSharedFileStream("environment.pickle") as fileHandle:
-            pickle.dump(os.environ, fileHandle, pickle.HIGHEST_PROTOCOL)
-        logger.info("Written the environment for the jobs to the environment file")
+            pickle.dump(dict(os.environ), fileHandle, pickle.HIGHEST_PROTOCOL)
+        logger.debug("Written the environment for the jobs to the environment file")
 
     def _cacheAllJobs(self):
         """
         Downloads all jobs in the current job store into self.jobCache.
         """
-        logger.info('Caching all jobs in job store')
+        logger.debug('Caching all jobs in job store')
         self._jobCache = {jobGraph.jobStoreID: jobGraph for jobGraph in self._jobStore.jobs()}
-        logger.info('{} jobs downloaded.'.format(len(self._jobCache)))
+        logger.debug('{} jobs downloaded.'.format(len(self._jobCache)))
 
     def _cacheJob(self, job):
         """
@@ -1034,7 +1036,7 @@ class Toil(object):
                 # The directory exists if a previous worker set it up.
                 raise
         else:
-            logger.info('Created the workflow directory at %s' % workflowDir)
+            logger.debug('Created the workflow directory at %s' % workflowDir)
         return workflowDir
 
     def _runMainLoop(self, rootJob):
@@ -1071,6 +1073,17 @@ class Toil(object):
     def _assertContextManagerUsed(self):
         if not self._inContextManager:
             raise ToilContextManagerException()
+
+    def writePIDFile(self):
+        """
+        Write a the pid of this process to a file in the jobstore.
+
+        Overwriting the current contents of pid.log is a feature, not a bug of this method.
+        Other methods will rely on always having the most current pid available.
+        So far there is no reason to store any old pids.
+        """
+        with self._jobStore.writeSharedFileStream('pid.log') as f:
+            f.write(str(os.getpid()))
 
 
 class ToilRestartException(Exception):
@@ -1195,7 +1208,7 @@ class ToilMetrics:
                                   "url":"http://localhost:9090", "access":"direct"}',
                                   headers={'content-type': 'application/json', "access": "direct"})
         except requests.exceptions.ConnectionError:
-            logger.info(
+            logger.debug(
                 "Could not add data source to Grafana dashboard - no metrics will be displayed.")
 
     def log(self, message):

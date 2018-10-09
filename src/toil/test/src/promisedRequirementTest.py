@@ -149,7 +149,7 @@ def _writer(job, fileSize):
     :returns: the result of writeGlobalFile on a locally created file
     :rtype: job.FileID
     '''
-    with open(job.fileStore.getLocalTempFileName(), 'w') as fH:
+    with open(job.fileStore.getLocalTempFileName(), 'wb') as fH:
         fH.write(os.urandom(fileSize))
     return job.fileStore.writeGlobalFile(fH.name)
 

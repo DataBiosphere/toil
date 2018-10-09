@@ -11,17 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 from __future__ import absolute_import
-# from builtins import str
-
 import unittest
-from toil import subprocess
 import os
 import shutil
 import logging
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
+
+from toil import subprocess
+from toil.test import ToilTest, slow
 from toil.utils.toilDebugFile import recursiveGlob
 
 logger = logging.getLogger(__name__)
@@ -30,10 +27,7 @@ class ToilDebugFileTest(ToilTest):
     """A set of test cases for toilwdl.py"""
 
     def setUp(self):
-        """
-        Initial set up of variables for the test.
-        """
-
+        """Initial set up of variables for the test."""
         subprocess.check_call(['python', os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py')])
         self.jobStoreDir = os.path.abspath('toilWorkflowRun')
         self.tempDir = self._createTempDir(purpose='tempDir')
@@ -69,9 +63,9 @@ class ToilDebugFileTest(ToilTest):
             for expected_file in contents:
                 if xfile.endswith(expected_file):
                     match = match + 1
-        logger.info(files)
-        logger.info(contents)
-        logger.info(match)
+        logger.debug(files)
+        logger.debug(contents)
+        logger.debug(match)
         # C.txt will match twice (once with 'C.txt', and once with 'ABC.txt')
         assert match == 6
         os.remove(jobstoreFileContents)

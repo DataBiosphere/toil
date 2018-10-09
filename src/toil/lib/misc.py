@@ -1,5 +1,5 @@
 import random
-
+from six.moves import xrange
 from math import sqrt
 
 
@@ -96,7 +96,7 @@ def partition_seq(seq, size):
     >>> i = iter( partition_seq(l,2) )
     >>> l.pop(0)
     1
-    >>> i.next()
+    >>> next(i)
     [2, 3]
     """
     if size < 1:

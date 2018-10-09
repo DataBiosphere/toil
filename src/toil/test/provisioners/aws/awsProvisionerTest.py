@@ -59,7 +59,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def createClusterUtil(self, args=None):
         if args is None:
             args = []
-        callCommand = ['toil', 'launch-cluster', '-p=aws', '--keyPairName=%s' % self.keyName,
+        callCommand = ['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a','--keyPairName=%s' % self.keyName,
                        '--leaderNodeType=%s' % self.leaderInstanceType, self.clusterName]
         callCommand = callCommand + args if args else callCommand
         subprocess.check_call(callCommand)

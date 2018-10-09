@@ -8,7 +8,7 @@ Toil runs in various environments, including :ref:`locally <fileJobStore>` and :
 :ref:`WDL <wdl>` (experimental).
 
 Toil is built in a modular way so that it can be used on lots of different systems, and with different configurations.
-The three configurable pieces are the:
+The three configurable pieces are the
 
  - :ref:`jobStoreInterface`: A filepath or url that can host and centralize all files for a workflow (e.g. a local folder, or an AWS s3 bucket url).
  - :ref:`batchSystemInterface`: Specifies either a local single-machine or a currently supported HPC environment (lsf, parasol, mesos, slurm, torque, htcondor, or gridengine).  Mesos is a special case, and is launched for cloud environments.
@@ -40,9 +40,9 @@ Cloud Job Stores
 
 Toil currently supports the following cloud storage systems as job stores:
 
- - :ref:`awsJobStore`: An AWS s3 bucket formatted as "aws:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `aws:us-west-2:my-aws-jobstore-name`.
+ - :ref:`awsJobStore`: An AWS S3 bucket formatted as "aws:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `aws:us-west-2:my-aws-jobstore-name`.
  - :ref:`azureJobStore`: Experimental.
- - :ref:`googleJobStore`: An AWS s3 bucket formatted as "aws:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `gce:us-west2-2a:my-google-jobstore-name`.
+ - :ref:`googleJobStore`: A Google Cloud Storage bucket formatted as "gce:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `gce:us-west2-a:my-google-jobstore-name`.
 
 These use cloud buckets to house all of the files. This is useful if there are several different
 worker machines all running jobs that need to access the job store.

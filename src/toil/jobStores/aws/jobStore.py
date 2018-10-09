@@ -231,9 +231,16 @@ class AWSJobStore(AbstractJobStore):
                             assert False
                         registry_domain.put_attributes(item_name=self.namePrefix,
                                                        attributes=attributes)
-    
+
+    def _checkItem(self, item):
+        if "overlargeID" not in item:
+            raise RuntimeError("overlargeID attribute isn't present: you are restarting"
+                               " an old, incompatible jobstore, or the jobstore logic is"
+                               " incorrect.")
+
     def _awsJobFromItem(self, item):
-        if "overlargeID" in item:
+        self._checkItem(item)
+        if item["overlargeID"]:
             assert self.fileExists(item["overlargeID"])
             #This is an overlarge job, download the actual attributes
             #from the file store
@@ -248,14 +255,15 @@ class AWSJobStore(AbstractJobStore):
 
     def _awsJobToItem(self, job):
         binary = pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)
-        if len(binary) > SDBHelper.maxBinarySize():
+        if len(binary) > SDBHelper.maxBinarySize(extraReservedChunks=1):
             #Store as an overlarge job in S3
             with self.writeFileStream() as (writable, fileID):
                 writable.write(binary)
-            item = SDBHelper.binaryToAttributes('')
+            item = SDBHelper.binaryToAttributes(None)
             item["overlargeID"] = fileID
         else:
             item = SDBHelper.binaryToAttributes(binary)
+            item["overlargeID"] = ""
         return item
 
     jobsPerBatchInsert = 25
@@ -339,7 +347,8 @@ class AWSJobStore(AbstractJobStore):
         for attempt in retry_sdb():
             with attempt:
                 item = self.jobsDomain.get_attributes(bytes(jobStoreID), consistent_read=True)
-        if "overlargeID" in item:
+        self._checkItem(item)
+        if item["overlargeID"]:
             log.debug("Deleting job from filestore")
             self.deleteFile(item["overlargeID"])
         for attempt in retry_sdb():
@@ -469,8 +478,6 @@ class AWSJobStore(AbstractJobStore):
                 region = bucket_location_to_region(location)
         except S3ResponseError as e:
             if e.error_code == 'AccessDenied':
-                log.warn("Could not determine location of bucket hosting URL '%s', reverting "
-                         "to generic S3 endpoint.", url.geturl())
                 s3 = boto.connect_s3()
             else:
                 raise
@@ -957,18 +964,14 @@ class AWSJobStore(AbstractJobStore):
             :return: the attributes dict and an integer specifying the the number of chunk
                      attributes in the dictionary that are used for storing inlined content.
             """
-            if self.content is None:
-                numChunks = 0
-                attributes = {}
-            else:
-                content = self.content
-                if self.encrypted:
-                    sseKeyPath = self.outer.sseKeyPath
-                    if sseKeyPath is None:
-                        raise AssertionError('Encryption requested but no key was provided.')
-                    content = encryption.encrypt(content, sseKeyPath)
-                attributes = self.binaryToAttributes(content)
-                numChunks = len(attributes)
+            content = self.content
+            if self.encrypted and content is not None:
+                sseKeyPath = self.outer.sseKeyPath
+                if sseKeyPath is None:
+                    raise AssertionError('Encryption requested but no key was provided.')
+                content = encryption.encrypt(content, sseKeyPath)
+            attributes = self.binaryToAttributes(content)
+            numChunks = attributes['numChunks']
             attributes.update(dict(ownerID=self.ownerID,
                                    encrypted=self.encrypted,
                                    version=self.version or ''))
@@ -976,7 +979,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def _reservedAttributes(cls):
-            return 3
+            return 3 + super(AWSJobStore.FileInfo, cls)._reservedAttributes()
 
         @classmethod
         def maxInlinedSize(cls, encrypted):

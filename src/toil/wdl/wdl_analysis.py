@@ -14,9 +14,9 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from past.builtins import basestring
 
 import json
-import csv
 import os
 import logging
 from collections import OrderedDict
@@ -634,7 +634,7 @@ class AnalyzeWDL:
             if typeAST.name == 'Type':
                 return self.parse_declaration_type(typeAST.attr('subtype'))
             elif typeAST.name == 'OptionalType':
-                return typeAST.attr('innerType').source_string
+                return self.parse_declaration_type(typeAST.attr('innerType'))
             else:
                 raise NotImplementedError
         elif isinstance(typeAST, wdl_parser.AstList):
@@ -668,7 +668,8 @@ class AnalyzeWDL:
                         raise TypeError('Parsed boolean ({}) must be expressed as "true" or "false".'
                                         ''.format(expressionAST.source_string))
                 elif expressionAST.str == 'string' and not output_expressn:
-                    return '"{string}"'.format(string=expressionAST.source_string)
+                    parsed_string = self.translate_wdl_string_to_python_string(expressionAST.source_string)
+                    return '{string}'.format(string=parsed_string)
                 else:
                     return '{string}'.format(string=expressionAST.source_string)
             elif isinstance(expressionAST, wdl_parser.Ast):
@@ -921,7 +922,7 @@ class AnalyzeWDL:
         if name.source_string == 'glob':
             return es + es_params + ', tempDir)'
         elif name.source_string == 'size':
-            return es + es_params + ', d=asldijoiu23r8u34q89fho934t8u34fjobstore_path)'
+            return es + es_params + ', fileStore=fileStore)'
         else:
             return es + es_params + ')'
 
@@ -1090,7 +1091,6 @@ class AnalyzeWDL:
         :param i:
         :return:
         """
-
         io_map = OrderedDict()
 
         if isinstance(i, wdl_parser.Terminal):

@@ -354,7 +354,7 @@ Equivalently defines the workflow, where the functions
 :func:`toil.job.Job.addChildJobFn` and :func:`toil.job.Job.addFollowOnJobFn`
 are used to create job functions as children or follow-ons of an earlier job.
 
-Jobs graphs are not limited to trees, and can express arbitrary directed acylic
+Jobs graphs are not limited to trees, and can express arbitrary directed acyclic
 graphs. For a precise definition of legal graphs see
 :func:`toil.job.Job.checkJobGraphForDeadlocks`. The previous example could be
 specified as a DAG as follows::
@@ -449,7 +449,7 @@ Running this workflow results in three log messages from the jobs: ``i is 1``
 from ``j1``, ``i is 2`` from ``j2`` and ``i is 3`` from ``j3``.
 
 The return value from the first job is *promised* to the second job by the call
-to :func:`toil.job.Job.rv` in the line::
+to :func:`toil.job.Job.rv` in the following line::
 
     j2 = j1.addChildFn(fn, j1.rv())
 
@@ -569,7 +569,7 @@ multiple jobs' output values::
 FileID
 ------
 
-This object is a small wrapper around Python's builtin string class. It is used to
+The :class:`toil.fileStore.FileID` class is a small wrapper around Python's builtin string class. It is used to
 represent a file's ID in the file store, and has a ``size`` attribute that is the
 file's size in bytes. This object is returned by ``importFile`` and ``writeGlobalFile``.
 
@@ -613,7 +613,7 @@ node and that will be cleaned up, regardless of failure, when the job finishes::
             toil.start(j)
 
 Job functions can also access the file store for the job. The equivalent of the
-``LocalFileStoreJob`` class is::
+``LocalFileStoreJob`` class is ::
 
     def localFileStoreJobFn(job):
         scratchDir = job.tempDir
@@ -717,9 +717,9 @@ Example::
             Job.__init__(self,  memory="2G", cores=2, disk="3G")
             self.inputFileID = inputFileID
 
-        with fileStore.readGlobalFileStream(self.inputFileID) as fi:
-            with fileStore.writeGlobalFileStream() as (fo, outputFileID):
-                fo.write(fi.read() + 'World!')
+            with fileStore.readGlobalFileStream(self.inputFileID) as fi:
+                with fileStore.writeGlobalFileStream() as (fo, outputFileID):
+                    fo.write(fi.read() + 'World!')
             return outputFileID
 
 

@@ -43,7 +43,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 self.waitingJobs.append(newJob)
 
             # Queue jobs as necessary:
-            while len(self.waitingJobs) > 0:
+            while len(self.waitingJobs) > 0 and len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
                 jobID, cpu, memory, disk, jobName, command = self.waitingJobs.pop(0)
 
@@ -64,9 +64,6 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 # Add to queue of queued ("running") jobs
                 self.runningJobs.add(jobID)
 
-                # Add to allocated resources
-                self.allocatedCpus[jobID] = int(math.ceil(cpu))
-
             return activity
 
         def prepareSubmission(self, cpu, memory, disk, jobID, jobName, command):
@@ -77,7 +74,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             disk = float(disk)/1024 # disk in KB
 
             # Workaround for HTCondor Python bindings Unicode conversion bug
-            command = command.encode('utf8')
+            command = command.encode('utf-8')
 
             # Execute the entire command as /bin/sh -c "command"
             # TODO: Transfer the jobStore directory if using a local file store with a relative path.

@@ -1,7 +1,13 @@
 from __future__ import absolute_import
+from past.builtins import map
 import logging
 import os
-import pipes
+try:
+    # In Python 3 we have this quote
+    from shlex import quote
+except ImportError:
+    # But in 2.7 we have this deprecated one
+    from pipes import quote
 from toil import subprocess
 import docker
 import base64
@@ -168,7 +174,7 @@ def subprocessDockerCall(job,
     if len(parameters) > 0 and type(parameters[0]) is list:
         # When piping, all arguments now get merged into a single string to bash -c.
         # We try to support spaces in paths by wrapping them all in quotes first.
-        chain_params = [' '.join(p) for p in [list(map(pipes.quote, q)) for q in parameters]]
+        chain_params = [' '.join(p) for p in [list(map(quote, q)) for q in parameters]]
         # Use bash's set -eo pipefail to detect and abort on a failure in any command in the chain
         call = baseDockerCall + ['--entrypoint', '/bin/bash',  tool, '-c',
                                  'set -eo pipefail && {}'.format(' | '.join(chain_params))]
@@ -316,7 +322,7 @@ def apiDockerCall(job,
         if entrypoint is None:
             entrypoint = ['/bin/bash', '-c']
         chain_params = \
-            [' '.join((pipes.quote(arg) for arg in command)) \
+            [' '.join((quote(arg) for arg in command)) \
              for command in parameters]
         command = ' | '.join(chain_params)
         pipe_prefix = "set -eo pipefail && "
@@ -324,13 +330,13 @@ def apiDockerCall(job,
         logger.debug("Calling docker with: " + repr(command))
 
     # If 'parameters' is a normal list, join all elements into a single string
-    # element.
-    # Example: ['echo','the', 'Oread'] becomes: ['echo the Oread']
+    # element, quoting and escaping each element.
+    # Example: ['echo','the Oread'] becomes: ["echo 'the Oread'"]
     # Note that this is still a list, and the docker API prefers this as best
     # practice:
     # http://docker-py.readthedocs.io/en/stable/containers.html
     elif len(parameters) > 0 and type(parameters) is list:
-        command = ' '.join(parameters)
+        command = ' '.join((quote(arg) for arg in parameters))
         logger.debug("Calling docker with: " + repr(command))
 
     # If the 'parameters' lists are empty, they are respecified as None, which
@@ -496,7 +502,7 @@ def containerIsRunning(container_name):
 def getContainerName(job):
     """Create a random string including the job name, and return it."""
     return '--'.join([str(job),
-                      base64.b64encode(os.urandom(9), '-_')])\
+                      base64.b64encode(os.urandom(9), b'-_').decode('utf-8')])\
                       .replace("'", '').replace('"', '').replace('_', '')
 
 
@@ -510,25 +516,25 @@ def _dockerKill(containerName, action):
     if running is None:
         # This means that the container doesn't exist.  We will see this if the
         # container was run with --rm and has already exited before this call.
-        logger.info('The container with name "%s" appears to have already been '
+        logger.debug('The container with name "%s" appears to have already been '
                     'removed.  Nothing to '
                   'do.', containerName)
     else:
         if action in (None, FORGO):
-            logger.info('The container with name %s continues to exist as we '
+            logger.debug('The container with name %s continues to exist as we '
                         'were asked to forgo a '
                       'post-job action on it.', containerName)
         else:
-            logger.info('The container with name %s exists. Running '
+            logger.debug('The container with name %s exists. Running '
                         'user-specified defer functions.',
                          containerName)
             if running and action >= STOP:
-                logger.info('Stopping container "%s".', containerName)
+                logger.debug('Stopping container "%s".', containerName)
                 for attempt in retry(predicate=dockerPredicate):
                     with attempt:
                         subprocess.check_call(['docker', 'stop', containerName])
             else:
-                logger.info('The container "%s" was not found to be running.',
+                logger.debug('The container "%s" was not found to be running.',
                             containerName)
             if action >= RM:
                 # If the container was run with --rm, then stop will most likely
@@ -536,13 +542,13 @@ def _dockerKill(containerName, action):
                 # remove it.
                 running = containerIsRunning(containerName)
                 if running is not None:
-                    logger.info('Removing container "%s".', containerName)
+                    logger.debug('Removing container "%s".', containerName)
                     for attempt in retry(predicate=dockerPredicate):
                         with attempt:
                             subprocess.check_call(['docker', 'rm', '-f',
                                                    containerName])
                 else:
-                    logger.info('Container "%s" was not found on the system.'
+                    logger.debug('Container "%s" was not found on the system.'
                                 'Nothing to remove.',
                                  containerName)
 

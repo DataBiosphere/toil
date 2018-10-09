@@ -18,187 +18,261 @@
 # python 2/3 compatibility imports
 from __future__ import absolute_import
 from __future__ import print_function
-# TODO: change functions to support python 3 str and map
-# from builtins import map
-# from builtins import str
+from six.moves import xrange
+from past.builtins import map
+from functools import reduce
 
 # standard library
 import logging
 import sys
+import os
 
 # toil imports
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
+from toil.jobStores.abstractJobStore import NoSuchJobStoreException, NoSuchFileException
 from toil.job import JobException
 from toil.version import version
 
 logger = logging.getLogger(__name__)
 
-def print_dot_chart(jobsToReport, jobStore_name):
-    '''Print a dot output graph representing the workflow.'''
-    print("digraph toil_graph {")
-    print("# This graph was created from job-store: %s" % jobStore_name)
+class ToilStatus():
+    """Tool for reporting on job status."""
+    def __init__(self, jobStoreName, specifiedJobs=None):
+        self.jobStoreName = jobStoreName
+        self.jobStore = Toil.resumeJobStore(jobStoreName)
 
-    # Make job IDs to node names map
-    jobsToNodeNames = dict(
-        zip(map(lambda job: job.jobStoreID, jobsToReport),
-            range(len(jobsToReport))))
-
-    # Print the nodes
-    for job in set(jobsToReport):
-        print('%s [label="%s %s"];' % (
-            jobsToNodeNames[job.jobStoreID], job.jobName, job.jobStoreID))
-
-    # Print the edges
-    for job in set(jobsToReport):
-        for jobList, level in zip(job.stack, xrange(len(job.stack))):
-            for childJob in jobList:
-                # Check, b/c successor may be finished / not in the set of jobs
-                if childJob.jobStoreID in jobsToNodeNames:
-                    print('%s -> %s [label="%i"];' % (
-                        jobsToNodeNames[job.jobStoreID],
-                        jobsToNodeNames[childJob.jobStoreID], level))
-    print("}")
-
-def printJobLog(jobsToReport, jobStore):
-    '''Takes a list of jobs, finds their log files, and prints them to the terminal.'''
-    for job in jobsToReport:
-        if job.logJobStoreFileID is not None:
-            msg = "LOG_FILE_OF_JOB:%s LOG: =======>\n" % job
-            with job.getLogFileHandle(jobStore) as fH:
-                msg += fH.read()
-            msg += "<========="
+        if specifiedJobs is None:
+            rootJob = self.fetchRootJob()
+            logger.info('Traversing the job graph gathering jobs. This may take a couple of minutes.')
+            self.jobsToReport = self.traverseJobGraph(rootJob)
         else:
-            msg = "LOG_FILE_OF_JOB:%s LOG: Job has no log file" % job
-        print(msg)
+            self.jobsToReport = self.fetchUserJobs(specifiedJobs)
 
-def printJobChildren(jobsToReport):
-    '''Takes a list of jobs, and prints their successors.'''
-    for job in jobsToReport:
-        children = "CHILDREN_OF_JOB:%s " % job
-        for jobList, level in zip(job.stack, xrange(len(job.stack))):
-            for childJob in jobList:
-                children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
-        print(children)
+    def print_dot_chart(self):
+        """Print a dot output graph representing the workflow."""
+        print("digraph toil_graph {")
+        print("# This graph was created from job-store: %s" % self.jobStoreName)
 
-def printAggregateJobStats(jobsToReport, properties, childNumber):
-    '''Prints a job's ID, log file, remaining tries, and other properties.'''
-    for job in jobsToReport:
-        lf = lambda x: "%s:%s" % (x, str(x in properties))
-        print("\t".join(("JOB:%s" % job,
-                         "LOG_FILE:%s" % job.logJobStoreFileID,
-                         "TRYS_REMAINING:%i" % job.remainingRetryCount,
-                         "CHILD_NUMBER:%s" % childNumber,
-                         lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
-                         lf("HAS_SERVICES"), lf("IS_SERVICE"))))
+        # Make job IDs to node names map
+        jobsToNodeNames = dict(enumerate(map(lambda job: job.jobStoreID, self.jobsToReport)))
 
-def report_on_jobs(jobsToReport, jobStore, options):
-    '''Gathers information about jobs such as its child jobs and status.'''
-    hasChildren = []
-    readyToRun = []
-    zombies = []
-    hasLogFile = []
-    hasServices = []
-    services = []
+        # Print the nodes
+        for job in set(self.jobsToReport):
+            print('%s [label="%s %s"];' % (
+                jobsToNodeNames[job.jobStoreID], job.jobName, job.jobStoreID))
 
-    for job in jobsToReport:
+        # Print the edges
+        for job in set(self.jobsToReport):
+            for level, jobList  in enumerate(job.stack):
+                for childJob in jobList:
+                    # Check, b/c successor may be finished / not in the set of jobs
+                    if childJob.jobStoreID in jobsToNodeNames:
+                        print('%s -> %s [label="%i"];' % (
+                            jobsToNodeNames[job.jobStoreID],
+                            jobsToNodeNames[childJob.jobStoreID], level))
+        print("}")
+
+    def printJobLog(self):
+        """Takes a list of jobs, finds their log files, and prints them to the terminal."""
+        for job in self.jobsToReport:
+            if job.logJobStoreFileID is not None:
+                msg = "LOG_FILE_OF_JOB:%s LOG: =======>\n" % job
+                with job.getLogFileHandle(self.jobStore) as fH:
+                    msg += fH.read()
+                msg += "<========="
+            else:
+                msg = "LOG_FILE_OF_JOB:%s LOG: Job has no log file" % job
+            print(msg)
+
+    def printJobChildren(self):
+        """Takes a list of jobs, and prints their successors."""
+        for job in self.jobsToReport:
+            children = "CHILDREN_OF_JOB:%s " % job
+            for level, jobList in enumerate(job.stack):
+                for childJob in jobList:
+                    children += "\t(CHILD_JOB:%s,PRECEDENCE:%i)" % (childJob, level)
+            print(children)
+
+    def printAggregateJobStats(self, properties, childNumber):
+        """Prints a job's ID, log file, remaining tries, and other properties."""
+        for job in self.jobsToReport:
+            lf = lambda x: "%s:%s" % (x, str(x in properties))
+            print("\t".join(("JOB:%s" % job,
+                             "LOG_FILE:%s" % job.logJobStoreFileID,
+                             "TRYS_REMAINING:%i" % job.remainingRetryCount,
+                             "CHILD_NUMBER:%s" % childNumber,
+                             lf("READY_TO_RUN"), lf("IS_ZOMBIE"),
+                             lf("HAS_SERVICES"), lf("IS_SERVICE"))))
+
+    def report_on_jobs(self):
+        """
+        Gathers information about jobs such as its child jobs and status.
+
+        :returns jobStats: Pairings of a useful category and a list of jobs which fall into it.
+        :rtype dict:
+        """
+        hasChildren = []
+        readyToRun = []
+        zombies = []
+        hasLogFile = []
+        hasServices = []
+        services = []
         properties = set()
-        if job.logJobStoreFileID is not None:
-            hasLogFile.append(job)
 
-        childNumber = reduce(lambda x, y: x + y, map(len, job.stack) + [0])
-        if childNumber > 0:  # Total number of successors > 0
-            hasChildren.append(job)
-            properties.add("HAS_CHILDREN")
+        for job in self.jobsToReport:
+            if job.logJobStoreFileID is not None:
+                hasLogFile.append(job)
 
-        elif job.command != None:
-            # Job has no children and a command to run. Indicates job could be run.
-            readyToRun.append(job)
-            properties.add("READY_TO_RUN")
+            childNumber = reduce(lambda x, y: x + y, map(len, job.stack) + [0])
+            if childNumber > 0:  # Total number of successors > 0
+                hasChildren.append(job)
+                properties.add("HAS_CHILDREN")
+            elif job.command is not None:
+                # Job has no children and a command to run. Indicates job could be run.
+                readyToRun.append(job)
+                properties.add("READY_TO_RUN")
+            else:
+                # Job has no successors and no command, so is a zombie job.
+                zombies.append(job)
+                properties.add("IS_ZOMBIE")
+            if job.services:
+                hasServices.append(job)
+                properties.add("HAS_SERVICES")
+            if job.startJobStoreID or job.terminateJobStoreID or job.errorJobStoreID:
+                # These attributes are only set in service jobs
+                services.append(job)
+                properties.add("IS_SERVICE")
 
-        else:
-            # Job has no successors and no command, so is a zombie job.
-            zombies.append(job)
-            properties.add("IS_ZOMBIE")
+        jobStats = {'hasChildren': hasChildren,
+                    'readyToRun': readyToRun,
+                    'zombies': zombies,
+                    'hasServices': hasServices,
+                    'services': services,
+                    'hasLogFile': hasLogFile,
+                    'properties': properties,
+                    'childNumber': childNumber}
+        return jobStats
 
-        if job.services:
-            hasServices.append(job)
-            properties.add("HAS_SERVICES")
+    @staticmethod
+    def getPIDStatus(jobStoreName):
+        """
+        Determine the status of a process with a particular pid.
 
-        if job.startJobStoreID or job.terminateJobStoreID or job.errorJobStoreID:
-            # These attributes are only set in service jobs
-            services.append(job)
-            properties.add("IS_SERVICE")
+        Checks to see if a process exists or not.
 
-    jobStats = {'hasChildren': hasChildren,
-                'readyToRun': readyToRun,
-                'zombies': zombies,
-                'hasServices': hasServices,
-                'services': services,
-                'hasLogFile': hasLogFile,
-                'properties': properties,
-                'childNumber': childNumber}
-
-    return jobStats
-
-def fetchRootJob(jobStore):
-    '''
-    Fetches the root job from the jobStore that provides context for all other jobs.
-
-    Exactly the same as the jobStore.loadRootJob() function, but with a different
-    exit message if the root job is not found (indicating the workflow ran successfully
-    to completion and certain stats cannot be gathered from it meaningfully such
-    as which jobs are left to run).
-    '''
-    try:
-        return jobStore.loadRootJob()
-    except JobException:
-        print('Root job is absent.  The workflow may have completed successfully.', file=sys.stderr)
-        sys.exit(0)
-
-def fetchUserJobs(jobStore, jobs):
-    '''
-    Takes a user input array of jobs, verifies that they are in the jobStore
-    and returns the array of jobsToReport.
-    '''
-    jobsToReport = []
-    for jobID in jobs:
+        :return: A string indicating the status of the PID of the workflow as stored in the jobstore.
+        :rtype: str
+        """
+        jobstore = Toil.resumeJobStore(jobStoreName)
         try:
-            jobsToReport.append(jobStore.load(jobID))
+            with jobstore.readSharedFileStream('pid.log') as pidFile:
+                pid = int(pidFile.read())
+                try:
+                    os.kill(pid, 0)  # Does not kill process when 0 is passed.
+                except OSError:  # Process not found, must be done.
+                    return 'COMPLETED'
+                else:
+                    return 'RUNNING'
+        except NoSuchFileException:
+            pass
+        return 'QUEUED'
+
+    @staticmethod
+    def getStatus(jobStoreName):
+        """
+        Determine the status of a workflow.
+
+        Checks for the existance of files created in the toil.Leader.run(). In toil.Leader.run(), if a workflow completes
+        with failed jobs, 'failed.log' is created, otherwise 'succeeded.log' is written. If neither of these exist,
+        the leader is still running jobs.
+
+        :return: A string indicating the status of the workflow. ['COMPLETED','RUNNING','ERROR']
+        :rtype: str
+        """
+        jobstore = Toil.resumeJobStore(jobStoreName)
+        try:
+            with jobstore.readSharedFileStream('succeeded.log') as successful:
+                return 'COMPLETED'
+        except NoSuchFileException:
+            try:
+                with jobstore.readSharedFileStream('failed.log') as failedLog:
+                    return 'ERROR'
+            except NoSuchFileException:
+                pass
+        return 'RUNNING'
+
+    def fetchRootJob(self):
+        """
+        Fetches the root job from the jobStore that provides context for all other jobs.
+
+        Exactly the same as the jobStore.loadRootJob() function, but with a different
+        exit message if the root job is not found (indicating the workflow ran successfully
+        to completion and certain stats cannot be gathered from it meaningfully such
+        as which jobs are left to run).
+
+        :raises JobException: if the root job does not exist.
+        """
+        try:
+            return self.jobStore.loadRootJob()
         except JobException:
-            print('The job %s could not be found.' % jobID, file=sys.stderr)
-            sys.exit(0)
-    return jobsToReport
+            print('Root job is absent. The workflow may have completed successfully.', file=sys.stderr)
+            raise
 
-def traverseJobGraph(rootJob, jobStore, jobsToReport=None, foundJobStoreIDs=None):
-    '''Find all current jobs in the jobStore and return them as an Array.'''
-    if jobsToReport is None:
+    def fetchUserJobs(self, jobs):
+        """
+        Takes a user input array of jobs, verifies that they are in the jobStore
+        and returns the array of jobsToReport.
+
+        :param list jobs: A list of jobs to be verified.
+        :returns jobsToReport: A list of jobs which are verified to be in the jobStore.
+        """
         jobsToReport = []
-
-    if foundJobStoreIDs is None:
-        foundJobStoreIDs = set()
-
-    if rootJob.jobStoreID in foundJobStoreIDs:
+        for jobID in jobs:
+            try:
+                jobsToReport.append(self.jobStore.load(jobID))
+            except JobException:
+                print('The job %s could not be found.' % jobID, file=sys.stderr)
+                raise
         return jobsToReport
 
-    foundJobStoreIDs.add(rootJob.jobStoreID)
-    jobsToReport.append(rootJob)
-    # Traverse jobs in stack
-    for jobs in rootJob.stack:
-        for successorJobStoreID in [x.jobStoreID for x in jobs]:
-            if (successorJobStoreID not in foundJobStoreIDs and jobStore.exists(
-                    successorJobStoreID)):
-                traverseJobGraph(jobStore.load(successorJobStoreID), jobStore, jobsToReport, foundJobStoreIDs)
+    def traverseJobGraph(self, rootJob, jobsToReport=None, foundJobStoreIDs=None):
+        """
+        Find all current jobs in the jobStore and return them as an Array.
 
-    # Traverse service jobs
-    for jobs in rootJob.services:
-        for serviceJobStoreID in [x.jobStoreID for x in jobs]:
-            if jobStore.exists(serviceJobStoreID):
-                assert serviceJobStoreID not in foundJobStoreIDs
-                foundJobStoreIDs.add(serviceJobStoreID)
-                jobsToReport.append(jobStore.load(serviceJobStoreID))
-    return jobsToReport
+        :param jobNode rootJob: The root job of the workflow.
+        :param list jobsToReport: A list of jobNodes to be added to and returned.
+        :param set foundJobStoreIDs: A set of jobStoreIDs used to keep track of jobStoreIDs encountered in traversal.
+        :returns jobsToReport: The list of jobs currently in the job graph.
+        """
+        if jobsToReport is None:
+            jobsToReport = []
+
+        if foundJobStoreIDs is None:
+            foundJobStoreIDs = set()
+
+        if rootJob.jobStoreID in foundJobStoreIDs:
+            return jobsToReport
+
+        foundJobStoreIDs.add(rootJob.jobStoreID)
+        jobsToReport.append(rootJob)
+        # Traverse jobs in stack
+        for jobs in rootJob.stack:
+            for successorJobStoreID in [x.jobStoreID for x in jobs]:
+                if successorJobStoreID not in foundJobStoreIDs and self.jobStore.exists(successorJobStoreID):
+                    self.traverseJobGraph(self.jobStore.load(successorJobStoreID), jobsToReport, foundJobStoreIDs)
+
+        # Traverse service jobs
+        for jobs in rootJob.services:
+            for serviceJobStoreID in [x.jobStoreID for x in jobs]:
+                if self.jobStore.exists(serviceJobStoreID):
+                    if serviceJobStoreID in foundJobStoreIDs:
+                        raise RuntimeError('Service job was unexpectedly found while traversing ')
+                    foundJobStoreIDs.add(serviceJobStoreID)
+                    jobsToReport.append(self.jobStore.load(serviceJobStoreID))
+
+        return jobsToReport
 
 
 def main():
@@ -241,7 +315,6 @@ def main():
     parser.add_argument("--version", action='version', version=version)
 
     options = parseBasicOptions(parser)
-    logger.info("Parsed arguments")
 
     if len(sys.argv) == 1:
         parser.print_help()
@@ -249,28 +322,18 @@ def main():
 
     config = Config()
     config.setOptions(options)
-    jobStore = Toil.resumeJobStore(config.jobStore)
 
-    ##########################################
-    # Gather the jobs to report
-    ##########################################
+    try:
+        status = ToilStatus(config.jobStore, options.jobs)
+    except NoSuchJobStoreException:
+        print('No job store found.')
+        return
+    except JobException:  # Workflow likely complete, user informed in ToilStatus()
+        return
 
-    # Gather all jobs in the workflow in jobsToReport
-    if options.jobs == None:
-        rootJob = fetchRootJob(jobStore)
-        logger.info('Traversing the job graph gathering jobs. This may take a couple of minutes.')
-        jobsToReport = traverseJobGraph(rootJob, jobStore)
+    jobStats = status.report_on_jobs()
 
-    # Only gather jobs specified in options.jobs
-    else:
-        jobsToReport = fetchUserJobs(jobStore, jobs=options.jobs)
-
-    ##########################################
-    # Report on the jobs
-    ##########################################
-
-    jobStats = report_on_jobs(jobsToReport, jobStore, options)
-
+    # Info to be reported.
     hasChildren = jobStats['hasChildren']
     readyToRun = jobStats['readyToRun']
     zombies = jobStats['zombies']
@@ -281,17 +344,13 @@ def main():
     childNumber = jobStats['childNumber']
 
     if options.printPerJobStats:
-        printAggregateJobStats(jobsToReport, properties, childNumber)
-
+        status.printAggregateJobStats(properties, childNumber)
     if options.printLogs:
-        printJobLog(jobsToReport, jobStore)
-
+        status.printJobLog()
     if options.printChildren:
-        printJobChildren(jobsToReport)
-
+        status.printJobChildren()
     if options.printDot:
-        print_dot_chart(jobsToReport, jobStore_name=config.jobStore)
-
+        status.print_dot_chart()
     if options.stats:
         print('Of the %i jobs considered, '
            'there are %i jobs with children, '
@@ -300,9 +359,9 @@ def main():
            '%i jobs with services, '
            '%i services, '
            'and %i jobs with log files currently in %s.' %
-            (len(jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
-             len(hasServices), len(services), len(hasLogFile), config.jobStore))
+            (len(status.jobsToReport), len(hasChildren), len(readyToRun), len(zombies),
+             len(hasServices), len(services), len(hasLogFile), status.jobStore))
 
-    if len(jobsToReport) > 0 and options.failIfNotComplete:
+    if len(status.jobsToReport) > 0 and options.failIfNotComplete:
         # Upon workflow completion, all jobs will have been removed from job store
         exit(1)

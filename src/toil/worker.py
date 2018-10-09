@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,6 +31,8 @@ import socket
 import logging
 import shutil
 from threading import Thread
+
+logging.basicConfig()
 
 try:
     import cPickle as pickle
@@ -115,6 +117,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     :param bool redirectOutputToLogFile: Redirect standard out and standard error to a log file
     """
     logging.basicConfig()
+    setLogLevel(config.logLevel)
 
     ##########################################
     #Create the worker killer, if requested
@@ -154,8 +157,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-
-    setLogLevel(config.logLevel)
 
     toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
 
@@ -418,6 +419,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         jobGraph = jobStore.load(jobStoreID)
         jobGraph.setupJobAfterFailure(config)
         workerFailed = True
+        if job and jobGraph.remainingRetryCount == 0:
+            job._succeeded = False
 
     ##########################################
     #Cleanup
@@ -450,7 +453,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     # Now our file handles are in exactly the state they were in before.
 
     #Copy back the log file to the global dir, if needed
-    if workerFailed:
+    if workerFailed and redirectOutputToLogFile:
         jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID)
         jobGraph.chainedJobs = listOfJobs
         with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
@@ -460,7 +463,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                         f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                     elif logFileByteReportLimit < 0:
                         f.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
-                w.write(f.read())
+                w.write(f.read().encode('utf-8')) # TODO load file using a buffer
         jobStore.update(jobGraph)
 
     elif debugging and redirectOutputToLogFile:  # write log messages
@@ -475,7 +478,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not workerFailed:  # We have stats/logging to report back
-        jobStore.writeStatsAndLogging(json.dumps(statsDict))
+        jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True))
 
     #Remove the temp dir
     cleanUp = config.cleanWorkDir

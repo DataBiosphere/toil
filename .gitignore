@@ -6,10 +6,12 @@
 __pycache__
 .eggs/
 .cache/
+.pytest_cache/
 .idea/
 /test-report.xml
 /test-report-*.xml
 /venv/
+tmp/
 /src/toil/test/cwl/spec
 /cwltool_deps/
 /docs/generated_rst/

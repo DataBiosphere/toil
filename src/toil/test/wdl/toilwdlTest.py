@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+from six import iteritems
 import unittest
 import os
 from toil import subprocess
@@ -24,7 +25,7 @@ from toil.wdl.wdl_functions import read_float
 from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, needs_docker
 import zipfile
 import shutil
 
@@ -58,7 +59,7 @@ class ToilWdlIntegrationTest(ToilTest):
         # Jenkins requires this to not error on "untracked files".
         # Set to true if running tests locally and you don't want to
         # redownload the data each time you run the test.
-        self.jenkins = False
+        self.jenkins = True
 
         self.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
                                      data=self.encode_data,
@@ -97,13 +98,11 @@ class ToilWdlIntegrationTest(ToilTest):
             if os.path.exists(self.encode_data_dir):
                 shutil.rmtree(self.encode_data_dir)
 
-        remove_encode_output()
+        remove_outputs()
 
         unittest.TestCase.tearDown(self)
 
-    # estimated run time 7 sec; not actually slow, but this will break on travis because it does not have
-    # docker installed so we tag this so that it runs on jenkins instead.
-    @slow
+    @needs_docker
     def testMD5sum(self):
         '''Test if toilwdl produces the same outputs as known good outputs for WDL's
         GATK tutorial #1.'''
@@ -129,12 +128,19 @@ class ToilWdlIntegrationTest(ToilTest):
     def testFn_Size(self):
         """Test the wdl built-in functional equivalent of 'size()',
         which returns a file's size based on the path."""
-        small_file = size(os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl'))
-        larger_file = size(self.encode_data)
-        larger_file_in_mb = size(self.encode_data, 'mb')
-        assert small_file >= 4096, small_file
-        assert larger_file >= 70000000, larger_file
-        assert larger_file_in_mb >= 70, larger_file_in_mb
+        from toil.job import Job
+        from toil.common import Toil
+        options = Job.Runner.getDefaultOptions('./toilWorkflowRun')
+        options.clean = 'always'
+        with Toil(options) as toil:
+            small = process_infile(os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl'), toil)
+            small_file = size(small)
+            large = process_infile(self.encode_data, toil)
+            larger_file = size(large)
+            larger_file_in_mb = size(large, 'mb')
+            assert small_file >= 1800, small_file
+            assert larger_file >= 70000000, larger_file
+            assert larger_file_in_mb >= 70, larger_file_in_mb
 
     # estimated run time <1 sec
     def testFn_Glob(self):
@@ -142,16 +148,11 @@ class ToilWdlIntegrationTest(ToilTest):
         which finds all files with a pattern in a directory."""
         vocab_location = glob('vocab.wdl', os.path.abspath('src/toil'))
         assert vocab_location == [os.path.abspath('src/toil/test/wdl/testfiles/vocab.wdl')], str(vocab_location)
-        wdl_locations = glob('wdl_*', os.path.abspath('src/toil'))
+        wdl_locations = glob('wdl_*.py', os.path.abspath('src/toil'))
         wdl_that_should_exist = [os.path.abspath('src/toil/wdl/wdl_analysis.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_analysis.pyc'),
                                  os.path.abspath('src/toil/wdl/wdl_synthesis.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_synthesis.pyc'),
-                                 os.path.abspath('src/toil/test/wdl/wdl_templates.zip'),
                                  os.path.abspath('src/toil/wdl/wdl_functions.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_functions.pyc'),
-                                 os.path.abspath('src/toil/wdl/wdl_parser.py'),
-                                 os.path.abspath('src/toil/wdl/wdl_parser.pyc')]
+                                 os.path.abspath('src/toil/wdl/wdl_parser.py')]
         # make sure the files match the expected files
         for location in wdl_that_should_exist:
             assert location in wdl_locations, '{} not in {}!'.format(str(location), str(wdl_locations))
@@ -216,7 +217,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
         no_declaration = ['bool1', 'int1', 'float1', 'file1', 'string1']
         collection_counter = []
-        for name, declaration in aWDL.workflows_dictionary['vocabulary']['wf_declarations'].iteritems():
+        for name, declaration in iteritems(aWDL.workflows_dictionary['vocabulary']['wf_declarations']):
 
             if name in no_declaration:
                 collection_counter.append(name)
@@ -236,11 +237,11 @@ class ToilWdlIntegrationTest(ToilTest):
                 assert declaration['type'] == 'Float', declaration['type']
             if name == 'file2':
                 collection_counter.append(name)
-                assert declaration['value'] == '"src/toil/test/wdl/test.tsv"', declaration['value']
+                assert declaration['value'] == "'src/toil/test/wdl/test.tsv'", declaration['value']
                 assert declaration['type'] == 'File', declaration['type']
             if name == 'string2':
                 collection_counter.append(name)
-                assert declaration['value'] == '"x"', declaration['value']
+                assert declaration['value'] == "'x'", declaration['value']
                 assert declaration['type'] == 'String', declaration['type']
         assert collection_counter == ['bool1', 'int1', 'float1', 'file1', 'string1',
                                       'bool2', 'int2', 'float2', 'file2', 'string2']
@@ -303,6 +304,7 @@ class ToilWdlIntegrationTest(ToilTest):
 
     # estimated run time 80 sec
     @slow
+    @needs_docker
     def testENCODE(self):
         '''Test if toilwdl produces the same outputs as known good outputs for
         a short ENCODE run.'''
@@ -378,8 +380,8 @@ class ToilWdlIntegrationTest(ToilTest):
             with zipfile.ZipFile(data, 'r') as zip_ref:
                 zip_ref.extractall(self.test_directory)
 
-def remove_encode_output():
-    '''Remove the outputs generated by the ENCODE unittest.
+def remove_outputs():
+    '''Remove the outputs generated by various unittests.
 
     These are created in the current working directory, which on jenkins is the
     main toil folder.  They must be removed so that jenkins does not think we
@@ -408,11 +410,13 @@ def remove_encode_output():
                       'wdl-stats.log',
                       'xcor.json',
                       'xcor.log']
-    for output in encode_outputs:
+    other_log_outputs = ['post_processing.log',
+                         'md5.log']
+    outputs = encode_outputs + other_log_outputs
+    for output in outputs:
         output = os.path.abspath(output)
         if os.path.exists(output):
             os.remove(output)
-
 
 def compare_runs(output_dir, ref_dir):
     """

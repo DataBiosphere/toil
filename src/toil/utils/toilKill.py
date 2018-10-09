@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,10 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Kills any running jobs trees in a rogue toil.
-"""
+"""Kills rogue toil processes."""
 from __future__ import absolute_import
 import logging
+import os
+import signal
 
 from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
@@ -34,11 +35,25 @@ def main():
     options = parseBasicOptions(parser)
     config = Config()
     config.setOptions(options)
-    jobStore = Toil.resumeJobStore(config.jobStore)
+    config.jobStore = config.jobStore[5:] if config.jobStore.startswith('file:') else config.jobStore
 
-    logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
-    ####This behaviour is now broken
-    batchSystem = Toil.createBatchSystem(jobStore.config) #This should automatically kill the existing jobs.. so we're good.
-    for jobID in batchSystem.getIssuedBatchJobIDs(): #Just in case we do it again.
-        batchSystem.killBatchJobs(jobID)
-    logger.info("All jobs SHOULD have been killed")
+    # ':' means an aws/google/azure jobstore; use the old (broken?) method
+    if ':' in config.jobStore:
+        jobStore = Toil.resumeJobStore(config.jobStore)
+        logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)
+        # TODO: This behaviour is now broken src: https://github.com/DataBiosphere/toil/commit/a3d65fc8925712221e4cda116d1825d4a1e963a1
+        batchSystem = Toil.createBatchSystem(jobStore.config)  # Should automatically kill existing jobs, so we're good.
+        for jobID in batchSystem.getIssuedBatchJobIDs():  # Just in case we do it again.
+            batchSystem.killBatchJobs(jobID)
+        logger.info("All jobs SHOULD have been killed")
+    # otherwise, kill the pid recorded in the jobstore
+    else:
+        pid_log = os.path.join(os.path.abspath(config.jobStore), 'pid.log')
+        with open(pid_log, 'r') as f:
+            pid2kill = f.read().strip()
+        try:
+            os.kill(int(pid2kill), signal.SIGKILL)
+            logger.info("Toil process %s successfully terminated." % str(pid2kill))
+        except OSError:
+            logger.error("Toil process %s could not be terminated." % str(pid2kill))
+            raise

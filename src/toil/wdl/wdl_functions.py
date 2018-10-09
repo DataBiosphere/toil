@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from past.builtins import basestring
 
 import fnmatch
 import os
@@ -149,6 +150,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
         sync
 
         mv "$tmpDir/rc.tmp" "$tmpDir/rc"
+        chmod -R 777 $tmpDir
         ''')
 
     bashfile_string = bashfile_string + bashfile_suffix
@@ -160,9 +162,26 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 def process_single_infile(f, fileStore):
     wdllogger.info('Importing {f} into the jobstore.'.format(f=f))
     if f.startswith('http://') or f.startswith('https://') or \
-            f.startswith('file://') or f.startswith('wasb://') or f.startswith('s3://'):
+            f.startswith('file://') or f.startswith('wasb://'):
         filepath = fileStore.importFile(f)
         preserveThisFilename = os.path.basename(f)
+    elif f.startswith('s3://'):
+        try:
+            filepath = fileStore.importFile(f)
+            preserveThisFilename = os.path.basename(f)
+        except:
+            from toil.lib.ec2nodes import EC2Regions
+            success = False
+            for region in EC2Regions:
+                try:
+                    html_path = 'http://s3.{}.amazonaws.com/'.format(region) + f[5:]
+                    filepath = fileStore.importFile(html_path)
+                    preserveThisFilename = os.path.basename(f)
+                    success = True
+                except:
+                    pass
+            if not success:
+                raise RuntimeError('Unable to import: ' + f)
     elif f.startswith('gs://'):
         f = 'https://storage.googleapis.com/' + f[5:]
         filepath = fileStore.importFile(f)
@@ -181,6 +200,18 @@ def process_array_infile(af, fileStore):
 
 
 def process_infile(f, fileStore):
+    """
+    Takes an array of files or a single file and imports into the jobstore.
+
+    This returns a tuple or an array of tuples replacing all previous path
+    strings.  Toil does not preserve a file's original name upon import and
+    so the tuple keeps track of this with the format: '(filepath, preserveThisFilename)'
+
+    :param f: String or an Array.  The smallest element must be a string,
+              so: an array of strings, an array of arrays of strings... etc.
+    :param fileStore: The filestore object that is called to load files into the filestore.
+    :return: A tuple or an array of tuples.
+    """
     # check if this has already been processed
     if isinstance(f, tuple):
         return f
@@ -202,10 +233,12 @@ def sub(a, b, c):
     import re
     return re.sub(str(a), str(b), str(c))
 
+
 def defined(i):
     if i:
         return True
     return False
+
 
 def process_single_outfile(f, fileStore, workDir, outDir):
     if os.path.exists(f):
@@ -261,6 +294,10 @@ def abspath_array_file(af, cwd):
 
 
 def abspath_file(f, cwd):
+    if not f:
+        # in the case of "optional" files (same treatment in 'process_and_read_file()')
+        # TODO: handle this at compile time, not here
+        return ''
     # check if this has already been processed
     if isinstance(f, tuple):
         return f
@@ -276,13 +313,11 @@ def abspath_file(f, cwd):
 
 
 def read_single_file(f, tempDir, fileStore, docker=False):
-    import os, stat
+    import os
     try:
         fpath = fileStore.readGlobalFile(f[0], userPath=os.path.join(tempDir, f[1]))
     except:
         fpath = os.path.join(tempDir, f[1])
-    if docker:
-        return os.path.join('/root', f[1])
     return fpath
 
 
@@ -304,6 +339,10 @@ def read_file(f, tempDir, fileStore, docker=False):
 
 
 def process_and_read_file(f, tempDir, fileStore, docker=False):
+    if not f:
+        # in the case of "optional" files (same treatment in 'abspath_file()')
+        # TODO: handle this at compile time, not here and change to the empty string
+        return None
     processed_file = process_infile(f, fileStore)
     return read_file(processed_file, tempDir, fileStore, docker=docker)
 
@@ -390,7 +429,7 @@ def parse_disk(disk):
                 return parse_memory(d[0]) if parse_memory(d[0]) > 2147483648 else 2147483648
         return total_disk if total_disk > 2147483648 else 2147483648
     except:
-        return 2147483648 # toil's default
+        return 2147483648  # toil's default
 
 
 def is_number(s):
@@ -401,20 +440,17 @@ def is_number(s):
         return False
 
 
-def size(f, unit='B', d=None):
+def size(f, unit='B', fileStore=None):
     """
     Returns the size of a file in bytes.
 
     :param f: Filename
-    :param d: The directory containing the file to be sized.
     :param unit: Return the byte size in these units (gigabytes, etc.).
     :return:
     """
-    if isinstance(f, tuple) and d:
-        f = os.path.join(d, f[0])
     divisor = return_bytes(unit)
-    return (float(subprocess.check_output(['du', '-s', f],
-            env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode('ascii')) * 512) / divisor
+    fileID = process_infile(f, fileStore)[0]
+    return fileID.size / divisor
 
 
 def select_first(values):

@@ -15,22 +15,23 @@ from __future__ import absolute_import
 from __future__ import print_function
 import json
 import os
-from toil import subprocess
+import sys
 import unittest
 import re
 import shutil
+import zipfile
 import pytest
 from future.moves.urllib.request import urlretrieve
-import zipfile
-
-# Python 3 compatibility imports
 from six.moves import StringIO
 from six import u as str
 
+pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
+sys.path.insert(0, pkg_root)  # noqa
+
+from toil import subprocess
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
                        needs_torque)
-
 
 
 @needs_cwl
@@ -143,8 +144,9 @@ class CWLTest(ToilTest):
     def test_run_conformance(self, batchSystem=None):
         rootDir = self._projectRootPath()
         cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
+        workDir = os.path.join(cwlSpec, 'v1.0')
         # The latest cwl git hash. Update it to get the latest tests.
-        testhash = "f96bca6911b6688ff614c02dbefe819bed260a13"
+        testhash = "22490926651174c6cbe01c76c2ded3c9e8d0ee6f"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(cwlSpec):
             urlretrieve(url, "spec.zip")
@@ -153,11 +155,11 @@ class CWLTest(ToilTest):
             shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
             os.remove("spec.zip")
         try:
-            cmd = ["bash", "run_test.sh", "RUNNER=toil-cwl-runner",
-                   "DRAFT=v1.0", "-j4"]
+            cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
+                   '--timeout=1800', '--basedir=' + workDir]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
-            subprocess.check_output(cmd, cwd=cwlSpec, stderr=subprocess.STDOUT)
+            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
             # check output -- if we failed but only have unsupported features, we're okay

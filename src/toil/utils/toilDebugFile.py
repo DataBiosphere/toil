@@ -60,7 +60,7 @@ def fetchJobStoreFiles(jobStore, options):
         jobStoreHits = recursiveGlob(directoryname=options.jobStore,
                                      glob_pattern=jobStoreFile)
         for jobStoreFileID in jobStoreHits:
-            logger.info("Copying job store file: %s to %s",
+            logger.debug("Copying job store file: %s to %s",
                         jobStoreFileID,
                         options.localFilePath[0])
             jobStore.readFile(jobStoreFileID,
@@ -94,7 +94,7 @@ def printContentsOfJobStore(jobStorePath, nameOfJob=None):
         os.remove(logFile)
     for gfile in sorted(list_of_files):
         if not gfile.endswith('.new'):
-            logger.info(nameOfJob + "File: %s", os.path.basename(gfile))
+            logger.debug(nameOfJob + "File: %s", os.path.basename(gfile))
             with open(logFile, "a+") as f:
                     f.write(os.path.basename(gfile))
                     f.write("\n")
@@ -129,16 +129,16 @@ def main():
     config = Config()
     config.setOptions(options)
     jobStore = Toil.resumeJobStore(config.jobStore)
-    logger.info("Connected to job store: %s", config.jobStore)
+    logger.debug("Connected to job store: %s", config.jobStore)
 
     if options.fetch:
         # Copy only the listed files locally
-        logger.info("Fetching local files: %s", options.fetch)
+        logger.debug("Fetching local files: %s", options.fetch)
         fetchJobStoreFiles(jobStore=jobStore, options=options)
 
     elif options.fetchEntireJobStore:
         # Copy all jobStore files locally
-        logger.info("Fetching all local files.")
+        logger.debug("Fetching all local files.")
         options.fetch = "*"
         fetchJobStoreFiles(jobStore=jobStore, options=options)
 

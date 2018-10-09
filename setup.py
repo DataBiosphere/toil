@@ -20,9 +20,9 @@ def runSetup():
     Calls setup(). This function exists so the setup() invocation preceded more internal
     functionality. The `version` module is imported dynamically by importVersion() below.
     """
-    boto = 'boto==2.38.0'
-    boto3 = 'boto3==1.4.7'
-    futures = 'futures==3.2.0'
+    boto = 'boto==2.48.0'
+    boto3 = 'boto3>=1.7.50, <2.0'
+    futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
     psutil = 'psutil==3.0.1'
     protobuf = 'protobuf==3.5.1'
@@ -34,10 +34,31 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20180518123035'
-    schemaSalad = 'schema-salad >= 2.6, < 3'
+    cwltool = 'cwltool==1.0.20180820141117'
+    schemaSalad = 'schema-salad>=2.6, <3'
     galaxyLib = 'galaxy-lib==17.9.3'
     htcondor = 'htcondor>=8.6.0'
+    dill = 'dill==0.2.7.1'
+    six = 'six>=1.10.0'
+    future = 'future'
+    requests = 'requests==2.18.4'
+    docker = 'docker==2.5.1'
+    subprocess32 = 'subprocess32<=3.5.2'
+    dateutil = 'python-dateutil'
+    pytest = 'pytest==3.7.4'
+    pytest_cov = 'pytest-cov==2.5.1'
+
+    core_reqs = [
+        dill,
+        six,
+        future,
+        requests,
+        docker,
+        dateutil,
+        psutil,
+        subprocess32,
+        pytest,
+        pytest_cov]
 
     mesos_reqs = [
         psutil,
@@ -66,40 +87,32 @@ def runSetup():
     htcondor_reqs = [
         htcondor]
 
+    # htcondor is not supported by apple
+    # this is tricky to conditionally support in 'all' due
+    # to how wheels work, so it is not included in all and
+    # must be explicitly installed as an extra
     all_reqs = \
         mesos_reqs + \
         aws_reqs + \
         azure_reqs + \
         encryption_reqs + \
         google_reqs + \
-        cwl_reqs + \
-        htcondor_reqs
+        cwl_reqs
 
-    # htcondor is not supported by apple
-    if sys.platform != 'linux' or 'linux2':
-        all_reqs.remove(htcondor)
-
+    # remove the subprocess32 backport if not python2
     if not sys.version_info[0] == 2:
-        raise RuntimeError("Toil currently requires Python 2, but we're working on adding Python 3 support (#1780)")
+        core_reqs.remove(subprocess32)
 
     setup(
         name='toil',
         version=version.distVersion,
-        python_requires='~=2.7',
         description='Pipeline management software for clusters.',
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
         url="https://github.com/BD2KGenomics/toil",
         classifiers=["License :: OSI Approved :: Apache Software License"],
         license="Apache License v2.0",
-        install_requires=[
-            'dill==0.2.7.1',
-            'six>=1.10.0',
-            'future',
-            'requests==2.18.4',
-            'docker==2.5.1',
-            'subprocess32==3.5.1',
-            'python-dateutil'],
+        install_requires=core_reqs,
         extras_require={
             'mesos': mesos_reqs,
             'aws': aws_reqs,
@@ -108,7 +121,7 @@ def runSetup():
             'google': google_reqs,
             'cwl': cwl_reqs,
             'wdl': wdl_reqs,
-            'htcondor': htcondor_reqs,
+            'htcondor:sys_platform!="darwin"': htcondor_reqs,
             'all': all_reqs},
         package_dir={'': 'src'},
         packages=find_packages(where='src',
@@ -161,7 +174,7 @@ def importVersion():
                 raise
 
         if old != new:
-            with NamedTemporaryFile(dir='src/toil', prefix='version.py.', delete=False) as f:
+            with NamedTemporaryFile(mode='w',dir='src/toil', prefix='version.py.', delete=False) as f:
                 f.write(new)
             os.rename(f.name, 'src/toil/version.py')
     # Unfortunately, we can't use a straight import here because that would also load the stuff
