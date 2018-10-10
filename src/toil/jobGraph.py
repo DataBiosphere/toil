@@ -100,9 +100,6 @@ class JobGraph(JobNode):
         # this job
         self.chainedJobs = chainedJobs
 
-    def __hash__(self):
-        return hash(self.jobStoreID)
-
     def setupJobAfterFailure(self, config):
         """
         Reduce the remainingRetryCount if greater than zero and set the memory

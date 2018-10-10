@@ -616,8 +616,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                             jobID, _exitStatus)
                             
             try:
-                with self.jobLock:
-                    self.killJobIds.remove(jobID)
+                self.killJobIds.remove(jobID)
             except KeyError:
                 pass
             else:
@@ -625,8 +624,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 # We do this LAST, after all status updates for the job have
                 # been handled, to ensure a consistent view of the scheduler
                 # state from other threads.
-                with self.jobLock:
-                    self.killedJobIds.add(jobID)
+                self.killedJobIds.add(jobID)
 
         if update.state == 'TASK_FINISHED':
             # We get the running time of the job via the timestamp, which is in job-local time in seconds

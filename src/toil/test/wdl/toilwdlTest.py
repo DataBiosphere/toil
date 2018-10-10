@@ -32,49 +32,52 @@ import shutil
 class ToilWdlIntegrationTest(ToilTest):
     """A set of test cases for toilwdl.py"""
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         """
         Initial set up of variables for the test.
         """
-        self.program = os.path.abspath("src/toil/wdl/toilwdl.py")
+        cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
-        self.test_directory = os.path.abspath("src/toil/test/wdl/")
-        self.output_dir = self._createTempDir(purpose='tempDir')
+        cls.test_directory = os.path.abspath("src/toil/test/wdl/")
 
-        self.encode_data = os.path.join(self.test_directory, "ENCODE_data.zip")
-        self.encode_data_dir = os.path.join(self.test_directory, "ENCODE_data")
+        cls.encode_data = os.path.join(cls.test_directory, "ENCODE_data.zip")
+        cls.encode_data_dir = os.path.join(cls.test_directory, "ENCODE_data")
 
-        self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
-        self.wdl_data_dir = os.path.join(self.test_directory, "wdl_templates")
+        cls.wdl_data = os.path.join(cls.test_directory, "wdl_templates.zip")
+        cls.wdl_data_dir = os.path.join(cls.test_directory, "wdl_templates")
 
-        self.gatk_data = os.path.join(self.test_directory, "GATK_data.zip")
-        self.gatk_data_dir = os.path.join(self.test_directory, "GATK_data")
+        cls.gatk_data = os.path.join(cls.test_directory, "GATK_data.zip")
+        cls.gatk_data_dir = os.path.join(cls.test_directory, "GATK_data")
 
         # GATK tests will not run on jenkins b/c GATK.jar needs Java 7
         # and jenkins only has Java 6 (12-16-2017).
         # Set this to true to run the GATK integration tests locally.
-        self.manual_integration_tests = False
+        cls.manual_integration_tests = False
 
         # Delete the test datasets after running the tests.
         # Jenkins requires this to not error on "untracked files".
         # Set to true if running tests locally and you don't want to
         # redownload the data each time you run the test.
-        self.jenkins = True
+        cls.jenkins = True
 
-        self.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
-                                     data=self.encode_data,
-                                     data_dir=self.encode_data_dir)
+        cls.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
+                                    data=cls.encode_data,
+                                    data_dir=cls.encode_data_dir)
 
-        self.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
-                                     data=self.wdl_data,
-                                     data_dir=self.wdl_data_dir)
+        cls.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
+                                    data=cls.wdl_data,
+                                    data_dir=cls.wdl_data_dir)
 
         # these tests require Java 7 (GATK.jar); jenkins has Java 6 and so must
         # be run manually as integration tests (12.16.2017)
-        if self.manual_integration_tests:
-            self.fetch_and_unzip_from_s3(filename='GATK_data.zip',
-                                         data=self.gatk_data,
-                                         data_dir=self.gatk_data_dir)
+        if cls.manual_integration_tests:
+            cls.fetch_and_unzip_from_s3(filename='GATK_data.zip',
+                                        data=cls.gatk_data,
+                                        data_dir=cls.gatk_data_dir)
+
+    def setUp(self):
+        self.output_dir = self._createTempDir(purpose='tempDir')
 
     def tearDown(self):
         """Default tearDown for unittest."""
@@ -374,7 +377,7 @@ class ToilWdlIntegrationTest(ToilTest):
         if not os.path.exists(data):
             s3_loc = os.path.join('http://toil-datasets.s3.amazonaws.com/', filename)
             fetch_from_s3_cmd = ["wget", "-P", self.test_directory, s3_loc]
-            subprocess.check_call(fetch_from_s3_cmd)
+            subprocess.check_call(fetch_from_s3_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         # extract the compressed data if not already extracted
         if not os.path.exists(data_dir):
             with zipfile.ZipFile(data, 'r') as zip_ref:
