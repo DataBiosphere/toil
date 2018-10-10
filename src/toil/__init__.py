@@ -29,6 +29,11 @@ if os.name == 'posix' and sys.version_info[0] < 3:
 else:
     import subprocess
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 log = logging.getLogger(__name__)
 
 

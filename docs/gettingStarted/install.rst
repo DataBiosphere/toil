@@ -1,3 +1,4 @@
+
 .. highlight:: console
 
 .. _installation-ref:
@@ -171,7 +172,7 @@ make to Toil to be reflected immediately in your runtime environment.
 
 First, clone the source::
 
-   $ git clone https://github.com/BD2KGenomics/toil
+   $ git clone https://github.com/DataBiosphere/toil.git
    $ cd toil
 
 Then, create and activate a virtualenv::

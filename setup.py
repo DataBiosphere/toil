@@ -24,8 +24,8 @@ def runSetup():
     boto3 = 'boto3>=1.7.50, <2.0'
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
+    pymesos = 'pymesos==0.3.7'
     psutil = 'psutil==3.0.1'
-    protobuf = 'protobuf==3.5.1'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     azureAnsible = 'ansible[azure]==2.5.0a1'
     azureStorage = 'azure-storage==0.35.1'
@@ -63,8 +63,8 @@ def runSetup():
         pandas]
 
     mesos_reqs = [
-        psutil,
-        protobuf]
+        pymesos,
+        psutil]
     aws_reqs = [
         boto,
         boto3,
