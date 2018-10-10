@@ -24,13 +24,7 @@ import uuid
 import logging
 import time
 import os
-import os.path
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
+from toil import pickle
 from toil.lib.retry import retry
 from google.cloud import storage, exceptions
 from google.api_core.exceptions import GoogleAPICallError, InternalServerError, ServiceUnavailable

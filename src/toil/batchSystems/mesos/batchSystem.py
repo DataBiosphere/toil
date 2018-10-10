@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-
 from builtins import filter
 from builtins import str
 from builtins import object
@@ -24,10 +23,10 @@ import pwd
 import socket
 import time
 import sys
-import base64
 import getpass
 import json
 import traceback
+import addict
 
 try:
     from urllib2 import urlopen
@@ -37,21 +36,12 @@ except ImportError:
     from urllib.parse import quote_plus
 
 from contextlib import contextmanager
-from struct import unpack
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-
-# Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
-import addict
+from threading import Lock
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
-
+from toil import pickle
 from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
@@ -105,6 +95,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # Dictionary of queues, which toil assigns jobs to. Each queue represents a job type,
         # defined by resource usage
         self.jobQueues = JobQueue()
+
+        # lock for potential race conditions (notably killing jobs with competing threads)
+        self.jobLock = Lock()
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
         self.mesosMasterAddress = config.mesosMasterAddress
@@ -160,7 +153,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # non-preemptability is a stronger requirement. If we tracked the set
         # of preemptable nodes instead, we'd have to use absence as an
         # indicator of non-preemptability and could therefore be misled into
-        # believeing that a recently launched preemptable node was
+        # believing that a recently launched preemptable node was
         # non-preemptable.
         self.nonPreemptableNodes = set()
 
@@ -623,7 +616,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                             jobID, _exitStatus)
                             
             try:
-                self.killJobIds.remove(jobID)
+                with self.jobLock:
+                    self.killJobIds.remove(jobID)
             except KeyError:
                 pass
             else:
@@ -631,7 +625,8 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                 # We do this LAST, after all status updates for the job have
                 # been handled, to ensure a consistent view of the scheduler
                 # state from other threads.
-                self.killedJobIds.add(jobID)
+                with self.jobLock:
+                    self.killedJobIds.add(jobID)
 
         if update.state == 'TASK_FINISHED':
             # We get the running time of the job via the timestamp, which is in job-local time in seconds

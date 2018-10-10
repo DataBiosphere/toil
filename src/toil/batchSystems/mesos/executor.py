@@ -242,17 +242,20 @@ def main():
         # fake one to maybe convince the executor driver to work.
         os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get("MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051")
         log.warning("Had to fake MESOS_AGENT_ENDPOINT as %s" % os.environ["MESOS_AGENT_ENDPOINT"])
-        
-    try:
-        urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
-        log.debug("Toggled agent log level")
-    except Exception as e:
-        log.debug("Failed to toggle agent log level")
+
+    # must be set manually to enable toggling of the mesos log level for debugging jenkins
+    # may be useful: https://github.com/DataBiosphere/toil/pull/2338
+    if False:
+        try:
+            urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
+            log.debug("Toggled agent log level")
+        except Exception as e:
+            log.debug("Failed to toggle agent log level")
         
     # Parse the agent state
     agent_state = json.loads(urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
     if agent_state.has_key('completed_frameworks'):
-        # Drop the completed frameworks whichg grow over time
+        # Drop the completed frameworks which grow over time
         del agent_state['completed_frameworks']
     log.debug("Agent state: %s", str(agent_state))
     

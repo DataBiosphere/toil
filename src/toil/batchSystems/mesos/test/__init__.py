@@ -10,7 +10,7 @@ import shutil
 import threading
 from toil import subprocess
 import multiprocessing
-from urllib.error import URLError
+from past.builtins import basestring
 from six.moves.urllib.request import urlopen
 from contextlib import closing
 import time
@@ -102,7 +102,7 @@ class MesosTestSupport(object):
                     except StopIteration:
                         pass
             
-            # If we get here, nothing we cna use is present. We need to complain.
+            # If we get here, nothing we can use is present. We need to complain.
             if len(names) == 1:
                 sought = "binary '%s'" % names[0]
             else:
