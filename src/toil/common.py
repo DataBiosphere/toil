@@ -1082,7 +1082,7 @@ class Toil(object):
         Other methods will rely on always having the most current pid available.
         So far there is no reason to store any old pids.
         """
-        with self._jobStore.writeSharedFileStream('pid.log', 'w') as f:
+        with self._jobStore.writeSharedFileStream('pid.log') as f:
             f.write(str(os.getpid()))
 
 
