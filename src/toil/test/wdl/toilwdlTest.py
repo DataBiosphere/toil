@@ -32,52 +32,49 @@ import shutil
 class ToilWdlIntegrationTest(ToilTest):
     """A set of test cases for toilwdl.py"""
 
-    @classmethod
-    def setUpClass(cls):
+    def setUp(self):
         """
         Initial set up of variables for the test.
         """
-        cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
+        self.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
-        cls.test_directory = os.path.abspath("src/toil/test/wdl/")
+        self.test_directory = os.path.abspath("src/toil/test/wdl/")
+        self.output_dir = self._createTempDir(purpose='tempDir')
 
-        cls.encode_data = os.path.join(cls.test_directory, "ENCODE_data.zip")
-        cls.encode_data_dir = os.path.join(cls.test_directory, "ENCODE_data")
+        self.encode_data = os.path.join(self.test_directory, "ENCODE_data.zip")
+        self.encode_data_dir = os.path.join(self.test_directory, "ENCODE_data")
 
-        cls.wdl_data = os.path.join(cls.test_directory, "wdl_templates.zip")
-        cls.wdl_data_dir = os.path.join(cls.test_directory, "wdl_templates")
+        self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
+        self.wdl_data_dir = os.path.join(self.test_directory, "wdl_templates")
 
-        cls.gatk_data = os.path.join(cls.test_directory, "GATK_data.zip")
-        cls.gatk_data_dir = os.path.join(cls.test_directory, "GATK_data")
+        self.gatk_data = os.path.join(self.test_directory, "GATK_data.zip")
+        self.gatk_data_dir = os.path.join(self.test_directory, "GATK_data")
 
         # GATK tests will not run on jenkins b/c GATK.jar needs Java 7
         # and jenkins only has Java 6 (12-16-2017).
         # Set this to true to run the GATK integration tests locally.
-        cls.manual_integration_tests = False
+        self.manual_integration_tests = False
 
         # Delete the test datasets after running the tests.
         # Jenkins requires this to not error on "untracked files".
         # Set to true if running tests locally and you don't want to
         # redownload the data each time you run the test.
-        cls.jenkins = True
+        self.jenkins = True
 
-        cls.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
-                                    data=cls.encode_data,
-                                    data_dir=cls.encode_data_dir)
+        self.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
+                                     data=self.encode_data,
+                                     data_dir=self.encode_data_dir)
 
-        cls.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
-                                    data=cls.wdl_data,
-                                    data_dir=cls.wdl_data_dir)
+        self.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
+                                     data=self.wdl_data,
+                                     data_dir=self.wdl_data_dir)
 
         # these tests require Java 7 (GATK.jar); jenkins has Java 6 and so must
         # be run manually as integration tests (12.16.2017)
-        if cls.manual_integration_tests:
-            cls.fetch_and_unzip_from_s3(filename='GATK_data.zip',
-                                        data=cls.gatk_data,
-                                        data_dir=cls.gatk_data_dir)
-
-    def setUp(self):
-        self.output_dir = self._createTempDir(purpose='tempDir')
+        if self.manual_integration_tests:
+            self.fetch_and_unzip_from_s3(filename='GATK_data.zip',
+                                         data=self.gatk_data,
+                                         data_dir=self.gatk_data_dir)
 
     def tearDown(self):
         """Default tearDown for unittest."""
