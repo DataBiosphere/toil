@@ -16,7 +16,7 @@ import logging
 
 from toil.job import JobNode
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
 
 
 class JobGraph(JobNode):
@@ -99,6 +99,9 @@ class JobGraph(JobNode):
         # Names of jobs that were run as part of this job's invocation, starting with
         # this job
         self.chainedJobs = chainedJobs
+
+    def __hash__(self):
+        return hash(self.jobStoreID)
 
     def setupJobAfterFailure(self, config):
         """
