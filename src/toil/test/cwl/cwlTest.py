@@ -164,7 +164,7 @@ class CWLTest(ToilTest):
             only_unsupported = False
             # check output -- if we failed but only have unsupported features, we're okay
             p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-            for line in e.output.split("\n"):
+            for line in str(e.output).encode('utf-8').split('\n'):
                 m = p.search(line)
                 if m:
                     if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
