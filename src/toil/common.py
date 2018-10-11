@@ -1083,7 +1083,7 @@ class Toil(object):
         So far there is no reason to store any old pids.
         """
         with self._jobStore.writeSharedFileStream('pid.log') as f:
-            f.write(str(os.getpid()))
+            f.write(str(os.getpid()).encode('utf-8'))
 
 
 class ToilRestartException(Exception):
