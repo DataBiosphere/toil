@@ -98,11 +98,10 @@ class AbstractJobStoreTest(object):
         # memoization key, I have only ever seen one case: ('test', ). The worst that can happen
         # if other values are also used is that there will be more external stores and less sharing
         # of them. They will still all be cleaned-up.
-
         @classmethod
         @memoize
         def __new__(cls, *args):
-            return super(AbstractJobStoreTest.Test, cls).__new__(*args)
+            return super(AbstractJobStoreTest.Test, cls).__new__(cls)
 
         def _createConfig(self):
             return Config()
