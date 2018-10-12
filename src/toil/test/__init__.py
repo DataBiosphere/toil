@@ -22,7 +22,6 @@ import os
 import re
 import shutil
 import signal
-from toil import subprocess
 import tempfile
 import threading
 import time
@@ -45,6 +44,7 @@ from toil.lib.processes import which
 from toil.lib.threading import ExceptionalThread
 
 from toil import subprocess
+from toil import which
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
 from future.utils import with_metaclass
@@ -412,6 +412,9 @@ def needs_mesos(test_item):
     and configured.
     """
     test_item = _mark_test('mesos', test_item)
+    if not (which('mesos-master') or which('mesos-slave')):
+        return unittest.skip(
+            "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
         # noinspection PyUnresolvedReferences
         import pymesos

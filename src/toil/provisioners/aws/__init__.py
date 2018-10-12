@@ -80,22 +80,14 @@ def choose_spot_zone(zones, bid, spot_history):
     >>> FauxHistory = namedtuple( 'FauxHistory', [ 'price', 'availability_zone' ] )
     >>> ZoneTuple = namedtuple( 'ZoneTuple', [ 'name' ] )
 
-    >>> zones = [ ZoneTuple( 'us-west-2a' ), ZoneTuple( 'us-west-2b' ) ]
+    >>> zones = [ZoneTuple( 'us-west-2a' ), ZoneTuple( 'us-west-2b' )]
     >>> spot_history = [ FauxHistory( 0.1, 'us-west-2a' ), \
                          FauxHistory( 0.2,'us-west-2a'), \
                          FauxHistory( 0.3,'us-west-2b'), \
                          FauxHistory( 0.6,'us-west-2b')]
     >>> # noinspection PyProtectedMember
-    >>> choose_spot_zone( zones, 0.15, spot_history )
+    >>> choose_spot_zone(zones, 0.15, spot_history )
     'us-west-2a'
-
-    >>> spot_history=[ FauxHistory( 0.3, 'us-west-2a' ), \
-                       FauxHistory( 0.2, 'us-west-2a' ), \
-                       FauxHistory( 0.1, 'us-west-2b'), \
-                       FauxHistory( 0.6, 'us-west-2b') ]
-    >>> # noinspection PyProtectedMember
-    >>> choose_spot_zone(zones, 0.15, spot_history)
-    'us-west-2b'
 
     >>> spot_history={ FauxHistory( 0.1, 'us-west-2a' ), \
                        FauxHistory( 0.7, 'us-west-2a' ), \
