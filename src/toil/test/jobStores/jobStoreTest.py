@@ -156,9 +156,9 @@ class AbstractJobStoreTest(object):
 
             # Create a job and verify its existence/properties
             aJobNode = JobNode(command='parent1',
-                                      requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onParent',
-                                      jobStoreID=None, predecessorNumber=0)
+                               requirements=self.parentJobReqs,
+                               jobName='test1', unitName='onParent',
+                               jobStoreID=None, predecessorNumber=0)
             job = jobstore.create(aJobNode)
 
             self.assertTrue(jobstore.exists(job.jobStoreID))
@@ -194,9 +194,9 @@ class AbstractJobStoreTest(object):
 
             # Create a job on the first jobstore.
             jobNode1 = JobNode(command='jobstore1',
-                                      requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onJS1',
-                                      jobStoreID=None, predecessorNumber=0)
+                               requirements=self.parentJobReqs,
+                               jobName='test1', unitName='onJS1',
+                               jobStoreID=None, predecessorNumber=0)
             job1 = self.jobstore_initialized.create(jobNode1)
 
             # Load it onto the second jobstore
@@ -212,9 +212,9 @@ class AbstractJobStoreTest(object):
                                jobStoreID=None, predecessorNumber=0)
 
             jobNodeOnChild = JobNode(command='child1',
-                                      requirements=self.childJobReqs1,
-                                      jobName='test2', unitName='onChild1',
-                                      jobStoreID=None)
+                                     requirements=self.childJobReqs1,
+                                     jobName='test2', unitName='onChild1',
+                                     jobStoreID=None)
             job = self.jobstore_initialized.create(aJobNode)
             childJob = self.jobstore_initialized.create(jobNodeOnChild)
             job.stack.append(childJob)
@@ -237,7 +237,7 @@ class AbstractJobStoreTest(object):
                                jobStoreID=None, predecessorNumber=0)
 
             job = self.jobstore_initialized.create(jobNode)
-            job.filesToDelete = ['1','2']
+            job.filesToDelete = ['1', '2']
             self.jobstore_initialized.update(job)
             self.assertEquals(self.jobstore_initialized.load(job.jobStoreID).filesToDelete, ['1', '2'])
 
@@ -419,9 +419,9 @@ class AbstractJobStoreTest(object):
 
             # Create jobNodeOnJS1
             jobNodeOnJobStore1 = JobNode(command='job1',
-                                      requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onJobStore1',
-                                      jobStoreID=None, predecessorNumber=0)
+                                         requirements=self.parentJobReqs,
+                                         jobName='test1', unitName='onJobStore1',
+                                         jobStoreID=None, predecessorNumber=0)
 
             # First recreate job
             jobOnJobStore1 = jobstore1.create(jobNodeOnJobStore1)
@@ -963,11 +963,15 @@ class AbstractJobStoreTest(object):
                 # will get blocked on the write. Technically anything
                 # greater than the pipe buffer size plus the libc
                 # buffer size (64K + 4K(?))  should trigger this bug,
-                # but this gives us a lot of extra room just to be
-                # sure.
-                f.write('a' * 300000)
+                # but this gives us a lot of extra room just to be sure.
+
+                # python 3 requires self.fileContents to be a bytestring
+                a = 'a'
+                if sys.version_info >= (3, 0):
+                    a = b'a'
+                f.write(a * 300000)
             with self.jobstore_initialized.readFileStream(fileID) as f:
-                self.assertEquals(f.read(1), "a")
+                self.assertEquals(f.read(1), a)
             # If it times out here, there's a deadlock
 
         @abstractmethod
