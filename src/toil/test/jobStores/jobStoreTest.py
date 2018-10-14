@@ -855,11 +855,11 @@ class AbstractJobStoreTest(object):
             job = self.jobstore_initialized.create(self.arbitraryJob)
             nullFile = self.jobstore_initialized.writeFile('/dev/null', job.jobStoreID)
             with self.jobstore_initialized.readFileStream(nullFile) as f:
-                self.assertEquals(f.read(), "")
+                assert not f.read()
             with self.jobstore_initialized.writeFileStream(job.jobStoreID) as (f, nullStream):
                 pass
             with self.jobstore_initialized.readFileStream(nullStream) as f:
-                self.assertEquals(f.read(), "")
+                assert not f.read()
             self.jobstore_initialized.delete(job.jobStoreID)
 
         @slow
