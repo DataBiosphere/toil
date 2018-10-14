@@ -165,7 +165,7 @@ class CWLTest(ToilTest):
             # check output -- if we failed but only have unsupported features, we're okay
             p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
             # py2/3 string handling
-            if not isinstance(e, str):
+            if isinstance(e, bytes):
                 error_log = e.output.decode('utf-8')
             for line in error_log.split('\n'):
                 m = p.search(line)
