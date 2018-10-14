@@ -506,8 +506,14 @@ class AbstractJobStoreTest(object):
             jobOnJobStore1 = jobstore1.create(jobNodeOnJobStore1)
 
             # Test stats and logging
-            #
             stats = None
+            one = 'one'
+            two = 'two'
+            three = 'three'
+            if sys.version_info >= (3, 0):
+                one = b'one'
+                two = b'two'
+                three = b'three'
 
             # Allows stats to be read/written to/from in read/writeStatsAndLogging.
             def callback(f2):
@@ -521,16 +527,16 @@ class AbstractJobStoreTest(object):
             self.assertEquals(set(), stats)
 
             # Test writing and reading.
-            jobstore2.writeStatsAndLogging('1')
+            jobstore2.writeStatsAndLogging(one)
             self.assertEquals(1, jobstore1.readStatsAndLogging(callback))
-            self.assertEquals({'1'}, stats)
+            self.assertEquals({one}, stats)
             self.assertEquals(0, jobstore1.readStatsAndLogging(callback))   # readStatsAndLogging purges saved stats etc
 
-            jobstore2.writeStatsAndLogging('1')
-            jobstore2.writeStatsAndLogging('2')
+            jobstore2.writeStatsAndLogging(one)
+            jobstore2.writeStatsAndLogging(two)
             stats = set()
             self.assertEquals(2, jobstore1.readStatsAndLogging(callback))
-            self.assertEquals({'1', '2'}, stats)
+            self.assertEquals({one, two}, stats)
 
             largeLogEntry = os.urandom(self._largeLogEntrySize())
             stats = set()
