@@ -429,12 +429,19 @@ class AbstractJobStoreTest(object):
             # Check file exists
             self.assertTrue(jobstore2.fileExists(fileOne))
             self.assertTrue(jobstore1.fileExists(fileOne))
+            one = 'one'
+            two = 'two'
+            three = 'three'
+            if sys.version_info >= (3, 0):
+                one = b'one'
+                two = b'two'
+                three = b'three'
             # ... write to the file on jobstore2, ...
             with jobstore2.updateFileStream(fileOne) as f:
-                f.write('one')
+                f.write(one)
             # ... read the file as a stream on the jobstore1, ....
             with jobstore1.readFileStream(fileOne) as f:
-                self.assertEquals(f.read(), 'one')
+                self.assertEquals(f.read(), one)
 
             # ... and copy it to a temporary physical file on the jobstore1.
             fh, path = tempfile.mkstemp()
@@ -447,26 +454,26 @@ class AbstractJobStoreTest(object):
                 finally:
                     os.unlink(tmpPath)
                 with open(path, 'r+') as f:
-                    self.assertEquals(f.read(), 'one')
+                    self.assertEquals(f.read(), one)
                     # Write a different string to the local file ...
                     f.seek(0)
                     f.truncate(0)
-                    f.write('two')
+                    f.write(two)
                 # ... and create a second file from the local file.
                 fileTwo = jobstore1.writeFile(path, jobOnJobStore1.jobStoreID)
                 with jobstore2.readFileStream(fileTwo) as f:
-                    self.assertEquals(f.read(), 'two')
+                    self.assertEquals(f.read(), two)
                 # Now update the first file from the local file ...
                 jobstore1.updateFile(fileOne, path)
                 with jobstore2.readFileStream(fileOne) as f:
-                    self.assertEquals(f.read(), 'two')
+                    self.assertEquals(f.read(), two)
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
             with jobstore2.writeFileStream(jobOnJobStore1.jobStoreID) as (f, fileThree):
-                f.write('three')
+                f.write(three)
             with jobstore1.readFileStream(fileThree) as f:
-                self.assertEquals(f.read(), 'three')
+                self.assertEquals(f.read(), three)
             # Delete a file explicitly but leave files for the implicit deletion through the parent
             jobstore2.deleteFile(fileOne)
 
@@ -488,9 +495,9 @@ class AbstractJobStoreTest(object):
             jobstore2 = self.jobstore_resumed_noconfig
 
             jobNodeOnJobStore1 = JobNode(command='job1',
-                                      requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onJobStore1',
-                                      jobStoreID=None, predecessorNumber=0)
+                                         requirements=self.parentJobReqs,
+                                         jobName='test1', unitName='onJobStore1',
+                                         jobStoreID=None, predecessorNumber=0)
 
             jobOnJobStore1 = jobstore1.create(jobNodeOnJobStore1)
 
@@ -543,9 +550,9 @@ class AbstractJobStoreTest(object):
             with jobstore.batch():
                 for i in range(100):
                     overlargeJobNode = JobNode(command='overlarge',
-                                        requirements=jobRequirements,
-                                        jobName='test-overlarge', unitName='onJobStore',
-                                        jobStoreID=None, predecessorNumber=0)
+                                               requirements=jobRequirements,
+                                               jobName='test-overlarge', unitName='onJobStore',
+                                               jobStoreID=None, predecessorNumber=0)
                     jobGraphs.append(jobstore.create(overlargeJobNode))
             for jobGraph in jobGraphs:
                 self.assertTrue(jobstore.exists(jobGraph.jobStoreID))
@@ -567,8 +574,6 @@ class AbstractJobStoreTest(object):
             self.jobstore_initialized.update(job)
             check_job = self.jobstore_initialized.load(job.jobStoreID)
             self.assertEquals(check_job.foo_attribute, None)
-
-
 
         def _prepareTestFile(self, store, size=None):
             """
