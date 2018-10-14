@@ -398,17 +398,21 @@ class AbstractJobStoreTest(object):
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resumed_noconfig
 
+            bar = 'bar'
+            if sys.version_info >= (3, 0):
+                bar = b'bar'
+
             with jobstore1.writeSharedFileStream('foo') as f:
-                f.write('bar')
+                f.write(bar)
             # ... read that file on worker, ...
             with jobstore2.readSharedFileStream('foo') as f:
-                self.assertEquals('bar', f.read())
+                self.assertEquals(bar, f.read())
             # ... and read it again on jobstore1.
             with jobstore1.readSharedFileStream('foo') as f:
-                self.assertEquals('bar', f.read())
+                self.assertEquals(bar, f.read())
 
             with jobstore1.writeSharedFileStream('nonEncrypted', isProtected=False) as f:
-                f.write('bar')
+                f.write(bar)
             self.assertUrl(jobstore1.getSharedPublicUrl('nonEncrypted'))
             self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
 
