@@ -91,6 +91,18 @@ class AbstractJobStoreTest(object):
             logging.basicConfig(level=logging.DEBUG)
             logging.getLogger('boto').setLevel(logging.CRITICAL)
 
+        # The use of @memoize ensures that we only have one instance of per class even with the
+        # generative import/export tests attempts to instantiate more. This in turn enables us to
+        # share the external stores (buckets, blob store containers, local directory, etc.) used
+        # for testing import export. While the constructor arguments are included in the
+        # memoization key, I have only ever seen one case: ('test', ). The worst that can happen
+        # if other values are also used is that there will be more external stores and less sharing
+        # of them. They will still all be cleaned-up.
+        @classmethod
+        @memoize
+        def __new__(cls, *args):
+            return super(AbstractJobStoreTest.Test, cls).__new__(*args)
+
         def _createConfig(self):
             return Config()
 
@@ -710,15 +722,19 @@ class AbstractJobStoreTest(object):
 
         def testImportFtpFile(self):
             '''Test importing a file over FTP'''
-            file = {'name':'foo', 'content':'foo bar baz qux'}
+            ftpfile = {'name': 'foo', 'content': 'foo bar baz qux'}
             ftp = FTPStubServer(0)
             ftp.run()
             try:
-                ftp.add_file(**file)
+                ftp.add_file(**ftpfile)
                 assignedPort = ftp.server.server_address[1]
-                url = 'ftp://user1:passwd@localhost:%d/%s' % (assignedPort, file['name'])
+                url = 'ftp://user1:passwd@localhost:%d/%s' % (assignedPort, ftpfile['name'])
                 with self.jobstore_initialized.readFileStream(self.jobstore_initialized.importFile(url)) as readable:
-                    self.assertEqual(readable.read(), file['content'])
+                    imported_content = readable.read()
+                    # python 2/3 string/bytestring compat
+                    if isinstance(imported_content, bytes):
+                        imported_content = imported_content.decode('utf-8')
+                    self.assertEqual(imported_content, ftpfile['content'])
             finally:
                 ftp.stop()
 
