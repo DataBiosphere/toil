@@ -14,13 +14,9 @@
 
 from __future__ import absolute_import
 from __future__ import division
-
-from toil.lib.retry import retry
 from future import standard_library
-from toil.lib.misc import truncExpBackoff
 
 standard_library.install_aliases()
-from builtins import next
 from builtins import range
 from builtins import str
 from past.utils import old_div
@@ -31,6 +27,7 @@ import hashlib
 import logging
 import threading
 import os
+import sys
 import shutil
 import tempfile
 import time
@@ -40,8 +37,6 @@ from abc import abstractmethod, ABCMeta
 from itertools import chain, islice, count
 from threading import Thread
 from unittest import skip
-
-# Python 3 compatibility imports
 from six.moves.queue import Queue
 from six.moves import SimpleHTTPServer, StringIO
 from six import iteritems
@@ -862,6 +857,9 @@ class AbstractJobStoreTest(object):
             with open(filePath, 'w') as f:
                 for i in range(0, 10):
                     buf = os.urandom(self._partSize())
+                    # python 3 requires self.fileContents to be a bytestring
+                    if sys.version_info >= (3, 0):
+                        buf = buf.decode('utf-8')
                     f.write(buf)
                     hashIn.update(buf)
 
@@ -1451,6 +1449,9 @@ class StubHttpRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.send_header("Content-type", "text/plain")
         self.send_header("Content-length", len(self.fileContents))
         self.end_headers()
+        # python 3 requires self.fileContents to be a bytestring
+        if sys.version_info >= (3, 0):
+            self.fileContents = self.fileContents.encode('utf-8')
         self.wfile.write(self.fileContents)
 
 
