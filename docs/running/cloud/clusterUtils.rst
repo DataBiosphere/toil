@@ -81,8 +81,8 @@ Where ``discoverfiles.py`` is the following:
         options = Job.Runner.getDefaultArgumentParser().parse_args()
 
         job1 = discoverFiles(path="/", displayName='sysFiles')
-        job2 = discoverFiles(path="/home/lifeisaboutfishtacos", displayName='userFiles')
-        job3 = discoverFiles(path="/home/andbeeftacos")
+        job2 = discoverFiles(path=os.path.expanduser("~"), displayName='userFiles')
+        job3 = discoverFiles(path="/home/")
 
         job1.addChild(job2)
         job2.addChild(job3)
@@ -157,7 +157,7 @@ If the run was successful, this would not return much valuable information, some
     2018-01-11 19:31:29,740 - toil.utils.toilStatus - INFO - Checking if we have files for Toil
     The root job of the job store is absent, the workflow completed successfully.
 
-Otherwise, the ``stats`` command should return the following:
+Otherwise, the ``status`` command should return the following:
 
     There are ``x`` unfinished jobs, ``y`` parent jobs with children, ``z`` jobs with services, ``a`` services, and ``b`` totally failed jobs currently in  ``c``.
 
@@ -196,13 +196,13 @@ exist yet, Toil will create it for you.
 
   --help                -h also accepted.  Displays this help menu.
   --tempDirRoot TEMPDIRROOT
-                        Path to where temporary directory containing all temp
+                        Path to the temporary directory where all temp
                         files are created, by default uses the current working
                         directory as the base.
   --version             Display version.
   --provisioner CLOUDPROVIDER
                         -p CLOUDPROVIDER also accepted.  The provisioner for
-                        cluster auto-scaling.  Both aws and google's gce are
+                        cluster auto-scaling.  Both AWS and GCE are
                         currently supported.
   --zone ZONE           -z ZONE also accepted.  The availability zone of the leader. This
                         parameter can also be set via the TOIL_AWS_ZONE or TOIL_AZURE_ZONE, or TOIL_GCE_ZONE
@@ -215,7 +215,7 @@ exist yet, Toil will create it for you.
                         leader.
   --keyPairName KEYPAIRNAME
                         The name of the AWS or ssh key pair to include on the
-                        instance
+                        instance.
   --boto BOTOPATH       The path to the boto credentials directory. This is
                         transferred to all nodes in order to access the AWS
                         jobStore from non-AWS instances.
@@ -234,12 +234,12 @@ exist yet, Toil will create it for you.
   --nodeTypes NODETYPES
                         Comma-separated list of node types to create while
                         launching the leader. The syntax for each node type
-                        depends on the provisioner used. For the aws
+                        depends on the provisioner used. For the AWS
                         provisioner this is the name of an EC2 instance type
-                        followed by a colon and the price in dollar to bid for
+                        followed by a colon and the price in dollars to bid for
                         a spot instance, for example 'c3.8xlarge:0.42'. Must
                         also provide the --workers argument to specify how
-                        many workers of each node type to create
+                        many workers of each node type to create.
   --workers WORKERS
                         -w WORKERS also accepted.  Comma-separated list of the
                         number of workers of each node type to launch alongside
@@ -256,7 +256,7 @@ exist yet, Toil will create it for you.
 
 **Logging Options**
 
-  --logOff              Same as -\\-logCritical
+  --logOff              Same as -\\-logCritical.
   --logCritical         Turn on logging at level CRITICAL and above. (default
                         is INFO)
   --logError            Turn on logging at level ERROR and above. (default is
@@ -270,7 +270,7 @@ exist yet, Toil will create it for you.
   --logLevel LOGLEVEL   Log at given level (may be either OFF (or CRITICAL),
                         ERROR, WARN (or WARNING), INFO or DEBUG). (default is
                         INFO)
-  --logFile LOGFILE     File to log in
+  --logFile LOGFILE     File to log in.
   --rotatingLogging     Turn on rotating logging, which prevents log files
                         getting too big.
 
@@ -322,12 +322,12 @@ Here is an example of its usage::
 
 .. _destroyCluster:
 
-destroy-cluster Command
+Destroy-Cluster Command
 -----------------------
 
 The ``destroy-cluster`` command is the advised way to get rid of any Toil cluster
-launched using the :ref:`launchCluster` command. It ensures that all attached node, volumes, and
-security groups etc. are deleted. If a node or cluster in shut down using Amazon's online portal
+launched using the :ref:`launchCluster` command. It ensures that all attached nodes, volumes,
+security groups, etc. are deleted. If a node or cluster is shut down using Amazon's online portal
 residual resources may still be in use in the background. To delete a cluster run ::
 
     $ toil destroy-cluster CLUSTER-NAME-HERE

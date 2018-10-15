@@ -118,6 +118,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 options.outputFile = self.outputFile
                 options.fileToSort = self.inputFile
                 options.overwriteOutput = True
+                options.realTimeLogging = True
 
                 # Make the file to sort
                 makeFileToSort(options.fileToSort, lines=lines, lineLen=lineLen)
