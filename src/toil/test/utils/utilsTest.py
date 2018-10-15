@@ -338,6 +338,10 @@ class UtilsTest(ToilTest):
         os.remove(os.path.join(self.toilDir, 'pid.log'))
         self.assertEqual('QUEUED', ToilStatus.getPIDStatus(self.toilDir))
 
+        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
+            if os.path.exists(f):
+                os.remove(f)
+
     def testGetStatusFailedToilWF(self):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
@@ -351,6 +355,10 @@ class UtilsTest(ToilTest):
         self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
         wf.wait()
         self.assertEqual('ERROR', ToilStatus.getStatus(self.toilDir))
+
+        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
+            if os.path.exists(f):
+                os.remove(f)
 
     @needs_cwl
     @needs_docker
@@ -382,6 +390,10 @@ class UtilsTest(ToilTest):
         wf.wait()
         self.assertEqual('COMPLETED', ToilStatus.getStatus(self.toilDir))
 
+        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
+            if os.path.exists(f):
+                os.remove(f)
+
     @needs_cwl
     @needs_docker
     def testGetStatusSuccessfulCWLWF(self):
@@ -398,6 +410,9 @@ class UtilsTest(ToilTest):
         wfRun.resume()
         wf.wait()
         self.assertEqual('COMPLETED', ToilStatus.getStatus(self.toilDir))
+
+        if os.path.exists('output.txt'):  # This CWL WF does not clean this up.
+            os.remove('output.txt')
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of
