@@ -236,13 +236,15 @@ class Leader(object):
                 for job in self.toilState.totalFailedJobs:
                     failLog.write(job.jobStoreID)
             self.jobStore.importFile('file://' + localLog, 'failed.log', hardlink=True)
-            os.remove(localLog)
+            if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
+                os.remove(localLog)
         else:
             localLog = os.path.join(os.getcwd(), 'succeeded.log')
             with open(localLog, 'w') as succeedLog:
                 succeedLog.write('This workflow completed successfully.')
             self.jobStore.importFile('file://' + localLog, 'succeeded.log', hardlink=True)
-            os.remove(localLog)
+            if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
+                os.remove(localLog)
 
         logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
