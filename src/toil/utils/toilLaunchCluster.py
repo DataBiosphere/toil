@@ -15,7 +15,6 @@
 Launches a toil leader instance with the specified provisioner
 """
 import logging
-import time
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.utils import addBasicProvisionerOptions, getZoneFromEnv
 from toil.provisioners import clusterFactory
@@ -27,7 +26,7 @@ from toil.jobStores import azure_credential_file_path as credential_file_path
 logger = logging.getLogger(__name__)
 
 @contextmanager
-def updatStatusInList(cluster, provisioner):
+def statusUpdater(cluster, provisioner):
     try:
         yield
     except Exception:
@@ -159,7 +158,7 @@ def main():
                              zone=config.zone,
                              nodeStorage=config.nodeStorage)
 
-    with updatStatusInList(cluster, config.provisioner):
+    with statusUpdater(cluster, config.provisioner):
         cluster.launchCluster(leaderNodeType=config.leaderNodeType,
                               leaderStorage=config.leaderStorage,
                               owner=owner,
