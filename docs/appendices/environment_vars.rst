@@ -87,7 +87,7 @@ There are several environment variables that affect the way Toil runs.
 +------------------------+----------------------------------------------------+
 | TOIL_LSF_ARGS          | Additional arguments for the LSF's bsub command.   |
 |                        | Instead, define extra parameters for the job such  |
-|                        | as queue. Example: -q medium                       |
+|                        | as queue. Example: -q medium.                      |
 |                        | There is no default value for this variable.       |
 +------------------------+----------------------------------------------------+
 
