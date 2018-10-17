@@ -230,7 +230,7 @@ class Leader(object):
 
         localLog = 'failed.log' if self.toilState.totalFailedJobs else 'succeeded.log'
         with open(localLog, 'w') as f:
-            f.write()
+            f.write('')
         self.jobStore.importFile('file://' + localLog, 'failed.log', hardlink=True)
         if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
             os.remove(localLog)
