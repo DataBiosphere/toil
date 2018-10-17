@@ -228,10 +228,12 @@ class Leader(object):
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
-        localLog = 'failed.log' if self.toilState.totalFailedJobs else 'succeeded.log'
+        logName = 'failed.log' if self.toilState.totalFailedJobs else 'succeeded.log'
+        localLog = os.path.join(os.getcwd(), logName)
         with open(localLog, 'w') as f:
             f.write('')
-        self.jobStore.importFile('file://' + localLog, 'failed.log', hardlink=True)
+
+        self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
         if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
             os.remove(localLog)
 
