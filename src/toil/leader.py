@@ -230,10 +230,17 @@ class Leader(object):
 
         logName = 'failed.log' if self.toilState.totalFailedJobs else 'succeeded.log'
         localLog = os.path.join(os.getcwd(), logName)
+        logger.critical('localLog: {}\n'.format(localLog))
         with open(localLog, 'w') as f:
             f.write('')
 
-        self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+        logger.critical('localLog: {}\n'.format(localLog))
+        try:
+            self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+        except IOError as e:
+            logger.critical('Error from importFile with hardlink=True: {}'.format(e))
+            self.jobStore.importFile('file://' + localLog, logName, hardlink=False)
+
         if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
             os.remove(localLog)
 
