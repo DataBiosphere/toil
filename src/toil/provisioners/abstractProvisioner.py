@@ -265,10 +265,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     def updateStatusInList(self, status, provisioner):
         """Update the status of an entry in ~/toilClusterList.json"""
         with open(self.clusterListPath(), 'r') as f:
-            for line in f:
-                logging.critical(line)
-
-        with open(self.clusterListPath(), 'r') as f:
             clusters = json.load(f)
 
         # For some reason, on when Jenkins launches a cluster the zone variable is not set.
@@ -312,10 +308,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
             self.createJSONStructure(clusterList)
 
         with open(clusterList, 'r') as f:
-            for line in f:
-                logging.critical(line)
-
-        with open(clusterList, 'r') as f:
             clusters = json.load(f)
 
         newEntry = {self.clusterName: {'instanceType': instanceType,
@@ -334,10 +326,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         listPath = AbstractProvisioner.clusterListPath()
 
         if os.path.exists(listPath):
-            with open(listPath, 'r') as f:
-                for line in f:
-                    logging.critical(line)
-
             with open(listPath, 'r') as f:
                 clusters = json.load(f)
 
