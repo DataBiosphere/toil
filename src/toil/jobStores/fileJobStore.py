@@ -34,6 +34,7 @@ try:
 except ImportError:
     import pickle
 
+from contextlib import contextmanager
 # toil and bd2k dependencies
 from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath
@@ -236,6 +237,15 @@ class FileJobStore(AbstractJobStore):
     # Functions that deal with temporary files associated with jobs
     ##########################################
 
+    @contextmanager
+    def optionalHardCopy(self, hardlink):
+        if hardlink:
+            saved = self.linkImports
+            self.linkImports = False
+        yield
+        if hardlink:
+            self.linkImports = saved
+
     def _copyOrLink(self, srcURL, destPath):
         # linking is not done be default because of issue #1755
         srcPath = self._extractPathFromUrl(srcURL)
@@ -244,18 +254,20 @@ class FileJobStore(AbstractJobStore):
         else:
             shutil.copyfile(srcPath, destPath)
 
-    def _importFile(self, otherCls, url, sharedFileName=None):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
                 absPath = self._getUniqueName(url.path)  # use this to get a valid path to write to in job store
-                self._copyOrLink(url, absPath)
+                with self.optionalHardCopy(hardlink):
+                    self._copyOrLink(url, absPath)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
                 # getDirSizeRecursively()
                 return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
-                self._copyOrLink(url, path)
+                with self.optionalHardCopy(hardlink):
+                    self._copyOrLink(url, path)
                 return None
         else:
             return super(FileJobStore, self)._importFile(otherCls, url,

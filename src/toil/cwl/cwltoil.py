@@ -508,10 +508,17 @@ class CWLJob(Job):
         unitName = self.cwltool.tool.get("baseCommand", None)
         if isinstance(unitName, (MutableSequence, tuple)):
             unitName = ' '.join(unitName)
+
+        try:
+            displayName = str(self.cwltool.tool['id'])
+        except KeyError:
+            displayName = None
+
         super(CWLJob, self).__init__(
             cores=req["cores"], memory=int(req["ram"]*(2**20)),
             disk=int((req["tmpdirSize"]*(2**20))+(req["outdirSize"]*(2**20))),
-            unitName=unitName)
+            unitName=unitName,
+            displayName=displayName)
 
         self.cwljob = cwljob
         try:
