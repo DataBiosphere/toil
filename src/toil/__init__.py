@@ -34,6 +34,11 @@ try:
 except ImportError:
     import pickle
 
+try:
+    from urllib import urlretrieve
+except ImportError:
+    from urllib.request import urlretrieve
+
 log = logging.getLogger(__name__)
 
 

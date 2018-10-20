@@ -26,7 +26,7 @@ from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
 from toil.test import ToilTest, slow, needs_docker
-from urllib.request import urlretrieve
+from toil import urlretrieve
 import zipfile
 import shutil
 import uuid
