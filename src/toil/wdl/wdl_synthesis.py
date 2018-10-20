@@ -747,7 +747,8 @@ class SynthesizeWDL:
                                user={docker_user}, 
                                stderr=True, 
                                volumes={{tempDir: {{"bind": tempDir}}}})
-        with open(os.path.join(asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir, '{job_task_reference}.log'), 'w') as f:
+        writetype = 'wb' if isinstance(stdout, bytes) else 'w'
+        with open(os.path.join(asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir, '{job_task_reference}.log'), writetype) as f:
             f.write(stdout)
             ''', docker_dict, indent='        ')[1:]
 
