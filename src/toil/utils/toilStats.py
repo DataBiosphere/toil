@@ -304,7 +304,7 @@ def sprintTag(key, tag, options, columnWidths=None):
             (tag.max_memory, columnWidths.getWidth("memory", "max")),
             (tag.total_memory, columnWidths.getWidth("memory", "total")),
             ]:
-            tag_str += reportMemory(t, options, field=width, isBytes=True)
+            tag_str += reportMemory(t, options, field=width)
     out_str += header + "\n"
     out_str += sub_header + "\n"
     out_str += tag_str + "\n"
