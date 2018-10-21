@@ -34,7 +34,7 @@ import time
 import uuid
 from stubserver import FTPStubServer
 from abc import abstractmethod, ABCMeta
-from itertools import chain, islice, count
+from itertools import chain, islice
 from threading import Thread
 from unittest import skip
 from six.moves.queue import Queue
@@ -96,7 +96,7 @@ class AbstractJobStoreTest(object):
         @classmethod
         @memoize
         def __new__(cls, *args):
-            return super(AbstractJobStoreTest.Test, cls).__new__(*args)
+            return super(AbstractJobStoreTest.Test, cls).__new__(cls)
 
         def _createConfig(self):
             return Config()
@@ -457,7 +457,7 @@ class AbstractJobStoreTest(object):
                     shutil.copyfile(tmpPath, path)
                 finally:
                     os.unlink(tmpPath)
-                with open(path, 'r+') as f:
+                with open(path, 'rb+') as f:
                     self.assertEquals(f.read(), one)
                     # Write a different string to the local file ...
                     f.seek(0)
@@ -723,7 +723,13 @@ class AbstractJobStoreTest(object):
                     assignedPort = http.server_address[1]
                     url = 'http://localhost:%d' % assignedPort
                     with self.jobstore_initialized.readFileStream(self.jobstore_initialized.importFile(url)) as readable:
-                        self.assertEqual(readable.read(), StubHttpRequestHandler.fileContents)
+                        f1 = readable.read()
+                        f2 = StubHttpRequestHandler.fileContents
+                        if isinstance(f1, bytes) and not isinstance(f2, bytes):
+                            f1 = f1.decode()
+                        if isinstance(f2, bytes) and not isinstance(f1, bytes):
+                            f1 = f1.encode()
+                        self.assertEqual(f1, f2)
                 finally:
                     http.shutdown()
                     httpThread.join()
@@ -770,7 +776,7 @@ class AbstractJobStoreTest(object):
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
             running it against the other job stores as well.
             """
-            # Should not block. On Linux, /dev/random blocks when its running low on entropy
+            # Should not block. On Linux, /dev/random blocks when it's running low on entropy
             random_device = '/dev/urandom'
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
@@ -779,7 +785,6 @@ class AbstractJobStoreTest(object):
             job = self.jobstore_initialized.create(self.arbitraryJob)
 
             # Test file/stream ending on part boundary and within a part
-            #
             for partsPerFile in (1, 2.33):
                 checksum = hashlib.md5()
                 checksumQueue = Queue(2)
@@ -794,11 +799,10 @@ class AbstractJobStoreTest(object):
                         checksum.update(_buf)
 
                 # Multipart upload from stream
-                #
                 checksumThread = Thread(target=checksumThreadFn)
                 checksumThread.start()
                 try:
-                    with open(random_device) as readable:
+                    with open(random_device, 'rb') as readable:
                         with self.jobstore_initialized.writeFileStream(job.jobStoreID) as (writable, fileId):
                             for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
@@ -810,7 +814,6 @@ class AbstractJobStoreTest(object):
                 before = checksum.hexdigest()
 
                 # Verify
-                #
                 checksum = hashlib.md5()
                 with self.jobstore_initialized.readFileStream(fileId) as readable:
                     while True:
@@ -822,12 +825,11 @@ class AbstractJobStoreTest(object):
                 self.assertEquals(before, after)
 
                 # Multi-part upload from file
-                #
                 checksum = hashlib.md5()
                 fh, path = tempfile.mkstemp()
                 try:
-                    with os.fdopen(fh, 'r+') as writable:
-                        with open(random_device) as readable:
+                    with os.fdopen(fh, 'wb+') as writable:
+                        with open(random_device, 'rb') as readable:
                             for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 writable.write(buf)
@@ -838,7 +840,6 @@ class AbstractJobStoreTest(object):
                 before = checksum.hexdigest()
 
                 # Verify
-                #
                 checksum = hashlib.md5()
                 with self.jobstore_initialized.readFileStream(fileId) as readable:
                     while True:
@@ -869,12 +870,9 @@ class AbstractJobStoreTest(object):
             dirPath = self._createTempDir()
             filePath = os.path.join(dirPath, 'large')
             hashIn = hashlib.md5()
-            with open(filePath, 'w') as f:
+            with open(filePath, 'wb') as f:
                 for i in range(0, 10):
                     buf = os.urandom(self._partSize())
-                    # python 3 requires self.fileContents to be a bytestring
-                    if sys.version_info >= (3, 0):
-                        buf = buf.decode('utf-8')
                     f.write(buf)
                     hashIn.update(buf)
 
@@ -890,7 +888,7 @@ class AbstractJobStoreTest(object):
 
             # Reread the file to confirm success.
             hashOut = hashlib.md5()
-            with open(filePath, 'r') as f:
+            with open(filePath, 'rb') as f:
                 while True:
                     buf = f.read(self._partSize())
                     if not buf:
@@ -1104,6 +1102,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         shutil.rmtree(self.jobstore_initialized.jobStoreDir)
 
     def _prepareTestFile(self, dirPath, size=None):
+        import binascii
         fileName = 'testfile_%s' % uuid.uuid4()
         localFilePath = dirPath + fileName
         url = 'file://%s' % localFilePath
@@ -1111,14 +1110,14 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             return url
         else:
             content = os.urandom(size)
-            with open(localFilePath, 'w') as writable:
+            with open(localFilePath, 'wb') as writable:
                 writable.write(content)
 
             return url, hashlib.md5(content).hexdigest()
 
     def _hashTestFile(self, url):
         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
-        with open(localFilePath, 'r') as f:
+        with open(localFilePath, 'rb') as f:
             return hashlib.md5(f.read()).hexdigest()
 
     def _createExternalStore(self):
@@ -1454,11 +1453,14 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Te
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
-@needs_google
-@needs_encryption
-@slow
-class EncryptedGoogleJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
-    pass
+# TODO: Has this ever actually run?  Duplicates the AzureJobstore Testing needlessly while
+# claiming to be the google jobstore.
+
+# @needs_google
+# @needs_encryption
+# @slow
+# class EncryptedGoogleJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
+#     pass
 
 
 class StubHttpRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
