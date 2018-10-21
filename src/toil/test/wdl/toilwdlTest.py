@@ -36,8 +36,8 @@ class ToilWdlIntegrationTest(ToilTest):
 
     def setUp(self):
         """Runs anew before each test to create farm fresh temp dirs."""
-        self.output_dir = os.path.join('/tmp/', 'toil-test-' + str(uuid.uuid4()))
-        os.makedirs(os.path.join(self.output_dir))
+        self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
+        os.makedirs(self.output_dir)
 
     @classmethod
     def setUpClass(cls):

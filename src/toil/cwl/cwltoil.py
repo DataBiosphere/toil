@@ -537,7 +537,8 @@ class CWLJob(Job):
         fill_in_defaults(
             self.step_inputs, cwljob,
             self.runtime_context.make_fs_access(""))
-        for inp_id in cwljob.keys():
+        immobile_cwljob_dict = copy.deepcopy(cwljob)
+        for inp_id in immobile_cwljob_dict.keys():
             found = False
             for field in self.cwltool.inputs_record_schema['fields']:
                 if field['name'] == inp_id:
