@@ -3,12 +3,9 @@
 # between the PR branch and the target branch. The make_targets variable will contain a space-
 # separated list of Makefile targets to invoke.
 
-sudo apt update
-sudo apt install python3.6
-
 # Passing --system-site-packages ensures that mesos.native and mesos.interface are included
 # Passing --never-download prevents silent upgrades to pip, wheel and setuptools
-virtualenv -p python3.6 --system-site-packages --never-download venv
+virtualenv --system-site-packages --never-download venv
 . venv/bin/activate
 
 # Install build requirements 
