@@ -77,31 +77,33 @@ def choose_spot_zone(zones, bid, spot_history):
     :return: the name of the selected zone
 
     >>> from collections import namedtuple
-    >>> FauxHistory = namedtuple( 'FauxHistory', [ 'price', 'availability_zone' ] )
-    >>> ZoneTuple = namedtuple( 'ZoneTuple', [ 'name' ] )
-
-    >>> zones = [ZoneTuple( 'us-west-2a' ), ZoneTuple( 'us-west-2b' )]
-    >>> spot_history = [ FauxHistory( 0.1, 'us-west-2a' ), \
-                         FauxHistory( 0.2,'us-west-2a'), \
-                         FauxHistory( 0.3,'us-west-2b'), \
-                         FauxHistory( 0.6,'us-west-2b')]
-    >>> # noinspection PyProtectedMember
-    >>> choose_spot_zone(zones, 0.15, spot_history )
+    >>> FauxHistory = namedtuple('FauxHistory', ['price', 'availability_zone'])
+    >>> ZoneTuple = namedtuple('ZoneTuple', ['name'])
+    >>> zones = [ZoneTuple('us-west-2a'), ZoneTuple('us-west-2b')]
+    >>> spot_history = [FauxHistory(0.1, 'us-west-2a'), \
+                        FauxHistory(0.2, 'us-west-2a'), \
+                        FauxHistory(0.3, 'us-west-2b'), \
+                        FauxHistory(0.6, 'us-west-2b')]
+    >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2a'
 
-    >>> spot_history={ FauxHistory( 0.1, 'us-west-2a' ), \
-                       FauxHistory( 0.7, 'us-west-2a' ), \
-                       FauxHistory( 0.1, "us-west-2b" ), \
-                       FauxHistory( 0.6, 'us-west-2b' ) }
-    >>> # noinspection PyProtectedMember
+    >>> spot_history=[FauxHistory(0.3, 'us-west-2a'), \
+                      FauxHistory(0.2, 'us-west-2a'), \
+                      FauxHistory(0.1, 'us-west-2b'), \
+                      FauxHistory(0.6, 'us-west-2b')]
     >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2b'
-   """
 
-    # Create two lists of tuples of form: [ (zone.name, std_deviation), ... ] one for zones
+    >>> spot_history=[FauxHistory(0.1, 'us-west-2a'), \
+                      FauxHistory(0.7, 'us-west-2a'), \
+                      FauxHistory(0.1, 'us-west-2b'), \
+                      FauxHistory(0.6, 'us-west-2b')]
+    >>> choose_spot_zone(zones, 0.15, spot_history)
+    'us-west-2b'
+    """
+    # Create two lists of tuples of form: [(zone.name, std_deviation), ...] one for zones
     # over the bid price and one for zones under bid price. Each are sorted by increasing
     # standard deviation values.
-    #
     markets_under_bid, markets_over_bid = [], []
     for zone in zones:
         zone_histories = [zone_history for zone_history in spot_history if zone_history.availability_zone == zone.name]
@@ -113,8 +115,7 @@ def choose_spot_zone(zones, bid, spot_history):
         zone_tuple = ZoneTuple(name=zone.name, price_deviation=price_deviation)
         (markets_over_bid, markets_under_bid)[recent_price < bid].append(zone_tuple)
 
-    return min(markets_under_bid or markets_over_bid,
-               key=attrgetter('price_deviation')).name
+    return min(markets_under_bid or markets_over_bid, key=attrgetter('price_deviation')).name
 
 
 def optimize_spot_bid(ctx, instance_type, spot_bid):
@@ -162,6 +163,7 @@ def _check_spot_bid(spot_bid, spot_history):
         logger.warn("Your bid $ %f is more than double this instance type's average "
                  "spot price ($ %f) over the last week", spot_bid, average)
 
+
 def _get_spot_history(ctx, instance_type):
     """
     Returns list of 1,000 most recent spot market data points represented as SpotPriceHistory
@@ -188,6 +190,7 @@ sdbFullPolicy = dict(Version="2012-10-17", Statement=[
 
 iamFullPolicy = dict(Version="2012-10-17", Statement=[
     dict(Effect="Allow", Resource="*", Action="iam:*")])
+
 
 def checkValidNodeTypes(provisioner, nodeTypes):
     """
