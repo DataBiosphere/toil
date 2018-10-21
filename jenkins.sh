@@ -3,8 +3,8 @@
 # between the PR branch and the target branch. The make_targets variable will contain a space-
 # separated list of Makefile targets to invoke.
 
-sudo apt -y update
-sudo apt -y install python3.6
+sudo apt update
+sudo apt install python3.6
 
 # Passing --system-site-packages ensures that mesos.native and mesos.interface are included
 # Passing --never-download prevents silent upgrades to pip, wheel and setuptools
