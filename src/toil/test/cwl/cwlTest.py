@@ -25,6 +25,7 @@ import uuid
 from future.moves.urllib.request import urlretrieve
 from six.moves import StringIO
 from six import u as str
+from six import text_type
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -220,11 +221,13 @@ class CWLTest(ToilTest):
     def _expected_seqtk_output(outDir):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
+        loc = 'file://' + os.path.join(outDir, 'out')
+        loc = str(loc) if not isinstance(loc, text_type) else loc  # py2/3
         return {
             u'output1':  {
-                u'location': 'file://' + str(os.path.join(outDir, 'out')),
+                u'location': loc,
                 u'checksum': u'sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2',
-                u'basename': str('out'),
+                u'basename': u'out',
                 u'class': u'File',
                 u'size': 150}}
 
@@ -232,10 +235,12 @@ class CWLTest(ToilTest):
     def _expected_revsort_output(outDir):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
+        loc = 'file://' + os.path.join(outDir, 'output.txt')
+        loc = str(loc) if not isinstance(loc, text_type) else loc  # py2/3
         return {
             u'output': {
-                u'location': 'file://' + str(os.path.join(outDir, 'output.txt')),
-                u'basename': str("output.txt"),
+                u'location': loc,
+                u'basename': u'output.txt',
                 u'size': 1111,
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}}
