@@ -10,9 +10,10 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil import subprocess
 from toil.test import ToilTest
 from toil.test import needs_cwl
+from toil.test import needs_docker
 
 class ToilDocumentationTest(ToilTest):
-    # a test for multiplejobs2.py
+    # a test for tutorial_multiplejobs2.py
 
     # def setUp(self, script):
     #     self.program = os.path.abspath("scripts/" + script)
@@ -65,64 +66,64 @@ class ToilDocumentationTest(ToilTest):
 
     @needs_cwl
     def testCwlexample(self):
-        self.runTest1("cwlexample.py")
+        self.runTest1("tutorial_cwlexample.py")
 
     def testDiscoverfiles(self):
-        self.runTest1("discoverfiles.py")
+        self.runTest1("tutorial_discoverfiles.py")
 
     def testDynamic(self):
-        self.runTest1("dynamic.py")
+        self.runTest1("tutorial_dynamic.py")
 
     def testEncapsulation(self):
-        self.runTest1("encapsulation.py")
+        self.runTest1("tutorial_encapsulation.py")
 
     def testEncapsulation2(self):
-        self.runTest1("encapsulation2.py")
+        self.runTest1("tutorial_encapsulation2.py")
 
     def testHelloworld(self):
-        self.runTest2("helloworld.py", "Hello, world!, here's a message: You did it!\n")
+        self.runTest2("tutorial_helloworld.py", "Hello, world!, here's a message: You did it!\n")
 
     def testInvokeworkflow(self):
-        self.runTest2("invokeworkflow.py", "Hello, world!, here's a message: Woot\n")
+        self.runTest2("tutorial_invokeworkflow.py", "Hello, world!, here's a message: Woot\n")
 
     def testInvokeworkflow2(self):
-        self.runTest2("invokeworkflow2.py", "Hello, world!, I have a message: Woot!\n")
+        self.runTest2("tutorial_invokeworkflow2.py", "Hello, world!, I have a message: Woot!\n")
 
     def testJobFunctions(self):
-        self.runTest2("jobfunctions.py", "Hello world, I have a message: Woot!\n")
+        self.runTest2("tutorial_jobfunctions.py", "Hello world, I have a message: Woot!\n")
 
     def testManaging(self):
-        self.runTest1("managing.py")
+        self.runTest1("tutorial_managing.py")
 
     def testManaging2(self):
-        self.runTest1("managing2.py")
+        self.runTest1("tutorial_managing2.py")
 
     def testMultiplejobs(self):
-        self.runTest3("multiplejobs.py", "Hello world, I have a message: first.*Hello world, I have a message: "
+        self.runTest3("tutorial_multiplejobs.py", "Hello world, I have a message: first.*Hello world, I have a message: "
                                          "second or third.*Hello world, I have a message: second or third.*Hello world,"
                                          " I have a message: last")
 
     def testMultiplejobs2(self):
-        self.runTest3("multiplejobs2.py", "Hello world, I have a message: first.*Hello world, I have a message: "
+        self.runTest3("tutorial_multiplejobs2.py", "Hello world, I have a message: first.*Hello world, I have a message: "
                                          "second or third.*Hello world, I have a message: second or third.*Hello world,"
                                          " I have a message: last")
 
     def testMultiplejobs3(self):
-        self.runTest3("multiplejobs3.py", "Hello world, I have a message: first.*Hello world, I have a message: "
+        self.runTest3("tutorial_multiplejobs3.py", "Hello world, I have a message: first.*Hello world, I have a message: "
                                          "second or third.*Hello world, I have a message: second or third.*Hello world,"
                                          " I have a message: last")
 
     def testPromises2(self):
-        self.runTest2("promises2.py", "['00000', '00001', '00010', '00011', '00100', '00101', '00110', '00111', '01000',"
+        self.runTest2("tutorial_promises2.py", "['00000', '00001', '00010', '00011', '00100', '00101', '00110', '00111', '01000',"
                       " '01001', '01010', '01011', '01100', '01101', '01110', '01111', '10000', '10001', "
                       "'10010', '10011', '10100', '10101', '10110', '10111', '11000', '11001', '11010', "
                       "'11011', '11100', '11101', '11110', '11111']")
 
     def testQuickstart(self):
-        self.runTest2("quickstart.py", "Hello, world!, here's a message: Woot\n")
+        self.runTest2("tutorial_quickstart.py", "Hello, world!, here's a message: Woot\n")
 
     def testRequirements(self):
-        self.runTest1("requirements.py")
+        self.runTest1("tutorial_requirements.py")
 
     def testArguments(self):
         self.runTest2("tutorial_arguments.py", "Hello, world!, here's a message: Woot")
@@ -138,7 +139,7 @@ class ToilDocumentationTest(ToilTest):
         self.runTest1("tutorial_services.py")
 
     def testWdlexample(self):
-        self.runTest1("wdlexample.py")
+        self.runTest1("tutorial_wdlexample.py")
 
 if __name__ == "__main__":
     unittest.main()
