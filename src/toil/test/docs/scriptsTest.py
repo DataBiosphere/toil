@@ -17,6 +17,13 @@ class ToilDocumentationTest(ToilTest):
     """Tests for scripts in the toil tutorials"""
 
     def tearDown(self):
+        output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
+        for output in output_files:
+            output_dir = os.path.abspath("scripts/cwlExampleFiles")
+            if os.path.exists(os.path.abspath(os.path.join(output_dir, output))):
+                print("!!!!!!!!!!")
+                os.remove(os.path.abspath(os.path.join(output_dir, output)))
+
         unittest.TestCase.tearDown(self)
 
     """Check that the exit code is 0"""
@@ -124,8 +131,9 @@ class ToilDocumentationTest(ToilTest):
     def testServices(self):
         self.runTest1("tutorial_services.py")
 
+    """Needs cromwell jar file to run
     def testWdlexample(self):
-        self.runTest1("tutorial_wdlexample.py")
+       self.runTest1("tutorial_wdlexample.py")"""
 
 if __name__ == "__main__":
     unittest.main()

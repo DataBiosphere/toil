@@ -30,9 +30,9 @@ if __name__ == "__main__":
     with Toil(options) as toil:
 
         # specify the folder where the cwl and yml files live
-        inputs_dir = os.path.abspath("/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlExampleFiles")
+        inputs_dir = os.path.abspath("scripts/cwlExampleFiles")
         # specify where you wish the outputs to be written
-        outputs_dir = "/Users/cbseuser/toil/src/toil/test/docs/scripts/cwlExampleFiles"
+        outputs_dir = os.path.abspath("scripts/cwlExampleFiles")
 
         job0 = Job.wrapJobFn(initialize_jobs)
 
@@ -50,7 +50,3 @@ if __name__ == "__main__":
             job0.addChild(job)
 
         toil.start(job0)
-
-        output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
-        for output in output_files:
-            os.remove(os.path.abspath(os.path.join(inputs_dir, output)))

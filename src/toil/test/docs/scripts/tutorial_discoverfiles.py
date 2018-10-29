@@ -16,9 +16,9 @@ def main():
     options = Job.Runner.getDefaultArgumentParser().parse_args()
     options.clean = "always"
 
-    job1 = discoverFiles(path="/", displayName='sysFiles')
+    job1 = discoverFiles(path="/System/", displayName='sysFiles')
     job2 = discoverFiles(path=os.path.expanduser("~"), displayName='userFiles')
-    job3 = discoverFiles(path="/home/")
+    job3 = discoverFiles(path="/tmp/")
 
     job1.addChild(job2)
     job2.addChild(job3)
