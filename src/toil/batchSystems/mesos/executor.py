@@ -17,36 +17,38 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 import os
+import os.path
 import random
 import socket
 import signal
 import sys
 import threading
 import logging
-from toil import subprocess
+import psutil
 import traceback
-from time import sleep, time
+import time
+import json
+import resource
 
 try:
-    import cPickle as pickle
+    from urllib2 import urlopen
 except ImportError:
-    import pickle
+    from urllib.request import urlopen
 
-import psutil
-import mesos.interface
+import addict
+from pymesos import MesosExecutorDriver, Executor, decode_data, encode_data
+
+from toil import subprocess, pickle
 from toil.lib.expando import Expando
-from mesos.interface import mesos_pb2
-import mesos.native
-from struct import pack
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.resource import Resource
 
 log = logging.getLogger(__name__)
 
 
-class MesosExecutor(mesos.interface.Executor):
+class MesosExecutor(Executor):
     """
-    Part of Toil's Mesos framework, runs on a Mesos slave. A Toil job is passed to it via the
+    Part of Toil's Mesos framework, runs on a Mesos agent. A Toil job is passed to it via the
     task.data field, and launched via call(toil.command).
     """
 
@@ -55,35 +57,41 @@ class MesosExecutor(mesos.interface.Executor):
         self.popenLock = threading.Lock()
         self.runningTasks = {}
         self.workerCleanupInfo = None
+        log.debug('Preparing system for resource download')
         Resource.prepareSystem()
         self.address = None
+        self.id = None
         # Setting this value at this point will ensure that the toil workflow directory will go to
         # the mesos sandbox if the user hasn't specified --workDir on the command line.
         if not os.getenv('TOIL_WORKDIR'):
             os.environ['TOIL_WORKDIR'] = os.getcwd()
-
-    def registered(self, driver, executorInfo, frameworkInfo, slaveInfo):
+            
+    def registered(self, driver, executorInfo, frameworkInfo, agentInfo):
         """
         Invoked once the executor driver has been able to successfully connect with Mesos.
         """
-        log.debug("Registered with framework")
-        self.address = socket.gethostbyname(slaveInfo.hostname)
+        
+        # Get the ID we have been assigned, if we have it
+        self.id = executorInfo.executor_id.get('value', None)
+        
+        log.debug("Registered executor %s with framework", self.id)
+        self.address = socket.gethostbyname(agentInfo.hostname)
         nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver])
         nodeInfoThread.daemon = True
         nodeInfoThread.start()
 
-    def reregistered(self, driver, slaveInfo):
+    def reregistered(self, driver, agentInfo):
         """
-        Invoked when the executor re-registers with a restarted slave.
+        Invoked when the executor re-registers with a restarted agent.
         """
         log.debug("Re-registered")
 
     def disconnected(self, driver):
         """
-        Invoked when the executor becomes "disconnected" from the slave (e.g., the slave is being
+        Invoked when the executor becomes "disconnected" from the agent (e.g., the agent is being
         restarted due to an upgrade).
         """
-        log.critical("Disconnected from slave")
+        log.critical("Disconnected from agent")
 
     def killTask(self, driver, taskId):
         """
@@ -117,7 +125,7 @@ class MesosExecutor(mesos.interface.Executor):
             # The psutil documentation recommends that we ignore the value returned by the first
             # invocation of cpu_percent(). However, we do want to send a sign of life early after
             # starting (e.g. to unblock the provisioner waiting for an instance to come up) so
-            # the first message we send omits the load info.
+            # we call it once and discard the value.
             if message is None:
                 message = Expando(address=self.address)
                 psutil.cpu_percent()
@@ -127,26 +135,32 @@ class MesosExecutor(mesos.interface.Executor):
                                         coresTotal=psutil.cpu_count(),
                                         memoryTotal=psutil.virtual_memory().total,
                                         workers=len(self.runningTasks))
-            driver.sendFrameworkMessage(repr(message))
+            log.debug("Send framework message: %s", message)
+            driver.sendFrameworkMessage(encode_data(repr(message)))
             # Prevent workers launched together from repeatedly hitting the leader at the same time
-            sleep(random.randint(45, 75))
+            time.sleep(random.randint(45, 75))
 
     def launchTask(self, driver, task):
         """
         Invoked by SchedulerDriver when a Mesos task should be launched by this executor
         """
-
+        
+        log.debug("Asked to launch task %s", repr(task))
+        
         def runTask():
+
             log.debug("Running task %s", task.task_id.value)
-            sendUpdate(mesos_pb2.TASK_RUNNING)
+            startTime = time.time()
+            sendUpdate(task, 'TASK_RUNNING', wallTime=0)
+
+            # try to unpickle the task
             try:
-                taskData = pickle.loads(task.data)
+                taskData = pickle.loads(decode_data(task.data))
             except:
                 exc_info = sys.exc_info()
-                log.error('Exception while unpickling task:', exc_info=exc_info)
+                log.error('Exception while unpickling task: ', exc_info=exc_info)
                 exc_type, exc_value, exc_trace = exc_info
-                sendUpdate(mesos_pb2.TASK_FAILED, wallTime=None,
-                           message=''.join(traceback.format_exception_only(exc_type, exc_value)))
+                sendUpdate(task, 'TASK_FAILED', wallTime=0, msg=''.join(traceback.format_exception_only(exc_type, exc_value)))
                 return
 
             # This is where task.data is first invoked. Using this position to setup cleanupInfo
@@ -154,28 +168,32 @@ class MesosExecutor(mesos.interface.Executor):
                 assert self.workerCleanupInfo == taskData.workerCleanupInfo
             else:
                 self.workerCleanupInfo = taskData.workerCleanupInfo
-            startTime = time()
+
+            # try to invoke a run on the unpickled task
             try:
-                popen = runJob(taskData)
-                self.runningTasks[task.task_id.value] = popen.pid
+                process = runJob(taskData)
+                self.runningTasks[task.task_id.value] = process.pid
                 try:
-                    exitStatus = popen.wait()
-                    wallTime = time() - startTime
+                    exitStatus = process.wait()
+                    wallTime = time.time() - startTime
                     if 0 == exitStatus:
-                        sendUpdate(mesos_pb2.TASK_FINISHED, wallTime)
+                        sendUpdate(task, 'TASK_FINISHED', wallTime)
                     elif -9 == exitStatus:
-                        sendUpdate(mesos_pb2.TASK_KILLED, wallTime)
+                        sendUpdate(task, 'TASK_KILLED', wallTime)
                     else:
-                        sendUpdate(mesos_pb2.TASK_FAILED, wallTime, message=str(exitStatus))
+                        sendUpdate(task, 'TASK_FAILED', wallTime, msg=str(exitStatus))
                 finally:
                     del self.runningTasks[task.task_id.value]
             except:
-                wallTime = time() - startTime
+                wallTime = time.time() - startTime
                 exc_info = sys.exc_info()
                 log.error('Exception while running task:', exc_info=exc_info)
                 exc_type, exc_value, exc_trace = exc_info
-                sendUpdate(mesos_pb2.TASK_FAILED, wallTime,
-                           message=''.join(traceback.format_exception_only(exc_type, exc_value)))
+                sendUpdate(task, 'TASK_FAILED', wallTime=wallTime, msg=''.join(traceback.format_exception_only(exc_type, exc_value)))
+
+            wallTime = time.time() - startTime
+            sendUpdate(task, 'TASK_FINISHED', wallTime)
+
 
         def runJob(job):
             """
@@ -186,21 +204,24 @@ class MesosExecutor(mesos.interface.Executor):
             if job.userScript:
                 job.userScript.register()
             log.debug("Invoking command: '%s'", job.command)
+            # Construct the job's environment
+            jobEnv = dict(os.environ, **job.environment)
+            log.debug('Using environment variables: %s', jobEnv.keys())
             with self.popenLock:
                 return subprocess.Popen(job.command,
                                         preexec_fn=lambda: os.setpgrp(),
-                                        shell=True, env=dict(os.environ, **job.environment))
+                                        shell=True, env=jobEnv)
 
-        def sendUpdate(taskState, wallTime=None, message=''):
-            log.debug('Sending task status update ...')
-            status = mesos_pb2.TaskStatus()
-            status.task_id.value = task.task_id.value
-            status.message = message
-            status.state = taskState
-            if wallTime is not None:
-                status.data = pack('d', wallTime)
-            driver.sendStatusUpdate(status)
-            log.debug('... done sending task status update.')
+        def sendUpdate(task, taskState, wallTime=None, msg=''):
+            update = addict.Dict()
+            update.task_id.value = task.task_id.value
+            if self.id is not None:
+                # Sign our messages as from us, since the driver doesn't do it.
+                update.executor_id.value = self.id
+            update.state = taskState
+            update.timestamp = wallTime
+            update.message = msg
+            driver.sendStatusUpdate(update)
 
         thread = threading.Thread(target=runTask)
         thread.start()
@@ -212,11 +233,75 @@ class MesosExecutor(mesos.interface.Executor):
         log.debug("Received message from framework: {}".format(message))
 
 
-def main(executorClass=MesosExecutor):
+def main():
     logging.basicConfig(level=logging.DEBUG)
     log.debug("Starting executor")
-    executor = executorClass()
-    driver = mesos.native.MesosExecutorDriver(executor)
-    exit_value = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
+
+    if not os.environ.has_key("MESOS_AGENT_ENDPOINT"):
+        # Some Mesos setups in our tests somehow lack this variable. Provide a
+        # fake one to maybe convince the executor driver to work.
+        os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get("MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051")
+        log.warning("Had to fake MESOS_AGENT_ENDPOINT as %s" % os.environ["MESOS_AGENT_ENDPOINT"])
+        
+    try:
+        urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
+        log.debug("Toggled agent log level")
+    except Exception as e:
+        log.debug("Failed to toggle agent log level")
+        
+    # Parse the agent state
+    agent_state = json.loads(urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
+    if agent_state.has_key('completed_frameworks'):
+        # Drop the completed frameworks whichg grow over time
+        del agent_state['completed_frameworks']
+    log.debug("Agent state: %s", str(agent_state))
+    
+    log.debug("Virtual memory info in executor: %s" % repr(psutil.virtual_memory()))
+    
+    if os.path.exists('/sys/fs/cgroup/memory'):
+        # Mesos can limit memory with a cgroup, so we should report on that.
+        for (dirpath, dirnames, filenames) in os.walk('/sys/fs/cgroup/memory', followlinks=True):
+            for filename in filenames:
+                if 'limit_in_bytes' not in filename:
+                    continue
+                log.debug('cgroup memory info from %s:' % os.path.join(dirpath, filename))
+                try:
+                    for line in open(os.path.join(dirpath, filename)):
+                        log.debug(line.rstrip())
+                except Exception as e:
+                    log.debug("Failed to read file")
+                    
+    # Mesos can also impose rlimit limits, including on things that really
+    # ought to not be limited, like virtual address space size.
+    log.debug('DATA rlimit: %s', str(resource.getrlimit(resource.RLIMIT_DATA)))
+    log.debug('STACK rlimit: %s', str(resource.getrlimit(resource.RLIMIT_STACK)))
+    log.debug('RSS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_RSS)))
+    log.debug('AS rlimit: %s', str(resource.getrlimit(resource.RLIMIT_AS)))
+    
+                    
+    executor = MesosExecutor()
+    log.debug('Made executor')
+    driver = MesosExecutorDriver(executor, use_addict=True)
+    
+    old_on_event = driver.on_event
+    
+    def patched_on_event(event):
+        """
+        Intercept and log all pymesos events.
+        """
+        log.debug("Event: %s", repr(event))
+        old_on_event(event)
+        
+    driver.on_event = patched_on_event
+    
+    log.debug('Made driver')
+    driver.start()
+    log.debug('Started driver')
+    driver_result = driver.join()
+    log.debug('Joined driver')
+    
+    # Tolerate a None in addition to the code the docs suggest we should receive from join()
+    exit_value = 0 if (driver_result is None or driver_result == 'DRIVER_STOPPED') else 1
     assert len(executor.runningTasks) == 0
     sys.exit(exit_value)
+

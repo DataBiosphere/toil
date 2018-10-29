@@ -259,7 +259,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         raise RuntimeError("No job store implementation supports %sporting for URL '%s'" %
                            ('ex' if export else 'im', url.geturl()))
 
-    def importFile(self, srcUrl, sharedFileName=None):
+    def importFile(self, srcUrl, sharedFileName=None, hardlink=False):
         """
         Imports the file at the given URL into job store. The ID of the newly imported file is
         returned. If the name of a shared file name is provided, the file will be imported as
@@ -296,9 +296,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         # subclasses of AbstractJobStore.
         srcUrl = urlparse.urlparse(srcUrl)
         otherCls = self._findJobStoreForUrl(srcUrl)
-        return self._importFile(otherCls, srcUrl, sharedFileName=sharedFileName)
+        return self._importFile(otherCls, srcUrl, sharedFileName=sharedFileName, hardlink=hardlink)
 
-    def _importFile(self, otherCls, url, sharedFileName=None):
+    def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         """
         Import the file at the given URL using the given job store class to retrieve that file.
         See also :meth:`.importFile`. This method applies a generic approach to importing: it

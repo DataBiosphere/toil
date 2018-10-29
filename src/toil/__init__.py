@@ -29,6 +29,11 @@ if os.name == 'posix' and sys.version_info[0] < 3:
 else:
     import subprocess
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 log = logging.getLogger(__name__)
 
 
@@ -43,7 +48,10 @@ def toilPackageDirPath():
 
 
 def inVirtualEnv():
-    return hasattr(sys, 'real_prefix')
+    """
+    Returns whether we are inside a virtualenv or Conda virtual environment.
+    """
+    return hasattr(sys, 'real_prefix') or 'CONDA_DEFAULT_ENV' in os.environ
 
 
 def resolveEntryPoint(entryPoint):
