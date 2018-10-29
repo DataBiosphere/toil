@@ -1,9 +1,12 @@
+from toil.common import Toil
 from toil.job import Job
+from toil.lib.docker import apiDockerCall
+import os
 
-align = Job.wrapJobFn(dockerCall,
-                      tool='quay.io/ucsc_cgl/bwa',
-                      workDir=job.tempDir,
-                      parameters=['index', '/data/reference.fa'])
+align = Job.wrapJobFn(apiDockerCall,
+                      image='ubuntu',
+                      working_dir=os.getcwd(),
+                      parameters=['ls', '-lha'])
 
 if __name__=="__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")

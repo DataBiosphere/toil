@@ -14,6 +14,7 @@ class discoverFiles(Job):
 
 def main():
     options = Job.Runner.getDefaultArgumentParser().parse_args()
+    options.clean = "always"
 
     job1 = discoverFiles(path="/", displayName='sysFiles')
     job2 = discoverFiles(path=os.path.expanduser("~"), displayName='userFiles')

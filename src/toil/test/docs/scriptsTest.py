@@ -11,40 +11,25 @@ from toil import subprocess
 from toil.test import ToilTest
 from toil.test import needs_cwl
 from toil.test import needs_docker
+from toil.lib.docker import apiDockerCall
 
 class ToilDocumentationTest(ToilTest):
-    # a test for tutorial_multiplejobs2.py
-
-    # def setUp(self, script):
-    #     self.program = os.path.abspath("scripts/" + script)
-
-    @classmethod
-    def setUpClass(cls):
-        pass
+    """Tests for scripts in the toil tutorials"""
 
     def tearDown(self):
         unittest.TestCase.tearDown(self)
 
-    # Check that the exit code is 0
+    """Check that the exit code is 0"""
     def checkExitCode(self, p):
         out = subprocess.call(["python", p, "file:my-jobstore", "--clean=always"])
         self.assertEqual(out, 0, out)
 
-    def checkOutput(self, p, q):
-        out = subprocess.check_output(['python', p, 'file:my-jobstore', '--logOff', '--clean=always'])
-        index = out.find(q)
-        self.assertGreater(index, -1, index)
-
-    def checkPattern(self, p, q):
-        out = subprocess.check_output(['python', p, 'file:my-jobstore', '--clean=always'])
-        pattern = re.compile(q, re.DOTALL)
-        p = re.search(pattern, out)
-        self.assertNotEqual(p, None, p)
-
+    """Just check the exit code"""
     def runTest1(self, script):
         program = os.path.abspath("scripts/" + script)
         self.checkExitCode(program)
 
+    """Check the exit code and the output"""
     def runTest2(self, script, expectedOutput):
         program = os.path.abspath("scripts/" + script)
         self.checkExitCode(program)
@@ -54,6 +39,7 @@ class ToilDocumentationTest(ToilTest):
         index = out.find(expectedOutput)
         self.assertGreater(index, -1, index)
 
+    """Check the exit code and look for a pattern"""
     def runTest3(self, script, expectedPattern):
         program = os.path.abspath("scripts/" + script)
         self.checkExitCode(program)

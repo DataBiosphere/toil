@@ -26,6 +26,7 @@ def runQC(job, wdl_file, wdl_filename, json_file, json_filename, outputs_dir, ja
 if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
+    options.clean = "always"
 
     with Toil(options) as toil:
 
@@ -39,7 +40,7 @@ if __name__ == "__main__":
         job0 = Job.wrapJobFn(initialize_jobs)
 
         wdl_filename = "hello.wdl"
-        wdl_file = toil.importFile("file://" + os.path.join(inputs_dir, wdl_filename))
+        wdl_file = toil.importFile("file://" + os.path.abspath(os.path.join(inputs_dir, wdl_filename)))
 
 
         # add list of yml config inputs here or import and construct from file

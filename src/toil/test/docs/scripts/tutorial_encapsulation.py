@@ -20,4 +20,4 @@ if __name__=="__main__":
     options.clean = "always"
 
     with Toil(options) as toil:
-        print toil.start(Ap)
+        print(toil.start(Ap))

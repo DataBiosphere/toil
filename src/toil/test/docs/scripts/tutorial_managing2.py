@@ -31,7 +31,7 @@ def globalFileStoreJobFn(job):
 
     # Read the second file again using a stream.
     with job.fileStore.readGlobalFileStream(fileID2) as fH:
-        print fH.read() #This prints "Out brief candle"
+        print(fH.read()) #This prints "Out brief candle"
 
     # Delete the first file from the global file-store.
     job.fileStore.deleteGlobalFile(fileID)

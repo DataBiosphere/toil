@@ -26,6 +26,7 @@ def runQC(job, cwl_file, cwl_filename, yml_file, yml_filename, outputs_dir, outp
 if __name__ == "__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
+    options.clean = "always"
     with Toil(options) as toil:
 
         # specify the folder where the cwl and yml files live
@@ -49,3 +50,7 @@ if __name__ == "__main__":
             job0.addChild(job)
 
         toil.start(job0)
+
+        output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
+        for output in output_files:
+            os.remove(os.path.abspath(os.path.join(inputs_dir, output)))

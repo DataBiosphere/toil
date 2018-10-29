@@ -12,6 +12,7 @@ class HelloWorld(Job):
 if __name__=="__main__":
     options = Job.Runner.getDefaultOptions("./toilWorkflowRun")
     options.logLevel = "INFO"
+    options.clean = "always"
 
     with Toil(options) as toil:
         if not toil.options.restart:
