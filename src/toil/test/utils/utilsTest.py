@@ -24,13 +24,17 @@ import logging
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+import time
+import psutil
+
 import toil
 import toil.test.sort.sort
 from toil import subprocess
 from toil import resolveEntryPoint
 from toil.job import Job
+from toil.utils.toilStatus import ToilStatus
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow, needs_cwl, needs_docker
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -322,6 +326,93 @@ class UtilsTest(ToilTest):
         collatedStats = processData(jobStore.config, stats)
         self.assertTrue(len(collatedStats.job_types) == 2,
                         "Some jobs are not represented in the stats")
+
+    def testGetPIDStatus(self):
+        """Test that ToilStatus.getPIDStatus() behaves as expected."""
+        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, '--clean', 'never']
+        wf = subprocess.Popen(cmd)
+        time.sleep(2)  # Need to let jobstore be created before checking its contents.
+        self.assertEqual('RUNNING', ToilStatus.getPIDStatus(self.toilDir))
+        wf.wait()
+        self.assertEqual('COMPLETED', ToilStatus.getPIDStatus(self.toilDir))
+        os.remove(os.path.join(self.toilDir, 'pid.log'))
+        self.assertEqual('QUEUED', ToilStatus.getPIDStatus(self.toilDir))
+
+        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
+            if os.path.exists(f):
+                os.remove(f)
+
+    def testGetStatusFailedToilWF(self):
+        """
+        Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
+         While this workflow could be called by importing and evoking its main function, doing so would remove the
+        opprotunity to test the 'RUNNING' functionality of getStatus().
+        """
+        # --badWorker is set to force failure.
+        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, '--clean', 'never', '--badWorker', '1']
+        wf = subprocess.Popen(cmd)
+        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
+        self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
+        wf.wait()
+        self.assertEqual('ERROR', ToilStatus.getStatus(self.toilDir))
+
+        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
+            if os.path.exists(f):
+                os.remove(f)
+
+    @needs_cwl
+    @needs_docker
+    def testGetStatusFailedCWLWF(self):
+        """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
+        files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
+        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean', 'never', '--badWorker', '1', files[0],
+               '--reverse', '--input', files[1]]
+        wf = subprocess.Popen(cmd)
+        wfRun = psutil.Process(pid=wf.pid)
+        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
+        wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
+        self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
+        wfRun.resume()
+        wf.wait()
+        result = ToilStatus.getStatus(self.toilDir)
+        self.assertEqual('ERROR', result)
+
+    def testGetStatusSuccessfulToilWF(self):
+        """
+        Test that ToilStatus.getStatus() behaves as expected with a successful Toil workflow.
+         While this workflow could be called by importing and evoking its main function, doing so would remove the
+        opprotunity to test the 'RUNNING' functionality of getStatus().
+        """
+        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, '--clean', 'never']
+        wf = subprocess.Popen(cmd)
+        time.sleep(2)  # Need to let jobstore be created before checking its contents.
+        self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
+        wf.wait()
+        self.assertEqual('COMPLETED', ToilStatus.getStatus(self.toilDir))
+
+        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
+            if os.path.exists(f):
+                os.remove(f)
+
+    @needs_cwl
+    @needs_docker
+    def testGetStatusSuccessfulCWLWF(self):
+        """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
+        # Run a cwl workflow in a subprocess.
+        files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
+        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean', 'never', files[0], '--reverse', '--input',
+               files[1]]
+        wf = subprocess.Popen(cmd)
+        wfRun = psutil.Process(pid=wf.pid)
+        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
+        wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
+        self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
+        wfRun.resume()
+        wf.wait()
+        self.assertEqual('COMPLETED', ToilStatus.getStatus(self.toilDir))
+
+        if os.path.exists('output.txt'):  # This CWL WF does not clean this up.
+            os.remove('output.txt')
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of

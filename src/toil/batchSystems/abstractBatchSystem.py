@@ -110,7 +110,8 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def killBatchJobs(self, jobIDs):
         """
-        Kills the given job IDs.
+        Kills the given job IDs. After returning, the killed jobs will not
+        appear in the results of getRunningBatchJobIDs.
 
         :param jobIDs: list of IDs of jobs to kill
         :type jobIDs: list[int]

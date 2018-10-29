@@ -116,7 +116,7 @@ Running a basic WDL workflow
 ----------------------------
 
 The `Workflow Description Language`_ (WDL) is another emerging language for writing workflows that are portable across multiple workflow engines and platforms.
-Running WDL workflows using Toil is still in alpha, and currently experimental.  Toil currently supports basic workflow syntax (see :ref:`wdlSupport` for more details and examples).  Here we go over running a basic WDL helloworld workflow.
+Running WDL workflows using Toil is still in alpha, and currently experimental.  Toil currently supports basic workflow syntax (see :ref:`wdl` for more details and examples).  Here we go over running a basic WDL helloworld workflow.
 
 #. First ensure that Toil is installed with the
    ``wdl`` extra (see :ref:`extras`)::
@@ -299,7 +299,6 @@ arguments for the workflow which includes both Toil's and ones defined inside
 found in :ref:`commandRef`.
 
 
-
 Logging
 ~~~~~~~
 
@@ -312,7 +311,7 @@ messages to the screen::
 
 This hides most of the information we get from the Toil run. For more detail,
 we can run the pipeline with ``--logLevel=debug`` to see a comprehensive
-output. For more information, see :ref:`loggingRef`.
+output. For more information, see :ref:`workflowOptions`.
 
 
 Error Handling and Resuming Pipelines
@@ -358,7 +357,7 @@ starting from the previously failed jobs. We can restart the pipeline by running
 
 We can also change the number of times Toil will attempt to retry a failed job::
 
-   (venv) $ python sort.py --retryCount 2 --restart --overwriteOutput=True
+   (venv) $ python sort.py file:jobStore --retryCount 2 --restart --overwriteOutput=True
 
 You'll now see Toil attempt to rerun the failed job until it runs out of tries.
 ``--retryCount`` is useful for non-systemic errors, like downloading a file that
@@ -369,7 +368,7 @@ line 30, or remove it, and then run
 
 ::
 
-    (venv) $ python sort.py --restart --overwriteOutput=True
+    (venv) $ python sort.py file:jobStore --restart --overwriteOutput=True
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
