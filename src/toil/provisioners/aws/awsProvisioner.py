@@ -341,7 +341,7 @@ class AWSProvisioner(AbstractProvisioner):
             # SSLError is thrown when get_all_images times out
             with attempt:
                 # 679593333241 is the aws marketplace account
-                amis = self._ctx.ec2.get_all_images(owners=['679593333241'], filters={'name': 'CoreOS-stable-1745.7.0-hvm-0d1e0bd0-eaea-4397-9a3a-c56f861d2a14-ami-f6ecac89.4'})
+                amis = self._ctx.ec2.get_all_images(owners=['679593333241'], filters={'name': 'CoreOS-stable-1855.5.0-hvm-0d1e0bd0-eaea-4397-9a3a-c56f861d2a14-ami-0f74e41ea6c13f74b.4'})
 
         coreOSAMI = [ami for ami in amis if descriptionMatches(ami)]
         logger.debug('Found the following matching AMIs: %s', coreOSAMI)
