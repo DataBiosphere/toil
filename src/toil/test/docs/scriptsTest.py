@@ -19,7 +19,7 @@ class ToilDocumentationTest(ToilTest):
     @classmethod
     def setUpClass(cls):
         cls.directory = os.path.dirname(os.path.abspath(__file__))
-        sys.stderr.write("directory: ", cls.directory)
+        sys.stderr.write("directory: " + cls.directory + "\n")
 
     def tearDown(self):
         output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
