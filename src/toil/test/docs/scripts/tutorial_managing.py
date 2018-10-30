@@ -15,7 +15,7 @@ if __name__=="__main__":
     options.clean = "always"
 
     # Create an instance of FooJob which will have at least 10 gigabytes of storage space.
-    j = LocalFileStoreJob(disk="10G")
+    j = LocalFileStoreJob(disk="2G")
 
     #Run the workflow
     with Toil(options) as toil:
