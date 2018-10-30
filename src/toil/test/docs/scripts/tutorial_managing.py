@@ -14,7 +14,7 @@ if __name__=="__main__":
     options.logLevel = "INFO"
     options.clean = "always"
 
-    # Create an instance of FooJob which will have at least 10 gigabytes of storage space.
+    # Create an instance of FooJob which will have at least 2 gigabytes of storage space.
     j = LocalFileStoreJob(disk="2G")
 
     #Run the workflow
