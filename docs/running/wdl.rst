@@ -130,17 +130,15 @@ WDL language specifications can be found here: https://github.com/broadinstitute
 Implementing support for more features is currently underway, but a basic roadmap so far is:
 
 CURRENTLY IMPLEMENTED:
- * scatter
- * read_tsv, read_csv
- * docker calls
- * handles priority, and output file wrangling
- * currently handles primitives and arrays
+ * Scatter
+ * Many Built-In Functions
+ * Docker Calls
+ * Handles Priority, and Output File Wrangling
+ * Currently Handles Primitives and Arrays
 
-TO BE IMPLEMENTED SOON:
- * implement type: $type_postfix_quantifier
- * "default" values inside variables
- * $map_types & $object_types
- * wdl files that "import" other wdl files (including URI handling for 'http://' and 'https://')
+TO BE IMPLEMENTED:
+ * Integrate Cloud Autoscaling Capacity More Robustly
+ * WDL Files That "Import" Other WDL Files (Including URI Handling for 'http://' and 'https://')
 
 .. _repository: https://github.com/broadinstitute/wdltool
 .. _wdltool: https://github.com/broadinstitute/wdltool/releases

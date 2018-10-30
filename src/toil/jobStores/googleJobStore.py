@@ -24,6 +24,7 @@ import uuid
 import logging
 import time
 import os
+import os.path
 
 try:
     import cPickle as pickle
@@ -114,10 +115,24 @@ class GoogleJobStore(AbstractJobStore):
         self.readStatsBaseID = self.statsReadPrefix+self.statsBaseID
 
         self.sseKey = None
-        if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS') and os.path.exists(self.nodeServiceAccountJson):
-            # load credentials from a file on GCE nodes if GOOGLE_APPLICATION_CREDENTIALS is not set
+        
+        # Determine if we have an override environment variable for our credentials.
+        # We don't pull out the filename; we just see if a name is there.
+        self.credentialsFromEnvironment = bool(os.getenv('GOOGLE_APPLICATION_CREDENTIALS', False))
+        
+        if self.credentialsFromEnvironment and not os.path.exists(os.getenv('GOOGLE_APPLICATION_CREDENTIALS')):
+            # If the file is missing, complain.
+            # This variable holds a file name and not any sensitive data itself.
+            log.warning("File '%s' from GOOGLE_APPLICATION_CREDENTIALS is unavailable! "
+                        "We may not be able to authenticate!",
+                        os.getenv('GOOGLE_APPLICATION_CREDENTIALS'))
+        
+        if not self.credentialsFromEnvironment and os.path.exists(self.nodeServiceAccountJson):
+            # load credentials from a particular file on GCE nodes if an override path is not set
             self.storageClient = storage.Client.from_service_account_json(self.nodeServiceAccountJson)
         else:
+            # Either a filename is specified, or our fallback file isn't there.
+            # See if Google can work out how to authenticate.
             self.storageClient = storage.Client()
 
 
@@ -208,6 +223,21 @@ class GoogleJobStore(AbstractJobStore):
         # best effort delete associated files
         for blob in self.bucket.list_blobs(prefix=bytes(jobStoreID)):
             self._delete(blob.name)
+            
+    def getEnv(self):
+        """
+        Return a dict of environment variables to send out to the workers
+        so they can load the job store.
+        """
+        
+        env = {}
+        
+        if self.credentialsFromEnvironment:
+            # Send along the environment variable that points to the credentials file.
+            # It must be available in the same place on all nodes.
+            env['GOOGLE_APPLICATION_CREDENTIALS'] = os.getenv('GOOGLE_APPLICATION_CREDENTIALS')
+            
+        return env
 
     @googleRetry
     def jobs(self):

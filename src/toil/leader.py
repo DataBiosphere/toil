@@ -23,6 +23,7 @@ standard_library.install_aliases()
 from builtins import str
 from builtins import object
 from builtins import super
+from contextlib import contextmanager
 import logging
 import time
 import os
@@ -35,6 +36,7 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
+from toil.jobStores.fileJobStore import FileJobStore
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
@@ -225,6 +227,22 @@ class Leader(object):
 
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
+
+        logName = 'failed.log' if self.toilState.totalFailedJobs else 'succeeded.log'
+        localLog = os.path.join(os.getcwd(), logName)
+        logger.critical('localLog: {}\n'.format(localLog))
+        with open(localLog, 'w') as f:
+            f.write('')
+
+        logger.critical('localLog: {}\n'.format(localLog))
+        try:
+            self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+        except IOError as e:
+            logger.critical('Error from importFile with hardlink=True: {}'.format(e))
+            self.jobStore.importFile('file://' + localLog, logName, hardlink=False)
+
+        if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
+            os.remove(localLog)
 
         logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
