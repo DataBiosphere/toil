@@ -21,40 +21,48 @@ class ToilDocumentationTest(ToilTest):
         for output in output_files:
             output_dir = os.path.abspath("scripts/cwlExampleFiles")
             if os.path.exists(os.path.abspath(os.path.join(output_dir, output))):
-                print("!!!!!!!!!!")
                 os.remove(os.path.abspath(os.path.join(output_dir, output)))
 
         unittest.TestCase.tearDown(self)
 
-    """Check that the exit code is 0"""
-    def checkExitCode(self, p):
-        out = subprocess.call(["python", p, "file:my-jobstore", "--clean=always"])
-        self.assertEqual(out, 0, out)
-
     """Just check the exit code"""
     def runTest1(self, script):
-        program = os.path.abspath("scripts/" + script)
-        self.checkExitCode(program)
+        directory = os.path.dirname(os.path.abspath(__file__))
+        program = os.path.join(directory, "scripts", script)
+        process = subprocess.Popen(["python", program, "file:my-jobstore", "--clean=always"],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        assert process.returncode == 0, stderr
 
     """Check the exit code and the output"""
     def runTest2(self, script, expectedOutput):
-        program = os.path.abspath("scripts/" + script)
-        self.checkExitCode(program)
+        directory = os.path.dirname(os.path.abspath(__file__))
+        program = os.path.join(directory, "scripts", script)
+        process = subprocess.Popen(['python', program, 'file:my-jobstore', '--logOff', '--clean=always'],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+
+        # Check that the exit code is 0
+        assert process.returncode == 0, stderr
 
         # Check that the expected output is there
-        out = subprocess.check_output(['python', program, 'file:my-jobstore', '--logOff', '--clean=always'])
-        index = out.find(expectedOutput)
+        index = stdout.find(expectedOutput)
         self.assertGreater(index, -1, index)
 
     """Check the exit code and look for a pattern"""
     def runTest3(self, script, expectedPattern):
-        program = os.path.abspath("scripts/" + script)
-        self.checkExitCode(program)
+        directory = os.path.dirname(os.path.abspath(__file__))
+        program = os.path.join(directory, "scripts", script)
+        process = subprocess.Popen(['python', program, 'file:my-jobstore', '--clean=always'],
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
 
-        # Check that the expected outputs are somewhere in the log messages
-        out = subprocess.check_output(['python', program, 'file:my-jobstore', '--clean=always'])
+        # Check that the exit code is 0
+        assert process.returncode == 0, stderr
+
+        # Check that the expected output pattern is there
         pattern = re.compile(expectedPattern, re.DOTALL)
-        n = re.search(pattern, out)
+        n = re.search(pattern, stdout)
         self.assertNotEqual(n, None, n)
 
     @needs_cwl

@@ -10,13 +10,14 @@ class discoverFiles(Job):
         super(discoverFiles, self).__init__(*args, **kwargs)
 
     def run(self, fileStore):
-        subprocess.check_call(["ls", self.path])
+        if os.path.exists(self.path):
+            subprocess.check_call(["ls", self.path])
 
 def main():
     options = Job.Runner.getDefaultArgumentParser().parse_args()
     options.clean = "always"
 
-    job1 = discoverFiles(path="/System/", displayName='sysFiles')
+    job1 = discoverFiles(path="/sys/", displayName='sysFiles')
     job2 = discoverFiles(path=os.path.expanduser("~"), displayName='userFiles')
     job3 = discoverFiles(path="/tmp/")
 
