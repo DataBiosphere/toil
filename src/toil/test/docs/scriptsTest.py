@@ -19,7 +19,6 @@ class ToilDocumentationTest(ToilTest):
     @classmethod
     def setUpClass(cls):
         cls.directory = os.path.dirname(os.path.abspath(__file__))
-        sys.stderr.write("directory: " + cls.directory + "\n")
 
     def tearDown(self):
         output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
@@ -37,23 +36,23 @@ class ToilDocumentationTest(ToilTest):
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         assert process.returncode == 0, stderr
-        return stdout, stderr
+        return stdout + " " + stderr
 
     """Check the exit code and the output"""
     def checkExpectedOut(self, script, expectedOutput):
-        stdout, stderr = self.checkExitCode(script)
+        outerr = self.checkExitCode(script)
 
         # Check that the expected output is there
-        index = stdout.find(expectedOutput)
+        index = outerr.find(expectedOutput)
         self.assertGreater(index, -1, index)
 
     """Check the exit code and look for a pattern"""
     def checkExpectedPattern(self, script, expectedPattern):
-        stdout, stderr = self.checkExitCode(script)
+        outerr = self.checkExitCode(script)
 
         # Check that the expected output pattern is there
         pattern = re.compile(expectedPattern, re.DOTALL)
-        n = re.search(pattern, stdout)
+        n = re.search(pattern, outerr)
         self.assertNotEqual(n, None, n)
 
     @needs_cwl
