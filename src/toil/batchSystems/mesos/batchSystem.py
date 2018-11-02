@@ -39,7 +39,6 @@ from contextlib import contextmanager
 from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
-from threading import Lock
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
 from toil import pickle
 from toil.lib.memoize import strict_bool
@@ -95,9 +94,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # Dictionary of queues, which toil assigns jobs to. Each queue represents a job type,
         # defined by resource usage
         self.jobQueues = JobQueue()
-
-        # lock for potential race conditions (notably killing jobs with competing threads)
-        self.jobLock = Lock()
 
         # Address of the Mesos master in the form host:port where host can be an IP or a hostname
         self.mesosMasterAddress = config.mesosMasterAddress
