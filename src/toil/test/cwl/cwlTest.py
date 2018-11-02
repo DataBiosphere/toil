@@ -22,6 +22,7 @@ import shutil
 import zipfile
 import pytest
 import uuid
+import logging
 from future.moves.urllib.request import urlretrieve
 from six.moves import StringIO
 from six import u as str
@@ -34,6 +35,8 @@ from toil import subprocess
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
                        needs_torque)
+
+log = logging.getLogger(__name__)
 
 
 @needs_cwl
@@ -144,6 +147,9 @@ class CWLTest(ToilTest):
             pass
         # Finish the job with a correct PATH
         os.environ["PATH"] = orig_path
+        log.critical('cwlDir: ' + cwlDir + ' ' + str(os.path.exists(cwlDir)))
+        log.critical('PATH: ' + os.environ["PATH"] + ' ' + str(os.path.exists(os.environ["PATH"])))
+        log.critical(cmd)
         cwltoil.main(["--restart"] + cmd)
         # Should fail because previous job completed successfully
         try:

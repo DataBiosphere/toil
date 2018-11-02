@@ -45,5 +45,5 @@ f=s.f_frsize * s.f_bavail
 sys.exit(1 if f < min_free_in_GiB << 30 else 0)
 "
 export TMPDIR
-make $make_targets
+python src/toil/test/cwl/cwlTest.py
 docker run -v $(dirname $TMPDIR):$(dirname $TMPDIR) busybox rm -rf $TMPDIR
