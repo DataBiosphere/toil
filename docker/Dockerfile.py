@@ -104,6 +104,9 @@ print(heredoc('''
 
     # Fix for `screen` (https://github.com/BD2KGenomics/toil/pull/1386#issuecomment-267424561)
     ENV TERM linux
+    
+    # Run bash instead of sh
+    ENV SHELL /bin/bash
 
     # An appliance may need to start more appliances, e.g. when the leader appliance launches the
     # worker appliance on a worker node. To support this, we embed a self-reference into the image:
