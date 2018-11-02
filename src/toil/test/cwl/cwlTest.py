@@ -124,9 +124,8 @@ class CWLTest(ToilTest):
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException
         from toil.leader import FailedJobsException
-        outDir = self._createTempDir()
-        cwlDir = os.path.join(self._projectRootPath(), "src", "toil", "test", "cwl")
-        cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
+        cwlDir = os.path.join(self.rootDir, "src", "toil", "test", "cwl")
+        cmd = ['--outdir', self.outDir, '--jobStore', os.path.join(self.outDir, 'jobStore'), "--no-container",
                os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
 
         def path_without_rev():
