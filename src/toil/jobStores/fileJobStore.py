@@ -398,8 +398,8 @@ class FileJobStore(AbstractJobStore):
                         # nonetheless in which case we should just give up.
                         os.link(jobStoreFilePath, localFilePath)
                     else:
-                        logger.critical('jobStoreFilePath: ' + jobStoreFilePath)
-                        logger.critical('localFilePath: ' + localFilePath)
+                        logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
+                        logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
                         raise
         else:
             # ... otherwise we have to copy it.
