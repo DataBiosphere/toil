@@ -108,6 +108,8 @@ print(heredoc('''
     # Run bash instead of sh
     ENV SHELL /bin/bash
 
+    RUN echo "defshell -bash" > ~/.screenrc
+
     # An appliance may need to start more appliances, e.g. when the leader appliance launches the
     # worker appliance on a worker node. To support this, we embed a self-reference into the image:
     ENV TOIL_APPLIANCE_SELF {applianceSelf}
