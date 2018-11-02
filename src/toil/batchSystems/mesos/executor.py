@@ -244,7 +244,7 @@ def main():
         log.warning("Had to fake MESOS_AGENT_ENDPOINT as %s" % os.environ["MESOS_AGENT_ENDPOINT"])
 
     # must be set manually to enable toggling of the mesos log level for debugging jenkins
-    # may be useful: https://github.com/DataBiosphere/toil/pull/2338
+    # may be useful: https://github.com/DataBiosphere/toil/pull/2338#discussion_r223854931
     if False:
         try:
             urlopen("http://%s/logging/toggle?level=1&duration=15mins" % os.environ["MESOS_AGENT_ENDPOINT"]).read()
