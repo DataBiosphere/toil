@@ -63,48 +63,48 @@ class CWLTest(ToilTest):
         out["output"].pop("nameroot", None)
         self.assertEquals(out, expect)
 
-    def test_run_revsort(self):
-        outDir = self._createTempDir()
-        self._tester('src/toil/test/cwl/revsort.cwl',
-                     'src/toil/test/cwl/revsort-job.json',
-                     outDir, {
-                         # Having unicode string literals isn't necessary for the assertion but makes for a
-                         # less noisy diff in case the assertion fails.
-                         u'output': {
-                             u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
-                             u'basename': str("output.txt"),
-                             u'size': 1111,
-                             u'class': u'File',
-                             u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
-
-    def test_run_revsort2(self):
-        outDir = self._createTempDir()
-        self._tester('src/toil/test/cwl/revsort2.cwl',
-                     'src/toil/test/cwl/revsort-job.json',
-                     outDir, {
-                         # Having unicode string literals isn't necessary for the assertion but makes for a
-                         # less noisy diff in case the assertion fails.
-                         u'output': {
-                             u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
-                             u'basename': str("output.txt"),
-                             u'size': 1111,
-                             u'class': u'File',
-                             u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
-
-    def test_run_revsort_debug_worker(self):
-        outDir = self._createTempDir()
-        # Having unicode string literals isn't necessary for the assertion
-        # but makes for a less noisy diff in case the assertion fails.
-        self._debug_worker_tester(
-            'src/toil/test/cwl/revsort.cwl',
-            'src/toil/test/cwl/revsort-job.json', outDir, {u'output': {
-                u'location': "file://" + str(os.path.join(
-                    outDir, 'output.txt')),
-                u'basename': str("output.txt"),
-                u'size': 1111,
-                u'class': u'File',
-                u'checksum':
-                    u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+    # def test_run_revsort(self):
+    #     outDir = self._createTempDir()
+    #     self._tester('src/toil/test/cwl/revsort.cwl',
+    #                  'src/toil/test/cwl/revsort-job.json',
+    #                  outDir, {
+    #                      # Having unicode string literals isn't necessary for the assertion but makes for a
+    #                      # less noisy diff in case the assertion fails.
+    #                      u'output': {
+    #                          u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
+    #                          u'basename': str("output.txt"),
+    #                          u'size': 1111,
+    #                          u'class': u'File',
+    #                          u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+    #
+    # def test_run_revsort2(self):
+    #     outDir = self._createTempDir()
+    #     self._tester('src/toil/test/cwl/revsort2.cwl',
+    #                  'src/toil/test/cwl/revsort-job.json',
+    #                  outDir, {
+    #                      # Having unicode string literals isn't necessary for the assertion but makes for a
+    #                      # less noisy diff in case the assertion fails.
+    #                      u'output': {
+    #                          u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
+    #                          u'basename': str("output.txt"),
+    #                          u'size': 1111,
+    #                          u'class': u'File',
+    #                          u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+    #
+    # def test_run_revsort_debug_worker(self):
+    #     outDir = self._createTempDir()
+    #     # Having unicode string literals isn't necessary for the assertion
+    #     # but makes for a less noisy diff in case the assertion fails.
+    #     self._debug_worker_tester(
+    #         'src/toil/test/cwl/revsort.cwl',
+    #         'src/toil/test/cwl/revsort-job.json', outDir, {u'output': {
+    #             u'location': "file://" + str(os.path.join(
+    #                 outDir, 'output.txt')),
+    #             u'basename': str("output.txt"),
+    #             u'size': 1111,
+    #             u'class': u'File',
+    #             u'checksum':
+    #                 u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
 
     @slow
     def test_restart(self):
@@ -139,90 +139,90 @@ class CWLTest(ToilTest):
         except NoSuchJobStoreException:
             pass
 
-    @slow
-    @pytest.mark.timeout(1800)
-    def test_run_conformance(self, batchSystem=None):
-        rootDir = self._projectRootPath()
-        cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
-        workDir = os.path.join(cwlSpec, 'v1.0')
-        # The latest cwl git hash. Update it to get the latest tests.
-        testhash = "22490926651174c6cbe01c76c2ded3c9e8d0ee6f"
-        url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
-        if not os.path.exists(cwlSpec):
-            urlretrieve(url, "spec.zip")
-            with zipfile.ZipFile('spec.zip', "r") as z:
-                z.extractall()
-            shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
-            os.remove("spec.zip")
-        try:
-            cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
-                   '--timeout=1800', '--basedir=' + workDir]
-            if batchSystem:
-                cmd.extend(["--batchSystem", batchSystem])
-            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
-        except subprocess.CalledProcessError as e:
-            only_unsupported = False
-            # check output -- if we failed but only have unsupported features, we're okay
-            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-            for line in e.output.split("\n"):
-                m = p.search(line)
-                if m:
-                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
-                        only_unsupported = True
-                        break
-            if not only_unsupported:
-                print(e.output)
-                raise e
+    # @slow
+    # @pytest.mark.timeout(1800)
+    # def test_run_conformance(self, batchSystem=None):
+    #     rootDir = self._projectRootPath()
+    #     cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
+    #     workDir = os.path.join(cwlSpec, 'v1.0')
+    #     # The latest cwl git hash. Update it to get the latest tests.
+    #     testhash = "22490926651174c6cbe01c76c2ded3c9e8d0ee6f"
+    #     url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
+    #     if not os.path.exists(cwlSpec):
+    #         urlretrieve(url, "spec.zip")
+    #         with zipfile.ZipFile('spec.zip', "r") as z:
+    #             z.extractall()
+    #         shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
+    #         os.remove("spec.zip")
+    #     try:
+    #         cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
+    #                '--timeout=1800', '--basedir=' + workDir]
+    #         if batchSystem:
+    #             cmd.extend(["--batchSystem", batchSystem])
+    #         subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+    #     except subprocess.CalledProcessError as e:
+    #         only_unsupported = False
+    #         # check output -- if we failed but only have unsupported features, we're okay
+    #         p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
+    #         for line in e.output.split("\n"):
+    #             m = p.search(line)
+    #             if m:
+    #                 if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
+    #                     only_unsupported = True
+    #                     break
+    #         if not only_unsupported:
+    #             print(e.output)
+    #             raise e
 
-    @slow
-    def test_bioconda(self):
-        outDir = self._createTempDir()
-        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-                     'src/toil/test/cwl/seqtk_seq_job.json',
-                     outDir,
-                     self._expected_seqtk_output(outDir),
-                     main_args=["--beta-conda-dependencies"],
-                     out_name="output1")
-
-    @needs_docker
-    def test_biocontainers(self):
-        outDir = self._createTempDir()
-        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-                     'src/toil/test/cwl/seqtk_seq_job.json',
-                     outDir,
-                     self._expected_seqtk_output(outDir),
-                     main_args=["--beta-use-biocontainers"],
-                     out_name="output1")
-
-    @slow
-    @needs_lsf
-    @unittest.skip
-    def test_lsf_cwl_conformance(self):
-        return self.test_run_conformance("LSF")
-
-    @slow
-    @needs_slurm
-    @unittest.skip
-    def test_slurm_cwl_conformance(self):
-        return self.test_run_conformance("Slurm")
-
-    @slow
-    @needs_torque
-    @unittest.skip
-    def test_torque_cwl_conformance(self):
-        return self.test_run_conformance("Torque")
-
-    @slow
-    @needs_gridengine
-    @unittest.skip
-    def test_gridengine_cwl_conformance(self):
-        return self.test_run_conformance("gridEngine")
-
-    @slow
-    @needs_mesos
-    @unittest.skip
-    def test_mesos_cwl_conformance(self):
-        return self.test_run_conformance("mesos")
+    # @slow
+    # def test_bioconda(self):
+    #     outDir = self._createTempDir()
+    #     self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+    #                  'src/toil/test/cwl/seqtk_seq_job.json',
+    #                  outDir,
+    #                  self._expected_seqtk_output(outDir),
+    #                  main_args=["--beta-conda-dependencies"],
+    #                  out_name="output1")
+    #
+    # @needs_docker
+    # def test_biocontainers(self):
+    #     outDir = self._createTempDir()
+    #     self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+    #                  'src/toil/test/cwl/seqtk_seq_job.json',
+    #                  outDir,
+    #                  self._expected_seqtk_output(outDir),
+    #                  main_args=["--beta-use-biocontainers"],
+    #                  out_name="output1")
+    #
+    # @slow
+    # @needs_lsf
+    # @unittest.skip
+    # def test_lsf_cwl_conformance(self):
+    #     return self.test_run_conformance("LSF")
+    #
+    # @slow
+    # @needs_slurm
+    # @unittest.skip
+    # def test_slurm_cwl_conformance(self):
+    #     return self.test_run_conformance("Slurm")
+    #
+    # @slow
+    # @needs_torque
+    # @unittest.skip
+    # def test_torque_cwl_conformance(self):
+    #     return self.test_run_conformance("Torque")
+    #
+    # @slow
+    # @needs_gridengine
+    # @unittest.skip
+    # def test_gridengine_cwl_conformance(self):
+    #     return self.test_run_conformance("gridEngine")
+    #
+    # @slow
+    # @needs_mesos
+    # @unittest.skip
+    # def test_mesos_cwl_conformance(self):
+    #     return self.test_run_conformance("mesos")
 
     @slow
     @needs_parasol
