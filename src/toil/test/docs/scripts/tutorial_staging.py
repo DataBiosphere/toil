@@ -22,9 +22,10 @@ if __name__=="__main__":
 
     with Toil(options) as toil:
         if not toil.options.restart:
-            inputFileID = toil.importFile("file://" + os.path.abspath("stagingExampleFiles/in.txt"))
+            ioFileDirectory = os.path.join(os.path.dirname(os.path.abspath(__file__)), "stagingExampleFiles")
+            inputFileID = toil.importFile("file://" + os.path.abspath(os.path.join(ioFileDirectory, "in.txt")))
             outputFileID = toil.start(HelloWorld(inputFileID))
         else:
             outputFileID = toil.restart()
 
-        toil.exportFile(outputFileID, "file://" + os.path.abspath("stagingExampleFiles/out.txt"))
+        toil.exportFile(outputFileID, "file://" + os.path.abspath(os.path.join(ioFileDirectory, "out.txt")))

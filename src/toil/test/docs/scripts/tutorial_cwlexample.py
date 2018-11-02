@@ -30,9 +30,9 @@ if __name__ == "__main__":
     with Toil(options) as toil:
 
         # specify the folder where the cwl and yml files live
-        inputs_dir = os.path.abspath("scripts/cwlExampleFiles")
+        inputs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cwlExampleFiles")
         # specify where you wish the outputs to be written
-        outputs_dir = os.path.abspath("scripts/cwlExampleFiles")
+        outputs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cwlExampleFiles")
 
         job0 = Job.wrapJobFn(initialize_jobs)
 
