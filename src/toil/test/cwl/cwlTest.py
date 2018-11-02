@@ -43,27 +43,24 @@ class CWLTest(ToilTest):
         from builtins import str as normal_str
         self.outDir = os.path.join('/tmp/', 'toil-cwl-test-' + normal_str(uuid.uuid4()))
         os.makedirs(self.outDir)
+        self.rootDir = self._projectRootPath()
+        self.cwlSpec = os.path.join(self.rootDir, 'src/toil/test/cwl/spec')
+        self.workDir = os.path.join(self.cwlSpec, 'v1.0')
+        # The latest cwl git hash. Update it to get the latest tests.
+        testhash = "22490926651174c6cbe01c76c2ded3c9e8d0ee6f"
+        url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
+        if not os.path.exists(self.cwlSpec):
+            urlretrieve(url, "spec.zip")
+            with zipfile.ZipFile('spec.zip', "r") as z:
+                z.extractall()
+            shutil.move("common-workflow-language-%s" % testhash, self.cwlSpec)
+            os.remove("spec.zip")
 
     def tearDown(self):
         """Clean up outputs."""
         if os.path.exists(self.outDir):
             shutil.rmtree(self.outDir)
         unittest.TestCase.tearDown(self)
-
-    @classmethod
-    def setUpClass(cls):
-        cls.rootDir = cls._projectRootPath()
-        cls.cwlSpec = os.path.join(cls.rootDir, 'src/toil/test/cwl/spec')
-        cls.workDir = os.path.join(cls.cwlSpec, 'v1.0')
-        # The latest cwl git hash. Update it to get the latest tests.
-        testhash = "22490926651174c6cbe01c76c2ded3c9e8d0ee6f"
-        url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
-        if not os.path.exists(cls.cwlSpec):
-            urlretrieve(url, "spec.zip")
-            with zipfile.ZipFile('spec.zip', "r") as z:
-                z.extractall()
-            shutil.move("common-workflow-language-%s" % testhash, cls.cwlSpec)
-            os.remove("spec.zip")
 
     def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
