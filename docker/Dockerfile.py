@@ -105,9 +105,8 @@ print(heredoc('''
     # Fix for `screen` (https://github.com/BD2KGenomics/toil/pull/1386#issuecomment-267424561)
     ENV TERM linux
     
-    # Run bash instead of sh
+    # Run bash instead of sh inside of screen
     ENV SHELL /bin/bash
-
     RUN echo "defshell -bash" > ~/.screenrc
 
     # An appliance may need to start more appliances, e.g. when the leader appliance launches the

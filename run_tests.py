@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import time
+from future.utils import iteritems
 
 log = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ def run_parallel_to_xml(suite, args):
         while len(keyword_to_process) > 0:
             # Make a list of finished keywords
             finished = []
-            for keyword, process in keyword_to_process.iteritems():
+            for keyword, process in iteritems(keyword_to_process):
                 if process.poll() is not None:
                     # This keyword has finished!
                     finished.append(keyword)

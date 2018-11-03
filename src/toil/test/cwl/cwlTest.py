@@ -21,9 +21,11 @@ import re
 import shutil
 import zipfile
 import pytest
+import uuid
 from future.moves.urllib.request import urlretrieve
 from six.moves import StringIO
 from six import u as str
+from six import text_type
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -36,13 +38,36 @@ from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
 
 @needs_cwl
 class CWLTest(ToilTest):
+    def setUp(self):
+        """Runs anew before each test to create farm fresh temp dirs."""
+        from builtins import str as normal_str
+        self.outDir = os.path.join('/tmp/', 'toil-cwl-test-' + normal_str(uuid.uuid4()))
+        os.makedirs(self.outDir)
+        self.rootDir = self._projectRootPath()
+        self.cwlSpec = os.path.join(self.rootDir, 'src/toil/test/cwl/spec')
+        self.workDir = os.path.join(self.cwlSpec, 'v1.0')
+        # The latest cwl git hash. Update it to get the latest tests.
+        testhash = "22490926651174c6cbe01c76c2ded3c9e8d0ee6f"
+        url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
+        if not os.path.exists(self.cwlSpec):
+            urlretrieve(url, "spec.zip")
+            with zipfile.ZipFile('spec.zip', "r") as z:
+                z.extractall()
+            shutil.move("common-workflow-language-%s" % testhash, self.cwlSpec)
+            os.remove("spec.zip")
 
-    def _tester(self, cwlfile, jobfile, outDir, expect, main_args=[], out_name="output"):
+    def tearDown(self):
+        """Clean up outputs."""
+        if os.path.exists(self.outDir):
+            shutil.rmtree(self.outDir)
+        unittest.TestCase.tearDown(self)
+
+    def _tester(self, cwlfile, jobfile, expect, main_args=[], out_name="output"):
         from toil.cwl import cwltoil
-        rootDir = self._projectRootPath()
         st = StringIO()
         main_args = main_args[:]
-        main_args.extend(['--outdir', outDir, os.path.join(rootDir, cwlfile), os.path.join(rootDir, jobfile)])
+        main_args.extend(['--outdir', self.outDir,
+                          os.path.join(self.rootDir, cwlfile), os.path.join(self.rootDir, jobfile)])
         cwltoil.main(main_args, stdout=st)
         out = json.loads(st.getvalue())
         out[out_name].pop("http://commonwl.org/cwltool#generation", None)
@@ -50,61 +75,47 @@ class CWLTest(ToilTest):
         out[out_name].pop("nameroot", None)
         self.assertEquals(out, expect)
 
-    def _debug_worker_tester(self, cwlfile, jobfile, outDir, expect):
+    def _debug_worker_tester(self, cwlfile, jobfile, expect):
         from toil.cwl import cwltoil
-        rootDir = self._projectRootPath()
         st = StringIO()
-        cwltoil.main(['--debugWorker', '--outdir', outDir,
-                     os.path.join(rootDir, cwlfile),
-                     os.path.join(rootDir, jobfile)], stdout=st)
+        cwltoil.main(['--debugWorker', '--outdir', self.outDir,
+                     os.path.join(self.rootDir, cwlfile),
+                     os.path.join(self.rootDir, jobfile)], stdout=st)
         out = json.loads(st.getvalue())
         out["output"].pop("http://commonwl.org/cwltool#generation", None)
         out["output"].pop("nameext", None)
         out["output"].pop("nameroot", None)
         self.assertEquals(out, expect)
 
+    def revsort(self, cwl_filename, tester_fn):
+        tester_fn('src/toil/test/cwl/' + cwl_filename,
+                  'src/toil/test/cwl/revsort-job.json',
+                  self._expected_revsort_output(self.outDir))
+
     def test_run_revsort(self):
-        outDir = self._createTempDir()
-        self._tester('src/toil/test/cwl/revsort.cwl',
-                     'src/toil/test/cwl/revsort-job.json',
-                     outDir, {
-            # Having unicode string literals isn't necessary for the assertion but makes for a
-            # less noisy diff in case the assertion fails.
-            u'output': {
-                u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
-                u'basename': str("output.txt"),
-                u'size': 1111,
-                u'class': u'File',
-                u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+        self.revsort('revsort.cwl', self._tester)
 
     def test_run_revsort2(self):
-        outDir = self._createTempDir()
-        self._tester('src/toil/test/cwl/revsort2.cwl',
-                     'src/toil/test/cwl/revsort-job.json',
-                     outDir, {
-            # Having unicode string literals isn't necessary for the assertion but makes for a
-            # less noisy diff in case the assertion fails.
-            u'output': {
-                u'location': "file://" + str(os.path.join(outDir, 'output.txt')),
-                u'basename': str("output.txt"),
-                u'size': 1111,
-                u'class': u'File',
-                u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+        self.revsort('revsort2.cwl', self._tester)
 
     def test_run_revsort_debug_worker(self):
-        outDir = self._createTempDir()
-        # Having unicode string literals isn't necessary for the assertion
-        # but makes for a less noisy diff in case the assertion fails.
-        self._debug_worker_tester(
-                'src/toil/test/cwl/revsort.cwl',
-                'src/toil/test/cwl/revsort-job.json', outDir, {u'output': {
-                    u'location': "file://" + str(os.path.join(
-                        outDir, 'output.txt')),
-                    u'basename': str("output.txt"),
-                    u'size': 1111,
-                    u'class': u'File',
-                    u'checksum':
-                        u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}})
+        self.revsort('revsort.cwl', self._debug_worker_tester)
+
+    @slow
+    def test_bioconda(self):
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     self._expected_seqtk_output(self.outDir),
+                     main_args=["--beta-conda-dependencies"],
+                     out_name="output1")
+
+    @needs_docker
+    def test_biocontainers(self):
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     self._expected_seqtk_output(self.outDir),
+                     main_args=["--beta-use-biocontainers"],
+                     out_name="output1")
 
     @slow
     def test_restart(self):
@@ -142,57 +153,31 @@ class CWLTest(ToilTest):
     @slow
     @pytest.mark.timeout(1800)
     def test_run_conformance(self, batchSystem=None):
-        rootDir = self._projectRootPath()
-        cwlSpec = os.path.join(rootDir, 'src/toil/test/cwl/spec')
-        workDir = os.path.join(cwlSpec, 'v1.0')
-        # The latest cwl git hash. Update it to get the latest tests.
-        testhash = "22490926651174c6cbe01c76c2ded3c9e8d0ee6f"
-        url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
-        if not os.path.exists(cwlSpec):
-            urlretrieve(url, "spec.zip")
-            with zipfile.ZipFile('spec.zip', "r") as z:
-                z.extractall()
-            shutil.move("common-workflow-language-%s" % testhash, cwlSpec)
-            os.remove("spec.zip")
         try:
             cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
-                   '--timeout=1800', '--basedir=' + workDir]
+                   '--timeout=1800', '--basedir=' + self.workDir]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
-            subprocess.check_output(cmd, cwd=workDir, stderr=subprocess.STDOUT)
+            subprocess.check_output(cmd, cwd=self.workDir, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
             # check output -- if we failed but only have unsupported features, we're okay
             p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-            for line in e.output.split("\n"):
+
+            error_log = e.output
+            if isinstance(e.output, bytes):
+                # py2/3 string handling
+                error_log = e.output.decode('utf-8')
+
+            for line in error_log.split('\n'):
                 m = p.search(line)
                 if m:
                     if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
                         only_unsupported = True
                         break
             if not only_unsupported:
-                print(e.output)
+                print(error_log)
                 raise e
-
-    @slow
-    def test_bioconda(self):
-        outDir = self._createTempDir()
-        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-                     'src/toil/test/cwl/seqtk_seq_job.json',
-                     outDir,
-                     self._expected_seqtk_output(outDir),
-                     main_args=["--beta-conda-dependencies"],
-                     out_name="output1")
-
-    @needs_docker
-    def test_biocontainers(self):
-        outDir = self._createTempDir()
-        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-                     'src/toil/test/cwl/seqtk_seq_job.json',
-                     outDir,
-                     self._expected_seqtk_output(outDir),
-                     main_args=["--beta-use-biocontainers"],
-                     out_name="output1")
 
     @slow
     @needs_lsf
@@ -230,12 +215,30 @@ class CWLTest(ToilTest):
     def test_parasol_cwl_conformance(self):
         return self.test_run_conformance("parasol")
 
-    def _expected_seqtk_output(self, outDir):
+    @staticmethod
+    def _expected_seqtk_output(outDir):
+        # Having unicode string literals isn't necessary for the assertion but
+        # makes for a less noisy diff in case the assertion fails.
+        loc = 'file://' + os.path.join(outDir, 'out')
+        loc = str(loc) if not isinstance(loc, text_type) else loc  # py2/3
         return {
-            u"output1":  {
-                u"location": "file://" + str(os.path.join(outDir, 'out')),
-                u"checksum": u"sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2",
-                u"basename": str("out"),
-                u"class": u"File",
-                u"size": 150}
-        }
+            u'output1':  {
+                u'location': loc,
+                u'checksum': u'sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2',
+                u'basename': u'out',
+                u'class': u'File',
+                u'size': 150}}
+
+    @staticmethod
+    def _expected_revsort_output(outDir):
+        # Having unicode string literals isn't necessary for the assertion but
+        # makes for a less noisy diff in case the assertion fails.
+        loc = 'file://' + os.path.join(outDir, 'output.txt')
+        loc = str(loc) if not isinstance(loc, text_type) else loc  # py2/3
+        return {
+            u'output': {
+                u'location': loc,
+                u'basename': u'output.txt',
+                u'size': 1111,
+                u'class': u'File',
+                u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}}

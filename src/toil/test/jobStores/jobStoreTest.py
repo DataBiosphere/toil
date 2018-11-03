@@ -14,13 +14,9 @@
 
 from __future__ import absolute_import
 from __future__ import division
-
-from toil.lib.retry import retry
 from future import standard_library
-from toil.lib.misc import truncExpBackoff
 
 standard_library.install_aliases()
-from builtins import next
 from builtins import range
 from builtins import str
 from past.utils import old_div
@@ -31,17 +27,16 @@ import hashlib
 import logging
 import threading
 import os
+import sys
 import shutil
 import tempfile
 import time
 import uuid
 from stubserver import FTPStubServer
 from abc import abstractmethod, ABCMeta
-from itertools import chain, islice, count
+from itertools import chain, islice
 from threading import Thread
 from unittest import skip
-
-# Python 3 compatibility imports
 from six.moves.queue import Queue
 from six.moves import SimpleHTTPServer, StringIO
 from six import iteritems
@@ -98,11 +93,10 @@ class AbstractJobStoreTest(object):
         # memoization key, I have only ever seen one case: ('test', ). The worst that can happen
         # if other values are also used is that there will be more external stores and less sharing
         # of them. They will still all be cleaned-up.
-
         @classmethod
         @memoize
         def __new__(cls, *args):
-            return super(AbstractJobStoreTest.Test, cls).__new__(*args)
+            return super(AbstractJobStoreTest.Test, cls).__new__(cls)
 
         def _createConfig(self):
             return Config()
@@ -162,9 +156,9 @@ class AbstractJobStoreTest(object):
 
             # Create a job and verify its existence/properties
             aJobNode = JobNode(command='parent1',
-                                      requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onParent',
-                                      jobStoreID=None, predecessorNumber=0)
+                               requirements=self.parentJobReqs,
+                               jobName='test1', unitName='onParent',
+                               jobStoreID=None, predecessorNumber=0)
             job = jobstore.create(aJobNode)
 
             self.assertTrue(jobstore.exists(job.jobStoreID))
@@ -200,9 +194,9 @@ class AbstractJobStoreTest(object):
 
             # Create a job on the first jobstore.
             jobNode1 = JobNode(command='jobstore1',
-                                      requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onJS1',
-                                      jobStoreID=None, predecessorNumber=0)
+                               requirements=self.parentJobReqs,
+                               jobName='test1', unitName='onJS1',
+                               jobStoreID=None, predecessorNumber=0)
             job1 = self.jobstore_initialized.create(jobNode1)
 
             # Load it onto the second jobstore
@@ -218,9 +212,9 @@ class AbstractJobStoreTest(object):
                                jobStoreID=None, predecessorNumber=0)
 
             jobNodeOnChild = JobNode(command='child1',
-                                      requirements=self.childJobReqs1,
-                                      jobName='test2', unitName='onChild1',
-                                      jobStoreID=None)
+                                     requirements=self.childJobReqs1,
+                                     jobName='test2', unitName='onChild1',
+                                     jobStoreID=None)
             job = self.jobstore_initialized.create(aJobNode)
             childJob = self.jobstore_initialized.create(jobNodeOnChild)
             job.stack.append(childJob)
@@ -243,7 +237,7 @@ class AbstractJobStoreTest(object):
                                jobStoreID=None, predecessorNumber=0)
 
             job = self.jobstore_initialized.create(jobNode)
-            job.filesToDelete = ['1','2']
+            job.filesToDelete = ['1', '2']
             self.jobstore_initialized.update(job)
             self.assertEquals(self.jobstore_initialized.load(job.jobStoreID).filesToDelete, ['1', '2'])
 
@@ -404,17 +398,21 @@ class AbstractJobStoreTest(object):
             jobstore1 = self.jobstore_initialized
             jobstore2 = self.jobstore_resumed_noconfig
 
+            bar = 'bar'
+            if sys.version_info >= (3, 0):
+                bar = b'bar'
+
             with jobstore1.writeSharedFileStream('foo') as f:
-                f.write('bar')
+                f.write(bar)
             # ... read that file on worker, ...
             with jobstore2.readSharedFileStream('foo') as f:
-                self.assertEquals('bar', f.read())
+                self.assertEquals(bar, f.read())
             # ... and read it again on jobstore1.
             with jobstore1.readSharedFileStream('foo') as f:
-                self.assertEquals('bar', f.read())
+                self.assertEquals(bar, f.read())
 
             with jobstore1.writeSharedFileStream('nonEncrypted', isProtected=False) as f:
-                f.write('bar')
+                f.write(bar)
             self.assertUrl(jobstore1.getSharedPublicUrl('nonEncrypted'))
             self.assertRaises(NoSuchFileException, jobstore1.getSharedPublicUrl, 'missing')
 
@@ -425,9 +423,9 @@ class AbstractJobStoreTest(object):
 
             # Create jobNodeOnJS1
             jobNodeOnJobStore1 = JobNode(command='job1',
-                                      requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onJobStore1',
-                                      jobStoreID=None, predecessorNumber=0)
+                                         requirements=self.parentJobReqs,
+                                         jobName='test1', unitName='onJobStore1',
+                                         jobStoreID=None, predecessorNumber=0)
 
             # First recreate job
             jobOnJobStore1 = jobstore1.create(jobNodeOnJobStore1)
@@ -435,12 +433,19 @@ class AbstractJobStoreTest(object):
             # Check file exists
             self.assertTrue(jobstore2.fileExists(fileOne))
             self.assertTrue(jobstore1.fileExists(fileOne))
+            one = 'one'
+            two = 'two'
+            three = 'three'
+            if sys.version_info >= (3, 0):
+                one = b'one'
+                two = b'two'
+                three = b'three'
             # ... write to the file on jobstore2, ...
             with jobstore2.updateFileStream(fileOne) as f:
-                f.write('one')
+                f.write(one)
             # ... read the file as a stream on the jobstore1, ....
             with jobstore1.readFileStream(fileOne) as f:
-                self.assertEquals(f.read(), 'one')
+                self.assertEquals(f.read(), one)
 
             # ... and copy it to a temporary physical file on the jobstore1.
             fh, path = tempfile.mkstemp()
@@ -452,27 +457,27 @@ class AbstractJobStoreTest(object):
                     shutil.copyfile(tmpPath, path)
                 finally:
                     os.unlink(tmpPath)
-                with open(path, 'r+') as f:
-                    self.assertEquals(f.read(), 'one')
+                with open(path, 'rb+') as f:
+                    self.assertEquals(f.read(), one)
                     # Write a different string to the local file ...
                     f.seek(0)
                     f.truncate(0)
-                    f.write('two')
+                    f.write(two)
                 # ... and create a second file from the local file.
                 fileTwo = jobstore1.writeFile(path, jobOnJobStore1.jobStoreID)
                 with jobstore2.readFileStream(fileTwo) as f:
-                    self.assertEquals(f.read(), 'two')
+                    self.assertEquals(f.read(), two)
                 # Now update the first file from the local file ...
                 jobstore1.updateFile(fileOne, path)
                 with jobstore2.readFileStream(fileOne) as f:
-                    self.assertEquals(f.read(), 'two')
+                    self.assertEquals(f.read(), two)
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
             with jobstore2.writeFileStream(jobOnJobStore1.jobStoreID) as (f, fileThree):
-                f.write('three')
+                f.write(three)
             with jobstore1.readFileStream(fileThree) as f:
-                self.assertEquals(f.read(), 'three')
+                self.assertEquals(f.read(), three)
             # Delete a file explicitly but leave files for the implicit deletion through the parent
             jobstore2.deleteFile(fileOne)
 
@@ -494,15 +499,21 @@ class AbstractJobStoreTest(object):
             jobstore2 = self.jobstore_resumed_noconfig
 
             jobNodeOnJobStore1 = JobNode(command='job1',
-                                      requirements=self.parentJobReqs,
-                                      jobName='test1', unitName='onJobStore1',
-                                      jobStoreID=None, predecessorNumber=0)
+                                         requirements=self.parentJobReqs,
+                                         jobName='test1', unitName='onJobStore1',
+                                         jobStoreID=None, predecessorNumber=0)
 
             jobOnJobStore1 = jobstore1.create(jobNodeOnJobStore1)
 
             # Test stats and logging
-            #
             stats = None
+            one = 'one'
+            two = 'two'
+            three = 'three'
+            if sys.version_info >= (3, 0):
+                one = b'one'
+                two = b'two'
+                three = b'three'
 
             # Allows stats to be read/written to/from in read/writeStatsAndLogging.
             def callback(f2):
@@ -516,16 +527,16 @@ class AbstractJobStoreTest(object):
             self.assertEquals(set(), stats)
 
             # Test writing and reading.
-            jobstore2.writeStatsAndLogging('1')
+            jobstore2.writeStatsAndLogging(one)
             self.assertEquals(1, jobstore1.readStatsAndLogging(callback))
-            self.assertEquals({'1'}, stats)
+            self.assertEquals({one}, stats)
             self.assertEquals(0, jobstore1.readStatsAndLogging(callback))   # readStatsAndLogging purges saved stats etc
 
-            jobstore2.writeStatsAndLogging('1')
-            jobstore2.writeStatsAndLogging('2')
+            jobstore2.writeStatsAndLogging(one)
+            jobstore2.writeStatsAndLogging(two)
             stats = set()
             self.assertEquals(2, jobstore1.readStatsAndLogging(callback))
-            self.assertEquals({'1', '2'}, stats)
+            self.assertEquals({one, two}, stats)
 
             largeLogEntry = os.urandom(self._largeLogEntrySize())
             stats = set()
@@ -549,9 +560,9 @@ class AbstractJobStoreTest(object):
             with jobstore.batch():
                 for i in range(100):
                     overlargeJobNode = JobNode(command='overlarge',
-                                        requirements=jobRequirements,
-                                        jobName='test-overlarge', unitName='onJobStore',
-                                        jobStoreID=None, predecessorNumber=0)
+                                               requirements=jobRequirements,
+                                               jobName='test-overlarge', unitName='onJobStore',
+                                               jobStoreID=None, predecessorNumber=0)
                     jobGraphs.append(jobstore.create(overlargeJobNode))
             for jobGraph in jobGraphs:
                 self.assertTrue(jobstore.exists(jobGraph.jobStoreID))
@@ -573,8 +584,6 @@ class AbstractJobStoreTest(object):
             self.jobstore_initialized.update(job)
             check_job = self.jobstore_initialized.load(job.jobStoreID)
             self.assertEquals(check_job.foo_attribute, None)
-
-
 
         def _prepareTestFile(self, store, size=None):
             """
@@ -714,7 +723,13 @@ class AbstractJobStoreTest(object):
                     assignedPort = http.server_address[1]
                     url = 'http://localhost:%d' % assignedPort
                     with self.jobstore_initialized.readFileStream(self.jobstore_initialized.importFile(url)) as readable:
-                        self.assertEqual(readable.read(), StubHttpRequestHandler.fileContents)
+                        f1 = readable.read()
+                        f2 = StubHttpRequestHandler.fileContents
+                        if isinstance(f1, bytes) and not isinstance(f2, bytes):
+                            f1 = f1.decode()
+                        if isinstance(f2, bytes) and not isinstance(f1, bytes):
+                            f1 = f1.encode()
+                        self.assertEqual(f1, f2)
                 finally:
                     http.shutdown()
                     httpThread.join()
@@ -723,15 +738,19 @@ class AbstractJobStoreTest(object):
 
         def testImportFtpFile(self):
             '''Test importing a file over FTP'''
-            file = {'name':'foo', 'content':'foo bar baz qux'}
+            ftpfile = {'name': 'foo', 'content': 'foo bar baz qux'}
             ftp = FTPStubServer(0)
             ftp.run()
             try:
-                ftp.add_file(**file)
+                ftp.add_file(**ftpfile)
                 assignedPort = ftp.server.server_address[1]
-                url = 'ftp://user1:passwd@localhost:%d/%s' % (assignedPort, file['name'])
+                url = 'ftp://user1:passwd@localhost:%d/%s' % (assignedPort, ftpfile['name'])
                 with self.jobstore_initialized.readFileStream(self.jobstore_initialized.importFile(url)) as readable:
-                    self.assertEqual(readable.read(), file['content'])
+                    imported_content = readable.read()
+                    # python 2/3 string/bytestring compat
+                    if isinstance(imported_content, bytes):
+                        imported_content = imported_content.decode('utf-8')
+                    self.assertEqual(imported_content, ftpfile['content'])
             finally:
                 ftp.stop()
 
@@ -757,7 +776,7 @@ class AbstractJobStoreTest(object):
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
             running it against the other job stores as well.
             """
-            # Should not block. On Linux, /dev/random blocks when its running low on entropy
+            # Should not block. On Linux, /dev/random blocks when it's running low on entropy
             random_device = '/dev/urandom'
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
@@ -766,7 +785,6 @@ class AbstractJobStoreTest(object):
             job = self.jobstore_initialized.create(self.arbitraryJob)
 
             # Test file/stream ending on part boundary and within a part
-            #
             for partsPerFile in (1, 2.33):
                 checksum = hashlib.md5()
                 checksumQueue = Queue(2)
@@ -781,11 +799,10 @@ class AbstractJobStoreTest(object):
                         checksum.update(_buf)
 
                 # Multipart upload from stream
-                #
                 checksumThread = Thread(target=checksumThreadFn)
                 checksumThread.start()
                 try:
-                    with open(random_device) as readable:
+                    with open(random_device, 'rb') as readable:
                         with self.jobstore_initialized.writeFileStream(job.jobStoreID) as (writable, fileId):
                             for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
@@ -797,7 +814,6 @@ class AbstractJobStoreTest(object):
                 before = checksum.hexdigest()
 
                 # Verify
-                #
                 checksum = hashlib.md5()
                 with self.jobstore_initialized.readFileStream(fileId) as readable:
                     while True:
@@ -809,12 +825,11 @@ class AbstractJobStoreTest(object):
                 self.assertEquals(before, after)
 
                 # Multi-part upload from file
-                #
                 checksum = hashlib.md5()
                 fh, path = tempfile.mkstemp()
                 try:
-                    with os.fdopen(fh, 'r+') as writable:
-                        with open(random_device) as readable:
+                    with os.fdopen(fh, 'wb+') as writable:
+                        with open(random_device, 'rb') as readable:
                             for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 writable.write(buf)
@@ -825,7 +840,6 @@ class AbstractJobStoreTest(object):
                 before = checksum.hexdigest()
 
                 # Verify
-                #
                 checksum = hashlib.md5()
                 with self.jobstore_initialized.readFileStream(fileId) as readable:
                     while True:
@@ -842,11 +856,11 @@ class AbstractJobStoreTest(object):
             job = self.jobstore_initialized.create(self.arbitraryJob)
             nullFile = self.jobstore_initialized.writeFile('/dev/null', job.jobStoreID)
             with self.jobstore_initialized.readFileStream(nullFile) as f:
-                self.assertEquals(f.read(), "")
+                assert not f.read()
             with self.jobstore_initialized.writeFileStream(job.jobStoreID) as (f, nullStream):
                 pass
             with self.jobstore_initialized.readFileStream(nullStream) as f:
-                self.assertEquals(f.read(), "")
+                assert not f.read()
             self.jobstore_initialized.delete(job.jobStoreID)
 
         @slow
@@ -856,7 +870,7 @@ class AbstractJobStoreTest(object):
             dirPath = self._createTempDir()
             filePath = os.path.join(dirPath, 'large')
             hashIn = hashlib.md5()
-            with open(filePath, 'w') as f:
+            with open(filePath, 'wb') as f:
                 for i in range(0, 10):
                     buf = os.urandom(self._partSize())
                     f.write(buf)
@@ -874,7 +888,7 @@ class AbstractJobStoreTest(object):
 
             # Reread the file to confirm success.
             hashOut = hashlib.md5()
-            with open(filePath, 'r') as f:
+            with open(filePath, 'rb') as f:
                 while True:
                     buf = f.read(self._partSize())
                     if not buf:
@@ -962,11 +976,15 @@ class AbstractJobStoreTest(object):
                 # will get blocked on the write. Technically anything
                 # greater than the pipe buffer size plus the libc
                 # buffer size (64K + 4K(?))  should trigger this bug,
-                # but this gives us a lot of extra room just to be
-                # sure.
-                f.write('a' * 300000)
+                # but this gives us a lot of extra room just to be sure.
+
+                # python 3 requires self.fileContents to be a bytestring
+                a = 'a'
+                if sys.version_info >= (3, 0):
+                    a = b'a'
+                f.write(a * 300000)
             with self.jobstore_initialized.readFileStream(fileID) as f:
-                self.assertEquals(f.read(1), "a")
+                self.assertEquals(f.read(1), a)
             # If it times out here, there's a deadlock
 
         @abstractmethod
@@ -1084,6 +1102,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         shutil.rmtree(self.jobstore_initialized.jobStoreDir)
 
     def _prepareTestFile(self, dirPath, size=None):
+        import binascii
         fileName = 'testfile_%s' % uuid.uuid4()
         localFilePath = dirPath + fileName
         url = 'file://%s' % localFilePath
@@ -1091,14 +1110,14 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             return url
         else:
             content = os.urandom(size)
-            with open(localFilePath, 'w') as writable:
+            with open(localFilePath, 'wb') as writable:
                 writable.write(content)
 
             return url, hashlib.md5(content).hexdigest()
 
     def _hashTestFile(self, url):
         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
-        with open(localFilePath, 'r') as f:
+        with open(localFilePath, 'rb') as f:
             return hashlib.md5(f.read()).hexdigest()
 
     def _createExternalStore(self):
@@ -1434,11 +1453,14 @@ class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Te
 class EncryptedAzureJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 
-@needs_google
-@needs_encryption
-@slow
-class EncryptedGoogleJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
-    pass
+# TODO: Has this ever actually run?  Duplicates the AzureJobstore Testing needlessly while
+# claiming to be the google jobstore.
+
+# @needs_google
+# @needs_encryption
+# @slow
+# class EncryptedGoogleJobStoreTest(AzureJobStoreTest, AbstractEncryptedJobStoreTest.Test):
+#     pass
 
 
 class StubHttpRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
@@ -1448,6 +1470,9 @@ class StubHttpRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
         self.send_header("Content-type", "text/plain")
         self.send_header("Content-length", len(self.fileContents))
         self.end_headers()
+        # python 3 requires self.fileContents to be a bytestring
+        if sys.version_info >= (3, 0):
+            self.fileContents = self.fileContents.encode('utf-8')
         self.wfile.write(self.fileContents)
 
 

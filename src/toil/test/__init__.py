@@ -22,7 +22,6 @@ import os
 import re
 import shutil
 import signal
-from toil import subprocess
 import tempfile
 import threading
 import time
@@ -41,10 +40,10 @@ from six.moves.urllib.request import urlopen
 
 from toil.lib.memoize import less_strict_bool, memoize
 from toil.lib.iterables import concat
-from toil.lib.processes import which
 from toil.lib.threading import ExceptionalThread
 
 from toil import subprocess
+from toil import which
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
 from future.utils import with_metaclass
@@ -390,7 +389,7 @@ def needs_gridengine(test_item):
     Use as a decorator before test classes or methods to only run them if GridEngine is installed.
     """
     test_item = _mark_test('gridengine', test_item)
-    if next(which('qhost'), None):
+    if which('qhost'):
         return test_item
     else:
         return unittest.skip("Install GridEngine to include this test.")(test_item)
@@ -400,7 +399,7 @@ def needs_torque(test_item):
     Use as a decorator before test classes or methods to only run them if PBS/Torque is installed.
     """
     test_item = _mark_test('torque', test_item)
-    if next(which('pbsnodes'), None):
+    if which('pbsnodes'):
         return test_item
     else:
         return unittest.skip("Install PBS/Torque to include this test.")(test_item)
@@ -412,6 +411,9 @@ def needs_mesos(test_item):
     and configured.
     """
     test_item = _mark_test('mesos', test_item)
+    if not (which('mesos-master') or which('mesos-slave')):
+        return unittest.skip(
+            "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
         # noinspection PyUnresolvedReferences
         import pymesos
@@ -430,7 +432,7 @@ def needs_parasol(test_item):
     Use as decorator so tests are only run if Parasol is installed.
     """
     test_item = _mark_test('parasol', test_item)
-    if next(which('parasol'), None):
+    if which('parasol'):
         return test_item
     else:
         return unittest.skip("Install Parasol to include this test.")(test_item)
@@ -441,7 +443,7 @@ def needs_slurm(test_item):
     Use as a decorator before test classes or methods to only run them if Slurm is installed.
     """
     test_item = _mark_test('slurm', test_item)
-    if next(which('squeue'), None):
+    if which('squeue'):
         return test_item
     else:
         return unittest.skip("Install Slurm to include this test.")(test_item)
@@ -470,7 +472,7 @@ def needs_lsf(test_item):
     is installed.
     """
     test_item = _mark_test('lsf', test_item)
-    if next(which('bsub'), None):
+    if which('bsub'):
         return test_item
     else:
         return unittest.skip("Install LSF to include this test.")(test_item)
@@ -484,7 +486,7 @@ def needs_docker(test_item):
     test_item = _mark_test('docker', test_item)
     if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
         return unittest.skip('Skipping docker test.')(test_item)
-    if next(which('docker'), None):
+    if which('docker'):
         return test_item
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
@@ -530,7 +532,7 @@ def needs_appliance(test_item):
     test_item = _mark_test('appliance', test_item)
     if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
         return unittest.skip('Skipping docker test.')(test_item)
-    if next(which('docker'), None):
+    if which('docker'):
         image = applianceSelf()
         try:
             images = subprocess.check_output(['docker', 'inspect', image])

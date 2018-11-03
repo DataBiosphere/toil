@@ -27,21 +27,14 @@ import sys
 import tempfile
 import time
 import uuid
-from toil import subprocess
 import requests
 from argparse import ArgumentParser
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-# Python 3 compatibility imports
 from six import iteritems
 
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
-
+from toil import subprocess
+from toil import pickle
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
@@ -1083,7 +1076,7 @@ class Toil(object):
         So far there is no reason to store any old pids.
         """
         with self._jobStore.writeSharedFileStream('pid.log') as f:
-            f.write(str(os.getpid()))
+            f.write(str(os.getpid()).encode('utf-8'))
 
 
 class ToilRestartException(Exception):
