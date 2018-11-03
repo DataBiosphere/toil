@@ -3,6 +3,7 @@ import unittest
 import os
 import re
 import sys
+import shutil
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -26,6 +27,11 @@ class ToilDocumentationTest(ToilTest):
             output_dir = os.path.abspath("scripts/cwlExampleFiles")
             if os.path.exists(os.path.abspath(os.path.join(output_dir, output))):
                 os.remove(os.path.abspath(os.path.join(output_dir, output)))
+
+        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
+        for jobstore in jobstores:
+            if os.path.exists(jobstore):
+                shutil.rmtree(jobstore)
 
         unittest.TestCase.tearDown(self)
 

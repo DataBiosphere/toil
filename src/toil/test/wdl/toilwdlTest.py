@@ -84,6 +84,12 @@ class ToilWdlIntegrationTest(ToilTest):
     def tearDown(self):
         """Clean up outputs."""
         remove_outputs(self.output_dir)
+
+        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
+        for jobstore in jobstores:
+            if os.path.exists(jobstore):
+                shutil.rmtree(jobstore)
+
         unittest.TestCase.tearDown(self)
 
     @classmethod
