@@ -89,7 +89,7 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN curl https://get.docker.com/builds/Linux/x86_64/docker-1.13.1.tgz \
+    RUN curl https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz \
          | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
          && chmod u+x /usr/local/bin/docker
 
@@ -104,6 +104,10 @@ print(heredoc('''
 
     # Fix for `screen` (https://github.com/BD2KGenomics/toil/pull/1386#issuecomment-267424561)
     ENV TERM linux
+    
+    # Run bash instead of sh inside of screen
+    ENV SHELL /bin/bash
+    RUN echo "defshell -bash" > ~/.screenrc
 
     # An appliance may need to start more appliances, e.g. when the leader appliance launches the
     # worker appliance on a worker node. To support this, we embed a self-reference into the image:

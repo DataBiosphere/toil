@@ -56,8 +56,8 @@ class SDBHelper(object):
     >>> H=SDBHelper
     >>> H.presenceIndicator() # doctest: +ALLOW_UNICODE
     u'numChunks'
-    >>> H.binaryToAttributes(None)
-    {u'numChunks': 0}
+    >>> H.binaryToAttributes(None)['numChunks']
+    0
     >>> H.attributesToBinary({u'numChunks': 0})
     (None, 0)
     >>> H.binaryToAttributes(b'') # doctest: +ALLOW_UNICODE +ALLOW_BYTES

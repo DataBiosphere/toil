@@ -10,13 +10,13 @@ import shutil
 import threading
 from toil import subprocess
 import multiprocessing
-from urllib.error import URLError
+from past.builtins import basestring
 from six.moves.urllib.request import urlopen
 from contextlib import closing
 import time
 
 from toil.lib.retry import retry
-from toil.lib.processes import which
+from toil import which  # replace with shutil.which() directly; python3 only
 from toil.lib.threading import ExceptionalThread
 from future.utils import with_metaclass
 
@@ -92,17 +92,17 @@ class MesosTestSupport(object):
         
             for name in names:
                 try:
-                    return next(which(name))
+                    return which(name)
                 except StopIteration:
                     try:
                         # Special case for users of PyCharm on OS X. This is where Homebrew installs
                         # it. It's hard to set PATH for PyCharm (or any GUI app) on OS X so let's
                         # make it easy for those poor souls.
-                        return next(which(name, path=['/usr/local/sbin']))
+                        return which(name, path='/usr/local/sbin')
                     except StopIteration:
                         pass
             
-            # If we get here, nothing we cna use is present. We need to complain.
+            # If we get here, nothing we can use is present. We need to complain.
             if len(names) == 1:
                 sought = "binary '%s'" % names[0]
             else:

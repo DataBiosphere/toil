@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-
 from builtins import filter
 from builtins import str
 from builtins import object
@@ -24,10 +23,10 @@ import pwd
 import socket
 import time
 import sys
-import base64
 import getpass
 import json
 import traceback
+import addict
 
 try:
     from urllib2 import urlopen
@@ -37,21 +36,11 @@ except ImportError:
     from urllib.parse import quote_plus
 
 from contextlib import contextmanager
-from struct import unpack
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-
-# Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
-import addict
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
-
+from toil import pickle
 from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
@@ -160,7 +149,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # non-preemptability is a stronger requirement. If we tracked the set
         # of preemptable nodes instead, we'd have to use absence as an
         # indicator of non-preemptability and could therefore be misled into
-        # believeing that a recently launched preemptable node was
+        # believing that a recently launched preemptable node was
         # non-preemptable.
         self.nonPreemptableNodes = set()
 
