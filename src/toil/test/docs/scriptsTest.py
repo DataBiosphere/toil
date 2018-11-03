@@ -36,7 +36,9 @@ class ToilDocumentationTest(ToilTest):
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         assert process.returncode == 0, stderr
-        return stdout + " " + stderr
+        if isinstance(stdout, bytes):
+            return stdout.decode('utf-8') + ' ' + stderr.decode('utf-8')
+        return stdout + ' ' + stderr
 
     """Check the exit code and the output"""
     def checkExpectedOut(self, script, expectedOutput):
