@@ -11,8 +11,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil import subprocess
 from toil.test import ToilTest
 from toil.test import needs_cwl
-from toil.test import needs_docker
-from toil.lib.docker import apiDockerCall
+
 
 class ToilDocumentationTest(ToilTest):
     """Tests for scripts in the toil tutorials"""
@@ -22,11 +21,12 @@ class ToilDocumentationTest(ToilTest):
         cls.directory = os.path.dirname(os.path.abspath(__file__))
 
     def tearDown(self):
+    # src/toil/test/docs/scripts/cwlExampleFiles/sample_1_output.txt
         output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
         for output in output_files:
-            output_dir = os.path.abspath("scripts/cwlExampleFiles")
-            if os.path.exists(os.path.abspath(os.path.join(output_dir, output))):
-                os.remove(os.path.abspath(os.path.join(output_dir, output)))
+            output_file = os.path.join(self.directory, 'scripts/cwlExampleFiles', output)
+            if os.path.exists(output_file):
+                os.remove(output_file)
 
         jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
         for jobstore in jobstores:
