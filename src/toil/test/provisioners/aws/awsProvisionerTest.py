@@ -11,26 +11,21 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from builtins import next
-from builtins import str
-from builtins import range
 import logging
 import os
-from toil import subprocess
+import time
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
-
-import time
-
-import pytest
-from toil.lib.ec2 import wait_instances_running
-
-from toil.provisioners import clusterFactory
-
 from uuid import uuid4
 
+import pytest
+from builtins import next
+from builtins import range
+from builtins import str
 
+from toil import subprocess
+from toil.provisioners import clusterFactory
 from toil.test import needs_aws, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)
@@ -127,7 +122,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
         Does the work of the testing. Many features' test are thrown in here is no particular
         order
         """
-        from toil.provisioners.aws.awsProvisioner import AWSProvisioner
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
@@ -263,6 +257,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.requestedNodeStorage = 20
 
     def launchCluster(self):
+        from toil.lib.ec2 import wait_instances_running
         from boto.ec2.blockdevicemapping import BlockDeviceType
         self.createClusterUtil(args=['--leaderStorage', str(self.requestedLeaderStorage),
                                      '--nodeTypes', ",".join(self.instanceTypes), '-w', ",".join(self.numWorkers), '--nodeStorage', str(self.requestedLeaderStorage)])
