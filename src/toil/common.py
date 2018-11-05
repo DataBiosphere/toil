@@ -1094,8 +1094,10 @@ class ToilMetrics:
     def __init__(self, provisioner=None):
         if provisioner is not None:
             self.clusterName = provisioner.clusterName
+            self.zone = provisioner._zone if provisioner._zone else 'us-west-2'
         else:
-            self.clusterName = "none"
+            self.clusterName = 'none'
+            self.zone = 'us-west-2'
 
         registry = lookupEnvVar(name='docker registry',
                                 envName='TOIL_DOCKER_REGISTRY',
@@ -1105,7 +1107,7 @@ class ToilMetrics:
         self.grafanaImage = "%s/toil-grafana:%s" % (registry, dockerTag)
         self.prometheusImage = "%s/toil-prometheus:%s" % (registry, dockerTag)
 
-        self.startDashboard(clusterName=self.clusterName)
+        self.startDashboard(clusterName=self.clusterName, zone=self.zone)
 
         # Always restart the mtail container, because metrics should start from scratch
         # for each workflow
@@ -1159,7 +1161,7 @@ class ToilMetrics:
             result = False
         return result
 
-    def startDashboard(self, clusterName):
+    def startDashboard(self, clusterName, zone):
         try:
             if not self._containerRunning("toil_prometheus"):
                 try:
@@ -1172,7 +1174,8 @@ class ToilMetrics:
                                        "-d",
                                        "-p", "9090:9090",
                                        self.prometheusImage,
-                                       clusterName])
+                                       clusterName,
+                                       zone])
 
             if not self._containerRunning("toil_grafana"):
                 try:
