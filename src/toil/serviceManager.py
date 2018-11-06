@@ -21,7 +21,7 @@ import time
 
 from threading import Thread, Event
 
-from bd2k.util.throttle import throttle
+from toil.lib.throttle import throttle
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
