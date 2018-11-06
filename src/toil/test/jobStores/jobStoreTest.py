@@ -1192,8 +1192,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         partSize = self._partSize()
-        for encrypted in (True, False):
-            self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
         return AWSJobStore(self.awsRegion() + ':' + self.namePrefix, partSize=partSize)
 
     def _corruptJobStore(self):
@@ -1255,7 +1253,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.jobStores.aws.jobStore import AWSJobStore
         jobstore = self.jobstore_initialized
         for encrypted in (True, False):
-            n = AWSJobStore.FileInfo.maxInlinedSize(encrypted)
+            n = AWSJobStore.FileInfo.maxInlinedSize()
             sizes = (1, old_div(n, 2), n - 1, n, n + 1, 2 * n)
             for size in chain(sizes, islice(reversed(sizes), 1)):
                 s = os.urandom(size)

@@ -982,11 +982,8 @@ class AWSJobStore(AbstractJobStore):
             return 3 + super(AWSJobStore.FileInfo, cls)._reservedAttributes()
 
         @classmethod
-        def maxInlinedSize(cls, encrypted):
-            return cls.maxBinarySize() - (encryption.overhead if encrypted else 0)
-
-        def _maxInlinedSize(self):
-            return self.maxInlinedSize(self.encrypted)
+        def maxInlinedSize(cls):
+            return 256
 
         def save(self):
             attributes, numNewContentChunks = self.toItem()
@@ -1021,7 +1018,7 @@ class AWSJobStore(AbstractJobStore):
 
         def upload(self, localFilePath):
             file_size, file_time = fileSizeAndTime(localFilePath)
-            if file_size <= self._maxInlinedSize():
+            if file_size <= self.maxInlinedSize():
                 with open(localFilePath) as f:
                     self.content = f.read()
             else:
@@ -1038,7 +1035,7 @@ class AWSJobStore(AbstractJobStore):
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read(store.partSize)
-                    if allowInlining and len(buf) <= info._maxInlinedSize():
+                    if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
                         headers = info._s3EncryptionHeaders()
@@ -1074,7 +1071,7 @@ class AWSJobStore(AbstractJobStore):
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read()
-                    if allowInlining and len(buf) <= info._maxInlinedSize():
+                    if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
                         key = store.filesBucket.new_key(key_name=bytes(info.fileID))
@@ -1098,7 +1095,7 @@ class AWSJobStore(AbstractJobStore):
             :param srcKey: The key that will be copied from
             """
             assert srcKey.size is not None
-            if srcKey.size <= self._maxInlinedSize():
+            if srcKey.size <= self.maxInlinedSize():
                 self.content = srcKey.get_contents_as_string()
             else:
                 self.version = copyKeyMultipart(srcBucketName=srcKey.bucket.name,
