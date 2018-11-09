@@ -42,7 +42,8 @@ from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
-from toil.provisioners.aws import checkValidNodeTypes
+from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
+from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
@@ -1092,12 +1093,16 @@ class ToilContextManagerException(Exception):
 
 class ToilMetrics:
     def __init__(self, provisioner=None):
+        clusterName = 'none'
+        region = 'us-west-2'
         if provisioner is not None:
-            self.clusterName = provisioner.clusterName
-            self.zone = provisioner._zone if provisioner._zone else 'us-west-2'
-        else:
-            self.clusterName = 'none'
-            self.zone = 'us-west-2'
+            clusterName = provisioner.clusterName
+            if provisioner._zone is not None:
+                if isinstance(provisioner, AWSProvisioner):
+                    # Remove AZ name
+                    region = zoneToRegion(provisioner._zone)
+                else:
+                    region = provisioner._zone
 
         registry = lookupEnvVar(name='docker registry',
                                 envName='TOIL_DOCKER_REGISTRY',
@@ -1107,7 +1112,7 @@ class ToilMetrics:
         self.grafanaImage = "%s/toil-grafana:%s" % (registry, dockerTag)
         self.prometheusImage = "%s/toil-prometheus:%s" % (registry, dockerTag)
 
-        self.startDashboard(clusterName=self.clusterName, zone=self.zone)
+        self.startDashboard(clusterName=clusterName, zone=region)
 
         # Always restart the mtail container, because metrics should start from scratch
         # for each workflow
