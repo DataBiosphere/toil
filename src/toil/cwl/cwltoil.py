@@ -165,12 +165,17 @@ def _resolve_indirect_inner(maybe_idict):
 
     if isinstance(maybe_idict, IndirectDict):
         result = {}
+        metadata = {}
         for key, value in list(maybe_idict.items()):
             if isinstance(value, (MergeInputs, DefaultWithSource)):
                 result[key] = value.resolve()
             else:
-                result[key] = value[1].get(value[0])
-        return result
+                if isinstance(value[1], tuple):
+                    result[key] = value[1][0].get(value[0])
+                    metadata[key] = value[1][1]
+                else:
+                    result[key] = value[1].get(value[0])
+        return result, metadata
     return maybe_idict
 
 
@@ -531,9 +536,12 @@ class CWLJob(Job):
         self.step_inputs = step_inputs or self.cwltool.tool["inputs"]
         self.workdir = runtime_context.workdir
         self.openTempDirs = []
+        self.job_metadata = {}
 
     def run(self, file_store):
-        cwljob = resolve_indirect(self.cwljob)
+        runtime_metadata = self.job_metadata.copy()
+
+        cwljob, metadata = resolve_indirect(self.cwljob)
         fill_in_defaults(
             self.step_inputs, cwljob,
             self.runtime_context.make_fs_access(""))
@@ -582,7 +590,7 @@ class CWLJob(Job):
             uploadFile, functools.partial(writeGlobalFileWrapper, file_store),
             index, existing))
 
-        return output
+        return (output, runtime_metadata)
 
 def makeJob(tool, jobobj, step_inputs, runtime_context):
     """Create the correct Toil Job object for the CWL tool (workflow, job, or job
