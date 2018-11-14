@@ -58,7 +58,7 @@ from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
                                 normalizeFilesDirs)
 from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
-                             collectFilesAndDirs, add_sizes)
+                             add_sizes)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
@@ -403,8 +403,21 @@ def toilStageFiles(file_store, cwljob, outdir, index, existing, export,
     """Copy input files out of the global file store and update location and
     path."""
 
-    jobfiles = []  # type: List[Dict[Text, Any]]
-    collectFilesAndDirs(cwljob, jobfiles)
+    def _collectDirEntries(obj):
+    # type: (Union[Dict[Text, Any], List[Dict[Text, Any]]]) -> Iterator[Dict[Text, Any]]
+        if isinstance(obj, dict):
+            if obj.get("class") in ("File", "Directory"):
+                yield obj
+            else:
+                for sub_obj in obj.values():
+                    for dir_entry in _collectDirEntries(sub_obj):
+                        yield dir_entry
+        elif isinstance(obj, list):
+            for sub_obj in obj:
+                for dir_entry in _collectDirEntries(sub_obj):
+                    yield dir_entry
+
+    jobfiles = list(_collectDirEntries(cwljob))
     pm = ToilPathMapper(
         jobfiles, "", outdir, separateDirs=False, stage_listing=True)
     for _, p in pm.items():
