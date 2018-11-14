@@ -50,6 +50,7 @@ import cwltool.builder
 import cwltool.resolver
 import cwltool.stdfsaccess
 import cwltool.command_line_tool
+import cwltool.provenance
 
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
 from cwltool.loghandler import _logger as cwllogger
@@ -564,11 +565,8 @@ class CWLJob(Job):
         self.step_inputs = step_inputs or self.cwltool.tool["inputs"]
         self.workdir = runtime_context.workdir
         self.openTempDirs = []
-        self.job_metadata = {}
 
     def run(self, file_store):
-        runtime_metadata = self.job_metadata.copy()
-
         resolved_cwljob = resolve_indirect(self.cwljob)
         if isinstance(resolved_cwljob, tuple):
             cwljob, metadata = resolved_cwljob
@@ -622,7 +620,7 @@ class CWLJob(Job):
             uploadFile, functools.partial(writeGlobalFileWrapper, file_store),
             index, existing))
 
-        return (output, runtime_metadata)
+        return (output, metadata)
 
 
 def makeJob(tool, jobobj, step_inputs, runtime_context):
@@ -727,8 +725,8 @@ class CWLScatter(Job):
             def valueFromFunc(k, v):
                 if k in valueFrom:
                     return cwltool.expression.do_eval(
-                            valueFrom[k], shortio, self.step.requirements,
-                            None, None, {}, context=v)
+                        valueFrom[k], shortio, self.step.requirements,
+                        None, None, {}, context=v)
                 else:
                     return v
             return {k: valueFromFunc(k, v) for k, v in list(io.items())}
@@ -919,8 +917,7 @@ class CWLWorkflow(Job):
                                             MergeInputsFlattened(
                                                 [(shortname(s),
                                                   promises[s].rv())
-                                                 for s in aslist(
-                                                      inp["source"])]))
+                                                 for s in aslist(inp["source"])]))
                                     else:
                                         raise validate.ValidationException(
                                             "Unsupported linkMerge '%s'" %
@@ -980,14 +977,12 @@ class CWLWorkflow(Job):
                             for s in aslist(inp.get("source", [])):
                                 if (isinstance(
                                         promises[s], (CWLJobWrapper, CWLGather)
-                                              ) and
-                                        not promises[s].hasFollowOn(wfjob)):
+                                ) and not promises[s].hasFollowOn(wfjob)):
                                     promises[s].addFollowOn(wfjob)
                                     connected = True
                                 if (not isinstance(
                                         promises[s], (CWLJobWrapper, CWLGather)
-                                                  ) and
-                                        not promises[s].hasChild(wfjob)):
+                                ) and not promises[s].hasChild(wfjob)):
                                     promises[s].addChild(wfjob)
                                     connected = True
                         if not connected:
@@ -1127,6 +1122,43 @@ def main(args=None, stdout=sys.stdout):
         "--no-match-user", action="store_true", default=False,
         help="Disable passing the current uid to `docker run --user`")
 
+    provgroup = parser.add_argument_group("Options for recording provenance "
+                                          "information of the execution")
+    provgroup.add_argument("--provenance",
+                           help="Save provenance to specified folder as a "
+                           "Research Object that captures and aggregates "
+                           "workflow execution and data products.",
+                           type=Text)
+
+    provgroup.add_argument("--enable-user-provenance", default=False,
+                           action="store_true",
+                           help="Record user account info as part of provenance.",
+                           dest="user_provenance")
+    provgroup.add_argument("--disable-user-provenance", default=False,
+                           action="store_false",
+                           help="Do not record user account info in provenance.",
+                           dest="user_provenance")
+    provgroup.add_argument("--enable-host-provenance", default=False,
+                           action="store_true",
+                           help="Record host info as part of provenance.",
+                           dest="host_provenance")
+    provgroup.add_argument("--disable-host-provenance", default=False,
+                           action="store_false",
+                           help="Do not record host info in provenance.",
+                           dest="host_provenance")
+    provgroup.add_argument(
+        "--orcid", help="Record user ORCID identifier as part of "
+        "provenance, e.g. https://orcid.org/0000-0002-1825-0097 "
+        "or 0000-0002-1825-0097. Alternatively the environment variable "
+        "ORCID may be set.", dest="orcid", default=os.environ.get("ORCID", ''),
+        type=Text)
+    provgroup.add_argument(
+        "--full-name", help="Record full name of user as part of provenance, "
+        "e.g. Josiah Carberry. You may need to use shell quotes to preserve "
+        "spaces. Alternatively the environment variable CWL_FULL_NAME may "
+        "be set.", dest="cwl_full_name", default=os.environ.get("CWL_FULL_NAME", ''),
+        type=Text)
+
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
     # so make it and delete it and allow
@@ -1177,6 +1209,12 @@ def main(args=None, stdout=sys.stdout):
     runtime_context.rm_tmpdir = False
     loading_context = cwltool.context.LoadingContext(vars(options))
 
+    if options.provenance:
+        research_obj = cwltool.provenance.ResearchObject(
+            temp_prefix_ro=options.tmp_outdir_prefix, orcid=options.orcid,
+            full_name=options.cwl_full_name)
+        runtime_context.research_obj = research_obj
+
     with Toil(options) as toil:
         if options.restart:
             outobj = toil.restart()
@@ -1213,6 +1251,11 @@ def main(args=None, stdout=sys.stdout):
                     loading_context.fetcher_constructor, False,
                     loading_context.overrides_list,
                     do_validate=loading_context.do_validate)
+
+            if options.provenance and runtime_context.research_obj:
+                runtime_context.research_obj.packed_workflow(
+                    cwltool.main.print_pack(document_loader, processobj, uri, metadata))
+
             loading_context.overrides_list.extend(
                 metadata.get("cwltool:overrides", []))
             try:
@@ -1307,6 +1350,12 @@ def main(args=None, stdout=sys.stdout):
             existing,
             export=True,
             destBucket=options.destBucket)
+
+        if runtime_context.research_obj is not None:
+            runtime_context.research_obj.create_job(outobj, None, True)
+            prov_dependencies = cwltool.main.prov_deps(workflowobj, document_loader, uri)
+            runtime_context.research_obj.generate_snapshot(prov_dependencies)
+            runtime_context.research_obj.close(options.provenance)
 
         if not options.destBucket:
             visit_class(outobj, ("File",), functools.partial(
