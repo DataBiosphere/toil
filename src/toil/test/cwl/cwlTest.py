@@ -47,7 +47,7 @@ class CWLTest(ToilTest):
         self.cwlSpec = os.path.join(self.rootDir, 'src/toil/test/cwl/spec')
         self.workDir = os.path.join(self.cwlSpec, 'v1.0')
         # The latest cwl git hash. Update it to get the latest tests.
-        testhash = "22490926651174c6cbe01c76c2ded3c9e8d0ee6f"
+        testhash = "5adc637f544e6534927485516a0b583cde25a10b"
         url = "https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip" % testhash
         if not os.path.exists(self.cwlSpec):
             urlretrieve(url, "spec.zip")
