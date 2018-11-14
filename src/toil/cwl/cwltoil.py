@@ -195,12 +195,21 @@ def resolve_indirect(pdict):
     res = _resolve_indirect_inner(inner)
     if needs_eval:
         ev = {}
+        metadata = {}
         for k, value in iteritems(pdict):
             if isinstance(value, StepValueFrom):
-                ev[k] = value.do_eval(res, res[k])
+                if isinstance(res, tuple):
+                    ev[k] = value.do_eval(res[0], res[0][k])
+                    metadata[k] = res[1]
+                else:
+                    ev[k] = value.do_eval(res, res[k])
             else:
-                ev[k] = res[k]
-        return ev
+                if isinstance(res, tuple):
+                    ev[k] = res[0][k]
+                    metadata[k] = res[1]
+                else:
+                    ev[k] = res[k]
+        return ev, metadata
     return res
 
 
@@ -398,7 +407,7 @@ def toilStageFiles(file_store, cwljob, outdir, index, existing, export,
     collectFilesAndDirs(cwljob, jobfiles)
     pm = ToilPathMapper(
         jobfiles, "", outdir, separateDirs=False, stage_listing=True)
-    for f, p in pm.items():
+    for _, p in pm.items():
         if not p.staged:
             continue
 
@@ -451,7 +460,12 @@ class CWLJobWrapper(Job):
         self.runtime_context = runtime_context
 
     def run(self, file_store):
-        cwljob = resolve_indirect(self.cwljob)
+        resolved_cwljob = resolve_indirect(self.cwljob)
+        if isinstance(resolved_cwljob, tuple):
+            cwljob = resolved_cwljob[0]
+            # metadata = resolved_cwljob[1]
+        else:
+            cwljob = resolved_cwljob
         fill_in_defaults(
             self.cwltool.tool['inputs'], cwljob,
             self.runtime_context.make_fs_access(
@@ -459,6 +473,7 @@ class CWLJobWrapper(Job):
         realjob = CWLJob(self.cwltool, cwljob, self.runtime_context)
         self.addChild(realjob)
         return realjob.rv()
+
 
 def _makeNestedTempDir(top, seed, levels=2):
     """
@@ -541,7 +556,11 @@ class CWLJob(Job):
     def run(self, file_store):
         runtime_metadata = self.job_metadata.copy()
 
-        cwljob, metadata = resolve_indirect(self.cwljob)
+        resolved_cwljob = resolve_indirect(self.cwljob)
+        if isinstance(resolved_cwljob, tuple):
+            cwljob, metadata = resolved_cwljob
+        else:
+            cwljob = resolved_cwljob
         fill_in_defaults(
             self.step_inputs, cwljob,
             self.runtime_context.make_fs_access(""))
@@ -591,6 +610,7 @@ class CWLJob(Job):
             index, existing))
 
         return (output, runtime_metadata)
+
 
 def makeJob(tool, jobobj, step_inputs, runtime_context):
     """Create the correct Toil Job object for the CWL tool (workflow, job, or job
@@ -667,7 +687,11 @@ class CWLScatter(Job):
         return outputs
 
     def run(self, file_store):
-        cwljob = resolve_indirect(self.cwljob)
+        resolved_cwljob = resolve_indirect(self.cwljob)
+        if isinstance(resolved_cwljob, tuple):
+            cwljob, metadata = resolved_cwljob
+        else:
+            cwljob = resolved_cwljob
 
         if isinstance(self.step.tool["scatter"], string_types):
             scatter = [self.step.tool["scatter"]]
@@ -749,14 +773,25 @@ class CWLGather(Job):
             return obj.get(k)
         elif isinstance(obj, MutableSequence):
             cp = []
+            metadata = []
             for l in obj:
-                cp.append(self.extract(l, k))
-            return cp
+                if isinstance(l, tuple):
+                    cp.append(self.extract(l[0], k))
+                    metadata.append(self.extract(l[1], k))
+                else:
+                    result = self.extract(l, k)
+                    if isinstance(result, tuple):
+                        cp.append(result[0])
+                        metadata.append(result[1])
+                    else:
+                        cp.append(result)
+            return cp, metadata
         else:
             return []
 
     def run(self, file_store):
         outobj = {}
+        metadata = {}
 
         def sn(n):
             if isinstance(n, Mapping):
@@ -765,8 +800,11 @@ class CWLGather(Job):
                 return shortname(n)
 
         for k in [sn(i) for i in self.step.tool["out"]]:
-            outobj[k] = self.extract(self.outputs, k)
-
+            result = self.extract(self.outputs, k)
+            if isinstance(result, tuple):
+                outobj[k], metadata[k] = result
+            else:
+                outobj[k] = result
         return outobj
 
 
@@ -1095,7 +1133,8 @@ def main(args=None, stdout=sys.stdout):
 
     if options.provisioner and not options.jobStore:
         raise NoSuchJobStoreException(
-            'Please specify a jobstore with the --jobStore option when specifying a provisioner.')
+            'Please specify a jobstore with the --jobStore option when '
+            'specifying a provisioner.')
 
     use_container = not options.no_container
 
@@ -1231,11 +1270,18 @@ def main(args=None, stdout=sys.stdout):
                 return 33
 
             wf1.cwljob = initialized_job_order
-            if wf1 is CWLJob:  # Clean up temporary directories only created with CWLJobs.
+            if wf1 is CWLJob:
+                # Clean up temporary directories only created with CWLJobs.
                 wf1.addFollowOnFn(cleanTempDirs, wf1)
-            outobj = toil.start(wf1)
+            result = toil.start(wf1)
+            if isinstance(result, tuple):
+                outobj, metadata = result
+            else:
+                outobj = result
 
         outobj = resolve_indirect(outobj)
+        if isinstance(outobj, tuple):
+            outobj, metadata = outobj
 
         # Stage files. Specify destination bucket if specified in CLI
         # options. If destination bucket not passed in,
