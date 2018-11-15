@@ -849,6 +849,19 @@ def remove_pickle_problems(obj):
     return obj
 
 
+def _link_merge_source(promises, in_out_obj, source_obj):
+    to_merge = [(shortname(s), promises[s].rv()) for s in aslist(source_obj)]
+    link_merge = in_out_obj.get("linkMerge", "merge_nested")
+    if link_merge == "merge_nested":
+        merged = MergeInputsNested(to_merge)
+    elif link_merge == "merge_flattened":
+        merged = MergeInputsFlattened(to_merge)
+    else:
+        raise validate.ValidationException(
+            "Unsupported linkMerge '%s'" % link_merge)
+    return merged
+
+
 class CWLWorkflow(Job):
     """Traverse a CWL workflow graph and create a Toil job graph with appropriate
     dependencies.
@@ -882,7 +895,7 @@ class CWLWorkflow(Job):
         while not alloutputs_fufilled:
             # Iteratively go over the workflow steps, scheduling jobs as their
             # dependencies can be fufilled by upstream workflow inputs or
-            # step outputs.  Loop exits when the workflow outputs
+            # step outputs. Loop exits when the workflow outputs
             # are satisfied.
 
             alloutputs_fufilled = True
@@ -901,29 +914,12 @@ class CWLWorkflow(Job):
                         for inp in step.tool["inputs"]:
                             key = shortname(inp["id"])
                             if "source" in inp:
+                                inpSource = inp["source"]
                                 if inp.get("linkMerge") \
                                         or len(aslist(inp["source"])) > 1:
-                                    linkMerge = inp.get(
-                                        "linkMerge", "merge_nested")
-                                    if linkMerge == "merge_nested":
-                                        jobobj[key] = (
-                                            MergeInputsNested(
-                                                [(shortname(s),
-                                                  promises[s].rv())
-                                                 for s in aslist(
-                                                     inp["source"])]))
-                                    elif linkMerge == "merge_flattened":
-                                        jobobj[key] = (
-                                            MergeInputsFlattened(
-                                                [(shortname(s),
-                                                  promises[s].rv())
-                                                 for s in aslist(inp["source"])]))
-                                    else:
-                                        raise validate.ValidationException(
-                                            "Unsupported linkMerge '%s'" %
-                                            linkMerge)
+                                    jobobj[key] =\
+                                        _link_merge_source(promises, inp, inpSource)
                                 else:
-                                    inpSource = inp["source"]
                                     if isinstance(inpSource, MutableSequence):
                                         # It seems that an input source with a
                                         # '#' in the name will be returned as a
@@ -1009,21 +1005,7 @@ class CWLWorkflow(Job):
         for out in self.cwlwf.tool["outputs"]:
             key = shortname(out["id"])
             if out.get("linkMerge") or len(aslist(out["outputSource"])) > 1:
-                link_merge = out.get("linkMerge", "merge_nested")
-                if link_merge == "merge_nested":
-                    outobj[key] = (
-                        MergeInputsNested(
-                            [(shortname(s), promises[s].rv())
-                             for s in aslist(out["outputSource"])]))
-                elif link_merge == "merge_flattened":
-                    outobj[key] = (
-                        MergeInputsFlattened([
-                            (shortname(s), promises[s].rv())
-                            for s in aslist(out["source"])]))
-                else:
-                    raise validate.ValidationException(
-                        "Unsupported linkMerge '{}'".format(link_merge))
-
+                outobj[key] = _link_merge_source(promises, out, out["outputSource"])
             else:
                 # A CommentedSeq of length one still appears here rarely -
                 # not clear why from the CWL code. When it does, it breaks
