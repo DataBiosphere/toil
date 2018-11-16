@@ -478,7 +478,7 @@ class CWLJobWrapper(Job):
         resolved_cwljob = resolve_indirect(self.cwljob)
         if isinstance(resolved_cwljob, tuple):
             cwljob = resolved_cwljob[0]
-            # metadata = resolved_cwljob[1]
+            metadata = resolved_cwljob[1]
         else:
             cwljob = resolved_cwljob
         fill_in_defaults(
@@ -487,7 +487,7 @@ class CWLJobWrapper(Job):
                 self.runtime_context.basedir or ""))
         realjob = CWLJob(self.cwltool, cwljob, self.runtime_context)
         self.addChild(realjob)
-        return realjob.rv()
+        return realjob.rv(), metadata
 
 
 def _makeNestedTempDir(top, seed, levels=2):
@@ -590,6 +590,7 @@ class CWLJob(Job):
             cwljob, metadata = resolved_cwljob
         else:
             cwljob = resolved_cwljob
+            metadata = {}
         fill_in_defaults(
             self.step_inputs, cwljob,
             self.runtime_context.make_fs_access(""))
@@ -775,7 +776,7 @@ class CWLScatter(Job):
                     "Must provide scatterMethod to scatter over multiple"
                     " inputs.")
 
-        return outputs
+        return outputs, metadata
 
 
 class CWLGather(Job):
@@ -834,7 +835,7 @@ class CWLGather(Job):
                 outobj[k], metadata[k] = result
             else:
                 outobj[k] = result
-        return outobj
+        return outobj, metadata
 
 
 class SelfJob(object):
