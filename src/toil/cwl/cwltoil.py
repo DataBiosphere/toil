@@ -39,6 +39,7 @@ from six.moves.urllib import parse as urlparse
 import six
 
 from schema_salad import validate
+from schema_salad.schema import Names
 import schema_salad.ref_resolver
 
 import cwltool.errors
@@ -531,12 +532,29 @@ class CWLJob(Job):
         if runtime_context.builder:
             builder = runtime_context.builder
         else:
-            builder = cwltool.builder.Builder(cwljob)
-            builder.requirements = self.cwltool.requirements
-            builder.outdir = None
-            builder.tmpdir = None
-            builder.timeout = runtime_context.eval_timeout
-            builder.resources = {}
+            builder = cwltool.builder.Builder(
+                job=cwljob,
+                files=[],
+                bindings=[],
+                schemaDefs={},
+                names=Names(),
+                requirements=self.cwltool.requirements,
+                hints=[],
+                resources={},
+                mutation_manager=None,
+                formatgraph=None,
+                make_fs_access=runtime_context.make_fs_access,
+                fs_access=runtime_context.make_fs_access(''),
+                job_script_provider=None,
+                timeout=runtime_context.eval_timeout,
+                debug=False,
+                js_console=False,
+                force_docker_pull=False,
+                loadListing=u'',
+                outdir=u'',
+                tmpdir=u'',
+                stagedir=u''
+            )
         req = tool.evalResources(builder, runtime_context)
         # pass the default of None if basecommand is empty
         unitName = self.cwltool.tool.get("baseCommand", None)
@@ -1229,9 +1247,10 @@ def main(args=None, stdout=sys.stdout):
             document_loader, avsc_names, processobj, metadata, uri = \
                 cwltool.load_tool.validate_document(
                     document_loader, workflowobj, uri,
+                    loading_context.overrides_list,
+                    loading_context.metadata,
                     loading_context.enable_dev, loading_context.strict, False,
                     loading_context.fetcher_constructor, False,
-                    loading_context.overrides_list,
                     do_validate=loading_context.do_validate)
 
             if options.provenance and runtime_context.research_obj:
