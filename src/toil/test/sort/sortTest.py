@@ -298,11 +298,12 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             assert fileSize > 0
             fileStart = random.choice(range(0, fileSize))
             fileEnd = random.choice(range(fileStart, fileSize))
-            fileHandle = open(outputFile, 'w')
-            copySubRangeOfFile(tempFile, fileStart, fileEnd, fileHandle)
-            fileHandle.close()
-            l = open(outputFile, 'r').read()
-            l2 = open(tempFile, 'r').read()[fileStart:fileEnd]
+            with open(outputFile, 'w') as f:
+                f.write(copySubRangeOfFile(tempFile, fileStart, fileEnd))
+            with open(outputFile, 'r') as f:
+                l = f.read()
+            with open(tempFile, 'r') as f:
+                l2 = f.read().read()[fileStart:fileEnd]
             self.assertEquals(l, l2)
 
     def testGetMidPoint(self):
