@@ -113,7 +113,9 @@ def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
 def sort(file):
     """Sorts the given file."""
     with open(file, 'r') as f:
-        lines = f.readlines().sort()
+        lines = f.readlines()
+
+    lines.sort()
 
     with open(file, 'w') as f:
         for line in lines:
