@@ -37,6 +37,7 @@ except ImportError:
     CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.jobStores.fileJobStore import FileJobStore
+from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
@@ -54,7 +55,7 @@ logger = logging.getLogger( __name__ )
 #   performance optimization. This minimize number of expensive loads of
 #   jobGraphs from jobStores.  However, this special case could be unnecessary.
 #   The jobGraph is loaded to update predecessorsFinished, in
-#   _checkSuccssorReadyToRunMultiplePredecessors, however it doesn't appear to
+#   _checkSuccessorReadyToRunMultiplePredecessors, however it doesn't appear to
 #   write the jobGraph back the jobStore.  Thus predecessorsFinished may really
 #   be leader state and could moved out of the jobGraph.  This would make this
 #   special-cases handling unnecessary and simplify the leader.
@@ -180,6 +181,8 @@ class Leader(object):
         self.debugJobNames = ("CWLJob", "CWLWorkflow", "CWLScatter", "CWLGather",
                               "ResolveIndirect")
 
+        self.deadlockThrottler = LocalThrottle(self.config.deadlockWait)
+
     def run(self):
         """
         This runs the leader process to issue and manage jobs.
@@ -284,7 +287,7 @@ class Leader(object):
             return False
 
 
-    def _checkSuccssorReadyToRunMultiplePredecessors(self, jobGraph, jobNode, successorJobStoreID):
+    def _checkSuccessorReadyToRunMultiplePredecessors(self, jobGraph, jobNode, successorJobStoreID):
         """Handle the special cases of checking if a successor job is
         ready to run when there are multiple predecessors"""
         # See implementation note at the top of this file for discussion of multiple predecessors
@@ -314,7 +317,7 @@ class Leader(object):
             self.toilState.jobsToBeScheduledWithMultiplePredecessors.pop(successorJobStoreID)
             return True
 
-    def _makeJobSuccssorReadyToRun(self, jobGraph, jobNode):
+    def _makeJobSuccessorReadyToRun(self, jobGraph, jobNode):
         """make a successor job ready to run, returning False if they should
         not yet be run"""
         successorJobStoreID = jobNode.jobStoreID
@@ -324,7 +327,7 @@ class Leader(object):
         self.toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobGraph)
 
         if jobNode.predecessorNumber > 1:
-            return self._checkSuccssorReadyToRunMultiplePredecessors(jobGraph, jobNode, successorJobStoreID)
+            return self._checkSuccessorReadyToRunMultiplePredecessors(jobGraph, jobNode, successorJobStoreID)
         else:
             return True
 
@@ -340,7 +343,7 @@ class Leader(object):
         # For each successor schedule if all predecessors have been completed
         successors = []
         for jobNode in jobGraph.stack[-1]:
-            if self._makeJobSuccssorReadyToRun(jobGraph, jobNode):
+            if self._makeJobSuccessorReadyToRun(jobGraph, jobNode):
                 successors.append(jobNode)
         self.issueJobs(successors)
 
@@ -550,8 +553,10 @@ class Leader(object):
             if self.clusterScaler is not None:
                 self.clusterScaler.check()
 
-            # Check for deadlocks
-            self.checkForDeadlocks()
+            if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
+                # Nothing happened this round and it's been long
+                # enough since we last checked. Check for deadlocks.
+                self.checkForDeadlocks()
 
         logger.debug("Finished the main loop: no jobs left to run.")
 
@@ -571,7 +576,7 @@ class Leader(object):
         totalRunningJobs = len(self.batchSystem.getRunningBatchJobIDs())
         totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
         # If there are no updated jobs and at least some jobs running
-        if totalServicesIssued >= totalRunningJobs and len(self.toilState.updatedJobs) == 0 and totalRunningJobs > 0:
+        if totalServicesIssued >= totalRunningJobs and totalRunningJobs > 0:
             serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.keys()) if isinstance(self.jobBatchSystemIDToIssuedJob[x], ServiceJobNode)]
             runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.isRunning(self.jobBatchSystemIDToIssuedJob[x])])
             assert len(runningServiceJobs) <= totalRunningJobs

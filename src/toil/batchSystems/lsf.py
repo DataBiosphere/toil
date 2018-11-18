@@ -110,8 +110,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 elif "Exited with exit code" in line:
                     exit = int(line[line.find("Exited with exit code ")+22:]
                                .split('.')[0])
-                    logger.error("bjobs detected job exit code: "
-                                 "{}".format(exit))
+                    logger.error("bjobs detected job exit code "
+                                 "{} for job {}".format(exit, job))
                     return exit
                 elif "Completed <exit>" in line:
                     logger.error("bjobs detected job failed for job: "
