@@ -303,7 +303,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             with open(outputFile, 'r') as f:
                 l = f.read()
             with open(tempFile, 'r') as f:
-                l2 = f.read().read()[fileStart:fileEnd]
+                l2 = f.read()[fileStart:fileEnd]
             self.assertEquals(l, l2)
 
     def testGetMidPoint(self):
