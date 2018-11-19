@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,25 +11,24 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import, print_function
 from future.utils import raise_
 from builtins import range
-from toil.test import ToilTest, slow
 from uuid import uuid4
-
-import inspect
-import sys
-from toil.lib.exceptions import panic
-
 import os
 import random
 import tempfile
 import logging
+import inspect
+import sys
 
+from toil.lib.exceptions import panic
+from toil.common import getNodeID
+from toil.test import ToilTest, slow
 
 log = logging.getLogger(__name__)
 logging.basicConfig()
+
 
 class MiscTests(ToilTest):
     """
@@ -39,6 +38,13 @@ class MiscTests(ToilTest):
     def setUp(self):
         super(MiscTests, self).setUp()
         self.testDir = self._createTempDir()
+
+    def testIDStability(self):
+        prevNodeID = None
+        for i in range(10, 1):
+            nodeID = getNodeID()
+            self.assertEquals(nodeID, prevNodeID)
+            prevNodeID = nodeID
 
     @slow
     def testGetSizeOfDirectoryWorks(self):

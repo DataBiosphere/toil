@@ -596,9 +596,11 @@ def addOptions(parser, config=Config()):
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
 
-def getNodeID(extraIDFiles=None):
+
+def getNodeID():
     """
     Return unique ID of the current node (host).
+
     Tries several methods until success. The returned ID should be identical across calls from different processes on
     the same node at least until the next OS reboot.
 
@@ -606,30 +608,20 @@ def getNodeID(extraIDFiles=None):
     called. However, this method should never be reached on a Linux system, because reading from
     /proc/sys/kernel/random/boot_id will be tried prior to that. If uuid.getnode() is reached, it will be called twice,
     and exception raised if the values are not identical.
-
-    :param list extraIDFiles: Optional list of additional file names to try reading node ID before trying default
-    methods. ID should be a single word (no spaces) on the first line of the file.
     """
-    if extraIDFiles is None:
-        extraIDFiles = []
-    idSourceFiles = extraIDFiles + ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]
-    for idSourceFile in idSourceFiles:
+    for idSourceFile in ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]:
         if os.path.exists(idSourceFile):
             try:
                 with open(idSourceFile, "r") as inp:
                     nodeID = inp.readline().strip()
             except EnvironmentError:
-                logger.warning((
-                               "Exception when trying to read ID file {}. Will try next method to get node ID"). \
-                               format(idSourceFile), exc_info=True)
+                logger.warning(("Exception when trying to read ID file {}. Will try next method to get node ID.").format(idSourceFile), exc_info=True)
             else:
                 if len(nodeID.split()) == 1:
                     logger.debug("Obtained node ID {} from file {}".format(nodeID, idSourceFile))
                     break
                 else:
-                    logger.warning((
-                                   "Node ID {} from file {} contains spaces. Will try next method to get node ID"). \
-                                   format(nodeID, idSourceFile))
+                    logger.warning(("Node ID {} from file {} contains spaces. Will try next method to get node ID.").format(nodeID, idSourceFile))
     else:
         nodeIDs = []
         for i_call in range(2):
