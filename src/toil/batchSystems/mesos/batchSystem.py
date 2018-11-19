@@ -46,7 +46,7 @@ from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchSystemLocalSupport,
                                                    NodeInfo)
-from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData, JobQueue
+from toil.batchSystems.mesos import ToilJob, MesosShape, TaskData, JobQueue
 
 log = logging.getLogger(__name__)
 
@@ -187,7 +187,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         jobID = self.getNextJobID()
         job = ToilJob(jobID=jobID,
                       name=str(jobNode),
-                      resources=ResourceRequirement(**jobNode._requirements),
+                      resources=MesosShape(wallTime=0, **jobNode._requirements),
                       command=jobNode.command,
                       userScript=self.userScript,
                       environment=self.environment.copy(),
@@ -422,7 +422,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         self._trackOfferedNodes(offers)
 
-        jobTypes = self.jobQueues.sorted()
+        jobTypes = self.jobQueues.sortedTypes
 
         # TODO: We may want to assert that numIssued >= numRunning
         if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):

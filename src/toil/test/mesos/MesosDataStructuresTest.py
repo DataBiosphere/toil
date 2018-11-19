@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2017 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,24 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from builtins import str
 from builtins import range
 import uuid
 import random
 
-from toil.test import ToilTest, needs_mesos, slow
+from toil.test import ToilTest
 
 
-@slow
-@needs_mesos
 class DataStructuresTest(ToilTest):
-
     def _getJob(self, cores=1, memory=1000, disk=5000, preemptable=True):
-        from toil.batchSystems.mesos import ResourceRequirement
+        from toil.batchSystems.mesos import MesosShape
         from toil.batchSystems.mesos import ToilJob
 
-        resources = ResourceRequirement(cores=cores, memory=memory, disk=disk, preemptable=preemptable)
+        resources = MesosShape(wallTime=0, cores=cores, memory=memory, disk=disk, preemptable=preemptable)
 
         job = ToilJob(jobID=str(uuid.uuid4()),
                       name=str(uuid.uuid4()),
@@ -47,8 +43,7 @@ class DataStructuresTest(ToilTest):
             testJob = self._getJob(cores=random.choice(list(range(10))), preemptable=random.choice([True, False]))
             jobQueue.insertJob(testJob, testJob.resources)
 
-        sortedTypes = jobQueue.sorted()
-        # test this is properly sorted
+        sortedTypes = jobQueue.sortedTypes
         self.assertGreaterEqual(20, len(sortedTypes))
         self.assertTrue(all(sortedTypes[i] <= sortedTypes[i + 1] for i in range(len(sortedTypes) - 1)))
 

@@ -52,7 +52,7 @@ class Shape(object):
                 self.disk == other.disk and
                 self.preemptable == other.preemptable)
 
-    def __gt__(self, other):
+    def greater_than(self, other):
         if self.preemptable < other.preemptable:
             return True
         elif self.preemptable > other.preemptable:
@@ -76,6 +76,9 @@ class Shape(object):
         else:
             return False
 
+    def __gt__(self, other):
+        return self.greater_than(other)
+
     def __repr__(self):
         return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptable=%s)" % \
                (self.wallTime,
@@ -95,7 +98,7 @@ class Shape(object):
              self.cores,
              self.disk,
              self.preemptable))
-        
+
 
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
