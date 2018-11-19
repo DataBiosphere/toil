@@ -23,6 +23,7 @@ from threading import Lock
 
 from toil.provisioners.abstractProvisioner import Shape
 
+
 TaskData = namedtuple('TaskData', (
     # Time when the task was started
     'startTime',

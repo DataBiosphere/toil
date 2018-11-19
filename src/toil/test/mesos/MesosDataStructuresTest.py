@@ -36,6 +36,11 @@ class DataStructuresTest(ToilTest):
         return job
 
     def testJobQueue(self, testJobs=1000):
+        """
+        The mesos JobQueue sorts MesosShape objects by requirement and
+        this test ensures that that sorting is what is expected:
+        non-preemptible jobs groups first, with priority given to large jobs.
+        """
         from toil.batchSystems.mesos import JobQueue
         jobQueue = JobQueue()
 

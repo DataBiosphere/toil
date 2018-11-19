@@ -839,7 +839,7 @@ class Leader(object):
                         if jobStore.exists(successorJobNode.jobStoreID):
                             successorRecursion(jobStore.load(successorJobNode.jobStoreID))
 
-        successorRecursion(jobGraph) # Recurse from jobGraph
+        successorRecursion(jobGraph)  # Recurse from jobGraph
 
         return successors
 

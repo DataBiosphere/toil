@@ -24,16 +24,14 @@ from contextlib import contextmanager
 import logging
 import multiprocessing
 import os
-from toil import subprocess
 import time
 import math
 from threading import Thread
 from threading import Lock, Condition
-
-# Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
 
 import toil
+from toil import subprocess
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil import worker as toil_worker
 from toil.common import Toil
@@ -261,9 +259,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     pass
 
     def getIssuedBatchJobIDs(self):
-        """
-        Just returns all the jobs that have been run, but not yet returned as updated.
-        """
+        """Just returns all the jobs that have been run, but not yet returned as updated."""
         return list(self.jobs.keys())
 
     def getRunningBatchJobIDs(self):
@@ -285,9 +281,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
 
     def getUpdatedBatchJob(self, maxWait):
-        """
-        Returns a map of the run jobs and the return value of their processes.
-        """
+        """Returns a map of the run jobs and the return value of their processes."""
         try:
             item = self.outputQueue.get(timeout=maxWait)
         except Empty:
@@ -300,6 +294,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     @classmethod
     def setOptions(cls, setOption):
         setOption("scale", default=1)
+
 
 class Info(object):
     # Can't use namedtuple here since killIntended needs to be mutable
@@ -359,10 +354,7 @@ class ResourcePool(object):
             self.release(amount)
 
     class AcquisitionTimeoutException(Exception):
-        """
-        To be raised when a resource request times out.
-        """
-
+        """To be raised when a resource request times out."""
         def __init__(self, resource, requested, available):
             """
             Creates an instance of this exception that indicates which resource is insufficient for
@@ -378,5 +370,3 @@ class ResourcePool(object):
             self.requested = requested
             self.available = available
             self.resource = resource
-
-
