@@ -51,10 +51,9 @@ from future.utils import with_metaclass
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
+
 def mkdir_p(path):
-    """
-    The equivalent of mkdir -p
-    """
+    """The equivalent of mkdir -p"""
     try:
         os.makedirs(path)
     except OSError as exc:
@@ -77,7 +76,6 @@ class ToilTest(unittest.TestCase):
     directories left over from tests will be removed automatically removed during tear down.
     Otherwise, left-over files will not be removed.
     """
-
     _tempBaseDir = None
     _tempDirs = None
 
@@ -608,16 +606,15 @@ def timeLimit(seconds):
 
     :param seconds: maximum allowable time, in seconds
     >>> import time
-    >>> with timeLimit(5):
-    ...    time.sleep(4)
+    >>> with timeLimit(2):
+    ...    time.sleep(1)
     >>> import time
-    >>> with timeLimit(5):
-    ...    time.sleep(6)
+    >>> with timeLimit(1):
+    ...    time.sleep(2)
     Traceback (most recent call last):
         ...
     RuntimeError: Timed out
     """
-
     # noinspection PyUnusedLocal
     def signal_handler(signum, frame):
         raise RuntimeError('Timed out')
@@ -628,9 +625,6 @@ def timeLimit(seconds):
         yield
     finally:
         signal.alarm(0)
-
-
-# FIXME: move to bd2k-python-lib
 
 
 def make_tests(generalMethod, targetClass, **kwargs):
