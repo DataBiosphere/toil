@@ -729,7 +729,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     executorID, agentID)
         
         try:
-            
             # Look up the IP. We should always know it unless we get answers
             # back without having accepted offers.
             agentAddress = self.agentsByID[agentID]
@@ -820,7 +819,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         self._handleFailedExecutor(agentId.value, failedId)
         
     @classmethod
-    def setOptions(cl, setOption):
+    def setOptions(cls, setOption):
         setOption("mesosMasterAddress", None, None, 'localhost:5050')
 
 

@@ -89,11 +89,8 @@ class ResourceRequirement(object):
         self.preemptable = preemptable
 
     def size(self):
-        """
-        The scalar size of an offer. Can be used to compare offers.
-        """
+        """The scalar size of an offer. Can be used to compare offers."""
         return self.cores
-
 
     def __gt__(self, other):
         """

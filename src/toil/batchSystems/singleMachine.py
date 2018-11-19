@@ -220,9 +220,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     break
 
     def issueBatchJob(self, jobNode):
-        """
-        Adds the command and resources to a queue to be run.
-        """
+        """Adds the command and resources to a queue to be run."""
         # Round cores to minCores and apply scale
         cores = math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores
         assert cores <= self.maxCores, ('The job {} is requesting {} cores, more than the maximum of '
@@ -247,9 +245,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         return jobID
 
     def killBatchJobs(self, jobIDs):
-        """
-        Kills jobs by ID
-        """
+        """Kills jobs by ID."""
         log.debug('Killing jobs: {}'.format(jobIDs))
         for jobID in jobIDs:
             if jobID in self.runningJobs:
