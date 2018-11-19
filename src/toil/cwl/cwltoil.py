@@ -32,6 +32,8 @@ import functools
 import shutil
 from typing import Text, Mapping, MutableSequence
 import hashlib
+import uuid
+import datetime
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -625,9 +627,13 @@ class CWLJob(Job):
             ToilFsAccess, file_store=file_store)
         runtime_context.toil_get_file = functools.partial(
             toil_get_file, file_store, index, existing)
+
+        process_uuid = uuid.uuid4()
+        started_at = datetime.datetime.now()
         # Run the tool
         (output, status) = cwltool.executors.SingleJobExecutor().execute(
             self.cwltool, cwljob, runtime_context, cwllogger)
+        ended_at = datetime.datetime.now()
         if status != "success":
             raise cwltool.errors.WorkflowException(status)
 
@@ -639,7 +645,14 @@ class CWLJob(Job):
             uploadFile, functools.partial(writeGlobalFileWrapper, file_store),
             index, existing))
 
-        return (output, metadata)
+        metadata[process_uuid] = {
+            'started_at': started_at,
+            'ended_at': ended_at,
+            'job_order': cwljob,
+            'outputs': output,
+            'internal_name': self.jobName
+        }
+        return output, metadata
 
 
 def makeJob(tool, jobobj, step_inputs, runtime_context):
