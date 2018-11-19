@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -25,9 +25,11 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - don't import at module level unless you want the imported value to be included in the output
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
-baseVersion = '3.19.0a1'
 
+baseVersion = '3.19.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
+dockerRegistry = 'quay.io/ucsc_cgl'
+dockerName = 'toil'
 
 
 def version():
@@ -91,11 +93,6 @@ def dockerMinimalTag():
     information about the git commit or working copy dirtyness.
     """
     return distVersion()
-
-
-dockerRegistry = 'quay.io/ucsc_cgl'
-
-dockerName = 'toil'
 
 
 def buildNumber():

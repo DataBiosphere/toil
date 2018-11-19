@@ -430,8 +430,7 @@ def apiDockerCall(job,
             return container
             
     except ContainerError:
-        logger.error("Docker had non-zero exit.  Check your command: " + \
-                      repr(command))
+        logger.error("Docker had non-zero exit.  Check your command: " + repr(command))
         raise
     except ImageNotFound:
         logger.error("Docker image not found.")
@@ -439,8 +438,6 @@ def apiDockerCall(job,
     except requests.exceptions.HTTPError as e:
         logger.error("The server returned an error.")
         raise create_api_error_from_http_exception(e)
-    except:
-        raise
 
 
 def dockerKill(container_name, client, gentleKill=False):

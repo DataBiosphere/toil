@@ -27,7 +27,7 @@ import threading
 import time
 import unittest
 import uuid
-import errno
+from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
@@ -41,26 +41,15 @@ from six.moves.urllib.request import urlopen
 from toil.lib.memoize import less_strict_bool, memoize
 from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread
+from toil.lib.misc import mkdir_p
 
 from toil import subprocess
 from toil import which
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
-from future.utils import with_metaclass
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
-
-
-def mkdir_p(path):
-    """The equivalent of mkdir -p"""
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
 
 
 class ToilTest(unittest.TestCase):

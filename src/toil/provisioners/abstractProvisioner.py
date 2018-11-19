@@ -11,19 +11,18 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from builtins import object
 from functools import total_ordering
 import logging
 import os.path
+
 from toil import subprocess
 from toil import applianceSelf
-
-from future.utils import with_metaclass
-
 from toil.lib.retry import never
-a_short_time = 5
 
+a_short_time = 5
 log = logging.getLogger(__name__)
 
 
@@ -77,19 +76,6 @@ class Shape(object):
         else:
             return False
 
-    def __str__(self):
-        return "\nShape wallTime: %s\n" \
-               "Shape memory: %s\n" \
-               "Shape cores: %s\n" \
-               "Shape disk: %s\n" \
-               "Shape preemptable: %s\n" \
-               "\n" % \
-               (self.wallTime,
-                self.memory,
-                self.cores,
-                self.disk,
-                self.preemptable)
-
     def __repr__(self):
         return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptable=%s)" % \
                (self.wallTime,
@@ -97,6 +83,9 @@ class Shape(object):
                 self.cores,
                 self.disk,
                 self.preemptable)
+
+    def __str__(self):
+        return self.__repr__()
                 
     def __hash__(self):
         # Since we replaced __eq__ we need to replace __hash__ as well.
