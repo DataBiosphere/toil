@@ -231,11 +231,9 @@ class Leader(object):
 
         logName = 'failed.log' if self.toilState.totalFailedJobs else 'succeeded.log'
         localLog = os.path.join(os.getcwd(), logName)
-        logger.critical('localLog: {}\n'.format(localLog))
         with open(localLog, 'w') as f:
             f.write('')
 
-        logger.critical('localLog: {}\n'.format(localLog))
         try:
             self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
         except IOError as e:
