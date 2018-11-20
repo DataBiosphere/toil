@@ -67,10 +67,10 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
         midPoint = getMidPoint(inputFile, 0, length)
         t1 = job.fileStore.getLocalTempFile()
         with open(t1, 'w') as fH:
-            copySubRangeOfFile(inputFile, 0, midPoint+1, fH)
+            fH.write(copySubRangeOfFile(inputFile, 0, midPoint+1))
         t2 = job.fileStore.getLocalTempFile()
         with open(t2, 'w') as fH:
-            copySubRangeOfFile(inputFile, midPoint+1, length, fH)
+            fH.write(copySubRangeOfFile(inputFile, midPoint+1, length))
         # Call down recursively. By giving the rv() of the two jobs as inputs to the follow-on job, up,
         # we communicate the dependency without hindering concurrency.
         return job.addFollowOnJobFn(up,
@@ -111,17 +111,15 @@ def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
 
 
 def sort(file):
-    """
-    Sorts the given file.
-    """
-    fileHandle = open(file, 'r')
-    lines = fileHandle.readlines()
-    fileHandle.close()
+    """Sorts the given file."""
+    with open(file, 'r') as f:
+        lines = f.readlines()
+
     lines.sort()
-    fileHandle = open(file, 'w')
-    for line in lines:
-        fileHandle.write(line)
-    fileHandle.close()
+
+    with open(file, 'w') as f:
+        for line in lines:
+            f.write(line)
 
 
 def merge(fileHandle1, fileHandle2, outputFileHandle):
@@ -141,7 +139,7 @@ def merge(fileHandle1, fileHandle2, outputFileHandle):
         line2 = fileHandle2.readline()
 
 
-def copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFileHandle):
+def copySubRangeOfFile(inputFile, fileStart, fileEnd):
     """
     Copies the range (in bytes) between fileStart and fileEnd to the given
     output file handle.
@@ -150,7 +148,7 @@ def copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFileHandle):
         fileHandle.seek(fileStart)
         data = fileHandle.read(fileEnd - fileStart)
         assert len(data) == fileEnd - fileStart
-        outputFileHandle.write(data)
+    return data
 
 
 def getMidPoint(file, fileStart, fileEnd):
@@ -158,26 +156,26 @@ def getMidPoint(file, fileStart, fileEnd):
     Finds the point in the file to split.
     Returns an int i such that fileStart <= i < fileEnd
     """
-    fileHandle = open(file, 'r')
-    midPoint = old_div((fileStart + fileEnd), 2)
-    assert midPoint >= fileStart
-    fileHandle.seek(midPoint)
-    line = fileHandle.readline()
-    assert len(line) >= 1
-    if len(line) + midPoint < fileEnd:
-        return midPoint + len(line) - 1
-    fileHandle.seek(fileStart)
-    line = fileHandle.readline()
-    assert len(line) >= 1
-    assert len(line) + fileStart <= fileEnd
+    with open(file, 'r') as f:
+        midPoint = old_div((fileStart + fileEnd), 2)
+        assert midPoint >= fileStart
+        f.seek(midPoint)
+        line = f.readline()
+        assert len(line) >= 1
+        if len(line) + midPoint < fileEnd:
+            return midPoint + len(line) - 1
+        f.seek(fileStart)
+        line = f.readline()
+        assert len(line) >= 1
+        assert len(line) + fileStart <= fileEnd
     return len(line) + fileStart - 1
 
 
 def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
-    with open(fileName, 'w') as fileHandle:
+    with open(fileName, 'w') as f:
         for _ in range(lines):
             line = "".join(random.choice('actgACTGNXYZ') for _ in range(lineLen - 1)) + '\n'
-            fileHandle.write(line)
+            f.write(line)
 
 
 def main(options=None):
@@ -244,6 +242,7 @@ def main(options=None):
         else:
             sortedFileID = workflow.restart()
         workflow.exportFile(sortedFileID, sortedFileURL)
+
 
 if __name__ == '__main__':
     main()

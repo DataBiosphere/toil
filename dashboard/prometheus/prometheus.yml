@@ -33,8 +33,8 @@
           - targets: ['localhost:9100']
       - job_name: 'aws-node-exporter'
         ec2_sd_configs:
-          - region: 'us-west-2'
-            refresh_interval: 15s
+          - refresh_interval: 15s
+            region: ZONE_NAME
             port: 9100
         relabel_configs:
           - source_labels: ['__meta_ec2_tag_Name']

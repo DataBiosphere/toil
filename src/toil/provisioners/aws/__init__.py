@@ -17,6 +17,7 @@ from collections import namedtuple
 from operator import attrgetter
 import datetime
 from toil.lib.misc import std_dev, mean
+from toil.lib.context import Context
 from six import string_types
 
 from toil.test import runningOnEC2
@@ -24,6 +25,11 @@ from toil.test import runningOnEC2
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
+
+
+def zoneToRegion(zone):
+    """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
+    return Context.availability_zone_re.match(zone).group(1)
 
 
 def getSpotZone(spotBid, nodeType, ctx):

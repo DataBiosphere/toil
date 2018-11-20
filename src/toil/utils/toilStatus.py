@@ -165,7 +165,11 @@ class ToilStatus():
         :return: A string indicating the status of the PID of the workflow as stored in the jobstore.
         :rtype: str
         """
-        jobstore = Toil.resumeJobStore(jobStoreName)
+        try:
+            jobstore = Toil.resumeJobStore(jobStoreName)
+        except NoSuchJobStoreException:
+            return 'QUEUED'
+
         try:
             with jobstore.readSharedFileStream('pid.log') as pidFile:
                 pid = int(pidFile.read())
@@ -184,21 +188,29 @@ class ToilStatus():
         """
         Determine the status of a workflow.
 
-        Checks for the existance of files created in the toil.Leader.run(). In toil.Leader.run(), if a workflow completes
+        If the jobstore does not exist, this returns 'QUEUED', assuming it has not been created yet.
+
+        Checks for the existence of files created in the toil.Leader.run(). In toil.Leader.run(), if a workflow completes
         with failed jobs, 'failed.log' is created, otherwise 'succeeded.log' is written. If neither of these exist,
         the leader is still running jobs.
 
-        :return: A string indicating the status of the workflow. ['COMPLETED','RUNNING','ERROR']
+        :return: A string indicating the status of the workflow. ['COMPLETED', 'RUNNING', 'ERROR', 'QUEUED']
         :rtype: str
         """
-        jobstore = Toil.resumeJobStore(jobStoreName)
+        try:
+            jobstore = Toil.resumeJobStore(jobStoreName)
+        except NoSuchJobStoreException:
+            return 'QUEUED'
+
         try:
             with jobstore.readSharedFileStream('succeeded.log') as successful:
-                return 'COMPLETED'
+                pass
+            return 'COMPLETED'
         except NoSuchFileException:
             try:
-                with jobstore.readSharedFileStream('failed.log') as failedLog:
-                    return 'ERROR'
+                with jobstore.readSharedFileStream('failed.log') as failed:
+                    pass
+                return 'ERROR'
             except NoSuchFileException:
                 pass
         return 'RUNNING'
