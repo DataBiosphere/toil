@@ -46,7 +46,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # -h for no header
             # --format to get jobid i, state %t and time days-hours:minutes:seconds
 
-            lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).split('\n')
+            lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).decode('utf-8').split('\n')
             for line in lines:
                 values = line.split()
                 if len(values) < 3:
@@ -66,7 +66,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def submitJob(self, subLine):
             try:
-                output = subprocess.check_output(subLine, stderr=subprocess.STDOUT)
+                output = subprocess.check_output(subLine, stderr=subprocess.STDOUT).decode('utf-8')
                 # sbatch prints a line like 'Submitted batch job 2954103'
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)
@@ -107,7 +107,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 return (None, -999)
             
             for line in process.stdout:
-                values = line.strip().split('|')
+                values = line.decode('utf-8').strip().split('|')
                 if len(values) < 2:
                     continue
                 state, exitcode = values
@@ -129,7 +129,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     
             job = dict()
             for line in process.stdout:
-                values = line.strip().split()
+                values = line.decode('utf-8').strip().split()
     
                 # If job information is not available an error is issued:
                 # slurm_load_jobs error: Invalid job id specified
@@ -227,7 +227,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         # --format to get memory, cpu
         max_cpu = 0
         max_mem = MemoryString('0')
-        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
+        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).decode('utf-8').split('\n')
         for line in lines:
             values = line.split()
             if len(values) < 2:
