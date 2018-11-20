@@ -109,7 +109,7 @@ class AWSProvisioner(AbstractProvisioner):
         is the leader.
         """
         instanceMetaData = get_instance_metadata()
-        region = Context.availability_zone_re.match(self._zone).group(1)
+        region = zoneToRegion(self._zone)
         conn = boto.ec2.connect_to_region(region)
         instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         self.clusterName = str(instance.tags["Name"])
