@@ -36,7 +36,7 @@ def runSetup():
     apacheLibcloud = 'apache-libcloud==2.2.1'
     cwltool = 'cwltool==1.0.20180820141117'
     schemaSalad = 'schema-salad>=2.6, <3'
-    galaxyLib = 'galaxy-lib==17.9.3'
+    galaxyLib = 'galaxy-lib==17.9.9'
     htcondor = 'htcondor>=8.6.0'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
