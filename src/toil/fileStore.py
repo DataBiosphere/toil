@@ -20,12 +20,15 @@ from builtins import str
 from builtins import range
 from builtins import object
 from abc import abstractmethod, ABCMeta
-
-from toil.lib.objects import abstractclassmethod
-
-import base64
 from collections import namedtuple, defaultdict
-
+from contextlib import contextmanager
+from fcntl import flock, LOCK_EX, LOCK_UN
+from functools import partial
+from hashlib import sha1
+from threading import Thread, Semaphore, Event
+from future.utils import with_metaclass
+from six.moves.queue import Empty, Queue
+import base64
 import dill
 import errno
 import logging
@@ -36,21 +39,11 @@ import tempfile
 import time
 import uuid
 
-from contextlib import contextmanager
-from fcntl import flock, LOCK_EX, LOCK_UN
-from functools import partial
-from hashlib import sha1
-from threading import Thread, Semaphore, Event
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six.moves import xrange
-
+from toil.lib.objects import abstractclassmethod
 from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
-from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
 

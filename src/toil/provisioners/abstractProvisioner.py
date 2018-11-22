@@ -52,7 +52,7 @@ class Shape(object):
                 self.disk == other.disk and
                 self.preemptable == other.preemptable)
 
-    def __gt__(self, other):
+    def greater_than(self, other):
         if self.preemptable < other.preemptable:
             return True
         elif self.preemptable > other.preemptable:
@@ -76,6 +76,9 @@ class Shape(object):
         else:
             return False
 
+    def __gt__(self, other):
+        return self.greater_than(other)
+
     def __repr__(self):
         return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptable=%s)" % \
                (self.wallTime,
@@ -95,14 +98,13 @@ class Shape(object):
              self.cores,
              self.disk,
              self.preemptable))
-        
+
 
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
     An abstract base class to represent the interface for provisioning worker nodes to use in a
     Toil cluster.
     """
-
     LEADER_HOME_DIR = '/root/' # home directory in the Toil appliance on an instance
 
     def __init__(self, clusterName=None, zone=None, nodeStorage=50):
@@ -136,7 +138,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         for nodeTypeStr in nodeTypes:
             nodeBidTuple = nodeTypeStr.split(":")
             if len(nodeBidTuple) == 2:
-                #This is a preemptable node type, with a spot bid
+                # This is a preemptable node type, with a spot bid
                 nodeType, bid = nodeBidTuple
                 self.nodeTypes.append(nodeType)
                 self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=True))
@@ -249,11 +251,6 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         # confirm it really is an RSA public key
         assert masterPublicKey.startswith('AAAAB3NzaC1yc2E'), masterPublicKey
         return masterPublicKey
-
-
-
-
-
 
 
     cloudConfigTemplate = """#cloud-config
@@ -376,17 +373,18 @@ coreos:
     - "ssh-rsa {sshKey}"
 """
 
-
-       # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
-        # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
-        # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
-        # set to keyPath.
+    # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
+    # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
+    # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
+    # set to keyPath.
 
     MESOS_LOG_DIR = '--log_dir=/var/lib/mesos '
     LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
     # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
     # Mesos attempts to contact systemd but can't find its run file)
     WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
+
+
     def _getCloudConfigUserData(self, role, masterPublicKey=None, keyPath=None, preemptable=False):
         if role == 'leader':
             entryPoint = 'mesos-master'
@@ -411,4 +409,3 @@ coreos:
                             mesosArgs=mesosArgs)
         userData = template.format(**templateArgs)
         return userData
-

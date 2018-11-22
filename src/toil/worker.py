@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import, print_function
 from future import standard_library
 standard_library.install_aliases()
@@ -23,7 +22,6 @@ import sys
 import copy
 import random
 import json
-
 import tempfile
 import traceback
 import time
@@ -31,13 +29,6 @@ import socket
 import logging
 import shutil
 from threading import Thread
-
-logging.basicConfig()
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
 
 from toil.lib.expando import MagicExpando
 from toil.common import Toil, safeUnpickleFromStream
@@ -49,6 +40,7 @@ from toil.lib.bioio import getTotalCpuTime
 from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
 import signal
 
+logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 def nextChainableJobGraph(jobGraph, jobStore):
@@ -95,7 +87,7 @@ def nextChainableJobGraph(jobGraph, jobStore):
 
     # Somewhat ugly, but check if job is a checkpoint job and quit if
     # so
-    if successorJobGraph.command.startswith( "_toil " ):
+    if successorJobGraph.command.startswith("_toil "):
         #Load the job
         successorJob = Job._loadJob(successorJobGraph.command, jobStore)
 
@@ -293,7 +285,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             ##########################################
             
             if jobGraph.command is not None:
-                assert jobGraph.command.startswith( "_toil " )
+                assert jobGraph.command.startswith("_toil ")
                 logger.debug("Got a command to run: %s" % jobGraph.command)
                 #Load the job
                 job = Job._loadJob(jobGraph.command, jobStore)

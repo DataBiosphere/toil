@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from builtins import range
-
 import os
 import time
 import threading
 import json
 import requests
 import uuid
+import logging
 
 from libcloud.compute.types import Provider
 from libcloud.compute.providers import get_driver
@@ -29,7 +29,6 @@ from toil.provisioners import NoSuchClusterException
 from toil.jobStores.googleJobStore import GoogleJobStore
 from toil.provisioners.node import Node
 
-import logging
 logger = logging.getLogger(__name__)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.WARNING)
 
@@ -61,7 +60,7 @@ class GCEProvisioner(AbstractProvisioner):
         reading the metadata.
         """
         metadata_server = "http://metadata/computeMetadata/v1/instance/"
-        metadata_flavor = {'Metadata-Flavor' : 'Google'}
+        metadata_flavor = {'Metadata-Flavor': 'Google'}
         zone = requests.get(metadata_server + 'zone', headers = metadata_flavor).text
         self._zone = zone.split('/')[-1]
 
@@ -393,7 +392,7 @@ class GCEProvisioner(AbstractProvisioner):
         """
          Monkey patch to gce.py in libcloud to allow disk and images to be specified.
          Also changed name to a uuid below.
-         The prefix 'wp' identifies preemptible nodes and 'wn' non-preemtible nodes.
+         The prefix 'wp' identifies preemptable nodes and 'wn' non-preemptable nodes.
         """
         # if image and ex_disks_gce_struct:
         #    raise ValueError("Cannot specify both 'image' and "
