@@ -62,7 +62,7 @@ print(heredoc('''
     FROM ubuntu:16.04
     
     RUN apt-get -y update && apt-get -y upgrade
-    
+
     RUN apt-get -y install apt-transport-https ca-certificates software-properties-common
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
@@ -108,8 +108,8 @@ print(heredoc('''
     RUN pip install protobuf==3.0.0
 
     # Move the Mesos module onto the Python path
-    RUN ln -s /usr/lib/python2.7/site-packages/pymesos /usr/local/lib/python2.7/dist-packages/pymesos
-    RUN ln -s /usr/lib/python3.6/site-packages/pymesos /usr/local/lib/python3.6/dist-packages/pymesos
+    # RUN ln -s /usr/lib/python2.7/site-packages/pymesos /usr/local/lib/python2.7/dist-packages/pymesos
+    # RUN ln -s /usr/lib/python3.6/site-packages/pymesos /usr/local/lib/python3.6/dist-packages/pymesos
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
