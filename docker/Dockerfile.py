@@ -66,8 +66,6 @@ print(heredoc('''
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
         && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
         > /etc/apt/sources.list.d/nodesource.list \
-        && echo "deb-src https://deb.nodesource.com/node_6.x xenial main" \
-        >> /etc/apt/sources.list.d/nodesource.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
     
     RUN apt-get -y update
