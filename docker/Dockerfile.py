@@ -59,7 +59,7 @@ print(heredoc('''
     
     RUN apt-get -y update && apt-get -y upgrade
     
-    RUN apt-get -y install apt-transport-https
+    RUN apt-get -y install apt-transport-https ca-certificates
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
