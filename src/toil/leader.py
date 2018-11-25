@@ -229,17 +229,10 @@ class Leader(object):
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
-        logName = 'failed.log' if self.toilState.totalFailedJobs else 'succeeded.log'
-        localLog = os.path.join(os.getcwd(), logName)
-        open(localLog, 'w').close()
-
         try:
-            self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+            self.create_status_sentinel_file(self.toilState.totalFailedJobs)
         except IOError as e:
             logger.debug('Error from importFile with hardlink=True: {}'.format(e))
-
-        if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
-            os.remove(localLog)
 
         logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
@@ -252,6 +245,16 @@ class Leader(object):
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
 
         return self.jobStore.getRootJobReturnValue()
+
+    def create_status_sentinel_file(self, fail):
+        """Create a file in the jobstore indicating failure or success."""
+        logName = 'failed.log' if fail else 'succeeded.log'
+        localLog = os.path.join(os.getcwd(), logName)
+        open(localLog, 'w').close()
+        self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+
+        if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
+            os.remove(localLog)
 
     def _handledFailedSuccessor(self, jobNode, jobGraph, successorJobStoreID):
         """Deal with the successor having failed. Return True if there are
