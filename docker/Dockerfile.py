@@ -56,6 +56,10 @@ motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
     FROM ubuntu:16.04
+    
+    RUN apt-get -y update && apt-get -y upgrade
+    
+    RUN apt-get -y install apt-transport-https
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
@@ -67,7 +71,7 @@ print(heredoc('''
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
     
     RUN apt-get -y update
-    
+
     RUN apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN mkdir /root/.ssh && \
