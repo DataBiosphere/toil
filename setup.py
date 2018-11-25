@@ -130,7 +130,7 @@ def runSetup():
                                # Note that we intentionally include the top-level `test` package for
                                # functionality like the @experimental and @integrative decoratorss:
                                exclude=['*.test.*']),
-        package_data = {
+        package_data={
             '': ['*.yml', 'contrib/azure_rm.py', 'cloud-config'],
         },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
@@ -176,7 +176,7 @@ def importVersion():
                 raise
 
         if old != new:
-            with NamedTemporaryFile(mode='w',dir='src/toil', prefix='version.py.', delete=False) as f:
+            with NamedTemporaryFile(mode='w', dir='src/toil', prefix='version.py.', delete=False) as f:
                 f.write(new)
             os.rename(f.name, 'src/toil/version.py')
     # Unfortunately, we can't use a straight import here because that would also load the stuff

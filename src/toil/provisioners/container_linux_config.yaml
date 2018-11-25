@@ -1,0 +1,115 @@
+# This config is meant to be consumed by the config transpiler, which will
+# generate the corresponding Ignition config. Do not pass this config directly
+# to instances of Container Linux.
+
+storage:
+  files:
+    - filesystem: "root"
+      path: "/home/core/volumes.sh"
+      mode: 0777
+      contents:
+        inline: |
+          #!/bin/bash
+          set -x
+          ephemeral_count=0
+          drives=""
+          directories="toil mesos docker cwl"
+          for drive in /dev/xvd{{a..z}} /dev/nvme{{0..26}}n1; do
+              echo checking for $drive
+              if [ -b $drive ]; then
+                  echo found it
+                  if mount | grep $drive; then
+                      echo "already mounted, likely a root device"
+                  else
+                      ephemeral_count=$((ephemeral_count + 1 ))
+                      drives="$drives $drive"
+                      echo increased ephemeral count by one
+                  fi
+              fi
+          done
+          if (("$ephemeral_count" == "0" )); then
+              echo no ephemeral drive
+              for directory in $directories; do
+                  sudo mkdir -p /var/lib/$directory
+              done
+              exit 0
+          fi
+          sudo mkdir /mnt/ephemeral
+          if (("$ephemeral_count" == "1" )); then
+              echo one ephemeral drive to mount
+              sudo mkfs.ext4 -F $drives
+              sudo mount $drives /mnt/ephemeral
+          fi
+          if (("$ephemeral_count" > "1" )); then
+              echo multiple drives
+              for drive in $drives; do
+                  dd if=/dev/zero of=$drive bs=4096 count=1024
+              done
+              sudo mdadm --create -f --verbose /dev/md0 --level=0 --raid-devices=$ephemeral_count $drives # determine force flag
+              sudo mkfs.ext4 -F /dev/md0
+              sudo mount /dev/md0 /mnt/ephemeral
+          fi
+          for directory in $directories; do
+              sudo mkdir -p /mnt/ephemeral/var/lib/$directory
+              sudo mkdir -p /var/lib/$directory
+              sudo mount --bind /mnt/ephemeral/var/lib/$directory /var/lib/$directory
+          done
+
+systemd:
+  units:
+    - name: "volume-mounting.service"
+      enable: true
+      contents: |
+        [Unit]
+        Description=mounts ephemeral volumes & bind mounts toil directories
+        Before=docker.service
+
+        [Service]
+        Type=oneshot
+        Restart=no
+        ExecStart=/usr/bin/bash /home/core/volumes.sh
+    - name: "toil-{role}.service"
+        enable: true
+        contents: |
+          [Unit]
+          Description=toil-{role} container
+          After=docker.service
+
+          [Service]
+          Restart=on-failure
+          RestartSec=2
+          ExecStartPre=-/usr/bin/docker rm toil_{role}
+          ExecStart=/usr/bin/docker run \
+             --entrypoint={entrypoint} \
+             --net=host \
+             -v /var/run/docker.sock:/var/run/docker.sock \
+             -v /var/lib/mesos:/var/lib/mesos \
+             -v /var/lib/docker:/var/lib/docker \
+             -v /var/lib/toil:/var/lib/toil \
+             -v /var/lib/cwl:/var/lib/cwl \
+             -v /tmp:/tmp \
+             --name=toil_{role} \
+             {dockerImage} \
+             {mesosArgs}
+    - name: "node-exporter.service"
+        enable: true
+        contents: |
+          [Unit]
+          Description=node-exporter container
+          After=docker.service
+
+          [Service]
+          Restart=on-failure
+          RestartSec=2
+          ExecStartPre=-/usr/bin/docker rm node_exporter
+          ExecStart=/usr/bin/docker run \
+              -p 9100:9100 \
+              -v /proc:/host/proc \
+              -v /sys:/host/sys \
+              -v /:/rootfs \
+              --name node-exporter \
+              --restart always \
+              prom/node-exporter:v0.15.2 \
+              --path.procfs /host/proc \
+              --path.sysfs /host/sys \
+              --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)

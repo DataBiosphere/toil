@@ -403,26 +403,6 @@ class Context(object):
             name = name[len(self.namespace):]
         return name
 
-    def base_name(self, name):
-        """
-        Return the last component of a name, absolute or relative.
-
-        >>> ctx = Context( 'us-west-1b', namespace='/foo/bar/')
-        >>> ctx.base_name('')
-        ''
-        >>> ctx.base_name('/')
-        ''
-        >>> ctx.base_name('/a')
-        'a'
-        >>> ctx.base_name('/a/')
-        ''
-        >>> ctx.base_name('/a/b')
-        'b'
-        >>> ctx.base_name('/a/b/')
-        ''
-        """
-        return name.split('/')[-1]
-
     def contains_name(self, name):
         return not self.is_absolute_name(name) or name.startswith(self.namespace)
 
@@ -446,11 +426,8 @@ class Context(object):
         >>> c('/' ).contains_aws_name('bar_foo_x')
         True
         """
-        return self.contains_name(self.from_aws_name(aws_name))
-
-    def try_contains_aws_name(self, aws_name):
         try:
-            return self.contains_aws_name(aws_name)
+            return self.contains_name(self.from_aws_name(aws_name))
         except self.InvalidPathError:
             return False
 
@@ -576,7 +553,7 @@ class Context(object):
                 break
 
     def local_roles(self):
-        return [r for r in self._get_all_roles() if self.try_contains_aws_name(r.role_name)]
+        return [r for r in self._get_all_roles() if self.contains_aws_name(r.role_name)]
 
     def _get_all_roles(self):
         return self._pager(self.iam.list_roles, 'roles')

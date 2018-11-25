@@ -135,16 +135,15 @@ class GCEProvisioner(AbstractProvisioner):
             tags.update(kwargs['userTags'])
         self._tags = json.dumps(tags)
 
-        userData =  self._getCloudConfigUserData('leader')
+        userData = self.getCloudConfigUserData('leader')
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         disk = {}
-        disk['initializeParams'] = {
-            'sourceImage': self.SOURCE_IMAGE,
-            'diskSizeGb' : leaderStorage }
+        disk['initializeParams'] = {'sourceImage': self.SOURCE_IMAGE,
+                                    'diskSizeGb': leaderStorage}
         disk.update({'boot': True,
-             'autoDelete': True })
+                     'autoDelete': True})
         name= 'l' + str(uuid.uuid4())
         leader = self._gceDriver.create_node(name, leaderNodeType, imageType,
                                             location=self._zone,
@@ -241,7 +240,7 @@ class GCEProvisioner(AbstractProvisioner):
             logger.debug('Launching %s preemptable nodes', numNodes)
 
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
-        userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
+        userData =  self.getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
@@ -411,10 +410,7 @@ class GCEProvisioner(AbstractProvisioner):
         if not hasattr(ex_network, 'name'):
             ex_network = driver.ex_get_network(ex_network)
         if ex_subnetwork and not hasattr(ex_subnetwork, 'name'):
-            ex_subnetwork = \
-                driver.ex_get_subnetwork(ex_subnetwork,
-                                       region=driver._get_region_from_zone(
-                                           location))
+            ex_subnetwork = driver.ex_get_subnetwork(ex_subnetwork, region=driver._get_region_from_zone(location))
         if ex_image_family:
             image = driver.ex_get_image_from_family(ex_image_family)
         if image and not hasattr(image, 'name'):
@@ -447,14 +443,14 @@ class GCEProvisioner(AbstractProvisioner):
 
         for i in range(number):
             name = 'wp' if ex_preemptible else 'wn'
-            name += str(uuid.uuid4()) #'%s-%03d' % (base_name, i)
+            name += str(uuid.uuid4())  # '%s-%03d' % (base_name, i)
             status = {'name': name, 'node_response': None, 'node': None}
             status_list.append(status)
 
         start_time = time.time()
         complete = False
         while not complete:
-            if (time.time() - start_time >= timeout):
+            if time.time() - start_time >= timeout:
                 raise Exception("Timeout (%s sec) while waiting for multiple "
                                 "instances")
             complete = True

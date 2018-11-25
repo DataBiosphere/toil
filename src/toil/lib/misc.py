@@ -2,7 +2,13 @@ import random
 from six.moves import xrange
 from math import sqrt
 import errno
+import textwrap
 import os
+
+
+def heredoc(template, dictionary={}, indent=''):
+    template = textwrap.dedent(template).format(**dictionary)
+    return template.replace('\n', '\n' + indent) + '\n'
 
 
 def mkdir_p(path):

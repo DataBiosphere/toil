@@ -19,13 +19,12 @@ from past.builtins import basestring
 import fnmatch
 import os
 import logging
-import textwrap
 import csv
 
 from toil import subprocess
+from toil.lib.misc import heredoc
 
 wdllogger = logging.getLogger(__name__)
-
 
 
 def glob(glob_pattern, directoryname):
@@ -73,7 +72,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
     :return: Nothing, but it writes and deposits a bash script in temp_dir
              intended to be run inside of a docker container for this job.
     '''
-    wdl_copyright = heredoc_wdl('''        \n
+    wdl_copyright = heredoc('''        \n
         # Borrowed/rewritten from the Broad's Cromwell implementation.  As 
         # that is under a BSD-ish license, I include here the license off 
         # of their GitHub repo.  Thank you Broadies!
@@ -110,7 +109,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
         ''')
     prefix_dict = {"docker_dir": docker_dir,
                    "cmd": cmd}
-    bashfile_prefix = heredoc_wdl('''
+    bashfile_prefix = heredoc('''
         tmpDir=$(mktemp -d /{docker_dir}/execution/tmp.XXXXXX)
         chmod 777 $tmpDir
         # set destination for java to deposit all of its files
@@ -129,7 +128,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
 
     bashfile_string = '#!/bin/bash' + wdl_copyright + bashfile_prefix
 
-    begin_globbing_string = heredoc_wdl('''
+    begin_globbing_string = heredoc('''
         (
         mkdir "$tmpDir/globs"
         ''')
@@ -143,7 +142,7 @@ def generate_docker_bashscript_file(temp_dir, docker_dir, globs, cmd, job_name):
             ' "$tmpDir/globs" )\n'
         bashfile_string = bashfile_string + add_this_glob
 
-    bashfile_suffix = heredoc_wdl('''
+    bashfile_suffix = heredoc('''
         )
 
         # flush RAM to disk
@@ -507,10 +506,6 @@ def combine_dicts(dict1, dict2):
     return combineddict
 
 
-def heredoc_wdl(template, dictionary={}, indent=''):
-    template = textwrap.dedent(template).format(**dictionary)
-    return template.replace('\n', '\n' + indent) + '\n'
-
 def read_tsv(f, delimiter="\t"):
     '''
     Take a tsv filepath and return an array; e.g. [[],[],[]].
@@ -531,7 +526,8 @@ def read_tsv(f, delimiter="\t"):
         data_file = csv.reader(f, delimiter=delimiter)
         for line in data_file:
             tsv_array.append(line)
-    return (tsv_array)
+    return tsv_array
+
 
 def read_csv(f):
     '''

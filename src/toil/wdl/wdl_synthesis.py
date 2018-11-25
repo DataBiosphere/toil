@@ -20,7 +20,7 @@ import os
 import logging
 
 import toil.wdl.wdl_parser as wdl_parser
-from toil.wdl.wdl_functions import heredoc_wdl
+from toil.lib.misc import heredoc
 
 wdllogger = logging.getLogger(__name__)
 
@@ -77,7 +77,7 @@ class SynthesizeWDL:
 
     def write_modules(self):
         # string used to write imports to the file
-        module_string = heredoc_wdl('''
+        module_string = heredoc('''
                     from toil.job import Job
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
@@ -164,7 +164,7 @@ class SynthesizeWDL:
         return main_section
 
     def write_main_header(self):
-        main_header = heredoc_wdl('''
+        main_header = heredoc('''
             if __name__=="__main__":
                 options = Job.Runner.getDefaultOptions("{jobstore}")
                 options.clean = 'always'
@@ -234,7 +234,7 @@ class SynthesizeWDL:
 
         :return: A string representing this.
         '''
-        main_section = heredoc_wdl('''
+        main_section = heredoc('''
             outdir = '{outdir}'
             onlyfiles = [os.path.join(outdir, f) for f in os.listdir(outdir) if os.path.isfile(os.path.join(outdir, f))]
             for output_f_path in onlyfiles:
@@ -460,7 +460,7 @@ class SynthesizeWDL:
         for input in scatter_inputs:
             fn_section += '        self.id_{input} = {input}\n'.format(input=input)
 
-        fn_section += heredoc_wdl('''
+        fn_section += heredoc('''
                                  super({jobname}Cls, self).__init__(*args, **kwargs)
 
                              def run(self, fileStore):
@@ -657,7 +657,7 @@ class SynthesizeWDL:
 
                 fn_section += '        self.id_{} = {}\n'.format(var, var_expressn)
 
-        fn_section += heredoc_wdl('''
+        fn_section += heredoc('''
                                  super({jobname}Cls, self).__init__(*args, **kwargs)
 
                              def run(self, fileStore):
@@ -739,7 +739,7 @@ class SynthesizeWDL:
         docker_dict = {"docker_image": self.tasks_dictionary[job]['runtime']['docker'],
                        "job_task_reference": job,
                        "docker_user": str(self.docker_user)}
-        docker_template = heredoc_wdl('''
+        docker_template = heredoc('''
         stdout = apiDockerCall(self, 
                                image={docker_image}, 
                                working_dir=tempDir, 
@@ -772,7 +772,7 @@ class SynthesizeWDL:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
                     cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
-                fn_section = fn_section + heredoc_wdl('''
+                fn_section = fn_section + heredoc('''
                         try:
                             # Intended to deal with "optional" inputs that may not exist
                             # TODO: handle this better
@@ -801,7 +801,7 @@ class SynthesizeWDL:
                         (job priority #, job ID #, Job Skeleton Name, Job Alias)
         :return: A string representing this.
         '''
-        fn_section = heredoc_wdl('''
+        fn_section = heredoc('''
                 this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 stdout, stderr = this_process.communicate()\n''', indent='        ')
 
@@ -833,7 +833,7 @@ class SynthesizeWDL:
                         "out_dir": self.output_directory,
                         "output_type": output_type}
 
-                    nonglob_template = heredoc_wdl('''
+                    nonglob_template = heredoc('''
                         # output-type: {output_type}
                         output_filename = {expression}
                         {output_name} = process_outfile(output_filename, fileStore, tempDir, '{out_dir}')

@@ -153,7 +153,7 @@ class AzureProvisioner(AnsibleDriver):
         }
         # Ansible reads the cloud-config script from a file.
         with tempfile.NamedTemporaryFile(delete=False) as t:
-            userData =  self._getCloudConfigUserData('leader')
+            userData =  self.getCloudConfigUserData('leader')
             t.write(userData)
             ansibleArgs['cloudconfig'] = t.name
 
@@ -225,7 +225,7 @@ class AzureProvisioner(AnsibleDriver):
         self.callPlaybook(self.playbook['destroy'], ansibleArgs, wait=True)
 
     def addNodes(self, nodeType, numNodes, preemptable=False, spotBid=None):
-        assert self._leaderPrivateIP # for getCloudConfigUserData
+        assert self._leaderPrivateIP  # for getCloudConfigUserData
 
         ansibleArgs = dict(vmsize=nodeType,
                            resgrp=self.clusterName,
@@ -235,7 +235,7 @@ class AzureProvisioner(AnsibleDriver):
                            role="worker",
                            publickeyfile=self._masterPublicKeyFile)
         with tempfile.NamedTemporaryFile(delete=False) as t:
-            userData =  self._getCloudConfigUserData('worker')
+            userData = self.getCloudConfigUserData('worker')
             t.write(userData)
             ansibleArgs['cloudconfig'] = t.name
 

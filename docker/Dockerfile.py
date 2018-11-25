@@ -14,7 +14,7 @@
 
 from __future__ import print_function
 import os
-import textwrap
+from toil.lib.misc import heredoc
 
 applianceSelf = os.environ['TOIL_APPLIANCE_SELF']
 sdistName = os.environ['_TOIL_SDIST_NAME']
@@ -34,12 +34,12 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'screen'])
 
 
-def heredoc(s):
-    s = textwrap.dedent(s).format(**globals())
+def docker_heredoc(s):
+    s = heredoc(s, dictionary=globals())
     return s[1:] if s.startswith('\n') else s
 
 
-motd = heredoc('''
+motd = docker_heredoc('''
 
     This is the Toil appliance. You can run your Toil script directly on the appliance. 
     Run toil <workflow>.py --help to see all options for running your workflow.
@@ -54,7 +54,7 @@ motd = heredoc('''
 # Prepare motd to be echoed in the Dockerfile using a RUN statement that uses bash's print
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
-print(heredoc('''
+print(docker_heredoc('''
     FROM ubuntu:14.04
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ trusty main" \
