@@ -21,8 +21,11 @@ sdistName = os.environ['_TOIL_SDIST_NAME']
 
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure' extra with PyNACL
+                         'python3.6',
                          'python-dev',  # For installing Python packages with native code
+                         'python3-dev',
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
+                         'python3-pip',
                          'libcurl4-openssl-dev',
                          'libssl-dev',
                          'wget',
@@ -102,7 +105,8 @@ print(heredoc('''
     RUN pip install protobuf==3.0.0
 
     # Move the Mesos module onto the Python path
-    RUN ln -s /usr/lib/python2.7/site-packages/mesos /usr/local/lib/python2.7/dist-packages/mesos
+    RUN ln -s /usr/lib/python2.7/site-packages/pymesos /usr/local/lib/python2.7/dist-packages/pymesos
+    RUN ln -s /usr/lib/python3.6/site-packages/pymesos /usr/local/lib/python3.6/dist-packages/pymesos
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
