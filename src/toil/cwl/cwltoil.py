@@ -1025,6 +1025,7 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
+
     dockergroup = parser.add_mutually_exclusive_group()
     dockergroup.add_argument(
         "--user-space-docker-cmd",
@@ -1039,6 +1040,7 @@ def main(args=None, stdout=sys.stdout):
         "--no-container", action="store_true", help="Do not execute jobs in a "
         "Docker container, even when `DockerRequirement` "
         "is specified under `hints`.")
+
     parser.add_argument(
         "--preserve-environment", type=str, nargs='+',
         help="Preserve specified environment variables when running"
@@ -1049,17 +1051,20 @@ def main(args=None, stdout=sys.stdout):
         help="Specify a cloud bucket endpoint for output files.")
     parser.add_argument(
         "--beta-dependency-resolvers-configuration", default=None)
-    parser.add_argument("--beta-dependencies-directory", default=None)
+    parser.add_argument(
+        "--beta-dependencies-directory", default=None)
     parser.add_argument(
         "--beta-use-biocontainers", default=None, action="store_true")
     parser.add_argument(
         "--beta-conda-dependencies", default=None, action="store_true")
-    parser.add_argument("--tmpdir-prefix", type=Text,
-                        help="Path prefix for temporary directories",
-                        default="tmp")
-    parser.add_argument("--tmp-outdir-prefix", type=Text,
-                        help="Path prefix for intermediate output directories",
-                        default="tmp")
+    parser.add_argument(
+        "--tmpdir-prefix", type=Text,
+        help="Path prefix for temporary directories",
+        default="tmp")
+    parser.add_argument(
+        "--tmp-outdir-prefix", type=Text,
+        help="Path prefix for intermediate output directories",
+        default="tmp")
     parser.add_argument(
         "--force-docker-pull", action="store_true", default=False,
         dest="force_docker_pull",
@@ -1067,6 +1072,18 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument(
         "--no-match-user", action="store_true", default=False,
         help="Disable passing the current uid to `docker run --user`")
+
+    envgroup = parser.add_mutually_exclusive_group()
+    envgroup.add_argument(
+        "--preserve-environment", type=Text, action="append",
+        help="Preserve specific environment variable when running"
+             " CommandLineTools.  May be provided multiple times.",
+        metavar="ENVVAR", default=["PATH"], dest="preserve_environment")
+    envgroup.add_argument(
+        "--preserve-entire-environment", action="store_true",
+        help="Preserve all environment variable when running "
+             "CommandLineTools.",
+        default=False, dest="preserve_entire_environment")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
