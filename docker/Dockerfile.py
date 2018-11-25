@@ -60,8 +60,10 @@ print(heredoc('''
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
-        && printf "deb http://deb.nodesource.com/node_6.x xenial main\ndeb-src https://deb.nodesource.com/node_6.x xenial main" \
+        && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
         > /etc/apt/sources.list.d/nodesource.list \
+        && echo "deb-src https://deb.nodesource.com/node_6.x xenial main" \
+        >> /etc/apt/sources.list.d/nodesource.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280 \
         && apt-get -y update \
         && apt-get -y install {dependencies} \
