@@ -833,7 +833,7 @@ class ApplianceTestSupport(ToilTest):
                 image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
                 args = list(concat('docker', 'run',
-                                   '--entrypoint=' + self._entryPoint(),
+                                   '--entrypoint="umask 0000; ' + self._entryPoint() + '"',
                                    '--net=host',
                                    '-i',
                                    '--name=' + self.containerName,
@@ -888,7 +888,7 @@ class ApplianceTestSupport(ToilTest):
                                                            if os.path.isdir(k))
             self.outer._run('docker', 'run',
                             '--rm',
-                            '--entrypoint=/bin/bash',
+                            '--entrypoint="umask 0000; /bin/bash "',
                             applianceSelf(),
                             '-c',
                             cmd)

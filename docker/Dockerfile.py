@@ -60,6 +60,16 @@ motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
     FROM ubuntu:16.04
+
+    RUN echo "#!/bin/bash" \
+        > ./mod_permissions.sh \
+        && echo "umask 0000" \
+        >> ./mod_permissions.sh \
+        && echo "/bin/bash" \
+        >> ./mod_permissions.sh
+        && chmod +x ./mod_permissions.sh
+    
+    ENTRYPOINT ["./mod_permissions.sh"]
     
     RUN apt-get -y update && apt-get -y upgrade
 
