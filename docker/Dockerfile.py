@@ -22,6 +22,7 @@ sdistName = os.environ['_TOIL_SDIST_NAME']
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure' extra with PyNACL
                          'python3.6',
+                         'python3.6-dev',
                          'python-dev',  # For installing Python packages with native code
                          'python3-dev',
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
@@ -62,7 +63,7 @@ print(heredoc('''
     
     RUN apt-get -y update && apt-get -y upgrade
     
-    RUN apt-get -y install apt-transport-https ca-certificates
+    RUN apt-get -y install apt-transport-https ca-certificates software-properties-common
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
@@ -71,7 +72,7 @@ print(heredoc('''
         > /etc/apt/sources.list.d/nodesource.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
 
-    RUN add-apt-repository -y ppa:deadsnakes/ppa
+    RUN add-apt-repository -y ppa:jonathonf/python-3.6
     
     RUN apt-get -y update
 
