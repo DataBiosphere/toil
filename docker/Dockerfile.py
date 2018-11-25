@@ -57,7 +57,7 @@ motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 print(heredoc('''
     FROM ubuntu:16.04
 
-    RUN echo "deb http://repos.mesosphere.io/ubuntu/ trusty main" \
+    RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
         && printf "deb http://deb.nodesource.com/node_6.x xenial main\ndeb-src https://deb.nodesource.com/node_6.x xenial main" \
