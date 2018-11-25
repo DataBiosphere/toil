@@ -58,18 +58,20 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    FROM ubuntu:16.10
+    FROM ubuntu:16.04
     
     RUN apt-get -y update && apt-get -y upgrade
     
     RUN apt-get -y install apt-transport-https ca-certificates
 
-    RUN echo "deb http://repos.mesosphere.io/ubuntu/ yakkety main" \
+    RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
-        && echo "deb http://deb.nodesource.com/node_6.x yakkety main" \
+        && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
         > /etc/apt/sources.list.d/nodesource.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
+
+    RUN add-apt-repository -y ppa:deadsnakes/ppa
     
     RUN apt-get -y update
 
