@@ -101,21 +101,21 @@ class CWLTest(ToilTest):
     def test_run_revsort_debug_worker(self):
         self.revsort('revsort.cwl', self._debug_worker_tester)
 
-    # @slow
-    # def test_bioconda(self):
-    #     self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-    #                  'src/toil/test/cwl/seqtk_seq_job.json',
-    #                  self._expected_seqtk_output(self.outDir),
-    #                  main_args=["--beta-conda-dependencies"],
-    #                  out_name="output1")
-    #
-    # @needs_docker
-    # def test_biocontainers(self):
-    #     self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-    #                  'src/toil/test/cwl/seqtk_seq_job.json',
-    #                  self._expected_seqtk_output(self.outDir),
-    #                  main_args=["--beta-use-biocontainers"],
-    #                  out_name="output1")
+    @slow
+    def test_bioconda(self):
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     self._expected_seqtk_output(self.outDir),
+                     main_args=["--beta-conda-dependencies"],
+                     out_name="output1")
+
+    @needs_docker
+    def test_biocontainers(self):
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     self._expected_seqtk_output(self.outDir),
+                     main_args=["--beta-use-biocontainers"],
+                     out_name="output1")
 
     @slow
     def test_restart(self):
@@ -150,70 +150,70 @@ class CWLTest(ToilTest):
         except NoSuchJobStoreException:
             pass
 
-    # @slow
-    # @pytest.mark.timeout(1800)
-    # def test_run_conformance(self, batchSystem=None):
-    #     try:
-    #         cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
-    #                '--timeout=1800', '--basedir=' + self.workDir]
-    #         if batchSystem:
-    #             cmd.extend(["--batchSystem", batchSystem])
-    #         subprocess.check_output(cmd, cwd=self.workDir, stderr=subprocess.STDOUT)
-    #     except subprocess.CalledProcessError as e:
-    #         only_unsupported = False
-    #         # check output -- if we failed but only have unsupported features, we're okay
-    #         p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
-    #
-    #         error_log = e.output
-    #         if isinstance(e.output, bytes):
-    #             # py2/3 string handling
-    #             error_log = e.output.decode('utf-8')
-    #
-    #         for line in error_log.split('\n'):
-    #             m = p.search(line)
-    #             if m:
-    #                 if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
-    #                     only_unsupported = True
-    #                     break
-    #         if not only_unsupported:
-    #             print(error_log)
-    #             raise e
-    #
-    # @slow
-    # @needs_lsf
-    # @unittest.skip
-    # def test_lsf_cwl_conformance(self):
-    #     return self.test_run_conformance("LSF")
-    #
-    # @slow
-    # @needs_slurm
-    # @unittest.skip
-    # def test_slurm_cwl_conformance(self):
-    #     return self.test_run_conformance("Slurm")
-    #
-    # @slow
-    # @needs_torque
-    # @unittest.skip
-    # def test_torque_cwl_conformance(self):
-    #     return self.test_run_conformance("Torque")
-    #
-    # @slow
-    # @needs_gridengine
-    # @unittest.skip
-    # def test_gridengine_cwl_conformance(self):
-    #     return self.test_run_conformance("gridEngine")
-    #
-    # @slow
-    # @needs_mesos
-    # @unittest.skip
-    # def test_mesos_cwl_conformance(self):
-    #     return self.test_run_conformance("mesos")
-    #
-    # @slow
-    # @needs_parasol
-    # @unittest.skip
-    # def test_parasol_cwl_conformance(self):
-    #     return self.test_run_conformance("parasol")
+    @slow
+    @pytest.mark.timeout(1800)
+    def test_run_conformance(self, batchSystem=None):
+        try:
+            cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
+                   '--timeout=1800', '--basedir=' + self.workDir]
+            if batchSystem:
+                cmd.extend(["--batchSystem", batchSystem])
+            subprocess.check_output(cmd, cwd=self.workDir, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as e:
+            only_unsupported = False
+            # check output -- if we failed but only have unsupported features, we're okay
+            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
+
+            error_log = e.output
+            if isinstance(e.output, bytes):
+                # py2/3 string handling
+                error_log = e.output.decode('utf-8')
+
+            for line in error_log.split('\n'):
+                m = p.search(line)
+                if m:
+                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
+                        only_unsupported = True
+                        break
+            if not only_unsupported:
+                print(error_log)
+                raise e
+
+    @slow
+    @needs_lsf
+    @unittest.skip
+    def test_lsf_cwl_conformance(self):
+        return self.test_run_conformance("LSF")
+
+    @slow
+    @needs_slurm
+    @unittest.skip
+    def test_slurm_cwl_conformance(self):
+        return self.test_run_conformance("Slurm")
+
+    @slow
+    @needs_torque
+    @unittest.skip
+    def test_torque_cwl_conformance(self):
+        return self.test_run_conformance("Torque")
+
+    @slow
+    @needs_gridengine
+    @unittest.skip
+    def test_gridengine_cwl_conformance(self):
+        return self.test_run_conformance("gridEngine")
+
+    @slow
+    @needs_mesos
+    @unittest.skip
+    def test_mesos_cwl_conformance(self):
+        return self.test_run_conformance("mesos")
+
+    @slow
+    @needs_parasol
+    @unittest.skip
+    def test_parasol_cwl_conformance(self):
+        return self.test_run_conformance("parasol")
 
     @staticmethod
     def _expected_seqtk_output(outDir):
