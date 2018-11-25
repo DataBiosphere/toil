@@ -772,7 +772,6 @@ class ApplianceTestSupport(ToilTest):
     A Toil test that runs a user script on a minimal cluster of appliance containers,
     i.e. one leader container and one worker container.
     """
-
     @contextmanager
     def _applianceCluster(self, mounts=None, numCores=None):
         """
@@ -833,7 +832,7 @@ class ApplianceTestSupport(ToilTest):
                 image = applianceSelf()
                 # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
                 args = list(concat('docker', 'run',
-                                   '--entrypoint="umask 0000; ' + self._entryPoint() + '"',
+                                   '--entrypoint=' + self._entryPoint(),
                                    '--net=host',
                                    '-i',
                                    '--name=' + self.containerName,
@@ -888,7 +887,7 @@ class ApplianceTestSupport(ToilTest):
                                                            if os.path.isdir(k))
             self.outer._run('docker', 'run',
                             '--rm',
-                            '--entrypoint="umask 0000; /bin/bash "',
+                            '--entrypoint=/bin/bash',
                             applianceSelf(),
                             '-c',
                             cmd)
@@ -960,4 +959,6 @@ class ApplianceTestSupport(ToilTest):
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',
-                    '--resources=cpus(*):%i' % self.numCores]
+                    '--resources=cpus(*):%i' % self.numCores,
+                    '--no-hostname_lookup',
+                    '--no-systemd_enable_support']
