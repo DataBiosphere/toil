@@ -71,6 +71,8 @@ print(heredoc('''
         > /etc/apt/sources.list.d/nodesource.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
     
+    RUN add-apt-repository ppa:deadsnakes/ppa
+    
     RUN apt-get -y update
 
     RUN apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
