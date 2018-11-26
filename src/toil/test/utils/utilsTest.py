@@ -106,42 +106,43 @@ class UtilsTest(ToilTest):
     @integrative
     @slow
     def testAWSProvisionerUtils(self):
+        """
+        Runs a number of the cluster utilities in sequence.
+
+        Launches a cluster with custom tags.
+        Verifies the tags exist.
+        ssh's into the cluster.
+        Does some weird string comparisons.
+        Makes certain that TOIL_WORKDIR is set as expected in the ssh'ed cluster.
+        Rsyncs a file and verifies it exists on the leader.
+        Destroys the cluster.
+
+        :return:
+        """
+        # TODO: Run these for the other clouds.
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         keyName = os.getenv('TOIL_AWS_KEYNAME')
-        try:
-            # --provisioner flag should default to aws, so we're not explicitly
-            # specifying that here
-            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro', '--zone=us-west-2a',
-                    '--keyPairName=' + keyName, clusterName])
-        finally:
-            system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
+
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
-            userTags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3'}
-            tags = {'Name': clusterName, 'Owner': keyName}
-            tags.update(userTags)
-
-            # launch master with same name
+            # launch master with an assortment of custom tags
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
                     '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
-                    '--provisioner=aws', '--zone=us-west-2a','--logLevel=DEBUG'])
+                    '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
             cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
             leader = cluster.getLeader()
-            # test leader tags
-            for key in list(tags.keys()):
+
+            # check that the leader carries the appropriate tags
+            tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': keyName}
+            for key in tags:
                 self.assertEqual(tags[key], leader.tags.get(key))
 
             # Test strict host key checking
             # Doesn't work when run locally.
-            if(keyName == 'jenkins@jenkins-master'):
-                try:
-                    leader.sshAppliance(strict=True)
-                except RuntimeError:
-                    pass
-                else:
-                    self.fail("Host key verification passed where it should have failed")
+            if keyName == 'jenkins@jenkins-master':
+                self.assertRaises(RuntimeError, leader.sshAppliance(strict=True))
 
             # Add the host key to known_hosts so that the rest of the tests can
             # pass without choking on the verification prompt.
@@ -158,20 +159,13 @@ class UtilsTest(ToilTest):
                            '\\',
                            '| cat',
                            '&& cat',
-                           '; cat'
-                           ]
+                           '; cat']
             for test in testStrings:
                 logger.debug('Testing SSH with special string: %s', test)
                 compareTo = "import sys; assert sys.argv[1]==%r" % test
                 leader.sshAppliance('python', '-', test, input=compareTo)
 
-            try:
-                leader.sshAppliance('nonsenseShouldFail')
-            except RuntimeError:
-                pass
-            else:
-                self.fail('The remote command failed silently where it should have '
-                          'raised an error')
+            self.assertRaises(RuntimeError, leader.sshAppliance('nonsenseShouldFail'))
 
             leader.sshAppliance('python', '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'")
 
@@ -320,8 +314,7 @@ class UtilsTest(ToilTest):
         jobStore = Toil.resumeJobStore(config.jobStore)
         stats = getStats(jobStore)
         collatedStats = processData(jobStore.config, stats)
-        self.assertTrue(len(collatedStats.job_types) == 2,
-                        "Some jobs are not represented in the stats")
+        self.assertTrue(len(collatedStats.job_types) == 2, "Some jobs are not represented in the stats.")
 
     def check_status(self, status, status_fn, seconds=10):
         i = 0.0
@@ -378,11 +371,13 @@ class UtilsTest(ToilTest):
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
 
+
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of
     # Python encoding issues. To work around this we print in a separate Python process. See
     # http://stackoverflow.com/questions/492483/setting-the-correct-encoding-when-piping-stdout-in-python
     subprocess.check_call([sys.executable, '-c', "print('\\xc3\\xbc')"])
+
 
 class RunTwoJobsPerWorker(Job):
     """

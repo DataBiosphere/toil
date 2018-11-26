@@ -67,14 +67,11 @@ class ToilTest(unittest.TestCase):
     def setUpClass(cls):
         super(ToilTest, cls).setUpClass()
         cls._tempDirs = []
-        cls._tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
-        if cls._tempBaseDir is not None and not os.path.isabs(cls._tempBaseDir):
-            cls._tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), cls._tempBaseDir))
-            mkdir_p(cls._tempBaseDir)
-
-    def setUp(self):
-        log.info("Setting up %s ...", self.id())
-        super(ToilTest, self).setUp()
+        tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
+        if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
+            tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
+            mkdir_p(tempBaseDir)
+        cls._tempBaseDir = tempBaseDir
 
     @classmethod
     def tearDownClass(cls):
@@ -86,6 +83,14 @@ class ToilTest(unittest.TestCase):
         else:
             cls._tempDirs = []
         super(ToilTest, cls).tearDownClass()
+
+    def setUp(self):
+        log.info("Setting up %s ...", self.id())
+        super(ToilTest, self).setUp()
+
+    def tearDown(self):
+        super(ToilTest, self).tearDown()
+        log.info("Tore down %s", self.id())
 
     @classmethod
     def awsRegion(cls):
@@ -150,10 +155,6 @@ class ToilTest(unittest.TestCase):
         temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
-
-    def tearDown(self):
-        super(ToilTest, self).tearDown()
-        log.info("Tore down %s", self.id())
 
     def _getTestJobStorePath(self):
         path = self._createTempDir(purpose='jobstore')
@@ -885,6 +886,10 @@ class ApplianceTestSupport(ToilTest):
                             applianceSelf(),
                             '-c',
                             cmd)
+
+        def tryRun(self):
+            self.popen.wait()
+            log.info('Exiting %s', self.__class__.__name__)
 
         def runOnAppliance(self, *args, **kwargs):
             # Check if thread is still alive. Note that ExceptionalThread.join raises the
