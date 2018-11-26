@@ -142,7 +142,12 @@ class UtilsTest(ToilTest):
             # Test strict host key checking
             # Doesn't work when run locally.
             if keyName == 'jenkins@jenkins-master':
-                self.assertRaises(RuntimeError, leader.sshAppliance(strict=True))
+                try:
+                    leader.sshAppliance(strict=True)
+                except RuntimeError:
+                    pass
+                else:
+                    self.fail("Host key verification passed where it should have failed")
 
             # Add the host key to known_hosts so that the rest of the tests can
             # pass without choking on the verification prompt.
@@ -165,7 +170,12 @@ class UtilsTest(ToilTest):
                 compareTo = "import sys; assert sys.argv[1]==%r" % test
                 leader.sshAppliance('python', '-', test, input=compareTo)
 
-            self.assertRaises(RuntimeError, leader.sshAppliance('nonsenseShouldFail'))
+            try:
+                leader.sshAppliance('nonsenseShouldFail')
+            except RuntimeError:
+                pass
+            else:
+                self.fail('The remote command failed silently where it should have raised an error')
 
             leader.sshAppliance('python', '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'")
 
