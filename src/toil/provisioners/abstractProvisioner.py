@@ -105,7 +105,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     An abstract base class to represent the interface for provisioning worker nodes to use in a
     Toil cluster.
     """
-    LEADER_HOME_DIR = '/root/' # home directory in the Toil appliance on an instance
+    LEADER_HOME_DIR = '/root/'  # home directory in the Toil appliance on an instance
 
     def __init__(self, clusterName=None, zone=None, nodeStorage=50):
         """

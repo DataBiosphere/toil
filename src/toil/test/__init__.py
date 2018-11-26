@@ -11,9 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
-
 from builtins import next
 from builtins import str
 import logging
@@ -33,8 +31,6 @@ from contextlib import contextmanager
 from inspect import getsource
 from textwrap import dedent
 from unittest.util import strclass
-
-# Python 3 compatibility imports
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
@@ -42,7 +38,6 @@ from toil.lib.memoize import less_strict_bool, memoize
 from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread
 from toil.lib.misc import mkdir_p
-
 from toil import subprocess
 from toil import which
 from toil import toilPackageDirPath, applianceSelf
@@ -72,11 +67,25 @@ class ToilTest(unittest.TestCase):
     def setUpClass(cls):
         super(ToilTest, cls).setUpClass()
         cls._tempDirs = []
-        tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
-        if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
-            tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
-            mkdir_p(tempBaseDir)
-        cls._tempBaseDir = tempBaseDir
+        cls._tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
+        if cls._tempBaseDir is not None and not os.path.isabs(cls._tempBaseDir):
+            cls._tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), cls._tempBaseDir))
+            mkdir_p(cls._tempBaseDir)
+
+    def setUp(self):
+        log.info("Setting up %s ...", self.id())
+        super(ToilTest, self).setUp()
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._tempBaseDir is None:
+            while cls._tempDirs:
+                tempDir = cls._tempDirs.pop()
+                if os.path.exists(tempDir):
+                    shutil.rmtree(tempDir)
+        else:
+            cls._tempDirs = []
+        super(ToilTest, cls).tearDownClass()
 
     @classmethod
     def awsRegion(cls):
@@ -129,21 +138,6 @@ class ToilTest(unittest.TestCase):
         assert projectRootPath.endswith(expectedSuffix)
         projectRootPath = projectRootPath[:-len(expectedSuffix)]
         return projectRootPath
-
-    @classmethod
-    def tearDownClass(cls):
-        if cls._tempBaseDir is None:
-            while cls._tempDirs:
-                tempDir = cls._tempDirs.pop()
-                if os.path.exists(tempDir):
-                    shutil.rmtree(tempDir)
-        else:
-            cls._tempDirs = []
-        super(ToilTest, cls).tearDownClass()
-
-    def setUp(self):
-        log.info("Setting up %s ...", self.id())
-        super(ToilTest, self).setUp()
 
     def _createTempDir(self, purpose=None):
         return self._createTempDirEx(self._testMethodName, purpose)
@@ -891,10 +885,6 @@ class ApplianceTestSupport(ToilTest):
                             applianceSelf(),
                             '-c',
                             cmd)
-
-        def tryRun(self):
-            self.popen.wait()
-            log.info('Exiting %s', self.__class__.__name__)
 
         def runOnAppliance(self, *args, **kwargs):
             # Check if thread is still alive. Note that ExceptionalThread.join raises the

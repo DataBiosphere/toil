@@ -326,8 +326,8 @@ class UtilsTest(ToilTest):
     def check_status(self, status, status_fn, seconds=10):
         i = 0.0
         while status_fn(self.toilDir) != status:
-            time.sleep(0.01)
-            i += 0.01
+            time.sleep(0.5)
+            i += 0.5
             if i > seconds:
                 s = status_fn(self.toilDir)
                 self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
