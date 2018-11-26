@@ -39,6 +39,7 @@ from six.moves.urllib import parse as urlparse
 import six
 
 from schema_salad import validate
+from schema_salad.schema import Names
 import schema_salad.ref_resolver
 
 import cwltool.errors
@@ -58,7 +59,7 @@ from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
                                 normalizeFilesDirs)
 from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
-                             collectFilesAndDirs, add_sizes)
+                             add_sizes)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
@@ -389,8 +390,21 @@ def toilStageFiles(file_store, cwljob, outdir, index, existing, export,
     """Copy input files out of the global file store and update location and
     path."""
 
-    jobfiles = []  # type: List[Dict[Text, Any]]
-    collectFilesAndDirs(cwljob, jobfiles)
+    def _collectDirEntries(obj):
+    # type: (Union[Dict[Text, Any], List[Dict[Text, Any]]]) -> Iterator[Dict[Text, Any]]
+        if isinstance(obj, dict):
+            if obj.get("class") in ("File", "Directory"):
+                yield obj
+            else:
+                for sub_obj in obj.values():
+                    for dir_entry in _collectDirEntries(sub_obj):
+                        yield dir_entry
+        elif isinstance(obj, list):
+            for sub_obj in obj:
+                for dir_entry in _collectDirEntries(sub_obj):
+                    yield dir_entry
+
+    jobfiles = list(_collectDirEntries(cwljob))
     pm = ToilPathMapper(
         jobfiles, "", outdir, separateDirs=False, stage_listing=True)
     for f, p in pm.items():
@@ -497,12 +511,29 @@ class CWLJob(Job):
         if runtime_context.builder:
             builder = runtime_context.builder
         else:
-            builder = cwltool.builder.Builder(cwljob)
-            builder.requirements = self.cwltool.requirements
-            builder.outdir = None
-            builder.tmpdir = None
-            builder.timeout = runtime_context.eval_timeout
-            builder.resources = {}
+            builder = cwltool.builder.Builder(
+                job=cwljob,
+                files=[],
+                bindings=[],
+                schemaDefs={},
+                names=Names(),
+                requirements=self.cwltool.requirements,
+                hints=[],
+                resources={},
+                mutation_manager=None,
+                formatgraph=None,
+                make_fs_access=runtime_context.make_fs_access,
+                fs_access=runtime_context.make_fs_access(''),
+                job_script_provider=None,
+                timeout=runtime_context.eval_timeout,
+                debug=False,
+                js_console=False,
+                force_docker_pull=False,
+                loadListing=u'',
+                outdir=u'',
+                tmpdir=u'',
+                stagedir=u''
+            )
         req = tool.evalResources(builder, runtime_context)
         # pass the default of None if basecommand is empty
         unitName = self.cwltool.tool.get("baseCommand", None)
@@ -1159,9 +1190,10 @@ def main(args=None, stdout=sys.stdout):
             document_loader, avsc_names, processobj, metadata, uri = \
                 cwltool.load_tool.validate_document(
                     document_loader, workflowobj, uri,
+                    loading_context.overrides_list,
+                    loading_context.metadata,
                     loading_context.enable_dev, loading_context.strict, False,
                     loading_context.fetcher_constructor, False,
-                    loading_context.overrides_list,
                     do_validate=loading_context.do_validate)
             loading_context.overrides_list.extend(
                 metadata.get("cwltool:overrides", []))
