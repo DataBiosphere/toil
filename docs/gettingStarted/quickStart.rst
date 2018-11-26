@@ -14,7 +14,7 @@ A Toil workflow can be run with just three steps:
 
 2. Copy and paste the following code block into a new file called ``helloWorld.py``:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/helloWorld.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_helloworld.py
 
 3. Specify the name of the :ref:`job store <jobStoreOverview>` and run the workflow::
 

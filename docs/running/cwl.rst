@@ -37,4 +37,4 @@ CWL workflows with Toil and doing so comes at the cost of job efficency. For som
 multiple files, it may be useful. For example, if you want to run a CWL workflow with 3 YML files specifying different
 samples inputs, it could look something like:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/cwlexample.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_cwlexample.py
