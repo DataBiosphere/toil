@@ -44,6 +44,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     def __init__(self, clusterName, zone, nodeStorage, sseKey):
         super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage)
+        self.cloud = 'gce'
         self._sseKey = sseKey
 
         # If the clusterName is not given, then Toil must be running on the leader

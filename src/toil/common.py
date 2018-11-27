@@ -43,7 +43,6 @@ from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOption
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
-from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
@@ -1090,7 +1089,7 @@ class ToilMetrics:
         if provisioner is not None:
             clusterName = provisioner.clusterName
             if provisioner._zone is not None:
-                if isinstance(provisioner, AWSProvisioner):
+                if provisioner.cloud == 'aws':
                     # Remove AZ name
                     region = zoneToRegion(provisioner._zone)
                 else:
