@@ -48,6 +48,7 @@ def runSetup():
     pytest = 'pytest==3.7.4'
     pytest_cov = 'pytest-cov==2.5.1'
     addict = 'addict<=2.2.0'
+    sphinx = 'sphinx==1.7.5'
 
     core_reqs = [
         dill,
@@ -60,7 +61,8 @@ def runSetup():
         subprocess32,
         pytest,
         pytest_cov,
-        addict]
+        addict,
+        sphinx]
 
     mesos_reqs = [
         pymesos,
