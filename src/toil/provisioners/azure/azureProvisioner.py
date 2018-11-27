@@ -54,6 +54,7 @@ class AzureProvisioner(AnsibleDriver):
     """
 
     def __init__(self, clusterName, zone, nodeStorage):
+        self.cloud = 'azure'
 
         self.playbook = {
             'check-cluster': 'create-azure-resourcegroup.yml',
