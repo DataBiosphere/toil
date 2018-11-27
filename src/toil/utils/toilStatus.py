@@ -169,6 +169,8 @@ class ToilStatus():
             jobstore = Toil.resumeJobStore(jobStoreName)
         except NoSuchJobStoreException:
             return 'QUEUED'
+        except NoSuchFileException:
+            return 'QUEUED'
 
         try:
             with jobstore.readSharedFileStream('pid.log') as pidFile:
@@ -200,6 +202,8 @@ class ToilStatus():
         try:
             jobstore = Toil.resumeJobStore(jobStoreName)
         except NoSuchJobStoreException:
+            return 'QUEUED'
+        except NoSuchFileException:
             return 'QUEUED'
 
         try:

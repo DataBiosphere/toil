@@ -11,9 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
-
 from builtins import next
 from builtins import str
 import logging
@@ -33,8 +31,6 @@ from contextlib import contextmanager
 from inspect import getsource
 from textwrap import dedent
 from unittest.util import strclass
-
-# Python 3 compatibility imports
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
@@ -42,7 +38,6 @@ from toil.lib.memoize import less_strict_bool, memoize
 from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread
 from toil.lib.misc import mkdir_p
-
 from toil import subprocess
 from toil import which
 from toil import toilPackageDirPath, applianceSelf
@@ -77,6 +72,25 @@ class ToilTest(unittest.TestCase):
             tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
             mkdir_p(tempBaseDir)
         cls._tempBaseDir = tempBaseDir
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._tempBaseDir is None:
+            while cls._tempDirs:
+                tempDir = cls._tempDirs.pop()
+                if os.path.exists(tempDir):
+                    shutil.rmtree(tempDir)
+        else:
+            cls._tempDirs = []
+        super(ToilTest, cls).tearDownClass()
+
+    def setUp(self):
+        log.info("Setting up %s ...", self.id())
+        super(ToilTest, self).setUp()
+
+    def tearDown(self):
+        super(ToilTest, self).tearDown()
+        log.info("Tore down %s", self.id())
 
     @classmethod
     def awsRegion(cls):
@@ -130,21 +144,6 @@ class ToilTest(unittest.TestCase):
         projectRootPath = projectRootPath[:-len(expectedSuffix)]
         return projectRootPath
 
-    @classmethod
-    def tearDownClass(cls):
-        if cls._tempBaseDir is None:
-            while cls._tempDirs:
-                tempDir = cls._tempDirs.pop()
-                if os.path.exists(tempDir):
-                    shutil.rmtree(tempDir)
-        else:
-            cls._tempDirs = []
-        super(ToilTest, cls).tearDownClass()
-
-    def setUp(self):
-        log.info("Setting up %s ...", self.id())
-        super(ToilTest, self).setUp()
-
     def _createTempDir(self, purpose=None):
         return self._createTempDirEx(self._testMethodName, purpose)
 
@@ -156,10 +155,6 @@ class ToilTest(unittest.TestCase):
         temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
-
-    def tearDown(self):
-        super(ToilTest, self).tearDown()
-        log.info("Tore down %s", self.id())
 
     def _getTestJobStorePath(self):
         path = self._createTempDir(purpose='jobstore')
@@ -772,7 +767,6 @@ class ApplianceTestSupport(ToilTest):
     A Toil test that runs a user script on a minimal cluster of appliance containers,
     i.e. one leader container and one worker container.
     """
-
     @contextmanager
     def _applianceCluster(self, mounts=None, numCores=None):
         """
@@ -960,4 +954,6 @@ class ApplianceTestSupport(ToilTest):
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',
-                    '--resources=cpus(*):%i' % self.numCores]
+                    '--resources=cpus(*):%i' % self.numCores,
+                    '--no-hostname_lookup',
+                    '--no-systemd_enable_support']
