@@ -91,7 +91,7 @@ help:
 # This Makefile uses bash features like printf and <()
 SHELL=bash
 python=python3
-pip=pip3
+pip=pip
 tests=src
 tests_local=src/toil/test
 # do slightly less than travis timeout of 10 min.

@@ -5,7 +5,7 @@
 
 # Passing --system-site-packages ensures that mesos.native and mesos.interface are included
 # Passing --never-download prevents silent upgrades to pip, wheel and setuptools
-virtualenv --system-site-packages --never-download venv
+virtualenv --system-site-packages --never-download -p python3 venv
 . venv/bin/activate
 
 # Install build requirements 
