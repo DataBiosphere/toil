@@ -517,7 +517,7 @@ def needs_appliance(test_item):
     if which('docker'):
         image = applianceSelf()
         try:
-            images = subprocess.check_output(['docker', 'inspect', image])
+            images = subprocess.check_output(['docker', 'inspect', image]).decode('utf-8')
         except subprocess.CalledProcessError:
             images = []
         else:

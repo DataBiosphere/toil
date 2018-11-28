@@ -1152,7 +1152,7 @@ class ToilMetrics:
     def _containerRunning(containerName):
         try:
             result = subprocess.check_output(["docker", "inspect", "-f",
-                                              "'{{.State.Running}}'", containerName]) == "true"
+                                              "'{{.State.Running}}'", containerName]).decode('utf-8') == "true"
         except subprocess.CalledProcessError:
             result = False
         return result
@@ -1329,8 +1329,7 @@ def getDirSizeRecursively(dirPath):
     # allocated with the environment variable: BLOCKSIZE='512' set, and we
     # multiply this by 512 to return the filesize in bytes.
     return int(subprocess.check_output(['du', '-s', dirPath],
-                                       env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode(
-        'ascii')) * 512
+                                       env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
 
 
 def getFileSystemSize(dirPath):
