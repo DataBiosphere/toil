@@ -90,7 +90,7 @@ help:
 
 # This Makefile uses bash features like printf and <()
 SHELL=bash
-python=python3.6
+python=python3
 pip=pip3
 tests=src
 tests_local=src/toil/test
