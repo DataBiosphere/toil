@@ -49,6 +49,7 @@ def runSetup():
     pytest_cov = 'pytest-cov==2.5.1'
     addict = 'addict<=2.2.0'
     sphinx = 'sphinx==1.7.5'
+    pathlib2 = 'pathlib2==2.3.2'
 
     core_reqs = [
         dill,
@@ -62,7 +63,8 @@ def runSetup():
         pytest,
         pytest_cov,
         addict,
-        sphinx]
+        sphinx,
+        pathlib2]
 
     mesos_reqs = [
         pymesos,
