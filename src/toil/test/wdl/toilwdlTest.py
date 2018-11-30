@@ -421,7 +421,8 @@ def remove_outputs(output_dir):
                       'wdl-stats.log',
                       'xcor.json',
                       'xcor.log',
-                      'toilwdl_compiled.pyc']
+                      'toilwdl_compiled.pyc',
+                      'toilwdl_compiled.py']
     other_log_outputs = ['post_processing.log',
                          'md5.log']
     outputs = encode_outputs + other_log_outputs

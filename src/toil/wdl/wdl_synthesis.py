@@ -620,6 +620,7 @@ class SynthesizeWDL:
                 else:
                     fn_section += '{input}=None, '.format(input=var)
         fn_section += '*args, **kwargs):\n'
+        fn_section += '        super({jobname}Cls, self).__init__(*args, **kwargs)\n'.format(jobname=job)
 
         # TODO: Resolve inherent problems resolving resource requirements
         # In WDL, "local-disk " + 500 + " HDD" cannot be directly converted to python.
@@ -657,7 +658,6 @@ class SynthesizeWDL:
                 fn_section += '        self.id_{} = {}\n'.format(var, var_expressn)
 
         fn_section += heredoc_wdl('''
-                                 super({jobname}Cls, self).__init__(*args, **kwargs)
 
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
