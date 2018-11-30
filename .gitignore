@@ -18,3 +18,4 @@ tmp/
 /docker/Dockerfile
 /docker/toil-*.tar.gz
 /src/toil/version.py
+.coverage*
