@@ -180,6 +180,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError()
 
+    @contextmanager
     def writeGlobalFileStream(self, cleanup=False):
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
@@ -190,8 +191,9 @@ class FileStore(with_metaclass(ABCMeta, object)):
                   1) a file handle which can be written to and
                   2) the toil.fileStore.FileID of the resulting file in the job store.
         """
+        
         # TODO: Make this work with FileID
-        with self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID) as backingStream, fileStoreID:
+        with self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID) as (backingStream, fileStoreID):
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
             # that accurately reflects the size of the data written to the
