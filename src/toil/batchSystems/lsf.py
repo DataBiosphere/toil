@@ -56,7 +56,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     stdout=subprocess.PIPE)
             stdout, _ = process.communicate()
 
-            for curline in stdout.split('\n'):
+            for curline in stdout.decode('utf-8').split('\n'):
                 items = curline.strip().split('|')
                 if items[0] in currentjobs and items[1] == 'RUN':
                     jobstart = parse(items[2], default=datetime.now(tzlocal()))
@@ -75,7 +75,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             combinedEnv.update(os.environ)
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE,
                                        env=combinedEnv)
-            line = process.stdout.readline()
+            line = process.stdout.readline().decode('utf-8')
             logger.debug("BSUB: " + line)
             result = int(line.strip().split()[1].strip('<>'))
             logger.debug("Got the job id: {}".format(result))
@@ -191,7 +191,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         p = subprocess.Popen(["lshosts"], stdout=subprocess.PIPE,
                              stderr=subprocess.STDOUT)
 
-        line = p.stdout.readline()
+        line = p.stdout.readline().decode('utf-8')
         items = line.strip().split()
         num_columns = len(items)
         cpu_index = None
@@ -206,7 +206,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 RuntimeError("lshosts command does not return ncpus or maxmem "
                              "columns")
 
-        # p.stdout.readline()
+        # p.stdout.readline().decode('utf-8')
 
         maxCPU = 0
         maxMEM = MemoryString("0")

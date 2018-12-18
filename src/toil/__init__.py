@@ -165,7 +165,7 @@ def physicalMemory():
     try:
         return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
     except ValueError:
-        return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).strip())
+        return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).decode('utf-8').strip())
 
 
 def physicalDisk(config, toilWorkflowDir=None):

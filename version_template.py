@@ -106,7 +106,7 @@ def buildNumber():
 def currentCommit():
     from subprocess import check_output
     try:
-        output = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0]
+        output = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).decode('utf-8').split()[0]
     except:
         # Return this we are not in a git environment.
         return '000'

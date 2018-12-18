@@ -424,8 +424,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         jobTypes = self.jobQueues.sortedTypes
 
-        # TODO: We may want to assert that numIssued >= numRunning
-        if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):
+        if not jobTypes:
             log.debug('There are no queued tasks. Declining Mesos offers.')
             # Without jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
