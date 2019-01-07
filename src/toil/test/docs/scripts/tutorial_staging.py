@@ -3,7 +3,7 @@ import os
 from toil.common import Toil
 from toil.job import Job
 from toil.lib.io import mkdtemp
-
+from toil.test import get_data
 
 class HelloWorld(Job):
     def __init__(self, id):
@@ -22,6 +22,7 @@ class HelloWorld(Job):
 
 if __name__ == "__main__":
     jobstore: str = mkdtemp("tutorial_staging")
+    tmp: str = mkdtemp("tutorial_staging_tmp")
     os.rmdir(jobstore)
     options = Job.Runner.getDefaultOptions(jobstore)
     options.logLevel = "INFO"
@@ -29,17 +30,13 @@ if __name__ == "__main__":
 
     with Toil(options) as toil:
         if not toil.options.restart:
-            ioFileDirectory = os.path.join(
-                os.path.dirname(os.path.abspath(__file__)), "stagingExampleFiles"
-            )
-            inputFileID = toil.importFile(
-                "file://" + os.path.abspath(os.path.join(ioFileDirectory, "in.txt"))
-            )
-            outputFileID = toil.start(HelloWorld(inputFileID))
+            with get_data("test/docs/scripts/stagingExampleFiles/in.txt") as path:
+                inputFileID = toil.importFile(f"file://{path}")
+                outputFileID = toil.start(HelloWorld(inputFileID))
         else:
             outputFileID = toil.restart()
 
         toil.exportFile(
             outputFileID,
-            "file://" + os.path.abspath(os.path.join(ioFileDirectory, "out.txt")),
+            "file://" + os.path.join(tmp, "out.txt"),
         )
