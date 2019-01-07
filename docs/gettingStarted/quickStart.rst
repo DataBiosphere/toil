@@ -96,7 +96,7 @@ To run this workflow on an AWS cluster have a look at :ref:`awscwl`.
 
 For information on using CWL with Toil see the section :ref:`cwl`
 
-.. _CWL User Guide: http://www.commonwl.org/v1.0/UserGuide.html
+.. _CWL User Guide: https://www.commonwl.org/user_guide/
 
 Running a basic WDL workflow
 ----------------------------
