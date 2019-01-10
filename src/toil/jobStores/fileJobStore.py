@@ -28,14 +28,12 @@ import stat
 import errno
 import time
 import traceback
-import time
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
 
-from contextlib import contextmanager
-# toil and bd2k dependencies
+# toil dependencies
 from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath
 from toil.jobStores.abstractJobStore import (AbstractJobStore,

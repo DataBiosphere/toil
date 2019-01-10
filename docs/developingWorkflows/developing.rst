@@ -584,7 +584,7 @@ get that check for free.
 
 .. _setup.py: https://github.com/BD2KGenomics/toil-lib/blob/master/setup.py
 
-If your workflow depends on a dependency of Toil, e.g. ``bd2k-python-lib``,
+If your workflow depends on a dependency of Toil,
 consider not making that dependency explicit either. If you do, you risk a
 version conflict between your project and Toil. The ``pip`` utility may
 silently ignore that conflict, breaking either Toil or your workflow. It is
