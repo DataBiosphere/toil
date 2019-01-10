@@ -45,8 +45,6 @@ def runSetup():
     docker = 'docker==2.5.1'
     subprocess32 = 'subprocess32<=3.5.2'
     dateutil = 'python-dateutil'
-    pytest = 'pytest==3.7.4'
-    pytest_cov = 'pytest-cov==2.5.1'
     addict = 'addict<=2.2.0'
     sphinx = 'sphinx==1.7.5'
     pathlib2 = 'pathlib2==2.3.2'
@@ -60,8 +58,6 @@ def runSetup():
         dateutil,
         psutil,
         subprocess32,
-        pytest,
-        pytest_cov,
         addict,
         sphinx,
         pathlib2]
