@@ -10,4 +10,4 @@ stages:
 quick-job:
   stage: quick
   script:
-    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all] && export TOIL_TEST_QUICK=True; make test
+    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all, htcondor] && export TOIL_TEST_QUICK=True; make test
