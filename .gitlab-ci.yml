@@ -1,0 +1,16 @@
+before_script:
+  - sudo apt -y update
+  - sudo apt -y install docker.io python3-pip python-pip python3-dev python-dev libcurl4-gnutls-dev libssl1.0-dev curl jq virtualenv flake8 zip unzip
+  - sudo apt -y upgrade
+  - cat /etc/hosts
+  - docker info
+
+stages:
+  - quick
+
+
+# We define one job to do the build
+quick-job:
+  stage: quick
+  script:
+    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all] && export TOIL_TEST_QUICK=True; make test
