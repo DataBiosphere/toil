@@ -3,7 +3,6 @@ before_script:
   - sudo apt -y install python3-pip python-pip python3-dev python-dev libcurl4-gnutls-dev libssl1.0-dev curl jq virtualenv flake8 zip unzip
   - sudo apt -y upgrade
   - cat /etc/hosts
-  - docker info
 
 stages:
   - quick
