@@ -66,7 +66,7 @@ during the computation of a workflow, first set up and configure an account with
 
     1. On the IAM Dashboard page, choose your account name in the navigation bar, and then choose My Security Credentials.
     2. Expand the Access keys (access key ID and secret access key) section.
-    3. Choose Create New Access Key. Then choose Download Key File to save the access key ID and secret access key to a file on your computer. <strong><em>After you close the dialog box, you can't retrieve this secret access key again.
+    3. Choose Create New Access Key. Then choose Download Key File to save the access key ID and secret access key to a file on your computer. After you close the dialog box, you can't retrieve this secret access key again.
 
 #. Now you should have a newly generated "AWS Access Key ID" and "AWS Secret Access Key".  We can now install the AWS CLI and make sure that it has the proper credentials: ::
 
