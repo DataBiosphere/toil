@@ -10,10 +10,11 @@ stages:
 py2-job:
   stage: py2
   script:
-    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
+    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && export TOIL_TEST_QUICK=True; make test
 
 
 py3-job:
   stage: py3
   script:
-    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
+    -
+    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && export TOIL_TEST_QUICK=True; make test
