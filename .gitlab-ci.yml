@@ -3,11 +3,17 @@ before_script:
   - cat /etc/hosts
 
 stages:
-  - quick
+  - py2
+  - py3
 
 
-# We define one job to do the build
-quick-job:
-  stage: quick
+py2-job:
+  stage: py2
   script:
-    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all, htcondor] && export TOIL_TEST_QUICK=True; make test
+    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
+
+
+py3-job:
+  stage: py3
+  script:
+    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
