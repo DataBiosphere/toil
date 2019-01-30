@@ -80,8 +80,8 @@ def decrypt(ciphertext, keyPath):
     CryptoError: Decryption failed. Ciphertext failed verification
 
     Otherwise works correctly
-    >>> decrypt(encrypt("testMessage".encode('utf-8'), k), k).decode('utf-8') # doctest: +ALLOW_UNICODE
-    u'testMessage'
+    >>> decrypt(encrypt("testMessage".encode('utf-8'), k), k).decode('utf-8') in (u'testMessage', b'testMessage', 'testMessage') # doctest: +ALLOW_UNICODE
+    True
 
     >>> import os
     >>> os.remove(k)
