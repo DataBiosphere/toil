@@ -10,7 +10,8 @@ __pycache__
 .idea/
 /test-report.xml
 /test-report-*.xml
-/venv/
+venv/
+v3nv/
 tmp/
 /src/toil/test/cwl/spec
 /cwltool_deps/
