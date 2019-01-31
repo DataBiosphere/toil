@@ -392,7 +392,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         return cores, memory, disk, preemptable
 
     def _prepareToRun(self, jobType, offer):
-        # Get the first element to insure FIFO
+        # Get the first element to ensure FIFO
         job = self.jobQueues.nextJobOfType(jobType)
         task = self._newMesosTask(job, offer)
         return task
