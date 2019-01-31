@@ -266,7 +266,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
-                # after we start launching instances we want to insure the full setup is done
+                # after we start launching instances we want to ensure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
                 # every request in this method
                 if not preemptable:
@@ -323,7 +323,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._zone = getCurrentAWSZone()
             if self._zone is None:
                 raise RuntimeError(
-                    'Could not determine availability zone. Insure that one of the following '
+                    'Could not determine availability zone. Ensure that one of the following '
                     'is true: the --zone flag is set, the TOIL_AWS_ZONE environment variable '
                     'is set, ec2_region_name is set in the .boto file, or that '
                     'you are running on EC2.')

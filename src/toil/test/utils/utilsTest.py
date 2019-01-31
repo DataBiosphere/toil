@@ -313,7 +313,7 @@ class UtilsTest(ToilTest):
     @slow
     def testMultipleJobsPerWorkerStats(self):
         """
-        Tests case where multiple jobs are run on 1 worker to insure that all jobs report back their data
+        Tests case where multiple jobs are run on 1 worker to ensure that all jobs report back their data
         """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.clean = 'never'

@@ -267,7 +267,7 @@ Finally, you can execute remote commands with the following syntax::
     $ toil ssh-cluster CLUSTER-NAME-HERE remoteCommand
 
 It is not advised that you run your Toil workflow using remote execution like this
-unless a tool like `nohup <https://linux.die.net/man/1/nohup>`_ is used to insure the
+unless a tool like `nohup <https://linux.die.net/man/1/nohup>`_ is used to ensure the
 process does not die if the SSH connection is interrupted.
 
 For an example usage, see :ref:`Autoscaling`.
