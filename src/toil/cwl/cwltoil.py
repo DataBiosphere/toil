@@ -355,7 +355,7 @@ def uploadFile(uploadfunc, fileindex, existing, uf, skip_broken=False):
         return
     if not uf["location"] and uf["path"]:
         uf["location"] = schema_salad.ref_resolver.file_uri(uf["path"])
-    if not os.path.isfile(uf["location"][7:]):
+    if uf["location"].startswith("file://") and not os.path.isfile(uf["location"][7:]):
         if skip_broken:
             return
         else:
