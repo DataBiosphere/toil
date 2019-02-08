@@ -92,6 +92,12 @@ class CWLTest(ToilTest):
                   'src/toil/test/cwl/revsort-job.json',
                   self._expected_revsort_output(self.outDir))
 
+    def download(self,inputs, tester_fn):
+        input_location = os.path.join('src/toil/test/cwl',inputs)
+        tester_fn('src/toil/test/cwl/download.cwl',
+                  input_location,
+                  self._expected_download_output(self.outDir))
+
     def test_run_revsort(self):
         self.revsort('revsort.cwl', self._tester)
 
@@ -245,3 +251,17 @@ class CWLTest(ToilTest):
                 u'size': 1111,
                 u'class': u'File',
                 u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}}
+
+    @staticmethod
+    def _expected_download_output(outDir):
+        # Having unicode string literals isn't necessary for the assertion but
+        # makes for a less noisy diff in case the assertion fails.
+        loc = 'file://' + os.path.join(outDir, 'output.txt')
+        loc = str(loc) if not isinstance(loc, text_type) else loc  # py2/3
+        return {
+            u'output': {
+                u'location': loc,
+                u'basename': u'output.txt',
+                u'size': 0,
+                u'class': u'File',
+                u'checksum': u'sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709'}}
