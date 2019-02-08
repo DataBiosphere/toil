@@ -113,6 +113,9 @@ class CWLTest(ToilTest):
     def test_run_http(self):
         self.download('download_http.json', self._tester)
 
+    def test_run_https(self):
+        self.download('download_https.json', self._tester)
+
     @slow
     def test_bioconda(self):
         self._tester('src/toil/test/cwl/seqtk_seq.cwl',

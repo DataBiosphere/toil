@@ -1,0 +1,6 @@
+{
+  "input": {
+    "class": "File",
+    "location": "https://toil-datasets.s3.amazonaws.com/wdl_templates.zip"
+  }
+}
