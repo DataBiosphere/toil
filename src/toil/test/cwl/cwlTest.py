@@ -107,6 +107,9 @@ class CWLTest(ToilTest):
     def test_run_revsort_debug_worker(self):
         self.revsort('revsort.cwl', self._debug_worker_tester)
 
+    def test_run_s3(self):
+        self.download('download_s3.json', self._tester)
+
     @slow
     def test_bioconda(self):
         self._tester('src/toil/test/cwl/seqtk_seq.cwl',
