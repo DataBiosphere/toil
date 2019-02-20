@@ -129,8 +129,8 @@ def addOptions(addOptionFn, config):
     addOptionFn("--runCwlInternalJobsOnWorkers", dest="runCwlInternalJobsOnWorkers",
                 action='store_true', default=None,
                 help=("Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
-                      "instead of the master. If false (default), then all such jobs are run on "
-                      "the master. Setting this to true can speed up the pipeline for very large "
+                      "instead of the primary node. If false (default), then all such jobs are run on "
+                      "the primary node. Setting this to true can speed up the pipeline for very large "
                       "workflows with many sub-workflows and/or scatters, provided that the worker "
                       "pool is large enough."))
 
