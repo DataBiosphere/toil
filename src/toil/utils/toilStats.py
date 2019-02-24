@@ -532,14 +532,15 @@ def getStats(jobStore):
 
 
 def processData(config, stats):
-    ##########################################
-    # Collate the stats and report
-    ##########################################
-    if stats.get("total_time", None) is None:  # Hack to allow unfinished toils.
-        stats.total_time = {"total_time": "0.0", "total_clock": "0.0"}
-    else:
-        stats.total_time = sum([float(number) for number in stats.total_time])
-        stats.total_clock = sum([float(number) for number in stats.total_clock])
+    """
+    Collate the stats and report
+    """
+    if 'total_time' not in stats:  # toil job not finished yet
+        stats.total_time = [0.0]
+        stats.total_clock = [0.0]
+
+    stats.total_time = sum([float(number) for number in stats.total_time])
+    stats.total_clock = sum([float(number) for number in stats.total_clock])
 
     collatedStatsTag = Expando(total_run_time=stats.total_time,
                                total_clock=stats.total_clock,
