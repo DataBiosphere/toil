@@ -127,6 +127,7 @@ class Config(object):
         self.servicePollingInterval = 60
         self.useAsync = True
         self.forceDockerAppliance = False
+        self.runCwlInternalJobsOnWorkers = False
 
         # Debug options
         self.debugWorker = False
@@ -260,13 +261,14 @@ class Config(object):
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
 
-        #Misc
+        # Misc
         setOption("maxLocalJobs", int)
         setOption("disableCaching")
         setOption("disableChaining")
         setOption("maxLogFileSize", h2b, iC(1))
         setOption("writeLogs")
         setOption("writeLogsGzip")
+        setOption("runCwlInternalJobsOnWorkers")
 
         def checkSse(sseKey):
             with open(sseKey) as f:

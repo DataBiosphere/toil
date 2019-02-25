@@ -315,7 +315,8 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         Returns the jobID if the jobNode has been submitted to the local queue,
         otherwise returns None
         """
-        if jobNode.jobName.startswith(CWL_INTERNAL_JOBS):
+        if (not self.config.runCwlInternalJobsOnWorkers
+                and jobNode.jobName.startswith(CWL_INTERNAL_JOBS)):
             return self.localBatch.issueBatchJob(jobNode)
         else:
             return None
