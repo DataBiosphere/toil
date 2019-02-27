@@ -28,7 +28,7 @@ from datetime import datetime
 from toil.lib.misc import mkdir_p
 
 from boto.provider import Provider
-from boto3.session import Session
+from botocore.session import Session
 from botocore.credentials import create_credential_resolver, RefreshableCredentials
 
 # We cache the final credentials so that we don't send multiple processes to
@@ -54,11 +54,12 @@ class BotoCredentialAdapter(Provider):
         Create a new BotoCredentialAdapter.
         """
         
+        # Get ahold of a Boto3 credential resolver.
+        # We need this before the superclass constructor calls get_credentials
+        self._boto3_resolver = create_credential_resolver(Session())
+        
         # Hardcode to use AWS. This approach can't work against Google Cloud.
         super(BotoCredentialAdapter, self).__init__('aws')
-        
-        # Get ahold of a Boto3 credential resolver
-        self._boto3_resolver = create_credential_resolver(Session())
         
     def get_credentials(self, access_key=None, secret_key=None, security_token=None, profile_name=None):
         """
