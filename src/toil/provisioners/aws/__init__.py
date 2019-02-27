@@ -14,6 +14,7 @@
 import logging
 import os
 from collections import namedtuple
+from difflib import get_close_matches
 from operator import attrgetter
 import datetime
 from toil.lib.misc import std_dev, mean
@@ -226,8 +227,14 @@ def checkValidNodeTypes(provisioner, nodeTypes):
             if nodeType and ':' in nodeType:
                 nodeType = nodeType.split(':')[0]
             if nodeType not in regionDict[currentZone]:
-                raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.'
-                                   '' % (nodeType, currentZone))
+                # They probably misspelled it and can't tell.
+                close = get_close_matches(nodeType, regionDict[currentZone], 1)
+                if len(close) > 0:
+                    helpText = ' Did you mean ' + close[0] + '?'
+                else:
+                    helpText = ''
+                raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.%s'
+                                   '' % (nodeType, currentZone, helpText))
     # Only checks if aws nodeType specified for gce/azure atm.
     if provisioner == 'gce' or provisioner == 'azure':
         for nodeType in nodeTypes:
