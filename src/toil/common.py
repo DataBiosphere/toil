@@ -830,9 +830,7 @@ class Toil(object):
             from toil.jobStores.fileJobStore import FileJobStore
             return FileJobStore(rest)
         elif name == 'aws':
-            from toil.lib.ec2Credentials import enable_metadata_credential_caching
             from toil.jobStores.aws.jobStore import AWSJobStore
-            enable_metadata_credential_caching()
             return AWSJobStore(rest)
         elif name == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore

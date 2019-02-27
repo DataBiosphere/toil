@@ -495,16 +495,6 @@ def main(argv=None):
     #Load the jobStore/config file
     ##########################################
 
-    # Try to monkey-patch boto early so that credentials are cached.
-    try:
-        import boto
-    except ImportError:
-        pass
-    else:
-        # boto is installed, monkey patch it now
-        from toil.lib.ec2Credentials import enable_metadata_credential_caching
-        enable_metadata_credential_caching()
-
     jobStore = Toil.resumeJobStore(jobStoreLocator)
     config = jobStore.config
 
