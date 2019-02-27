@@ -5,6 +5,13 @@ import os
 import urllib
 import re
 import logging
+import inspect
+
+try:
+    from urllib.parse import unquote
+except ImportError:
+    from urllib import unquote
+
 from boto import iam, sns, sqs, vpc
 from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
@@ -207,7 +214,19 @@ class Context(object):
     def __aws_connect(self, aws_module, region=None, **kwargs):
         if region is None:
             region = self.region
-        conn = aws_module.connect_to_region(region, provider=BotoCredentialAdapter(), **kwargs)
+            
+        if 'provider' in inspect.getargspec(aws_module.connect_to_region).keywords:
+            # If the module accepts a provider, we will give it one.
+            conn = aws_module.connect_to_region(region, provider=BotoCredentialAdapter(), **kwargs)
+        else:
+            # Otherwise, we give it a set of possibly temporary credentials.
+            # TODO: there's no way to handle expiration. Boto 2 really needs to
+            # accept a Provider everywhere and always pass it to the base
+            # AWSAuthConnection. Maybe we should consider not passing a
+            # Provider and instead monkey patching the original.
+            joinedArgs = BotoCredentialAdapter().kwargs()
+            joinedArgs.update(kwargs)
+            conn = aws_module.connect_to_region(region, **joinedArgs)
         if conn is None:
             raise RuntimeError("%s couldn't connect to region %s" % (
                 aws_module.__name__, region))
@@ -553,7 +572,7 @@ class Context(object):
         for policy_name, policy in iteritems(policies):
             current_policy = None
             try:
-                current_policy = json.loads(urllib.unquote(
+                current_policy = json.loads(unquote(
                     get_policy(entity_name, policy_name).policy_document))
             except BotoServerError as e:
                 if e.status == 404 and e.error_code == 'NoSuchEntity':

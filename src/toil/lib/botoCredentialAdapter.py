@@ -14,7 +14,7 @@
 
 """
 Contains an adapter to allow Boto 2 to use credentials obtained via Boto 3.
-This allosw it to do things like assuming roles as specified in Boto 3's config files.
+This allows it to do things like assuming roles as specified in Boto 3's config files.
 """
 
 from __future__ import absolute_import
@@ -60,6 +60,22 @@ class BotoCredentialAdapter(Provider):
         
         # Hardcode to use AWS. This approach can't work against Google Cloud.
         super(BotoCredentialAdapter, self).__init__('aws')
+        
+    def kwargs(self):
+        """
+        Produce a dictionary with 'aws_access_key_id', 'aws_secret_access_key',
+        and 'security_token', if applicable, suitable for **-ing into the
+        arguments to e.g. IAMConnection, which does not take a 'provider'.
+        """
+        
+        self._obtain_credentials_from_cache_or_boto3()
+        
+        creds = {'aws_access_key_id': self._access_key, 'aws_secret_access_key': self._secret_key}
+        
+        if self._security_token is not None:
+            creds['security_token'] = self._security_token
+        
+        return creds
         
     def get_credentials(self, access_key=None, secret_key=None, security_token=None, profile_name=None):
         """
