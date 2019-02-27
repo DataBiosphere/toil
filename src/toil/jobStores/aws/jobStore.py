@@ -45,6 +45,7 @@ import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
+from toil.lib.botoCredentialAdapter import BotoCredentialAdapter
 
 from toil.fileStore import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
@@ -473,17 +474,17 @@ class AWSJobStore(AbstractJobStore):
         """
         # Get the bucket's region to avoid a redirect per request
         try:
-            with closing(boto.connect_s3()) as s3:
+            with closing(boto.connect_s3(provider=BotoCredentialAdapter())) as s3:
                 location = s3.get_bucket(url.netloc).get_location()
                 region = bucket_location_to_region(location)
         except S3ResponseError as e:
             if e.error_code == 'AccessDenied':
-                s3 = boto.connect_s3()
+                s3 = boto.connect_s3(provider=BotoCredentialAdapter())
             else:
                 raise
         else:
             # Note that caller is responsible for closing the connection
-            s3 = boto.s3.connect_to_region(region)
+            s3 = boto.s3.connect_to_region(region, provider=BotoCredentialAdapter())
 
         try:
             keyName = url.path[1:]
@@ -651,7 +652,7 @@ class AWSJobStore(AbstractJobStore):
         """
         :rtype: SDBConnection
         """
-        db = boto.sdb.connect_to_region(self.region)
+        db = boto.sdb.connect_to_region(self.region, provider=BotoCredentialAdapter())
         if db is None:
             raise ValueError("Could not connect to SimpleDB. Make sure '%s' is a valid SimpleDB "
                              "region." % self.region)
@@ -663,7 +664,7 @@ class AWSJobStore(AbstractJobStore):
         """
         :rtype: S3Connection
         """
-        s3 = boto.s3.connect_to_region(self.region)
+        s3 = boto.s3.connect_to_region(self.region, provider=BotoCredentialAdapter())
         if s3 is None:
             raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." %
                              self.region)

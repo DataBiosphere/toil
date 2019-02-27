@@ -16,6 +16,7 @@ from boto.utils import get_instance_metadata
 
 from toil.lib.memoize import memoize
 from toil.lib.ec2 import UserError
+from toil.lib.botoCredentialAdapter import BotoCredentialAdapter
 
 log = logging.getLogger(__name__)
 
@@ -206,7 +207,7 @@ class Context(object):
     def __aws_connect(self, aws_module, region=None, **kwargs):
         if region is None:
             region = self.region
-        conn = aws_module.connect_to_region(region, **kwargs)
+        conn = aws_module.connect_to_region(region, provider=BotoCredentialAdapter(), **kwargs)
         if conn is None:
             raise RuntimeError("%s couldn't connect to region %s" % (
                 aws_module.__name__, region))

@@ -25,13 +25,14 @@ from toil.lib.memoize import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
+from boto.utils import get_instance_metadata
+from toil.lib.botoCredentialAdapter import BotoCredentialAdapter
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from toil.lib.context import Context
-from boto.utils import get_instance_metadata
 from toil.lib.retry import retry
 from toil.lib.memoize import less_strict_bool
 from toil.provisioners import NoSuchClusterException
@@ -111,7 +112,7 @@ class AWSProvisioner(AbstractProvisioner):
         """
         instanceMetaData = get_instance_metadata()
         region = zoneToRegion(self._zone)
-        conn = boto.ec2.connect_to_region(region)
+        conn = boto.ec2.connect_to_region(region, provider=BotoCredentialAdapter())
         instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         self.clusterName = str(instance.tags["Name"])
         self._buildContext()
@@ -522,7 +523,7 @@ class AWSProvisioner(AbstractProvisioner):
             return retry
         vpcId = None
         if self._vpcSubnet:
-            conn = boto.connect_vpc(region=self._ctx.ec2.region)
+            conn = boto.connect_vpc(region=self._ctx.ec2.region, provider=BotoCredentialAdapter())
             subnets = conn.get_all_subnets(subnet_ids=[self._vpcSubnet])
             if len(subnets) > 0:
                 vpcId = subnets[0].vpc_id
