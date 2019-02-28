@@ -41,7 +41,7 @@ def setup(job, inputFile, N, downCheckpoints, options):
     """
     RealtimeLogger.info("Starting the merge sort")
     return job.addChildJobFn(down,
-                             inputFile, N,
+                             inputFile, N, 'root',
                              downCheckpoints,
                              options = options,
                              preemptable=True,
