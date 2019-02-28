@@ -48,14 +48,16 @@ def setup(job, inputFile, N, downCheckpoints, options):
                              memory=sortMemory).rv()
 
 
-def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
+def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMemory):
     """
-    Input is a file and a range into that file to sort and an output location in which
-    to write the sorted file.
+    Input is a file, a subdivision size N, and a path in the hierarchy of jobs.
     If the range is larger than a threshold N the range is divided recursively and
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
+    
+    RealtimeLogger.info("Down job starting: %s" % path)
+    
     # Read the file
     inputFile = job.fileStore.readGlobalFile(inputFileStoreID, cache=False)
     length = os.path.getsize(inputFile)
@@ -73,14 +75,14 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
             fH.write(copySubRangeOfFile(inputFile, midPoint+1, length))
         # Call down recursively. By giving the rv() of the two jobs as inputs to the follow-on job, up,
         # we communicate the dependency without hindering concurrency.
-        return job.addFollowOnJobFn(up,
-                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, options=options,
+        result = job.addFollowOnJobFn(up,
+                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, path + '/0',
+                                                      downCheckpoints, checkpoint=downCheckpoints, options=options,
                                                       preemptable=True, memory=options.sortMemory).rv(),
-                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, options=options,
+                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, path + '/1',
+                                                      downCheckpoints, checkpoint=downCheckpoints, options=options,
                                                       preemptable=True, memory=options.mergeMemory).rv(),
-                                    preemptable=True, options=options, memory=options.sortMemory).rv()
+                                    path + '/up', preemptable=True, options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
         RealtimeLogger.critical("Sorting file: %s of size: %s"
@@ -88,13 +90,19 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
         # Sort the copy and write back to the fileStore
         shutil.copyfile(inputFile, inputFile + '.sort')
         sort(inputFile + '.sort')
-        return job.fileStore.writeGlobalFile(inputFile + '.sort')
+        result = job.fileStore.writeGlobalFile(inputFile + '.sort')
+        
+    RealtimeLogger.info("Down job finished: %s" % path)
+    return result
 
 
-def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
+def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
     """
     Merges the two files and places them in the output.
     """
+    
+    RealtimeLogger.info("Up job starting: %s" % path)
+    
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
         fileHandle = codecs.getwriter('utf-8')(fileHandle)
         with job.fileStore.readGlobalFileStream(inputFileID1) as inputFileHandle1:
@@ -107,6 +115,9 @@ def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
         # Cleanup up the input files - these deletes will occur after the completion is successful.
         job.fileStore.deleteGlobalFile(inputFileID1)
         job.fileStore.deleteGlobalFile(inputFileID2)
+        
+        RealtimeLogger.info("Up job finished: %s" % path)
+        
         return outputFileStoreID
 
 
