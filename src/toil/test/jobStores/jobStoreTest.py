@@ -50,7 +50,6 @@ from toil.lib.exceptions import panic
 from mock import patch
 
 from toil.common import Config, Toil
-from toil.lib.botoCredentialAdapter import BotoCredentialAdapter
 from toil.fileStore import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
@@ -1220,7 +1219,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             # both the default, and a non-default server.
             testJobStoreUUID = str(uuid.uuid4())
             # Create the bucket at the external region
-            s3 = S3Connection(provider=BotoCredentialAdapter())
+            s3 = S3Connection()
             for attempt in retry_s3(delays=(2,5,10,30,60), timeout=600):
                 with attempt:
                     bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
@@ -1234,7 +1233,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             except BucketLocationConflictException:
                 # Catch the expected BucketLocationConflictException and ensure that the bound
                 # domains don't exist in SDB.
-                sdb = connect_to_region(self.awsRegion(), provider=BotoCredentialAdapter())
+                sdb = connect_to_region(self.awsRegion())
                 next_token = None
                 allDomainNames = []
                 while True:
@@ -1310,7 +1309,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createExternalStore(self):
         import boto.s3
         from toil.jobStores.aws.utils import region_to_bucket_location
-        s3 = boto.s3.connect_to_region(self.awsRegion(), provider=BotoCredentialAdapter())
+        s3 = boto.s3.connect_to_region(self.awsRegion())
         try:
             return s3.create_bucket(bucket_name='import-export-test-%s' % uuid.uuid4(),
                                     location=region_to_bucket_location(self.awsRegion()))
