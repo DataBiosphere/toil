@@ -100,7 +100,7 @@ def apply_bparams(fn):
     """
     cmd = ["bparams", "-a"]
     try:
-        output = subprocess.check_output(cmd)
+        output = subprocess.check_output(cmd).decode('utf-8')
     except:
         return None
     return fn(output.split("\n"))
@@ -111,7 +111,7 @@ def apply_lsadmin(fn):
     """
     cmd = ["lsadmin", "showconf", "lim"]
     try:
-        output = subprocess.check_output(cmd)
+        output = subprocess.check_output(cmd).decode('utf-8')
     except:
         return None
     return fn(output.split("\n"))

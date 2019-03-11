@@ -779,6 +779,7 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
     def launchCluster(self, leaderNodeType, keyName, userTags=None,
                       vpcSubnet=None, leaderStorage=50, nodeStorage=50, botoPath=None, **kwargs):
         pass
+
     def destroyCluster(self):
         pass
 

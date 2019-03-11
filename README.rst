@@ -1,6 +1,6 @@
 ATTENTION: Toil has moved from https://github.com/BD2KGenomics/toil to https://github.com/DataBiosphere/toil as of July 5th, 2018.
 
-Toil is a scalable, efficient, cross-platform pipeline management system,
+Toil is a scalable, efficient, cross-platform (Linux & macOS) pipeline management system,
 written entirely in Python, and designed around the principles of functional
 programming.
 

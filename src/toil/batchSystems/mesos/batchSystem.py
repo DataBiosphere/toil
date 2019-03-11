@@ -46,7 +46,7 @@ from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchSystemLocalSupport,
                                                    NodeInfo)
-from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData, JobQueue
+from toil.batchSystems.mesos import ToilJob, MesosShape, TaskData, JobQueue
 
 log = logging.getLogger(__name__)
 
@@ -187,7 +187,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         jobID = self.getNextJobID()
         job = ToilJob(jobID=jobID,
                       name=str(jobNode),
-                      resources=ResourceRequirement(**jobNode._requirements),
+                      resources=MesosShape(wallTime=0, **jobNode._requirements),
                       command=jobNode.command,
                       userScript=self.userScript,
                       environment=self.environment.copy(),
@@ -392,7 +392,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         return cores, memory, disk, preemptable
 
     def _prepareToRun(self, jobType, offer):
-        # Get the first element to insure FIFO
+        # Get the first element to ensure FIFO
         job = self.jobQueues.nextJobOfType(jobType)
         task = self._newMesosTask(job, offer)
         return task
@@ -422,10 +422,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         self._trackOfferedNodes(offers)
 
-        jobTypes = self.jobQueues.sorted()
+        jobTypes = self.jobQueues.sortedTypes
 
-        # TODO: We may want to assert that numIssued >= numRunning
-        if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):
+        if not jobTypes:
             log.debug('There are no queued tasks. Declining Mesos offers.')
             # Without jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
@@ -729,7 +728,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     executorID, agentID)
         
         try:
-            
             # Look up the IP. We should always know it unless we get answers
             # back without having accepted offers.
             agentAddress = self.agentsByID[agentID]
@@ -820,7 +818,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         self._handleFailedExecutor(agentId.value, failedId)
         
     @classmethod
-    def setOptions(cl, setOption):
+    def setOptions(cls, setOption):
         setOption("mesosMasterAddress", None, None, 'localhost:5050')
 
 

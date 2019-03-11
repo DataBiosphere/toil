@@ -20,7 +20,7 @@ from builtins import object
 from toil.lib.memoize import sync_memoize
 
 
-class abstractclassmethod( classmethod ):
+class abstractclassmethod(classmethod):
     """
     This class defines a decorator that allows the decorated class to be both an abstract method
     and a class method.
@@ -51,7 +51,6 @@ class abstractclassmethod( classmethod ):
 
     >>> d = DemoConcrete.from_int(5)  # Succeeds by calling a concrete from_int()
     Initializing with 10
-
     """
     __isabstractmethod__ = True
 
@@ -60,7 +59,7 @@ class abstractclassmethod( classmethod ):
         super(abstractclassmethod, self).__init__(callable)
 
 
-class abstractstaticmethod( staticmethod ):
+class abstractstaticmethod(staticmethod):
     """
     This class defines a decorator that allows the decorated class to be both an abstract method
     and a static method.
@@ -81,7 +80,7 @@ class abstractstaticmethod( staticmethod ):
     >>> class DemoConcrete(DemoABC):
     ...     @staticmethod
     ...     def f(n):
-    ...         return (2*n)
+    ...         return 2*n
 
     >>> d = DemoABC.f(5)  # Fails because f() is not implemented
     Traceback (most recent call last):
@@ -98,7 +97,7 @@ class abstractstaticmethod( staticmethod ):
         super(abstractstaticmethod, self).__init__(callable)
 
 
-class InnerClass( object ):
+class InnerClass(object):
     """
     Note that this is EXPERIMENTAL code.
 
@@ -198,12 +197,12 @@ class InnerClass( object ):
     True
     """
 
-    def __init__( self, inner_class ):
-        super( InnerClass, self ).__init__( )
+    def __init__(self, inner_class):
+        super(InnerClass, self).__init__()
         self.inner_class = inner_class
 
     # noinspection PyUnusedLocal
-    def __get__( self, instance, owner ):
+    def __get__(self, instance, owner):
         # No need to wrap a static reference, i.e one that is made via 'Outer.' rather than 'self.'
         if instance is None:
             return self.inner_class
@@ -211,16 +210,16 @@ class InnerClass( object ):
             return self._bind( instance )
 
     @sync_memoize
-    def _bind( self, _outer ):
-        class BoundInner( self.inner_class ):
+    def _bind( self, _outer):
+        class BoundInner(self.inner_class):
             outer = _outer
 
-            def __repr__( self ):
-                return "%s bound to %s" % (super( BoundInner, self ).__repr__( ), repr( _outer ))
+            def __repr__(self):
+                return "%s bound to %s" % (super(BoundInner, self).__repr__(), repr(_outer))
 
         BoundInner.__name__ = self.inner_class.__name__
         BoundInner.__module__ = self.inner_class.__module__
         return BoundInner
 
-    def __call__( *args, **kwargs ):
-        raise RuntimeError( "Inner classes must be nested in another class." )
+    def __call__(*args, **kwargs):
+        raise RuntimeError("Inner classes must be nested in another class.")

@@ -1216,7 +1216,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             # This incidentally tests that the BucketLocationConflictException is thrown when using
             # both the default, and a non-default server.
             testJobStoreUUID = str(uuid.uuid4())
-            # Create the nucket at the external region
+            # Create the bucket at the external region
             s3 = S3Connection()
             for attempt in retry_s3(delays=(2,5,10,30,60), timeout=600):
                 with attempt:

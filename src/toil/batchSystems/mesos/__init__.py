@@ -18,9 +18,11 @@ standard_library.install_aliases()
 from builtins import object
 from queue import Queue
 from collections import namedtuple
-from functools import total_ordering
 from bisect import bisect
 from threading import Lock
+
+from toil.provisioners.abstractProvisioner import Shape
+
 
 TaskData = namedtuple('TaskData', (
     # Time when the task was started
@@ -38,7 +40,6 @@ TaskData = namedtuple('TaskData', (
 
 
 class JobQueue(object):
-
     def __init__(self):
         # mapping of jobTypes to queues of jobs of that type
         self.queues = {}
@@ -53,9 +54,6 @@ class JobQueue(object):
                 self.sortedTypes.insert(index, jobType)
                 self.queues[jobType] = Queue()
             self.queues[jobType].put(job)
-
-    def sorted(self):
-        return list(self.sortedTypes)
 
     def jobIDs(self):
         with self.jobLock:
@@ -76,74 +74,15 @@ class JobQueue(object):
             return self.queues.get(jobType, Queue()).empty()
 
 
-@total_ordering
-class ResourceRequirement(object):
-    def __init__(self, memory, cores, disk, preemptable):
-        # Number of bytes (!) needed for a task
-        self.memory = memory
-        # Number of CPU cores needed for a task
-        self.cores = cores
-        # Number of bytes (!) needed for task on disk
-        self.disk = disk
-        # True, if job can be run on a preemptable node, False otherwise
-        self.preemptable = preemptable
-
-    def size(self):
-        """
-        The scalar size of an offer. Can be used to compare offers.
-        """
-        return self.cores
-
-
+class MesosShape(Shape):
     def __gt__(self, other):
         """
-        Returns True if self is greater than other, else returns False.
-        Note that we take an unintuitive definition of "greater than" since
-        we want the ResoureRequirement with the largest requirements to be considered "lesser".
-        This is mainly because we want our jobTypes to be sorted in decreasing order, giving expensive jobs
-        priority.
+        Inverted.  Returns True if self is less than other, else returns False.
 
-        :param other:
-        :return:
+        This is because jobTypes are sorted in decreasing order,
+        and this was done to give expensive jobs priority.
         """
-        if not self.preemptable and other.preemptable:
-            # The dominant criteria is preemptability of jobs. Non-preemptable (NP) jobs should be
-            # considered first because they can only be run on on NP nodes while P jobs can run on
-            # both. Without this prioritization of NP jobs, P jobs could steal NP cores from NP jobs,
-            # leaving subsequently offered P cores unused. Despite the prioritization of NP jobs,
-            # NP jobs can not steal P cores from P jobs, simply because the offer-acceptance logic
-            # would not accept a P offer with a NP job.
-            return False
-        elif self.preemptable and not other.preemptable:
-            return True
-
-        if self.cores > other.cores:
-            return False
-        elif self.cores < other.cores:
-            return True
-
-        if self.memory > other.memory:
-            return False
-        elif self.memory < other.memory:
-            return True
-
-        if self.disk > other.disk:
-            return False
-        elif self.disk < other.disk:
-            return True
-
-        return False
-
-    def __eq__(self, other):
-        if (self.preemptable == other.preemptable and
-           self.cores == other.cores and
-           self.memory == other.memory and
-           self.disk == other.disk):
-            return True
-        return False
-
-    def __hash__(self):
-        return hash((self.preemptable, self.cores, self.memory, self.disk))
+        return not self.greater_than(other)
 
 
 ToilJob = namedtuple('ToilJob', (

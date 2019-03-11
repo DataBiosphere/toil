@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
 
 from builtins import object
@@ -19,11 +18,12 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class ToilState(object):
     """
     Represents a snapshot of the jobs in the jobStore. Used by the leader to manage the batch.
     """
-    def __init__( self, jobStore, rootJob, jobCache=None):
+    def __init__(self, jobStore, rootJob, jobCache=None):
         """
         Loads the state from the jobStore, using the rootJob 
         as the source of the job graph.
@@ -35,20 +35,17 @@ class ToilState(object):
         :param toil.jobWrapper.JobGraph rootJob
         """
         # This is a hash of jobs, referenced by jobStoreID, to their predecessor jobs.
-        self.successorJobStoreIDToPredecessorJobs = { }
+        self.successorJobStoreIDToPredecessorJobs = {}
         
         # Hash of jobStoreIDs to counts of numbers of successors issued.
-        # There are no entries for jobs
-        # without successors in this map.
-        self.successorCounts = { }
+        # There are no entries for jobs without successors in this map.
+        self.successorCounts = {}
 
         # This is a hash of service jobs, referenced by jobStoreID, to their predecessor job
-        self.serviceJobStoreIDToPredecessorJob = { }
+        self.serviceJobStoreIDToPredecessorJob = {}
 
-        # Hash of jobStoreIDs to maps of services issued for the job
-        # Each for job, the map is a dictionary of service jobStoreIDs
-        # to the flags used to communicate the with service
-        self.servicesIssued = { }
+        # Hash of jobStoreIDs mapping to services issued for the job
+        self.servicesIssued = {}
         
         # Jobs that are ready to be processed
         self.updatedJobs = set()
@@ -109,14 +106,14 @@ class ToilState(object):
             
             # Record the number of successors
             self.successorCounts[jobGraph.jobStoreID] = len(jobGraph.stack[-1])
-            
+
             def processSuccessorWithMultiplePredecessors(successorJobGraph):
                 # If jobGraph is not reported as complete by the successor
                 if jobGraph.jobStoreID not in successorJobGraph.predecessorsFinished:
-                    
-                    # Update the sucessor's status to mark the predecessor complete
+
+                    # Update the successor's status to mark the predecessor complete
                     successorJobGraph.predecessorsFinished.add(jobGraph.jobStoreID)
-            
+
                 # If the successor has no predecessors to finish
                 assert len(successorJobGraph.predecessorsFinished) <= successorJobGraph.predecessorNumber
                 if len(successorJobGraph.predecessorsFinished) == successorJobGraph.predecessorNumber:
@@ -142,7 +139,7 @@ class ToilState(object):
                     if successorJobNode.predecessorNumber > 1:
                         
                         # We load the successor job
-                        successorJobGraph =  getJob(successorJobStoreID)
+                        successorJobGraph = getJob(successorJobStoreID)
                         
                         # We put the successor job in the cache of successor jobs with multiple predecessors
                         assert successorJobStoreID not in self.jobsToBeScheduledWithMultiplePredecessors

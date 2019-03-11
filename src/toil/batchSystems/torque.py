@@ -48,7 +48,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             """ Determines PBS/Torque version via pbsnodes
             """
             try:
-                out = subprocess.check_output(["pbsnodes", "--version"])
+                out = subprocess.check_output(["pbsnodes", "--version"]).decode('utf-8')
 
                 if "PBSPro" in out:
                      logger.debug("PBS Pro proprietary Torque version detected")
@@ -86,7 +86,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             # qstat supports XML output which is more comprehensive, but PBSPro does not support it 
             # so instead we stick with plain commandline qstat tabular outputs
-            for currline in stdout.split('\n'):
+            for currline in stdout.decode('utf-8').split('\n'):
                 items = currline.strip().split()
                 if items:
                     jobid = items[0].strip()

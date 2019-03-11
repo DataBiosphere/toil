@@ -252,8 +252,8 @@ def process_single_outfile(f, fileStore, workDir, outDir):
     elif os.path.exists(os.path.join(workDir, f)):
         output_f_path = os.path.join(workDir, f)
     else:
-        tmp = subprocess.check_output(['ls', '-lha', workDir])
-        exe = subprocess.check_output(['ls', '-lha', os.path.join(workDir, 'execution')])
+        tmp = subprocess.check_output(['ls', '-lha', workDir]).decode('utf-8')
+        exe = subprocess.check_output(['ls', '-lha', os.path.join(workDir, 'execution')]).decode('utf-8')
         raise RuntimeError('OUTPUT FILE: {} was not found!\n'
                            '{}\n\n'
                            '{}\n'.format(f, tmp, exe))

@@ -23,6 +23,7 @@ from six.moves import xrange
 
 from toil.common import Toil
 from toil.job import Job
+from toil.fileStore import FileID
 from toil.test import ToilTest, slow
 
 PREFIX_LENGTH=200
@@ -134,12 +135,22 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
             with open(tempFile, 'w') as fH:
                 fH.write(testString)
             #Write a local copy of the file using the local file
-            outputFileStoreIds.append(job.fileStore.writeGlobalFile(tempFile))
+            fileStoreID = job.fileStore.writeGlobalFile(tempFile)
+            
+            # Make sure it returned a valid and correct FileID with the right size
+            assert isinstance(fileStoreID, FileID)
+            assert fileStoreID.size == len(testString.encode('utf-8'))
+            
+            outputFileStoreIds.append(fileStoreID)
         else:
             #Use the writeGlobalFileStream method to write the file
             with job.fileStore.writeGlobalFileStream() as (fH, fileStoreID):
                 fH.write(testString.encode('utf-8'))
                 outputFileStoreIds.append(fileStoreID)
+                
+            #Make sure it returned a valid and correct FileID with the right size
+            assert isinstance(fileStoreID, FileID)
+            assert fileStoreID.size == len(testString.encode('utf-8'))
 
     if chainLength > 0:
         #Make a child that will read these files and check it gets the same results

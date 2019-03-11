@@ -27,14 +27,11 @@ import json
 import logging
 import logging.handlers
 import threading
-
-# Python 3 compatibility imports
 from six.moves import socketserver as SocketServer
+from future.utils import with_metaclass
 
 import toil.lib.bioio
 from toil.batchSystems.options import getPublicIP
-
-from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
 
@@ -75,7 +72,6 @@ class JSONDatagramHandler(logging.handlers.DatagramHandler):
     
     They have to fit in a single UDP datagram, so don't try to log more than 64kb at once.
     """
-
     def makePickle(self, record):
         """
         Actually, encode the record as bare JSON instead.
@@ -88,7 +84,6 @@ class RealtimeLoggerMetaclass(type):
     Metaclass for RealtimeLogger that lets you do things like RealtimeLogger.warning(),
     RealtimeLogger.info(), etc.
     """
-
     def __getattr__(self, name):
         """
         If a real attribute can't be found, try one of the logging methods on the actual logger
@@ -127,7 +122,6 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
     initialized = 0
 
     # Client-side state
-
     logger = None
 
     @classmethod

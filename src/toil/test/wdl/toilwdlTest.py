@@ -31,6 +31,7 @@ import zipfile
 import shutil
 import uuid
 
+
 class ToilWdlIntegrationTest(ToilTest):
     """A set of test cases for toilwdl.py"""
 
@@ -419,7 +420,9 @@ def remove_outputs(output_dir):
                       'post_mapping.log',
                       'wdl-stats.log',
                       'xcor.json',
-                      'xcor.log']
+                      'xcor.log',
+                      'toilwdl_compiled.pyc',
+                      'toilwdl_compiled.py']
     other_log_outputs = ['post_processing.log',
                          'md5.log']
     outputs = encode_outputs + other_log_outputs

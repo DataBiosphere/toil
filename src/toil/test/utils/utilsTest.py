@@ -65,9 +65,21 @@ class UtilsTest(ToilTest):
             self.correctSort = fileHandle.readlines()
             self.correctSort.sort()
 
+        self.sort_workflow_cmd = ['python', '-m', 'toil.test.sort.sort',
+                                  'file:' + self.toilDir,
+                                  '--clean=never',
+                                  '--numLines=1', '--lineLength=1']
+
     def tearDown(self):
         if os.path.exists(self.tempDir):
             shutil.rmtree(self.tempDir)
+        if os.path.exists(self.toilDir):
+            shutil.rmtree(self.toilDir)
+
+        for f in ['fileToSort.txt', 'sortedFile.txt', 'output.txt']:
+            if os.path.exists(f):
+                os.remove(f)
+
         ToilTest.tearDown(self)
 
     @property
@@ -94,36 +106,42 @@ class UtilsTest(ToilTest):
     @integrative
     @slow
     def testAWSProvisionerUtils(self):
+        """
+        Runs a number of the cluster utilities in sequence.
+
+        Launches a cluster with custom tags.
+        Verifies the tags exist.
+        ssh's into the cluster.
+        Does some weird string comparisons.
+        Makes certain that TOIL_WORKDIR is set as expected in the ssh'ed cluster.
+        Rsyncs a file and verifies it exists on the leader.
+        Destroys the cluster.
+
+        :return:
+        """
+        # TODO: Run these for the other clouds.
         clusterName = 'cluster-utils-test' + str(uuid.uuid4())
         keyName = os.getenv('TOIL_AWS_KEYNAME')
-        try:
-            # --provisioner flag should default to aws, so we're not explicitly
-            # specifying that here
-            system([self.toilMain, 'launch-cluster', '--leaderNodeType=t2.micro', '--zone=us-west-2a',
-                    '--keyPairName=' + keyName, clusterName])
-        finally:
-            system([self.toilMain, 'destroy-cluster', '--provisioner=aws', clusterName])
+
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 
-            userTags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3'}
-            tags = {'Name': clusterName, 'Owner': keyName}
-            tags.update(userTags)
-
-            # launch master with same name
+            # launch master with an assortment of custom tags
             system([self.toilMain, 'launch-cluster', '-t', 'key1=value1', '-t', 'key2=value2', '--tag', 'key3=value3',
                     '--leaderNodeType=m3.medium', '--keyPairName=' + keyName, clusterName,
-                    '--provisioner=aws', '--zone=us-west-2a','--logLevel=DEBUG'])
+                    '--provisioner=aws', '--zone=us-west-2a', '--logLevel=DEBUG'])
 
             cluster = clusterFactory(provisioner='aws', clusterName=clusterName)
             leader = cluster.getLeader()
-            # test leader tags
-            for key in list(tags.keys()):
+
+            # check that the leader carries the appropriate tags
+            tags = {'key1': 'value1', 'key2': 'value2', 'key3': 'value3', 'Name': clusterName, 'Owner': keyName}
+            for key in tags:
                 self.assertEqual(tags[key], leader.tags.get(key))
 
             # Test strict host key checking
             # Doesn't work when run locally.
-            if(keyName == 'jenkins@jenkins-master'):
+            if keyName == 'jenkins@jenkins-master':
                 try:
                     leader.sshAppliance(strict=True)
                 except RuntimeError:
@@ -146,8 +164,7 @@ class UtilsTest(ToilTest):
                            '\\',
                            '| cat',
                            '&& cat',
-                           '; cat'
-                           ]
+                           '; cat']
             for test in testStrings:
                 logger.debug('Testing SSH with special string: %s', test)
                 compareTo = "import sys; assert sys.argv[1]==%r" % test
@@ -158,8 +175,7 @@ class UtilsTest(ToilTest):
             except RuntimeError:
                 pass
             else:
-                self.fail('The remote command failed silently where it should have '
-                          'raised an error')
+                self.fail('The remote command failed silently where it should have raised an error')
 
             leader.sshAppliance('python', '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'")
 
@@ -187,22 +203,6 @@ class UtilsTest(ToilTest):
                 shutil.rmtree(tmpDir)
             except NameError:
                 pass
-
-    def _createSortOptions(self, jobstoreLoc, fails=False):
-        options = Job.Runner.getDefaultOptions(jobstoreLoc)
-        options.badWorker = fails
-        options.clean = 'never'  # Will delete jobstore after the testing is done.
-        options.logLevel = 'info'
-        options.overwriteOutput = True
-        options.outputFile = self.outputFile
-        options.fileToSort = None
-        options.downCheckpoints = False
-        options.N = self.N
-        options.debugWorker = False
-        options.sleepDuration = 15
-        options.numLines = 50
-        options.lineLength = 20  # Ensures that there is enough time to get a running response from before it finshes.
-        return options
 
     @slow
     def testUtilsSort(self):
@@ -313,7 +313,7 @@ class UtilsTest(ToilTest):
     @slow
     def testMultipleJobsPerWorkerStats(self):
         """
-        Tests case where multiple jobs are run on 1 worker to insure that all jobs report back their data
+        Tests case where multiple jobs are run on 1 worker to ensure that all jobs report back their data
         """
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.clean = 'never'
@@ -324,101 +324,70 @@ class UtilsTest(ToilTest):
         jobStore = Toil.resumeJobStore(config.jobStore)
         stats = getStats(jobStore)
         collatedStats = processData(jobStore.config, stats)
-        self.assertTrue(len(collatedStats.job_types) == 2,
-                        "Some jobs are not represented in the stats")
+        self.assertTrue(len(collatedStats.job_types) == 2, "Some jobs are not represented in the stats.")
+
+    def check_status(self, status, status_fn, seconds=10):
+        i = 0.0
+        while status_fn(self.toilDir) != status:
+            time.sleep(0.5)
+            i += 0.5
+            if i > seconds:
+                s = status_fn(self.toilDir)
+                self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
 
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
-        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, '--clean', 'never']
-        wf = subprocess.Popen(cmd)
-        time.sleep(2)  # Need to let jobstore be created before checking its contents.
-        self.assertEqual('RUNNING', ToilStatus.getPIDStatus(self.toilDir))
+        wf = subprocess.Popen(self.sort_workflow_cmd)
+        self.check_status('RUNNING', status_fn=ToilStatus.getPIDStatus)
         wf.wait()
-        self.assertEqual('COMPLETED', ToilStatus.getPIDStatus(self.toilDir))
-        os.remove(os.path.join(self.toilDir, 'pid.log'))
-        self.assertEqual('QUEUED', ToilStatus.getPIDStatus(self.toilDir))
+        self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
 
-        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
-            if os.path.exists(f):
-                os.remove(f)
+        os.remove(os.path.join(self.toilDir, 'pid.log'))
+        self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
 
     def testGetStatusFailedToilWF(self):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
-         While this workflow could be called by importing and evoking its main function, doing so would remove the
-        opprotunity to test the 'RUNNING' functionality of getStatus().
+
+        While this workflow could be called by importing and evoking its main function, doing so would remove the
+        opportunity to test the 'RUNNING' functionality of getStatus().
         """
         # --badWorker is set to force failure.
-        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, '--clean', 'never', '--badWorker', '1']
-        wf = subprocess.Popen(cmd)
-        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
-        self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
+        wf = subprocess.Popen(self.sort_workflow_cmd + ['--badWorker=1'])
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
-        self.assertEqual('ERROR', ToilStatus.getStatus(self.toilDir))
-
-        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
-            if os.path.exists(f):
-                os.remove(f)
+        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
 
     @needs_cwl
     @needs_docker
     def testGetStatusFailedCWLWF(self):
         """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
-        files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
-        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean', 'never', '--badWorker', '1', files[0],
-               '--reverse', '--input', files[1]]
+        # --badWorker is set to force failure.
+        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never', '--badWorker=1',
+               'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
         wf = subprocess.Popen(cmd)
-        wfRun = psutil.Process(pid=wf.pid)
-        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
-        wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
-        self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
-        wfRun.resume()
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
-        result = ToilStatus.getStatus(self.toilDir)
-        self.assertEqual('ERROR', result)
-
-    def testGetStatusSuccessfulToilWF(self):
-        """
-        Test that ToilStatus.getStatus() behaves as expected with a successful Toil workflow.
-         While this workflow could be called by importing and evoking its main function, doing so would remove the
-        opprotunity to test the 'RUNNING' functionality of getStatus().
-        """
-        cmd = ['python', '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, '--clean', 'never']
-        wf = subprocess.Popen(cmd)
-        time.sleep(2)  # Need to let jobstore be created before checking its contents.
-        self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
-        wf.wait()
-        self.assertEqual('COMPLETED', ToilStatus.getStatus(self.toilDir))
-
-        for f in ['fileToSort.txt', 'sortedFile.txt']:  # This toil WF does not clean these up.
-            if os.path.exists(f):
-                os.remove(f)
+        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
 
     @needs_cwl
     @needs_docker
     def testGetStatusSuccessfulCWLWF(self):
         """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
-        # Run a cwl workflow in a subprocess.
-        files = ['src/toil/test/cwl/sorttool.cwl', 'src/toil/test/cwl/whale.txt']
-        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean', 'never', files[0], '--reverse', '--input',
-               files[1]]
+        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
+               'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
         wf = subprocess.Popen(cmd)
-        wfRun = psutil.Process(pid=wf.pid)
-        time.sleep(2)  # Needed to let the jobstore be created before checking its contents.
-        wfRun.suspend()  # This workflow runs so quickly that we need to pause so we can get a 'RUNNING' response.
-        self.assertEqual('RUNNING', ToilStatus.getStatus(self.toilDir))
-        wfRun.resume()
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
-        self.assertEqual('COMPLETED', ToilStatus.getStatus(self.toilDir))
+        self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
 
-        if os.path.exists('output.txt'):  # This CWL WF does not clean this up.
-            os.remove('output.txt')
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of
     # Python encoding issues. To work around this we print in a separate Python process. See
     # http://stackoverflow.com/questions/492483/setting-the-correct-encoding-when-piping-stdout-in-python
     subprocess.check_call([sys.executable, '-c', "print('\\xc3\\xbc')"])
+
 
 class RunTwoJobsPerWorker(Job):
     """

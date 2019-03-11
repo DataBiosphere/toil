@@ -14,7 +14,7 @@ A Toil workflow can be run with just three steps:
 
 2. Copy and paste the following code block into a new file called ``helloWorld.py``:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/helloWorld.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_helloworld.py
 
 3. Specify the name of the :ref:`job store <jobStoreOverview>` and run the workflow::
 
@@ -96,7 +96,7 @@ To run this workflow on an AWS cluster have a look at :ref:`awscwl`.
 
 For information on using CWL with Toil see the section :ref:`cwl`
 
-.. _CWL User Guide: http://www.commonwl.org/v1.0/UserGuide.html
+.. _CWL User Guide: https://www.commonwl.org/user_guide/
 
 Running a basic WDL workflow
 ----------------------------

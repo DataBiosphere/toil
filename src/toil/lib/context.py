@@ -1,30 +1,28 @@
 # coding=utf-8
 from six import iteritems
-from past.builtins import map
-from contextlib import contextmanager
 import json
 import os
 import urllib
 import re
-import socket
-import itertools
 import logging
+import inspect
 
-from boto import ec2, iam, sns, sqs, vpc
-from boto.s3.key import Key as S3Key
-from boto.exception import S3ResponseError, BotoServerError
+try:
+    from urllib.parse import unquote
+except ImportError:
+    from urllib import unquote
+
+from boto import iam, sns, sqs, vpc
+from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
 from boto.sqs.connection import SQSConnection
 from boto.sns.connection import SNSConnection
 from boto.vpc import VPCConnection
 from boto.iam.connection import IAMConnection
-from boto.ec2.keypair import KeyPair
-from toil.lib.fnmatch import fnmatch
-from toil.lib.memoize import memoize
 from boto.utils import get_instance_metadata
 
-from toil.lib.message import Message
-from toil.lib.ec2 import ec2_keypair_fingerprint, UserError
+from toil.lib.memoize import memoize
+from toil.lib.ec2 import UserError
 
 log = logging.getLogger(__name__)
 
@@ -474,136 +472,7 @@ class Context(object):
         _, partition, service, region, account, resource = arn.split(':', 6)
         return account
 
-    @property
-    @memoize
-    def s3_bucket_name(self):
-        return self.account + '-cgcloud'
-
     ssh_pubkey_s3_key_prefix = 'ssh_pubkey:'
-
-    @property
-    def s3_location(self):
-        if self.region == 'us-east-1':
-            return ''
-        else:
-            return self.region
-
-    def upload_ssh_pubkey(self, ssh_pubkey, fingerprint):
-        bucket = self.s3.lookup(self.s3_bucket_name)
-        if bucket is None:
-            bucket = self.s3.create_bucket(self.s3_bucket_name,
-                                           location=self.s3_location)
-        s3_entry = S3Key(bucket)
-        s3_entry.key = self.ssh_pubkey_s3_key_prefix + fingerprint
-        s3_entry.set_contents_from_string(ssh_pubkey)
-
-    def register_ssh_pubkey(self, ec2_keypair_name, ssh_pubkey, force=False):
-        """
-        Import the given OpenSSH public key  as a 'key pair' into EC2.
-
-        There is no way to get to the actual public key once it has been imported to EC2.
-        Openstack lets you do that and I don't see why Amazon decided to omit this functionality.
-        To work around this, we store the public key in S3, identified by the public key's
-        fingerprint. As long as we always check the fingerprint of the downloaded public SSH key
-        against that of the EC2 keypair key, this method is resilient against malicious
-        modifications of the keys stored in S3.
-
-        :param ec2_keypair_name: the desired name of the EC2 key pair
-
-        :param ssh_pubkey: the SSH public key in OpenSSH's native format, i.e. format that is used in ~/
-        .ssh/authorized_keys
-
-        :param force: overwrite existing EC2 keypair of the given name
-        """
-        fingerprint = ec2_keypair_fingerprint(ssh_pubkey, reject_private_keys=True)
-        ec2_keypair = self.ec2.get_key_pair(ec2_keypair_name)
-        if ec2_keypair is not None:
-            if ec2_keypair.name != ec2_keypair_name:
-                raise AssertionError("Key pair names don't match.")
-            if ec2_keypair.fingerprint != fingerprint:
-                if force:
-                    self.ec2.delete_key_pair(ec2_keypair_name)
-                    ec2_keypair = None
-                else:
-                    raise UserError(
-                        "Key pair %s already exists in EC2, but its fingerprint %s is "
-                        "different from the fingerprint %s of the key to be imported. Use "
-                        "the force option to overwrite the existing key pair." %
-                        (ec2_keypair.name, ec2_keypair.fingerprint, fingerprint))
-
-        if ec2_keypair is None:
-            ec2_keypair = self.ec2.import_key_pair(ec2_keypair_name, ssh_pubkey)
-        assert ec2_keypair.fingerprint == fingerprint
-
-        self.upload_ssh_pubkey(ssh_pubkey, fingerprint)
-        self.__publish_key_update_agent_message()
-        return ec2_keypair
-
-    def expand_keypair_globs(self, globs):
-        """
-        Returns a list of EC2 key pair objects matching the specified globs. The order of the
-        objects in the returned list will be consistent with the order of the globs and it will
-        not contain any elements more than once. In other words, the returned list will start
-        with all key pairs matching the first glob, followed by key pairs matching the second
-        glob but not the first glob and so on.
-
-        :rtype: list of KeyPair
-        """
-
-        def iam_lookup(glob):
-            if glob.startswith('@@'):
-                return (_.user_name for _ in self.iam.get_group('developers').users)
-            elif glob.startswith('@'):
-                return (self.iam.get_user(glob[1:]).user_name,)
-            else:
-                return (glob,)
-
-        globs = itertools.chain.from_iterable(map(iam_lookup, globs))
-
-        result = []
-        keypairs = dict((keypair.name, keypair) for keypair in self.ec2.get_all_key_pairs())
-        for glob in globs:
-            i = len(result)
-            for name, keypair in iteritems(keypairs):
-                if fnmatch.fnmatch(name, glob):
-                    result.append(keypair)
-
-            # since we can't modify the set during iteration
-            for keypair in result[i:]:
-                keypairs.pop(keypair.name)
-        return result
-
-    def download_ssh_pubkey(self, ec2_keypair):
-        try:
-            bucket = self.s3.get_bucket(self.s3_bucket_name)
-            s3_entry = S3Key(bucket)
-            s3_entry.key = self.ssh_pubkey_s3_key_prefix + ec2_keypair.fingerprint
-            ssh_pubkey = s3_entry.get_contents_as_string()
-        except S3ResponseError as e:
-            if e.status == 404:
-                raise UserError(
-                    "There is no matching SSH pub key stored in S3 for EC2 key pair %s. Has "
-                    "it been registered, e.g using the cgcloud's register-key command?" %
-                    ec2_keypair.name)
-            else:
-                raise
-        fingerprint_len = len(ec2_keypair.fingerprint.split(':'))
-        if fingerprint_len == 20:  # 160 bit SHA-1
-            # The fingerprint is that of a private key. We can't get at the private key so we
-            # can't verify the public key either. So this is inherently insecure. However,
-            # remember that the only reason why we are dealing with n EC2-generated private
-            # key is that the Jenkins' EC2 plugin expects a 20 byte fingerprint. See
-            # https://issues.jenkins-ci.org/browse/JENKINS-20142 for details. Once that issue
-            # is fixed, we can switch back to just using imported keys and 16-byte fingerprints.
-            pass
-        elif fingerprint_len == 16:  # 128 bit MD5
-            fingerprint = ec2_keypair_fingerprint(ssh_pubkey)
-            if ec2_keypair.fingerprint != fingerprint:
-                raise UserError(
-                    "Fingerprint mismatch for key %s! Expected %s but got %s. The EC2 keypair "
-                    "doesn't match the public key stored in S3." %
-                    (ec2_keypair.name, ec2_keypair.fingerprint, fingerprint))
-        return ssh_pubkey
 
     @property
     @memoize
@@ -679,20 +548,6 @@ class Context(object):
 
         return aws_role_name
 
-    def setup_iam_user_policies(self, user_name, policies):
-        try:
-            self.iam.create_user(user_name)
-        except BotoServerError as e:
-            if e.status == 409 and e.error_code == 'EntityAlreadyExists':
-                pass
-            else:
-                raise
-        self.__setup_entity_policies(user_name, policies,
-                                     list_policies=self.iam.get_all_user_policies,
-                                     delete_policy=self.iam.delete_user_policy,
-                                     get_policy=self.iam.get_user_policy,
-                                     put_policy=self.iam.put_user_policy)
-
     def __setup_entity_policies(self, entity_name, policies,
                                 list_policies, delete_policy, get_policy, put_policy):
         # Delete superfluous policies
@@ -704,7 +559,7 @@ class Context(object):
         for policy_name, policy in iteritems(policies):
             current_policy = None
             try:
-                current_policy = json.loads(urllib.unquote(
+                current_policy = json.loads(unquote(
                     get_policy(entity_name, policy_name).policy_document))
             except BotoServerError as e:
                 if e.status == 404 and e.error_code == 'NoSuchEntity':
@@ -715,52 +570,6 @@ class Context(object):
                 put_policy(entity_name, policy_name, json.dumps(policy))
 
     _agent_topic_name = "cgcloud-agent-notifications"
-
-    @property
-    def agent_queue_name(self):
-        host_qualifier = socket.gethostname().replace('.', '-')
-        return self._agent_topic_name + '/' + host_qualifier
-
-    @property
-    @memoize
-    def agent_topic_arn(self):
-        """
-        The ARN of the SNS topic on which the agents listen for messages and returns its ARN.
-        """
-        # Note that CreateTopic is idempotent
-        return self.sns.create_topic(self._agent_topic_name)[
-            'CreateTopicResponse']['CreateTopicResult']['TopicArn']
-
-    def publish_agent_message(self, message):
-        """
-        :type message: Message
-        """
-        self.sns.publish(self.agent_topic_arn, message.to_sns())
-
-    def __publish_key_update_agent_message(self):
-        self.publish_agent_message(Message(type=Message.TYPE_UPDATE_SSH_KEYS))
-
-    def reset_namespace_security(self):
-        """
-        Delete all
-
-        - IAM instance profiles,
-        - IAM roles,
-        - IAM policies and
-        - EC2 security groups
-
-        associated with this context, or rather the namespace this context represents.
-        """
-        self.delete_instance_profiles(self.local_instance_profiles())
-        self.delete_roles(self.local_roles())
-        self.delete_security_groups(self.local_security_groups())
-
-    def local_instance_profiles(self):
-        return [p for p in self._get_all_instance_profiles()
-                if self.try_contains_aws_name(p.instance_profile_name)]
-
-    def _get_all_instance_profiles(self):
-        return self._pager(self.iam.list_instance_profiles, 'instance_profiles')
 
     def _pager(self, requestor_callable, result_attribute_name):
         marker = None
@@ -773,100 +582,8 @@ class Context(object):
             else:
                 break
 
-    def delete_instance_profiles(self, instance_profiles):
-        log.debug('Deleting profiles %r', instance_profiles)
-        for p in instance_profiles:
-            profile_name = p.instance_profile_name
-            with out_exception('instance profile', profile_name):
-                # currently EC2 allows only one role per profile
-                if p.roles:
-                    role_name = p.roles.member.role_name
-                    log.debug('Removing role %s from profile %s', role_name, profile_name)
-                    self.iam.remove_role_from_instance_profile(profile_name, role_name)
-                log.debug('Deleting profile %s', profile_name)
-                self.iam.delete_instance_profile(profile_name)
-
     def local_roles(self):
         return [r for r in self._get_all_roles() if self.try_contains_aws_name(r.role_name)]
 
     def _get_all_roles(self):
         return self._pager(self.iam.list_roles, 'roles')
-
-    def delete_roles(self, roles):
-        log.debug('Deleting roles %r', roles)
-        for r in roles:
-            with out_exception('role', r.role_name):
-                for policy_name in self.iam.list_role_policies(r.role_name).policy_names:
-                    self.iam.delete_role_policy(r.role_name, policy_name)
-                self.iam.delete_role(r.role_name)
-
-    def local_security_groups(self):
-        return [sg for sg in self.ec2.get_all_security_groups()
-                if self.try_contains_aws_name(sg.name)]
-
-    def delete_security_groups(self, security_groups):
-        log.debug('Deleting security groups %r', security_groups)
-        for sg in security_groups:
-            with out_exception('security group', sg.name):
-                sg.delete()
-
-    def unused_fingerprints(self):
-        """
-        Find all unused fingerprints. This method works globally and does not consider the
-        namespace represented by this context.
-
-        :rtype: set[str]
-        """
-        keypairs = self.expand_keypair_globs('*')
-        ec2_fingerprints = set(keypair.fingerprint for keypair in keypairs)
-        bucket = self.s3.get_bucket(self.s3_bucket_name, validate=False)
-        prefix = self.ssh_pubkey_s3_key_prefix
-        s3_fingerprints = set(key.name[len(prefix):] for key in bucket.list(prefix=prefix))
-        unused_fingerprints = s3_fingerprints - ec2_fingerprints
-        return unused_fingerprints
-
-    def delete_fingerprints(self, fingerprints):
-        """
-        Delete the given fingerprints.
-
-        :type fingerprints: Iterable(str)
-        """
-        bucket = self.s3.get_bucket(self.s3_bucket_name, validate=False)
-        key_names = [self.ssh_pubkey_s3_key_prefix + fingerprint for fingerprint in fingerprints]
-        bucket.delete_keys(key_names)
-
-    def unused_snapshots(self):
-        """
-        Find all snapshots created for AMIs owned by the current AWS account for which the AMI
-        has since been unregistered. This method works globally and does not consider the
-        namespace represented by this context.
-
-        :rtype: set[str]
-        """
-        all_snapshots = self.ec2.get_all_snapshots(
-            owner='self',
-            filters=dict(description='Created by CreateImage*'))
-        all_snapshots = set(snapshot.id for snapshot in all_snapshots)
-        used_snapshots = set(bdt.snapshot_id
-                             for image in self.ec2.get_all_images(owners=['self'])
-                             for bdt in image.block_device_mapping.itervalues()
-                             if bdt.snapshot_id is not None)
-        return all_snapshots - used_snapshots
-
-    def delete_snapshots(self, unused_snapshots):
-        """
-        Delete the snapshots with the given IDs.
-
-        :type unused_snapshots: collections.Iterable[str]
-        """
-        for snapshot_id in unused_snapshots:
-            log.info('Deleting snapshot %s', snapshot_id)
-            self.ec2.delete_snapshot(snapshot_id)
-
-
-@contextmanager
-def out_exception(object_type, object_name):
-    try:
-        yield
-    except BaseException:
-        log.warn("Failed to remove %s '%s'", object_type, object_name, exc_info=True)

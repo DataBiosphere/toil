@@ -41,21 +41,23 @@ def setup(job, inputFile, N, downCheckpoints, options):
     """
     RealtimeLogger.info("Starting the merge sort")
     return job.addChildJobFn(down,
-                             inputFile, N,
+                             inputFile, N, 'root',
                              downCheckpoints,
                              options = options,
                              preemptable=True,
                              memory=sortMemory).rv()
 
 
-def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
+def down(job, inputFileStoreID, N, path, downCheckpoints, options, memory=sortMemory):
     """
-    Input is a file and a range into that file to sort and an output location in which
-    to write the sorted file.
+    Input is a file, a subdivision size N, and a path in the hierarchy of jobs.
     If the range is larger than a threshold N the range is divided recursively and
     a follow on job is then created which merges back the results else
     the file is sorted and placed in the output.
     """
+    
+    RealtimeLogger.info("Down job starting: %s" % path)
+    
     # Read the file
     inputFile = job.fileStore.readGlobalFile(inputFileStoreID, cache=False)
     length = os.path.getsize(inputFile)
@@ -67,20 +69,20 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
         midPoint = getMidPoint(inputFile, 0, length)
         t1 = job.fileStore.getLocalTempFile()
         with open(t1, 'w') as fH:
-            copySubRangeOfFile(inputFile, 0, midPoint+1, fH)
+            fH.write(copySubRangeOfFile(inputFile, 0, midPoint+1))
         t2 = job.fileStore.getLocalTempFile()
         with open(t2, 'w') as fH:
-            copySubRangeOfFile(inputFile, midPoint+1, length, fH)
+            fH.write(copySubRangeOfFile(inputFile, midPoint+1, length))
         # Call down recursively. By giving the rv() of the two jobs as inputs to the follow-on job, up,
         # we communicate the dependency without hindering concurrency.
-        return job.addFollowOnJobFn(up,
-                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, options=options,
+        result = job.addFollowOnJobFn(up,
+                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t1), N, path + '/0',
+                                                      downCheckpoints, checkpoint=downCheckpoints, options=options,
                                                       preemptable=True, memory=options.sortMemory).rv(),
-                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, downCheckpoints,
-                                                      checkpoint=downCheckpoints, options=options,
+                                    job.addChildJobFn(down, job.fileStore.writeGlobalFile(t2), N, path + '/1',
+                                                      downCheckpoints, checkpoint=downCheckpoints, options=options,
                                                       preemptable=True, memory=options.mergeMemory).rv(),
-                                    preemptable=True, options=options, memory=options.sortMemory).rv()
+                                    path + '/up', preemptable=True, options=options, memory=options.sortMemory).rv()
     else:
         # We can sort this bit of the file
         RealtimeLogger.critical("Sorting file: %s of size: %s"
@@ -88,13 +90,19 @@ def down(job, inputFileStoreID, N, downCheckpoints, options, memory=sortMemory):
         # Sort the copy and write back to the fileStore
         shutil.copyfile(inputFile, inputFile + '.sort')
         sort(inputFile + '.sort')
-        return job.fileStore.writeGlobalFile(inputFile + '.sort')
+        result = job.fileStore.writeGlobalFile(inputFile + '.sort')
+        
+    RealtimeLogger.info("Down job finished: %s" % path)
+    return result
 
 
-def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
+def up(job, inputFileID1, inputFileID2, path, options, memory=sortMemory):
     """
     Merges the two files and places them in the output.
     """
+    
+    RealtimeLogger.info("Up job starting: %s" % path)
+    
     with job.fileStore.writeGlobalFileStream() as (fileHandle, outputFileStoreID):
         fileHandle = codecs.getwriter('utf-8')(fileHandle)
         with job.fileStore.readGlobalFileStream(inputFileID1) as inputFileHandle1:
@@ -107,21 +115,22 @@ def up(job, inputFileID1, inputFileID2, options, memory=sortMemory):
         # Cleanup up the input files - these deletes will occur after the completion is successful.
         job.fileStore.deleteGlobalFile(inputFileID1)
         job.fileStore.deleteGlobalFile(inputFileID2)
+        
+        RealtimeLogger.info("Up job finished: %s" % path)
+        
         return outputFileStoreID
 
 
 def sort(file):
-    """
-    Sorts the given file.
-    """
-    fileHandle = open(file, 'r')
-    lines = fileHandle.readlines()
-    fileHandle.close()
+    """Sorts the given file."""
+    with open(file, 'r') as f:
+        lines = f.readlines()
+
     lines.sort()
-    fileHandle = open(file, 'w')
-    for line in lines:
-        fileHandle.write(line)
-    fileHandle.close()
+
+    with open(file, 'w') as f:
+        for line in lines:
+            f.write(line)
 
 
 def merge(fileHandle1, fileHandle2, outputFileHandle):
@@ -141,7 +150,7 @@ def merge(fileHandle1, fileHandle2, outputFileHandle):
         line2 = fileHandle2.readline()
 
 
-def copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFileHandle):
+def copySubRangeOfFile(inputFile, fileStart, fileEnd):
     """
     Copies the range (in bytes) between fileStart and fileEnd to the given
     output file handle.
@@ -150,7 +159,7 @@ def copySubRangeOfFile(inputFile, fileStart, fileEnd, outputFileHandle):
         fileHandle.seek(fileStart)
         data = fileHandle.read(fileEnd - fileStart)
         assert len(data) == fileEnd - fileStart
-        outputFileHandle.write(data)
+    return data
 
 
 def getMidPoint(file, fileStart, fileEnd):
@@ -158,26 +167,26 @@ def getMidPoint(file, fileStart, fileEnd):
     Finds the point in the file to split.
     Returns an int i such that fileStart <= i < fileEnd
     """
-    fileHandle = open(file, 'r')
-    midPoint = old_div((fileStart + fileEnd), 2)
-    assert midPoint >= fileStart
-    fileHandle.seek(midPoint)
-    line = fileHandle.readline()
-    assert len(line) >= 1
-    if len(line) + midPoint < fileEnd:
-        return midPoint + len(line) - 1
-    fileHandle.seek(fileStart)
-    line = fileHandle.readline()
-    assert len(line) >= 1
-    assert len(line) + fileStart <= fileEnd
+    with open(file, 'r') as f:
+        midPoint = old_div((fileStart + fileEnd), 2)
+        assert midPoint >= fileStart
+        f.seek(midPoint)
+        line = f.readline()
+        assert len(line) >= 1
+        if len(line) + midPoint < fileEnd:
+            return midPoint + len(line) - 1
+        f.seek(fileStart)
+        line = f.readline()
+        assert len(line) >= 1
+        assert len(line) + fileStart <= fileEnd
     return len(line) + fileStart - 1
 
 
 def makeFileToSort(fileName, lines=defaultLines, lineLen=defaultLineLen):
-    with open(fileName, 'w') as fileHandle:
+    with open(fileName, 'w') as f:
         for _ in range(lines):
             line = "".join(random.choice('actgACTGNXYZ') for _ in range(lineLen - 1)) + '\n'
-            fileHandle.write(line)
+            f.write(line)
 
 
 def main(options=None):
@@ -244,6 +253,7 @@ def main(options=None):
         else:
             sortedFileID = workflow.restart()
         workflow.exportFile(sortedFileID, sortedFileURL)
+
 
 if __name__ == '__main__':
     main()
