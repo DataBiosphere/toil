@@ -131,7 +131,7 @@ class Node(object):
                 raise RuntimeError("Docker daemon failed to start on machine with ip %s" % self.publicIP)
             try:
                 output = self.sshInstance('/usr/bin/ps', 'auxww', sshOptions=['-oBatchMode=yes'], user=keyName)
-                if 'dockerd' in output:
+                if b'dockerd' in output:
                     # docker daemon has started
                     logger.info('Docker daemon running')
                     break
@@ -154,6 +154,11 @@ class Node(object):
             try:
                 output = self.sshInstance('/usr/bin/docker', 'ps',
                                           sshOptions=['-oBatchMode=yes'], user=keyName)
+                
+                if type(role) != type(output):
+                    # We need to encode the role as bytes
+                    role = bytes(role, encoding='utf-8')
+                
                 if role in output:
                     logger.info('...Toil appliance started')
                     break
@@ -196,7 +201,10 @@ class Node(object):
         return self.coreSSH(*args, **kwargs)
 
     def sshInstance(self, *args, **kwargs):
-        # returns the output from the command
+        """
+        Run a command on the instance.
+        Returns the binary output of the command.
+        """
         kwargs['collectStdout'] = True
         return self.coreSSH(*args, **kwargs)
 

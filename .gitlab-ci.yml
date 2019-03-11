@@ -1,6 +1,13 @@
 before_script:
   - docker info
   - cat /etc/hosts
+after_script:
+  # We need to clean up any files that Toil may have made via Docker that
+  # aren't deletable by the Gitlab user. If we don't do this, Gitlab will try
+  # and clean them up before running the next job on the runner, fail, and fail
+  # that next job.
+  - pwd
+  - sudo rm -rf tmp
 
 
 stages:
@@ -11,13 +18,11 @@ stages:
 py2-job:
   stage: py2
   script:
-    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
     - pwd
-    - sudo rm -rf tmp
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
 
 py3-job:
   stage: py3
   script:
-    - git clone https://github.com/DataBiosphere/toil.git && cd toil && virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
     - pwd
-    - sudo rm -rf tmp
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test

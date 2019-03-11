@@ -118,21 +118,39 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     logFileByteReportLimit = config.maxLogFileSize
 
     if config.badWorker > 0 and random.random() < config.badWorker:
-        def badWorker():
-            #This will randomly kill the worker process at a random time 
-            time.sleep(config.badWorkerFailInterval * random.random())
-            os.kill(os.getpid(), signal.SIGKILL) #signal.SIGINT)
-            #TODO: FIX OCCASIONAL DEADLOCK WITH SIGINT (tested on single machine)
-        t = Thread(target=badWorker)
-        # Ideally this would be a daemon thread but that causes an intermittent (but benign)
-        # exception similar to the one described here:
-        # http://stackoverflow.com/questions/20596918/python-exception-in-thread-thread-1-most-likely-raised-during-interpreter-shutd
-        # Our exception is:
-        #    Exception in thread Thread-1 (most likely raised during interpreter shutdown):
-        #    <type 'exceptions.AttributeError'>: 'NoneType' object has no attribute 'kill'
-        # This attribute error is caused by the call os.kill() and apparently unavoidable with a
-        # daemon
-        t.start()
+        # We need to kill the process we are currently in, to simulate worker
+        # failure. We don't want to just send SIGKILL, because we can't tell
+        # that from a legitimate OOM on our CI runner. We're going to send
+        # SIGUSR1 so our terminations are distinctive, and then SIGKILL if that
+        # didn't stick. We definitely don't want to do this from *within* the
+        # process we are trying to kill, so we fork off. TODO: We can still
+        # leave the killing code running after the main Toil flow is done, but
+        # since it's now in a process instead of a thread, the main Python
+        # process won't wait around for its timeout to expire. I think this is
+        # better than the old thread-based way where all of Toil would wait
+        # around to be killed.
+        
+        killTarget = os.getpid()
+        sleepTime = config.badWorkerFailInterval * random.random()
+        if os.fork() == 0:
+            # We are the child
+            # Let the parent run some amount of time
+            time.sleep(sleepTime)
+            # Kill it gently
+            os.kill(killTarget, signal.SIGUSR1)
+            # Wait for that to stick
+            time.sleep(0.01)
+            try:
+                # Kill it harder. Hope the PID hasn't already been reused.
+                # If we succeeded the first time, this will OSError
+                os.kill(killTarget, signal.SIGKILL)
+            except OSError:
+                pass
+            # Exit without doing any of Toil's cleanup
+            os._exit()
+            
+        # We don't need to reap the child. Either it kills us, or we finish
+        # before it does. Either way, init will have to clean it up for us.
 
     ##########################################
     #Load the environment for the jobGraph
@@ -494,16 +512,6 @@ def main(argv=None):
     ##########################################
     #Load the jobStore/config file
     ##########################################
-
-    # Try to monkey-patch boto early so that credentials are cached.
-    try:
-        import boto
-    except ImportError:
-        pass
-    else:
-        # boto is installed, monkey patch it now
-        from toil.lib.ec2Credentials import enable_metadata_credential_caching
-        enable_metadata_credential_caching()
 
     jobStore = Toil.resumeJobStore(jobStoreLocator)
     config = jobStore.config
