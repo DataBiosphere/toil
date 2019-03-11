@@ -1,39 +1,32 @@
 from __future__ import absolute_import
 from past.builtins import map
-import logging
-import os
+
 try:
     # In Python 3 we have this quote
     from shlex import quote
 except ImportError:
     # But in 2.7 we have this deprecated one
     from pipes import quote
-from toil import subprocess
+
 import docker
 import base64
-import time
 import requests
-
+import logging
+import os
 from docker.errors import create_api_error_from_http_exception
 from docker.errors import ContainerError
 from docker.errors import ImageNotFound
-from docker.errors import APIError
 from docker.errors import NotFound
-from docker.errors import DockerException
-from docker.utils.types import LogConfig
-from docker.api.container import ContainerApiMixin
 
+from toil import subprocess
 from toil.lib.retry import retry
-from docker import client
-from pwd import getpwuid
-
-from toil.test import timeLimit
 
 logger = logging.getLogger(__name__)
 
 FORGO = 0
 STOP = 1
 RM = 2
+
 
 def dockerPredicate(e):
     """
@@ -47,6 +40,7 @@ def dockerPredicate(e):
     if e.returncode == 125:
         return True
 
+
 def dockerCheckOutput(*args, **kwargs):
     """
     Deprecated.  Runs subprocessDockerCall() using 'subprocess.check_output()'.
@@ -59,6 +53,7 @@ def dockerCheckOutput(*args, **kwargs):
                 "is deprecated, please switch to apiDockerCall().")
     return subprocessDockerCall(*args, checkOutput=True, **kwargs)
 
+
 def dockerCall(*args, **kwargs):
     """
     Deprecated.  Runs subprocessDockerCall() using 'subprocess.check_output()'.
@@ -70,6 +65,7 @@ def dockerCall(*args, **kwargs):
     logger.warn("WARNING: dockerCall() using subprocess.check_output() "
                 "is deprecated, please switch to apiDockerCall().")
     return subprocessDockerCall(*args, checkOutput=False, **kwargs)
+
 
 def subprocessDockerCall(job,
                          tool,
@@ -198,6 +194,7 @@ def subprocessDockerCall(job,
 
     _fixPermissions(tool=tool, workDir=workDir)
     return out
+
 
 def apiDockerCall(job,
                   image,
@@ -433,8 +430,7 @@ def apiDockerCall(job,
             return container
             
     except ContainerError:
-        logger.error("Docker had non-zero exit.  Check your command: " + \
-                      repr(command))
+        logger.error("Docker had non-zero exit.  Check your command: " + repr(command))
         raise
     except ImageNotFound:
         logger.error("Docker image not found.")
@@ -442,8 +438,7 @@ def apiDockerCall(job,
     except requests.exceptions.HTTPError as e:
         logger.error("The server returned an error.")
         raise create_api_error_from_http_exception(e)
-    except:
-        raise
+
 
 def dockerKill(container_name, client, gentleKill=False):
     """
@@ -468,6 +463,7 @@ def dockerKill(container_name, client, gentleKill=False):
                       container_name)
         raise create_api_error_from_http_exception(e)
 
+
 def dockerStop(container_name, client):
     """
     Gracefully kills a container.  Equivalent to "docker stop":
@@ -476,6 +472,7 @@ def dockerStop(container_name, client):
     :param client: The docker API client object to call.
     """
     dockerKill(container_name, client, gentleKill=True)
+
 
 def containerIsRunning(container_name):
     """
@@ -498,6 +495,7 @@ def containerIsRunning(container_name):
         logger.debug("Server error attempting to call container: ",
                       container_name)
         raise create_api_error_from_http_exception(e)
+
 
 def getContainerName(job):
     """Create a random string including the job name, and return it."""
@@ -551,6 +549,7 @@ def _dockerKill(containerName, action):
                     logger.debug('Container "%s" was not found on the system.'
                                 'Nothing to remove.',
                                  containerName)
+
 
 def _fixPermissions(tool, workDir):
     """

@@ -35,6 +35,7 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
+from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
@@ -52,7 +53,7 @@ logger = logging.getLogger( __name__ )
 #   performance optimization. This minimize number of expensive loads of
 #   jobGraphs from jobStores.  However, this special case could be unnecessary.
 #   The jobGraph is loaded to update predecessorsFinished, in
-#   _checkSuccssorReadyToRunMultiplePredecessors, however it doesn't appear to
+#   _checkSuccessorReadyToRunMultiplePredecessors, however it doesn't appear to
 #   write the jobGraph back the jobStore.  Thus predecessorsFinished may really
 #   be leader state and could moved out of the jobGraph.  This would make this
 #   special-cases handling unnecessary and simplify the leader.
@@ -123,24 +124,24 @@ class Leader(object):
         # Get a snap shot of the current state of the jobs in the jobStore
         self.toilState = ToilState(jobStore, rootJob, jobCache=jobCache)
         logger.debug("Found %s jobs to start and %i jobs with successors to run",
-                        len(self.toilState.updatedJobs), len(self.toilState.successorCounts))
+                     len(self.toilState.updatedJobs), len(self.toilState.successorCounts))
 
         # Batch system
         self.batchSystem = batchSystem
-        assert len(self.batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
+        assert len(self.batchSystem.getIssuedBatchJobIDs()) == 0  # Batch system must start with no active jobs!
         logger.debug("Checked batch system has no running jobs and no updated jobs")
 
         # Map of batch system IDs to IssuedJob tuples
         self.jobBatchSystemIDToIssuedJob = {}
 
-        # Number of preempetable jobs currently being run by batch system
+        # Number of preemptible jobs currently being run by batch system
         self.preemptableJobsIssued = 0
 
         # Tracking the number service jobs issued,
         # this is used limit the number of services issued to the batch system
         self.serviceJobsIssued = 0
         self.serviceJobsToBeIssued = [] # A queue of service jobs that await scheduling
-        #Equivalents for service jobs to be run on preemptable nodes
+        #Equivalents for service jobs to be run on preemptible nodes
         self.preemptableServiceJobsIssued = 0
         self.preemptableServiceJobsToBeIssued = []
 
@@ -177,6 +178,8 @@ class Leader(object):
         # internal jobs we should not expose at top level debugging
         self.debugJobNames = ("CWLJob", "CWLWorkflow", "CWLScatter", "CWLGather",
                               "ResolveIndirect")
+
+        self.deadlockThrottler = LocalThrottle(self.config.deadlockWait)
 
     def run(self):
         """
@@ -226,6 +229,11 @@ class Leader(object):
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
+        try:
+            self.create_status_sentinel_file(self.toilState.totalFailedJobs)
+        except IOError as e:
+            logger.debug('Error from importFile with hardlink=True: {}'.format(e))
+
         logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
                 else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))
@@ -237,6 +245,16 @@ class Leader(object):
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
 
         return self.jobStore.getRootJobReturnValue()
+
+    def create_status_sentinel_file(self, fail):
+        """Create a file in the jobstore indicating failure or success."""
+        logName = 'failed.log' if fail else 'succeeded.log'
+        localLog = os.path.join(os.getcwd(), logName)
+        open(localLog, 'w').close()
+        self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+
+        if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
+            os.remove(localLog)
 
     def _handledFailedSuccessor(self, jobNode, jobGraph, successorJobStoreID):
         """Deal with the successor having failed. Return True if there are
@@ -266,7 +284,7 @@ class Leader(object):
             return False
 
 
-    def _checkSuccssorReadyToRunMultiplePredecessors(self, jobGraph, jobNode, successorJobStoreID):
+    def _checkSuccessorReadyToRunMultiplePredecessors(self, jobGraph, jobNode, successorJobStoreID):
         """Handle the special cases of checking if a successor job is
         ready to run when there are multiple predecessors"""
         # See implementation note at the top of this file for discussion of multiple predecessors
@@ -296,7 +314,7 @@ class Leader(object):
             self.toilState.jobsToBeScheduledWithMultiplePredecessors.pop(successorJobStoreID)
             return True
 
-    def _makeJobSuccssorReadyToRun(self, jobGraph, jobNode):
+    def _makeJobSuccessorReadyToRun(self, jobGraph, jobNode):
         """make a successor job ready to run, returning False if they should
         not yet be run"""
         successorJobStoreID = jobNode.jobStoreID
@@ -306,7 +324,7 @@ class Leader(object):
         self.toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobGraph)
 
         if jobNode.predecessorNumber > 1:
-            return self._checkSuccssorReadyToRunMultiplePredecessors(jobGraph, jobNode, successorJobStoreID)
+            return self._checkSuccessorReadyToRunMultiplePredecessors(jobGraph, jobNode, successorJobStoreID)
         else:
             return True
 
@@ -322,7 +340,7 @@ class Leader(object):
         # For each successor schedule if all predecessors have been completed
         successors = []
         for jobNode in jobGraph.stack[-1]:
-            if self._makeJobSuccssorReadyToRun(jobGraph, jobNode):
+            if self._makeJobSuccessorReadyToRun(jobGraph, jobNode):
                 successors.append(jobNode)
         self.issueJobs(successors)
 
@@ -532,8 +550,10 @@ class Leader(object):
             if self.clusterScaler is not None:
                 self.clusterScaler.check()
 
-            # Check for deadlocks
-            self.checkForDeadlocks()
+            if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
+                # Nothing happened this round and it's been long
+                # enough since we last checked. Check for deadlocks.
+                self.checkForDeadlocks()
 
         logger.debug("Finished the main loop: no jobs left to run.")
 
@@ -553,7 +573,7 @@ class Leader(object):
         totalRunningJobs = len(self.batchSystem.getRunningBatchJobIDs())
         totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
         # If there are no updated jobs and at least some jobs running
-        if totalServicesIssued >= totalRunningJobs and len(self.toilState.updatedJobs) == 0 and totalRunningJobs > 0:
+        if totalServicesIssued >= totalRunningJobs and totalRunningJobs > 0:
             serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.keys()) if isinstance(self.jobBatchSystemIDToIssuedJob[x], ServiceJobNode)]
             runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.isRunning(self.jobBatchSystemIDToIssuedJob[x])])
             assert len(runningServiceJobs) <= totalRunningJobs
@@ -576,9 +596,7 @@ class Leader(object):
             self.potentialDeadlockTime = 0
 
     def issueJob(self, jobNode):
-        """
-        Add a job to the queue of jobs
-        """
+        """Add a job to the queue of jobs."""
         jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
                                     jobNode.jobName,
                                     self.jobStoreLocator,
@@ -590,8 +608,7 @@ class Leader(object):
             # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
             self.preemptableJobsIssued += 1
-        cur_logger = (logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS)
-                      else logger.info)
+        cur_logger = logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS) else logger.info
         cur_logger("Issued job %s with job batch system ID: "
                    "%s and cores: %s, disk: %s, and memory: %s",
                    jobNode, str(jobBatchSystemID), int(jobNode.cores),
@@ -601,9 +618,7 @@ class Leader(object):
             self.toilMetrics.logQueueSize(self.getNumberOfJobsIssued())
 
     def issueJobs(self, jobs):
-        """
-        Add a list of jobs, each represented as a jobNode object
-        """
+        """Add a list of jobs, each represented as a jobNode object."""
         for job in jobs:
             self.issueJob(job)
 
@@ -619,9 +634,7 @@ class Leader(object):
         self.issueQueingServiceJobs()
 
     def issueQueingServiceJobs(self):
-        """
-        Issues any queuing service jobs up to the limit of the maximum allowed.
-        """
+        """Issues any queuing service jobs up to the limit of the maximum allowed."""
         while len(self.serviceJobsToBeIssued) > 0 and self.serviceJobsIssued < self.config.maxServiceJobs:
             self.issueJob(self.serviceJobsToBeIssued.pop())
             self.serviceJobsIssued += 1
@@ -648,9 +661,7 @@ class Leader(object):
 
 
     def removeJob(self, jobBatchSystemID):
-        """
-        Removes a job from the system.
-        """
+        """Removes a job from the system."""
         assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
         jobNode = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
         if jobNode.preemptable:
@@ -827,7 +838,7 @@ class Leader(object):
                         if jobStore.exists(successorJobNode.jobStoreID):
                             successorRecursion(jobStore.load(successorJobNode.jobStoreID))
 
-        successorRecursion(jobGraph) # Recurse from jobGraph
+        successorRecursion(jobGraph)  # Recurse from jobGraph
 
         return successors
 

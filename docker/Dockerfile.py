@@ -21,15 +21,19 @@ sdistName = os.environ['_TOIL_SDIST_NAME']
 
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure' extra with PyNACL
+                         'python3.6',
+                         'python3.6-dev',
                          'python-dev',  # For installing Python packages with native code
+                         'python3-dev',
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
+                         'python3-pip',
                          'libcurl4-openssl-dev',
                          'libssl-dev',
                          'wget',
                          'curl',
                          'openssh-server',
-                         'mesos=1.0.1-2.0.93.ubuntu1404',
-                         "nodejs", # CWL support for javascript expressions
+                         'mesos=1.0.1-2.0.94.ubuntu1604',
+                         "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen'])
 
@@ -55,17 +59,24 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    FROM ubuntu:14.04
+    FROM ubuntu:16.04
+    
+    RUN apt-get -y update && apt-get -y upgrade
 
-    RUN echo "deb http://repos.mesosphere.io/ubuntu/ trusty main" \
+    RUN apt-get -y install apt-transport-https ca-certificates software-properties-common
+
+    RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
-        && echo "deb http://deb.nodesource.com/node_6.x trusty main" \
+        && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
         > /etc/apt/sources.list.d/nodesource.list \
-        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280 \
-        && apt-get -y update \
-        && apt-get -y install {dependencies} \
-        && apt-get clean && rm -rf /var/lib/apt/lists/*
+        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
+
+    RUN add-apt-repository -y ppa:jonathonf/python-3.6
+    
+    RUN apt-get -y update
+
+    RUN apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
@@ -89,21 +100,22 @@ print(heredoc('''
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
     # Install statically linked version of docker client
-    RUN curl https://get.docker.com/builds/Linux/x86_64/docker-1.13.1.tgz \
+    RUN curl https://download.docker.com/linux/static/stable/x86_64/docker-18.06.1-ce.tgz \
          | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
          && chmod u+x /usr/local/bin/docker
 
     # Fix for Mesos interface dependency missing on ubuntu
     RUN pip install protobuf==3.0.0
 
-    # Move the Mesos module onto the Python path
-    RUN ln -s /usr/lib/python2.7/site-packages/mesos /usr/local/lib/python2.7/dist-packages/mesos
-
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
 
     # Fix for `screen` (https://github.com/BD2KGenomics/toil/pull/1386#issuecomment-267424561)
     ENV TERM linux
+    
+    # Run bash instead of sh inside of screen
+    ENV SHELL /bin/bash
+    RUN echo "defshell -bash" > ~/.screenrc
 
     # An appliance may need to start more appliances, e.g. when the leader appliance launches the
     # worker appliance on a worker node. To support this, we embed a self-reference into the image:

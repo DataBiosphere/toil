@@ -13,7 +13,6 @@
 # limitations under the License.
 
 from __future__ import absolute_import
-
 from builtins import filter
 from builtins import str
 from builtins import object
@@ -24,10 +23,10 @@ import pwd
 import socket
 import time
 import sys
-import base64
 import getpass
 import json
 import traceback
+import addict
 
 try:
     from urllib2 import urlopen
@@ -37,27 +36,17 @@ except ImportError:
     from urllib.parse import quote_plus
 
 from contextlib import contextmanager
-from struct import unpack
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-
-# Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
-import addict
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
-
+from toil import pickle
 from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchSystemLocalSupport,
                                                    NodeInfo)
-from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData, JobQueue
+from toil.batchSystems.mesos import ToilJob, MesosShape, TaskData, JobQueue
 
 log = logging.getLogger(__name__)
 
@@ -160,7 +149,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # non-preemptability is a stronger requirement. If we tracked the set
         # of preemptable nodes instead, we'd have to use absence as an
         # indicator of non-preemptability and could therefore be misled into
-        # believeing that a recently launched preemptable node was
+        # believing that a recently launched preemptable node was
         # non-preemptable.
         self.nonPreemptableNodes = set()
 
@@ -198,7 +187,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         jobID = self.getNextJobID()
         job = ToilJob(jobID=jobID,
                       name=str(jobNode),
-                      resources=ResourceRequirement(**jobNode._requirements),
+                      resources=MesosShape(wallTime=0, **jobNode._requirements),
                       command=jobNode.command,
                       userScript=self.userScript,
                       environment=self.environment.copy(),
@@ -403,7 +392,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         return cores, memory, disk, preemptable
 
     def _prepareToRun(self, jobType, offer):
-        # Get the first element to insure FIFO
+        # Get the first element to ensure FIFO
         job = self.jobQueues.nextJobOfType(jobType)
         task = self._newMesosTask(job, offer)
         return task
@@ -433,10 +422,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         self._trackOfferedNodes(offers)
 
-        jobTypes = self.jobQueues.sorted()
+        jobTypes = self.jobQueues.sortedTypes
 
-        # TODO: We may want to assert that numIssued >= numRunning
-        if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):
+        if not jobTypes:
             log.debug('There are no queued tasks. Declining Mesos offers.')
             # Without jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
@@ -740,7 +728,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     executorID, agentID)
         
         try:
-            
             # Look up the IP. We should always know it unless we get answers
             # back without having accepted offers.
             agentAddress = self.agentsByID[agentID]
@@ -831,7 +818,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         self._handleFailedExecutor(agentId.value, failedId)
         
     @classmethod
-    def setOptions(cl, setOption):
+    def setOptions(cls, setOption):
         setOption("mesosMasterAddress", None, None, 'localhost:5050')
 
 

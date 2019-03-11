@@ -11,9 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
-
 from builtins import next
 from builtins import str
 import logging
@@ -22,47 +20,31 @@ import os
 import re
 import shutil
 import signal
-from toil import subprocess
 import tempfile
 import threading
 import time
 import unittest
 import uuid
-import errno
+from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
 from textwrap import dedent
 from unittest.util import strclass
-
-# Python 3 compatibility imports
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
 from toil.lib.memoize import less_strict_bool, memoize
 from toil.lib.iterables import concat
-from toil.lib.processes import which
 from toil.lib.threading import ExceptionalThread
-
+from toil.lib.misc import mkdir_p
 from toil import subprocess
+from toil import which
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
-from future.utils import with_metaclass
 
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
-
-def mkdir_p(path):
-    """
-    The equivalent of mkdir -p
-    """
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
 
 
 class ToilTest(unittest.TestCase):
@@ -78,7 +60,6 @@ class ToilTest(unittest.TestCase):
     directories left over from tests will be removed automatically removed during tear down.
     Otherwise, left-over files will not be removed.
     """
-
     _tempBaseDir = None
     _tempDirs = None
 
@@ -91,6 +72,25 @@ class ToilTest(unittest.TestCase):
             tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
             mkdir_p(tempBaseDir)
         cls._tempBaseDir = tempBaseDir
+
+    @classmethod
+    def tearDownClass(cls):
+        if cls._tempBaseDir is None:
+            while cls._tempDirs:
+                tempDir = cls._tempDirs.pop()
+                if os.path.exists(tempDir):
+                    shutil.rmtree(tempDir)
+        else:
+            cls._tempDirs = []
+        super(ToilTest, cls).tearDownClass()
+
+    def setUp(self):
+        log.info("Setting up %s ...", self.id())
+        super(ToilTest, self).setUp()
+
+    def tearDown(self):
+        super(ToilTest, self).tearDown()
+        log.info("Tore down %s", self.id())
 
     @classmethod
     def awsRegion(cls):
@@ -144,21 +144,6 @@ class ToilTest(unittest.TestCase):
         projectRootPath = projectRootPath[:-len(expectedSuffix)]
         return projectRootPath
 
-    @classmethod
-    def tearDownClass(cls):
-        if cls._tempBaseDir is None:
-            while cls._tempDirs:
-                tempDir = cls._tempDirs.pop()
-                if os.path.exists(tempDir):
-                    shutil.rmtree(tempDir)
-        else:
-            cls._tempDirs = []
-        super(ToilTest, cls).tearDownClass()
-
-    def setUp(self):
-        log.info("Setting up %s ...", self.id())
-        super(ToilTest, self).setUp()
-
     def _createTempDir(self, purpose=None):
         return self._createTempDirEx(self._testMethodName, purpose)
 
@@ -170,10 +155,6 @@ class ToilTest(unittest.TestCase):
         temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
-
-    def tearDown(self):
-        super(ToilTest, self).tearDown()
-        log.info("Tore down %s", self.id())
 
     def _getTestJobStorePath(self):
         path = self._createTempDir(purpose='jobstore')
@@ -390,7 +371,7 @@ def needs_gridengine(test_item):
     Use as a decorator before test classes or methods to only run them if GridEngine is installed.
     """
     test_item = _mark_test('gridengine', test_item)
-    if next(which('qhost'), None):
+    if which('qhost'):
         return test_item
     else:
         return unittest.skip("Install GridEngine to include this test.")(test_item)
@@ -400,7 +381,7 @@ def needs_torque(test_item):
     Use as a decorator before test classes or methods to only run them if PBS/Torque is installed.
     """
     test_item = _mark_test('torque', test_item)
-    if next(which('pbsnodes'), None):
+    if which('pbsnodes'):
         return test_item
     else:
         return unittest.skip("Install PBS/Torque to include this test.")(test_item)
@@ -412,6 +393,9 @@ def needs_mesos(test_item):
     and configured.
     """
     test_item = _mark_test('mesos', test_item)
+    if not (which('mesos-master') or which('mesos-slave')):
+        return unittest.skip(
+            "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
         # noinspection PyUnresolvedReferences
         import pymesos
@@ -430,7 +414,7 @@ def needs_parasol(test_item):
     Use as decorator so tests are only run if Parasol is installed.
     """
     test_item = _mark_test('parasol', test_item)
-    if next(which('parasol'), None):
+    if which('parasol'):
         return test_item
     else:
         return unittest.skip("Install Parasol to include this test.")(test_item)
@@ -441,7 +425,7 @@ def needs_slurm(test_item):
     Use as a decorator before test classes or methods to only run them if Slurm is installed.
     """
     test_item = _mark_test('slurm', test_item)
-    if next(which('squeue'), None):
+    if which('squeue'):
         return test_item
     else:
         return unittest.skip("Install Slurm to include this test.")(test_item)
@@ -470,7 +454,7 @@ def needs_lsf(test_item):
     is installed.
     """
     test_item = _mark_test('lsf', test_item)
-    if next(which('bsub'), None):
+    if which('bsub'):
         return test_item
     else:
         return unittest.skip("Install LSF to include this test.")(test_item)
@@ -484,7 +468,7 @@ def needs_docker(test_item):
     test_item = _mark_test('docker', test_item)
     if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
         return unittest.skip('Skipping docker test.')(test_item)
-    if next(which('docker'), None):
+    if which('docker'):
         return test_item
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
@@ -530,10 +514,10 @@ def needs_appliance(test_item):
     test_item = _mark_test('appliance', test_item)
     if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
         return unittest.skip('Skipping docker test.')(test_item)
-    if next(which('docker'), None):
+    if which('docker'):
         image = applianceSelf()
         try:
-            images = subprocess.check_output(['docker', 'inspect', image])
+            images = subprocess.check_output(['docker', 'inspect', image]).decode('utf-8')
         except subprocess.CalledProcessError:
             images = []
         else:
@@ -606,16 +590,15 @@ def timeLimit(seconds):
 
     :param seconds: maximum allowable time, in seconds
     >>> import time
-    >>> with timeLimit(5):
-    ...    time.sleep(4)
+    >>> with timeLimit(2):
+    ...    time.sleep(1)
     >>> import time
-    >>> with timeLimit(5):
-    ...    time.sleep(6)
+    >>> with timeLimit(1):
+    ...    time.sleep(2)
     Traceback (most recent call last):
         ...
     RuntimeError: Timed out
     """
-
     # noinspection PyUnusedLocal
     def signal_handler(signum, frame):
         raise RuntimeError('Timed out')
@@ -626,9 +609,6 @@ def timeLimit(seconds):
         yield
     finally:
         signal.alarm(0)
-
-
-# FIXME: move to bd2k-python-lib
 
 
 def make_tests(generalMethod, targetClass, **kwargs):
@@ -787,7 +767,6 @@ class ApplianceTestSupport(ToilTest):
     A Toil test that runs a user script on a minimal cluster of appliance containers,
     i.e. one leader container and one worker container.
     """
-
     @contextmanager
     def _applianceCluster(self, mounts=None, numCores=None):
         """
@@ -975,4 +954,6 @@ class ApplianceTestSupport(ToilTest):
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',
-                    '--resources=cpus(*):%i' % self.numCores]
+                    '--resources=cpus(*):%i' % self.numCores,
+                    '--no-hostname_lookup',
+                    '--no-systemd_enable_support']

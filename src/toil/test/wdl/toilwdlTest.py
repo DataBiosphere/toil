@@ -26,81 +26,91 @@ from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
 from toil.test import ToilTest, slow, needs_docker
+from toil import urlretrieve
 import zipfile
 import shutil
+import uuid
+
 
 class ToilWdlIntegrationTest(ToilTest):
     """A set of test cases for toilwdl.py"""
 
     def setUp(self):
-        """
-        Initial set up of variables for the test.
-        """
-        self.program = os.path.abspath("src/toil/wdl/toilwdl.py")
+        """Runs anew before each test to create farm fresh temp dirs."""
+        self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
+        os.makedirs(self.output_dir)
 
-        self.test_directory = os.path.abspath("src/toil/test/wdl/")
-        self.output_dir = self._createTempDir(purpose='tempDir')
+    @classmethod
+    def setUpClass(cls):
+        """Runs once for all tests."""
+        cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
-        self.encode_data = os.path.join(self.test_directory, "ENCODE_data.zip")
-        self.encode_data_dir = os.path.join(self.test_directory, "ENCODE_data")
+        cls.test_directory = os.path.abspath("src/toil/test/wdl/")
 
-        self.wdl_data = os.path.join(self.test_directory, "wdl_templates.zip")
-        self.wdl_data_dir = os.path.join(self.test_directory, "wdl_templates")
+        cls.encode_data = os.path.join(cls.test_directory, "ENCODE_data.zip")
+        cls.encode_data_dir = os.path.join(cls.test_directory, "ENCODE_data")
 
-        self.gatk_data = os.path.join(self.test_directory, "GATK_data.zip")
-        self.gatk_data_dir = os.path.join(self.test_directory, "GATK_data")
+        cls.wdl_data = os.path.join(cls.test_directory, "wdl_templates.zip")
+        cls.wdl_data_dir = os.path.join(cls.test_directory, "wdl_templates")
+
+        cls.gatk_data = os.path.join(cls.test_directory, "GATK_data.zip")
+        cls.gatk_data_dir = os.path.join(cls.test_directory, "GATK_data")
 
         # GATK tests will not run on jenkins b/c GATK.jar needs Java 7
         # and jenkins only has Java 6 (12-16-2017).
         # Set this to true to run the GATK integration tests locally.
-        self.manual_integration_tests = False
+        cls.manual_integration_tests = False
 
         # Delete the test datasets after running the tests.
         # Jenkins requires this to not error on "untracked files".
         # Set to true if running tests locally and you don't want to
         # redownload the data each time you run the test.
-        self.jenkins = True
+        cls.jenkins = True
 
-        self.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
-                                     data=self.encode_data,
-                                     data_dir=self.encode_data_dir)
+        cls.fetch_and_unzip_from_s3(filename='ENCODE_data.zip',
+                                    data=cls.encode_data,
+                                    data_dir=cls.encode_data_dir)
 
-        self.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
-                                     data=self.wdl_data,
-                                     data_dir=self.wdl_data_dir)
+        cls.fetch_and_unzip_from_s3(filename='wdl_templates.zip',
+                                    data=cls.wdl_data,
+                                    data_dir=cls.wdl_data_dir)
 
         # these tests require Java 7 (GATK.jar); jenkins has Java 6 and so must
         # be run manually as integration tests (12.16.2017)
-        if self.manual_integration_tests:
-            self.fetch_and_unzip_from_s3(filename='GATK_data.zip',
-                                         data=self.gatk_data,
-                                         data_dir=self.gatk_data_dir)
+        if cls.manual_integration_tests:
+            cls.fetch_and_unzip_from_s3(filename='GATK_data.zip',
+                                        data=cls.gatk_data,
+                                        data_dir=cls.gatk_data_dir)
 
     def tearDown(self):
-        """Default tearDown for unittest."""
+        """Clean up outputs."""
+        remove_outputs(self.output_dir)
 
-        # automatically delete the test files
-        # especially for jenkins checking if
-        # there are untracked files in the repo
-        if self.jenkins:
-            if os.path.exists(self.gatk_data):
-                os.remove(self.gatk_data)
-            if os.path.exists(self.gatk_data_dir):
-                shutil.rmtree(self.gatk_data_dir)
-
-            if os.path.exists(self.wdl_data):
-                os.remove(self.wdl_data)
-            if os.path.exists(self.wdl_data_dir):
-                shutil.rmtree(self.wdl_data_dir)
-
-            if os.path.exists(self.encode_data):
-                os.remove(self.encode_data)
-            if os.path.exists(self.encode_data_dir):
-                shutil.rmtree(self.encode_data_dir)
-
-        remove_outputs()
+        jobstores = ['./toilWorkflowRun', '/mnt/ephemeral/workspace/toil-pull-requests/toilWorkflowRun']
+        for jobstore in jobstores:
+            if os.path.exists(jobstore):
+                shutil.rmtree(jobstore)
 
         unittest.TestCase.tearDown(self)
+
+    @classmethod
+    def tearDownClass(cls):
+        """Clean up (shared) inputs."""
+        if cls.jenkins:
+            if os.path.exists(cls.gatk_data):
+                os.remove(cls.gatk_data)
+            if os.path.exists(cls.gatk_data_dir):
+                shutil.rmtree(cls.gatk_data_dir)
+
+            if os.path.exists(cls.wdl_data):
+                os.remove(cls.wdl_data)
+            if os.path.exists(cls.wdl_data_dir):
+                shutil.rmtree(cls.wdl_data_dir)
+
+            if os.path.exists(cls.encode_data):
+                os.remove(cls.encode_data)
+            if os.path.exists(cls.encode_data_dir):
+                shutil.rmtree(cls.encode_data_dir)
 
     @needs_docker
     def testMD5sum(self):
@@ -370,17 +380,18 @@ class ToilWdlIntegrationTest(ToilTest):
         json_dict = t.dict_from_JSON("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
         assert json_dict == default_json_dict_output, (str(json_dict) + '\nAssertionError: ' + str(default_json_dict_output))
 
-    def fetch_and_unzip_from_s3(self, filename, data, data_dir):
+    @classmethod
+    def fetch_and_unzip_from_s3(cls, filename, data, data_dir):
         if not os.path.exists(data):
             s3_loc = os.path.join('http://toil-datasets.s3.amazonaws.com/', filename)
-            fetch_from_s3_cmd = ["wget", "-P", self.test_directory, s3_loc]
-            subprocess.check_call(fetch_from_s3_cmd)
+            urlretrieve(s3_loc, data)
         # extract the compressed data if not already extracted
         if not os.path.exists(data_dir):
             with zipfile.ZipFile(data, 'r') as zip_ref:
-                zip_ref.extractall(self.test_directory)
+                zip_ref.extractall(cls.test_directory)
 
-def remove_outputs():
+
+def remove_outputs(output_dir):
     '''Remove the outputs generated by various unittests.
 
     These are created in the current working directory, which on jenkins is the
@@ -409,7 +420,9 @@ def remove_outputs():
                       'post_mapping.log',
                       'wdl-stats.log',
                       'xcor.json',
-                      'xcor.log']
+                      'xcor.log',
+                      'toilwdl_compiled.pyc',
+                      'toilwdl_compiled.py']
     other_log_outputs = ['post_processing.log',
                          'md5.log']
     outputs = encode_outputs + other_log_outputs
@@ -417,6 +430,9 @@ def remove_outputs():
         output = os.path.abspath(output)
         if os.path.exists(output):
             os.remove(output)
+    if os.path.exists(output_dir):
+        shutil.rmtree(output_dir)
+
 
 def compare_runs(output_dir, ref_dir):
     """
@@ -456,6 +472,7 @@ def compare_runs(output_dir, ref_dir):
                                     if not line.startswith('#'):
                                         test_data.append(line)
                             assert good_data == test_data, "File does not match: %r" % file
+
 
 def compare_vcf_files(filepath1, filepath2):
     """
@@ -501,6 +518,7 @@ def compare_vcf_files(filepath1, filepath2):
                 # (assumed) rounding differences.  Same for the "info" sect.
                 if j < 5:
                     assert test_data[i][j] == good_data[i][j], "File does not match: %r" % filepath1
+
 
 if __name__ == "__main__":
     unittest.main()  # run all tests

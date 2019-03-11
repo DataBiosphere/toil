@@ -25,13 +25,13 @@ from toil.lib.memoize import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
+from boto.utils import get_instance_metadata
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from toil.lib.context import Context
-from boto.utils import get_instance_metadata
 from toil.lib.retry import retry
 from toil.lib.memoize import less_strict_bool
 from toil.provisioners import NoSuchClusterException
@@ -95,6 +95,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def __init__(self, clusterName, zone, nodeStorage, sseKey):
         super(AWSProvisioner, self).__init__(clusterName, zone, nodeStorage)
+        self.cloud = 'aws'
         self._sseKey = sseKey
         if not zone:
             self._zone = getCurrentAWSZone()
@@ -109,7 +110,7 @@ class AWSProvisioner(AbstractProvisioner):
         is the leader.
         """
         instanceMetaData = get_instance_metadata()
-        region = Context.availability_zone_re.match(self._zone).group(1)
+        region = zoneToRegion(self._zone)
         conn = boto.ec2.connect_to_region(region)
         instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         self.clusterName = str(instance.tags["Name"])
@@ -271,7 +272,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
-                # after we start launching instances we want to insure the full setup is done
+                # after we start launching instances we want to ensure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
                 # every request in this method
                 if not preemptable:
@@ -328,7 +329,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._zone = getCurrentAWSZone()
             if self._zone is None:
                 raise RuntimeError(
-                    'Could not determine availability zone. Insure that one of the following '
+                    'Could not determine availability zone. Ensure that one of the following '
                     'is true: the --zone flag is set, the TOIL_AWS_ZONE environment variable '
                     'is set, ec2_region_name is set in the .boto file, or that '
                     'you are running on EC2.')
@@ -338,7 +339,7 @@ class AWSProvisioner(AbstractProvisioner):
     @memoize
     def _discoverAMI(self):
         def descriptionMatches(ami):
-            return ami.description is not None and 'stable 1745.7.0' in ami.description
+            return ami.description is not None and 'stable 1855.5.0' in ami.description
         coreOSAMI = os.environ.get('TOIL_AWS_AMI')
         if coreOSAMI is not None:
             return coreOSAMI
@@ -347,11 +348,11 @@ class AWSProvisioner(AbstractProvisioner):
             # SSLError is thrown when get_all_images times out
             with attempt:
                 # 679593333241 is the aws marketplace account
-                amis = self._ctx.ec2.get_all_images(owners=['679593333241'], filters={'name': 'CoreOS-stable-1745.7.0-hvm-0d1e0bd0-eaea-4397-9a3a-c56f861d2a14-ami-f6ecac89.4'})
+                amis = self._ctx.ec2.get_all_images(owners=['679593333241'], filters={'name': 'CoreOS-stable-1855.5.0-hvm-0d1e0bd0-eaea-4397-9a3a-c56f861d2a14-ami-0f74e41ea6c13f74b.4'})
 
         coreOSAMI = [ami for ami in amis if descriptionMatches(ami)]
         logger.debug('Found the following matching AMIs: %s', coreOSAMI)
-        assert len(coreOSAMI) == 1
+        assert len(coreOSAMI) == 1, coreOSAMI
         return coreOSAMI.pop().id
 
     def _toNameSpace(self):
@@ -482,7 +483,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
         # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
-        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.lowercase[1:]]
+        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase[1:]]
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = BlockDeviceType(delete_on_termination=True)

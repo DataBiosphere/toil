@@ -27,21 +27,14 @@ import sys
 import tempfile
 import time
 import uuid
-from toil import subprocess
 import requests
 from argparse import ArgumentParser
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-# Python 3 compatibility imports
 from six import iteritems
 
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
-
+from toil import subprocess
+from toil import pickle
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions
 from toil.realtimeLogger import RealtimeLogger
@@ -49,7 +42,7 @@ from toil.batchSystems.options import addOptions as addBatchOptions
 from toil.batchSystems.options import setDefaultOptions as setDefaultBatchOptions
 from toil.batchSystems.options import setOptions as setBatchOptions
 from toil.provisioners import clusterFactory
-from toil.provisioners.aws import checkValidNodeTypes
+from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
 
@@ -134,6 +127,7 @@ class Config(object):
         self.servicePollingInterval = 60
         self.useAsync = True
         self.forceDockerAppliance = False
+        self.runCwlInternalJobsOnWorkers = False
 
         # Debug options
         self.debugWorker = False
@@ -267,13 +261,14 @@ class Config(object):
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
 
-        #Misc
+        # Misc
         setOption("maxLocalJobs", int)
         setOption("disableCaching")
         setOption("disableChaining")
         setOption("maxLogFileSize", h2b, iC(1))
         setOption("writeLogs")
         setOption("writeLogsGzip")
+        setOption("runCwlInternalJobsOnWorkers")
 
         def checkSse(sseKey):
             with open(sseKey) as f:
@@ -603,9 +598,11 @@ def addOptions(parser, config=Config()):
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
 
-def getNodeID(extraIDFiles=None):
+
+def getNodeID():
     """
     Return unique ID of the current node (host).
+
     Tries several methods until success. The returned ID should be identical across calls from different processes on
     the same node at least until the next OS reboot.
 
@@ -613,30 +610,20 @@ def getNodeID(extraIDFiles=None):
     called. However, this method should never be reached on a Linux system, because reading from
     /proc/sys/kernel/random/boot_id will be tried prior to that. If uuid.getnode() is reached, it will be called twice,
     and exception raised if the values are not identical.
-
-    :param list extraIDFiles: Optional list of additional file names to try reading node ID before trying default
-    methods. ID should be a single word (no spaces) on the first line of the file.
     """
-    if extraIDFiles is None:
-        extraIDFiles = []
-    idSourceFiles = extraIDFiles + ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]
-    for idSourceFile in idSourceFiles:
+    for idSourceFile in ["/var/lib/dbus/machine-id", "/proc/sys/kernel/random/boot_id"]:
         if os.path.exists(idSourceFile):
             try:
                 with open(idSourceFile, "r") as inp:
                     nodeID = inp.readline().strip()
             except EnvironmentError:
-                logger.warning((
-                               "Exception when trying to read ID file {}. Will try next method to get node ID"). \
-                               format(idSourceFile), exc_info=True)
+                logger.warning(("Exception when trying to read ID file {}. Will try next method to get node ID.").format(idSourceFile), exc_info=True)
             else:
                 if len(nodeID.split()) == 1:
                     logger.debug("Obtained node ID {} from file {}".format(nodeID, idSourceFile))
                     break
                 else:
-                    logger.warning((
-                                   "Node ID {} from file {} contains spaces. Will try next method to get node ID"). \
-                                   format(nodeID, idSourceFile))
+                    logger.warning(("Node ID {} from file {} contains spaces. Will try next method to get node ID.").format(nodeID, idSourceFile))
     else:
         nodeIDs = []
         for i_call in range(2):
@@ -843,9 +830,7 @@ class Toil(object):
             from toil.jobStores.fileJobStore import FileJobStore
             return FileJobStore(rest)
         elif name == 'aws':
-            from toil.lib.ec2Credentials import enable_metadata_credential_caching
             from toil.jobStores.aws.jobStore import AWSJobStore
-            enable_metadata_credential_caching()
             return AWSJobStore(rest)
         elif name == 'azure':
             from toil.jobStores.azureJobStore import AzureJobStore
@@ -1083,7 +1068,7 @@ class Toil(object):
         So far there is no reason to store any old pids.
         """
         with self._jobStore.writeSharedFileStream('pid.log') as f:
-            f.write(str(os.getpid()))
+            f.write(str(os.getpid()).encode('utf-8'))
 
 
 class ToilRestartException(Exception):
@@ -1099,10 +1084,16 @@ class ToilContextManagerException(Exception):
 
 class ToilMetrics:
     def __init__(self, provisioner=None):
+        clusterName = 'none'
+        region = 'us-west-2'
         if provisioner is not None:
-            self.clusterName = provisioner.clusterName
-        else:
-            self.clusterName = "none"
+            clusterName = provisioner.clusterName
+            if provisioner._zone is not None:
+                if provisioner.cloud == 'aws':
+                    # Remove AZ name
+                    region = zoneToRegion(provisioner._zone)
+                else:
+                    region = provisioner._zone
 
         registry = lookupEnvVar(name='docker registry',
                                 envName='TOIL_DOCKER_REGISTRY',
@@ -1112,7 +1103,7 @@ class ToilMetrics:
         self.grafanaImage = "%s/toil-grafana:%s" % (registry, dockerTag)
         self.prometheusImage = "%s/toil-prometheus:%s" % (registry, dockerTag)
 
-        self.startDashboard(clusterName=self.clusterName)
+        self.startDashboard(clusterName=clusterName, zone=region)
 
         # Always restart the mtail container, because metrics should start from scratch
         # for each workflow
@@ -1161,12 +1152,12 @@ class ToilMetrics:
     def _containerRunning(containerName):
         try:
             result = subprocess.check_output(["docker", "inspect", "-f",
-                                              "'{{.State.Running}}'", containerName]) == "true"
+                                              "'{{.State.Running}}'", containerName]).decode('utf-8') == "true"
         except subprocess.CalledProcessError:
             result = False
         return result
 
-    def startDashboard(self, clusterName):
+    def startDashboard(self, clusterName, zone):
         try:
             if not self._containerRunning("toil_prometheus"):
                 try:
@@ -1179,7 +1170,8 @@ class ToilMetrics:
                                        "-d",
                                        "-p", "9090:9090",
                                        self.prometheusImage,
-                                       clusterName])
+                                       clusterName,
+                                       zone])
 
             if not self._containerRunning("toil_grafana"):
                 try:
@@ -1337,8 +1329,7 @@ def getDirSizeRecursively(dirPath):
     # allocated with the environment variable: BLOCKSIZE='512' set, and we
     # multiply this by 512 to return the filesize in bytes.
     return int(subprocess.check_output(['du', '-s', dirPath],
-                                       env=dict(os.environ, BLOCKSIZE='512')).split()[0].decode(
-        'ascii')) * 512
+                                       env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
 
 
 def getFileSystemSize(dirPath):

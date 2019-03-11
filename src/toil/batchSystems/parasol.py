@@ -32,7 +32,7 @@ from six.moves.queue import Empty, Queue
 from six import itervalues
 
 from toil.lib.iterables import concat
-from toil.lib.processes import which
+from toil import which
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.bioio import getTempFile
@@ -62,7 +62,7 @@ class ParasolBatchSystem(BatchSystemSupport):
         command = config.parasolCommand
         if os.path.sep not in command:
             try:
-                command = next(which(command))
+                command = which(command)
             except StopIteration:
                 raise RuntimeError("Can't find %s on PATH." % command)
         logger.debug('Using Parasol at %s', command)
@@ -117,10 +117,10 @@ class ParasolBatchSystem(BatchSystemSupport):
                                        bufsize=-1)
             stdout, stderr = process.communicate()
             status = process.wait()
-            for line in stderr.split('\n'):
+            for line in stderr.decode('utf-8').split('\n'):
                 if line: logger.warn(line)
             if status == 0:
-                return 0, stdout.split('\n')
+                return 0, stdout.decode('utf-8').split('\n')
             message = 'Command %r failed with exit status %i' % (command, status)
             if autoRetry:
                 logger.warn(message)

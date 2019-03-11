@@ -1,5 +1,3 @@
-import errno
-import hashlib
 import logging
 import time
 from collections import Iterator
@@ -7,17 +5,12 @@ from operator import attrgetter
 from past.builtins import map
 from toil.lib.exceptions import panic
 from toil.lib.retry import retry
-from boto.ec2.ec2object import TaggedEC2Object
 from boto.ec2.instance import Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
-from toil.lib.misc import partition_seq
-from Crypto.PublicKey import RSA
 
 a_short_time = 5
-
 a_long_time = 60 * 60
-
 log = logging.getLogger(__name__)
 
 
@@ -143,17 +136,6 @@ def wait_transition(resource, from_states, to_state,
         raise UnexpectedResourceState(resource, to_state, state)
 
 
-def running_on_ec2():
-    try:
-        with open('/sys/hypervisor/uuid') as f:
-            return f.read(3) == 'ec2'
-    except IOError as e:
-        if e.errno == errno.ENOENT:
-            return False
-        else:
-            raise
-
-
 def wait_instances_running(ec2, instances):
     """
     Wait until no instance in the given iterable is 'pending'. Yield every instance that
@@ -270,15 +252,7 @@ def wait_spot_requests_active(ec2, requests, timeout=None, tentative=False):
             cancel()
 
 
-def create_spot_instances(
-        ec2,
-        price,
-        image_id,
-        spec,
-        num_instances=1,
-        timeout=None,
-        tentative=False,
-        tags=None):
+def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=None, tentative=False, tags=None):
     """
     :rtype: Iterator[list[Instance]]
     """
@@ -352,70 +326,3 @@ def create_ondemand_instances(ec2, image_id, spec, num_instances=1):
                                      min_count=num_instances,
                                      max_count=num_instances,
                                      **spec).instances
-
-
-def tag_object_persistently(tagged_ec2_object, tags_dict):
-    """
-    Object tagging occasionally fails with "NotFound" types of errors so we need to
-    retry a few times. Sigh ...
-
-    :type tagged_ec2_object: TaggedEC2Object
-    """
-    for attempt in retry_ec2():
-        with attempt:
-            tagged_ec2_object.add_tags(tags_dict)
-
-
-def ec2_keypair_fingerprint(ssh_key, reject_private_keys=False):
-    """
-    Computes the fingerprint of a public or private OpenSSH key in the way Amazon does it for
-    keypairs resulting from either importing a SSH public key or generating a new keypair.
-
-    :param ssh_key: a RSA public key in OpenSSH format, or an RSA private key in PEM format
-
-    :return: The fingerprint of the key, in pairs of two hex digits with a colon between
-    pairs.
-
-    >>> ssh_pubkey = 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCvdDMvcwC1/5ByUhO1wh1sG6ficwgGHRab/p'\\
-    ... 'm6LN60rgxv+u2eJRao2esGB9Oyt863+HnjKj/NBdaiHTHcAHNq/TapbvEjgHaKgrVdfeMdQbJhWjJ97rql9Yn8k'\\
-    ... 'TNsXOeSyTW7rIKE0zeQkrwhsztmATumbQmJUMR7uuI31BxhQUfD/CoGZQrxFalWLDZcrcYY13ynplaNA/Hd/vP6'\\
-    ... 'qWO5WC0dTvzROEp7VwzJ7qeN2kP1JTh+kgVRoYd9mSm6x9UVjY6jQtZHa01Eg05sFraWgvNAvKhk9LS9Kiwhq8D'\\
-    ... 'xHdWdTamnGLtwXYQbn7RjG3UADAiTOWk+QSmU2igZvQ2F hannes@soe.ucsc.edu\\n'
-    >>> ec2_keypair_fingerprint(ssh_pubkey)
-    'a5:5a:64:8a:1e:3f:4e:46:cd:1f:e9:b3:fc:cf:c5:19'
-
-    >>> # This is not a private key that is in use, in case you were wondering
-    >>> ssh_private_key = \\
-    ... '-----BEGIN RSA PRIVATE KEY-----\\n'+\\
-    ... 'MIIEpQIBAAKCAQEAi3shPK00+/6dwW8u+iDkUYiwIKl/lv0Ay5IstLszwb3CA4mVRlyq769HzE8f\\n'\\
-    ... 'cnzQUX/NI8y9MTO0UNt2JDMJWW5L49jmvxV0TjxQjKg8KcNzYuHsEny3k8LxezWMsmwlrrC89O6e\\n'\\
-    ... 'oo6boc8ForSdjVdIlJbvWu/82dThyFgTjWd5B+1O93xw8/ejqY9PfZExBeqpKjm58OUByTpVhvWe\\n'\\
-    ... 'jmbZ9BL60XJhwz9bDTrlKpjcGsMZ74G6XfQAhyyqXYeD/XOercCSJgQ/QjYKcPE9yMRyucHyuYZ8\\n'\\
-    ... 'HKzmG+u4p5ffnFb43tKzWCI330JQcklhGTldyqQHDWA41mT1QMoWfwIDAQABAoIBAF50gryRWykv\\n'\\
-    ... 'cuuUfI6ciaGBXCyyPBomuUwicC3v/Au+kk1M9Y7RoFxyKb/88QHZ7kTStDwDITfZmMmM5QN8oF80\\n'\\
-    ... 'pyXkM9bBE6MLi0zFfQCXQGN9NR4L4VGqGVfjmqUVQat8Omnv0fOpeVFpXZqij3Mw4ZDmaa7+iA+H\\n'\\
-    ... '72J56ru9i9wcBNqt//Kh5BXARekp7tHzklYrlqJd03ftDRp9GTBIFAsaPClTBpnPVhwD/rAoJEhb\\n'\\
-    ... 'KM9g/EMjQ28cUMQSHSwOyi9Rg/LtwFnER4u7pnBz2tbJFvLlXE96IQbksQL6/PTJ9H6Zpp+1fDcI\\n'\\
-    ... 'k/MKSQZtQOgfV8V1wlvHX+Q0bxECgYEA4LHj6o4usINnSy4cf6BRLrCA9//ePa8UjEK2YDC5rQRV\\n'\\
-    ... 'huFWqWJJSjWI9Ofjh8mZj8NvTJa9RW4d4Rn6F7upOuAer9obwfrmi4BEQSbvUwxQIuHOZ6itH/0L\\n'\\
-    ... 'klqQBuhJeyr3W+2IhudJUQz9MEoddOfYIybXqkF7XzDl2x6FcjcCgYEAnunySmjt+983gUKK9DgK\\n'\\
-    ... '/k1ki41jCAcFlGd8MbLEWkJpwt3FJFiyq6vVptoVH8MBnVAOjDneP6YyNBv5+zm3vyMuVJtKNcAP\\n'\\
-    ... 'MAxrl5/gyIBHRxD+avoqpQX/17EmrFsbMaG8IM0ZWB2lSDt45sDvpmSlcTjzrHIEGoBbOzkOefkC\\n'\\
-    ... 'gYEAgmS5bxSz45teBjLsNuRCOGYVcdX6krFXq03LqGaeWdl6CJwcPo/bGEWZBQbM86/6fYNcw4V2\\n'\\
-    ... 'sSQGEuuQRtWQj6ogJMzd7uQ7hhkZgvWlTPyIRLXloiIw1a9zV6tWiaujeOamRaLC6AawdWikRbG9\\n'\\
-    ... 'BmrE8yFHZnY5sjQeL9q2dmECgYEAgp5w1NCirGCxUsHLTSmzf4tFlZ9FQxficjUNVBxIYJguLkny\\n'\\
-    ... '/Qka8xhuqJKgwlabQR7IlmIKV+7XXRWRx/mNGsJkFo791GhlE21iEmMLdEJcVAGX3X57BuGDhVrL\\n'\\
-    ... 'GuhX1dfGtn9e0ZqsfE7F9YWodfBMPGA/igK9dLsEQg2H5KECgYEAvlv0cPHP8wcOL3g9eWIVCXtg\\n'\\
-    ... 'aQ+KiDfk7pihLnHTJVZqXuy0lFD+O/TqxGOOQS/G4vBerrjzjCXXXxi2FN0kDJhiWlRHIQALl6rl\\n'\\
-    ... 'i2LdKfL1sk1IA5PYrj+LmBuOLpsMHnkoH+XRJWUJkLvowaJ0aSengQ2AD+icrc/EIrpcdjU=\\n'+\\
-    ... '-----END RSA PRIVATE KEY-----\\n'
-    >>> ec2_keypair_fingerprint(ssh_private_key)
-    'ac:23:ae:c3:9a:a3:78:b1:0f:8a:31:dd:13:cc:b1:8e:fb:51:42:f8'
-    """
-    rsa_key = RSA.importKey(ssh_key)
-    is_private_key = rsa_key.has_private()
-    if is_private_key and reject_private_keys:
-        raise ValueError('Private keys are disallowed')
-    der_rsa_key = rsa_key.exportKey(format='DER', pkcs=(8 if is_private_key else 1))
-    key_hash = (hashlib.sha1 if is_private_key else hashlib.md5)(der_rsa_key)
-    return ':'.join(partition_seq(key_hash.hexdigest(), 2))

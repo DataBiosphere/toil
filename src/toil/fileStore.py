@@ -20,12 +20,15 @@ from builtins import str
 from builtins import range
 from builtins import object
 from abc import abstractmethod, ABCMeta
-
-from toil.lib.objects import abstractclassmethod
-
-import base64
 from collections import namedtuple, defaultdict
-
+from contextlib import contextmanager
+from fcntl import flock, LOCK_EX, LOCK_UN
+from functools import partial
+from hashlib import sha1
+from threading import Thread, Semaphore, Event
+from future.utils import with_metaclass
+from six.moves.queue import Empty, Queue
+import base64
 import dill
 import errno
 import logging
@@ -36,21 +39,11 @@ import tempfile
 import time
 import uuid
 
-from contextlib import contextmanager
-from fcntl import flock, LOCK_EX, LOCK_UN
-from functools import partial
-from hashlib import sha1
-from threading import Thread, Semaphore, Event
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six.moves import xrange
-
+from toil.lib.objects import abstractclassmethod
 from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
-from future.utils import with_metaclass
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +180,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError()
 
+    @contextmanager
     def writeGlobalFileStream(self, cleanup=False):
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
@@ -195,10 +189,28 @@ class FileStore(with_metaclass(ABCMeta, object)):
         :param bool cleanup: is as in :func:`toil.fileStore.FileStore.writeGlobalFile`.
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and
-                  2) the ID of the resulting file in the job store.
+                  2) the toil.fileStore.FileID of the resulting file in the job store.
         """
+        
         # TODO: Make this work with FileID
-        return self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID)
+        with self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID) as (backingStream, fileStoreID):
+            # We have a string version of the file ID, and the backing stream.
+            # We need to yield a stream the caller can write to, and a FileID
+            # that accurately reflects the size of the data written to the
+            # stream. We assume the stream is not seekable.
+            
+            # Make and keep a reference to the file ID, which is currently empty
+            fileID = FileID(fileStoreID, 0)
+            
+            # Wrap the stream to increment the file ID's size for each byte written
+            wrappedStream = WriteWatchingStream(backingStream)
+            
+            # When the stream is written to, count the bytes
+            def handle(numBytes):
+                fileID.size += numBytes 
+            wrappedStream.onWrite(handle)
+            
+            yield wrappedStream, fileID
 
     @abstractmethod
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
@@ -1854,6 +1866,65 @@ class FileID(str):
     @classmethod
     def forPath(cls, fileStoreID, filePath):
         return cls(fileStoreID, os.stat(filePath).st_size)
+        
+class WriteWatchingStream(object):
+    """
+    A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
+    
+    Not seekable.
+    """
+    
+    def __init__(self, backingStream):
+        """
+        Wrap the given backing stream.
+        """
+        
+        self.backingStream = backingStream
+        # We have no write listeners yet
+        self.writeListeners = []
+        
+    def onWrite(self, listener):
+        """
+        Call the given listener with the number of bytes written on every write.
+        """
+        
+        self.writeListeners.append(listener)
+        
+    # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
+        
+    def write(self, data):
+        """
+        Write the given data to the file.
+        """
+        
+        # Do the write
+        self.backingStream.write(data)
+        
+        for listener in self.writeListeners:
+            # Send out notifications
+            listener(len(data))
+            
+    def writelines(self, datas):
+        """
+        Write each string from the given iterable, without newlines.
+        """
+        
+        for data in datas:
+            self.write(data)
+            
+    def flush(self):
+        """
+        Flush the backing stream.
+        """
+        
+        self.backingStream.flush()
+        
+    def close(self):
+        """
+        Close the backing stream.
+        """
+        
+        self.backingStream.close()
 
 
 def shutdownFileStore(workflowDir, workflowID):

@@ -11,21 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from builtins import object
 from functools import total_ordering
 import logging
 import os.path
 import time
-from toil import subprocess
-from toil import applianceSelf
 import json
 
-from future.utils import with_metaclass
-
+from toil import subprocess
+from toil import applianceSelf
 from toil.lib.retry import never
-a_short_time = 5
 
+a_short_time = 5
 log = logging.getLogger(__name__)
 
 
@@ -55,7 +54,7 @@ class Shape(object):
                 self.disk == other.disk and
                 self.preemptable == other.preemptable)
 
-    def __gt__(self, other):
+    def greater_than(self, other):
         if self.preemptable < other.preemptable:
             return True
         elif self.preemptable > other.preemptable:
@@ -79,18 +78,8 @@ class Shape(object):
         else:
             return False
 
-    def __str__(self):
-        return "\nShape wallTime: %s\n" \
-               "Shape memory: %s\n" \
-               "Shape cores: %s\n" \
-               "Shape disk: %s\n" \
-               "Shape preemptable: %s\n" \
-               "\n" % \
-               (self.wallTime,
-                self.memory,
-                self.cores,
-                self.disk,
-                self.preemptable)
+    def __gt__(self, other):
+        return self.greater_than(other)
 
     def __repr__(self):
         return "Shape(wallTime=%s, memory=%s, cores=%s, disk=%s, preemptable=%s)" % \
@@ -99,6 +88,9 @@ class Shape(object):
                 self.cores,
                 self.disk,
                 self.preemptable)
+
+    def __str__(self):
+        return self.__repr__()
                 
     def __hash__(self):
         # Since we replaced __eq__ we need to replace __hash__ as well.
@@ -108,15 +100,14 @@ class Shape(object):
              self.cores,
              self.disk,
              self.preemptable))
-        
+
 
 class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
     An abstract base class to represent the interface for provisioning worker nodes to use in a
     Toil cluster.
     """
-
-    LEADER_HOME_DIR = '/root/' # home directory in the Toil appliance on an instance
+    LEADER_HOME_DIR = '/root/'  # home directory in the Toil appliance on an instance
 
     def __init__(self, clusterName=None, zone=None, nodeStorage=50):
         """
@@ -149,7 +140,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         for nodeTypeStr in nodeTypes:
             nodeBidTuple = nodeTypeStr.split(":")
             if len(nodeBidTuple) == 2:
-                #This is a preemptable node type, with a spot bid
+                # This is a preemptable node type, with a spot bid
                 nodeType, bid = nodeBidTuple
                 self.nodeTypes.append(nodeType)
                 self.nodeShapes.append(self.getNodeShape(nodeType, preemptable=True))
@@ -477,17 +468,18 @@ coreos:
     - "ssh-rsa {sshKey}"
 """
 
-
-       # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
-        # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
-        # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
-        # set to keyPath.
+    # If keys are rsynced, then the mesos-slave needs to be started after the keys have been
+    # transferred. The waitForKey.sh script loops on the new VM until it finds the keyPath file, then it starts the
+    # mesos-slave. If there are multiple keys to be transferred, then the last one to be transferred must be
+    # set to keyPath.
 
     MESOS_LOG_DIR = '--log_dir=/var/lib/mesos '
     LEADER_DOCKER_ARGS = '--registry=in_memory --cluster={name}'
     # --no-systemd_enable_support is necessary in Ubuntu 16.04 (otherwise,
     # Mesos attempts to contact systemd but can't find its run file)
     WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
+
+
     def _getCloudConfigUserData(self, role, masterPublicKey=None, keyPath=None, preemptable=False):
         if role == 'leader':
             entryPoint = 'mesos-master'
@@ -512,4 +504,3 @@ coreos:
                             mesosArgs=mesosArgs)
         userData = template.format(**templateArgs)
         return userData
-

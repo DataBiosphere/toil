@@ -27,11 +27,9 @@ def clusterFactory(provisioner, clusterName=None, zone=None, nodeStorage=50, sse
     if provisioner == 'aws':
         try:
             from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-            from toil.lib.ec2Credentials import enable_metadata_credential_caching
         except ImportError:
             logger.error('The aws extra must be installed to use this provisioner')
             raise
-        enable_metadata_credential_caching() # monkey patch for AWS
         return AWSProvisioner(clusterName, zone, nodeStorage, sseKey)
     elif provisioner == 'gce':
         try:
