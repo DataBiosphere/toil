@@ -1108,6 +1108,9 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument(
         "--no-match-user", action="store_true", default=False,
         help="Disable passing the current uid to `docker run --user`")
+    parser.add_argument(
+        "--no-read-only", action="store_true", default=False,
+        help="Do not set root directory in the container as read-only")
 
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -1259,6 +1262,7 @@ def main(args=None, stdout=sys.stdout):
                 runtime_context.job_script_provider = job_script_provider
                 runtime_context.force_docker_pull = options.force_docker_pull
                 runtime_context.no_match_user = options.no_match_user
+                runtime_context.no_read_only = options.no_read_only
                 (wf1, _) = makeJob(tool, {}, None, runtime_context)
             except cwltool.process.UnsupportedRequirement as err:
                 logging.error(err)
