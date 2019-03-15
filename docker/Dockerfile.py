@@ -83,8 +83,10 @@ print(heredoc('''
 
     ADD waitForKey.sh /usr/bin/waitForKey.sh
 
-    RUN chmod 777 /usr/bin/waitForKey.sh
+    ADD customDockerInit.sh /usr/bin/customDockerInit.sh
 
+    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh
+    
     # The stock pip is too old and can't install from sdist with extras
     RUN pip install --upgrade pip==9.0.1
 
