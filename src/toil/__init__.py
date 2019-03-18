@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 
+import errno
 import logging
 import os
 import sys
@@ -564,6 +565,7 @@ def _monkey_patch_boto():
                             self._credential_expiry_time = str_to_datetime(record[3])
                         else:
                             log.debug('%s is empty. Credentials are not temporary.', path)
+                            self._obtain_credentials_from_boto3()
                             return
                 except IOError as e:
                     if e.errno == errno.ENOENT:
