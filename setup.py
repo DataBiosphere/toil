@@ -48,6 +48,7 @@ def runSetup():
     addict = 'addict<=2.2.0'
     sphinx = 'sphinx==1.7.5'
     pathlib2 = 'pathlib2==2.3.2'
+    moreitertools = 'more-itertools==5.0.0'
 
     core_reqs = [
         dill,
@@ -60,7 +61,8 @@ def runSetup():
         subprocess32,
         addict,
         sphinx,
-        pathlib2]
+        pathlib2,
+        moreitertools]
 
     mesos_reqs = [
         pymesos,
