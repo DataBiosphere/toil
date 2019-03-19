@@ -387,14 +387,14 @@ class FileJobStore(AbstractJobStore):
                         raise
             else:
                 try:
-                    os.link(jobStoreFilePath, localFilePath)
+                    os.link(os.path.realpath(jobStoreFilePath), localFilePath)
                 except OSError as e:
                     if e.errno == errno.EEXIST:
                         # Overwrite existing file, emulating shutil.copyfile().
                         os.unlink(localFilePath)
                         # It would be very unlikely to fail again for same reason but possible
                         # nonetheless in which case we should just give up.
-                        os.link(jobStoreFilePath, localFilePath)
+                        os.link(os.path.realpath(jobStoreFilePath), localFilePath)
                     else:
                         logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
                         logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
