@@ -17,12 +17,14 @@ from __future__ import absolute_import
 import errno
 import logging
 import os
-import sys
 import requests
+import sys
+import time
 from datetime import datetime
 from pytz import timezone
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
+from toil.lib.misc import mkdir_p
 from toil.version import currentCommit
 
 # subprocess32 is a backport of python3's subprocess module for use on Python2,
