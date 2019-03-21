@@ -219,7 +219,7 @@ def applianceSelf(forceDockerAppliance=False):
 def customDockerInitCmd():
     """
     Returns the custom command (if any) provided through the ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``
-    environment variable to run just after the docker leader/worker has been initialized.
+    environment variable to run prior to running the workers and/or the primary node's services.
     This can be useful for doing any custom initialization on instances (e.g. authenticating to
     private docker registries). An empty string is returned if the environment variable is not
     set.
