@@ -18,6 +18,7 @@ import inspect
 import re
 from datetime import datetime
 import toil.version
+import time
 
 # This makes the modules located in docs/vendor/sphinxcontrib available to import
 sphinxPath = os.path.abspath(os.path.join(os.path.pardir, os.path.dirname('docs/vendor/sphinxcontrib/')))
@@ -100,7 +101,8 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Toil'
-copyright = u'2015 – %i UCSC Computational Genomics Lab' % datetime.now().year
+build_date = datetime.utcfromtimestamp(int(os.environ.get('SOURCE_DATE_EPOCH', time.time())))
+copyright = u'2015 – %i UCSC Computational Genomics Lab' % build_date.year
 author = u'UCSC Computational Genomics Lab'
 
 # The version info for the project you're documenting, acts as replacement for
