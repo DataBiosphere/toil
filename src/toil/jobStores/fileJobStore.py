@@ -90,6 +90,7 @@ class FileJobStore(AbstractJobStore):
         if not os.path.isdir(self.jobStoreDir):
             raise NoSuchJobStoreException(self.jobStoreDir)
         super(FileJobStore, self).resume()
+        self.linkImports = self.config.linkImports
 
     def robust_rmtree(self, path, max_retries=3):
         """Robustly tries to delete paths.
