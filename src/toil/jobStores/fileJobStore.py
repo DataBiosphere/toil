@@ -371,35 +371,33 @@ class FileJobStore(AbstractJobStore):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getAbsPath(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
-        # If local file would end up on same file system as the one hosting this job store ...
-        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
-            # ... we can hard-link the file, ...
-            if symlink or self.linkImports:
-                try:
+        if symlink or self.linkImports:
+            try:
+                os.symlink(jobStoreFilePath, localFilePath)
+            except OSError as e:
+                if e.errno == errno.EEXIST:
+                    # Overwrite existing file, emulating shutil.copyfile().
+                    os.unlink(localFilePath)
+                    # It would be very unlikely to fail again for same reason but possible
+                    # nonetheless in which case we should just give up.
                     os.symlink(jobStoreFilePath, localFilePath)
-                except OSError as e:
-                    if e.errno == errno.EEXIST:
-                        # Overwrite existing file, emulating shutil.copyfile().
-                        os.unlink(localFilePath)
-                        # It would be very unlikely to fail again for same reason but possible
-                        # nonetheless in which case we should just give up.
-                        os.symlink(jobStoreFilePath, localFilePath)
-                    else:
-                        raise
-            else:
-                try:
+                else:
+                    raise
+        # If local file would end up on same file system as the one hosting this job store ...
+        elif os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+            try:
+                os.link(os.path.realpath(jobStoreFilePath), localFilePath)
+            except OSError as e:
+                if e.errno == errno.EEXIST:
+                    # Overwrite existing file, emulating shutil.copyfile().
+                    os.unlink(localFilePath)
+                    # It would be very unlikely to fail again for same reason but possible
+                    # nonetheless in which case we should just give up.
                     os.link(os.path.realpath(jobStoreFilePath), localFilePath)
-                except OSError as e:
-                    if e.errno == errno.EEXIST:
-                        # Overwrite existing file, emulating shutil.copyfile().
-                        os.unlink(localFilePath)
-                        # It would be very unlikely to fail again for same reason but possible
-                        # nonetheless in which case we should just give up.
-                        os.link(os.path.realpath(jobStoreFilePath), localFilePath)
-                    else:
-                        logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
-                        logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
-                        raise
+                else:
+                    logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
+                    logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
+                    raise
         else:
             # ... otherwise we have to copy it.
             shutil.copyfile(jobStoreFilePath, localFilePath)
