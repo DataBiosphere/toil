@@ -374,7 +374,7 @@ class FileJobStore(AbstractJobStore):
         # If local file would end up on same file system as the one hosting this job store ...
         if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
             # ... we can hard-link the file, ...
-            if symlink:
+            if symlink or self.linkImports:
                 try:
                     os.symlink(jobStoreFilePath, localFilePath)
                 except OSError as e:
