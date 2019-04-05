@@ -538,8 +538,18 @@ def _monkey_patch_boto():
             
             # We get a Credentials object
             # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
-            # or a RefreshableCredentials
-            creds = self._boto3_resolver.load_credentials()
+            # or a RefreshableCredentials, or None on failure.
+            creds = None
+            for attempt in retry(timeout=10, predicate=true):
+                with attempt:
+                    creds = self._boto3_resolver.load_credentials()
+                    
+                    if creds is None:
+                        try:
+                            resolvers = str(self._boto3_resolver.providers)
+                        except:
+                            resolvers = "(Resolvers unavailable)"
+                        raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
             
             # Make sure the credentials actually has some credentials if it is lazy
             creds.get_frozen_credentials()
