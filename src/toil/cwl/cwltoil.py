@@ -1140,8 +1140,11 @@ def main(args=None, stdout=sys.stdout):
         # It still might be overridden by a --jobStore option
         options = parser.parse_args([workdir] + args)
         if options.workDir is None:
-            # workDir needs to exist, and gets directories made under it, so we
-            # directly use the prefix
+            # We need to override workDir because by default Toil will pick
+            # somewhere under the system temp directory if unset, ignoring
+            # --tmpdir-prefix.
+            #
+            # If set, workDir needs to exist, so we directly use the prefix
             options.workDir = options.tmpdir_prefix
 
     if options.provisioner and not options.jobStore:
