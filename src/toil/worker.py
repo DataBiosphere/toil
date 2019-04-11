@@ -169,7 +169,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 sys.path.append(e)
 
     toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
-
+    
     ##########################################
     #Setup the temporary directories.
     ##########################################
@@ -195,6 +195,12 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")
 
     if redirectOutputToLogFile:
+        # Announce that we are redirecting logging, and where it will now go.
+        # This is important if we are trying to manually trace a faulty worker invocation.
+        logger.info("Redirecting logging to %s", tempWorkerLogPath)
+        sys.stdout.flush()
+        sys.stderr.flush()
+        
         # Save the original stdout and stderr (by opening new file descriptors
         # to the same files)
         origStdOut = os.dup(1)
@@ -503,6 +509,15 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 def main(argv=None):
     if argv is None:
         argv = sys.argv
+
+    # Do a little argument validation, in case someone tries to run us manually.
+    if len(argv) < 4:
+        if len(argv) < 1:
+            sys.stderr.write("Error: Toil worker invoked without its own name\n")
+            sys.exit(1)
+        else:
+            sys.stderr.write("Error: usage: %s JOB_NAME JOB_STORE_LOCATOR JOB_STORE_ID\n" % argv[0])
+            sys.exit(1)
 
     # Parse input args
     jobName = argv[1]
