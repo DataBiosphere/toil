@@ -32,18 +32,23 @@ class RegularLogTest(ToilTest):
 
     def _assertFileTypeExists(self, dir, extension, encoding=None):
         # an encoding of None implies no compression
+        log.info("Checking for %s file in %s", extension, dir)
         onlyFiles = self._getFiles(dir)
-        print(os.listdir(dir))
+        log.info("Found: %s", str(os.listdir(dir)))
         onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
+        log.info("Found matching: %s", str(onlyLogs))
         assert onlyLogs
-        for log in onlyLogs:
-            with open(log, "rb") as f:
-                if encoding == "gzip":
-                    # Check for gzip magic header '\x1f\x8b'
-                    assert f.read().startswith(b'\x1f\x8b')
-                else:
-                    mime = mimetypes.guess_type(log)
-                    self.assertEqual(mime[1], encoding)
+        
+        if encoding is not None:
+            for log in onlyLogs:
+                with open(log, "rb") as f:
+                    log.info("Checking for encoding %s on file %s", str(onlyLogs), log)
+                    if encoding == "gzip":
+                        # Check for gzip magic header '\x1f\x8b'
+                        assert f.read().startswith(b'\x1f\x8b')
+                    else:
+                        mime = mimetypes.guess_type(log)
+                        self.assertEqual(mime[1], encoding)
 
 
     @slow
