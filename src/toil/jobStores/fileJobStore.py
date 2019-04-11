@@ -415,7 +415,7 @@ class FileJobStore(AbstractJobStore):
         except os.error:
             return False
         if not stat.S_ISREG(st.st_mode):
-            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID)
+            raise NoSuchFileException(jobStoreFileID)
         return True
 
     @contextmanager
@@ -456,7 +456,7 @@ class FileJobStore(AbstractJobStore):
                 yield f
         except IOError as e:
             if e.errno == errno.ENOENT:
-                raise NoSuchFileException(sharedFileName,sharedFileName)
+                raise NoSuchFileException(sharedFileName)
             else:
                 raise
 

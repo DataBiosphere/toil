@@ -80,15 +80,24 @@ class ConcurrentFileModificationException(Exception):
 
 class NoSuchFileException(Exception):
     """Indicates that the specified file does not exist."""
-    def __init__(self, jobStoreFileID, customName=None):
+    def __init__(self, jobStoreFileID, customName=None, *extra):
         """
         :param str jobStoreFileID: the ID of the file that was mistakenly assumed to exist
         :param str customName: optionally, an alternate name for the nonexistent file
+        :param list extra: optional extra information to add to the error message
         """
+        # Having the extra argument may help resolve the __init__() takes at
+        # most three arguments error reported in
+        # https://github.com/DataBiosphere/toil/issues/2589#issuecomment-481912211
         if customName is None:
             message = "File '%s' does not exist." % jobStoreFileID
         else:
             message = "File '%s' (%s) does not exist." % (customName, jobStoreFileID)
+        
+        if extra:
+            # Append extra data.
+            message += " " + " ".join((str(x) for x in extra))
+        
         super().__init__(message)
 
 
