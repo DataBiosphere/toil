@@ -92,7 +92,7 @@ help:
 SHELL=bash
 python=python
 pip=pip
-tests=src
+tests=src/toil/test/cwl/cwlTest.py::CWLTest::test_run_s3
 tests_local=src/toil/test
 # do slightly less than travis timeout of 10 min.
 pytest_args_local=-vv --timeout=530
