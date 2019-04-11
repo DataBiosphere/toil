@@ -541,7 +541,7 @@ def _monkey_patch_boto():
             # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
             # or a RefreshableCredentials, or None on failure.
             creds = None
-            for attempt in retry(timeout=10, predicate=true):
+            for attempt in retry(timeout=10, predicate=True):
                 with attempt:
                     creds = self._boto3_resolver.load_credentials()
                     
