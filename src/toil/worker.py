@@ -235,6 +235,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     statsDict.workers.logsToMaster = []
     blockFn = lambda : True
     listOfJobs = [jobName]
+    job = None
     try:
 
         #Put a message at the top of the log, just to make sure it's working.
