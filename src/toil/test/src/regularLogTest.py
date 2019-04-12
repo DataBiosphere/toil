@@ -63,24 +63,22 @@ class RegularLogTest(ToilTest):
         assert helloWorld.childMessage in toilOutput.decode('utf-8')
 
     def testWriteLogs(self):
-        toilOutput = subprocess.check_output([sys.executable,
-                                              '-m', helloWorld.__name__,
-                                              './toilTest',
-                                              '--clean=always',
-                                              '--logLevel=debug',
-                                              '--writeLogs=%s' % self.tempDir],
-                                             stderr=subprocess.STDOUT)
+        subprocess.check_call([sys.executable,
+                               '-m', helloWorld.__name__,
+                               './toilTest',
+                               '--clean=always',
+                               '--logLevel=debug',
+                               '--writeLogs=%s' % self.tempDir])
         self._assertFileTypeExists(self.tempDir, '.log')
 
     @slow
     def testWriteGzipLogs(self):
-        toilOutput = subprocess.check_output([sys.executable,
-                                              '-m', helloWorld.__name__,
-                                              './toilTest',
-                                              '--clean=always',
-                                              '--logLevel=debug',
-                                              '--writeLogsGzip=%s' % self.tempDir],
-                                              stderr=subprocess.STDOUT)
+        subprocess.check_call([sys.executable,
+                               '-m', helloWorld.__name__,
+                               './toilTest',
+                               '--clean=always',
+                               '--logLevel=debug',
+                               '--writeLogsGzip=%s' % self.tempDir])
         self._assertFileTypeExists(self.tempDir, '.log.gz', 'gzip')
 
     @slow
