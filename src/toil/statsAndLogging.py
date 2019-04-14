@@ -90,8 +90,8 @@ class StatsAndLogging( object ):
             return
 
         fullName = createName(path, mainFileName, extension)
-        with writeFn(fullName, 'w') as f:
-            f.writelines(l + '\n' for l in jobLogList)
+        with writeFn(fullName, 'wb') as f:
+            f.writelines((l + '\n').encode('utf-8') for l in jobLogList)
         for alternateName in jobNames[1:]:
             # There are chained jobs in this output - indicate this with a symlink
             # of the job's name to this file
