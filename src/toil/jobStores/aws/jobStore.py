@@ -981,8 +981,8 @@ class AWSJobStore(AbstractJobStore):
         def _reservedAttributes(cls):
             return 3 + super(AWSJobStore.FileInfo, cls)._reservedAttributes()
 
-        @classmethod
-        def maxInlinedSize(cls):
+        @staticmethod
+        def maxInlinedSize():
             return 256
 
         def save(self):
