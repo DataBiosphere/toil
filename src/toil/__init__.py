@@ -14,14 +14,18 @@
 
 from __future__ import absolute_import
 
+import errno
 import logging
 import os
-import sys
 import requests
+import sys
+import time
 from datetime import datetime
 from pytz import timezone
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
+from toil.lib.misc import mkdir_p
+from toil.lib.retry import retry
 from toil.version import currentCommit
 
 # subprocess32 is a backport of python3's subprocess module for use on Python2,
@@ -211,6 +215,22 @@ def applianceSelf(forceDockerAppliance=False):
         return appliance
     else:
         return checkDockerImageExists(appliance=appliance)
+
+
+def customDockerInitCmd():
+    """
+    Returns the custom command (if any) provided through the ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``
+    environment variable to run prior to running the workers and/or the primary node's services.
+    This can be useful for doing any custom initialization on instances (e.g. authenticating to
+    private docker registries). An empty string is returned if the environment variable is not
+    set.
+
+    :rtype: str
+    """
+    command = lookupEnvVar(name='user-defined custom docker init command',
+                           envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
+                           defaultValue='')
+    return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
 
 
 def lookupEnvVar(name, envName, defaultValue):
@@ -519,8 +539,18 @@ def _monkey_patch_boto():
             
             # We get a Credentials object
             # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
-            # or a RefreshableCredentials
-            creds = self._boto3_resolver.load_credentials()
+            # or a RefreshableCredentials, or None on failure.
+            creds = None
+            for attempt in retry(timeout=10, predicate=lambda _: True):
+                with attempt:
+                    creds = self._boto3_resolver.load_credentials()
+                    
+                    if creds is None:
+                        try:
+                            resolvers = str(self._boto3_resolver.providers)
+                        except:
+                            resolvers = "(Resolvers unavailable)"
+                        raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
             
             # Make sure the credentials actually has some credentials if it is lazy
             creds.get_frozen_credentials()
@@ -564,6 +594,7 @@ def _monkey_patch_boto():
                             self._credential_expiry_time = str_to_datetime(record[3])
                         else:
                             log.debug('%s is empty. Credentials are not temporary.', path)
+                            self._obtain_credentials_from_boto3()
                             return
                 except IOError as e:
                     if e.errno == errno.ENOENT:

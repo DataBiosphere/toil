@@ -489,7 +489,7 @@ class AWSJobStore(AbstractJobStore):
             keyName = url.path[1:]
             bucketName = url.netloc
             bucket = s3.get_bucket(bucketName)
-            key = bucket.get_key(bytes(keyName))
+            key = bucket.get_key(keyName.encode('utf-8'))
             if existing is True:
                 if key is None:
                     raise RuntimeError("Key '%s' does not exist in bucket '%s'." %

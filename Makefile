@@ -267,7 +267,7 @@ check_build_reqs:
 
 
 prepare: check_venv
-	$(pip) install mock==1.0.1 pytest==3.7.4 pytest-cov==2.5.1 stubserver==1.0.1 pytest-timeout==1.2.0 cwltest
+	$(pip) install mock==1.0.1 pytest==4.3.1 pytest-cov==2.6.1 stubserver==1.0.1 pytest-timeout==1.3.3 cwltest
 
 
 check_venv:

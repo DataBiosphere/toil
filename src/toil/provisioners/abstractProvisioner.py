@@ -19,7 +19,7 @@ import logging
 import os.path
 
 from toil import subprocess
-from toil import applianceSelf
+from toil import applianceSelf, customDockerInitCmd
 from toil.lib.retry import never
 
 a_short_time = 5
@@ -402,6 +402,10 @@ coreos:
         if keyPath:
             mesosArgs = keyPath + ' ' + mesosArgs
             entryPoint = "waitForKey.sh"
+        customDockerInitCommand = customDockerInitCmd()
+        if customDockerInitCommand:
+            mesosArgs = " ".join(["'" + customDockerInitCommand + "'", entryPoint, mesosArgs])
+            entryPoint = "customDockerInit.sh"
         templateArgs = dict(role=role,
                             dockerImage=applianceSelf(),
                             entrypoint=entryPoint,

@@ -305,7 +305,7 @@ def toil_get_file(file_store, index, existing, file_store_id):
     """Get path to input file from Toil jobstore."""
 
     if not file_store_id.startswith("toilfs:"):
-        return schema_salad.ref_resolver.file_uri(file_store_id)
+        return file_store.jobStore.getPublicUrl(file_store.jobStore.importFile(file_store_id))
     src_path = file_store.readGlobalFile(file_store_id[7:])
     index[src_path] = file_store_id
     existing[file_store_id] = src_path
@@ -355,7 +355,7 @@ def uploadFile(uploadfunc, fileindex, existing, uf, skip_broken=False):
         return
     if not uf["location"] and uf["path"]:
         uf["location"] = schema_salad.ref_resolver.file_uri(uf["path"])
-    if not os.path.isfile(uf["location"][7:]):
+    if uf["location"].startswith("file://") and not os.path.isfile(uf["location"][7:]):
         if skip_broken:
             return
         else:
