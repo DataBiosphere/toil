@@ -509,7 +509,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             try:
                 nodeAddress = socket.gethostbyname(offer.hostname)
             except:
-                log.deug("Failed to resolve hostname %s" % offer.hostname)
+                log.debug("Failed to resolve hostname %s" % offer.hostname)
                 raise
             self._registerNode(nodeAddress, offer.agent_id.value)
             preemptable = False
