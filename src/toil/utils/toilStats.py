@@ -535,7 +535,8 @@ def processData(config, stats):
     """
     Collate the stats and report
     """
-    if 'total_time' not in stats:  # toil job not finished yet
+    if 'total_time' not in stats or 'total_clock' not in stats:
+        # toil job not finished yet
         stats.total_time = [0.0]
         stats.total_clock = [0.0]
 
@@ -551,8 +552,8 @@ def processData(config, stats):
                                )
 
     # Add worker info
-    worker = [_f for _f in stats.workers if _f]
-    jobs = [_f for _f in stats.jobs if _f]
+    worker = [_f for _f in getattr(stats, 'workers', []) if _f]
+    jobs = [_f for _f in getattr(stats, 'jobs', []) if _f]
     jobs = [item for sublist in jobs for item in sublist]
 
     def fn4(job):
@@ -563,7 +564,7 @@ def processData(config, stats):
 
     buildElement(collatedStatsTag, worker, "worker")
     createSummary(buildElement(collatedStatsTag, jobs, "jobs"),
-                  stats.workers, "worker", fn4)
+                  getattr(stats, 'workers', []), "worker", fn4)
     # Get info for each job
     jobNames = set()
     for job in jobs:
