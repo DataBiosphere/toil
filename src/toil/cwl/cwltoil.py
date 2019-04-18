@@ -1186,24 +1186,11 @@ def main(args=None, stdout=sys.stdout):
                 cwltool.main.load_job_order(
                     options, sys.stdin, loading_context.fetcher_constructor,
                     loading_context.overrides_list, tool_file_uri)
-            document_loader, workflowobj, uri = \
-                cwltool.load_tool.fetch_document(
-                    uri, loading_context.resolver,
-                    loading_context.fetcher_constructor)
-            document_loader, avsc_names, processobj, metadata, uri = \
-                cwltool.load_tool.validate_document(
-                    document_loader, workflowobj, uri,
-                    loading_context.overrides_list,
-                    loading_context.metadata,
-                    loading_context.enable_dev, loading_context.strict, False,
-                    loading_context.fetcher_constructor, False,
-                    do_validate=loading_context.do_validate)
-            loading_context.overrides_list.extend(
-                metadata.get("cwltool:overrides", []))
+            loading_context, workflowobj, uri = cwltool.load_tool.fetch_document(uri, loading_context)
+            loading_context, uri = cwltool.load_tool.resolve_and_validate_document(loading_context, workflowobj, uri)
+            loading_context.overrides_list.extend(loading_context.metadata.get("cwltool:overrides", []))
             try:
-                tool = cwltool.load_tool.make_tool(
-                    document_loader, avsc_names, metadata, uri,
-                    loading_context)
+                tool = cwltool.load_tool.make_tool(uri, loading_context)
             except cwltool.process.UnsupportedRequirement as err:
                 logging.error(err)
                 return 33
