@@ -371,7 +371,7 @@ Pull Requests
   
   .. code-block:: bash
   
-      ./contrib/admin/test-pr jqrandom their-branch issues/123-fix-description-here
+      ./contrib/admin/test-pr theirusername their-branch issues/123-fix-description-here
      
   This must be repeated every time the PR submitter updates their PR, after
   checking to see that the update is not malicious.
