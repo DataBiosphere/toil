@@ -41,7 +41,7 @@ def runSetup():
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
     future = 'future'
-    requests = 'requests<3'
+    requests = 'requests>=2, <3'
     docker = 'docker==2.5.1'
     subprocess32 = 'subprocess32<=3.5.2'
     dateutil = 'python-dateutil'
