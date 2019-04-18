@@ -1222,20 +1222,17 @@ def main(args=None, stdout=sys.stdout):
 
             for inp in tool.tool["inputs"]:
                 def set_secondary(fileobj):
-                    if isinstance(fileobj, Mapping) \
-                            and fileobj.get("class") == "File":
+                    if isinstance(fileobj, Mapping) and fileobj.get("class") == "File":
                         if "secondaryFiles" not in fileobj:
-                            fileobj["secondaryFiles"] = [
-                                {"location": cwltool.builder.substitute(
-                                    fileobj["location"], sf), "class": "File"}
-                                for sf in inp["secondaryFiles"]]
+                            fileobj["secondaryFiles"] = [{"location": cwltool.builder.substitute(fileobj["location"],
+                                                         sf["pattern"]), "class": "File"}
+                                                         for sf in inp["secondaryFiles"]]
 
                     if isinstance(fileobj, MutableSequence):
                         for entry in fileobj:
                             set_secondary(entry)
 
-                if shortname(inp["id"]) in initialized_job_order \
-                        and inp.get("secondaryFiles"):
+                if shortname(inp["id"]) in initialized_job_order and inp.get("secondaryFiles"):
                     set_secondary(initialized_job_order[shortname(inp["id"])])
 
             import_files(initialized_job_order)
