@@ -96,7 +96,7 @@ class NoSuchFileException(Exception):
         
         if extra:
             # Append extra data.
-            message += " " + " ".join((str(x) for x in extra))
+            message += " Extra info: " + " ".join((str(x) for x in extra))
         
         super().__init__(message)
 
