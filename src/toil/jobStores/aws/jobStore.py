@@ -1287,8 +1287,10 @@ class AWSJobStore(AbstractJobStore):
                 try:
                     for upload in bucket.list_multipart_uploads():
                         upload.cancel_upload()
+                    keys = list()
                     for key in bucket.list_versions():
-                        bucket.delete_key(key.name, version_id=key.version_id)
+                        keys.append((key.name, key.version_id))
+                    bucket.delete_keys(keys, quiet=True)
                     bucket.delete()
                 except S3ResponseError as e:
                     if e.error_code == 'NoSuchBucket':
