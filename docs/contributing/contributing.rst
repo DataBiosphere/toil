@@ -360,22 +360,21 @@ Pull Requests
 * All pull requests must be reviewed by a person other than the request's
   author.
 
+* Modified pull requests must be re-reviewed before merging. **Note that Github
+  does not enforce this!**
+
 * Pull requests will not be merged unless Travis and Gitlab CI tests pass.
   Gitlab tests are only run on code in the main Toil repository on some branch,
   so it is the responsibility of the approving reviewer to make sure that pull
   requests from outside repositories are copied to branches in the main
-  repository. This can be accomplished with:
+  repository. This can be accomplished with (from a Toil clone):
   
   .. code-block:: bash
   
-      USER="jqrandom"
-      SOURCE_BRANCH="fix-thingy"
-      DESTINATION_BRANCH="issues/1234-fix-thingy"
-      git fetch git@github.com:${USER}/toil.git ${SOURCE_BRANCH}
-      git push git@github.com:DataBiosphere/toil.git FETCH_HEAD:refs/heads/${DESTINATION_BRANCH}
+      ./contrib/admin/test-pr jqrandom their-branch issues/123-fix-description-here
      
-  These steps must be repeated every time the PR submitter updates their PR,
-  after checking to see that the update is not malicious.
+  This must be repeated every time the PR submitter updates their PR, after
+  checking to see that the update is not malicious.
   
   If there is no issue corresponding to the PR, after which the branch can be
   named, the reviewer of the PR should first create the issue.
