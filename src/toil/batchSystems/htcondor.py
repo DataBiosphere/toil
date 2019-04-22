@@ -91,6 +91,18 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 '+ToilJobKilled': 'False',
             }
 
+            # Extra parameters for HTCondor
+            extra_parameters = os.getenv('TOIL_HTCONDOR_PARAMS')
+            if extra_parameters is not None:
+                logger.debug("Extra HTCondor parameters added to submit file from TOIL_HTCONDOR_PARAMS env. variable: {}".format(extra_parameters))
+                for parameter, value in [parameter_value.split('=', 1) for parameter_value in extra_parameters.split(';')]:
+                    parameter = parameter.strip()
+                    value = value.strip()
+                    if parameter in submit_parameters:
+                        raise ValueError("Some extra parameters are incompatible: {}".format(extra_parameters))
+
+                    submit_parameters[parameter] = value
+
             # Return the Submit object
             return htcondor.Submit(submit_parameters)
 

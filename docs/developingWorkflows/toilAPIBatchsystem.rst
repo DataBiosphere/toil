@@ -32,6 +32,12 @@ for running multicore jobs::
     export TOIL_GRIDENGINE_PE='smp'
     export TOIL_GRIDENGINE_ARGS='-q batch.q'
 
+For HTCondor, additional parameters can be included in the submit file passed to condor_submit::
+
+    export TOIL_HTCONDOR_PARAMS='requirements = TARGET.has_sse4_2 == true; accounting_group = test'
+
+The environment variable is parsed as a semicolon-separated string of ``parameter = value`` pairs.
+
 Batch System API
 ----------------
 
