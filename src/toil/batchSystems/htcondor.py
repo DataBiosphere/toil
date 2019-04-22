@@ -80,6 +80,7 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 'transfer_executable': 'False',
                 'arguments': '''"-c '{0}'"'''.format(command).encode('utf-8'),    # Workaround for HTCondor Python bindings Unicode conversion bug
                 'environment': self.getEnvString(),
+                'getenv': 'True',
                 'request_cpus': '{0}'.format(cpu),
                 'request_memory': '{0:.3f}KB'.format(memory),
                 'request_disk': '{0:.3f}KB'.format(disk),
