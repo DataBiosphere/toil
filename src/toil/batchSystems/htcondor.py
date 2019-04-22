@@ -161,7 +161,10 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             # Make sure a ClassAd was returned
             try:
-                ad = ads.next()
+                try:
+                    ad = next(ads)
+                except TypeError:
+                    ad = ads.next()
             except StopIteration:
                 logger.error(
                     "No HTCondor ads returned using constraint: {0}".format(requirements))
@@ -169,7 +172,10 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             # Make sure only one ClassAd was returned
             try:
-                ads.next()
+                try:
+                    next(ads)
+                except TypeError:
+                    ads.next()
             except StopIteration:
                 pass
             else:
