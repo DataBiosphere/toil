@@ -368,10 +368,10 @@ Pull Requests
   
   .. code-block:: bash
   
-      USER="jqrandom"
+      CONTRIBUTOR="jqrandom"
       SOURCE_BRANCH="fix-thingy"
       DESTINATION_BRANCH="issues/1234-fix-thingy"
-      git fetch git@github.com:${USER}/toil.git ${SOURCE_BRANCH}
+      git fetch git@github.com:${CONTRIBUTOR}/toil.git ${SOURCE_BRANCH}
       git push git@github.com:DataBiosphere/toil.git FETCH_HEAD:refs/heads/${DESTINATION_BRANCH}
      
   These steps must be repeated every time the PR submitter updates their PR,
