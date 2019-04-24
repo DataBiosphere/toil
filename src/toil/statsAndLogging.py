@@ -96,7 +96,9 @@ class StatsAndLogging( object ):
                     l = l.decode('utf-8')
                 except AttributeError:
                     pass
-                f.write((l + '\n').encode('utf-8'))
+                if not l.endswith('\n'):
+                    l += '\n'
+                f.write(l.encode('utf-8'))
         for alternateName in jobNames[1:]:
             # There are chained jobs in this output - indicate this with a symlink
             # of the job's name to this file
