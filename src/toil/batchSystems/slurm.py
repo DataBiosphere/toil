@@ -113,9 +113,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 state, exitcode = values
                 logger.debug("sacct job state is %s", state)
                 # If Job is in a running state, return None to indicate we don't have an update
-                status, _ = exitcode.split(':')
-                logger.debug("sacct exit code is %s, returning status %s", exitcode, status)
-                return (state, int(status))
+                status, signal = [int(n) for n in exitcode.split(':')]
+                if signal > 0:
+                    # A non-zero signal may indicate e.g. an out-of-memory killed job
+                    status = 128 + signal
+                logger.debug("sacct exit code is %s, returning status %d", exitcode, status)
+                return (state, status)
             logger.debug("Did not find exit code for job in sacct output")
             return None
 
@@ -148,9 +151,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             try:
                 exitcode = job['ExitCode']
                 if exitcode is not None:
-                    status, _ = exitcode.split(':')
-                    logger.debug("scontrol exit code is %s, returning status %s", exitcode, status)
-                    rc = int(status)
+                    status, signal = [int(n) for n in exitcode.split(':')]
+                    if signal > 0:
+                        # A non-zero signal may indicate e.g. an out-of-memory killed job
+                        status = 128 + signal
+                    logger.debug("scontrol exit code is %s, returning status %d", exitcode, status)
+                    rc = status
                 else:
                     rc = None
             except KeyError:
