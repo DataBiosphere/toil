@@ -364,15 +364,31 @@ class FileJobStore(AbstractJobStore):
 
     def updateFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
-        shutil.copyfile(localFilePath, self._getAbsPath(jobStoreFileID))
+        jobStoreFilePath = self._getAbsPath(jobStoreFileID)
+
+        if os.path.samefile(jobStoreFilePath, localFilePath):
+            # The files are already the same file. We can't copy on eover the other.
+            return
+
+        shutil.copyfile(localFilePath, jobStoreFilePath)
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getAbsPath(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
 
+        if not symlink and os.path.islink(localFilePath):
+            # We had a symlink and want to clobber it with a hardlink or copy.
+            os.unlink(localFilePath)
+
+        if os.path.exists(localFilePath) and os.path.samefile(jobStoreFilePath, localFilePath):
+            # The files are already the same: same name, hardlinked, or
+            # symlinked. There is nothing to do, and trying to shutil.copyfile
+            # one over the other will fail.
+            return
+
         if symlink:
-            # If the reader will accept a symlink, always give them one.
+            # If the reader will accept a symlink, so always give them one.
             # There's less that can go wrong.
             try:
                 os.symlink(jobStoreFilePath, localFilePath)
