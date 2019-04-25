@@ -56,6 +56,7 @@ from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
 from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
+from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        needs_aws,
                        needs_azure,
@@ -551,6 +552,20 @@ class AbstractJobStoreTest(object):
             jobstore1.delete(jobOnJobStore1.jobStoreID)
             self.assertFalse(jobstore1.exists(jobOnJobStore1.jobStoreID))
             # TODO: Who deletes the shared files?
+
+        def testWriteLogFiles(self):
+            """Test writing log files."""
+            jobNames = ['testStatsAndLogging_writeLogFiles']
+            jobLogList = ['string', b'bytes', '', b'newline\n']
+            config = self._createConfig()
+            setattr(config, 'writeLogs', '.')
+            setattr(config, 'writeLogsGzip', None)
+            StatsAndLogging.writeLogFiles(jobNames, jobLogList, config)
+            jobLogFile = os.path.join(config.writeLogs, jobNames[0] + '000.log')
+            self.assertTrue(os.path.isfile(jobLogFile))
+            with open(jobLogFile, 'r') as f:
+                self.assertEqual(f.read(), 'string\nbytes\n\nnewline\n')
+            os.remove(jobLogFile)
 
         def testBatchCreate(self):
             """Test creation of many jobs."""

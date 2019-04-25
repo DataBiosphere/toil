@@ -90,6 +90,16 @@ There are several environment variables that affect the way Toil runs.
 |                                  | as queue. Example: -q medium.                      |
 |                                  | There is no default value for this variable.       |
 +----------------------------------+----------------------------------------------------+
+| TOIL_HTCONDOR_PARAMS             | Additional parameters to include in the HTCondor   |
+|                                  | submit file passed to condor_submit. Do not pass   |
+|                                  | CPU or memory specifications here. Instead define  |
+|                                  | extra parameters which may be required by HTCondor.|
+|                                  | This variable is parsed as a semicolon-separated   |
+|                                  | string of ``parameter = value`` pairs. Example:    |
+|                                  | ``requirements = TARGET.has_sse4_2 == true;        |
+|                                  | accounting_group = test``.                         |
+|                                  | There is no default value for this variable.       |
++----------------------------------+----------------------------------------------------+
 | TOIL_CUSTOM_DOCKER_INIT_COMMAND  | Any custom bash command to run in the Toil docker  |
 |                                  | container prior to running the Toil services.      |
 |                                  | Can be used for any custom initialization in the   |
