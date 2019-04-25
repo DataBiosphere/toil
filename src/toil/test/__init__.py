@@ -623,6 +623,8 @@ def make_tests(generalMethod, targetClass, **kwargs):
     of the form {str : type, ...} where the key represents the name of the value. The names will
     be used to represent the permutation of values passed for each parameter in the generalMethod.
 
+    The generated method names will list the parameters in lexicographic order by parameter name.
+
     :param generalMethod: A method that will be parameterized with values passed as kwargs. Note
            that the generalMethod must be a regular method.
 
@@ -647,13 +649,16 @@ def make_tests(generalMethod, targetClass, **kwargs):
 
     >>> b = Bar()
 
-    >>> assert b.test_has__num_one__letter_a() == b.has(1, 'a')
+    Note that num comes lexicographically before letter and so appears first in
+    the generated method names.
 
-    >>> assert b.test_has__num_one__letter_b() == b.has(1, 'b')
+    >>> assert b.test_has__letter_a__num_one() == b.has(1, 'a')
 
-    >>> assert b.test_has__num_two__letter_a() == b.has(2, 'a')
+    >>> assert b.test_has__letter_b__num_one() == b.has(1, 'b')
 
-    >>> assert b.test_has__num_two__letter_b() == b.has(2, 'b')
+    >>> assert b.test_has__letter_a__num_two() == b.has(2, 'a')
+
+    >>> assert b.test_has__letter_b__num_two() == b.has(2, 'b')
 
     >>> f = Foo()
 
@@ -715,12 +720,18 @@ def make_tests(generalMethod, targetClass, **kwargs):
             else:
                 return generalMethod(self)
 
-        setattr(targetClass, 'test_%s%s' % (generalMethod.__name__, prmNames), fx)
+        methodName = 'test_%s%s' % (generalMethod.__name__, prmNames)
+
+        setattr(targetClass, methodName, fx)
 
     if len(kwargs) > 0:
+        # Define order of kwargs.
+        # We keep them in reverse order of how we use them for efficient pop.
+        sortedKwargs = sorted(list(kwargs.items()), reverse=True)
+
         # create first left dict
         left = {}
-        prmName, vals = pop(kwargs)
+        prmName, vals = sortedKwargs.pop()
         for valName, val in list(vals.items()):
             pvName = '__%s_%s' % (prmName, valName.lower())
             if methodNamePartRegex.match(pvName) is None:
@@ -728,8 +739,8 @@ def make_tests(generalMethod, targetClass, **kwargs):
             left[pvName] = {prmName: val}
 
         # get cartesian product
-        while len(kwargs) > 0:
-            permuteIntoLeft(left, *pop(kwargs))
+        while len(sortedKwargs) > 0:
+            permuteIntoLeft(left, *sortedKwargs.pop())
 
         # set class attributes
         targetClass = targetClass or generalMethod.__class__
