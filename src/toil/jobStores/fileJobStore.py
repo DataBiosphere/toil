@@ -401,6 +401,9 @@ class FileJobStore(AbstractJobStore):
                     # It would be very unlikely to fail again for same reason but possible
                     # nonetheless in which case we should just give up.
                     os.symlink(jobStoreFilePath, localFilePath)
+
+                    # Now we succeeded and don't need to copy
+                    return
                 else:
                     raise
 
