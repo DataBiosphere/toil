@@ -1597,7 +1597,8 @@ class EncapsulatedJob(Job):
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.
-        self.encapsulatedFollowOn = Job(disk='1M', memory='32M', cores=0.1)
+        # But not too small, or the job won't have enough resources to safely start up Toil.
+        self.encapsulatedFollowOn = Job(disk='100M', memory='512M', cores=0.1)
         Job.addFollowOn(self, self.encapsulatedFollowOn)
 
     def addChild(self, childJob):
