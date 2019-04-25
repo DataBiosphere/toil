@@ -49,8 +49,8 @@ def dockerCheckOutput(*args, **kwargs):
     used 'subprocess.check_output()'.  This has since been supplanted and
     apiDockerCall() is recommended.
     """
-    logger.warn("WARNING: dockerCheckOutput() using subprocess.check_output() "
-                "is deprecated, please switch to apiDockerCall().")
+    raise RuntimeError("dockerCheckOutput() using subprocess.check_output() is deprecated, "
+                       "please switch to apiDockerCall().")
     return subprocessDockerCall(*args, checkOutput=True, **kwargs)
 
 
@@ -62,8 +62,8 @@ def dockerCall(*args, **kwargs):
     used 'subprocess.check_call()'.  This has since been supplanted and
     apiDockerCall() is recommended.
     """
-    logger.warn("WARNING: dockerCall() using subprocess.check_output() "
-                "is deprecated, please switch to apiDockerCall().")
+    raise RuntimeError("WARNING: dockerCall() using subprocess.check_output() "
+                       "is deprecated, please switch to apiDockerCall().")
     return subprocessDockerCall(*args, checkOutput=False, **kwargs)
 
 
@@ -116,6 +116,7 @@ def subprocessDockerCall(job,
            system using `docker rm -f`. This is the default behavior if defer is
            set to None.
     """
+    raise RuntimeError("WARNING: subprocessDockerCall() is deprecated, please switch to apiDockerCall().")
     if parameters is None:
         parameters = []
     if workDir is None:
