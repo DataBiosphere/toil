@@ -364,44 +364,82 @@ class FileJobStore(AbstractJobStore):
 
     def updateFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
-        shutil.copyfile(localFilePath, self._getAbsPath(jobStoreFileID))
+        jobStoreFilePath = self._getAbsPath(jobStoreFileID)
+
+        if os.path.samefile(jobStoreFilePath, localFilePath):
+            # The files are already the same file. We can't copy on eover the other.
+            return
+
+        shutil.copyfile(localFilePath, jobStoreFilePath)
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getAbsPath(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
-        # If local file would end up on same file system as the one hosting this job store ...
-        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
-            # ... we can hard-link the file, ...
-            if symlink:
-                try:
+
+        if not symlink and os.path.islink(localFilePath):
+            # We had a symlink and want to clobber it with a hardlink or copy.
+            os.unlink(localFilePath)
+
+        if os.path.exists(localFilePath) and os.path.samefile(jobStoreFilePath, localFilePath):
+            # The files are already the same: same name, hardlinked, or
+            # symlinked. There is nothing to do, and trying to shutil.copyfile
+            # one over the other will fail.
+            return
+
+        if symlink:
+            # If the reader will accept a symlink, so always give them one.
+            # There's less that can go wrong.
+            try:
+                os.symlink(jobStoreFilePath, localFilePath)
+                # It worked!
+                return
+            except OSError as e:
+                if e.errno == errno.EEXIST:
+                    # Overwrite existing file, emulating shutil.copyfile().
+                    os.unlink(localFilePath)
+                    # It would be very unlikely to fail again for same reason but possible
+                    # nonetheless in which case we should just give up.
                     os.symlink(jobStoreFilePath, localFilePath)
-                except OSError as e:
-                    if e.errno == errno.EEXIST:
-                        # Overwrite existing file, emulating shutil.copyfile().
-                        os.unlink(localFilePath)
-                        # It would be very unlikely to fail again for same reason but possible
-                        # nonetheless in which case we should just give up.
-                        os.symlink(jobStoreFilePath, localFilePath)
-                    else:
-                        raise
-            else:
-                try:
+
+                    # Now we succeeded and don't need to copy
+                    return
+                else:
+                    raise
+
+        # If we get here, symlinking isn't an option.
+        if os.stat(jobStoreFilePath).st_dev == os.stat(localDirPath).st_dev:
+            # It is possible that we can hard link the file.
+            # Note that even if the device numbers match, we can end up trying
+            # to create a "cross-device" link.
+
+            try:
+                os.link(jobStoreFilePath, localFilePath)
+                # It worked!
+                return
+            except OSError as e:
+                if e.errno == errno.EEXIST:
+                    # Overwrite existing file, emulating shutil.copyfile().
+                    os.unlink(localFilePath)
+                    # It would be very unlikely to fail again for same reason but possible
+                    # nonetheless in which case we should just give up.
                     os.link(jobStoreFilePath, localFilePath)
-                except OSError as e:
-                    if e.errno == errno.EEXIST:
-                        # Overwrite existing file, emulating shutil.copyfile().
-                        os.unlink(localFilePath)
-                        # It would be very unlikely to fail again for same reason but possible
-                        # nonetheless in which case we should just give up.
-                        os.link(jobStoreFilePath, localFilePath)
-                    else:
-                        logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
-                        logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
-                        raise
-        else:
-            # ... otherwise we have to copy it.
-            shutil.copyfile(jobStoreFilePath, localFilePath)
+
+                    # Now we succeeded and don't need to copy
+                    return
+                elif e.errno == errno.EXDEV:
+                    # It's a cross-device link even though it didn't appear to be.
+                    # Just keep going and hit the file copy case.
+                    pass
+                else:
+                    logger.critical('Unexpected OSError when reading file from job store')
+                    logger.critical('jobStoreFilePath: ' + jobStoreFilePath + ' ' + str(os.path.exists(jobStoreFilePath)))
+                    logger.critical('localFilePath: ' + localFilePath + ' ' + str(os.path.exists(localFilePath)))
+                    raise
+
+        # If we get here, neither a symlink nor a hardlink will work.
+        # Make a complete copy.
+        shutil.copyfile(jobStoreFilePath, localFilePath)
 
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):

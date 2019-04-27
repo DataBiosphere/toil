@@ -844,8 +844,12 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         """
-        Copies the file referenced by jobStoreFileID to the given local file path. The version
-        will be consistent with the last copy of the file written/updated.
+        Copies or hard links the file referenced by jobStoreFileID to the given
+        local file path. The version will be consistent with the last copy of
+        the file written/updated. If the file in the job store is later
+        modified via updateFile or updateFileStream, it is
+        implementation-defined whether those writes will be visible at
+        localFilePath.
 
         The file at the given local path may not be modified after this method returns!
 
@@ -853,6 +857,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         :param str localFilePath: the local path indicating where to place the contents of the
                given file in the job store
+
+        :param bool symlink: whether the reader can tolerate a symlink. If set to true, the job
+               store may create a symlink instead of a full copy of the file or a hard link.
         """
         raise NotImplementedError()
 
