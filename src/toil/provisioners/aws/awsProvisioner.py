@@ -159,7 +159,7 @@ class AWSProvisioner(AbstractProvisioner):
                           preemptable=False, tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
 
-        defaultTags = {'Name': self.clusterName, 'Owner': owner}
+        defaultTags = {'Name': self.clusterName, 'Owner': owner, 'ToilNodeType': 'leader'}
         if kwargs['userTags']:
             defaultTags.update(kwargs['userTags'])
 
@@ -292,6 +292,7 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 wait_instances_running(self._ctx.ec2, instancesLaunched)
 
+        self._tags['ToilNodeType'] = 'worker'
         AWSProvisioner._addTags(instancesLaunched, self._tags)
         if self._sseKey:
             for i in instancesLaunched:
