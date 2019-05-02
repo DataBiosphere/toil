@@ -33,6 +33,7 @@ class Node(object):
     def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
         self.publicIP = publicIP
         self.privateIP = privateIP
+        self.effectiveIP = self.publicIP or self.privateIP
         self.name = name
         self.launchTime = launchTime
         self.nodeType = nodeType
@@ -40,13 +41,13 @@ class Node(object):
         self.tags = tags
 
     def __str__(self):
-        return "%s at %s" % (self.name, self.publicIP)
+        return "%s at %s" % (self.name, self.effectiveIP)
 
     def __repr__(self):
         return str(self)
 
     def __hash__(self):
-        return hash(self.publicIP)
+        return hash(self.effectiveIP)
 
     def remainingBillingInterval(self):
         """
@@ -102,7 +103,7 @@ class Node(object):
             except Exception as e:
                 logger.debug("Rsync to new node failed, trying again. Error message: %s" % e)
                 time.sleep(10*retry)
-        raise RuntimeError("Failed to inject file %s to %s with ip %s" % (fromFile, role, self.publicIP) )
+        raise RuntimeError("Failed to inject file %s to %s with ip %s" % (fromFile, role, self.effectiveIP) )
 
     def _waitForSSHKeys(self, keyName='core'):
         # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
@@ -110,7 +111,7 @@ class Node(object):
         startTime = time.time()
         while True:
             if time.time() - startTime > self.maxWaitTime:
-                raise RuntimeError("Key propagation failed on machine with ip %s" % self.publicIP)
+                raise RuntimeError("Key propagation failed on machine with ip %s" % self.effectiveIP)
             try:
                 logger.info('Attempting to establish SSH connection...')
                 self.sshInstance('ps', sshOptions=['-oBatchMode=yes'], user=keyName)
@@ -123,12 +124,12 @@ class Node(object):
                 return
 
     def _waitForDockerDaemon(self, keyName='core'):
-        logger.info('Waiting for docker on %s to start...', self.publicIP)
+        logger.info('Waiting for docker on %s to start...', self.effectiveIP)
         sleepTime = 10
         startTime = time.time()
         while True:
             if time.time() - startTime > self.maxWaitTime:
-                raise RuntimeError("Docker daemon failed to start on machine with ip %s" % self.publicIP)
+                raise RuntimeError("Docker daemon failed to start on machine with ip %s" % self.effectiveIP)
             try:
                 output = self.sshInstance('/usr/bin/ps', 'auxww', sshOptions=['-oBatchMode=yes'], user=keyName)
                 if b'dockerd' in output:
@@ -150,7 +151,7 @@ class Node(object):
             if time.time() - startTime > self.maxWaitTime:
                 raise RuntimeError("Appliance failed to start on machine with ip %s"
                                    " Check if the appliance is valid, e.g. check if the environment variable"
-                                    " TOIL_APPLIANCE_SELF is set correctly and the container exists." % self.publicIP)
+                                    " TOIL_APPLIANCE_SELF is set correctly and the container exists." % self.effectiveIP)
             try:
                 output = self.sshInstance('/usr/bin/docker', 'ps',
                                           sshOptions=['-oBatchMode=yes'], user=keyName)
@@ -182,7 +183,7 @@ class Node(object):
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             try:
                 s.settimeout(a_short_time)
-                s.connect((self.publicIP, 22))
+                s.connect((self.effectiveIP, 22))
                 logger.debug('...ssh port open')
                 return i
             except socket.error:
@@ -237,7 +238,7 @@ class Node(object):
             commandTokens.extend(sshOptions)
         # specify host
         user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
-        commandTokens.append('%s@%s' % (user,str(self.publicIP)))
+        commandTokens.append('%s@%s' % (user,str(self.effectiveIP)))
         appliance = kwargs.pop('appliance', None)
         if appliance:
             # run the args in the appliance
@@ -253,7 +254,7 @@ class Node(object):
             kwargs['stdout'] = subprocess.PIPE
         kwargs['stderr'] = subprocess.PIPE
 
-        logger.debug('Node %s: %s', self.publicIP, ' '.join(args))
+        logger.debug('Node %s: %s', self.effectiveIP, ' '.join(args))
         args = list(map(pipes.quote, args))
         commandTokens += args
         logger.debug('Full command %s', ' '.join(commandTokens))
@@ -281,7 +282,7 @@ class Node(object):
         for i in args:
             if i.startswith(":") and not hostInserted:
                 user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
-                i = ("%s@%s" % (user, self.publicIP)) + i
+                i = ("%s@%s" % (user, self.effectiveIP)) + i
                 hostInserted = True
             elif i.startswith(":") and hostInserted:
                 raise ValueError("Cannot rsync between two remote hosts")

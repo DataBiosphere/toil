@@ -91,7 +91,14 @@ class StatsAndLogging( object ):
 
         fullName = createName(path, mainFileName, extension)
         with writeFn(fullName, 'wb') as f:
-            f.writelines((l + '\n').encode('utf-8') for l in jobLogList)
+            for l in jobLogList:
+                try:
+                    l = l.decode('utf-8')
+                except AttributeError:
+                    pass
+                if not l.endswith('\n'):
+                    l += '\n'
+                f.write(l.encode('utf-8'))
         for alternateName in jobNames[1:]:
             # There are chained jobs in this output - indicate this with a symlink
             # of the job's name to this file
@@ -109,7 +116,10 @@ class StatsAndLogging( object ):
         startClock = getTotalCpuTime()
 
         def callback(fileHandle):
-            stats = json.load(fileHandle, object_hook=Expando)
+            statsStr = fileHandle.read()
+            if not isinstance(statsStr, str):
+                statsStr = statsStr.decode()
+            stats = json.loads(statsStr, object_hook=Expando)
             try:
                 logs = stats.workers.logsToMaster
             except AttributeError:

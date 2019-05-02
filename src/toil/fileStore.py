@@ -471,6 +471,9 @@ class CachingFileStore(FileStore):
         self.jobID = sha1(self.jobName.encode('utf-8')).hexdigest()
         logger.debug('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
         # A variable to describe how many hard links an unused file in the cache will have.
+        # Also used as the canonical place to record whether we are using a
+        # FileJobStore that we can just reach into and that will own the disk
+        # usage of files.
         self.nlinkThreshold = None
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
         # This is a flag to better resolve cache equation imbalances at cleanup time.
@@ -693,7 +696,8 @@ class CachingFileStore(FileStore):
                     # download succeeds or not.
                     try:
                         self.jobStore.readFile(fileStoreID,
-                                               '/.'.join(os.path.split(cachedFileName)))
+                                               '/.'.join(os.path.split(cachedFileName)),
+                                               symlink=False)
                     except:
                         if os.path.exists('/.'.join(os.path.split(cachedFileName))):
                             os.remove('/.'.join(os.path.split(cachedFileName)))
@@ -703,6 +707,8 @@ class CachingFileStore(FileStore):
                         # recording it in the cache lock file) if possible.
                         if os.path.exists('/.'.join(os.path.split(cachedFileName))):
                             os.rename('/.'.join(os.path.split(cachedFileName)), cachedFileName)
+                            # If this is not true we get into trouble in our internal reference counting.
+                            assert(os.stat(cachedFileName).st_nlink == self.nlinkThreshold)
                             self.addToCache(localFilePath, fileStoreID, 'read', mutable)
                             # We don't need to return the file size here because addToCache
                             # already does it for us
@@ -712,7 +718,10 @@ class CachingFileStore(FileStore):
                 else:
                     # Release the cache lock since the remaining stuff is not cache related.
                     flock(lockFileHandle, LOCK_UN)
-                    self.jobStore.readFile(fileStoreID, localFilePath)
+                    self.jobStore.readFile(fileStoreID, localFilePath, symlink=False)
+                    # Make sure we got a file with the number of links we expect.
+                    # If this is not true we get into trouble in our internal reference counting.
+                    assert(os.stat(localFilePath).st_nlink == self.nlinkThreshold)
                     os.chmod(localFilePath, stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
                     # Now that we have the file, we have 2 options. It's modifiable or not.
                     # Either way, we need to account for FileJobStore making links instead of
@@ -925,8 +934,8 @@ class CachingFileStore(FileStore):
                first time.
         """
         # The nlink threshold is setup along with the first instance of the cache class on the
-        # node.
-        self.setNlinkThreshold()
+        # node. It needs the cache dir to sniff link count for files form the job store.
+        self.setNlinkThreshold(tempCacheDir)
         # Get the free space on the device
         freeSpace, _ = getFileSystemSize(tempCacheDir)
         # Create the cache lock file.
@@ -1183,8 +1192,11 @@ class CachingFileStore(FileStore):
             cachedFileStats = os.stat(cachedFile)
             # We know the file exists because this function was called in the if block.  So we
             # have to ensure nothing has changed since then.
-            assert cachedFileStats.st_nlink == self.nlinkThreshold, 'Attempting to delete ' + \
-                                                                    'a global file that is in use by another job.'
+            assert cachedFileStats.st_nlink <= self.nlinkThreshold, \
+                   'Attempting to delete a global file that is in use by another job.'
+
+            assert cachedFileStats.st_nlink >= self.nlinkThreshold, \
+                   'A global file has too FEW links at deletion time. Our link threshold is incorrect!'
             # Remove the file size from the cached file size if the jobstore is not fileJobStore
             # and then delete the file
             os.remove(cachedFile)
@@ -1196,14 +1208,38 @@ class CachingFileStore(FileStore):
             self.logToMaster('CACHE: Successfully removed file with ID \'%s\'.' % fileStoreID)
         return None
 
-    def setNlinkThreshold(self):
+    def setNlinkThreshold(self, tempCacheDir):
         # FIXME Can't do this at the top because of loopy (circular) import errors
+
+        # We can't predict in advance whether the job store will give us hard links or not.
+        # Even if the devices appear the same, the only way to know for sure is to try it.
+
         from toil.jobStores.fileJobStore import FileJobStore
-        if (isinstance(self.jobStore, FileJobStore) and
-                    os.stat(os.path.dirname(self.localCacheDir)).st_dev == os.stat(
-                    self.jobStore.jobStoreDir).st_dev):
-            self.nlinkThreshold = 2
+        if isinstance(self.jobStore, FileJobStore):
+            # A bunch of code depends on nlinkThreshold==2 -> jobStore is FileJobStore.
+            # So only do this check if the job store is the file job store.
+
+            # Create an empty file.
+            emptyID = self.jobStore.getEmptyFileStoreID()
+
+            # Read it out.
+            # We have exclusive ownership of tempCacheDir at this point, so we
+            # can just write any name in there.
+            cachedFile = os.path.join(tempCacheDir, 'sniffLinkCount') 
+            self.jobStore.readFile(emptyID, cachedFile, symlink=False)
+
+            # Check the link count
+            self.nlinkThreshold = os.stat(cachedFile).st_nlink
+
+            # Only 1 or 2 is allowed.
+            assert(self.nlinkThreshold == 1 or self.nlinkThreshold == 2)
+
+            # Clean up
+            os.unlink(cachedFile)
+            self.jobStore.deleteFile(emptyID)
         else:
+            # Unless we are on the file job store, we need to have a link count threshold of 1.
+            # TODO: This relies on something the job store interface doesn't actually guarantee!
             self.nlinkThreshold = 1
 
     def _accountForNlinkEquals2(self, localFilePath):
