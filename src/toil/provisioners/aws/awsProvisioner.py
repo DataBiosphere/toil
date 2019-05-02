@@ -40,7 +40,7 @@ from toil.lib.generatedEC2Lists import E2Instances
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
-# Pefix for EC2 instance profiles that are automatically created by Toil.
+# Role name (used as the suffix) for EC2 instance profiles that are automatically created by Toil.
 _INSTANCE_PROFILE_ROLE_NAME = 'toil'
 
 
