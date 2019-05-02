@@ -519,7 +519,8 @@ def _addOptions(addGroupFn, config):
     # Misc options
     #
     addOptionFn = addGroupFn("Toil Miscellaneous Options", "Miscellaneous Options")
-    addOptionFn('--disableCaching', dest='disableCaching', action='store_true', default=True,
+    addOptionFn('--disableCaching', dest='disableCaching',
+                type='bool', nargs='?', const=True, default=True,
                 help='Disables caching in the file store. This flag must be set to use '
                      'a batch system that does not support caching such as Grid Engine, Parasol, '
                      'LSF, or Slurm')
@@ -593,6 +594,7 @@ def addOptions(parser, config=Config()):
         def addGroup(headingString, bodyString):
             return parser.add_argument_group(headingString, bodyString).add_argument
 
+        parser.register("type", "bool", lambda v: v.lower() == "true")  # Custom type for arg=True/False.
         _addOptions(addGroup, config)
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "

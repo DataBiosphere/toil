@@ -18,6 +18,7 @@ from __future__ import division
 import argparse
 import os
 import logging
+import sys
 
 from toil import subprocess
 from toil.wdl.wdl_analysis import AnalyzeWDL
@@ -141,7 +142,8 @@ def main():
         sWDL.write_mappings(aWDL)
     else:
         wdllogger.debug('WDL file compiled to toil script.  Running now.')
-        cmd = ['python', sWDL.output_file]
+        exe = sys.executable if sys.executable else 'python'
+        cmd = [exe, sWDL.output_file]
         cmd.extend(wdl_run_args)
         subprocess.check_call(cmd)
         os.remove(sWDL.output_file)

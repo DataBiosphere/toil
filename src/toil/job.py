@@ -908,14 +908,40 @@ class Job(BaseJob):
         logger.debug('Loading user module %s.', userModule)
         userModule = cls._loadUserModule(userModule)
         pickleFile = commandTokens[1]
-        with tempfile.NamedTemporaryFile() as f:
-            filename = f.name
+
+        # Get a directory to download the job in
+        directory = tempfile.mkdtemp()
+        # Initialize a blank filename so the finally below can't fail due to a
+        # missing variable
+        filename = ''
+
+        try:
+            # Get a filename to download the job to.
+            # Don't use mkstemp because we would need to delete and replace the
+            # file.
+            # Don't use a NamedTemporaryFile context manager because its
+            # context manager exit will crash if we deleted it.
+            filename = os.path.join(directory, 'job')
+                
+            # Download the job
             if pickleFile == "firstJob":
                 jobStore.readSharedFile(pickleFile, filename)
             else:
                 jobStore.readFile(pickleFile, filename)
+
+            # Open and unpickle
             with open(filename, 'rb') as fileHandle:
                 return cls._unpickle(userModule, fileHandle, jobStore.config)
+
+            # TODO: We ought to just unpickle straight from a streaming read
+        finally:
+            # Clean up the file
+            if os.path.exists(filename):
+                os.unlink(filename)
+            # Clean up the directory we put it in
+            # TODO: we assume nobody else put anything in the directory
+            if os.path.exists(directory):
+                os.rmdir(directory)
 
     @classmethod
     def _unpickle(cls, userModule, fileHandle, config):
@@ -1571,7 +1597,8 @@ class EncapsulatedJob(Job):
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.
-        self.encapsulatedFollowOn = Job(disk='1M', memory='32M', cores=0.1)
+        # But not too small, or the job won't have enough resources to safely start up Toil.
+        self.encapsulatedFollowOn = Job(disk='100M', memory='512M', cores=0.1)
         Job.addFollowOn(self, self.encapsulatedFollowOn)
 
     def addChild(self, childJob):

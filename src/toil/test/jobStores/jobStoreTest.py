@@ -56,6 +56,7 @@ from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
 from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
+from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        needs_aws,
                        needs_azure,
@@ -551,6 +552,20 @@ class AbstractJobStoreTest(object):
             jobstore1.delete(jobOnJobStore1.jobStoreID)
             self.assertFalse(jobstore1.exists(jobOnJobStore1.jobStoreID))
             # TODO: Who deletes the shared files?
+
+        def testWriteLogFiles(self):
+            """Test writing log files."""
+            jobNames = ['testStatsAndLogging_writeLogFiles']
+            jobLogList = ['string', b'bytes', '', b'newline\n']
+            config = self._createConfig()
+            setattr(config, 'writeLogs', '.')
+            setattr(config, 'writeLogsGzip', None)
+            StatsAndLogging.writeLogFiles(jobNames, jobLogList, config)
+            jobLogFile = os.path.join(config.writeLogs, jobNames[0] + '000.log')
+            self.assertTrue(os.path.isfile(jobLogFile))
+            with open(jobLogFile, 'r') as f:
+                self.assertEqual(f.read(), 'string\nbytes\n\nnewline\n')
+            os.remove(jobLogFile)
 
         def testBatchCreate(self):
             """Test creation of many jobs."""
@@ -1192,8 +1207,6 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         partSize = self._partSize()
-        for encrypted in (True, False):
-            self.assertTrue(AWSJobStore.FileInfo.maxInlinedSize(encrypted) < partSize)
         return AWSJobStore(self.awsRegion() + ':' + self.namePrefix, partSize=partSize)
 
     def _corruptJobStore(self):
@@ -1255,7 +1268,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         from toil.jobStores.aws.jobStore import AWSJobStore
         jobstore = self.jobstore_initialized
         for encrypted in (True, False):
-            n = AWSJobStore.FileInfo.maxInlinedSize(encrypted)
+            n = AWSJobStore.FileInfo.maxInlinedSize()
             sizes = (1, old_div(n, 2), n - 1, n, n + 1, 2 * n)
             for size in chain(sizes, islice(reversed(sizes), 1)):
                 s = os.urandom(size)

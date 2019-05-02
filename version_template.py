@@ -28,7 +28,6 @@ import the expand_ function and invoke it directly with either no or exactly one
 
 baseVersion = '3.20.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
-dockerRegistry = 'quay.io/ucsc_cgl'
 dockerName = 'toil'
 
 
@@ -113,6 +112,11 @@ def currentCommit():
     if isinstance(output, bytes):
         return output.decode('utf-8')
     return str(output)
+
+
+def dockerRegistry():
+    import os
+    return os.getenv('TOIL_DOCKER_REGISTRY', 'quay.io/ucsc_cgl')
 
 
 def dirty():

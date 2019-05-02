@@ -401,7 +401,7 @@ class AWSProvisioner(AbstractProvisioner):
         while True:
             time.sleep(a_short_time)
             instance.update()
-            if instance.ip_address or instance.public_dns_name:
+            if instance.ip_address or instance.public_dns_name or instance.private_ip_address:
                 logger.debug('...got ip')
                 break
 
