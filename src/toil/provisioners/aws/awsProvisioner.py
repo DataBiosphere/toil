@@ -40,6 +40,10 @@ from toil.lib.generatedEC2Lists import E2Instances
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
+# The tag key that specifies the Toil node type ("leader" or "worker") so that
+# leader vs. worker nodes can be robustly identified.
+_TOIL_NODE_TYPE_TAG_KEY = 'ToilNodeType'
+
 
 def awsRetryPredicate(e):
     if not isinstance(e, BotoServerError):
@@ -159,7 +163,7 @@ class AWSProvisioner(AbstractProvisioner):
                           preemptable=False, tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
 
-        defaultTags = {'Name': self.clusterName, 'Owner': owner}
+        defaultTags = {'Name': self.clusterName, 'Owner': owner, _TOIL_NODE_TYPE_TAG_KEY: 'leader'}
         if kwargs['userTags']:
             defaultTags.update(kwargs['userTags'])
 
@@ -292,6 +296,7 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 wait_instances_running(self._ctx.ec2, instancesLaunched)
 
+        self._tags[_TOIL_NODE_TYPE_TAG_KEY] = 'worker'
         AWSProvisioner._addTags(instancesLaunched, self._tags)
         if self._sseKey:
             for i in instancesLaunched:
@@ -367,6 +372,12 @@ class AWSProvisioner(AbstractProvisioner):
             leader = instances[0]  # assume leader was launched first
         except IndexError:
             raise NoSuchClusterException(self.clusterName)
+        if (leader.tags.get(_TOIL_NODE_TYPE_TAG_KEY) or 'leader') != 'leader':
+            raise RuntimeError(
+                'Invalid cluster state! The first launched instance appears not to be the leader '
+                'as it is missing the "leader" tag. The safest recovery is to destroy the cluster '
+                'and restart the job. Incorrect Leader ID: %s' % leader.id
+            )
         leaderNode = Node(publicIP=leader.ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time, nodeType=None,
                           preemptable=False, tags=leader.tags)
