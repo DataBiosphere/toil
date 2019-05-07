@@ -628,6 +628,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             for label in labels:
                 if label['key'] == 'wallTime':
                     wallTime = float(label['value'])
+                    break
             assert(wallTime is not None)
             jobEnded(0, wallTime=wallTime)
         elif update.state == 'TASK_FAILED':
