@@ -293,9 +293,13 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param: string fileDesc : File description, should be 'std_output' for standard
              output, 'std_error' for standard error, and as appropriate for other files
 
-        :rtype: string : Formatted filename
+        :rtype: string : Formatted filename; however if self.config.noStdOutErr is true,
+             returns '/dev/null' or equivalent.
 
         """
+        if self.config.noStdOutErr:
+            return os.devnull
+
         workflowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
         fileName = 'toil_job_{jobID}_batch_{batchSystem}_{batchJobIDfmt}_{fileDesc}.log'.format(
             jobID=jobID, batchSystem=batchSystem, batchJobIDfmt=batchJobIDfmt, fileDesc=fileDesc)

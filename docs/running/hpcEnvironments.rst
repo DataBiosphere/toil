@@ -19,6 +19,9 @@ Standard output and error from batch system jobs (except for the Parasol and Mes
 Each file is named as follows: ``toil_job_<Toil job ID>_batch_<name of batch system>_<job ID from batch system>_<file description>.log``, where ``<file description>`` is ``std_output`` for standard output, and ``std_error`` for standard error.
 HTCondor will also write job event log files with ``<file description> = job_events``.
 
+If capturing standard output and error is desired, ``--workDir`` will generally need to be on a shared file system; otherwise if these are written to local temporary directories on each node (e.g. ``/tmp``) Toil will not be able to retrieve them.
+Alternatively, the ``--noStdOutErr`` option forces Toil to discard all standard output and error from batch system jobs.
+
 .. _Grid Engine: http://www.univa.com/oracle
 
 .. _Slurm: https://www.schedmd.com/
