@@ -29,7 +29,7 @@ class JobGraphTest(ToilTest):
         Job.Runner.addToilOptions(parser)
         options = parser.parse_args(args=[self.jobStorePath])
         self.toil = Toil(options)
-        self.assertEquals( self.toil, self.toil.__enter__() )
+        self.assertEqual( self.toil, self.toil.__enter__() )
 
     def tearDown(self):
         self.toil.__exit__(None, None, None)
@@ -57,26 +57,26 @@ class JobGraphTest(ToilTest):
         
         #Check attributes
         #
-        self.assertEquals(j.command, command)
-        self.assertEquals(j.memory, memory)
-        self.assertEquals(j.disk, disk)
-        self.assertEquals(j.cores, cores)
-        self.assertEquals(j.preemptable, preemptable)
-        self.assertEquals(j.jobStoreID, jobStoreID)
-        self.assertEquals(j.remainingRetryCount, remainingRetryCount)
-        self.assertEquals(j.predecessorNumber, predecessorNumber)
-        self.assertEquals(j.stack, [])
-        self.assertEquals(j.predecessorsFinished, set())
-        self.assertEquals(j.logJobStoreFileID, None)
+        self.assertEqual(j.command, command)
+        self.assertEqual(j.memory, memory)
+        self.assertEqual(j.disk, disk)
+        self.assertEqual(j.cores, cores)
+        self.assertEqual(j.preemptable, preemptable)
+        self.assertEqual(j.jobStoreID, jobStoreID)
+        self.assertEqual(j.remainingRetryCount, remainingRetryCount)
+        self.assertEqual(j.predecessorNumber, predecessorNumber)
+        self.assertEqual(j.stack, [])
+        self.assertEqual(j.predecessorsFinished, set())
+        self.assertEqual(j.logJobStoreFileID, None)
         
         #Check equals function
         j2 = JobGraph(command=command, memory=memory, cores=cores, disk=disk,
                       preemptable=preemptable,
                       jobStoreID=jobStoreID, remainingRetryCount=remainingRetryCount,
                       predecessorNumber=predecessorNumber, jobName='testJobGraph', unitName='noName')
-        self.assertEquals(j, j2)
+        self.assertEqual(j, j2)
         #Change an attribute and check not equal
         j.predecessorsFinished = {"1", "2"}
-        self.assertNotEquals(j, j2)
+        self.assertNotEqual(j, j2)
         
         ###TODO test other functionality

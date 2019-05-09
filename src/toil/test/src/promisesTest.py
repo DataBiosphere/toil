@@ -50,7 +50,7 @@ class ChainedIndexedPromisesTest(ToilTest):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = 'INFO'
         root = Job.wrapJobFn(a)
-        self.assertEquals(Job.Runner.startToil(root, options), 42)
+        self.assertEqual(Job.Runner.startToil(root, options), 42)
 
 
 def a(job):
@@ -75,7 +75,7 @@ class PathIndexingPromiseTest(ToilTest):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = 'INFO'
         root = Job.wrapJobFn(d)
-        self.assertEquals(Job.Runner.startToil(root, options), ('b', 43, 3))
+        self.assertEqual(Job.Runner.startToil(root, options), ('b', 43, 3))
 
 
 def d(job):

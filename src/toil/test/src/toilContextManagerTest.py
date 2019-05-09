@@ -58,7 +58,7 @@ class ToilContextManagerTest(ToilTest):
             toil.exportFile(fileID, 'file://' + self.exportPath)
         with open(self.exportPath) as f:
             # The file should have all our content
-            self.assertEquals(f.read(), "Hello, World!")
+            self.assertEqual(f.read(), "Hello, World!")
 
 class HelloWorld(Job):
     def __init__(self):
