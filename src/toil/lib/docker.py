@@ -1,5 +1,4 @@
 from __future__ import absolute_import
-from past.builtins import map
 
 try:
     # In Python 3 we have this quote
@@ -18,27 +17,11 @@ from docker.errors import ContainerError
 from docker.errors import ImageNotFound
 from docker.errors import NotFound
 
-from toil import subprocess
-from toil.lib.retry import retry
-
 logger = logging.getLogger(__name__)
 
 FORGO = 0
 STOP = 1
 RM = 2
-
-
-def dockerPredicate(e):
-    """
-    Used to ensure Docker exceptions are retried if appropriate
-
-    :param e: Exception
-    :return: True if e retriable, else False
-    """
-    if not isinstance(e, subprocess.CalledProcessError):
-        return False
-    if e.returncode == 125:
-        return True
 
 
 def dockerCheckOutput(*args, **kwargs):
