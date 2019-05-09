@@ -69,6 +69,8 @@ class FileJobStore(AbstractJobStore):
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
         # Directory where temporary files go
         self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
+        # Directory where shared files go
+        self.sharedFileDir = os.path.join(self.jobStoreDir, 'shared')
         self.linkImports = None
         
     def __repr__(self):
@@ -83,6 +85,7 @@ class FileJobStore(AbstractJobStore):
             else:
                 raise
         os.mkdir(self.tempFilesDir)
+        os.mkdir(self.sharedFileDir)
         self.linkImports = config.linkImports
         super(FileJobStore, self).initialize(config)
 
@@ -184,7 +187,7 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchFileException(jobStoreFileID)
 
     def getSharedPublicUrl(self, sharedFileName):
-        jobStorePath = self.jobStoreDir + '/' + sharedFileName
+        jobStorePath = os.path.join(self.sharedFileDir, sharedFileName)
         if os.path.exists(jobStorePath):
             return 'file:' + jobStorePath
         else:
@@ -477,7 +480,7 @@ class FileJobStore(AbstractJobStore):
     ##########################################
 
     def _getSharedFilePath(self, sharedFileName):
-        return os.path.join(self.jobStoreDir, sharedFileName)
+        return os.path.join(self.sharedFileDir, sharedFileName)
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
@@ -490,7 +493,7 @@ class FileJobStore(AbstractJobStore):
     def readSharedFileStream(self, sharedFileName):
         assert self._validateSharedFileName( sharedFileName )
         try:
-            with open(os.path.join(self.jobStoreDir, sharedFileName), 'rb') as f:
+            with open(self._getSharedFilePath(sharedFileName), 'rb') as f:
                 yield f
         except IOError as e:
             if e.errno == errno.ENOENT:
