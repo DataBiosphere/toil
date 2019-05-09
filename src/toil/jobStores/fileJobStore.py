@@ -363,10 +363,34 @@ class FileJobStore(AbstractJobStore):
         except:
             sourceFunctionName = "UNKNOWNJOB"
             # make sure the function name fetched has no spaces or oddities
-        if not re.match("^[A-Za-z0-9_-]*$", sourceFunctionName):
-            sourceFunctionName = "ODDLYNAMEDJOB"
             
-        return sourceFunctionName
+        return self._makeStringFilenameSafe(sourceFunctionName)
+
+    def _makeStringFilenameSafe(self, arbitraryString):
+        """
+        Given an arbitrary string, produce a filename-safe though not
+        necessarily unique string based on it.
+
+        The input string may be discarded altogether and replaced with any
+        other nonempty filename-safe string.
+
+        :param str arbitraryString: An arbitrary string
+
+        :return: A filename-safe string
+        """
+
+        # We will fill this in with the filename-safe parts we find.
+        parts = []
+
+        for substring in re.findall("[A-Za-z0-9._-]+", arbitraryString):
+            # Collect all the matching substrings
+            parts.append(substring)
+
+        if len(parts) == 0:
+            parts.append("UNPRINTABLE")
+
+        # Glue it all together
+        return '_'.join(parts)
 
     def writeFile(self, localFilePath, jobStoreID=None):
         absPath = self._getUniqueFilePath(localFilePath, jobStoreID, self._getUserCodeFunctionName())
