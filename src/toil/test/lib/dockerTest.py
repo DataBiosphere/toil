@@ -28,7 +28,7 @@ from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow, needs_appliance
 from toil.lib.docker import apiDockerCall, containerIsRunning, dockerKill
-from toil.lib.docker import dockerPredicate, FORGO, STOP, RM
+from toil.lib.docker import FORGO, STOP, RM
 
 # only needed for subprocessDockerCall tests
 from pwd import getpwuid
