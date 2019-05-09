@@ -1110,7 +1110,9 @@ class AbstractEncryptedJobStoreTest(object):
 
 class FileJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
-        return FileJobStore(self.namePrefix)
+        # Make a FileJobStore with an artificially low fan out threshold, to
+        # make sure to test fan out logic
+        return FileJobStore(self.namePrefix, fanOut=2)
 
     def _corruptJobStore(self):
         assert isinstance(self.jobstore_initialized, FileJobStore)  # type hint

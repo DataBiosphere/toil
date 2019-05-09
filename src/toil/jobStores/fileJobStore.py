@@ -52,10 +52,10 @@ class FileJobStore(AbstractJobStore):
     distributed batch systems, that file system must be shared by all worker nodes.
     """
 
-    # Valid chars for the creation of temporary directories
-    validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
-    # Depth of temporary subdirectories created
-    levels = 2
+    # Valid chars for the creation of temporary directories.
+    # Note that on case-insensitive filesystems we're twice as likely to use
+    # letter directories as number directories.
+    validDirs = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
 
     # 10Mb RAM chunks when reading/writing files
     BUFFER_SIZE = 10485760 # 10Mb
@@ -63,9 +63,11 @@ class FileJobStore(AbstractJobStore):
     # Directory name under a job's directory where job-associated user files live
     JOB_FILES_DIR = "files"
 
-    def __init__(self, path):
+    def __init__(self, path, fanOut=1000):
         """
         :param str path: Path to directory holding the job store
+        :param int fanOut: Number of items to have in a directory before making
+                           subdirectories
         """
         super(FileJobStore, self).__init__()
         self.jobStoreDir = absSymPath(path)
@@ -80,7 +82,7 @@ class FileJobStore(AbstractJobStore):
         # Directory where shared files go
         self.sharedFileDir = os.path.join(self.jobStoreDir, 'shared')
 
-        
+        self.fanOut = fanOut
 
         self.linkImports = None
         
@@ -143,7 +145,7 @@ class FileJobStore(AbstractJobStore):
 
     def create(self, jobNode):
         # The absolute path to the job directory.
-        absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getRandomJobsDir())
+        absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getArbitraryJobsDir())
         # Make the job
         job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getJobIdFromDir(absJobDir),
                                    tryCount=self._defaultTryCount())
@@ -519,7 +521,7 @@ class FileJobStore(AbstractJobStore):
 
     def writeStatsAndLogging(self, statsAndLoggingString):
         # Temporary files are placed in the stats directory tree 
-        fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getRandomStatsDir())
+        fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getArbitraryStatsDir())
         writeFormat = 'w' if isinstance(statsAndLoggingString, str) else 'wb'
         with open(tempStatsFile, writeFormat) as f:
             f.write(statsAndLoggingString)
@@ -532,14 +534,15 @@ class FileJobStore(AbstractJobStore):
             for tempFile in os.listdir(tempDir):
                 if tempFile.startswith('stats'):
                     absTempFile = os.path.join(tempDir, tempFile)
-                    if readAll or not tempFile.endswith('.new'):
-                        with open(absTempFile, 'rb') as fH:
-                            callback(fH)
-                        numberOfFilesProcessed += 1
-                        newName = tempFile.rsplit('.', 1)[0] + '.new'
-                        newAbsTempFile = os.path.join(tempDir, newName)
-                        # Mark this item as read
-                        os.rename(absTempFile, newAbsTempFile)
+                    if os.path.isfile(absTempFile):
+                        if readAll or not tempFile.endswith('.new'):
+                            with open(absTempFile, 'rb') as fH:
+                                callback(fH)
+                            numberOfFilesProcessed += 1
+                            newName = tempFile.rsplit('.', 1)[0] + '.new'
+                            newAbsTempFile = os.path.join(tempDir, newName)
+                            # Mark this item as read
+                            os.rename(absTempFile, newAbsTempFile)
         return numberOfFilesProcessed
 
     ##########################################
@@ -572,6 +575,17 @@ class FileJobStore(AbstractJobStore):
         :rtype: str
         """
         return os.path.join(self._getJobDirFromId(jobStoreID), "job")
+
+    def _getJobFilesDir(self, jobStoreID):
+        """
+        Return the path to the directory that should hold files tied to the given job.
+
+        This directory will only be created if files are to be put in it, and will be cleaned up when the job is deleted.
+
+        :rtype : string, string is the absolute path to the job's files directory
+        """
+
+        return os.path.join(self._getJobDirFromId(jobStoreID), self.JOB_FILES_DIR)
 
     def _checkJobStoreId(self, jobStoreID):
         """
@@ -614,7 +628,7 @@ class FileJobStore(AbstractJobStore):
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
 
-    def _getRandomJobsDir(self):
+    def _getArbitraryJobsDir(self):
         """
         Gets a temporary directory in a multi-level hierarchy in self.jobsDir.
         The directory is not unique and may already have other jobs' directories in it.
@@ -624,9 +638,9 @@ class FileJobStore(AbstractJobStore):
         
         """
 
-        return self._getTempSharedDir(self.jobsDir)
+        return self._getDynamicSprayDir(self.jobsDir)
 
-    def _getRandomStatsDir(self):
+    def _getArbitraryStatsDir(self):
         """
         Gets a temporary directory in a multi-level hierarchy in self.statsDir.
         The directory is not unique and may already have other stats files in it.
@@ -636,9 +650,9 @@ class FileJobStore(AbstractJobStore):
         
         """
 
-        return self._getTempSharedDir(self.statsDir)
+        return self._getDynamicSprayDir(self.statsDir)
 
-    def _getRandomFilesDir(self):
+    def _getArbitraryFilesDir(self):
         """
         Gets a temporary directory in a multi-level hierarchy in self.filesDir.
         The directory is not unique and may already have other user files in it.
@@ -648,17 +662,37 @@ class FileJobStore(AbstractJobStore):
         
         """
 
-        return self._getTempSharedDir(self.filesDir)
+        return self._getDynamicSprayDir(self.filesDir)
     
-    def _getTempSharedDir(self, root):
+    def _getDynamicSprayDir(self, root):
         """
-        Gets a temporary directory in a multi-level hierarchy of directories under the given root.
-        This directory may contain multiple shared jobs/files.
+        Gets a temporary directory in a possibly multi-level hierarchy of
+        directories under the given root.
 
-        :rtype : string, path to temporary directory in which to place files/directories.
+        Each time a directory in the hierarchy starts to fill up, additional
+        hierarchy levels are created under it, and we randomly "spray" further
+        files and directories across them.
+
+        We can't actually enforce that we never go over our internal limit for
+        files in a directory, because any number of calls to this function can
+        be happening simultaneously. But we can enforce that, once too many
+        files are visible on disk, only subdirectories will be created.
+
+        The returned directory will exist, and may contain other data already.
+
+        The caller may not create any files or directories in the returned
+        directory with single-character names that are in self.validDirs.
+
+        :param str root : directory to put the hierarchy under, which will 
+                          fill first.
+
+        :rtype : string, path to temporary directory in which to place
+                 files/directories.
         """
         tempDir = root
-        for i in range(self.levels):
+
+        while len(os.listdir(tempDir)) >= self.fanOut:
+            # We need to use a layer of directories under here to avoid over-packing the directory
             tempDir = os.path.join(tempDir, random.choice(self.validDirs))
             if not os.path.exists(tempDir):
                 try:
@@ -667,37 +701,68 @@ class FileJobStore(AbstractJobStore):
                     if not os.path.exists(tempDir): # In the case that a collision occurs and
                         # it is created while we wait then we ignore
                         raise
+        
+        # When we get here, we found a sufficiently empty directory
         return tempDir
+
+    def _walkDynamicSprayDir(self, root):
+        """
+        Walks over a directory tree filled in by _getDynamicSprayDir.
+
+        Yields each directory _getDynamicSprayDir has ever returned, and no
+        directories it has not returned (besides the root).
+
+        If the caller looks in the directory, they must ignore subdirectories
+        with single-character names in self.validDirs.
+
+        :param str root : directory the hierarchy was put under
+
+        :rtype : an iterator over directories
+        """
+
+        # Always yield the root.
+        # The caller is responsible for dealing with it if it has gone away.
+        yield root
+
+        children = []
+
+        try:
+            # Look for children
+            children = os.listdir(root)
+        except:
+            # Don't care if they are gone
+            pass
+
+        for child in children:
+            # Go over all the children
+            if child not in self.validDirs:
+                # Only look at our reserved names we use for fan-out
+                continue
+            
+            # We made this directory, so go look in it
+            childPath = os.path.join(root, child)
+
+            # Recurse
+            for item in self._walkDynamicSprayDir(childPath):
+                yield item
 
     def _jobDirectories(self):
         """
-        :rtype : an iterator to the temporary directories containing job files
-        in the hierarchy of directories in self.jobsDir
+        :rtype : an iterator to the temporary directories containing job
+                 files. They may also contain directories containing more
+                 job files.
         """
-        def _dirs(path, levels):
-            if levels > 0:
-                for subPath in os.listdir(path):
-                    for i in _dirs(os.path.join(path, subPath), levels-1):
-                        yield i
-            else:
-                yield path
-        for tempDir in _dirs(self.jobsDir, self.levels):
-            yield tempDir
+
+        return self._walkDynamicSprayDir(self.jobsDir)
 
     def _statsDirectories(self):
         """
-        :rtype : an iterator to the temporary directories containing stats files
-        in the hierarchy of directories in self.jobsDir
+        :rtype : an iterator to the temporary directories containing stats
+                 files. They may also contain directories containing more
+                 stats files.
         """
-        def _dirs(path, levels):
-            if levels > 0:
-                for subPath in os.listdir(path):
-                    for i in _dirs(os.path.join(path, subPath), levels-1):
-                        yield i
-            else:
-                yield path
-        for tempDir in _dirs(self.statsDir, self.levels):
-            yield tempDir
+
+        return self._walkDynamicSprayDir(self.statsDir)
 
     def _getUniqueFilePath(self, fileName, jobStoreID=None, sourceFunctionName="x"):
         """
@@ -733,7 +798,7 @@ class FileJobStore(AbstractJobStore):
             self._checkJobStoreId(jobStoreID)
             # Lazily create the job's directory for job-associated user files.
             # We don't want our tree filled with confusingly empty directories.
-            jobFilesDir = os.path.join(self._getJobDirFromId(jobStoreID), self.JOB_FILES_DIR)
+            jobFilesDir = self._getJobFilesDir(jobStoreID)
             if not os.path.exists(jobFilesDir):
                 try:
                     os.mkdir(jobFilesDir)
@@ -741,7 +806,7 @@ class FileJobStore(AbstractJobStore):
                     # Maybe someone beat us to it.
                     # If everything isn't OK, mkdtemp should fail.
                     pass
-            return tempfile.mkdtemp(dir=jobFilesDir)
+            return tempfile.mkdtemp(prefix='file-', dir=jobFilesDir)
         else:
             # Make a temporary file within the user files hierarchy
-            return tempfile.mkdtemp(dir=self._getRandomFilesDir())
+            return tempfile.mkdtemp(prefix='file-', dir=self._getArbitraryFilesDir())
