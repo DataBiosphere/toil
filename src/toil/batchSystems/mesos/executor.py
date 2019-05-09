@@ -98,7 +98,7 @@ class MesosExecutor(Executor):
         Kill parent task process and all its spawned children
         """
         try:
-            pid = self.runningTasks[taskId]
+            pid = self.runningTasks[taskId.value]
             pgid = os.getpgid(pid)
         except KeyError:
             pass
