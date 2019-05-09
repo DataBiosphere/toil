@@ -24,7 +24,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'python3.6',
                          'python3.6-dev',
                          'python-dev',  # For installing Python packages with native code
-                         'python3-dev',
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
                          'python3-pip',
                          'libcurl4-openssl-dev',

@@ -187,6 +187,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None:
                 sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
 
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_error')
+            sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
+
             # "Native extensions" for SLURM (see DRMAA or SAGA)
             nativeConfig = os.getenv('TOIL_SLURM_ARGS')
             if nativeConfig is not None:

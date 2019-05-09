@@ -26,6 +26,7 @@ from builtins import super
 import logging
 import time
 import os
+import glob
 
 from toil.lib.humanize import bytes2human
 from toil import resolveEntryPoint
@@ -41,7 +42,7 @@ from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.job import JobNode, ServiceJobNode
 from toil.toilState import ToilState
-from toil.common import ToilMetrics
+from toil.common import Toil, ToilMetrics
 
 logger = logging.getLogger( __name__ )
 
@@ -799,6 +800,33 @@ class Leader(object):
                 # reduce the retry count here.
                 if jobGraph.logJobStoreFileID is None:
                     logger.warn("No log file is present, despite job failing: %s", jobNode)
+
+                # Look for any standard output/error files created by the batch system
+                workflowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
+                batchSystemFilePrefix = 'toil_job_{}_batch_'.format(batchSystemID)
+                batchSystemFileGlob = os.path.join(workflowDir, batchSystemFilePrefix + '*.log')
+                batchSystemFiles = glob.glob(batchSystemFileGlob)
+                for batchSystemFile in batchSystemFiles:
+                    try:
+                        batchSystemFileStream = open(batchSystemFile, 'rb')
+                    except:
+                        logger.warn('The batch system left a file %s, but it could not be opened' % batchSystemFile)
+                    else:
+                        with batchSystemFileStream:
+                            if os.path.getsize(batchSystemFile) > 0:
+                                StatsAndLogging.logWithFormatting(jobStoreID, batchSystemFileStream, method=logger.warn,
+                                                                  message='The batch system left a non-empty file %s:' % batchSystemFile)
+                                if self.config.writeLogs or self.config.writeLogsGzip:
+                                    batchSystemFileRoot, _ = os.path.splitext(os.path.basename(batchSystemFile))
+                                    jobNames = jobGraph.chainedJobs
+                                    if jobNames is None:   # For jobs that fail this way, jobGraph.chainedJobs is not guaranteed to be set
+                                        jobNames = [str(jobGraph)]
+                                    jobNames = [jobName + '_' + batchSystemFileRoot for jobName in jobNames]
+                                    batchSystemFileStream.seek(0)
+                                    StatsAndLogging.writeLogFiles(jobNames, batchSystemFileStream, self.config)
+                            else:
+                                logger.warn('The batch system left an empty file %s' % batchSystemFile)
+
                 jobGraph.setupJobAfterFailure(self.config)
                 self.jobStore.update(jobGraph)
             elif jobStoreID in self.toilState.hasFailedSuccessors:
