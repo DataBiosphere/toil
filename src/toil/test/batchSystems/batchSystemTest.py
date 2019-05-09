@@ -454,13 +454,13 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
         # This test isn't general enough to cover every possible value of minCores in
         # SingleMachineBatchSystem. Instead we hard-code a value and assert it.
         minCores = F(1, 10)
-        self.assertEquals(float(minCores), SingleMachineBatchSystem.minCores)
+        self.assertEqual(float(minCores), SingleMachineBatchSystem.minCores)
         for maxCores in {F(minCores), minCores * 10, F(1), F(numCores, 2), F(numCores)}:
             for coresPerJob in {F(minCores), F(minCores * 10), F(1), F(maxCores, 2), F(maxCores)}:
                 for load in (F(1, 10), F(1), F(10)):
                     jobs = int(maxCores / coresPerJob * load)
                     if jobs >= 1 and minCores <= coresPerJob < maxCores:
-                        self.assertEquals(maxCores, float(maxCores))
+                        self.assertEqual(maxCores, float(maxCores))
                         bs = SingleMachineBatchSystem(
                             config=hidden.AbstractBatchSystemTest.createConfig(),
                             maxCores=float(maxCores),
@@ -476,24 +476,24 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                                                                         memory=1, disk=1,
                                                                         preemptable=preemptable),
                                                                     jobName=str(i), unitName='', jobStoreID=str(i))))
-                            self.assertEquals(len(jobIds), jobs)
+                            self.assertEqual(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
                                 self.assertIsNotNone(job)
                                 jobId, status, wallTime = job
-                                self.assertEquals(status, 0)
+                                self.assertEqual(status, 0)
                                 # would raise KeyError on absence
                                 jobIds.remove(jobId)
                         finally:
                             bs.shutdown()
                         concurrentTasks, maxConcurrentTasks = getCounters(self.counterPath)
-                        self.assertEquals(concurrentTasks, 0)
+                        self.assertEqual(concurrentTasks, 0)
                         log.info('maxCores: {maxCores}, '
                                  'coresPerJob: {coresPerJob}, '
                                  'load: {load}'.format(**locals()))
                         # This is the key assertion:
                         expectedMaxConcurrentTasks = min(old_div(maxCores, coresPerJob), jobs)
-                        self.assertEquals(maxConcurrentTasks, expectedMaxConcurrentTasks)
+                        self.assertEqual(maxConcurrentTasks, expectedMaxConcurrentTasks)
                         resetCounters(self.counterPath)
 
     @skipIf(SingleMachineBatchSystem.numCores < 3, 'Need at least three cores to run this test')

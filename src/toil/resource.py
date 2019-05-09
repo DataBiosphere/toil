@@ -150,7 +150,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
             path_key = cls.resourceEnvNamePrefix + pathHash
             s = os.environ[path_key]
         except KeyError:
-            log.warn("'%s' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).", str(path_key))
+            log.warning("'%s' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).", str(path_key))
             return None
         else:
             self = cls.unpickle(s)
@@ -483,7 +483,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         :rtype: toil.resource.Resource
         """
         if not self._runningOnWorker():
-            log.warn('The localize() method should only be invoked on a worker.')
+            log.warning('The localize() method should only be invoked on a worker.')
         resource = Resource.lookup(self._resourcePath)
         if resource is None:
             return self
@@ -530,7 +530,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         except IOError as e:
             if e.errno == errno.ENOENT:
                 if self._runningOnWorker():
-                    log.warn("Can't globalize module %r.", self)
+                    log.warning("Can't globalize module %r.", self)
                 return self
             else:
                 raise

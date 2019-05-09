@@ -480,7 +480,7 @@ class Context(object):
         try:
             return self.iam.get_user().user_name
         except BaseException:
-            log.warn("IAMConnection.get_user() failed.", exc_info=True)
+            log.warning("IAMConnection.get_user() failed.", exc_info=True)
             return None
 
     current_user_placeholder = '__me__'
