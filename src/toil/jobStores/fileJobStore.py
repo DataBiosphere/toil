@@ -36,6 +36,7 @@ except ImportError:
 # toil dependencies
 from toil.fileStore import FileID
 from toil.lib.bioio import absSymPath
+from toil.lib.misc import mkdir_p
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchFileException,
@@ -55,13 +56,11 @@ class FileJobStore(AbstractJobStore):
     # Valid chars for the creation of temporary directories.
     # Note that on case-insensitive filesystems we're twice as likely to use
     # letter directories as number directories.
-    validDirs = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+    validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    validDirsSet = set(validDirs)
 
     # 10Mb RAM chunks when reading/writing files
     BUFFER_SIZE = 10485760 # 10Mb
-
-    # Directory name under a job's directory where job-associated user files live
-    JOB_FILES_DIR = "files"
 
     def __init__(self, path, fanOut=1000):
         """
@@ -78,9 +77,11 @@ class FileJobStore(AbstractJobStore):
         # Directory where stats files go
         self.statsDir = os.path.join(self.jobStoreDir, 'stats')
         # Directory where non-job-associated files for the file store go
-        self.filesDir = os.path.join(self.jobStoreDir, 'files')
+        self.filesDir = os.path.join(self.jobStoreDir, 'files/global')
+        # Directory where job-associated files for the file store go
+        self.jobFilesDir = os.path.join(self.jobStoreDir, 'files/for-job')
         # Directory where shared files go
-        self.sharedFileDir = os.path.join(self.jobStoreDir, 'shared')
+        self.sharedFilesDir = os.path.join(self.jobStoreDir, 'files/shared')
 
         self.fanOut = fanOut
 
@@ -97,10 +98,11 @@ class FileJobStore(AbstractJobStore):
                 raise JobStoreExistsException(self.jobStoreDir)
             else:
                 raise
-        os.mkdir(self.jobsDir)
-        os.mkdir(self.statsDir)
-        os.mkdir(self.filesDir)
-        os.mkdir(self.sharedFileDir)
+        mkdir_p(self.jobsDir)
+        mkdir_p(self.statsDir)
+        mkdir_p(self.filesDir)
+        mkdir_p(self.jobFilesDir)
+        mkdir_p(self.sharedFilesDir)
         self.linkImports = config.linkImports
         super(FileJobStore, self).initialize(config)
 
@@ -120,6 +122,10 @@ class FileJobStore(AbstractJobStore):
         https://github.com/hashdist/hashdist
         """
         
+        if not os.path.exists(path):
+            # Nothing to do!
+            return
+
         delay = 1
         for _ in range(max_retries):
             try:
@@ -200,7 +206,7 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchFileException(jobStoreFileID)
 
     def getSharedPublicUrl(self, sharedFileName):
-        jobStorePath = os.path.join(self.sharedFileDir, sharedFileName)
+        jobStorePath = os.path.join(self.sharedFilesDir, sharedFileName)
         if os.path.exists(jobStorePath):
             return 'file:' + jobStorePath
         else:
@@ -234,6 +240,10 @@ class FileJobStore(AbstractJobStore):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
         if self.exists(jobStoreID):
+            # Remove all job-associated files, which may or may not live under
+            # the job's directory.
+            self.robust_rmtree(self._getJobFilesDir(jobStoreID))
+            # Remove the job's directory itself.
             self.robust_rmtree(self._getJobDirFromId(jobStoreID))
 
     def jobs(self):
@@ -465,16 +475,18 @@ class FileJobStore(AbstractJobStore):
     def fileExists(self, jobStoreFileID):
         absPath = self._getFilePathFromId(jobStoreFileID)
 
-        if not absPath.startswith(self.jobsDir) and not absPath.startswith(self.filesDir):
+        if (not absPath.startswith(self.jobsDir) and
+            not absPath.startswith(self.filesDir) and
+            not absPath.startswith(self.jobFilesDir)):
             # Don't even look for it, it is out of bounds.
-            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID)
+            raise NoSuchFileException(jobStoreFileID)
             
         try:
             st = os.stat(absPath)
         except os.error:
             return False
         if not stat.S_ISREG(st.st_mode):
-            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID)
+            raise NoSuchFileException(jobStoreFileID)
         return True
 
     @contextmanager
@@ -498,7 +510,7 @@ class FileJobStore(AbstractJobStore):
     ##########################################
 
     def _getSharedFilePath(self, sharedFileName):
-        return os.path.join(self.sharedFileDir, sharedFileName)
+        return os.path.join(self.sharedFilesDir, sharedFileName)
 
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
@@ -552,8 +564,7 @@ class FileJobStore(AbstractJobStore):
     def _getJobDirFromId(self, jobStoreID):
         """
 
-        Find the directory for a job, which holds its job file along with
-        job-associated temporary files that are deleted when the job is deleted.
+        Find the directory for a job, which holds its job file.
 
         :param str jobStoreID: ID of a job, which is a relative to self.jobsDir.
         :rtype : string, string is the absolute path to a job directory inside self.jobsDir.
@@ -578,14 +589,19 @@ class FileJobStore(AbstractJobStore):
 
     def _getJobFilesDir(self, jobStoreID):
         """
-        Return the path to the directory that should hold files tied to the given job.
+        Return the path to the directory that should hold files tied to the
+        given job.
 
-        This directory will only be created if files are to be put in it, and will be cleaned up when the job is deleted.
+        This directory will only be created if files are to be put in it, and
+        will be cleaned up when the job is deleted.
 
-        :rtype : string, string is the absolute path to the job's files directory
+        It may or may not be a subdirectory of the job's own directory.
+
+        :rtype : string, string is the absolute path to the job's files 
+                 directory
         """
 
-        return os.path.join(self._getJobDirFromId(jobStoreID), self.JOB_FILES_DIR)
+        return os.path.join(self.jobFilesDir, jobStoreID)
 
     def _checkJobStoreId(self, jobStoreID):
         """
@@ -612,12 +628,10 @@ class FileJobStore(AbstractJobStore):
 
     def _getFileIdFromPath(self, absPath):
         """
-        :param str absPath: The absolute path of a file, inside either self.jobsDir or self.filesDir.
+        :param str absPath: The absolute path of a file. 
 
         :rtype : string, string is the file ID.
         """
-
-        assert absPath.startswith(self.jobsDir) or absPath.startswith(self.filesDir)
 
         return absPath[len(self.jobStoreDir)+1:]
 
@@ -735,7 +749,7 @@ class FileJobStore(AbstractJobStore):
 
         for child in children:
             # Go over all the children
-            if child not in self.validDirs:
+            if child not in self.validDirsSet:
                 # Only look at our reserved names we use for fan-out
                 continue
             
@@ -798,14 +812,9 @@ class FileJobStore(AbstractJobStore):
             self._checkJobStoreId(jobStoreID)
             # Lazily create the job's directory for job-associated user files.
             # We don't want our tree filled with confusingly empty directories.
+            # TODO: we assume the parent of the path exists already.
             jobFilesDir = self._getJobFilesDir(jobStoreID)
-            if not os.path.exists(jobFilesDir):
-                try:
-                    os.mkdir(jobFilesDir)
-                except:
-                    # Maybe someone beat us to it.
-                    # If everything isn't OK, mkdtemp should fail.
-                    pass
+            mkdir_p(jobFilesDir)
             return tempfile.mkdtemp(prefix='file-', dir=jobFilesDir)
         else:
             # Make a temporary file within the user files hierarchy
