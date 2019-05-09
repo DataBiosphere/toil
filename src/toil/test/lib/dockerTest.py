@@ -22,7 +22,6 @@ import docker
 from threading import Thread
 from docker.errors import ContainerError
 
-from toil import subprocess
 from toil.test import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
@@ -30,15 +29,11 @@ from toil.test import ToilTest, slow, needs_appliance
 from toil.lib.docker import apiDockerCall, containerIsRunning, dockerKill
 from toil.lib.docker import FORGO, STOP, RM
 
-# only needed for subprocessDockerCall tests
-from pwd import getpwuid
-from toil.lib.retry import retry
-
 
 logger = logging.getLogger(__name__)
 
 
-@needs_appliance
+# @needs_appliance
 class DockerTest(ToilTest):
     """
     Tests dockerCall and ensures no containers are left around.
@@ -289,3 +284,61 @@ class DockerTest(ToilTest):
 
     def testNonCachingDockerChainErrorDetection(self):
         self.testDockerPipeChainErrorDetection(disableCaching=False)
+
+def _testDockerCleanFn(job,
+                       working_dir,
+                       detached=None,
+                       rm=None,
+                       deferParam=None,
+                       containerName=None):
+    """
+    Test function for test docker_clean.  Runs a container with given flags and
+    then dies leaving behind a zombie container.
+    :param toil.job.Job job: job
+    :param working_dir: See `work_dir=` in :func:`dockerCall`
+    :param bool rm: See `rm=` in :func:`dockerCall`
+    :param bool detached: See `detached=` in :func:`dockerCall`
+    :param int deferParam: See `deferParam=` in :func:`dockerCall`
+    :param str containerName: See `container_name=` in :func:`dockerCall`
+    """
+    def killSelf():
+        test_file = os.path.join(working_dir, 'test.txt')
+        # Kill the worker once we are sure the docker container is started
+        while not os.path.exists(test_file):
+            logger.debug('Waiting on the file created by spooky_container.')
+            time.sleep(1)
+        # By the time we reach here, we are sure the container is running.
+        time.sleep(1)
+        os.kill(os.getpid(), signal.SIGKILL)
+
+    t = Thread(target=killSelf)
+    # Make it a daemon thread so that thread failure doesn't hang tests.
+    t.daemon = True
+    t.start()
+    apiDockerCall(job,
+                  image='quay.io/ucsc_cgl/spooky_test',
+                  working_dir=working_dir,
+                  deferParam=deferParam,
+                  containerName=containerName,
+                  detach=detached,
+                  remove=rm,
+                  privileged=True)
+
+def _testDockerPipeChainFn(job):
+    """Return the result of a simple pipe chain.  Should be 2."""
+    parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
+    return apiDockerCall(job,
+                         image='quay.io/ucsc_cgl/spooky_test',
+                         parameters=parameters,
+                         privileged=True)
+
+def _testDockerPipeChainErrorFn(job):
+    """Return True if the command exit 1 | wc -l raises a ContainerError."""
+    parameters = [ ['exit', '1'], ['wc', '-l'] ]
+    try:
+        apiDockerCall(job,
+                      image='quay.io/ucsc_cgl/spooky_test',
+                      parameters=parameters)
+    except ContainerError:
+        return True
+    return False
