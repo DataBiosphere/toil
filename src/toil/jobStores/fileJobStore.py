@@ -462,6 +462,11 @@ class FileJobStore(AbstractJobStore):
 
     def fileExists(self, jobStoreFileID):
         absPath = self._getFilePathFromId(jobStoreFileID)
+
+        if not absPath.startswith(self.jobsDir) and not absPath.startswith(self.filesDir):
+            # Don't even look for it, it is out of bounds.
+            raise NoSuchFileException("Path %s is not a file in the jobStore" % jobStoreFileID)
+            
         try:
             st = os.stat(absPath)
         except os.error:
@@ -587,8 +592,8 @@ class FileJobStore(AbstractJobStore):
         # We just make the file IDs paths under the job store overall.
         absPath = os.path.join(self.jobStoreDir, jobStoreFileID)
 
-        assert absPath.startswith(self.jobsDir) or absPath.startswith(self.filesDir)
-        
+        # Don't validate here, we are called by the validation logic
+
         return absPath
 
     def _getFileIdFromPath(self, absPath):

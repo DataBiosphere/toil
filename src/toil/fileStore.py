@@ -565,8 +565,10 @@ class CachingFileStore(FileStore):
                 jobStoreFileID = self.jobStore.getEmptyFileStoreID(cleanupID)
                 # getEmptyFileStoreID creates the file in the scope of the job store hence we
                 # need to delete it before linking.
-                os.remove(self.jobStore._getAbsPath(jobStoreFileID))
-                os.link(absLocalFileName, self.jobStore._getAbsPath(jobStoreFileID))
+                # TODO: expose a link operation on the job store interface.
+                filePath = self.jobStore._getFilePathFromId(jobStoreFileID)
+                os.remove(filePath)
+                os.link(absLocalFileName, filePath)
             # If they're not on the file system, or if the file is already linked with an
             # existing file, we need to copy to the job store.
             # Check if the user allows asynchronous file writes
