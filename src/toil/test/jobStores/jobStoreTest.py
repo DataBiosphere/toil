@@ -163,17 +163,17 @@ class AbstractJobStoreTest(object):
             job = jobstore.create(aJobNode)
 
             self.assertTrue(jobstore.exists(job.jobStoreID))
-            self.assertEquals(job.command, 'parent1')
-            self.assertEquals(job.memory, self.parentJobReqs['memory'])
-            self.assertEquals(job.cores, self.parentJobReqs['cores'])
-            self.assertEquals(job.disk, self.parentJobReqs['disk'])
-            self.assertEquals(job.preemptable, self.parentJobReqs['preemptable'])
-            self.assertEquals(job.jobName, 'test1')
-            self.assertEquals(job.unitName, 'onParent')
-            self.assertEquals(job.stack, [])
-            self.assertEquals(job.predecessorNumber, 0)
-            self.assertEquals(job.predecessorsFinished, set())
-            self.assertEquals(job.logJobStoreFileID, None)
+            self.assertEqual(job.command, 'parent1')
+            self.assertEqual(job.memory, self.parentJobReqs['memory'])
+            self.assertEqual(job.cores, self.parentJobReqs['cores'])
+            self.assertEqual(job.disk, self.parentJobReqs['disk'])
+            self.assertEqual(job.preemptable, self.parentJobReqs['preemptable'])
+            self.assertEqual(job.jobName, 'test1')
+            self.assertEqual(job.unitName, 'onParent')
+            self.assertEqual(job.stack, [])
+            self.assertEqual(job.predecessorNumber, 0)
+            self.assertEqual(job.predecessorsFinished, set())
+            self.assertEqual(job.logJobStoreFileID, None)
 
         def testConfigEquality(self):
             """
@@ -187,7 +187,7 @@ class AbstractJobStoreTest(object):
 
             newJobStore = self._createJobStore()
             newJobStore.resume()
-            self.assertEquals(newJobStore.config, self.config)
+            self.assertEqual(newJobStore.config, self.config)
             self.assertIsNot(newJobStore.config, self.config)
 
         def testJobLoadEquality(self):
@@ -203,7 +203,7 @@ class AbstractJobStoreTest(object):
             # Load it onto the second jobstore
             job2 = self.jobstore_resumed_noconfig.load(job1.jobStoreID)
 
-            self.assertEquals(job1, job2)
+            self.assertEqual(job1, job2)
 
         def testChildLoadingEquality(self):
             """Test that loading a child job operates as expected."""
@@ -220,7 +220,7 @@ class AbstractJobStoreTest(object):
             childJob = self.jobstore_initialized.create(jobNodeOnChild)
             job.stack.append(childJob)
             self.jobstore_initialized.update(job)
-            self.assertEquals(self.jobstore_initialized.load(childJob.jobStoreID), childJob)
+            self.assertEqual(self.jobstore_initialized.load(childJob.jobStoreID), childJob)
 
         def testPersistantFilesToDelete(self):
             """
@@ -240,7 +240,7 @@ class AbstractJobStoreTest(object):
             job = self.jobstore_initialized.create(jobNode)
             job.filesToDelete = ['1', '2']
             self.jobstore_initialized.update(job)
-            self.assertEquals(self.jobstore_initialized.load(job.jobStoreID).filesToDelete, ['1', '2'])
+            self.assertEqual(self.jobstore_initialized.load(job.jobStoreID).filesToDelete, ['1', '2'])
 
         def testUpdateBehavior(self):
             """Tests the proper behavior during updating jobs."""
@@ -279,12 +279,12 @@ class AbstractJobStoreTest(object):
 
             # Reload parent job on jobstore, "refreshing" the job.
             job1 = jobstore1.load(job1.jobStoreID)
-            self.assertEquals(job2, job1)
+            self.assertEqual(job2, job1)
 
             # Load children on jobstore and check equivalence
-            self.assertEquals(jobstore1.load(childJob1.jobStoreID), childJob1)
-            self.assertEquals(jobstore1.load(childJob2.jobStoreID), childJob2)
-            self.assertEquals(job1,job2)            # The jobs should both have children now...
+            self.assertEqual(jobstore1.load(childJob1.jobStoreID), childJob1)
+            self.assertEqual(jobstore1.load(childJob2.jobStoreID), childJob2)
+            self.assertEqual(job1,job2)            # The jobs should both have children now...
             self.assertIsNot(job1,job2)             # but should not be the same.
 
         def testChangingJobStoreID(self):
@@ -321,7 +321,7 @@ class AbstractJobStoreTest(object):
 
             # Compare children before and after update.
             for childJob in parentJob2.stack:
-                self.assertEquals(childJob, jobstore1.load(childJob.jobStoreID))
+                self.assertEqual(childJob, jobstore1.load(childJob.jobStoreID))
                 childJob.logJobStoreFileID = str(uuid.uuid4())
                 childJob.remainingRetryCount = 66
                 self.assertNotEquals(childJob, jobstore1.load(childJob.jobStoreID))
@@ -332,8 +332,8 @@ class AbstractJobStoreTest(object):
 
             # Check that the jobs are equivalent after being reloaded.
             for childJob in parentJob2.stack:
-                self.assertEquals(jobstore1.load(childJob.jobStoreID), childJob)
-                self.assertEquals(jobstore2.load(childJob.jobStoreID), childJob)
+                self.assertEqual(jobstore1.load(childJob.jobStoreID), childJob)
+                self.assertEqual(jobstore2.load(childJob.jobStoreID), childJob)
 
         def testJobDeletions(self):
             """Tests the consequences of deleting jobs."""
@@ -407,10 +407,10 @@ class AbstractJobStoreTest(object):
                 f.write(bar)
             # ... read that file on worker, ...
             with jobstore2.readSharedFileStream('foo') as f:
-                self.assertEquals(bar, f.read())
+                self.assertEqual(bar, f.read())
             # ... and read it again on jobstore1.
             with jobstore1.readSharedFileStream('foo') as f:
-                self.assertEquals(bar, f.read())
+                self.assertEqual(bar, f.read())
 
             with jobstore1.writeSharedFileStream('nonEncrypted', isProtected=False) as f:
                 f.write(bar)
@@ -446,7 +446,7 @@ class AbstractJobStoreTest(object):
                 f.write(one)
             # ... read the file as a stream on the jobstore1, ....
             with jobstore1.readFileStream(fileOne) as f:
-                self.assertEquals(f.read(), one)
+                self.assertEqual(f.read(), one)
 
             # ... and copy it to a temporary physical file on the jobstore1.
             fh, path = tempfile.mkstemp()
@@ -459,7 +459,7 @@ class AbstractJobStoreTest(object):
                 finally:
                     os.unlink(tmpPath)
                 with open(path, 'rb+') as f:
-                    self.assertEquals(f.read(), one)
+                    self.assertEqual(f.read(), one)
                     # Write a different string to the local file ...
                     f.seek(0)
                     f.truncate(0)
@@ -467,18 +467,18 @@ class AbstractJobStoreTest(object):
                 # ... and create a second file from the local file.
                 fileTwo = jobstore1.writeFile(path, jobOnJobStore1.jobStoreID)
                 with jobstore2.readFileStream(fileTwo) as f:
-                    self.assertEquals(f.read(), two)
+                    self.assertEqual(f.read(), two)
                 # Now update the first file from the local file ...
                 jobstore1.updateFile(fileOne, path)
                 with jobstore2.readFileStream(fileOne) as f:
-                    self.assertEquals(f.read(), two)
+                    self.assertEqual(f.read(), two)
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
             with jobstore2.writeFileStream(jobOnJobStore1.jobStoreID) as (f, fileThree):
                 f.write(three)
             with jobstore1.readFileStream(fileThree) as f:
-                self.assertEquals(f.read(), three)
+                self.assertEqual(f.read(), three)
             # Delete a file explicitly but leave files for the implicit deletion through the parent
             jobstore2.deleteFile(fileOne)
 
@@ -524,26 +524,26 @@ class AbstractJobStoreTest(object):
             stats = set()
 
             # No stats or logging added yet. Expect nothing.
-            self.assertEquals(0, jobstore1.readStatsAndLogging(callback))
-            self.assertEquals(set(), stats)
+            self.assertEqual(0, jobstore1.readStatsAndLogging(callback))
+            self.assertEqual(set(), stats)
 
             # Test writing and reading.
             jobstore2.writeStatsAndLogging(one)
-            self.assertEquals(1, jobstore1.readStatsAndLogging(callback))
-            self.assertEquals({one}, stats)
-            self.assertEquals(0, jobstore1.readStatsAndLogging(callback))   # readStatsAndLogging purges saved stats etc
+            self.assertEqual(1, jobstore1.readStatsAndLogging(callback))
+            self.assertEqual({one}, stats)
+            self.assertEqual(0, jobstore1.readStatsAndLogging(callback))   # readStatsAndLogging purges saved stats etc
 
             jobstore2.writeStatsAndLogging(one)
             jobstore2.writeStatsAndLogging(two)
             stats = set()
-            self.assertEquals(2, jobstore1.readStatsAndLogging(callback))
-            self.assertEquals({one, two}, stats)
+            self.assertEqual(2, jobstore1.readStatsAndLogging(callback))
+            self.assertEqual({one, two}, stats)
 
             largeLogEntry = os.urandom(self._largeLogEntrySize())
             stats = set()
             jobstore2.writeStatsAndLogging(largeLogEntry)
-            self.assertEquals(1, jobstore1.readStatsAndLogging(callback))
-            self.assertEquals({largeLogEntry}, stats)
+            self.assertEqual(1, jobstore1.readStatsAndLogging(callback))
+            self.assertEqual({largeLogEntry}, stats)
 
             # test the readAll parameter
             self.assertEqual(4, jobstore1.readStatsAndLogging(callback, readAll=True))
@@ -593,12 +593,12 @@ class AbstractJobStoreTest(object):
             job.foo_attribute = arbitraryLargeData
             self.jobstore_initialized.update(job)
             check_job = self.jobstore_initialized.load(job.jobStoreID)
-            self.assertEquals(check_job.foo_attribute, arbitraryLargeData)
+            self.assertEqual(check_job.foo_attribute, arbitraryLargeData)
             # Make the job shrink back close to its original size
             job.foo_attribute = None
             self.jobstore_initialized.update(job)
             check_job = self.jobstore_initialized.load(job.jobStoreID)
-            self.assertEquals(check_job.foo_attribute, None)
+            self.assertEqual(check_job.foo_attribute, None)
 
         def _prepareTestFile(self, store, size=None):
             """
@@ -796,7 +796,7 @@ class AbstractJobStoreTest(object):
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
             partSize = self._partSize()
-            self.assertEquals(partSize % bufSize, 0)
+            self.assertEqual(partSize % bufSize, 0)
             job = self.jobstore_initialized.create(self.arbitraryJob)
 
             # Test file/stream ending on part boundary and within a part
@@ -837,7 +837,7 @@ class AbstractJobStoreTest(object):
                             break
                         checksum.update(buf)
                 after = checksum.hexdigest()
-                self.assertEquals(before, after)
+                self.assertEqual(before, after)
 
                 # Multi-part upload from file
                 checksum = hashlib.md5()
@@ -863,7 +863,7 @@ class AbstractJobStoreTest(object):
                             break
                         checksum.update(buf)
                 after = checksum.hexdigest()
-                self.assertEquals(before, after)
+                self.assertEqual(before, after)
             self.jobstore_initialized.delete(job.jobStoreID)
 
         def testZeroLengthFiles(self):
@@ -999,7 +999,7 @@ class AbstractJobStoreTest(object):
                     a = b'a'
                 f.write(a * 300000)
             with self.jobstore_initialized.readFileStream(fileID) as f:
-                self.assertEquals(f.read(1), a)
+                self.assertEqual(f.read(1), a)
             # If it times out here, there's a deadlock
 
         @abstractmethod
