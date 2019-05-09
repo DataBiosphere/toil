@@ -134,7 +134,7 @@ class FileJobStore(AbstractJobStore):
         # Sub directory to put temporary files associated with the job in
         os.mkdir(os.path.join(absJobDir, "g"))
         # Make the job
-        job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getRelativePath(absJobDir),
+        job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getJobIdFromDir(absJobDir),
                                    tryCount=self._defaultTryCount())
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
             self._batchedJobGraphs.append(job)
@@ -180,7 +180,7 @@ class FileJobStore(AbstractJobStore):
     
     def getPublicUrl(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
-        jobStorePath = self._getAbsPath(jobStoreFileID)
+        jobStorePath = self._getFilePathFromId(jobStoreFileID)
         if os.path.exists(jobStorePath):
             return 'file:' + jobStorePath
         else:
@@ -221,7 +221,7 @@ class FileJobStore(AbstractJobStore):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
         if self.exists(jobStoreID):
-            self.robust_rmtree(self._getAbsPath(jobStoreID))
+            self.robust_rmtree(self._getJobDirFromId(jobStoreID))
 
     def jobs(self):
         # Walk through list of temporary directories searching for jobs
@@ -229,7 +229,7 @@ class FileJobStore(AbstractJobStore):
             for i in os.listdir(tempDir):
                 if i.startswith('job'):
                     try:
-                        yield self.load(self._getRelativePath(os.path.join(tempDir, i)))
+                        yield self.load(self._getJobIdFromDir(os.path.join(tempDir, i)))
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
                         pass
@@ -258,12 +258,12 @@ class FileJobStore(AbstractJobStore):
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         if issubclass(otherCls, FileJobStore):
             if sharedFileName is None:
-                absPath = self._getUniqueName(url.path)  # use this to get a valid path to write to in job store
+                absPath = self._getUniqueFilePath(url.path)  # use this to get a valid path to write to in job store
                 with self.optionalHardCopy(hardlink):
                     self._copyOrLink(url, absPath)
                 # TODO: os.stat(absPath).st_size consistently gives values lower than
                 # getDirSizeRecursively()
-                return FileID(self._getRelativePath(absPath), os.stat(absPath).st_size)
+                return FileID(self._getFileIdFromPath(absPath), os.stat(absPath).st_size)
             else:
                 self._requireValidSharedFileName(sharedFileName)
                 path = self._getSharedFilePath(sharedFileName)
@@ -276,7 +276,7 @@ class FileJobStore(AbstractJobStore):
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, FileJobStore):
-            shutil.copyfile(self._getAbsPath(jobStoreFileID), self._extractPathFromUrl(url))
+            shutil.copyfile(self._getFilePathFromId(jobStoreFileID), self._extractPathFromUrl(url))
         else:
             super(FileJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
 
@@ -346,15 +346,15 @@ class FileJobStore(AbstractJobStore):
         return sourceFunctionName
 
     def writeFile(self, localFilePath, jobStoreID=None):
-        absPath = self._getUniqueName(localFilePath, jobStoreID, self._getUserCodeFunctionName())
-        relPath = self._getRelativePath(absPath)
+        absPath = self._getUniqueFilePath(localFilePath, jobStoreID, self._getUserCodeFunctionName())
+        relPath = self._getFileIdFromPath(absPath)
         shutil.copyfile(localFilePath, absPath)
         return relPath
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None):
-        absPath = self._getUniqueName('stream', jobStoreID, self._getUserCodeFunctionName())
-        relPath = self._getRelativePath(absPath)
+        absPath = self._getUniqueFilePath('stream', jobStoreID, self._getUserCodeFunctionName())
+        relPath = self._getFileIdFromPath(absPath)
         with open(absPath, 'wb') as f:
             # Don't yield while holding an open file descriptor to the temp
             # file. That can result in temp files still being open when we try
@@ -367,7 +367,7 @@ class FileJobStore(AbstractJobStore):
 
     def updateFile(self, jobStoreFileID, localFilePath):
         self._checkJobStoreFileID(jobStoreFileID)
-        jobStoreFilePath = self._getAbsPath(jobStoreFileID)
+        jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
 
         if os.path.samefile(jobStoreFilePath, localFilePath):
             # The files are already the same file. We can't copy on eover the other.
@@ -377,7 +377,7 @@ class FileJobStore(AbstractJobStore):
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         self._checkJobStoreFileID(jobStoreFileID)
-        jobStoreFilePath = self._getAbsPath(jobStoreFileID)
+        jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
 
         if not symlink and os.path.islink(localFilePath):
@@ -447,10 +447,10 @@ class FileJobStore(AbstractJobStore):
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):
             return
-        os.remove(self._getAbsPath(jobStoreFileID))
+        os.remove(self._getFilePathFromId(jobStoreFileID))
 
     def fileExists(self, jobStoreFileID):
-        absPath = self._getAbsPath(jobStoreFileID)
+        absPath = self._getFilePathFromId(jobStoreFileID)
         try:
             st = os.stat(absPath)
         except os.error:
@@ -465,13 +465,13 @@ class FileJobStore(AbstractJobStore):
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
         # the file object directly, without a with statement.
-        with open(self._getAbsPath(jobStoreFileID), 'wb') as f:
+        with open(self._getFilePathFromId(jobStoreFileID), 'wb') as f:
             yield f
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
-        with open(self._getAbsPath(jobStoreFileID), 'rb') as f:
+        with open(self._getFilePathFromId(jobStoreFileID), 'rb') as f:
             yield f
 
     ##########################################
@@ -530,21 +530,21 @@ class FileJobStore(AbstractJobStore):
     # Private methods
     ##########################################
 
-    def _getAbsPath(self, relativePath):
+    def _getJobDirFromId(self, jobStoreID):
         """
-        :param str relativePath: path relative to self.tempFilesDir.
-        :rtype : string, string is the absolute path to a file path relative
-        to the self.tempFilesDir.
+
+        Find the directory for a job, which holds its job file along with
+        job-associated temporary files that are deleted when the job is deleted.
+
+        :param str jobStoreID: ID of a job, which is a relative to self.tempFilesDir.
+        :rtype : string, string is the absolute path to a job directory inside self.tempFilesDir.
         """
-        return os.path.join(self.tempFilesDir, relativePath)
+        return os.path.join(self.tempFilesDir, jobStoreID)
 
-    def _getRelativePath(self, absPath):
+    def _getJobIdFromDir(self, absPath):
         """
-        absPath  is the absolute path to a file in the store,.
-
-        :rtype : string, string is the path to the absPath file relative to the
-        self.tempFilesDir
-
+        :param str absPath: The absolute path to a job directory under self.tempFilesDir which represents a job.
+        :rtype : string, string is the job ID, which is a path relative to self.tempFilesDir
         """
         return absPath[len(self.tempFilesDir)+1:]
 
@@ -555,18 +555,32 @@ class FileJobStore(AbstractJobStore):
 
         :rtype: str
         """
-        return os.path.join(self._getAbsPath(jobStoreID), "job")
+        return os.path.join(self._getJobDirFromId(jobStoreID), "job")
 
     def _checkJobStoreId(self, jobStoreID):
         """
-        Raises a NoSuchJobException if the jobStoreID does not exist.
+        Raises a NoSuchJobException if the job with ID jobStoreID does not exist.
         """
         if not self.waitForExists(jobStoreID,30):
             raise NoSuchJobException(jobStoreID)
 
+    def _getFilePathFromId(self, jobStoreFileID):
+        """
+        :param str jobStoreFileID: The ID of a file, which is a relative path under self.tempFilesDir.
+        :rtype : string, string is the absolute path that that file should appear at on disk.
+        """
+        return os.path.join(self.tempFilesDir, jobStoreFileID)
+
+    def _getFileIdFromPath(self, absPath):
+        """
+        :param str absPath: The absolute path of a file, inside self.tempFilesDir.
+        :rtype : string, string is the file ID, which is a relative path.
+        """
+        return absPath[len(self.tempFilesDir)+1:]
+
     def _checkJobStoreFileID(self, jobStoreFileID):
         """
-        :raise NoSuchFileException: if the jobStoreFileID does not exist or is not a file
+        :raise NoSuchFileException: if the file with ID jobStoreFileID does not exist or is not a file
         """
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
@@ -605,7 +619,7 @@ class FileJobStore(AbstractJobStore):
         for tempDir in _dirs(self.tempFilesDir, self.levels):
             yield tempDir
 
-    def _getUniqueName(self, fileName, jobStoreID=None, sourceFunctionName="x"):
+    def _getUniqueFilePath(self, fileName, jobStoreID=None, sourceFunctionName="x"):
         """
         Create unique file name within a jobStore directory or tmp directory.
 
@@ -639,7 +653,7 @@ class FileJobStore(AbstractJobStore):
             # Make a temporary file within the job's directory
             self._checkJobStoreId(jobStoreID)
             return tempfile.mkstemp(suffix=".tmp",
-                                dir=os.path.join(self._getAbsPath(jobStoreID), "g"))
+                                dir=os.path.join(self._getJobDirFromId(jobStoreID), "g"))
         else:
             # Make a temporary file within the temporary file structure
             return tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self._getTempSharedDir())
