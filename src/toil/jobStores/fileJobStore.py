@@ -60,6 +60,9 @@ class FileJobStore(AbstractJobStore):
     # 10Mb RAM chunks when reading/writing files
     BUFFER_SIZE = 10485760 # 10Mb
 
+    # Directory name under a job's directory where job-associated user files live
+    JOB_FILES_DIR = "files"
+
     def __init__(self, path):
         """
         :param str path: Path to directory holding the job store
@@ -67,10 +70,18 @@ class FileJobStore(AbstractJobStore):
         super(FileJobStore, self).__init__()
         self.jobStoreDir = absSymPath(path)
         logger.debug("Path to job store directory is '%s'.", self.jobStoreDir)
-        # Directory where temporary files go
-        self.tempFilesDir = os.path.join(self.jobStoreDir, 'tmp')
+
+        # Directory where actual job files go, and their job-associated temp files
+        self.jobsDir = os.path.join(self.jobStoreDir, 'jobs')
+        # Directory where stats files go
+        self.statsDir = os.path.join(self.jobStoreDir, 'stats')
+        # Directory where non-job-associated files for the file store go
+        self.filesDir = os.path.join(self.jobStoreDir, 'files')
         # Directory where shared files go
         self.sharedFileDir = os.path.join(self.jobStoreDir, 'shared')
+
+        
+
         self.linkImports = None
         
     def __repr__(self):
@@ -84,7 +95,9 @@ class FileJobStore(AbstractJobStore):
                 raise JobStoreExistsException(self.jobStoreDir)
             else:
                 raise
-        os.mkdir(self.tempFilesDir)
+        os.mkdir(self.jobsDir)
+        os.mkdir(self.statsDir)
+        os.mkdir(self.filesDir)
         os.mkdir(self.sharedFileDir)
         self.linkImports = config.linkImports
         super(FileJobStore, self).initialize(config)
@@ -130,9 +143,7 @@ class FileJobStore(AbstractJobStore):
 
     def create(self, jobNode):
         # The absolute path to the job directory.
-        absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getTempSharedDir())
-        # Sub directory to put temporary files associated with the job in
-        os.mkdir(os.path.join(absJobDir, "g"))
+        absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getRandomJobsDir())
         # Make the job
         job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getJobIdFromDir(absJobDir),
                                    tryCount=self._defaultTryCount())
@@ -225,7 +236,7 @@ class FileJobStore(AbstractJobStore):
 
     def jobs(self):
         # Walk through list of temporary directories searching for jobs
-        for tempDir in self._tempDirectories():
+        for tempDir in self._jobDirectories():
             for i in os.listdir(tempDir):
                 if i.startswith('job'):
                     try:
@@ -502,8 +513,8 @@ class FileJobStore(AbstractJobStore):
                 raise
 
     def writeStatsAndLogging(self, statsAndLoggingString):
-        # Temporary files are placed in the set of temporary files/directories
-        fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getTempSharedDir())
+        # Temporary files are placed in the stats directory tree 
+        fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getRandomStatsDir())
         writeFormat = 'w' if isinstance(statsAndLoggingString, str) else 'wb'
         with open(tempStatsFile, writeFormat) as f:
             f.write(statsAndLoggingString)
@@ -512,7 +523,7 @@ class FileJobStore(AbstractJobStore):
 
     def readStatsAndLogging(self, callback, readAll=False):
         numberOfFilesProcessed = 0
-        for tempDir in self._tempDirectories():
+        for tempDir in self._statsDirectories():
             for tempFile in os.listdir(tempDir):
                 if tempFile.startswith('stats'):
                     absTempFile = os.path.join(tempDir, tempFile)
@@ -536,17 +547,17 @@ class FileJobStore(AbstractJobStore):
         Find the directory for a job, which holds its job file along with
         job-associated temporary files that are deleted when the job is deleted.
 
-        :param str jobStoreID: ID of a job, which is a relative to self.tempFilesDir.
-        :rtype : string, string is the absolute path to a job directory inside self.tempFilesDir.
+        :param str jobStoreID: ID of a job, which is a relative to self.jobsDir.
+        :rtype : string, string is the absolute path to a job directory inside self.jobsDir.
         """
-        return os.path.join(self.tempFilesDir, jobStoreID)
+        return os.path.join(self.jobsDir, jobStoreID)
 
     def _getJobIdFromDir(self, absPath):
         """
-        :param str absPath: The absolute path to a job directory under self.tempFilesDir which represents a job.
-        :rtype : string, string is the job ID, which is a path relative to self.tempFilesDir
+        :param str absPath: The absolute path to a job directory under self.jobsDir which represents a job.
+        :rtype : string, string is the job ID, which is a path relative to self.jobsDir
         """
-        return absPath[len(self.tempFilesDir)+1:]
+        return absPath[len(self.jobsDir)+1:]
 
     def _getJobFileName(self, jobStoreID):
         """
@@ -566,17 +577,30 @@ class FileJobStore(AbstractJobStore):
 
     def _getFilePathFromId(self, jobStoreFileID):
         """
-        :param str jobStoreFileID: The ID of a file, which is a relative path under self.tempFilesDir.
-        :rtype : string, string is the absolute path that that file should appear at on disk.
+        :param str jobStoreFileID: The ID of a file
+
+        :rtype : string, string is the absolute path that that file should
+                 appear at on disk, under either self.jobsDir if it is to be
+                 cleaned up with a job, or self.filesDir otherwise.
         """
-        return os.path.join(self.tempFilesDir, jobStoreFileID)
+
+        # We just make the file IDs paths under the job store overall.
+        absPath = os.path.join(self.jobStoreDir, jobStoreFileID)
+
+        assert absPath.startswith(self.jobsDir) or absPath.startswith(self.filesDir)
+        
+        return absPath
 
     def _getFileIdFromPath(self, absPath):
         """
-        :param str absPath: The absolute path of a file, inside self.tempFilesDir.
-        :rtype : string, string is the file ID, which is a relative path.
+        :param str absPath: The absolute path of a file, inside either self.jobsDir or self.filesDir.
+
+        :rtype : string, string is the file ID.
         """
-        return absPath[len(self.tempFilesDir)+1:]
+
+        assert absPath.startswith(self.jobsDir) or absPath.startswith(self.filesDir)
+
+        return absPath[len(self.jobStoreDir)+1:]
 
     def _checkJobStoreFileID(self, jobStoreFileID):
         """
@@ -585,14 +609,50 @@ class FileJobStore(AbstractJobStore):
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
 
-    def _getTempSharedDir(self):
+    def _getRandomJobsDir(self):
         """
-        Gets a temporary directory in the hierarchy of directories in self.tempFilesDir.
+        Gets a temporary directory in a multi-level hierarchy in self.jobsDir.
+        The directory is not unique and may already have other jobs' directories in it.
+
+        :rtype : string, path to temporary directory in which to place files/directories.
+
+        
+        """
+
+        return self._getTempSharedDir(self.jobsDir)
+
+    def _getRandomStatsDir(self):
+        """
+        Gets a temporary directory in a multi-level hierarchy in self.statsDir.
+        The directory is not unique and may already have other stats files in it.
+
+        :rtype : string, path to temporary directory in which to place files/directories.
+
+        
+        """
+
+        return self._getTempSharedDir(self.statsDir)
+
+    def _getRandomFilesDir(self):
+        """
+        Gets a temporary directory in a multi-level hierarchy in self.filesDir.
+        The directory is not unique and may already have other user files in it.
+
+        :rtype : string, path to temporary directory in which to place files/directories.
+
+        
+        """
+
+        return self._getTempSharedDir(self.filesDir)
+    
+    def _getTempSharedDir(self, root):
+        """
+        Gets a temporary directory in a multi-level hierarchy of directories under the given root.
         This directory may contain multiple shared jobs/files.
 
         :rtype : string, path to temporary directory in which to place files/directories.
         """
-        tempDir = self.tempFilesDir
+        tempDir = root
         for i in range(self.levels):
             tempDir = os.path.join(tempDir, random.choice(self.validDirs))
             if not os.path.exists(tempDir):
@@ -604,10 +664,10 @@ class FileJobStore(AbstractJobStore):
                         raise
         return tempDir
 
-    def _tempDirectories(self):
+    def _jobDirectories(self):
         """
-        :rtype : an iterator to the temporary directories containing jobs/stats files
-        in the hierarchy of directories in self.tempFilesDir
+        :rtype : an iterator to the temporary directories containing job files
+        in the hierarchy of directories in self.jobsDir
         """
         def _dirs(path, levels):
             if levels > 0:
@@ -616,7 +676,22 @@ class FileJobStore(AbstractJobStore):
                         yield i
             else:
                 yield path
-        for tempDir in _dirs(self.tempFilesDir, self.levels):
+        for tempDir in _dirs(self.jobsDir, self.levels):
+            yield tempDir
+
+    def _statsDirectories(self):
+        """
+        :rtype : an iterator to the temporary directories containing stats files
+        in the hierarchy of directories in self.jobsDir
+        """
+        def _dirs(path, levels):
+            if levels > 0:
+                for subPath in os.listdir(path):
+                    for i in _dirs(os.path.join(path, subPath), levels-1):
+                        yield i
+            else:
+                yield path
+        for tempDir in _dirs(self.statsDir, self.levels):
             yield tempDir
 
     def _getUniqueFilePath(self, fileName, jobStoreID=None, sourceFunctionName="x"):
@@ -628,32 +703,40 @@ class FileJobStore(AbstractJobStore):
         :param jobStoreID: If given, the path returned will be in the jobStore directory.
         Otherwise, the tmp directory will be used.
         :param sourceFunctionName: This name is the name of the function that
-            generated this file.  Defaults to x if that name was not a normal
-            name.  Used for tracking files.
+            generated this file.  Defaults to x if not provided.
+            Used for tracking files.
         :return: The full path with a unique file name.
         """
-        fd, absPath = self._getTempFile(jobStoreID)
-        os.close(fd)
-        os.unlink(absPath)
-        # remove the .tmp extension and add the file name
-        (noExt,ext) = os.path.splitext(absPath)
-        uniquePath = noExt + '-' + sourceFunctionName + '-' + os.path.basename(fileName)
-        if os.path.exists(absPath):
-            return absPath  # give up, just return temp name to avoid conflicts
+
+        # Give the file a unique directory
+        directory = self._getFileDirectory(jobStoreID)
+        # And then a path under it
+        uniquePath = os.path.join(directory, sourceFunctionName + '-' + os.path.basename(fileName))
+        # No need to check if it exists already; it is in a unique directory.
         return uniquePath
 
-    def _getTempFile(self, jobStoreID=None):
+    def _getFileDirectory(self, jobStoreID=None):
         """
-        :rtype : file-descriptor, string, string is the absolute path to a temporary file within
-        the given job's (referenced by jobStoreID's) temporary file directory. The file-descriptor
-        is integer pointing to open operating system file handle. Should be closed using os.close()
-        after writing some material to the file.
+        Get a new empty directory path for a file to be stored at. If the
+        jobStoreID is not None, the file wil be associated with the job with
+        that ID and this directory will be cleaned up when the job is deleted.
+
+        :rtype :string, string is the absolute path to a directory to put the file in.
         """
         if jobStoreID != None:
             # Make a temporary file within the job's directory
             self._checkJobStoreId(jobStoreID)
-            return tempfile.mkstemp(suffix=".tmp",
-                                dir=os.path.join(self._getJobDirFromId(jobStoreID), "g"))
+            # Lazily create the job's directory for job-associated user files.
+            # We don't want our tree filled with confusingly empty directories.
+            jobFilesDir = os.path.join(self._getJobDirFromId(jobStoreID), self.JOB_FILES_DIR)
+            if not os.path.exists(jobFilesDir):
+                try:
+                    os.mkdir(jobFilesDir)
+                except:
+                    # Maybe someone beat us to it.
+                    # If everything isn't OK, mkdtemp should fail.
+                    pass
+            return tempfile.mkdtemp(dir=jobFilesDir)
         else:
-            # Make a temporary file within the temporary file structure
-            return tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self._getTempSharedDir())
+            # Make a temporary file within the user files hierarchy
+            return tempfile.mkdtemp(dir=self._getRandomFilesDir())
