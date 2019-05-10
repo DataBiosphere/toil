@@ -53,11 +53,18 @@ class FileJobStore(AbstractJobStore):
     distributed batch systems, that file system must be shared by all worker nodes.
     """
 
-    # Valid chars for the creation of temporary directories.
+    # Valid chars for the creation of temporary "spray" directories.
     # Note that on case-insensitive filesystems we're twice as likely to use
     # letter directories as number directories.
     validDirs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
     validDirsSet = set(validDirs)
+
+    # What prefix should be on the per-job job directories, to distinguish them
+    # from the spray directories?
+    JOB_DIR_PREFIX = 'instance'
+
+    # What prefix do we put on the per-job-name directories we sort jobs into?
+    JOB_NAME_DIR_PREFIX = 'kind-'
 
     # 10Mb RAM chunks when reading/writing files
     BUFFER_SIZE = 10485760 # 10Mb
@@ -150,14 +157,23 @@ class FileJobStore(AbstractJobStore):
     ##########################################
 
     def create(self, jobNode):
-        # The absolute path to the job directory.
-        absJobDir = tempfile.mkdtemp(prefix="job", dir=self._getArbitraryJobsDir())
-        # Make the job
+        # Get the job's name. We want to group jobs with the same name together.
+        # This will be e.g. the function name for wrapped-function jobs.
+        # Make sure to render it filename-safe
+        usefulFilename = self._makeStringFilenameSafe(jobNode.jobName)
+
+        # Make a unique temp directory under a directory for this job name,
+        # possibly sprayed across multiple levels of subdirectories.
+        absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
+                                     dir=self._getArbitraryJobsDirForName(usefulFilename))
+        # Make the job to save
         job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getJobIdFromDir(absJobDir),
                                    tryCount=self._defaultTryCount())
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+            # Save it later
             self._batchedJobGraphs.append(job)
         else:
+            # Save it now
             self.update(job)
         return job
 
@@ -247,10 +263,15 @@ class FileJobStore(AbstractJobStore):
             self.robust_rmtree(self._getJobDirFromId(jobStoreID))
 
     def jobs(self):
-        # Walk through list of temporary directories searching for jobs
+        # Walk through list of temporary directories searching for jobs.
+        # Jobs are files that start with 'job'.
+        # Note that this also catches jobWhatever.new which exists if an update
+        # is in progress.
         for tempDir in self._jobDirectories():
             for i in os.listdir(tempDir):
-                if i.startswith('job'):
+                logger.warning('Job Dir: %s' % i)
+                if i.startswith(self.JOB_DIR_PREFIX):
+                    # This is a job instance directory 
                     try:
                         yield self.load(self._getJobIdFromDir(os.path.join(tempDir, i)))
                     except NoSuchJobException:
@@ -661,22 +682,38 @@ class FileJobStore(AbstractJobStore):
 
     def _checkJobStoreFileID(self, jobStoreFileID):
         """
-        :raise NoSuchFileException: if the file with ID jobStoreFileID does not exist or is not a file
+        :raise NoSuchFileException: if the file with ID jobStoreFileID does
+                                    not exist or is not a file
         """
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
 
-    def _getArbitraryJobsDir(self):
+    def _getArbitraryJobsDirForName(self, jobNameSlug):
         """
         Gets a temporary directory in a multi-level hierarchy in self.jobsDir.
         The directory is not unique and may already have other jobs' directories in it.
+        We organize them at the top level by job name, to be user-inspectable.
+
+        We make sure to prepend a string so that job names can't collide with
+        spray directory names.
+
+        :param str jobNameSlug: A partial filename derived from the job name.
+                                Used as the first level of the directory hierarchy.
 
         :rtype : string, path to temporary directory in which to place files/directories.
 
         
         """
 
-        return self._getDynamicSprayDir(self.jobsDir)
+        
+        if len(os.listdir(self.jobsDir)) > self.fanOut:
+            # Make sure that we don't over-fill the root with too many unique job names.
+            # Go in a subdirectory tree, and then go by job name and make another tree.
+            return self._getDynamicSprayDir(os.path.join(self._getDynamicSprayDir(self.jobsDir),
+                                                                                  self.JOB_NAME_DIR_PREFIX + jobNameSlug))
+        else:
+            # Just go in the root
+            return self._getDynamicSprayDir(os.path.join(self.jobsDir, self.JOB_NAME_DIR_PREFIX + jobNameSlug))
 
     def _getArbitraryStatsDir(self):
         """
@@ -729,16 +766,13 @@ class FileJobStore(AbstractJobStore):
         """
         tempDir = root
 
+        # Make sure the root exists
+        mkdir_p(tempDir)
+
         while len(os.listdir(tempDir)) >= self.fanOut:
             # We need to use a layer of directories under here to avoid over-packing the directory
             tempDir = os.path.join(tempDir, random.choice(self.validDirs))
-            if not os.path.exists(tempDir):
-                try:
-                    os.mkdir(tempDir)
-                except os.error:
-                    if not os.path.exists(tempDir): # In the case that a collision occurs and
-                        # it is created while we wait then we ignore
-                        raise
+            mkdir_p(tempDir)
         
         # When we get here, we found a sufficiently empty directory
         return tempDir
@@ -791,7 +825,29 @@ class FileJobStore(AbstractJobStore):
                  job files.
         """
 
-        return self._walkDynamicSprayDir(self.jobsDir)
+        # Walking the job directories is more complicated.
+        # We have one layer of spray (which is sometimes bypassed, but that's OK), then a job name, then another layer.
+        # We can tell the job name directories from the spray directories because they start with self.JOB_NAME_DIR_PREFIX.
+        # We never look at the directories containing the job name directories,
+        # so they aren't mistaken for the leaf-level per-job job directories.
+
+        for jobHoldingDir in self._walkDynamicSprayDir(self.jobsDir):
+            # For every directory in the first spray, look at children
+            children = []
+
+            try:
+                children = os.listdir(jobHoldingDir)
+            except:
+                pass
+            
+            for jobNameDir in children:
+                if not jobNameDir.startswith(self.JOB_NAME_DIR_PREFIX):
+                    continue
+
+                # Now we have only the directories that are named after jobs. Look inside them.
+                for inner in self._walkDynamicSprayDir(os.path.join(jobHoldingDir, jobNameDir)):
+                    yield inner
+                
 
     def _statsDirectories(self):
         """
