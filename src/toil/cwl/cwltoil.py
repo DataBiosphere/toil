@@ -823,6 +823,52 @@ def remove_pickle_problems(obj):
     return obj
 
 
+# Objects needed for conditionals
+
+class CondMergeFNS(MergeInputs):
+    """first_non_skip"""
+
+    def resolve(self):
+        return [v[1][v[0]] for v in self.sources]
+
+
+class CondMergeIS(MergeInputs):
+    """ignore_skip"""
+
+    def resolve(self):
+        return [v[1][v[0]] for v in self.sources]
+
+
+class CondMergeOO(MergeInputs):
+    """only_one"""
+
+    def resolve(self):
+        return [v[1][v[0]] for v in self.sources]
+
+
+class CWLSkipJob(Job):
+    """A pretend job that doesn't take any resources and produces skipped outputs"""
+
+    def __init__(self, step, outputs):
+        super(CWLSkipJob, self).__init__()
+        self.step = step
+        self.outputs = outputs
+
+    def run(self, file_store):
+        outobj = {}
+
+        def sn(n):
+            if isinstance(n, Mapping):
+                return shortname(n["id"])
+            if isinstance(n, string_types):
+                return shortname(n)
+
+        for k in [sn(i) for i in self.step.tool["out"]]:
+            outobj[k] = None # self.extract(self.outputs, k)
+
+        return outobj
+
+
 class CWLWorkflow(Job):
     """Traverse a CWL workflow graph and create a Toil job graph with appropriate
     dependencies.
@@ -875,6 +921,29 @@ class CWLWorkflow(Job):
                         for inp in step.tool["inputs"]:
                             key = shortname(inp["id"])
                             if "source" in inp:
+
+                                cond_merge_method = inp.get("condMerge")
+
+                                if cond_merge_method:
+
+                                    cond_merge_fn = {
+                                        "first_non_skip": CondMergeFNS,
+                                        "ignore_skip": CondMergeIS,
+                                        "only_one": CondMergeOO,
+                                    }.get(cond_merge_method)
+
+                                    if cond_merge_fn is None:
+                                        raise validate.ValidationException(
+                                            "Unsupported condMerge '%s'" %
+                                            cond_merge_method)
+
+                                    jobobj[key] = (
+                                        cond_merge_fn(
+                                            [(shortname(s),
+                                              promises[s].rv())
+                                             for s in aslist(
+                                                inp["source"])]))
+
                                 if inp.get("linkMerge") \
                                         or len(aslist(inp["source"])) > 1:
                                     linkMerge = inp.get(
@@ -934,16 +1003,36 @@ class CWLWorkflow(Job):
                                             "None", {"None": None}),
                                         self.cwlwf.requirements)
 
-                        if "scatter" in step.tool:
-                            wfjob = CWLScatter(step, IndirectDict(jobobj),
-                                               self.runtime_context)
-                            followOn = CWLGather(step, wfjob.rv())
-                            wfjob.addFollowOn(followOn)
+                        skip_this_job = False
+                        run_if_expression = step.tool.get("run_if")
+
+                        if run_if_expression is not None:
+                            skip_this_job = not cwltool.expression.do_eval(
+                                run_if_expression,
+                                {shortname(k): v for k, v in iteritems(cwljob)},
+                                self.cwlwf.requirements,
+                                None,
+                                None,
+                                {}
+                            )
+
+                        if skip_this_job:
+
+                            skip_job = CWLSkipJob(step, IndirectDict(jobobj))
+                            wfjob, followOn = skip_job, skip_job
+
                         else:
-                            (wfjob, followOn) = makeJob(
-                                step.embedded_tool, IndirectDict(jobobj),
-                                step.tool["inputs"],
-                                self.runtime_context)
+
+                            if "scatter" in step.tool:
+                                wfjob = CWLScatter(step, IndirectDict(jobobj),
+                                                   self.runtime_context)
+                                followOn = CWLGather(step, wfjob.rv())
+                                wfjob.addFollowOn(followOn)
+                            else:
+                                (wfjob, followOn) = makeJob(
+                                    step.embedded_tool, IndirectDict(jobobj),
+                                    step.tool["inputs"],
+                                    self.runtime_context)
 
                         jobs[step.tool["id"]] = followOn
 
