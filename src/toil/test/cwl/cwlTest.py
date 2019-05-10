@@ -74,7 +74,7 @@ class CWLTest(ToilTest):
         out[out_name].pop("http://commonwl.org/cwltool#generation", None)
         out[out_name].pop("nameext", None)
         out[out_name].pop("nameroot", None)
-        self.assertEquals(out, expect)
+        self.assertEqual(out, expect)
 
     def _debug_worker_tester(self, cwlfile, jobfile, expect):
         from toil.cwl import cwltoil
@@ -86,7 +86,7 @@ class CWLTest(ToilTest):
         out["output"].pop("http://commonwl.org/cwltool#generation", None)
         out["output"].pop("nameext", None)
         out["output"].pop("nameroot", None)
-        self.assertEquals(out, expect)
+        self.assertEqual(out, expect)
 
     def revsort(self, cwl_filename, tester_fn):
         tester_fn('src/toil/test/cwl/' + cwl_filename,

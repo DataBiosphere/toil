@@ -91,7 +91,7 @@ class ImportExportFileTest(ToilTest):
                 f.write('some data')
             toil.importFile('file://' + srcFile, sharedFileName=sharedFileName)
             with toil._jobStore.readSharedFileStream(sharedFileName) as f:
-                self.assertEquals(f.read().decode('utf-8'), 'some data')
+                self.assertEqual(f.read().decode('utf-8'), 'some data')
 
 
 class RestartingJob(Job):

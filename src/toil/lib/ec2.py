@@ -122,7 +122,7 @@ def wait_spot_requests_active(ec2, requests, timeout=None, tentative=False):
     open_ids = None
 
     def cancel():
-        log.warn('Cancelling remaining %i spot requests.', len(open_ids))
+        log.warning('Cancelling remaining %i spot requests.', len(open_ids))
         ec2.cancel_spot_instance_requests(list(open_ids))
 
     def spot_request_not_found(e):
@@ -161,7 +161,7 @@ def wait_spot_requests_active(ec2, requests, timeout=None, tentative=False):
                 break
             sleep_time = 2 * a_short_time
             if timeout is not None and time.time() + sleep_time >= timeout:
-                log.warn('Timed out waiting for spot requests.')
+                log.warning('Timed out waiting for spot requests.')
                 break
             log.info('Sleeping for %is', sleep_time)
             time.sleep(sleep_time)
@@ -223,11 +223,11 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
     if not num_active:
         message = 'None of the spot requests entered the active state'
         if tentative:
-            log.warn(message + '.')
+            log.warning(message + '.')
         else:
             raise RuntimeError(message)
     if num_other:
-        log.warn('%i request(s) entered a state other than active.', num_other)
+        log.warning('%i request(s) entered a state other than active.', num_other)
 
 
 def inconsistencies_detected(e):
