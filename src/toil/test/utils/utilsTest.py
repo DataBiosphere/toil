@@ -342,7 +342,9 @@ class UtilsTest(ToilTest):
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getPIDStatus)
 
-        os.remove(os.path.join(self.toilDir, 'pid.log'))
+        # TODO: we need to reach into the FileJobStore's files and
+        # delete this shared file. We assume we know its internal layout.
+        os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
         self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
 
     def testGetStatusFailedToilWF(self):
