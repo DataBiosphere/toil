@@ -11,18 +11,17 @@ after_script:
 
 
 stages:
-  - py2
-  - py3
+  - test
 
 
 py2-job:
-  stage: py2
+  stage: test
   script:
     - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && PYTHONIOENCODING=utf-8 make test
 
 py3-job:
-  stage: py3
+  stage: test
   script:
     - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && make test
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && PYTHONIOENCODING=utf-8 make test

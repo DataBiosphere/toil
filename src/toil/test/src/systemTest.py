@@ -27,15 +27,15 @@ class SystemTest(ToilTest):
             finally:
                 pool.close()
                 pool.join()
-            self.assertEquals(len(grandChildIds), numTasks)
+            self.assertEqual(len(grandChildIds), numTasks)
             # Assert that we only had one winner
             grandChildIds = [n for n in grandChildIds if n is not None]
-            self.assertEquals(len(grandChildIds), 1)
+            self.assertEqual(len(grandChildIds), 1)
             # Assert that the winner's grandChild wasn't silently overwritten by a looser
             expectedGrandChildId = grandChildIds[0]
             actualGrandChild = os.path.join(child, 'grandChild')
             actualGrandChildId = os.stat(actualGrandChild).st_ino
-            self.assertEquals(actualGrandChildId, expectedGrandChildId)
+            self.assertEqual(actualGrandChildId, expectedGrandChildId)
 
 
 def _testAtomicityOfNonEmptyDirectoryRenamesTask(parent, child, _):
