@@ -47,7 +47,7 @@ class JobEncapsulationTest(ToilTest):
             # Run the workflow, the return value being the number of failed jobs
             T.Runner.startToil(a, options)
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
+            self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
 
@@ -60,7 +60,7 @@ class JobEncapsulationTest(ToilTest):
         a = T.wrapFn(noOp)
         b = T.wrapFn(noOp)
         a.addChild(b).encapsulate()
-        self.assertEquals(len(a.getRootJobs()), 1)
+        self.assertEqual(len(a.getRootJobs()), 1)
 
 
 def noOp():
