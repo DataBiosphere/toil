@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
 import logging
 import signal
@@ -252,14 +251,15 @@ class DockerTest(ToilTest):
         ex:  parameters=[ ['printf', 'x\n y\n'], ['wc', '-l'] ] should execute:
         printf 'x\n y\n' | wc -l
         """
-        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir,
-                                                            'jobstore'))
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
         options.logLevel = self.dockerTestLogLevel
         options.workDir = self.tempDir
         options.clean = 'always'
         options.caching = disableCaching
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
+        with open('/home/quokka/delete/toil/src/toil/lib/log.txt', 'a+') as f:
+            f.write(rv)
         assert rv.strip() == '2'
 
     def testDockerPipeChainErrorDetection(self, disableCaching=True):

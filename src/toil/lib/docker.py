@@ -194,15 +194,15 @@ def apiDockerCall(job,
     client = docker.from_env(version='auto')
 
     if deferParam == STOP:
-        job.defer(dockerStop, containerName, client)
+        job.defer(dockerStop, containerName)
 
     if deferParam == FORGO:
         remove = False
     elif deferParam == RM:
         remove = True
-        job.defer(dockerKill, containerName, client)
+        job.defer(dockerKill, containerName)
     elif remove is True:
-        job.defer(dockerKill, containerName, client)
+        job.defer(dockerKill, containerName)
 
     if auto_remove is None:
         auto_remove = remove
@@ -283,13 +283,14 @@ def apiDockerCall(job,
         raise create_api_error_from_http_exception(e)
 
 
-def dockerKill(container_name, client, gentleKill=False):
+def dockerKill(container_name, gentleKill=False):
     """
     Immediately kills a container.  Equivalent to "docker kill":
     https://docs.docker.com/engine/reference/commandline/kill/
     :param container_name: Name of the container being killed.
     :param client: The docker API client object to call.
     """
+    client = docker.from_env(version='auto')
     try:
         this_container = client.containers.get(container_name)
         while this_container.status == 'running':
@@ -307,14 +308,14 @@ def dockerKill(container_name, client, gentleKill=False):
         raise create_api_error_from_http_exception(e)
 
 
-def dockerStop(container_name, client):
+def dockerStop(container_name):
     """
     Gracefully kills a container.  Equivalent to "docker stop":
     https://docs.docker.com/engine/reference/commandline/stop/
     :param container_name: Name of the container being stopped.
     :param client: The docker API client object to call.
     """
-    dockerKill(container_name, client, gentleKill=True)
+    dockerKill(container_name, gentleKill=True)
 
 
 def containerIsRunning(container_name):
