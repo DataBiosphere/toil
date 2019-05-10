@@ -942,6 +942,9 @@ class AbstractJobStoreTest(object):
 
             noCacheTime = noCacheEnd - noCacheStart
 
+            # Make sure we have all the jobs: root and children.
+            self.assertEqual(len(list(jobstore.jobs())), 101)
+
             # See how long it takes to clean with cache
             jobCache = {jobGraph.jobStoreID: jobGraph
                         for jobGraph in jobstore.jobs()}
