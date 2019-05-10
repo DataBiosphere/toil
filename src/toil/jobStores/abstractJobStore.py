@@ -459,7 +459,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 try:
                     return jobCache[jobId]
                 except KeyError:
-                    self.load(jobId)
+                    return self.load(jobId)
             else:
                 return self.load(jobId)
 
