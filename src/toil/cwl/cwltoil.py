@@ -90,43 +90,6 @@ class IndirectDict(dict):
     pass
 
 
-@six.add_metaclass(abc.ABCMeta)
-class MergeInputs(object):
-    """Base type for workflow step inputs that are connected to multiple upstream
-    inputs that must be merged into a single array.
-    """
-    def __init__(self, sources):
-        self.sources = sources
-
-    @abc.abstractmethod
-    def resolve(self):
-        """Resolves the inputs."""
-
-
-class MergeInputsNested(MergeInputs):
-    """Merge workflow step inputs that are connected to multiple upstream inputs
-    based on the merge_nested behavior (as described in the CWL spec).
-    """
-    def resolve(self):
-        return [v[1][v[0]] for v in self.sources]
-
-
-class MergeInputsFlattened(MergeInputs):
-    """Merge workflow step inputs that are connected to multiple upstream inputs
-    based on the merge_flattened behavior (as described in the CWL spec).
-    """
-
-    def resolve(self):
-        result = []
-        for promise in self.sources:
-            source = promise[1][promise[0]]
-            if isinstance(source, MutableSequence):
-                result.extend(source)
-            else:
-                result.append(source)
-        return result
-
-
 class StepValueFrom(object):
     """A workflow step input which has a valueFrom expression attached to it, which
     is evaluated to produce the actual input object for the step.
@@ -167,7 +130,7 @@ def _resolve_indirect_inner(maybe_idict):
     if isinstance(maybe_idict, IndirectDict):
         result = {}
         for key, value in list(maybe_idict.items()):
-            if isinstance(value, (MergeInputs, DefaultWithSource)):
+            if isinstance(value, (SourceMerge, DefaultWithSource)):
                 result[key] = value.resolve()
             else:
                 result[key] = value[1].get(value[0])
@@ -825,25 +788,75 @@ def remove_pickle_problems(obj):
 
 # Objects needed for conditionals
 
-class CondMergeFNS(MergeInputs):
-    """first_non_skip"""
+
+class SourceMerge(object):
+    """"""
+    def __init__(
+            self,
+            sources,
+            cond_merge_type=None,
+            link_merge_type=None):
+        self.sources = sources
+        self.cond_merge_type = cond_merge_type
+        self.link_merge_type = link_merge_type
 
     def resolve(self):
-        return [v[1][v[0]] for v in self.sources]
+        """First apply condMerge if present, then apply linkMerge"""
+        result = [promise[1][promise[0]] for promise in self.sources]
 
+        if self.cond_merge_type is not None:
+            result = self.cond_merge(result)
 
-class CondMergeIS(MergeInputs):
-    """ignore_skip"""
+        if self.link_merge_type or len(result) > 1:
+            result = self.link_merge(result)
 
-    def resolve(self):
-        return [v[1][v[0]] for v in self.sources]
+        return result
 
+    def cond_merge(self, items):
+        if self.cond_merge_type == "first_non_skip":
+            for item in items:
+                if item is not None:
+                    return item
+            else:
+                return None
 
-class CondMergeOO(MergeInputs):
-    """only_one"""
+        elif self.cond_merge_type == "ignore_skip":
+            return [
+                item for item in items if item is not None
+            ]
 
-    def resolve(self):
-        return [v[1][v[0]] for v in self.sources]
+        elif self.cond_merge_type == "only_one":
+            result = None
+            for item in items:
+                if item is not None:
+                    if result is not None:
+                        raise validate.ValidationException(
+                            "condMerge only_one found multiple items")
+                    else:
+                        result = item
+            return result
+
+        else:
+            raise validate.ValidationException(
+                "Unsupported condMerge '%s'" %
+                self.cond_merge_type)
+
+    def link_merge(self, items):
+        if self.link_merge_type is None or self.link_merge_type == "merge_nested":
+            return items
+
+        elif self.link_merge_type == "merge_flattened":
+            result = []
+            for item in items:
+                if isinstance(item, MutableSequence):
+                    result.extend(item)
+                else:
+                    result.append(item)
+
+        else:
+            raise validate.ValidationException(
+                "Unsupported linkMerge '%s'" %
+                self.link_merge_type)
 
 
 class CWLSkipJob(Job):
@@ -922,50 +935,14 @@ class CWLWorkflow(Job):
                             key = shortname(inp["id"])
                             if "source" in inp:
 
-                                cond_merge_method = inp.get("condMerge")
-
-                                if cond_merge_method:
-
-                                    cond_merge_fn = {
-                                        "first_non_skip": CondMergeFNS,
-                                        "ignore_skip": CondMergeIS,
-                                        "only_one": CondMergeOO,
-                                    }.get(cond_merge_method)
-
-                                    if cond_merge_fn is None:
-                                        raise validate.ValidationException(
-                                            "Unsupported condMerge '%s'" %
-                                            cond_merge_method)
-
+                                if len(aslist(inp["source"])) > 1:
                                     jobobj[key] = (
-                                        cond_merge_fn(
-                                            [(shortname(s),
-                                              promises[s].rv())
-                                             for s in aslist(
-                                                inp["source"])]))
+                                        SourceMerge(
+                                            [(shortname(s), promises[s].rv())
+                                             for s in aslist(inp["source"])],
+                                            cond_merge_type=inp.get("condMerge"),
+                                            link_merge_type=inp.get("linkMerge")))
 
-                                if inp.get("linkMerge") \
-                                        or len(aslist(inp["source"])) > 1:
-                                    linkMerge = inp.get(
-                                        "linkMerge", "merge_nested")
-                                    if linkMerge == "merge_nested":
-                                        jobobj[key] = (
-                                            MergeInputsNested(
-                                                [(shortname(s),
-                                                  promises[s].rv())
-                                                 for s in aslist(
-                                                     inp["source"])]))
-                                    elif linkMerge == "merge_flattened":
-                                        jobobj[key] = (
-                                            MergeInputsFlattened(
-                                                [(shortname(s),
-                                                  promises[s].rv())
-                                                 for s in aslist(
-                                                      inp["source"])]))
-                                    else:
-                                        raise validate.ValidationException(
-                                            "Unsupported linkMerge '%s'" %
-                                            linkMerge)
                                 else:
                                     inpSource = inp["source"]
                                     if isinstance(inpSource, MutableSequence):
@@ -1074,21 +1051,14 @@ class CWLWorkflow(Job):
         outobj = {}
         for out in self.cwlwf.tool["outputs"]:
             key = shortname(out["id"])
-            if out.get("linkMerge") or len(aslist(out["outputSource"])) > 1:
-                link_merge = out.get("linkMerge", "merge_nested")
-                if link_merge == "merge_nested":
-                    outobj[key] = (
-                        MergeInputsNested(
-                            [(shortname(s), promises[s].rv())
-                             for s in aslist(out["outputSource"])]))
-                elif link_merge == "merge_flattened":
-                    outobj[key] = (
-                        MergeInputsFlattened([
-                            (shortname(s), promises[s].rv())
-                            for s in aslist(out["source"])]))
-                else:
-                    raise validate.ValidationException(
-                        "Unsupported linkMerge '{}'".format(link_merge))
+
+            if len(aslist(out["outputSource"])) > 1:
+                outobj[key] = (
+                    SourceMerge(
+                        [(shortname(s), promises[s].rv())
+                         for s in aslist(out["outputSource"])],
+                    cond_merge_type=out.get("condMerge"),
+                    link_merge_type=out.get("linkMerge")))
 
             else:
                 # A CommentedSeq of length one still appears here rarely -
