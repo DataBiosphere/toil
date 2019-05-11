@@ -2,6 +2,7 @@
 #
 # Copyright (C) 2015 Curoverse, Inc
 # Copyright (C) 2016 UCSC Computational Genomics Lab
+# Parts Copyright (C) 2019 Seven Bridges
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -789,6 +790,10 @@ def remove_pickle_problems(obj):
 # Objects needed for conditionals
 
 
+class SkipNull:
+    pass
+
+
 class SourceMerge(object):
     """"""
     def __init__(
@@ -810,25 +815,30 @@ class SourceMerge(object):
         if self.link_merge_type or len(result) > 1:
             result = self.link_merge(result)
 
+        # Convert any skipNulls that remain into Nones
+        # Warn the user about this
+        if isinstance(result, list):
+            result = self.clean_skipnulls(result)
+
         return result
 
     def cond_merge(self, items):
         if self.cond_merge_type == "first_non_skip":
             for item in items:
-                if item is not None:
+                if not isinstance(item, SkipNull):
                     return item
             else:
                 return None
 
         elif self.cond_merge_type == "ignore_skip":
             return [
-                item for item in items if item is not None
+                item for item in items if not isinstance(item, SkipNull)
             ]
 
         elif self.cond_merge_type == "only_one":
             result = None
             for item in items:
-                if item is not None:
+                if not isinstance(item, SkipNull):
                     if result is not None:
                         raise validate.ValidationException(
                             "condMerge only_one found multiple items")
@@ -858,6 +868,18 @@ class SourceMerge(object):
                 "Unsupported linkMerge '%s'" %
                 self.link_merge_type)
 
+    def clean_skipnulls(self, items):
+        _result = []
+        for r in items:
+            if isinstance(r, SkipNull):
+                cwllogger.warning(
+                    "SkipNull result found and cast to None. \n"
+                    "You had a conditional step that did not run, \n"
+                    "but you did not use condMerge to handle the skipped input.")
+                r = None
+            _result.append(r)
+        return _result
+
 
 class CWLSkipJob(Job):
     """A pretend job that doesn't take any resources and produces skipped outputs"""
@@ -877,7 +899,7 @@ class CWLSkipJob(Job):
                 return shortname(n)
 
         for k in [sn(i) for i in self.step.tool["out"]]:
-            outobj[k] = None # self.extract(self.outputs, k)
+            outobj[k] = SkipNull() # None # self.extract(self.outputs, k)
 
         return outobj
 
