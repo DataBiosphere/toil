@@ -219,7 +219,7 @@ class AWSProvisioner(AbstractProvisioner):
             logger.info('Terminating the leader first ...')
             self._terminateInstances(instances=[leader])
             logger.info('Now terminating any remaining workers ...')
-        except InvalidClusterStateException:
+        except (NoSuchClusterException, InvalidClusterStateException):
             # It's ok if the leader is not found. We'll terminate any remaining
             # instances below anyway.
             pass
