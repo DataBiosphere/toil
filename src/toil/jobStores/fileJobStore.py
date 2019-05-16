@@ -27,7 +27,6 @@ import tempfile
 import stat
 import errno
 import time
-import traceback
 try:
     import cPickle as pickle
 except ImportError:
@@ -369,26 +368,6 @@ class FileJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'file'
 
-    def _getUserCodeFunctionName(self):
-        """
-        Get the name of the function 4 levels up the stack (above this
-        function, our caller, and whatever Toil code delegated to the JobStore
-        implementation). Returns a string usable in a filename, and returns a
-        placeholder string if the function name is unsuitable or can't be
-        gotten.
-        """
-        
-        # Record the name of the job/function writing the file in the file name
-        try:
-            # It ought to be fourth-to-last on the stack, above us, the write
-            # function, and the FileStore or context manager. Probably.
-            sourceFunctionName = traceback.extract_stack()[-4][2]
-        except:
-            sourceFunctionName = "UNKNOWNJOB"
-            # make sure the function name fetched has no spaces or oddities
-            
-        return self._makeStringFilenameSafe(sourceFunctionName)
-
     def _makeStringFilenameSafe(self, arbitraryString):
         """
         Given an arbitrary string, produce a filename-safe though not
@@ -416,14 +395,14 @@ class FileJobStore(AbstractJobStore):
         return '_'.join(parts)
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
-        absPath = self._getUniqueFilePath(localFilePath, jobStoreID, self._getUserCodeFunctionName(), cleanup)
+        absPath = self._getUniqueFilePath(localFilePath, jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
         shutil.copyfile(localFilePath, absPath)
         return relPath
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None, cleanup=False):
-        absPath = self._getUniqueFilePath('stream', jobStoreID, self._getUserCodeFunctionName(), cleanup)
+        absPath = self._getUniqueFilePath('stream', jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
         with open(absPath, 'wb') as f:
             # Don't yield while holding an open file descriptor to the temp
@@ -872,16 +851,13 @@ class FileJobStore(AbstractJobStore):
 
         return self._walkDynamicSprayDir(self.statsDir)
 
-    def _getUniqueFilePath(self, fileName, jobStoreID=None, sourceFunctionName="x", cleanup=False):
+    def _getUniqueFilePath(self, fileName, jobStoreID=None, cleanup=False):
         """
         Create unique file name within a jobStore directory or tmp directory.
 
         :param fileName: A file name, which can be a full path as only the
         basename will be used.
         :param jobStoreID: If given, the path returned will be in a directory including the job's ID as part of its path.
-        :param sourceFunctionName: This name is the name of the function that
-            generated this file.  Defaults to x if not provided.
-            Used for tracking files.
         :param bool cleanup: If True and jobStoreID is set, the path will be in
             a place such that it gets deleted when the job is deleted.
         :return: The full path with a unique file name.
@@ -890,7 +866,7 @@ class FileJobStore(AbstractJobStore):
         # Give the file a unique directory that either will be cleaned up with a job or won't.
         directory = self._getFileDirectory(jobStoreID, cleanup)
         # And then a path under it
-        uniquePath = os.path.join(directory, sourceFunctionName + '-' + os.path.basename(fileName))
+        uniquePath = os.path.join(directory, os.path.basename(fileName))
         # No need to check if it exists already; it is in a unique directory.
         return uniquePath
 
