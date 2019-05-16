@@ -156,7 +156,7 @@ class RealtimeLogger(with_metaclass(RealtimeLoggerMetaclass, object)):
                     log.debug('Real-time logging disabled')
             else:
                 if level:
-                    log.warn('Ignoring nested request to start real-time logging')
+                    log.warning('Ignoring nested request to start real-time logging')
 
     @classmethod
     def _stopLeader(cls):

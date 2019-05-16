@@ -124,6 +124,11 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None and math.ceil(cpu) > 1:
                 peConfig = os.getenv('TOIL_GRIDENGINE_PE') or 'shm'
                 qsubline.extend(['-pe', peConfig, str(int(math.ceil(cpu)))])
+
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_error')
+            sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
+
             return qsubline
 
     """

@@ -121,7 +121,7 @@ class ResourceTest(ToilTest):
             self.assertTrue(module.dirPath.endswith('/src'))
 
         # Before the module is saved as a resource, localize() and globalize() are identity
-        # methods. This should log warnings.
+        # methods. This should log.warnings.
         self.assertIs(module.localize(), module)
         self.assertIs(module.globalize(), module)
         # Create a mock job store ...
