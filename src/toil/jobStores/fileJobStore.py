@@ -84,8 +84,10 @@ class FileJobStore(AbstractJobStore):
         # Directory where stats files go
         self.statsDir = os.path.join(self.jobStoreDir, 'stats')
         # Directory where non-job-associated files for the file store go
-        self.filesDir = os.path.join(self.jobStoreDir, 'files/global')
-        # Directory where job-associated files for the file store go
+        self.filesDir = os.path.join(self.jobStoreDir, 'files/no-job')
+        # Directory where job-associated files for the file store go.
+        # Each per-job directory in here will have separate directories for
+        # files to clean up and files to not clean up when the job is deleted.
         self.jobFilesDir = os.path.join(self.jobStoreDir, 'files/for-job')
         # Directory where shared files go
         self.sharedFilesDir = os.path.join(self.jobStoreDir, 'files/shared')
@@ -256,9 +258,9 @@ class FileJobStore(AbstractJobStore):
         # The jobStoreID is the relative path to the directory containing the job,
         # removing this directory deletes the job.
         if self.exists(jobStoreID):
-            # Remove all job-associated files, which may or may not live under
-            # the job's directory.
-            self.robust_rmtree(self._getJobFilesDir(jobStoreID))
+            # Remove the job-associated files in need of cleanup, which may or
+            # may not live under the job's directory.
+            self.robust_rmtree(self._getJobFilesCleanupDir(jobStoreID))
             # Remove the job's directory itself.
             self.robust_rmtree(self._getJobDirFromId(jobStoreID))
 
@@ -414,14 +416,14 @@ class FileJobStore(AbstractJobStore):
         return '_'.join(parts)
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
-        absPath = self._getUniqueFilePath(localFilePath, jobStoreID if cleanup else None, self._getUserCodeFunctionName())
+        absPath = self._getUniqueFilePath(localFilePath, jobStoreID, self._getUserCodeFunctionName(), cleanup)
         relPath = self._getFileIdFromPath(absPath)
         shutil.copyfile(localFilePath, absPath)
         return relPath
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None, cleanup=False):
-        absPath = self._getUniqueFilePath('stream', jobStoreID if cleanup else None, self._getUserCodeFunctionName())
+        absPath = self._getUniqueFilePath('stream', jobStoreID, self._getUserCodeFunctionName(), cleanup)
         relPath = self._getFileIdFromPath(absPath)
         with open(absPath, 'wb') as f:
             # Don't yield while holding an open file descriptor to the temp
@@ -634,19 +636,31 @@ class FileJobStore(AbstractJobStore):
 
     def _getJobFilesDir(self, jobStoreID):
         """
-        Return the path to the directory that should hold files tied to the
-        given job.
+        Return the path to the directory that should hold files made by the
+        given job that should survive its deletion.
 
-        This directory will only be created if files are to be put in it, and
-        will be cleaned up when the job is deleted.
-
-        It may or may not be a subdirectory of the job's own directory.
+        This directory will only be created if files are to be put in it.
 
         :rtype : string, string is the absolute path to the job's files 
                  directory
         """
 
         return os.path.join(self.jobFilesDir, jobStoreID)
+
+    def _getJobFilesCleanupDir(self, jobStoreID):
+        """
+        Return the path to the directory that should hold files made by the
+        given job that will be deleted when the job is deleted.
+
+        This directory will only be created if files are to be put in it.
+
+        It may or may not be a subdirectory of the job's own directory.
+
+        :rtype : string, string is the absolute path to the job's cleanup
+                 files directory
+        """
+
+        return os.path.join(self.jobFilesDir, jobStoreID, "cleanup")
 
     def _checkJobStoreId(self, jobStoreID):
         """
@@ -858,44 +872,57 @@ class FileJobStore(AbstractJobStore):
 
         return self._walkDynamicSprayDir(self.statsDir)
 
-    def _getUniqueFilePath(self, fileName, jobStoreID=None, sourceFunctionName="x"):
+    def _getUniqueFilePath(self, fileName, jobStoreID=None, sourceFunctionName="x", cleanup=False):
         """
         Create unique file name within a jobStore directory or tmp directory.
 
         :param fileName: A file name, which can be a full path as only the
         basename will be used.
-        :param jobStoreID: If given, the path returned will be in the jobStore directory.
-        Otherwise, the tmp directory will be used.
+        :param jobStoreID: If given, the path returned will be in a directory including the job's ID as part of its path.
         :param sourceFunctionName: This name is the name of the function that
             generated this file.  Defaults to x if not provided.
             Used for tracking files.
+        :param bool cleanup: If True and jobStoreID is set, the path will be in
+            a place such that it gets deleted when the job is deleted.
         :return: The full path with a unique file name.
         """
 
-        # Give the file a unique directory
-        directory = self._getFileDirectory(jobStoreID)
+        # Give the file a unique directory that either will be cleaned up with a job or won't.
+        directory = self._getFileDirectory(jobStoreID, cleanup)
         # And then a path under it
         uniquePath = os.path.join(directory, sourceFunctionName + '-' + os.path.basename(fileName))
         # No need to check if it exists already; it is in a unique directory.
         return uniquePath
 
-    def _getFileDirectory(self, jobStoreID=None):
+    def _getFileDirectory(self, jobStoreID=None, cleanup=False):
         """
-        Get a new empty directory path for a file to be stored at. If the
-        jobStoreID is not None, the file wil be associated with the job with
-        that ID and this directory will be cleaned up when the job is deleted.
+        Get a new empty directory path for a file to be stored at.
+        
+        
+        :param str jobStoreID: If the jobStoreID is not None, the file wil
+               be associated with the job with that ID.
+        
+        :param bool cleanup: If cleanup is also True, this directory
+               will be cleaned up when the job is deleted.
 
         :rtype :string, string is the absolute path to a directory to put the file in.
         """
         if jobStoreID != None:
-            # Make a temporary file within the job's directory
+            # Make a temporary file within the job's files directory
+
+            # Make sure the job is legit
             self._checkJobStoreId(jobStoreID)
-            # Lazily create the job's directory for job-associated user files.
+            # Find where all its created files should live, depending on if
+            # they need to go away when the job is deleted or not.
+            jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup \
+                else self._getJobFilesCleanupDir(jobStoreID)
+            
+            # Lazily create the parent directory.
             # We don't want our tree filled with confusingly empty directories.
-            # TODO: we assume the parent of the path exists already.
-            jobFilesDir = self._getJobFilesDir(jobStoreID)
             mkdir_p(jobFilesDir)
+            
+            # Then make a temp directory inside it
             return tempfile.mkdtemp(prefix='file-', dir=jobFilesDir)
         else:
-            # Make a temporary file within the user files hierarchy
+            # Make a temporary file within the non-job-associated files hierarchy
             return tempfile.mkdtemp(prefix='file-', dir=self._getArbitraryFilesDir())
