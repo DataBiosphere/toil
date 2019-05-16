@@ -32,7 +32,7 @@ from toil.lib.docker import FORGO, STOP, RM
 logger = logging.getLogger(__name__)
 
 
-@needs_appliance
+# @needs_appliance
 class DockerTest(ToilTest):
     """
     Tests dockerCall and ensures no containers are left around.
