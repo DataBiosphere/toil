@@ -266,7 +266,8 @@ class DockerTest(ToilTest):
         options.caching = disableCaching
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
-        assert rv.strip() == '2'
+        logger.info('Container pipeline result: %s', repr(rv))
+        assert rv.decode('utf-8').strip() == '2'
 
     def testDockerPipeChainErrorDetection(self, disableCaching=True):
         """
