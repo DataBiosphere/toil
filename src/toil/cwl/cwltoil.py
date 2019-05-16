@@ -410,18 +410,56 @@ def toilStageFiles(file_store, cwljob, outdir, index, existing, export,
     visit_class(cwljob, ("File", "Directory"), _check_adjust)
 
 
+class Conditional:
+
+    def __init__(self, expression=None, outputs=None, requirements=None):
+        self.expression = expression
+        self.outputs = outputs
+        self.requirements = requirements
+
+    def is_false(self, job):
+        if self.expression is None:
+            return False
+
+        return not cwltool.expression.do_eval(
+            self.expression,
+            {shortname(k): v for k, v in iteritems(
+                resolve_indirect(job))},
+            self.requirements,
+            None,
+            None,
+            {}
+        )
+
+    def skipped_outputs(self):
+
+        outobj = {}
+
+        def sn(n):
+            if isinstance(n, Mapping):
+                return shortname(n["id"])
+            if isinstance(n, string_types):
+                return shortname(n)
+
+        for k in [sn(o) for o in self.outputs]:
+            outobj[k] = SkipNull()
+
+        return outobj
+
+
 class CWLJobWrapper(Job):
     """Wrap a CWL job that uses dynamic resources requirement.  When executed, this
     creates a new child job which has the correct resource requirement set.
 
     """
 
-    def __init__(self, tool, cwljob, runtime_context):
+    def __init__(self, tool, cwljob, runtime_context, conditional):
         super(CWLJobWrapper, self).__init__(
             cores=1, memory=1024*1024, disk=8*1024)
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
         self.runtime_context = runtime_context
+        self.conditional = conditional
 
     def run(self, file_store):
         cwljob = resolve_indirect(self.cwljob)
@@ -429,7 +467,7 @@ class CWLJobWrapper(Job):
             self.cwltool.tool['inputs'], cwljob,
             self.runtime_context.make_fs_access(
                 self.runtime_context.basedir or ""))
-        realjob = CWLJob(self.cwltool, cwljob, self.runtime_context)
+        realjob = CWLJob(self.cwltool, cwljob, self.runtime_context, conditional=self.conditional)
         self.addChild(realjob)
         return realjob.rv()
 
@@ -470,8 +508,9 @@ def _makeNestedTempDir(top, seed, levels=2):
 class CWLJob(Job):
     """Execute a CWL tool using cwltool.executors.SingleJobExecutor"""
 
-    def __init__(self, tool, cwljob, runtime_context, step_inputs=None):
+    def __init__(self, tool, cwljob, runtime_context, step_inputs=None, conditional=None):
         self.cwltool = remove_pickle_problems(tool)
+        self.conditional = conditional or Conditional()
         if runtime_context.builder:
             builder = runtime_context.builder
         else:
@@ -532,6 +571,10 @@ class CWLJob(Job):
         fill_in_defaults(
             self.step_inputs, cwljob,
             self.runtime_context.make_fs_access(""))
+
+        if self.conditional.is_false(cwljob):
+            return self.conditional.skipped_outputs()
+
         immobile_cwljob_dict = copy.deepcopy(cwljob)
         for inp_id in immobile_cwljob_dict.keys():
             found = False
@@ -579,14 +622,15 @@ class CWLJob(Job):
 
         return output
 
-def makeJob(tool, jobobj, step_inputs, runtime_context):
+
+def makeJob(tool, jobobj, step_inputs, runtime_context, conditional):
     """Create the correct Toil Job object for the CWL tool (workflow, job, or job
     wrapper for dynamic resource requirements.)
 
     """
 
     if tool.tool["class"] == "Workflow":
-        wfjob = CWLWorkflow(tool, jobobj, runtime_context)
+        wfjob = CWLWorkflow(tool, jobobj, runtime_context, conditional=conditional)
         followOn = ResolveIndirect(wfjob.rv())
         wfjob.addFollowOn(followOn)
         return (wfjob, followOn)
@@ -599,9 +643,9 @@ def makeJob(tool, jobobj, step_inputs, runtime_context):
                 r = resourceReq.get(req)
                 if isinstance(r, string_types) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper
-                    job = CWLJobWrapper(tool, jobobj, runtime_context)
+                    job = CWLJobWrapper(tool, jobobj, runtime_context, conditional=conditional)
                     return (job, job)
-        job = CWLJob(tool, jobobj, runtime_context)
+        job = CWLJob(tool, jobobj, runtime_context, conditional=conditional)
         return (job, job)
 
 
@@ -611,11 +655,12 @@ class CWLScatter(Job):
 
     """
 
-    def __init__(self, step, cwljob, runtime_context):
+    def __init__(self, step, cwljob, runtime_context, conditional):
         super(CWLScatter, self).__init__()
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
+        self.conditional = conditional
 
     def flat_crossproduct_scatter(self,
                                   joborder,
@@ -628,7 +673,8 @@ class CWLScatter(Job):
             if len(scatter_keys) == 1:
                 jo = postScatterEval(jo)
                 (subjob, followOn) = makeJob(
-                    self.step.embedded_tool, jo, None, self.runtime_context)
+                    self.step.embedded_tool, jo, None, self.runtime_context,
+                    conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
@@ -645,7 +691,8 @@ class CWLScatter(Job):
             if len(scatter_keys) == 1:
                 jo = postScatterEval(jo)
                 (subjob, followOn) = makeJob(
-                    self.step.embedded_tool, jo, None, self.runtime_context)
+                    self.step.embedded_tool, jo, None, self.runtime_context,
+                    conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
@@ -691,7 +738,7 @@ class CWLScatter(Job):
                 copyjob = postScatterEval(copyjob)
                 (subjob, follow_on) = makeJob(
                     self.step.embedded_tool, copyjob, None,
-                    self.runtime_context)
+                    self.runtime_context, conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(follow_on.rv())
         elif scatterMethod == "nested_crossproduct":
@@ -881,44 +928,25 @@ class SourceMerge(object):
         return _result
 
 
-class CWLSkipJob(Job):
-    """A pretend job that doesn't take any resources and produces skipped outputs"""
-
-    def __init__(self, step, outputs):
-        super(CWLSkipJob, self).__init__()
-        self.step = step
-        self.outputs = outputs
-
-    def run(self, file_store):
-        outobj = {}
-
-        def sn(n):
-            if isinstance(n, Mapping):
-                return shortname(n["id"])
-            if isinstance(n, string_types):
-                return shortname(n)
-
-        for k in [sn(i) for i in self.step.tool["out"]]:
-            outobj[k] = SkipNull() # None # self.extract(self.outputs, k)
-
-        return outobj
-
-
 class CWLWorkflow(Job):
     """Traverse a CWL workflow graph and create a Toil job graph with appropriate
     dependencies.
 
     """
 
-    def __init__(self, cwlwf, cwljob, runtime_context):
+    def __init__(self, cwlwf, cwljob, runtime_context, conditional=None):
         super(CWLWorkflow, self).__init__()
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.cwlwf = remove_pickle_problems(self.cwlwf)
+        self.conditional = conditional or Conditional()
 
     def run(self, file_store):
         cwljob = resolve_indirect(self.cwljob)
+
+        if self.conditional.is_false(cwljob):
+            return self.conditional.skipped_outputs()
 
         # `promises` dict
         # from: each parameter (workflow input or step output)
@@ -1002,36 +1030,23 @@ class CWLWorkflow(Job):
                                             "None", {"None": None}),
                                         self.cwlwf.requirements)
 
-                        skip_this_job = False
-                        run_if_expression = step.tool.get("run_if")
+                        conditional = Conditional(
+                            expression=step.tool.get("run_if"),
+                            outputs=step.tool["out"],
+                            requirements=self.cwlwf.requirements)
 
-                        if run_if_expression is not None:
-                            skip_this_job = not cwltool.expression.do_eval(
-                                run_if_expression,
-                                {shortname(k): v for k, v in iteritems(cwljob)},
-                                self.cwlwf.requirements,
-                                None,
-                                None,
-                                {}
-                            )
-
-                        if skip_this_job:
-
-                            skip_job = CWLSkipJob(step, IndirectDict(jobobj))
-                            wfjob, followOn = skip_job, skip_job
-
+                        if "scatter" in step.tool:
+                            wfjob = CWLScatter(step, IndirectDict(jobobj),
+                                               self.runtime_context,
+                                               conditional=conditional)
+                            followOn = CWLGather(step, wfjob.rv())
+                            wfjob.addFollowOn(followOn)
                         else:
-
-                            if "scatter" in step.tool:
-                                wfjob = CWLScatter(step, IndirectDict(jobobj),
-                                                   self.runtime_context)
-                                followOn = CWLGather(step, wfjob.rv())
-                                wfjob.addFollowOn(followOn)
-                            else:
-                                (wfjob, followOn) = makeJob(
-                                    step.embedded_tool, IndirectDict(jobobj),
-                                    step.tool["inputs"],
-                                    self.runtime_context)
+                            (wfjob, followOn) = makeJob(
+                                step.embedded_tool, IndirectDict(jobobj),
+                                step.tool["inputs"],
+                                self.runtime_context,
+                                conditional=conditional)
 
                         jobs[step.tool["id"]] = followOn
 
@@ -1328,7 +1343,7 @@ def main(args=None, stdout=sys.stdout):
                 runtime_context.force_docker_pull = options.force_docker_pull
                 runtime_context.no_match_user = options.no_match_user
                 runtime_context.no_read_only = options.no_read_only
-                (wf1, _) = makeJob(tool, {}, None, runtime_context)
+                (wf1, _) = makeJob(tool, {}, None, runtime_context, conditional=None)
             except cwltool.process.UnsupportedRequirement as err:
                 logging.error(err)
                 return 33
