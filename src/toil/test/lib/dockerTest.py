@@ -283,6 +283,7 @@ class DockerTest(ToilTest):
     def testNonCachingDockerChainErrorDetection(self):
         self.testDockerPipeChainErrorDetection(disableCaching=False)
 
+
 def _testDockerCleanFn(job,
                        working_dir,
                        detached=None,
@@ -322,13 +323,15 @@ def _testDockerCleanFn(job,
                   remove=rm,
                   privileged=True)
 
+
 def _testDockerPipeChainFn(job):
     """Return the result of a simple pipe chain.  Should be 2."""
-    parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
+    parameters = [['printf', 'x\n y\n'], ['wc', '-l']]
     return apiDockerCall(job,
-                         image='quay.io/ucsc_cgl/spooky_test',
+                         image='ubuntu:latest',
                          parameters=parameters,
                          privileged=True)
+
 
 def _testDockerPipeChainErrorFn(job):
     """Return True if the command exit 1 | wc -l raises a ContainerError."""
