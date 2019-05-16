@@ -1176,10 +1176,12 @@ class Job(BaseJob):
             # Make a job wrapper
             serviceJobGraph = serviceJob._createEmptyJobGraphForJob(jobStore, predecessorNumber=1)
 
-            # Create the start and terminate flags
-            serviceJobGraph.startJobStoreID = jobStore.getEmptyFileStoreID(serviceJobGraph.jobStoreID)
-            serviceJobGraph.terminateJobStoreID = jobStore.getEmptyFileStoreID(serviceJobGraph.jobStoreID)
-            serviceJobGraph.errorJobStoreID = jobStore.getEmptyFileStoreID(serviceJobGraph.jobStoreID)
+            # Create the start and terminate flags.
+            # We can't associate these with the job they belong to because
+            # that job hasn't necessarily been saved yet.
+            serviceJobGraph.startJobStoreID = jobStore.getEmptyFileStoreID()
+            serviceJobGraph.terminateJobStoreID = jobStore.getEmptyFileStoreID()
+            serviceJobGraph.errorJobStoreID = jobStore.getEmptyFileStoreID()
             assert jobStore.fileExists(serviceJobGraph.startJobStoreID)
             assert jobStore.fileExists(serviceJobGraph.terminateJobStoreID)
             assert jobStore.fileExists(serviceJobGraph.errorJobStoreID)
