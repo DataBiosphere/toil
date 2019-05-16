@@ -183,8 +183,6 @@ class AbstractJobStoreTest(object):
             .resume() will look for a previously instantiated job store and load its config options. This is expected
             to be equal but not the same object.
             """
-
-
             newJobStore = self._createJobStore()
             newJobStore.resume()
             self.assertEqual(newJobStore.config, self.config)
