@@ -258,8 +258,6 @@ class DockerTest(ToilTest):
         options.caching = disableCaching
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
-        with open('/home/quokka/delete/toil/src/toil/lib/log.txt', 'a+') as f:
-            f.write(rv)
         assert rv.strip() == '2'
 
     def testDockerPipeChainErrorDetection(self, disableCaching=True):
