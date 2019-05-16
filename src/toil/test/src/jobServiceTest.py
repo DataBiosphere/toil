@@ -252,8 +252,8 @@ class ToyService(Job.Service):
         assert self.cores is not None
         self.terminate = Event()
         self.error = Event()
-        inJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
-        outJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
+        inJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID(job.jobStoreID, cleanup=False)
+        outJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID(job.jobStoreID, cleanup=False)
         self.serviceThread = Thread(target=self.serviceWorker,
                                     args=(job.fileStore.jobStore, self.terminate, self.error,
                                           inJobStoreID, outJobStoreID,

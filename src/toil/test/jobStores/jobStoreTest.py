@@ -430,7 +430,7 @@ class AbstractJobStoreTest(object):
 
             # First recreate job
             jobOnJobStore1 = jobstore1.create(jobNodeOnJobStore1)
-            fileOne = jobstore2.getEmptyFileStoreID(jobOnJobStore1.jobStoreID)
+            fileOne = jobstore2.getEmptyFileStoreID(jobOnJobStore1.jobStoreID, cleanup=True)
             # Check file exists
             self.assertTrue(jobstore2.fileExists(fileOne))
             self.assertTrue(jobstore1.fileExists(fileOne))
@@ -465,7 +465,7 @@ class AbstractJobStoreTest(object):
                     f.truncate(0)
                     f.write(two)
                 # ... and create a second file from the local file.
-                fileTwo = jobstore1.writeFile(path, jobOnJobStore1.jobStoreID)
+                fileTwo = jobstore1.writeFile(path, jobOnJobStore1.jobStoreID, cleanup=True)
                 with jobstore2.readFileStream(fileTwo) as f:
                     self.assertEqual(f.read(), two)
                 # Now update the first file from the local file ...
@@ -475,7 +475,7 @@ class AbstractJobStoreTest(object):
             finally:
                 os.unlink(path)
             # Create a third file to test the last remaining method.
-            with jobstore2.writeFileStream(jobOnJobStore1.jobStoreID) as (f, fileThree):
+            with jobstore2.writeFileStream(jobOnJobStore1.jobStoreID, cleanup=True) as (f, fileThree):
                 f.write(three)
             with jobstore1.readFileStream(fileThree) as f:
                 self.assertEqual(f.read(), three)
@@ -779,7 +779,7 @@ class AbstractJobStoreTest(object):
             n = self._batchDeletionSize()
             for numFiles in (1, n - 1, n, n + 1, 2 * n):
                 job = self.jobstore_initialized.create(self.arbitraryJob)
-                fileIDs = [self.jobstore_initialized.getEmptyFileStoreID(job.jobStoreID) for _ in range(0, numFiles)]
+                fileIDs = [self.jobstore_initialized.getEmptyFileStoreID(job.jobStoreID, cleanup=True) for _ in range(0, numFiles)]
                 self.jobstore_initialized.delete(job.jobStoreID)
                 for fileID in fileIDs:
                     # NB: the fooStream() methods return context managers
@@ -818,7 +818,7 @@ class AbstractJobStoreTest(object):
                 checksumThread.start()
                 try:
                     with open(random_device, 'rb') as readable:
-                        with self.jobstore_initialized.writeFileStream(job.jobStoreID) as (writable, fileId):
+                        with self.jobstore_initialized.writeFileStream(job.jobStoreID, cleanup=True) as (writable, fileId):
                             for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 checksumQueue.put(buf)
@@ -849,7 +849,7 @@ class AbstractJobStoreTest(object):
                                 buf = readable.read(bufSize)
                                 writable.write(buf)
                                 checksum.update(buf)
-                    fileId = self.jobstore_initialized.writeFile(path, job.jobStoreID)
+                    fileId = self.jobstore_initialized.writeFile(path, job.jobStoreID, cleanup=True)
                 finally:
                     os.unlink(path)
                 before = checksum.hexdigest()
@@ -869,10 +869,10 @@ class AbstractJobStoreTest(object):
         def testZeroLengthFiles(self):
             '''Test reading and writing of empty files.'''
             job = self.jobstore_initialized.create(self.arbitraryJob)
-            nullFile = self.jobstore_initialized.writeFile('/dev/null', job.jobStoreID)
+            nullFile = self.jobstore_initialized.writeFile('/dev/null', job.jobStoreID, cleanup=True)
             with self.jobstore_initialized.readFileStream(nullFile) as f:
                 assert not f.read()
-            with self.jobstore_initialized.writeFileStream(job.jobStoreID) as (f, nullStream):
+            with self.jobstore_initialized.writeFileStream(job.jobStoreID, cleanup=True) as (f, nullStream):
                 pass
             with self.jobstore_initialized.readFileStream(nullStream) as f:
                 assert not f.read()
@@ -893,7 +893,7 @@ class AbstractJobStoreTest(object):
 
             # Load the file into a jobstore.
             job = self.jobstore_initialized.create(self.arbitraryJob)
-            jobStoreFileID = self.jobstore_initialized.writeFile(filePath, job.jobStoreID)
+            jobStoreFileID = self.jobstore_initialized.writeFile(filePath, job.jobStoreID, cleanup=True)
 
             # Remove the local file.
             os.unlink(filePath)
@@ -989,7 +989,7 @@ class AbstractJobStoreTest(object):
         def testPartialReadFromStream(self):
             """Test whether readFileStream will deadlock on a partial read."""
             job = self.jobstore_initialized.create(self.arbitraryJob)
-            with self.jobstore_initialized.writeFileStream(job.jobStoreID) as (f, fileID):
+            with self.jobstore_initialized.writeFileStream(job.jobStoreID, cleanup=True) as (f, fileID):
                 # Write enough data to make sure the writer thread
                 # will get blocked on the write. Technically anything
                 # greater than the pipe buffer size plus the libc
@@ -1152,7 +1152,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         try:
             os.close(fh)
             job = self.jobstore_initialized.create(self.arbitraryJob)
-            fileID = self.jobstore_initialized.writeFile(path, job.jobStoreID)
+            fileID = self.jobstore_initialized.writeFile(path, job.jobStoreID, cleanup=True)
             self.assertTrue(fileID.endswith(os.path.basename(path)))
         finally:
             os.unlink(path)

@@ -380,8 +380,8 @@ class AWSJobStore(AbstractJobStore):
                         else:
                             self.filesBucket.delete_key(key_name=bytes(item.name))
 
-    def getEmptyFileStoreID(self, jobStoreID=None):
-        info = self.FileInfo.create(jobStoreID)
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+        info = self.FileInfo.create(jobStoreID if cleanup else None)
         with info.uploadStream() as _:
             # Empty
             pass
@@ -514,16 +514,16 @@ class AWSJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 's3'
 
-    def writeFile(self, localFilePath, jobStoreID=None):
-        info = self.FileInfo.create(jobStoreID)
+    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
+        info = self.FileInfo.create(jobStoreID if cleanup else None)
         info.upload(localFilePath)
         info.save()
         log.debug("Wrote %r of from %r", info, localFilePath)
         return info.fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None):
-        info = self.FileInfo.create(jobStoreID)
+    def writeFileStream(self, jobStoreID=None, cleanup=False):
+        info = self.FileInfo.create(jobStoreID if cleanup else None)
         with info.uploadStream() as writable:
             yield writable, info.fileID
         info.save()

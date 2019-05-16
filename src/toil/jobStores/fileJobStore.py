@@ -413,15 +413,15 @@ class FileJobStore(AbstractJobStore):
         # Glue it all together
         return '_'.join(parts)
 
-    def writeFile(self, localFilePath, jobStoreID=None):
-        absPath = self._getUniqueFilePath(localFilePath, jobStoreID, self._getUserCodeFunctionName())
+    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
+        absPath = self._getUniqueFilePath(localFilePath, jobStoreID if cleanup else None, self._getUserCodeFunctionName())
         relPath = self._getFileIdFromPath(absPath)
         shutil.copyfile(localFilePath, absPath)
         return relPath
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None):
-        absPath = self._getUniqueFilePath('stream', jobStoreID, self._getUserCodeFunctionName())
+    def writeFileStream(self, jobStoreID=None, cleanup=False):
+        absPath = self._getUniqueFilePath('stream', jobStoreID if cleanup else None, self._getUserCodeFunctionName())
         relPath = self._getFileIdFromPath(absPath)
         with open(absPath, 'wb') as f:
             # Don't yield while holding an open file descriptor to the temp
@@ -429,8 +429,8 @@ class FileJobStore(AbstractJobStore):
             # to clean ourselves up, somehow, for certain workloads.
             yield f, relPath
 
-    def getEmptyFileStoreID(self, jobStoreID=None):
-        with self.writeFileStream(jobStoreID) as (fileHandle, jobStoreFileID):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+        with self.writeFileStream(jobStoreID, cleanup) as (fileHandle, jobStoreFileID):
             return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
