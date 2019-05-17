@@ -25,6 +25,7 @@ import collections
 import importlib
 import inspect
 import logging
+import sys
 import os
 import time
 import dill
@@ -1419,7 +1420,11 @@ class FunctionWrappingJob(Job):
         """
         # Use the user-specified requirements, if specified, else grab the default argument
         # from the function, if specified, else default to None
-        argSpec = inspect.getargspec(userFunction)
+        if sys.version_info >= (3, 0):
+            argSpec = inspect.getfullargspec(userFunction)
+        else:
+            argSpec = inspect.getargspec(userFunction)
+
         if argSpec.defaults is None:
             argDict = {}
         else:

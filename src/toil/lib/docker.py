@@ -12,6 +12,7 @@ import base64
 import requests
 import logging
 import os
+import sys
 from docker.errors import create_api_error_from_http_exception
 from docker.errors import ContainerError
 from docker.errors import ImageNotFound
@@ -229,7 +230,6 @@ def apiDockerCall(job,
                                         user=user,
                                         environment=environment,
                                         **kwargs)
-
             return out
         else:
             if (stdout or stderr) and log_config is None:
