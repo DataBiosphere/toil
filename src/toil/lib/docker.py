@@ -230,8 +230,6 @@ def apiDockerCall(job,
                                         user=user,
                                         environment=environment,
                                         **kwargs)
-            if sys.version_info >= (3, 0):
-                out = out.decode('utf-8')
             return out
         else:
             if (stdout or stderr) and log_config is None:

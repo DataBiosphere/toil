@@ -16,6 +16,7 @@ import logging
 import signal
 import time
 import os
+import sys
 import uuid
 import docker
 from threading import Thread
@@ -258,6 +259,8 @@ class DockerTest(ToilTest):
         options.caching = disableCaching
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
+        if sys.version_info >= (3, 0):
+            rv = rv.decode('utf-8')
         assert rv.strip() == '2'
 
     def testDockerPipeChainErrorDetection(self, disableCaching=True):
