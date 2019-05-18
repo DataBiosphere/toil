@@ -170,11 +170,11 @@ class CWLTest(ToilTest):
             pass
 
     @slow
-    @pytest.mark.timeout(1800)
+    @pytest.mark.timeout(2400)
     def test_run_conformance(self, batchSystem=None):
         try:
             cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
-                   '--timeout=1800', '--basedir=' + self.workDir]
+                   '--timeout=2400', '--basedir=' + self.workDir]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
             subprocess.check_output(cmd, cwd=self.workDir, stderr=subprocess.STDOUT)
