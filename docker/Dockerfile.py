@@ -26,12 +26,13 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'python-dev',  # For installing Python packages with native code
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
                          'python3-pip',
-                         'libcurl4-openssl-dev',
+                        #  'libcurl4-openssl-dev',
+                        #  'libcurl3-dev',
                          'libssl-dev',
                          'wget',
                          'curl',
                          'openssh-server',
-                         'mesos=1.0.1-2.0.94.ubuntu1604',
+                         'mesos',
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen'])
@@ -58,7 +59,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    FROM ubuntu:16.04
+    FROM ubuntu:18.04
     
     RUN apt-get -y update && apt-get -y upgrade
 
@@ -74,6 +75,10 @@ print(heredoc('''
     RUN add-apt-repository -y ppa:jonathonf/python-3.6
     
     RUN apt-get -y update
+
+    RUN add-apt-repository ppa:xapienz/curl34
+
+    RUN apt-get update
 
     RUN apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
 
