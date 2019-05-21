@@ -214,8 +214,10 @@ class AWSProvisioner(AbstractProvisioner):
 
         # We should terminate the leader first in case a workflow is still running in the cluster.
         # The leader may create more instances while we're terminating the workers.
+        vpcId = None
         try:
             leader = self.getLeader(returnRawInstance=True)
+            vpcId = leader.vpc_id
             logger.info('Terminating the leader first ...')
             self._terminateInstances(instances=[leader])
             logger.info('Now terminating any remaining workers ...')
@@ -229,9 +231,8 @@ class AWSProvisioner(AbstractProvisioner):
         if spotIDs:
             self._ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
         instancesToTerminate = awsFilterImpairedNodes(instances, self._ctx.ec2)
-        vpcId = None
         if instancesToTerminate:
-            vpcId = instancesToTerminate[0].vpc_id
+            vpcId = vpcId or instancesToTerminate[0].vpc_id
             self._deleteIAMProfiles(instances=instancesToTerminate)
             self._terminateInstances(instances=instancesToTerminate)
         if len(instances) == len(instancesToTerminate):
