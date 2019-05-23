@@ -263,7 +263,7 @@ class UtilsTest(ToilTest):
         # Check the file is properly sorted
         with open(self.outputFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
-            self.assertEquals(self.correctSort, l2)
+            self.assertEqual(self.correctSort, l2)
 
         # Delete output file before next step
         os.remove(self.outputFile)
@@ -299,7 +299,7 @@ class UtilsTest(ToilTest):
         # Check the file is properly sorted
         with open(self.outputFile, 'r') as fileHandle:
             l2 = fileHandle.readlines()
-            self.assertEquals(self.correctSort, l2)
+            self.assertEqual(self.correctSort, l2)
 
         # Delete output file
         os.remove(self.outputFile)

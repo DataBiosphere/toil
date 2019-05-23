@@ -73,6 +73,16 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             memory = float(memory)/1024 # memory in KB
             disk = float(disk)/1024 # disk in KB
 
+            # NOTE: formatStdOutErrPath() puts files in the Toil workflow directory, which defaults
+            # to being in the system temporary directory ($TMPDIR, /tmp) which is unlikely to be on
+            # a shared filesystem. So to make this work we need to set should_transfer_files = Yes
+            # in the submit file, so that HTCondor will write the standard output/error files on the
+            # compute node, then transfer back once the job has completed.
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'std_error')
+
+            condorlogfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'job_events')
+
             # Execute the entire command as /bin/sh -c "command"
             # TODO: Transfer the jobStore directory if using a local file store with a relative path.
             submit_parameters = {
@@ -81,6 +91,10 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 'arguments': '''"-c '{0}'"'''.format(command).encode('utf-8'),    # Workaround for HTCondor Python bindings Unicode conversion bug
                 'environment': self.getEnvString(),
                 'getenv': 'True',
+                'should_transfer_files': 'Yes',   # See note above for stdoutfile, stderrfile
+                'output': stdoutfile,
+                'error': stderrfile,
+                'log': condorlogfile,
                 'request_cpus': '{0}'.format(cpu),
                 'request_memory': '{0:.3f}KB'.format(memory),
                 'request_disk': '{0:.3f}KB'.format(disk),

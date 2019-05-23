@@ -98,7 +98,7 @@ class MesosExecutor(Executor):
         Kill parent task process and all its spawned children
         """
         try:
-            pid = self.runningTasks[taskId]
+            pid = self.runningTasks[taskId.value]
             pgid = os.getpgid(pid)
         except KeyError:
             pass
@@ -212,15 +212,20 @@ class MesosExecutor(Executor):
                                         preexec_fn=lambda: os.setpgrp(),
                                         shell=True, env=jobEnv)
 
-        def sendUpdate(task, taskState, wallTime=None, msg=''):
+        def sendUpdate(task, taskState, wallTime, msg=''):
             update = addict.Dict()
             update.task_id.value = task.task_id.value
             if self.id is not None:
                 # Sign our messages as from us, since the driver doesn't do it.
                 update.executor_id.value = self.id
             update.state = taskState
-            update.timestamp = wallTime
             update.message = msg
+
+            # Add wallTime as a label.
+            labels = addict.Dict()
+            labels.labels = [{'key': 'wallTime', 'value': str(wallTime)}]
+            update.labels = labels
+
             driver.sendStatusUpdate(update)
 
         thread = threading.Thread(target=runTask)

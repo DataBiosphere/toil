@@ -24,7 +24,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'python3.6',
                          'python3.6-dev',
                          'python-dev',  # For installing Python packages with native code
-                         'python3-dev',
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
                          'python3-pip',
                          'libcurl4-openssl-dev',
@@ -63,7 +62,7 @@ print(heredoc('''
     
     RUN apt-get -y update && apt-get -y upgrade
 
-    RUN apt-get -y install apt-transport-https ca-certificates software-properties-common
+    RUN apt-get -y update --fix-missing && apt-get -y install apt-transport-https ca-certificates software-properties-common
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \

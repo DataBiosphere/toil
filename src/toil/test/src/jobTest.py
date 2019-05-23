@@ -85,7 +85,7 @@ class JobTest(ToilTest):
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCDEFG")
+            self.assertEqual(open(outFile, 'r').readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
 
@@ -125,7 +125,7 @@ class JobTest(ToilTest):
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
+            self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
 
@@ -200,7 +200,7 @@ class JobTest(ToilTest):
             rootJob.checkJobGraphAcylic()  # This should not throw an exception
             rootJob.checkJobGraphConnected()  # Nor this
             # Check root detection explicitly
-            self.assertEquals(rootJob.getRootJobs(), {rootJob})
+            self.assertEqual(rootJob.getRootJobs(), {rootJob})
 
             # Test making multiple roots
             childEdges2 = childEdges.copy()
@@ -437,7 +437,7 @@ class JobTest(ToilTest):
             for i in range(nodeNumber):
                 with open(os.path.join(tempDir, str(i)), 'r') as fH:
                     ordering = list(map(int, fH.readline().split()))
-                    self.assertEquals(int(ordering[-1]), i)
+                    self.assertEqual(int(ordering[-1]), i)
                     for j in ordering[:-1]:
                         adjacencyList[int(j)].add(i)
             # Check the ordering retains an acyclic graph

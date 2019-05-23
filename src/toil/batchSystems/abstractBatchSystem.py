@@ -279,6 +279,32 @@ class BatchSystemSupport(AbstractBatchSystem):
                 raise RuntimeError("%s does not exist in current environment", name)
         self.environment[name] = value
 
+    def formatStdOutErrPath(self, jobID, batchSystem, batchJobIDfmt, fileDesc):
+        """
+        Format path for batch system standard output/error and other files.
+
+        Files will be written to the Toil workflow directory with names containing
+        both the Toil and batch system job IDs, for ease of debugging job failures.
+
+        :param: string jobID : Toil job ID
+        :param: string batchSystem : Name of the batch system
+        :param: string batchJobIDfmt : A string which the particular batch system
+            will format into the batch job ID once it is submitted
+        :param: string fileDesc : File description, should be 'std_output' for standard
+             output, 'std_error' for standard error, and as appropriate for other files
+
+        :rtype: string : Formatted filename; however if self.config.noStdOutErr is true,
+             returns '/dev/null' or equivalent.
+
+        """
+        if self.config.noStdOutErr:
+            return os.devnull
+
+        workflowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
+        fileName = 'toil_job_{jobID}_batch_{batchSystem}_{batchJobIDfmt}_{fileDesc}.log'.format(
+            jobID=jobID, batchSystem=batchSystem, batchJobIDfmt=batchJobIDfmt, fileDesc=fileDesc)
+        return os.path.join(workflowDir, fileName)
+
     @staticmethod
     def workerCleanup(info):
         """

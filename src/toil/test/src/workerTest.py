@@ -55,25 +55,25 @@ class WorkerTests(ToilTest):
         jobGraph1 = createJobGraph(1, 2, 3, True, False)
         jobGraph2 = createJobGraph(1, 2, 3, True, False)
         jobGraph1.stack = [[jobGraph2]]
-        self.assertEquals(jobGraph2, nextChainableJobGraph(jobGraph1, self.jobStore))
+        self.assertEqual(jobGraph2, nextChainableJobGraph(jobGraph1, self.jobStore))
 
         # Identical checkpoint jobs should not be chainable.
         jobGraph1 = createJobGraph(1, 2, 3, True, False)
         jobGraph2 = createJobGraph(1, 2, 3, True, True)
         jobGraph1.stack = [[jobGraph2]]
-        self.assertEquals(None, nextChainableJobGraph(jobGraph1, self.jobStore))
+        self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
 
         # If there is no child we should get nothing to chain.
         jobGraph1 = createJobGraph(1, 2, 3, True, False)
         jobGraph1.stack = []
-        self.assertEquals(None, nextChainableJobGraph(jobGraph1, self.jobStore))
+        self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
 
         # If there are 2 or more children we should get nothing to chain.
         jobGraph1 = createJobGraph(1, 2, 3, True, False)
         jobGraph2 = createJobGraph(1, 2, 3, True, False)
         jobGraph3 = createJobGraph(1, 2, 3, True, False)
         jobGraph1.stack = [[jobGraph2, jobGraph3]]
-        self.assertEquals(None, nextChainableJobGraph(jobGraph1, self.jobStore))
+        self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
 
         # If there is an increase in resource requirements we should get nothing to chain.
         reqs = {'memory': 1, 'cores': 2, 'disk': 3, 'preemptable': True, 'checkpoint': False}
@@ -82,10 +82,10 @@ class WorkerTests(ToilTest):
             reqs[increased_attribute] += 1
             jobGraph2 = createJobGraph(**reqs)
             jobGraph1.stack = [[jobGraph2]]
-            self.assertEquals(None, nextChainableJobGraph(jobGraph1, self.jobStore))
+            self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
 
         # A change in preemptability from True to False should be disallowed.
         jobGraph1 = createJobGraph(1, 2, 3, True, False)
         jobGraph2 = createJobGraph(1, 2, 3, False, True)
         jobGraph1.stack = [[jobGraph2]]
-        self.assertEquals(None, nextChainableJobGraph(jobGraph1, self.jobStore))
+        self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))

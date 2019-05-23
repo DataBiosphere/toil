@@ -43,7 +43,7 @@ class MiscTests(ToilTest):
         prevNodeID = None
         for i in range(10, 1):
             nodeID = getNodeID()
-            self.assertEquals(nodeID, prevNodeID)
+            self.assertEqual(nodeID, prevNodeID)
             prevNodeID = nodeID
 
     @slow
@@ -156,8 +156,8 @@ class TestPanic(ToilTest):
 
     def __assert_raised_exception_is_primary(self):
         exc_type, exc_value, exc_traceback = sys.exc_info()
-        self.assertEquals(exc_type, ValueError)
-        self.assertEquals(str(exc_value), "primary")
+        self.assertEqual(exc_type, ValueError)
+        self.assertEqual(str(exc_value), "primary")
         while exc_traceback.tb_next is not None:
             exc_traceback = exc_traceback.tb_next
-        self.assertEquals(exc_traceback.tb_lineno, self.line_of_primary_exc)
+        self.assertEqual(exc_traceback.tb_lineno, self.line_of_primary_exc)

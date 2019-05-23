@@ -66,14 +66,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         if maxCores > self.numCores:
-            log.warn('Limiting maxCores to CPU count of system (%i).', self.numCores)
+            log.warning('Limiting maxCores to CPU count of system (%i).', self.numCores)
             maxCores = self.numCores
         if maxMemory > self.physicalMemory:
-            log.warn('Limiting maxMemory to physically available memory (%i).', self.physicalMemory)
+            log.warning('Limiting maxMemory to physically available memory (%i).', self.physicalMemory)
             maxMemory = self.physicalMemory
         self.physicalDisk = toil.physicalDisk(config)
         if maxDisk > self.physicalDisk:
-            log.warn('Limiting maxDisk to physically available disk (%i).', self.physicalDisk)
+            log.warning('Limiting maxDisk to physically available disk (%i).', self.physicalDisk)
             maxDisk = self.physicalDisk
         super(SingleMachineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= self.minCores
