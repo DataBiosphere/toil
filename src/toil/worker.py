@@ -147,7 +147,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             except OSError:
                 pass
             # Exit without doing any of Toil's cleanup
-            os._exit()
+            os._exit(0)
             
         # We don't need to reap the child. Either it kills us, or we finish
         # before it does. Either way, init will have to clean it up for us.
