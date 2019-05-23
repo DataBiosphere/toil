@@ -23,43 +23,43 @@ py2_batch_systems:
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/batchSystems/batchSystemTest.py
-    - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
-    - make test tests=src/toil/test/mesos/mesosTest.py
+    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+    - python -m pytest src/toil/test/mesos/mesosTest.py
 
 py2_cwl:
   stage: test
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/cwl/cwlTest.py
+    - python -m pytest src/toil/test/cwl/cwlTest.py
 
 py2_wdl:
   stage: test
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/wdl/toilwdlTest.py
+    - python -m pytest src/toil/test/wdl/toilwdlTest.py
 
 py2_jobstore_and_provisioning:
   stage: test
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/jobStores/jobStoreTest.py
-    - make test tests=src/toil/test/sort/sortTest.py
-    - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
-    # - make test tests=src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
-    - make test tests=src/toil/test/provisioners/clusterScalerTest.py
-    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+    - python -m pytest src/toil/test/sort/sortTest.py
+    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
+    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
+    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
+    - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
 
 py2_main:
   stage: main_tests
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
+    - python -m pytest src/toil/test/src
+    - python -m pytest src/toil/test/utils
 
 #
 # Python3.6
@@ -69,40 +69,40 @@ py3_batch_systems:
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/batchSystems/batchSystemTest.py
-    - make test tests=src/toil/test/mesos/MesosDataStructuresTest.py
-    - make test tests=src/toil/test/mesos/mesosTest.py
+    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+    - python -m pytest src/toil/test/mesos/mesosTest.py
 
 py3_cwl:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/cwl/cwlTest.py
+    - python -m pytest src/toil/test/cwl/cwlTest.py
 
 py3_wdl:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/wdl/toilwdlTest.py
+    - python -m pytest src/toil/test/wdl/toilwdlTest.py
 
 py3_jobstore_and_provisioning:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/jobStores/jobStoreTest.py
-    - make test tests=src/toil/test/sort/sortTest.py
-    - make test tests=src/toil/test/provisioners/aws/awsProvisionerTest.py
-    # - make test tests=src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
-    - make test tests=src/toil/test/provisioners/clusterScalerTest.py
-    - make test tests=src/toil/test/provisioners/gceProvisionerTest.py
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+    - python -m pytest src/toil/test/sort/sortTest.py
+    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
+    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
+    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
+    - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
 
 py3_main:
   stage: main_tests
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - make test tests=src/toil/test/src
-    - make test tests=src/toil/test/utils
+    - python -m pytest src/toil/test/src
+    - python -m pytest src/toil/test/utils
