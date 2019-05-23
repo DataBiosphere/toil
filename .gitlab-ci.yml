@@ -12,6 +12,7 @@ after_script:
 
 
 stages:
+  - main_tests
   - test
 
 #
@@ -53,7 +54,7 @@ py2_jobstore_and_provisioning:
     - make test tests=src/toil/test/provisioners/gceProvisionerTest.py
 
 py2_main:
-  stage: test
+  stage: main_tests
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all, htcondor]
@@ -99,7 +100,7 @@ py3_jobstore_and_provisioning:
     - make test tests=src/toil/test/provisioners/gceProvisionerTest.py
 
 py3_main:
-  stage: test
+  stage: main_tests
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all, htcondor]
