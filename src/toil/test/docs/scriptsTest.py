@@ -14,14 +14,13 @@ from toil.test import needs_cwl
 
 
 class ToilDocumentationTest(ToilTest):
-    """Tests for scripts in the toil tutorials"""
-
+    """Tests for scripts in the toil tutorials."""
     @classmethod
     def setUpClass(cls):
         cls.directory = os.path.dirname(os.path.abspath(__file__))
 
     def tearDown(self):
-    # src/toil/test/docs/scripts/cwlExampleFiles/sample_1_output.txt
+        # src/toil/test/docs/scripts/cwlExampleFiles/sample_1_output.txt
         output_files = ["sample_1_output.txt", "sample_2_output.txt", "sample_3_output.txt"]
         for output in output_files:
             output_file = os.path.join(self.directory, 'scripts/cwlExampleFiles', output)
@@ -141,7 +140,6 @@ class ToilDocumentationTest(ToilTest):
     def testWdlexample(self):
        self.checkExitCode("tutorial_wdlexample.py")"""
 
+
 if __name__ == "__main__":
     unittest.main()
-
-
