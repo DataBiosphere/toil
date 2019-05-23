@@ -593,7 +593,11 @@ class CWLJob(Job):
         tmp_outdir_prefix = os.path.join(
             _makeNestedTempDir(top=top_tmp_outdir, seed=outdir, levels=2),
             "out_tmpdir")
+        os.mkdir(tmp_outdir_prefix)
         self.openTempDirs.append(tmp_outdir_prefix)
+        # cwltool doesn't necessarily put a / in when it makes filenames with tmp_outdir_prefix.
+        # So make sure it actually ends up in a real directory with the name we made.
+        tmp_outdir_prefix = os.path.join(tmp_outdir_prefix, "tmp")
 
         index = {}
         existing = {}
