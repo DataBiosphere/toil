@@ -94,10 +94,6 @@ def awsRetry(f):
     return wrapper
 
 
-class InvalidClusterStateException(Exception):
-    pass
-
-
 class AWSProvisioner(AbstractProvisioner):
     """
     Implements an AWS provisioner using the boto libraries.
@@ -211,18 +207,6 @@ class AWSProvisioner(AbstractProvisioner):
         assert self._ctx
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
-
-        # We should terminate the leader first in case a workflow is still running in the cluster.
-        # The leader may create more instances while we're terminating the workers.
-        try:
-            leader = self.getLeader(returnRawInstance=True)
-            logger.info('Terminating the leader first ...')
-            self._terminateInstances(instances=[leader])
-            logger.info('Now terminating any remaining workers ...')
-        except (NoSuchClusterException, InvalidClusterStateException):
-            # It's ok if the leader is not found. We'll terminate any remaining
-            # instances below anyway.
-            pass
 
         instances = self._getNodesInCluster(nodeType=None, both=True)
         spotIDs = self._getSpotRequestIDs()
@@ -382,7 +366,7 @@ class AWSProvisioner(AbstractProvisioner):
             namespace = '/' + namespace + '/'
         return namespace.replace('-', '/')
 
-    def getLeader(self, wait=False, returnRawInstance=False):
+    def getLeader(self, wait=False):
         assert self._ctx
         instances = self._getNodesInCluster(nodeType=None, both=True)
         instances.sort(key=lambda x: x.launch_time)
@@ -391,7 +375,7 @@ class AWSProvisioner(AbstractProvisioner):
         except IndexError:
             raise NoSuchClusterException(self.clusterName)
         if (leader.tags.get(_TOIL_NODE_TYPE_TAG_KEY) or 'leader') != 'leader':
-            raise InvalidClusterStateException(
+            raise RuntimeError(
                 'Invalid cluster state! The first launched instance appears not to be the leader '
                 'as it is missing the "leader" tag. The safest recovery is to destroy the cluster '
                 'and restart the job. Incorrect Leader ID: %s' % leader.id
@@ -406,7 +390,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._waitForIP(leader)
             leaderNode.waitForNode('toil_leader')
 
-        return leader if returnRawInstance else leaderNode
+        return leaderNode
 
     @classmethod
     @awsRetry
