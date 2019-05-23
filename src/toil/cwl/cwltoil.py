@@ -561,6 +561,8 @@ class CWLJob(Job):
         self.runtime_context = runtime_context
         self.step_inputs = step_inputs or self.cwltool.tool["inputs"]
         self.workdir = runtime_context.workdir
+        # This tracks temporary directories that we create while running this job.
+        # They should be cleaned up by us when we finish.
         self.openTempDirs = []
 
     def run(self, file_store):
@@ -582,14 +584,20 @@ class CWLJob(Job):
             self.runtime_context.tmpdir or file_store.getLocalTempDir())
         outdir = os.path.join(file_store.getLocalTempDir(), "out")
         os.mkdir(outdir)
+        # Create per-job temporary output directories under the CWL workdir,
+        # which we also are using as our job store.
+        #
+        # TODO: Why don't we just use Toil's file_store.getLocalTempDir() under
+        # Toil's --workDir? Why do we have two notions of workdir?
         top_tmp_outdir = self.workdir or os.environ["TMPDIR"]
         tmp_outdir_prefix = os.path.join(
             _makeNestedTempDir(top=top_tmp_outdir, seed=outdir, levels=2),
             "out_tmpdir")
-        self.openTempDirs.append(top_tmp_outdir)
+        self.openTempDirs.append(tmp_outdir_prefix)
 
         index = {}
         existing = {}
+        # Prepare the run instructions for cwltool
         runtime_context = self.runtime_context.copy()
         runtime_context.basedir = os.getcwd()
         runtime_context.outdir = outdir
@@ -612,6 +620,10 @@ class CWLJob(Job):
         adjustFileObjs(output, functools.partial(
             uploadFile, functools.partial(writeGlobalFileWrapper, file_store),
             index, existing))
+
+        # Now all our outputs have been uploaded.
+        # Clean up after ourselves.
+        cleanTempDirs(self)
 
         return output
 
@@ -1030,7 +1042,7 @@ def visitSteps(t, op):
 
 def cleanTempDirs(job):
     """Remove temporarly created directories."""
-    if job is CWLJob and job._succeeded:  # Only CWLJobs have this attribute.
+    if isinstance(job, CWLJob) and job._succeeded:  # Only CWLJobs have this attribute.
         for tempDir in job.openTempDirs:
             if os.path.exists(tempDir):
                 shutil.rmtree(tempDir)
@@ -1253,8 +1265,6 @@ def main(args=None, stdout=sys.stdout):
                 return 33
 
             wf1.cwljob = initialized_job_order
-            if wf1 is CWLJob:  # Clean up temporary directories only created with CWLJobs.
-                wf1.addFollowOnFn(cleanTempDirs, wf1)
             outobj = toil.start(wf1)
 
         outobj = resolve_indirect(outobj)
