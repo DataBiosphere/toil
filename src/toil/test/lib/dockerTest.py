@@ -16,6 +16,7 @@ import logging
 import signal
 import time
 import os
+import sys
 import uuid
 import docker
 from threading import Thread
@@ -32,7 +33,7 @@ from toil.lib.docker import FORGO, STOP, RM
 logger = logging.getLogger(__name__)
 
 
-# @needs_appliance
+@needs_appliance
 class DockerTest(ToilTest):
     """
     Tests dockerCall and ensures no containers are left around.
@@ -259,7 +260,9 @@ class DockerTest(ToilTest):
         A = Job.wrapJobFn(_testDockerPipeChainFn)
         rv = Job.Runner.startToil(A, options)
         logger.info('Container pipeline result: %s', repr(rv))
-        assert rv.decode('utf-8').strip() == '2'
+        if sys.version_info >= (3, 0):
+            rv = rv.decode('utf-8')
+        assert rv.strip() == '2'
 
     def testDockerPipeChainErrorDetection(self, disableCaching=True):
         """
@@ -283,6 +286,7 @@ class DockerTest(ToilTest):
 
     def testNonCachingDockerChainErrorDetection(self):
         self.testDockerPipeChainErrorDetection(disableCaching=False)
+
 
 def _testDockerCleanFn(job,
                        working_dir,
@@ -323,13 +327,15 @@ def _testDockerCleanFn(job,
                   remove=rm,
                   privileged=True)
 
+
 def _testDockerPipeChainFn(job):
     """Return the result of a simple pipe chain.  Should be 2."""
-    parameters = [ ['printf', 'x\n y\n'], ['wc', '-l'] ]
+    parameters = [['printf', 'x\n y\n'], ['wc', '-l']]
     return apiDockerCall(job,
-                         image='quay.io/ucsc_cgl/spooky_test',
+                         image='ubuntu:latest',
                          parameters=parameters,
                          privileged=True)
+
 
 def _testDockerPipeChainErrorFn(job):
     """Return True if the command exit 1 | wc -l raises a ContainerError."""
