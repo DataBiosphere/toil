@@ -26,12 +26,11 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'python-dev',  # For installing Python packages with native code
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
                          'python3-pip',
-                         'libcurl4-openssl-dev',
                          'libssl-dev',
                          'wget',
                          'curl',
                          'openssh-server',
-                         'mesos=1.0.1-2.0.94.ubuntu1604',
+                         'mesos',
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen'])
