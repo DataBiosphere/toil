@@ -70,6 +70,11 @@ print(heredoc('''
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
 
     RUN add-apt-repository -y ppa:jonathonf/python-3.6
+
+    RUN add-apt-repository ppa:xapienz/curl34
+   
+    RUN apt-get update
+
     
     RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
 
