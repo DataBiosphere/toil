@@ -59,9 +59,6 @@ test. This test does not capture terminal output.
 
 The 'integration_test' target is the same as the previous except that it does capture output.
 
-The 'test_parallel' target runs Toil's unit tests in parallel and generates an XML test report
-from the results. It is designed to be used only in Jenkins.
-
 The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
 copy and the index are clean.
 
@@ -87,6 +84,10 @@ endef
 export help
 help:
 	@printf "$$help"
+
+
+
+
 
 # This Makefile uses bash features like printf and <()
 SHELL=bash
@@ -122,12 +123,14 @@ endif
 
 develop: check_venv
 	$(pip) install -e .$(extras)
+
 clean_develop: check_venv
 	- $(pip) uninstall -y toil
 	- rm -rf src/*.egg-info
 	- rm src/toil/version.py
 
 sdist: dist/$(sdist_name)
+
 dist/$(sdist_name): check_venv
 	@test -f dist/$(sdist_name) && mv dist/$(sdist_name) dist/$(sdist_name).old || true
 	$(python) setup.py sdist
@@ -137,6 +140,7 @@ dist/$(sdist_name): check_venv
 	         && printf "$(cyan)No significant changes to sdist, reinstating backup.$(normal)\n" \
 	         || rm dist/$(sdist_name).old ) \
 	    || true
+
 clean_sdist:
 	- rm -rf dist
 	- rm src/toil/version.py
@@ -155,30 +159,10 @@ test: check_venv check_build_reqs docker
 
 # For running integration tests locally in series (uses the -s argument for pyTest)
 integration_test_local: check_venv check_build_reqs sdist push_docker
-	TOIL_TEST_INTEGRATIVE=True \
-		$(python) run_tests.py --local integration-test $(tests)
+	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py --local integration-test $(tests)
 
-# These two targets are for backwards compatibility but will be removed shortly
-# FIXME when they are removed add check_running_on_jenkins to the jenkins targets
-test_parallel: jenkins_test_parallel
-
-integration_test: jenkins_test_integration
-
-# This target is designed only for use on Jenkins
-jenkins_test_parallel: check_venv check_build_reqs docker
-	$(python) run_tests.py test $(tests)
-
-# This target is designed only for use on Jenkins
-jenkins_test_integration: check_venv check_build_reqs sdist push_docker
-	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
-
-
-pypi: check_venv check_clean_working_copy check_running_on_jenkins
-	$(pip) install setuptools --upgrade
-	$(python) setup.py egg_info sdist bdist_egg upload
-clean_pypi:
-	- rm -rf build/
-
+test_integration: check_venv check_build_reqs docker
+    TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
@@ -196,7 +180,6 @@ define tag_docker
 	docker tag $1 $2
 	@printf "$(green)Tagged appliance image $1 as $2.$(normal)\n"
 endef
-
 
 docker: docker/Dockerfile
 	@set -ex \
@@ -254,26 +237,22 @@ endif
 docs: check_venv check_build_reqs
 	# Strange, but seemingly benign Sphinx warning floods stderr if not filtered:
 	cd docs && make html
+
 clean_docs: check_venv
 	- cd docs && make clean
 
-
 clean: clean_develop clean_sdist clean_pypi clean_docs
-
 
 check_build_reqs:
 	@$(python) -c 'import mock; import pytest' \
 		|| ( printf "$(red)Build requirements are missing. Run 'make prepare' to install them.$(normal)\n" ; false )
 
-
 prepare: check_venv
 	$(pip) install mock==1.0.1 pytest==4.3.1 pytest-cov==2.6.1 stubserver==1.0.1 pytest-timeout==1.3.3 cwltest
-
 
 check_venv:
 	@$(python) -c 'import sys, os; sys.exit( int( 0 if "VIRTUAL_ENV" in os.environ else 1 ) )' \
 		|| ( printf "$(red)A virtualenv must be active.$(normal)\n" ; false )
-
 
 check_clean_working_copy:
 	@printf "$(green)Checking if your working copy is clean ...$(normal)\n"
@@ -286,25 +265,16 @@ check_clean_working_copy:
 			; git ls-files --other --exclude-standard --directory \
 			; false )
 
-
-check_running_on_jenkins:
-	@printf "$(green)Checking if running on Jenkins ...$(normal)\n"
-	@test -n "$$BUILD_NUMBER" \
-		|| ( printf "$(red)This target should only be invoked on Jenkins.$(normal)\n" ; false )
-
-
 check_docker_registry:
 	@test "$(default_docker_registry)" != "$(TOIL_DOCKER_REGISTRY)" || test -n "$$BUILD_NUMBER" \
 		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY to a value other than \
 	$(default_docker_registry) and ensure that you have permissions to push \
 	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)\n' ; false )
 
-
 check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
 	# https://github.com/BD2KGenomics/toil/issues/1503
 	! find src -iname '*.py' | xargs grep 'cPickle.dump' | grep --invert-match HIGHEST_PROTOCOL
-
 
 .PHONY: help \
 		prepare \
@@ -312,7 +282,6 @@ check_cpickle:
 		develop clean_develop \
 		sdist clean_sdist \
 		test test_offline test_parallel integration_test \
-		jenkins_test_parallel jenkins_test_integration \
 		pypi clean_pypi \
 		docs clean_docs \
 		clean \

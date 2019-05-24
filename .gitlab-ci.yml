@@ -1,6 +1,7 @@
 before_script:
   - docker info
   - cat /etc/hosts
+  - export PYTHONIOENCODING=utf-8
 after_script:
   # We need to clean up any files that Toil may have made via Docker that
   # aren't deletable by the Gitlab user. If we don't do this, Gitlab will try
@@ -11,17 +12,97 @@ after_script:
 
 
 stages:
+  - main_tests
   - test
 
-
-py2-job:
+#
+# Python2.7
+#
+py2_batch_systems:
   stage: test
   script:
     - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && PYTHONIOENCODING=utf-8 make test
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+    - python -m pytest src/toil/test/mesos/mesosTest.py
 
-py3-job:
+py2_cwl:
   stage: test
   script:
     - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && PYTHONIOENCODING=utf-8 make test
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/cwl/cwlTest.py
+
+py2_wdl:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/wdl/toilwdlTest.py
+
+py2_jobstore_and_provisioning:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+    - python -m pytest src/toil/test/sort/sortTest.py
+    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
+    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
+    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
+    - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
+
+py2_main:
+  stage: main_tests
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/src
+    - python -m pytest src/toil/test/utils
+
+#
+# Python3.6
+#
+py3_batch_systems:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+    - python -m pytest src/toil/test/mesos/mesosTest.py
+
+py3_cwl:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/cwl/cwlTest.py
+
+py3_wdl:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/wdl/toilwdlTest.py
+
+py3_jobstore_and_provisioning:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+    - python -m pytest src/toil/test/sort/sortTest.py
+    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
+    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
+    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
+    - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
+
+py3_main:
+  stage: main_tests
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/src
+    - python -m pytest src/toil/test/utils
