@@ -75,18 +75,18 @@ def run_parallel_to_xml(suite, args):
         os.unlink(name)
     num_failures = 0
     index = itertools.count()
-    
+
     # Keep track of the running popen objects by keyword
     keyword_to_process = {}
     try:
         for keyword in suite:
             if keyword:
                 keyword_to_process[keyword] = run_to_xml(keyword, str(next(index)), args)
-                
+
         # We will periodically poll to see what is running, and every so many
         # loops we will announce it, so watching the Jenkins log isn't boring.
         loops = 0
-                
+
         while len(keyword_to_process) > 0:
             # Make a list of finished keywords
             finished = []
@@ -95,7 +95,7 @@ def run_parallel_to_xml(suite, args):
                     # This keyword has finished!
                     finished.append(keyword)
                     status = process.returncode
-                    
+
                     if status > 0:
                         num_failures += 1
                         if status < len(pytest_errors):
@@ -108,18 +108,18 @@ def run_parallel_to_xml(suite, args):
                         # We got a signal
                         num_failures += 1
                         log.info('Test keyword %s failed with code %d: abnormal exit', keyword, status)
-            
+
             for keyword in finished:
                 # Clean up the popen objects for finished test runs
                 del keyword_to_process[keyword]
-                
+
             if loops % 30 == 0:
                 # Announce what is still running about every 5 minutes
                 log.info('Still running at %d: %s', loops, str(list(keyword_to_process.keys())))
-                
+
             loops += 1
             time.sleep(10)
-                
+
     except:
         for process in keyword_to_process.values():
             process.terminate()
@@ -130,7 +130,7 @@ def run_parallel_to_xml(suite, args):
                                        for keyword in itertools.chain(*test_suites.values()))
         log.info('Starting other tests')
         process = run_to_xml(everything_else, str(next(index)), args)
-        
+
         loops = 0
         while process.poll() is None:
             if loops % 30 == 0:
