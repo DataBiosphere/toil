@@ -135,7 +135,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                         # Now check the file is properly sorted..
                         with open(options.outputFile, 'r') as fileHandle:
                             l2 = fileHandle.readlines()
-                            self.assertEquals(l, l2)
+                            self.assertEqual(l, l2)
 
                 options.restart = False
 
@@ -268,7 +268,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             sort(tempFile1)
             with open(tempFile1, 'r') as f:
                 lines2 = f.readlines()
-            self.assertEquals(lines1, lines2)
+            self.assertEqual(lines1, lines2)
 
     def testMerge(self):
         for test in range(self.testNo):
@@ -287,7 +287,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             lines1.sort()
             with open(tempFile3, 'r') as f:
                 lines2 = f.readlines()
-            self.assertEquals(lines1, lines2)
+            self.assertEqual(lines1, lines2)
 
     def testCopySubRangeOfFile(self):
         for test in range(self.testNo):
@@ -304,7 +304,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
                 l = f.read()
             with open(tempFile, 'r') as f:
                 l2 = f.read()[fileStart:fileEnd]
-            self.assertEquals(l, l2)
+            self.assertEqual(l, l2)
 
     def testGetMidPoint(self):
         for test in range(self.testNo):

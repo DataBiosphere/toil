@@ -173,10 +173,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             else:
                 bsubMem = []
             bsubCpu = [] if cpu is None else ['-n', str(math.ceil(cpu))]
-            bsubline = ["bsub", "-cwd", ".", "-o", "/dev/null",
-                        "-e", "/dev/null", "-J", "toil_job_{}".format(jobID)]
+            bsubline = ["bsub", "-cwd", ".", "-J", "toil_job_{}".format(jobID)]
             bsubline.extend(bsubMem)
             bsubline.extend(bsubCpu)
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_error')
+            bsubline.extend(['-o', stdoutfile, '-e', stderrfile])
             lsfArgs = os.getenv('TOIL_LSF_ARGS')
             if lsfArgs:
                 bsubline.extend(lsfArgs.split())

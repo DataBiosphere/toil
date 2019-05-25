@@ -24,7 +24,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'python3.6',
                          'python3.6-dev',
                          'python-dev',  # For installing Python packages with native code
-                         'python3-dev',
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
                          'python3-pip',
                          'libcurl4-openssl-dev',
@@ -61,9 +60,7 @@ motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 print(heredoc('''
     FROM ubuntu:16.04
     
-    RUN apt-get -y update && apt-get -y upgrade
-
-    RUN apt-get -y install apt-transport-https ca-certificates software-properties-common
+    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
@@ -74,9 +71,7 @@ print(heredoc('''
 
     RUN add-apt-repository -y ppa:jonathonf/python-3.6
     
-    RUN apt-get -y update
-
-    RUN apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
+    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
