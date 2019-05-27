@@ -4,7 +4,7 @@ Introduction
 ============
 
 Toil runs in various environments, including :ref:`locally <fileJobStore>` and :ref:`in the cloud <cloudOverview>`
-(Amazon Web Services, Google Compute Engine, and Microsoft Azure).  Toil also supports two DSLs: :ref:`CWL <cwl>` and
+(Amazon Web Services and Google Compute Engine).  Toil also supports two DSLs: :ref:`CWL <cwl>` and
 :ref:`WDL <wdl>` (experimental).
 
 Toil is built in a modular way so that it can be used on lots of different systems, and with different configurations.
@@ -41,7 +41,6 @@ Cloud Job Stores
 Toil currently supports the following cloud storage systems as job stores:
 
  - :ref:`awsJobStore`: An AWS S3 bucket formatted as "aws:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `aws:us-west-2:my-aws-jobstore-name`.
- - :ref:`azureJobStore`: Experimental.
  - :ref:`googleJobStore`: A Google Cloud Storage bucket formatted as "gce:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `gce:us-west2-a:my-google-jobstore-name`.
 
 These use cloud buckets to house all of the files. This is useful if there are several different
@@ -71,7 +70,5 @@ The :ref:`clusterRef` are command line tools used to provision nodes in your des
 They allows you to launch nodes, ssh to the leader, and rsync files back and forth.
 
 For detailed instructions for using the provisioner see :ref:`runningAWS` or :ref:`runningGCE`. An
-Azure provisioner is in the works and coming soon. For more details see the `Azure provisioner github ticket`_.
 
-.. _Azure provisioner github ticket: https://github.com/BD2KGenomics/toil/pull/1912
 
