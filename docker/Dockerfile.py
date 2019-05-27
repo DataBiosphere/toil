@@ -58,7 +58,7 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    FROM ubuntu:18.04
+    FROM ubuntu:16.04
     
     RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
 
