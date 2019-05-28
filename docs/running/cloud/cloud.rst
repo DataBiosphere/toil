@@ -24,13 +24,15 @@ Toil can launch and manage a cluster of virtual machines to run using the *provi
 distributed over several nodes. The provisioner also has the ability to automatically scale up or down the size of
 the cluster to handle dynamic changes in computational demand (autoscaling).
 
-Currently we have working provisioners with AWS and GCE.
+Currently we have working provisioners with AWS and GCE with Azure coming soon.
 
 Toil uses `Apache Mesos`_ as the :ref:`batchSystemOverview`.
 
 See here for instructions for :ref:`runningAWS`.
 
 See here for instructions for :ref:`runningGCE`.
+
+See `here <https://github.com/BD2KGenomics/toil/pull/1912>`_ for the latest details on the development of the Azure provisioner.
 
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 
@@ -39,7 +41,7 @@ See here for instructions for :ref:`runningGCE`.
 Storage (Toil jobStore)
 -----------------------
 
-Toil can make use of cloud storage such as AWS or Google buckets to take of care of storage needs.
+Toil can make use of cloud storage such as Azure, AWS, or Google buckets to take of care of storage needs.
 
 This is useful when running Toil in single machine mode on any cloud platform since it allows you to
 make use of their integrated storage systems.
@@ -52,6 +54,8 @@ For instructions configuring a particular job store see:
 
 - :ref:`awsJobStore`
 
+- :ref:`azureJobStore`
+
 - :ref:`googleJobStore`
 
 Cloud Platforms
@@ -59,5 +63,6 @@ Cloud Platforms
 
 .. toctree::
     amazon
+    azure
     gce
     clusterUtils
