@@ -71,7 +71,7 @@ The :ref:`clusterRef` are command line tools used to provision nodes in your des
 They allows you to launch nodes, ssh to the leader, and rsync files back and forth.
 
 For detailed instructions for using the provisioner see :ref:`runningAWS` or :ref:`runningGCE`. An
-Azure provisioner is in the works and coming soon. For more details see the `Azure provisioner github ticket`_.
+Azure provisioner working but has limited support. For more details see the `Azure provisioner github ticket`_.
 
 .. _Azure provisioner github ticket: https://github.com/BD2KGenomics/toil/pull/1912
 
