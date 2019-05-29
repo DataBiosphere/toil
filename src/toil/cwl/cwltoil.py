@@ -846,20 +846,20 @@ class SourceMerge(object):
     def __init__(
             self,
             sources,
-            cond_merge_type=None,
+            branch_select_type=None,
             link_merge_type=None):
         self.sources = sources
-        self.cond_merge_type = cond_merge_type
+        self.branch_select_type = branch_select_type
         self.link_merge_type = link_merge_type
 
     def resolve(self):
-        """First apply condMerge if present, then apply linkMerge"""
+        """First apply branchSelect if present, then apply linkMerge"""
         result = [promise[1][promise[0]] for promise in self.sources]
 
-        if self.cond_merge_type is not None:
+        if self.branch_select_type is not None:
             result = self.cond_merge(result)
 
-        if self.link_merge_type or len(result) > 1:
+        if self.link_merge_type or (isinstance(result, list) and len(result)) > 1:
             result = self.link_merge(result)
 
         # Convert any skipNulls that remain into Nones
@@ -870,33 +870,32 @@ class SourceMerge(object):
         return result
 
     def cond_merge(self, items):
-        if self.cond_merge_type == "first_non_skip":
+        if self.branch_select_type == "first_that_ran":
             for item in items:
                 if not isinstance(item, SkipNull):
                     return item
             else:
                 return None
 
-        elif self.cond_merge_type == "ignore_skip":
+        elif self.branch_select_type == "all_that_ran":
             return [
                 item for item in items if not isinstance(item, SkipNull)
             ]
 
-        elif self.cond_merge_type == "only_one":
+        elif self.branch_select_type == "the_one_that_ran":
             result = None
             for item in items:
                 if not isinstance(item, SkipNull):
                     if result is not None:
                         raise validate.ValidationException(
-                            "condMerge only_one found multiple items")
+                            "branchSelect `the_one_that_ran` found multiple items")
                     else:
                         result = item
             return result
 
         else:
             raise validate.ValidationException(
-                "Unsupported condMerge '%s'" %
-                self.cond_merge_type)
+                "Unsupported branchSelect '%s'" % self.branch_select_type)
 
     def link_merge(self, items):
         if self.link_merge_type is None or self.link_merge_type == "merge_nested":
@@ -922,7 +921,7 @@ class SourceMerge(object):
                 cwllogger.warning(
                     "SkipNull result found and cast to None. \n"
                     "You had a conditional step that did not run, \n"
-                    "but you did not use condMerge to handle the skipped input.")
+                    "but you did not use branchSelect to handle the skipped input.")
                 r = None
             _result.append(r)
         return _result
@@ -990,7 +989,7 @@ class CWLWorkflow(Job):
                                         SourceMerge(
                                             [(shortname(s), promises[s].rv())
                                              for s in aslist(inp["source"])],
-                                            cond_merge_type=inp.get("condMerge"),
+                                            branch_select_type=inp.get("branchSelect"),
                                             link_merge_type=inp.get("linkMerge")))
 
                                 else:
@@ -1031,7 +1030,7 @@ class CWLWorkflow(Job):
                                         self.cwlwf.requirements)
 
                         conditional = Conditional(
-                            expression=step.tool.get("run_if"),
+                            expression=step.tool.get("runIf"),
                             outputs=step.tool["out"],
                             requirements=self.cwlwf.requirements)
 
@@ -1094,7 +1093,7 @@ class CWLWorkflow(Job):
                     SourceMerge(
                         [(shortname(s), promises[s].rv())
                          for s in aslist(out["outputSource"])],
-                    cond_merge_type=out.get("condMerge"),
+                    branch_select_type=out.get("branchSelect"),
                     link_merge_type=out.get("linkMerge")))
 
             else:
