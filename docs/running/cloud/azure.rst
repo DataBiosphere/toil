@@ -8,7 +8,7 @@ workflows.  You'll need an account in Azure prior to executing the steps in the 
 :ref:`prepareAzure`.
 
 .. warning::
-   Azure support in Toil is still experimental and has limited support!
+   Azure support in Toil is in an experimental state and has limited support!
 
 .. _prepareAzure:
 
