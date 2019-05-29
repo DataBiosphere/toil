@@ -41,7 +41,6 @@ Cloud Job Stores
 Toil currently supports the following cloud storage systems as job stores:
 
  - :ref:`awsJobStore`: An AWS S3 bucket formatted as "aws:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `aws:us-west-2:my-aws-jobstore-name`.
- - :ref:`azureJobStore`: Experimental.
  - :ref:`googleJobStore`: A Google Cloud Storage bucket formatted as "gce:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `gce:us-west2-a:my-google-jobstore-name`.
 
 These use cloud buckets to house all of the files. This is useful if there are several different
