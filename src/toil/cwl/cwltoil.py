@@ -847,10 +847,12 @@ class SourceMerge(object):
             self,
             sources,
             branch_select_type=None,
-            link_merge_type=None):
+            link_merge_type=None,
+            name="No name"):
         self.sources = sources
         self.branch_select_type = branch_select_type
         self.link_merge_type = link_merge_type
+        self.name = name
 
     def resolve(self):
         """First apply branchSelect if present, then apply linkMerge"""
@@ -883,14 +885,21 @@ class SourceMerge(object):
             ]
 
         elif self.branch_select_type == "the_one_that_ran":
-            result = None
+            result = SkipNull()
             for item in items:
                 if not isinstance(item, SkipNull):
-                    if result is not None:
+                    if not isinstance(result, SkipNull):
                         raise validate.ValidationException(
-                            "branchSelect `the_one_that_ran` found multiple items")
+                            "In %s, `branchSelect: the_one_that_ran` found multiple items" % self.name)
                     else:
                         result = item
+
+            if isinstance(result, SkipNull):
+                result = None
+                cwllogger.warning(
+                    "In %s, `branchSelect: the_one_that_ran` found nothing that ran. \n"
+                    "You may have a problem with your conditional expressions.\n" % self.name)
+
             return result
 
         else:
@@ -990,7 +999,8 @@ class CWLWorkflow(Job):
                                             [(shortname(s), promises[s].rv())
                                              for s in aslist(inp["source"])],
                                             branch_select_type=inp.get("branchSelect"),
-                                            link_merge_type=inp.get("linkMerge")))
+                                            link_merge_type=inp.get("linkMerge"),
+                                            name="%s/%s" % (step.tool["id"], key)))
 
                                 else:
                                     inpSource = inp["source"]
@@ -1094,7 +1104,8 @@ class CWLWorkflow(Job):
                         [(shortname(s), promises[s].rv())
                          for s in aslist(out["outputSource"])],
                     branch_select_type=out.get("branchSelect"),
-                    link_merge_type=out.get("linkMerge")))
+                    link_merge_type=out.get("linkMerge"),
+                    name="workflow output '%s'" % key))
 
             else:
                 # A CommentedSeq of length one still appears here rarely -
