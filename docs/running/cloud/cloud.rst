@@ -24,7 +24,9 @@ Toil can launch and manage a cluster of virtual machines to run using the *provi
 distributed over several nodes. The provisioner also has the ability to automatically scale up or down the size of
 the cluster to handle dynamic changes in computational demand (autoscaling).
 
-Currently we have working provisioners with AWS and GCE with Azure coming soon.
+Currently we have working provisioners with AWS and GCE. Azure provisioner has limited support and is unmaintained. 
+We've left our previous working Azure support in place, but cannot guarantee it will work in the future since we no longer have the 
+resuorces to continue testing with Azure. 
 
 Toil uses `Apache Mesos`_ as the :ref:`batchSystemOverview`.
 

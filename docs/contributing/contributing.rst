@@ -93,7 +93,7 @@ can be made available for local testing:
         $ export TOIL_X_KEYNAME=[Your Keyname]
         $ export TOIL_X_ZONE=[Desired Zone]
 
-   Where ``X`` is one of our currently supported cloud providers (``AZURE``, ``GCE``, ``AWS``).
+   Where ``X`` is one of our currently supported cloud providers (``AZURE (limited support)``, ``GCE``, ``AWS``).
 
  - For example, to prepare for running Azure related integration tests in the ``westus`` region::
 
