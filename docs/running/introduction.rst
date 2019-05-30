@@ -69,8 +69,8 @@ The Toil provisioner provides a tool set for running a Toil workflow on a partic
 The :ref:`clusterRef` are command line tools used to provision nodes in your desired cloud platform.
 They allows you to launch nodes, ssh to the leader, and rsync files back and forth.
 
-For detailed instructions for using the provisioner see :ref:`runningAWS` or :ref:`runningGCE`. An
-Azure provisioner is working but has limited support. For more details see the `Azure provisioner github ticket`_.
+For detailed instructions for using the provisioner see :ref:`runningAWS` or :ref:`runningGCE`.
+Azure provisioner has limited support. For more details see the `Azure provisioner github ticket`_.
 
 .. _Azure provisioner github ticket: https://github.com/BD2KGenomics/toil/pull/1912
 
