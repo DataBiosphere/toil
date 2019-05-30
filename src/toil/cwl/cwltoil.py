@@ -879,11 +879,6 @@ class SourceMerge(object):
             else:
                 return None
 
-        elif self.branch_select_type == "all_that_ran":
-            return [
-                item for item in items if not isinstance(item, SkipNull)
-            ]
-
         elif self.branch_select_type == "the_one_that_ran":
             result = SkipNull()
             for item in items:
@@ -902,6 +897,16 @@ class SourceMerge(object):
 
             return result
 
+        elif self.branch_select_type == "all_that_ran":
+            # This one is special because we could have a nested list as a result of scattering
+            def _strip_skip(_items):
+                if isinstance(_items, list):
+                    return [_strip_skip(_i) for _i in _items if not isinstance(_i, SkipNull)]
+                else:
+                    return _items
+
+            return _strip_skip(items)
+
         else:
             raise validate.ValidationException(
                 "Unsupported branchSelect '%s'" % self.branch_select_type)
@@ -917,6 +922,7 @@ class SourceMerge(object):
                     result.extend(item)
                 else:
                     result.append(item)
+            return result
 
         else:
             raise validate.ValidationException(
@@ -928,9 +934,9 @@ class SourceMerge(object):
         for r in items:
             if isinstance(r, SkipNull):
                 cwllogger.warning(
-                    "SkipNull result found and cast to None. \n"
-                    "You had a conditional step that did not run, \n"
-                    "but you did not use branchSelect to handle the skipped input.")
+                    "In %s, SkipNull result found and cast to None. \n"
+                    "You had a conditional step that did not run, "
+                    "but you did not use branchSelect to handle the skipped input." % self.name)
                 r = None
             _result.append(r)
         return _result
@@ -1103,9 +1109,9 @@ class CWLWorkflow(Job):
                     SourceMerge(
                         [(shortname(s), promises[s].rv())
                          for s in aslist(out["outputSource"])],
-                    branch_select_type=out.get("branchSelect"),
-                    link_merge_type=out.get("linkMerge"),
-                    name="workflow output '%s'" % key))
+                        branch_select_type=out.get("branchSelect"),
+                        link_merge_type=out.get("linkMerge"),
+                        name="workflow output '%s'" % key))
 
             else:
                 # A CommentedSeq of length one still appears here rarely -
