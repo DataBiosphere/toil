@@ -25,7 +25,7 @@ from uuid import uuid4
 
 from toil.job import Job
 from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.fileStore import CacheUnbalancedError
@@ -91,6 +91,7 @@ class hidden(object):
             return None
 
         # Sanity test
+        @travis_test
         def testToilIsNotBroken(self):
             """
             Runs a simple DAG to test if if any features other that caching were broken.
@@ -170,20 +171,21 @@ class hidden(object):
                 i += 1
 
         # Tests for the various defer possibilities
+        @travis_test
         def testDeferredFunctionRunsWithMethod(self):
             """
             Refer docstring in _testDeferredFunctionRuns.
             Test with Method
             """
             self._testDeferredFunctionRuns(self._writeNonLocalFilesMethod)
-
+        @travis_test
         def testDeferredFunctionRunsWithClassMethod(self):
             """
             Refer docstring in _testDeferredFunctionRuns.
             Test with Class Method
             """
             self._testDeferredFunctionRuns(self._writeNonLocalFilesClassMethod)
-
+        @travis_test
         def testDeferredFunctionRunsWithLambda(self):
             """
             Refer docstring in _testDeferredFunctionRuns.
@@ -395,7 +397,7 @@ class hidden(object):
             """
             for testFile in files:
                 assert os.path.exists(testFile) is expectedResult
-
+        @travis_test
         def testBatchSystemCleanupCanHandleWorkerDeaths(self):
             """
             Create a non-local files. Create a job that registers a deferred job to delete the file
@@ -782,6 +784,7 @@ class hidden(object):
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
+        @travis_test
         def testWriteNonLocalFileToJobStore(self):
             """
             Write a file not in localTempDir to the job store.  Such a file should not be cached.
@@ -791,7 +794,7 @@ class hidden(object):
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=False,
                               nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
-
+        @travis_test
         def testWriteLocalFileToJobStore(self):
             """
             Write a file from the localTempDir to the job store.  Such a file will be cached by
@@ -801,13 +804,14 @@ class hidden(object):
             Job.Runner.startToil(A, self.options)
 
         # readGlobalFile tests
+        @travis_test
         def testReadCacheMissFileFromJobStoreWithoutCachingReadFile(self):
             """
             Read a file from the file store that does not have a corresponding cached copy.  Do not
             cache the read file.  Ensure the number of links on the file are appropriate.
             """
             self._testCacheMissFunction(cacheReadFile=False)
-
+        @travis_test
         def testReadCacheMissFileFromJobStoreWithCachingReadFile(self):
             """
             Read a file from the file store that does not have a corresponding cached copy.  Cache
@@ -863,7 +867,7 @@ class hidden(object):
                 return None
             else:
                 return outfile
-
+        @travis_test
         def testReadCachHitFileFromJobStore(self):
             """
             Read a file from the file store that has a corresponding cached copy.  Ensure the number
@@ -1215,7 +1219,7 @@ class hidden(object):
                     outfile = testFile.name
                 else:
                     break
-
+        @travis_test
         def testDeleteLocalFile(self):
             """
             Test the deletion capabilities of deleteLocalFile

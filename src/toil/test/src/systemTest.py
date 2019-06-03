@@ -5,13 +5,14 @@ import os
 import tempfile
 from functools import partial
 
-from toil.test import ToilTest
+from toil.test import ToilTest, travis_test
 
 
 class SystemTest(ToilTest):
     """
     Test various assumptions about the operating system's behavior
     """
+    @travis_test
     def testAtomicityOfNonEmptyDirectoryRenames(self):
         for _ in range(100):
             parent = self._createTempDir(purpose='parent')
