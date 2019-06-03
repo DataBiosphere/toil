@@ -1,6 +1,9 @@
 Static Azure Clusters
 *********************
 
+.. warning::
+   Azure support in Toil is in an experimental state and has limited support!
+
 This section describes how to launch Azure virtual machines to create a static
 (non-autoscaling) cluster.
 

@@ -7,8 +7,8 @@ This section describes how to deploy a leader node in Azure and launch a Toil cl
 workflows.  You'll need an account in Azure prior to executing the steps in the document.  To setup Azure, see
 :ref:`prepareAzure`.
 
-.. note::
-   Azure support in Toil is still experimental and in Beta!
+.. warning::
+   Azure support in Toil is in an experimental state and has limited support!
 
 .. _prepareAzure:
 
@@ -64,9 +64,6 @@ Follow the steps below to prepare your Azure environment for running a Toil work
 
 Running a Workflow with Autoscaling
 -----------------------------------
-
-.. warning::
-   Azure Autoscaling is in beta!
 
 The steps to run a Azure workflow are similar to those of AWS (:ref:`Autoscaling`), except you will
 need to explicitly specify the ``--provisioner azure`` option which otherwise defaults to ``aws``.
