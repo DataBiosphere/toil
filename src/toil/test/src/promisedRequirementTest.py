@@ -102,9 +102,6 @@ class hidden(object):
             return counterPath
 
         @travis_test
-        """
-        "Purpose of this test? 
-        """
         def testJobConcurrency(self):
             pass
         @travis_test
