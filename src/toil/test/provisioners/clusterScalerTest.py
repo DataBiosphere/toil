@@ -337,7 +337,7 @@ class ClusterScalerTest(ToilTest):
                                 preemptable=False)] * 1000)
         estimatedNodeCounts = scaler.getEstimatedNodeCounts(jobShapes, defaultdict(int))
         self.assertEqual(estimatedNodeCounts[r3_8xlarge], 2)
-            self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptable], 3)
+        self.assertEqual(estimatedNodeCounts[c4_8xlarge_preemptable], 3)
     @travis_test
     def testMinNodes(self):
         """
