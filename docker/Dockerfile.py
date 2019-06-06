@@ -27,7 +27,6 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
                          'python3-pip',
                          'libcurl4-openssl-dev',
-                        #  'libcurl4',
                          'libssl-dev',
                          'wget',
                          'curl',
