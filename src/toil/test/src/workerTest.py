@@ -17,7 +17,7 @@ from toil.common import Config
 from toil.job import Job
 from toil.jobGraph import JobGraph
 from toil.jobStores.fileJobStore import FileJobStore
-from toil.test import ToilTest
+from toil.test import ToilTest, travis_test
 from toil.worker import nextChainableJobGraph
 
 class WorkerTests(ToilTest):
@@ -30,7 +30,7 @@ class WorkerTests(ToilTest):
         self.config.jobStore = 'file:%s' % path
         self.jobStore.initialize(self.config)
         self.jobGraphNumber = 0
-
+    @travis_test
     def testNextChainableJobGraph(self):
         """Make sure chainable/non-chainable jobs are identified correctly."""
         def createJobGraph(memory, cores, disk, preemptable, checkpoint):

@@ -34,7 +34,7 @@ from toil import resolveEntryPoint
 from toil.job import Job
 from toil.utils.toilStatus import ToilStatus
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow, needs_cwl, needs_docker
+from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -303,7 +303,7 @@ class UtilsTest(ToilTest):
 
         # Delete output file
         os.remove(self.outputFile)
-
+    @travis_test
     def testUnicodeSupport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.clean = 'always'
@@ -334,7 +334,7 @@ class UtilsTest(ToilTest):
             if i > seconds:
                 s = status_fn(self.toilDir)
                 self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
-
+    @travis_test
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
         wf = subprocess.Popen(self.sort_workflow_cmd)
@@ -346,7 +346,7 @@ class UtilsTest(ToilTest):
         # delete this shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
         self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
-
+    @travis_test
     def testGetStatusFailedToilWF(self):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.

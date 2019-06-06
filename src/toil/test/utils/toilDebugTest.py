@@ -18,7 +18,7 @@ import shutil
 import logging
 
 from toil import subprocess
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, travis_test
 from toil.utils.toilDebugFile import recursiveGlob
 
 logger = logging.getLogger(__name__)
@@ -71,11 +71,13 @@ class ToilDebugFileTest(ToilTest):
         os.remove(jobstoreFileContents)
 
     # expected run time = 4s
+    @travis_test
     def testFetchJobStoreFiles(self):
         """Test toilDebugFile.fetchJobStoreFiles() without using symlinks."""
         self.fetchFiles(symLink=False)
 
     # expected run time = 4s
+    @travis_test
     def testFetchJobStoreFilesWSymlinks(self):
         """Test toilDebugFile.fetchJobStoreFiles() using symlinks."""
         self.fetchFiles(symLink=True)
