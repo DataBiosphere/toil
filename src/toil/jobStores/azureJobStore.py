@@ -326,10 +326,11 @@ class AzureJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() in ('wasb', 'wasbs')
 
-    def writeFile(self, localFilePath, jobStoreID=None):
+    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         jobStoreFileID = self._newFileID()
         self.updateFile(jobStoreFileID, localFilePath)
-        self._associateFileWithJob(jobStoreFileID, jobStoreID)
+        if cleanup:
+            self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
@@ -371,25 +372,27 @@ class AzureJobStore(AbstractJobStore):
             return False
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False):
         # TODO: this (and all stream methods) should probably use the
         # Append Blob type, but that is not currently supported by the
         # Azure Python API.
         jobStoreFileID = self._newFileID()
         with self._uploadStream(jobStoreFileID, self.files) as fd:
             yield fd, jobStoreFileID
-        self._associateFileWithJob(jobStoreFileID, jobStoreID)
+        if cleanup:
+            self._associateFileWithJob(jobStoreFileID, jobStoreID)
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
         with self._uploadStream(jobStoreFileID, self.files, checkForModification=True) as fd:
             yield fd
 
-    def getEmptyFileStoreID(self, jobStoreID=None):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
         jobStoreFileID = self._newFileID()
         with self._uploadStream(jobStoreFileID, self.files) as _:
             pass
-        self._associateFileWithJob(jobStoreFileID, jobStoreID)
+        if cleanup:
+            self._associateFileWithJob(jobStoreFileID, jobStoreID)
         return jobStoreFileID
 
     @contextmanager

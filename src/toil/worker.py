@@ -147,7 +147,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             except OSError:
                 pass
             # Exit without doing any of Toil's cleanup
-            os._exit()
+            os._exit(0)
             
         # We don't need to reap the child. Either it kills us, or we finish
         # before it does. Either way, init will have to clean it up for us.
@@ -471,7 +471,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
     #Copy back the log file to the global dir, if needed
     if workerFailed and redirectOutputToLogFile:
-        jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID)
+        jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID, cleanup=True)
         jobGraph.chainedJobs = listOfJobs
         with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
             with open(tempWorkerLogPath, "r") as f:

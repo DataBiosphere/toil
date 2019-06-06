@@ -569,6 +569,7 @@ class Job(BaseJob):
         if self._promiseJobStore is None:
             raise RuntimeError('Trying to pass a promise from a promising job that is not a ' +
                                'predecessor of the job receiving the promise')
+        # TODO: can we guarantee self.jobStoreID is populated and so pass that here?
         with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
             promise = UnfulfilledPromiseSentinel(str(self), False)
             pickle.dump(promise, fileHandle, pickle.HIGHEST_PROTOCOL)
@@ -1147,7 +1148,7 @@ class Job(BaseJob):
         # The pickled job is "run" as the command of the job, see worker
         # for the mechanism which unpickles the job and executes the Job.run
         # method.
-        with jobStore.writeFileStream(rootJobGraph.jobStoreID) as (fileHandle, fileStoreID):
+        with jobStore.writeFileStream(rootJobGraph.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
             pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
         # Note that getUserScript() may have been overridden. This is intended. If we used
         # self.userModule directly, we'd be getting a reference to job.py if the job was
@@ -1176,7 +1177,9 @@ class Job(BaseJob):
             # Make a job wrapper
             serviceJobGraph = serviceJob._createEmptyJobGraphForJob(jobStore, predecessorNumber=1)
 
-            # Create the start and terminate flags
+            # Create the start and terminate flags.
+            # We can't associate these with the job they belong to because
+            # that job hasn't necessarily been saved yet.
             serviceJobGraph.startJobStoreID = jobStore.getEmptyFileStoreID()
             serviceJobGraph.terminateJobStoreID = jobStore.getEmptyFileStoreID()
             serviceJobGraph.errorJobStoreID = jobStore.getEmptyFileStoreID()

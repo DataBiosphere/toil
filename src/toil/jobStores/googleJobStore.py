@@ -240,20 +240,20 @@ class GoogleJobStore(AbstractJobStore):
             if len(jobStoreID) == 39:  # 'job' + uuid length
                 yield self.load(jobStoreID)
 
-    def writeFile(self, localFilePath, jobStoreID=None):
-        fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
+    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
+        fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
         with open(localFilePath) as f:
             self._writeFile(fileID, f)
         return fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None):
-        fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
+    def writeFileStream(self, jobStoreID=None, cleanup=False):
+        fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
         with self._uploadStream(fileID, update=False) as writable:
             yield writable, fileID
 
-    def getEmptyFileStoreID(self, jobStoreID=None):
-        fileID = self._newID(isFile=True, jobStoreID=jobStoreID)
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+        fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
         self._writeFile(fileID, StringIO(""))
         return fileID
 

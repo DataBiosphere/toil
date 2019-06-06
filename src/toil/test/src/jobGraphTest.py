@@ -77,6 +77,6 @@ class JobGraphTest(ToilTest):
         self.assertEqual(j, j2)
         #Change an attribute and check not equal
         j.predecessorsFinished = {"1", "2"}
-        self.assertNotEquals(j, j2)
+        self.assertNotEqual(j, j2)
         
         ###TODO test other functionality

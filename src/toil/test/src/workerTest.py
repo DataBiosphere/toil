@@ -41,6 +41,7 @@ class WorkerTests(ToilTest):
 
             job = Job()
             job.checkpoint = checkpoint
+            # The job doesn't have a jobStoreID yet, so we can't tag the file
             with self.jobStore.writeFileStream() as (f, fileStoreID):
                 pickle.dump(job, f, pickle.HIGHEST_PROTOCOL)
             command = '_toil %s fooCommand toil True' % fileStoreID

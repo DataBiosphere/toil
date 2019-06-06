@@ -468,7 +468,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 try:
                     return jobCache[jobId]
                 except KeyError:
-                    self.load(jobId)
+                    return self.load(jobId)
             else:
                 return self.load(jobId)
 
@@ -582,7 +582,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                     return jobStoreFileID
 
                 # Make a new flag
-                newFlag = self.getEmptyFileStoreID()
+                newFlag = self.getEmptyFileStoreID(jobStoreID, cleanup=False)
 
                 # Load the jobGraph for the service and initialise the link
                 serviceJobGraph = getJob(jobStoreID)
@@ -783,17 +783,19 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     ##########################################
 
     @abstractmethod
-    def writeFile(self, localFilePath, jobStoreID=None):
+    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         """
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
         to retrieve the file at a later time.
 
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
 
-        :param jobStoreID: If specified the file will be associated with that job and when
-               jobStore.delete(job) is called all files written with the given job.jobStoreID will
-               be removed from the job store.
-        :type jobStoreID: str or None
+        :param str jobStoreID: the id of a job, or None. If specified, the may be associated
+               with that job in a job-store-specific way. This may influence the returned ID.
+               
+        :param bool cleanup: Whether to attempt to delete the file when the job
+               whose jobStoreID was given as jobStoreID is deleted with
+               jobStore.delete(job). If jobStoreID was not given, does nothing.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -810,16 +812,19 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     @contextmanager
-    def writeFileStream(self, jobStoreID=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
         file in the job store. The yielded file handle does not need to and
         should not be closed explicitly.
 
-        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated
-               with that job and when when jobStore.delete(job) is called all files written with the
-               given job.jobStoreID will be removed from the job store.
+        :param str jobStoreID: the id of a job, or None. If specified, the may be associated
+               with that job in a job-store-specific way. This may influence the returned ID.
+               
+        :param bool cleanup: Whether to attempt to delete the file when the job
+               whose jobStoreID was given as jobStoreID is deleted with
+               jobStore.delete(job). If jobStoreID was not given, does nothing.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -835,14 +840,17 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
-    def getEmptyFileStoreID(self, jobStoreID=None):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
         """
         Creates an empty file in the job store and returns its ID.
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
 
-        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated with
-               that job and when jobStore.delete(job) is called a best effort attempt is made to delete
-               all files written with the given job.jobStoreID
+        :param str jobStoreID: the id of a job, or None. If specified, the may be associated
+               with that job in a job-store-specific way. This may influence the returned ID.
+               
+        :param bool cleanup: Whether to attempt to delete the file when the job
+               whose jobStoreID was given as jobStoreID is deleted with
+               jobStore.delete(job). If jobStoreID was not given, does nothing.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.
