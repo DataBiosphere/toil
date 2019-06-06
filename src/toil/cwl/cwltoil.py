@@ -469,40 +469,6 @@ class CWLJobWrapper(Job):
         self.addChild(realjob)
         return realjob.rv()
 
-def _makeNestedTempDir(top, seed, levels=2):
-    """
-    Gets a temporary directory in the hierarchy of directories under a given
-    top directory.
-
-    This exists to avoid placing too many temporary directories under a single
-    top in a flat structure, which can slow down metadata updates such as
-    deletes on the local file system.
-
-    The seed parameter allows for deterministic placement of the created
-    directory. The seed is hashed into hex digest and the directory structure
-    is created from the initial letters of the digest.
-
-    :param top : string, top directory for the hierarchy
-    :param seed : string, the hierarchy will be generated from this seed string
-    :rtype : string, path to temporary directory - will be created when
-        necessary.
-    """
-    # Valid chars for the creation of temporary directories
-    validDirs = hashlib.md5(six.b(str(seed))).hexdigest()
-    tempDir = top
-    for i in range(max(min(levels, len(validDirs)), 1)):
-        tempDir = os.path.join(tempDir, validDirs[i])
-        if not os.path.exists(tempDir):
-            try:
-                os.makedirs(tempDir)
-            except os.error:
-                if not os.path.exists(tempDir):
-                    # In the case that a collision occurs and
-                    # it is created while we wait then we ignore
-                    raise
-    return tempDir
-
-
 class CWLJob(Job):
     """Execute a CWL tool using cwltool.executors.SingleJobExecutor"""
 
@@ -561,9 +527,6 @@ class CWLJob(Job):
         self.runtime_context = runtime_context
         self.step_inputs = step_inputs or self.cwltool.tool["inputs"]
         self.workdir = runtime_context.workdir
-        # This tracks temporary directories that we create while running this job.
-        # They should be cleaned up by us when we finish.
-        self.openTempDirs = []
 
     def run(self, file_store):
         cwljob = resolve_indirect(self.cwljob)
@@ -584,20 +547,14 @@ class CWLJob(Job):
             self.runtime_context.tmpdir or file_store.getLocalTempDir())
         outdir = os.path.join(file_store.getLocalTempDir(), "out")
         os.mkdir(outdir)
-        # Create per-job temporary output directories under the CWL workdir,
-        # which we also are using as our job store.
+        # Just keep the temporary output prefix under the job's local temp dir,
+        # next to the outdir.
         #
-        # TODO: Why don't we just use Toil's file_store.getLocalTempDir() under
-        # Toil's --workDir? Why do we have two notions of workdir?
-        top_tmp_outdir = self.workdir or os.environ["TMPDIR"]
-        tmp_outdir_prefix = os.path.join(
-            _makeNestedTempDir(top=top_tmp_outdir, seed=outdir, levels=2),
-            "out_tmpdir")
-        os.mkdir(tmp_outdir_prefix)
-        self.openTempDirs.append(tmp_outdir_prefix)
-        # cwltool doesn't necessarily put a / in when it makes filenames with tmp_outdir_prefix.
-        # So make sure it actually ends up in a real directory with the name we made.
-        tmp_outdir_prefix = os.path.join(tmp_outdir_prefix, "tmp")
+        # If we maintain our own system of nested temp directories, we won't
+        # know when all the jobs using a higher-level directory are ready for
+        # it to be deleted. The local temp dir, under Toil's workDir, will be
+        # cleaned up by Toil.
+        tmp_outdir_prefix = os.path.join(file_store.getLocalTempDir(), "tmp-out")
 
         index = {}
         existing = {}
@@ -624,10 +581,6 @@ class CWLJob(Job):
         adjustFileObjs(output, functools.partial(
             uploadFile, functools.partial(writeGlobalFileWrapper, file_store),
             index, existing))
-
-        # Now all our outputs have been uploaded.
-        # Clean up after ourselves.
-        cleanTempDirs(self)
 
         return output
 
@@ -1042,16 +995,6 @@ def visitSteps(t, op):
         for s in t.steps:
             op(s.tool)
             visitSteps(s.embedded_tool, op)
-
-
-def cleanTempDirs(job):
-    """Remove temporarly created directories."""
-    if isinstance(job, CWLJob) and job._succeeded:  # Only CWLJobs have this attribute.
-        for tempDir in job.openTempDirs:
-            if os.path.exists(tempDir):
-                shutil.rmtree(tempDir)
-        job.openTempDirs = []
-
 
 def main(args=None, stdout=sys.stdout):
     """Main method for toil-cwl-runner."""
