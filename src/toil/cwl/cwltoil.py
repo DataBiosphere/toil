@@ -1071,22 +1071,40 @@ def main(args=None, stdout=sys.stdout):
         "--no-read-only", action="store_true", default=False,
         help="Do not set root directory in the container as read-only")
 
+    if args is None:
+        args = sys.argv[1:]
+
+    # Problem: we want to keep our job store somewhere auto-generated based on
+    # our options, unless overridden by... an option. So we will need to parse
+    # options twice, because we need to feed the parser the job store.
+    
+    # Propose a local workdir, probably under /tmp.
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
+    # since it is going to be our jobstore,
     # so make it and delete it and allow
     # toil to create it again (!)
     workdir = tempfile.mkdtemp()
     os.rmdir(workdir)
 
-    if args is None:
-        args = sys.argv[1:]
-
-    # we use workdir as jobStore:
+    # we use workdir as default default jobStore:
     options = parser.parse_args([workdir] + args)
 
-    # if tmpdir_prefix is not the default value, set workDir too
+    # if tmpdir_prefix is not the default value, set workDir if unset, and move
+    # workdir and the job store under it
     if options.tmpdir_prefix != 'tmp':
-        options.workDir = options.tmpdir_prefix
+        workdir = tempfile.mkdtemp(dir=options.tmpdir_prefix)
+        os.rmdir(workdir)
+        # Re-parse arguments with the new default jobstore under the temp dir.
+        # It still might be overridden by a --jobStore option
+        options = parser.parse_args([workdir] + args)
+        if options.workDir is None:
+            # We need to override workDir because by default Toil will pick
+            # somewhere under the system temp directory if unset, ignoring
+            # --tmpdir-prefix.
+            #
+            # If set, workDir needs to exist, so we directly use the prefix
+            options.workDir = options.tmpdir_prefix
 
     if options.provisioner and not options.jobStore:
         raise NoSuchJobStoreException(

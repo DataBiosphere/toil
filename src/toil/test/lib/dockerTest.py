@@ -25,7 +25,7 @@ from docker.errors import ContainerError
 from toil.test import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow, needs_appliance
+from toil.test import ToilTest, slow, needs_docker
 from toil.lib.docker import apiDockerCall, containerIsRunning, dockerKill
 from toil.lib.docker import FORGO, STOP, RM
 
@@ -33,7 +33,7 @@ from toil.lib.docker import FORGO, STOP, RM
 logger = logging.getLogger(__name__)
 
 
-@needs_appliance
+@needs_docker
 class DockerTest(ToilTest):
     """
     Tests dockerCall and ensures no containers are left around.
