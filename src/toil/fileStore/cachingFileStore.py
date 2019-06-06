@@ -44,410 +44,68 @@ from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
+from toil.fileStore.fileStore import FileStore, FileID
 
 logger = logging.getLogger(__name__)
 
-
-class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
+class CacheError(Exception):
     """
-    >>> df = DeferredFunction.create(defaultdict, None, {'x':1}, y=2)
-    >>> df
-    DeferredFunction(defaultdict, ...)
-    >>> df.invoke() == defaultdict(None, x=1, y=2)
-    True
+    Error Raised if the user attempts to add a non-local file to cache
     """
-    @classmethod
-    def create(cls, function, *args, **kwargs):
-        """
-        Capture the given callable and arguments as an instance of this class.
 
-        :param callable function: The deferred action to take in the form of a function
-        :param tuple args: Non-keyword arguments to the function
-        :param dict kwargs: Keyword arguments to the function
-        """
-        # The general principle is to deserialize as late as possible, i.e. when the function is
-        # to be invoked, as that will avoid redundantly deserializing deferred functions for
-        # concurrently running jobs when the cache state is loaded from disk. By implication we
-        # should serialize as early as possible. We need to serialize the function as well as its
-        # arguments.
-        return cls(*list(map(dill.dumps, (function, args, kwargs))),
-                   name=function.__name__,
-                   module=ModuleDescriptor.forModule(function.__module__).globalize())
-
-    def invoke(self):
-        """
-        Invoke the captured function with the captured arguments.
-        """
-        logger.debug('Running deferred function %s.', self)
-        self.module.makeLoadable()
-        function, args, kwargs = list(map(dill.loads, (self.function, self.args, self.kwargs)))
-        return function(*args, **kwargs)
-
-    def __str__(self):
-        return '%s(%s, ...)' % (self.__class__.__name__, self.name)
-
-    __repr__ = __str__
+    def __init__(self, message):
+        super(CacheError, self).__init__(message)
 
 
-class FileStore(with_metaclass(ABCMeta, object)):
+class CacheUnbalancedError(CacheError):
     """
-    An abstract base class to represent the interface between a worker and the job store.  Concrete
-    subclasses will be used to manage temporary files, read and write files from the job store and
-    log messages, passed as argument to the :meth:`toil.job.Job.run` method.
+    Raised if file store can't free enough space for caching
     """
-    # Variables used for syncing reads/writes
-    _pendingFileWritesLock = Semaphore()
-    _pendingFileWrites = set()
-    _terminateEvent = Event()  # Used to signify crashes in threads
+    message = 'Unable unable to free enough space for caching.  This error frequently arises due ' \
+              'to jobs using more disk than they have requested.  Turn on debug logging to see ' \
+              'more information leading up to this error through cache usage logs.'
 
-    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
-        self.jobStore = jobStore
-        self.jobGraph = jobGraph
-        self.localTempDir = os.path.abspath(localTempDir)
-        self.workFlowDir = os.path.dirname(self.localTempDir)
-        self.jobName = self.jobGraph.command.split()[1]
-        self.inputBlockFn = inputBlockFn
-        self.loggingMessages = []
-        self.filesToDelete = set()
-        self.jobsToDelete = set()
+    def __init__(self):
+        super(CacheUnbalancedError, self).__init__(self.message)
 
-    @staticmethod
-    def createFileStore(jobStore, jobGraph, localTempDir, inputBlockFn, caching):
-        fileStoreCls = CachingFileStore if caching else NonCachingFileStore
-        return fileStoreCls(jobStore, jobGraph, localTempDir, inputBlockFn)
 
-    @abstractmethod
-    @contextmanager
-    def open(self, job):
-        """
-        The context manager used to conduct tasks prior-to, and after a job has been run.
+class IllegalDeletionCacheError(CacheError):
+    """
+    Error Raised if the Toil detects the user deletes a cached file
+    """
 
-        :param toil.job.Job job: The job instance of the toil job to run.
-        """
-        raise NotImplementedError()
+    def __init__(self, deletedFile):
+        message = 'Cache tracked file (%s) deleted explicitly by user. Use deleteLocalFile to ' \
+                  'delete such files.' % deletedFile
+        super(IllegalDeletionCacheError, self).__init__(message)
 
-    # Functions related to temp files and directories
-    def getLocalTempDir(self):
-        """
-        Get a new local temporary directory in which to write files that persist for the duration of
-        the job.
 
-        :return: The absolute path to a new local temporary directory. This directory will exist
-                 for the duration of the job only, and is guaranteed to be deleted once the job
-                 terminates, removing all files it contains recursively.
-        :rtype: str
-        """
-        return os.path.abspath(tempfile.mkdtemp(prefix="t", dir=self.localTempDir))
+class InvalidSourceCacheError(CacheError):
+    """
+    Error Raised if the user attempts to add a non-local file to cache
+    """
 
-    def getLocalTempFile(self):
-        """
-        Get a new local temporary file that will persist for the duration of the job.
-
-        :return: The absolute path to a local temporary file. This file will exist for the
-                 duration of the job only, and is guaranteed to be deleted once the job terminates.
-        :rtype: str
-        """
-        handle, tmpFile = tempfile.mkstemp(prefix="tmp", suffix=".tmp", dir=self.localTempDir)
-        os.close(handle)
-        return os.path.abspath(tmpFile)
-
-    def getLocalTempFileName(self):
-        """
-        Get a valid name for a new local file. Don't actually create a file at the path.
-
-        :return: Path to valid file
-        :rtype: str
-        """
-        # Create, and then delete a temp file. Creating will guarantee you a unique, unused
-        # file name. There is a very, very, very low chance that another job will create the
-        # same file name in the span of this one being deleted and then being used by the user.
-        tempFile = self.getLocalTempFile()
-        os.remove(tempFile)
-        return tempFile
-
-    # Functions related to reading, writing and removing files to/from the job store
-    @abstractmethod
-    def writeGlobalFile(self, localFileName, cleanup=False):
-        """
-        Takes a file (as a path) and uploads it to the job store.
-
-        :param string localFileName: The path to the local file to upload.
-        :param bool cleanup: if True then the copy of the global file will be deleted once the
-               job and all its successors have completed running.  If not the global file must be
-               deleted manually.
-        :return: an ID that can be used to retrieve the file.
-        :rtype: toil.fileStore.FileID
-        """
-        raise NotImplementedError()
-
-    @contextmanager
-    def writeGlobalFileStream(self, cleanup=False):
-        """
-        Similar to writeGlobalFile, but allows the writing of a stream to the job store.
-        The yielded file handle does not need to and should not be closed explicitly.
-
-        :param bool cleanup: is as in :func:`toil.fileStore.FileStore.writeGlobalFile`.
-        :return: A context manager yielding a tuple of
-                  1) a file handle which can be written to and
-                  2) the toil.fileStore.FileID of the resulting file in the job store.
-        """
-        
-        # TODO: Make this work with FileID
-        with self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID) as (backingStream, fileStoreID):
-            # We have a string version of the file ID, and the backing stream.
-            # We need to yield a stream the caller can write to, and a FileID
-            # that accurately reflects the size of the data written to the
-            # stream. We assume the stream is not seekable.
-            
-            # Make and keep a reference to the file ID, which is currently empty
-            fileID = FileID(fileStoreID, 0)
-            
-            # Wrap the stream to increment the file ID's size for each byte written
-            wrappedStream = WriteWatchingStream(backingStream)
-            
-            # When the stream is written to, count the bytes
-            def handle(numBytes):
-                fileID.size += numBytes 
-            wrappedStream.onWrite(handle)
-            
-            yield wrappedStream, fileID
-
-    @abstractmethod
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
-        """
-        Makes the file associated with fileStoreID available locally. If mutable is True,
-        then a copy of the file will be created locally so that the original is not modified
-        and does not change the file for other jobs. If mutable is False, then a link can
-        be created to the file, saving disk resources.
-
-        If a user path is specified, it is used as the destination. If a user path isn't
-        specified, the file is stored in the local temp directory with an encoded name.
-
-        :param toil.fileStore.FileID fileStoreID: job store id for the file
-        :param string userPath: a path to the name of file to which the global file will be copied
-               or hard-linked (see below).
-        :param bool cache: Described in :func:`toil.fileStore.CachingFileStore.readGlobalFile`
-        :param bool mutable: Described in :func:`toil.fileStore.CachingFileStore.readGlobalFile`
-        :return: An absolute path to a local, temporary copy of the file keyed by fileStoreID.
-        :rtype: str
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def readGlobalFileStream(self, fileStoreID):
-        """
-        Similar to readGlobalFile, but allows a stream to be read from the job store. The yielded
-        file handle does not need to and should not be closed explicitly.
-
-        :return: a context manager yielding a file handle which can be read from.
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def deleteLocalFile(self, fileStoreID):
-        """
-        Deletes Local copies of files associated with the provided job store ID.
-
-        :param str fileStoreID: File Store ID of the file to be deleted.
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def deleteGlobalFile(self, fileStoreID):
-        """
-        Deletes local files with the provided job store ID and then permanently deletes them from
-        the job store. To ensure that the job can be restarted if necessary, the delete will not
-        happen until after the job's run method has completed.
-
-        :param fileStoreID: the job store ID of the file to be deleted.
-        """
-        raise NotImplementedError()
-
-    # Functions used to read and write files directly between a source url and the job store.
-    def importFile(self, srcUrl, sharedFileName=None):
-        return self.jobStore.importFile(srcUrl, sharedFileName=sharedFileName)
-
-    def exportFile(self, jobStoreFileID, dstUrl):
-        raise NotImplementedError()
-
-    # A utility method for accessing filenames
-    def _resolveAbsoluteLocalPath(self, filePath):
-        """
-        Return the absolute path to filePath.  This is a wrapper for os.path.abspath because mac OS
-        symlinks /tmp and /var (the most common places for a default tempdir) to /private/tmp and
-        /private/var respectively.
-
-        :param str filePath: The absolute or relative path to the file. If relative, it must be
-               relative to the local temp working dir
-        :return: Absolute path to key
-        :rtype: str
-        """
-        if os.path.isabs(filePath):
-            return os.path.abspath(filePath)
-        else:
-            return os.path.join(self.localTempDir, filePath)
-
-    class _StateFile(object):
-        """
-        Utility class to read and write dill-ed state dictionaries from/to a file into a namespace.
-        """
-        def __init__(self, stateDict):
-            assert isinstance(stateDict, dict)
-            self.__dict__.update(stateDict)
-
-        @abstractclassmethod
-        @contextmanager
-        def open(cls, outer=None):
-            """
-            This is a context manager that state file and reads it into an object that is returned
-            to the user in the yield.
-
-            :param outer: Instance of the calling class (to use outer methods).
-            """
-            raise NotImplementedError()
-
-        @classmethod
-        def _load(cls, fileName):
-            """
-            Load the state of the cache from the state file
-
-            :param str fileName: Path to the cache state file.
-            :return: An instance of the state as a namespace.
-            :rtype: _StateFile
-            """
-            # Read the value from the cache state file then initialize and instance of
-            # _CacheState with it.
-            with open(fileName, 'rb') as fH:
-                infoDict = dill.load(fH)
-            return cls(infoDict)
-
-        def write(self, fileName):
-            """
-            Write the current state into a temporary file then atomically rename it to the main
-            state file.
-
-            :param str fileName: Path to the state file.
-            """
-            with open(fileName + '.tmp', 'wb') as fH:
-                # Based on answer by user "Mark" at:
-                # http://stackoverflow.com/questions/2709800/how-to-pickle-yourself
-                # We can't pickle nested classes. So we have to pickle the variables of the class
-                # If we ever change this, we need to ensure it doesn't break FileID
-                dill.dump(self.__dict__, fH)
-            os.rename(fileName + '.tmp', fileName)
-
-    # Methods related to the deferred function logic
-    @abstractclassmethod
-    def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
-        """
-        This function looks at the state of all jobs registered on the node and will handle them
-        (clean up their presence ont he node, and run any registered defer functions)
-
-        :param nodeInfo: Information regarding the node required for identifying dead jobs.
-        :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def _registerDeferredFunction(self, deferredFunction):
-        """
-        Register the given deferred function with this job.
-
-        :param DeferredFunction deferredFunction: the function to register
-        """
-        raise NotImplementedError()
-
-    @staticmethod
-    def _runDeferredFunctions(deferredFunctions):
-        """
-        Invoke the specified deferred functions and return a list of names of functions that
-        raised an exception while being invoked.
-
-        :param list[DeferredFunction] deferredFunctions: the DeferredFunctions to run
-        :rtype: list[str]
-        """
-        failures = []
-        for deferredFunction in deferredFunctions:
-            try:
-                deferredFunction.invoke()
-            except:
-                failures.append(deferredFunction.name)
-                logger.exception('%s failed.', deferredFunction)
-        return failures
-
-    # Functions related to logging
-    def logToMaster(self, text, level=logging.INFO):
-        """
-        Send a logging message to the leader. The message will also be \
-        logged by the worker at the same level.
-
-        :param text: The string to log.
-        :param int level: The logging level.
-        """
-        logger.log(level=level, msg=("LOG-TO-MASTER: " + text))
-        self.loggingMessages.append(dict(text=text, level=level))
-
-    # Functions run after the completion of the job.
-    @abstractmethod
-    def _updateJobWhenDone(self):
-        """
-        Update the status of the job on the disk.
-        """
-        raise NotImplementedError()
-
-    @abstractmethod
-    def _blockFn(self):
-        """
-        Blocks while _updateJobWhenDone is running. This function is called by this job's
-        successor to ensure that it does not begin modifying the job store until after this job has
-        finished doing so.
-        """
-        raise NotImplementedError()
-
-    # Utility function used to identify if a pid is still running on the node.
-    @staticmethod
-    def _pidExists(pid):
-        """
-        This will return True if the process associated with pid is still running on the machine.
-        This is based on stackoverflow question 568271.
-
-        :param int pid: ID of the process to check for
-        :return: True/False
-        :rtype: bool
-        """
-        assert pid > 0
-        try:
-            os.kill(pid, 0)
-        except OSError as err:
-            if err.errno == errno.ESRCH:
-                # ESRCH == No such process
-                return False
-            else:
-                raise
-        else:
-            return True
-
-    @abstractclassmethod
-    def shutdown(cls, dir_):
-        """
-        Shutdown the filestore on this node.
-
-        This is intended to be called on batch system shutdown.
-
-        :param dir_: The jeystone directory containing the required information for fixing the state
-               of failed workers on the node before cleaning up.
-        """
-        raise NotImplementedError()
-
+    def __init__(self, message):
+        super(InvalidSourceCacheError, self).__init__(message)
 
 class CachingFileStore(FileStore):
     """
-    A cache-enabled file store that attempts to use hard-links and asynchronous job store writes to
-    reduce I/O between, and during jobs.
+    A cache-enabled file store.
+
+    Provides files that are read out as symlinks or hard links into a cache
+    directory for the node, if permitted by the workflow.
+
+    Also attempts to write files back to the backing JobStore asynchronously,
+    after quickly taking them into the cache.
+    
+    TODO: is that even possible? How can another node tell a file being
+    asynchronously written from one that doesn't exist?
+    
     """
 
     def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
         super(CachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
+        
         # Variables related to asynchronous writes.
         self.workerNumber = 2
         self.queue = Queue()
@@ -456,9 +114,10 @@ class CachingFileStore(FileStore):
         for worker in self.workers:
             worker.start()
         # Variables related to caching
-        # cacheDir has to be 1 levels above local worker tempdir, at the same level as the
-        # worker dirs. At this point, localTempDir is the worker directory, not the job
-        # directory.
+        # Decide where the cache directory will be. We put it next to the
+        # local temp dirs for all of the jobs run on this machine.
+        # At this point in worker startup, when we are setting up caching,
+        # localTempDir is the worker directory, not the job directory.
         self.localCacheDir = os.path.join(os.path.dirname(localTempDir),
                                           cacheDirName(self.jobStore.config.workflowID))
         self.cacheLockFile = os.path.join(self.localCacheDir, '.cacheLock')
@@ -618,10 +277,8 @@ class CachingFileStore(FileStore):
         Downloads a file described by fileStoreID from the file store to the local directory.
         The function first looks for the file in the cache and if found, it hardlinks to the
         cached copy instead of downloading.
-
         The cache parameter will be used only if the file isn't already in the cache, and
         provided user path (if specified) is in the scope of local temp dir.
-
         :param bool cache: If True, a copy of the file will be saved into a cache that can be
                used by other workers. caching supports multiple concurrent workers requesting the
                same file by allowing only one to download the file while the others wait for it to
@@ -932,7 +589,6 @@ class CachingFileStore(FileStore):
     def _createCacheLockFile(self, tempCacheDir):
         """
         Create the cache lock file file to contain the state of the cache on the node.
-
         :param str tempCacheDir: Temporary directory to use for setting up a cache lock file the
                first time.
         """
@@ -962,7 +618,6 @@ class CachingFileStore(FileStore):
         Uses a url safe base64 encoding to encode the jobStoreFileID into a unique identifier to
         use as filename within the cache folder.  jobstore IDs are essentially urls/paths to
         files and thus cannot be used as is. Base64 encoding is used since it is reversible.
-
         :param jobStoreFileID: string representing a job store file ID
         :return: outCachedFile: A path to the hashed file in localCacheDir
         :rtype: str
@@ -982,7 +637,6 @@ class CachingFileStore(FileStore):
     def decodedFileID(self, cachedFilePath):
         """
         Decode a cached fileName back to a job store file ID.
-
         :param str cachedFilePath: Path to the cached file
         :return: The jobstore file ID associated with the file
         :rtype: str
@@ -1004,7 +658,6 @@ class CachingFileStore(FileStore):
         The file is already in the cache dir. Depending on whether it is modifiable or not, does
         it need to be linked to the required location, or copied. If it is copied, can the file
         still be retained in cache?
-
         :param str localFilePath: Path to the Source file
         :param jobStoreFileID: jobStoreID for the file
         :param str callingFunc: Who called this function, 'write' or 'read'
@@ -1084,7 +737,6 @@ class CachingFileStore(FileStore):
         if the file was recently added to, or read from cache (A job that reads n bytes from
         cache doesn't really use those n bytes as a part of it's job disk since cache is already
         accounting for that disk space).
-
         :param fileStoreID: fileStore ID of the file bein added to cache
         :param str cachedFileSource: File being added to cache
         :param file lockFileHandle: Open file handle to the cache lock file
@@ -1112,7 +764,6 @@ class CachingFileStore(FileStore):
     def _isHidden(filePath):
         """
         This is a function that checks whether filePath is hidden
-
         :param str filePath: Path to the file under consideration
         :return: A boolean indicating whether the file is hidden or not.
         :rtype: bool
@@ -1126,7 +777,6 @@ class CachingFileStore(FileStore):
         """
         Cleanup all files in the cache directory to ensure that at lead newJobReqs are available
         for use.
-
         :param float newJobReqs: the total number of bytes of files allowed in the cache.
         """
         with self._CacheState.open(self) as cacheInfo:
@@ -1250,7 +900,6 @@ class CachingFileStore(FileStore):
         This is a utility function that accounts for the fact that if nlinkThreshold == 2, the
         size of the file is accounted for by the file store copy of the file and thus the file
         size shouldn't be added to the cached file sizes.
-
         :param str localFilePath: Path to the local file that was linked to the file store copy.
         """
         fileStats = os.stat(localFilePath)
@@ -1264,7 +913,6 @@ class CachingFileStore(FileStore):
         """
         This function returns the effective job requirements back to the pool after the job
         completes. It also deletes the local copies of files with the cache lock held.
-
         :param float jobReqs: Original size requirement of the job
         """
         # Since we are only reading this job's specific values from the state file, we don't
@@ -1302,7 +950,6 @@ class CachingFileStore(FileStore):
                             cachedSpace + sigmaJobDisk <= totalFreeSpace
             Essentially, the sum of all cached file + disk requirements of all running jobs
             should always be less than the available space on the system
-
             :return: Boolean for equation is balanced (T) or not (F)
             :rtype: bool
             """
@@ -1312,7 +959,6 @@ class CachingFileStore(FileStore):
             """
             Similar to isBalanced, however it looks at the actual state of the system and
             decides whether an eviction is required.
-
             :return: Is a purge required(T) or no(F)
             :rtype: bool
             """
@@ -1325,7 +971,6 @@ class CachingFileStore(FileStore):
     @classmethod
     def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
         """
-
         :param toil.fileStore.CachingFileStore._CacheState nodeInfo: The state of the node cache as
                a _CacheState object
         """
@@ -1369,7 +1014,6 @@ class CachingFileStore(FileStore):
             """
             This method will update the job specifc files in the job state object. It deals with
             opening a cache lock file, etc.
-
             :param toil.fileStore.CachingFileStore outer: An instance of CachingFileStore
             :param str jobStoreFileID: job store Identifier for the file
             :param str filePath: The path to the file
@@ -1384,7 +1028,6 @@ class CachingFileStore(FileStore):
         def addToJobSpecFiles(self, jobStoreFileID, filePath, fileSize, cached):
             """
             This is the real method that actually does the updations.
-
             :param jobStoreFileID: job store Identifier for the file
             :param filePath: The path to the file
             :param fileSize: The size of the file (may be deprecated soon)
@@ -1412,7 +1055,6 @@ class CachingFileStore(FileStore):
             """
             This method will update the current state of the disk required by the job after the
             most recent cache operation.
-
             :param fileSize: Size of the last file added/removed from the cache
             :param actions: 'add' or 'remove'
             """
@@ -1434,7 +1076,6 @@ class CachingFileStore(FileStore):
         def __init__(self, fileStore, fileStoreID=None, cachedFileName=None):
             """
             Returns the harbinger file name for a cached file, or for a job store ID
-
             :param class fileStore: The 'self' object of the fileStore class
             :param str fileStoreID: The file store ID for an input file
             :param str cachedFileName: The cache file name corresponding to a given file
@@ -1462,7 +1103,6 @@ class CachingFileStore(FileStore):
             """
             This method is called when a readGlobalFile process is waiting on another process to
             write a file to the cache.
-
             :param lockFileHandle: The open handle to the cache lock file
             """
             while self.exists():
@@ -1639,395 +1279,3 @@ class CachingFileStore(FileStore):
             thread.join()
         self.updateSemaphore.release()
 
-
-class NonCachingFileStore(FileStore):
-    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
-        self.jobStore = jobStore
-        self.jobGraph = jobGraph
-        self.jobName = str(self.jobGraph)
-        self.localTempDir = os.path.abspath(localTempDir)
-        self.inputBlockFn = inputBlockFn
-        self.jobsToDelete = set()
-        self.loggingMessages = []
-        self.filesToDelete = set()
-        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
-        # This will be defined in the `open` method.
-        self.jobStateFile = None
-        self.localFileMap = defaultdict(list)
-
-    @contextmanager
-    def open(self, job):
-        jobReqs = job.disk
-        startingDir = os.getcwd()
-        self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
-        self.findAndHandleDeadJobs(self.workFlowDir)
-        self.jobStateFile = self._createJobStateFile()
-        freeSpace, diskSize = getFileSystemSize(self.localTempDir)
-        if freeSpace <= 0.1 * diskSize:
-            logger.warning('Starting job %s with less than 10%% of disk space remaining.',
-                           self.jobName)
-        try:
-            os.chdir(self.localTempDir)
-            yield
-        finally:
-            diskUsed = getDirSizeRecursively(self.localTempDir)
-            logString = ("Job {jobName} used {percent:.2f}% ({humanDisk}B [{disk}B] used, "
-                         "{humanRequestedDisk}B [{requestedDisk}B] requested) at the end of "
-                         "its run.".format(jobName=self.jobName,
-                                           percent=(float(diskUsed) / jobReqs * 100 if
-                                                    jobReqs > 0 else 0.0),
-                                           humanDisk=bytes2human(diskUsed),
-                                           disk=diskUsed,
-                                           humanRequestedDisk=bytes2human(jobReqs),
-                                           requestedDisk=jobReqs))
-            self.logToMaster(logString, level=logging.DEBUG)
-            if diskUsed > jobReqs:
-                self.logToMaster("Job used more disk than requested. Consider modifying the user "
-                                 "script to avoid the chance of failure due to incorrectly "
-                                 "requested resources. " + logString, level=logging.WARNING)
-            os.chdir(startingDir)
-            jobState = self._readJobState(self.jobStateFile)
-            deferredFunctions = jobState['deferredFunctions']
-            failures = self._runDeferredFunctions(deferredFunctions)
-            for failure in failures:
-                self.logToMaster('Deferred function "%s" failed.' % failure, logging.WARN)
-            # Finally delete the job from the worker
-            os.remove(self.jobStateFile)
-
-    def writeGlobalFile(self, localFileName, cleanup=False):
-        absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
-        creatorID = self.jobGraph.jobStoreID
-        fileStoreID = self.jobStore.writeFile(absLocalFileName, creatorID, cleanup)
-        self.localFileMap[fileStoreID].append(absLocalFileName)
-        return FileID.forPath(fileStoreID, absLocalFileName)
-
-    def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
-        if userPath is not None:
-            localFilePath = self._resolveAbsoluteLocalPath(userPath)
-            if os.path.exists(localFilePath):
-                raise RuntimeError(' File %s ' % localFilePath + ' exists. Cannot Overwrite.')
-        else:
-            localFilePath = self.getLocalTempFileName()
-
-        self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
-        self.localFileMap[fileStoreID].append(localFilePath)
-        return localFilePath
-
-    @contextmanager
-    def readGlobalFileStream(self, fileStoreID):
-        with self.jobStore.readFileStream(fileStoreID) as f:
-            yield f
-
-    def exportFile(self, jobStoreFileID, dstUrl):
-        self.jobStore.exportFile(jobStoreFileID, dstUrl)
-
-    def deleteLocalFile(self, fileStoreID):
-        try:
-            localFilePaths = self.localFileMap.pop(fileStoreID)
-        except KeyError:
-            raise OSError(errno.ENOENT, "Attempting to delete a non-local file")
-        else:
-            for localFilePath in localFilePaths:
-                os.remove(localFilePath)
-
-    def deleteGlobalFile(self, fileStoreID):
-        try:
-            self.deleteLocalFile(fileStoreID)
-        except OSError as e:
-            if e.errno == errno.ENOENT:
-                # the file does not exist locally, so no local deletion necessary
-                pass
-            else:
-                raise
-        self.filesToDelete.add(fileStoreID)
-
-    def _blockFn(self):
-        # there is no asynchronicity in this file store so no need to block at all
-        return True
-
-    def _updateJobWhenDone(self):
-        try:
-            # Indicate any files that should be deleted once the update of
-            # the job wrapper is completed.
-            self.jobGraph.filesToDelete = list(self.filesToDelete)
-            # Complete the job
-            self.jobStore.update(self.jobGraph)
-            # Delete any remnant jobs
-            list(map(self.jobStore.delete, self.jobsToDelete))
-            # Delete any remnant files
-            list(map(self.jobStore.deleteFile, self.filesToDelete))
-            # Remove the files to delete list, having successfully removed the files
-            if len(self.filesToDelete) > 0:
-                self.jobGraph.filesToDelete = []
-                # Update, removing emptying files to delete
-                self.jobStore.update(self.jobGraph)
-        except:
-            self._terminateEvent.set()
-            raise
-
-    def __del__(self):
-        """
-        Cleanup function that is run when destroying the class instance.  Nothing to do since there
-        are no async write events.
-        """
-        pass
-
-    # Functions related to the deferred function logic
-    @classmethod
-    def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
-        """
-        Look at the state of all jobs registered in the individual job state files, and handle them
-        (clean up the disk, and run any registered defer functions)
-
-        :param str nodeInfo: The location of the workflow directory on the node.
-        :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
-        :return:
-        """
-        # A list of tuples of (job name, pid or process running job, registered defer functions)
-        for jobState in cls._getAllJobStates(nodeInfo):
-            if not cls._pidExists(jobState['jobPID']):
-                # using same logic to prevent races as CachingFileStore._setupCache
-                myPID = str(os.getpid())
-                cleanupFile = os.path.join(jobState['jobDir'], '.cleanup')
-                with open(os.path.join(jobState['jobDir'], '.' + myPID), 'w') as f:
-                    f.write(myPID)
-                while True:
-                    try:
-                        os.rename(f.name, cleanupFile)
-                    except OSError as err:
-                        if err.errno == errno.ENOTEMPTY:
-                            with open(cleanupFile, 'r') as f:
-                                cleanupPID = f.read()
-                            if cls._pidExists(int(cleanupPID)):
-                                # Cleanup your own mess.  It's only polite.
-                                os.remove(f.name)
-                                break
-                            else:
-                                os.remove(cleanupFile)
-                                continue
-                        else:
-                            raise
-                    else:
-                        logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
-                                       'state of the job on disk.', jobState['jobName'])
-                        if not batchSystemShutdown:
-                            logger.debug("Deleting the stale working directory.")
-                            # Delete the old work directory if it still exists.  Do this only during
-                            # the life of the program and dont' do it during the batch system
-                            # cleanup.  Leave that to the batch system cleanup code.
-                            shutil.rmtree(jobState['jobDir'])
-                        # Run any deferred functions associated with the job
-                        logger.debug('Running user-defined deferred functions.')
-                        cls._runDeferredFunctions(jobState['deferredFunctions'])
-                        break
-
-    @staticmethod
-    def _getAllJobStates(workflowDir):
-        """
-        Generator function that deserializes and yields the job state for every job on the node,
-        one at a time.
-
-        :param str workflowDir: The location of the workflow directory on the node.
-        :return: dict with keys (jobName,  jobPID, jobDir, deferredFunctions)
-        :rtype: dict
-        """
-        jobStateFiles = []
-        for root, dirs, files in os.walk(workflowDir):
-            for filename in files:
-                if filename == '.jobState':
-                    jobStateFiles.append(os.path.join(root, filename))
-        for filename in jobStateFiles:
-            try:
-                yield NonCachingFileStore._readJobState(filename)
-            except IOError as e:
-                if e.errno == 2:
-                    # job finished & deleted its jobState file since the jobState files were discovered
-                    continue
-                else:
-                    raise
-
-    @staticmethod
-    def _readJobState(jobStateFileName):
-        with open(jobStateFileName, 'rb') as fH:
-            state = dill.load(fH)
-        return state
-
-    def _registerDeferredFunction(self, deferredFunction):
-        with open(self.jobStateFile, 'rb') as fH:
-            jobState = dill.load(fH)
-        jobState['deferredFunctions'].append(deferredFunction)
-        with open(self.jobStateFile + '.tmp', 'wb') as fH:
-            dill.dump(jobState, fH)
-        os.rename(self.jobStateFile + '.tmp', self.jobStateFile)
-        logger.debug('Registered "%s" with job "%s".', deferredFunction, self.jobName)
-
-    def _createJobStateFile(self):
-        """
-        Create the job state file for the current job and fill in the required
-        values.
-
-        :return: Path to the job state file
-        :rtype: str
-        """
-        jobStateFile = os.path.join(self.localTempDir, '.jobState')
-        jobState = {'jobPID': os.getpid(),
-                    'jobName': self.jobName,
-                    'jobDir': self.localTempDir,
-                    'deferredFunctions': []}
-        with open(jobStateFile + '.tmp', 'wb') as fH:
-            dill.dump(jobState, fH)
-        os.rename(jobStateFile + '.tmp', jobStateFile)
-        return jobStateFile
-
-    @classmethod
-    def shutdown(cls, dir_):
-        """
-        :param dir_: The workflow directory that will contain all the individual worker directories.
-        """
-        cls.findAndHandleDeadJobs(dir_, batchSystemShutdown=True)
-
-
-class FileID(str):
-    """
-    A small wrapper around Python's builtin string class. It is used to represent a file's ID in the file store, and
-    has a size attribute that is the file's size in bytes. This object is returned by importFile and writeGlobalFile.
-    """
-
-    def __new__(cls, fileStoreID, *args):
-        return super(FileID, cls).__new__(cls, fileStoreID)
-
-    def __init__(self, fileStoreID, size):
-        # Don't pass an argument to parent class's __init__.
-        # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
-        super(FileID, self).__init__()
-        self.size = size
-
-    @classmethod
-    def forPath(cls, fileStoreID, filePath):
-        return cls(fileStoreID, os.stat(filePath).st_size)
-        
-class WriteWatchingStream(object):
-    """
-    A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
-    
-    Not seekable.
-    """
-    
-    def __init__(self, backingStream):
-        """
-        Wrap the given backing stream.
-        """
-        
-        self.backingStream = backingStream
-        # We have no write listeners yet
-        self.writeListeners = []
-        
-    def onWrite(self, listener):
-        """
-        Call the given listener with the number of bytes written on every write.
-        """
-        
-        self.writeListeners.append(listener)
-        
-    # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
-        
-    def write(self, data):
-        """
-        Write the given data to the file.
-        """
-        
-        # Do the write
-        self.backingStream.write(data)
-        
-        for listener in self.writeListeners:
-            # Send out notifications
-            listener(len(data))
-            
-    def writelines(self, datas):
-        """
-        Write each string from the given iterable, without newlines.
-        """
-        
-        for data in datas:
-            self.write(data)
-            
-    def flush(self):
-        """
-        Flush the backing stream.
-        """
-        
-        self.backingStream.flush()
-        
-    def close(self):
-        """
-        Close the backing stream.
-        """
-        
-        self.backingStream.close()
-
-
-def shutdownFileStore(workflowDir, workflowID):
-    """
-    Run the deferred functions from any prematurely terminated jobs still lingering on the system
-    and carry out any necessary filestore-specific cleanup.
-
-    This is a destructive operation and it is important to ensure that there are no other running
-    processes on the system that are modifying or using the file store for this workflow.
-
-
-    This is the intended to be the last call to the file store in a Toil run, called by the
-    batch system cleanup function upon batch system shutdown.
-
-    :param str workflowDir: The path to the cache directory
-    :param str workflowID: The workflow ID for this invocation of the workflow
-    """
-    cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
-    if os.path.exists(cacheDir):
-        # The presence of the cacheDir suggests this was a cached run. We don't need the cache lock
-        # for any of this since this is the final cleanup of a job and there should be  no other
-        # conflicting processes using the cache.
-        CachingFileStore.shutdown(cacheDir)
-    else:
-        # This absence of cacheDir suggests otherwise.
-        NonCachingFileStore.shutdown(workflowDir)
-
-
-class CacheError(Exception):
-    """
-    Error Raised if the user attempts to add a non-local file to cache
-    """
-
-    def __init__(self, message):
-        super(CacheError, self).__init__(message)
-
-
-class CacheUnbalancedError(CacheError):
-    """
-    Raised if file store can't free enough space for caching
-    """
-    message = 'Unable unable to free enough space for caching.  This error frequently arises due ' \
-              'to jobs using more disk than they have requested.  Turn on debug logging to see ' \
-              'more information leading up to this error through cache usage logs.'
-
-    def __init__(self):
-        super(CacheUnbalancedError, self).__init__(self.message)
-
-
-class IllegalDeletionCacheError(CacheError):
-    """
-    Error Raised if the Toil detects the user deletes a cached file
-    """
-
-    def __init__(self, deletedFile):
-        message = 'Cache tracked file (%s) deleted explicitly by user. Use deleteLocalFile to ' \
-                  'delete such files.' % deletedFile
-        super(IllegalDeletionCacheError, self).__init__(message)
-
-
-class InvalidSourceCacheError(CacheError):
-    """
-    Error Raised if the user attempts to add a non-local file to cache
-    """
-
-    def __init__(self, message):
-        super(InvalidSourceCacheError, self).__init__(message)
