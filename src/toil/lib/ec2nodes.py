@@ -149,13 +149,13 @@ def fetchEC2Index(filename):
              aws instance name (example: 't2.micro'), and the value is an
              InstanceType object representing that aws instance name.
     """
-    print('Downloading ~1Gb AWS billing file to parse for information.')
+    print('Downloading ~1Gb AWS billing file to parse for information.\n')
 
     response = requests.get('https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json')
     if response.ok:
         with open(filename, 'w') as f:
             f.write(str(json.dumps(json.loads(response.text), indent=4)))
-            print('Download completed successfully!')
+            print('Download completed successfully!\n')
     else:
         raise RuntimeError('Error: ' + str(response) + ' :: ' + str(response.text))
 
@@ -196,8 +196,7 @@ def fetchEC2InstanceDict(awsBillingJson, region):
                     raise RuntimeError('EC2 JSON format has likely changed.  '
                                        'Duplicate instance {} found.'.format(instance))
                 ec2InstanceList.append(instance)
-                print(str(i["instanceType"]) + ' Added!')
-    print('Finished for ' + str(region) + '.  ' + str(len(ec2InstanceList)) + ' added.\n')
+    print('Finished for ' + str(region) + '.  ' + str(len(ec2InstanceList)) + ' added.')
     return dict((_.name, _) for _ in ec2InstanceList)
 
 
@@ -209,7 +208,7 @@ def updateStaticEC2Instances():
 
     :return: Nothing.  Writes a new 'generatedEC2Lists.py' file.
     """
-    print("Updating Toil's EC2 lists to the most current version from AWS's bulk API.  "
+    print("Updating Toil's EC2 lists to the most current version from AWS's bulk API.\n"
           "This may take a while, depending on your internet connection (~1Gb file).\n")
 
     origFile = os.path.join(dirname, 'generatedEC2Lists.py')  # original

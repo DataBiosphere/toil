@@ -18,7 +18,7 @@ from six import iteritems
 from toil.lib.ec2nodes import InstanceType
 
 
-# 196 Instance Types.  Generated 2019-06-06 18:56:07.921034.
+# 196 Instance Types.  Generated 2019-06-06 19:04:30.223730.
 E2Instances = {
     'a1.2xlarge': InstanceType(name='a1.2xlarge', cores=8, memory=16.0, disks=0, disk_capacity=0),
     'a1.4xlarge': InstanceType(name='a1.4xlarge', cores=16, memory=32.0, disks=0, disk_capacity=0),
