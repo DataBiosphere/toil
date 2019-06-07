@@ -20,7 +20,9 @@ import datetime
 import logging
 import textwrap
 
-logger = logging.getLogger( __name__ )
+logger = logging.getLogger(__name__)
+dirname = os.path.dirname(__file__)
+awsJsonIndex = os.path.join(dirname, 'index.json')  # filepath to store the aws json request (will be cleaned up)
 
 
 EC2Regions = {'us-west-1': 'US West (N. California)',
@@ -139,6 +141,17 @@ def parseMemory(memAttribute):
         raise RuntimeError('EC2 JSON format has likely changed.  Error parsing memory.')
 
 
+def fetchEC2Index(filename):
+    print('Downloading ~1Gb AWS billing file to parse for information.')
+    response = requests.get('https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json')
+    if response.ok:
+        with open(filename, 'w') as f:
+            f.write(str(json.dumps(json.loads(response.text), indent=4)))
+            print('Download completed successfully!')
+    else:
+        raise RuntimeError('Error: ' + str(response) + ' :: ' + str(response.text))
+
+
 def fetchEC2InstanceDict(regionNickname=None):
     """
     Fetches EC2 instances types by region programmatically using the AWS pricing API.
@@ -149,26 +162,13 @@ def fetchEC2InstanceDict(regionNickname=None):
              aws instance name (example: 't2.micro'), and the value is an
              InstanceType object representing that aws instance name.
     """
-    ec2Source = 'https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json'
-    if regionNickname is None:
-        regionNickname = 'us-west-2'
+    regionNickname = regionNickname if regionNickname else 'us-west-2'
     region = EC2Regions[regionNickname]  # JSON uses verbose region names as keys
-
-    ec2InstanceList = []
-
-    # summon the API to grab the latest instance types/prices/specs
-    response = requests.get(ec2Source)
-    if response.ok:
-        ec2InstanceList = parseEC2Json2List(jsontext=response.text, region=region)
-
-    if ec2InstanceList:
-        return dict((_.name, _) for _ in ec2InstanceList)
-    else:
-        from toil.lib import generatedEC2Lists as defaultEC2
-        return dict((_.name, _) for _ in defaultEC2.ec2InstancesByRegion[regionNickname])
+    ec2InstanceList = parseEC2Json2List(region=region)
+    return dict((_.name, _) for _ in ec2InstanceList)
 
 
-def parseEC2Json2List(jsontext, region):
+def parseEC2Json2List(region):
     """
     Takes a JSON and returns a list of InstanceType objects representing EC2 instance params.
 
@@ -176,32 +176,39 @@ def parseEC2Json2List(jsontext, region):
     :param region:
     :return:
     """
-    currentList = json.loads(jsontext)
+    with open(awsJsonIndex, 'r') as f:
+        awsProductDict = json.loads(f.read())
     ec2InstanceList = []
-    for k, v in iteritems(currentList["products"]):
-        if "location" in v["attributes"] and v["attributes"]["location"] == region:
-            # 3 tenant types: 'Host' (always $0.00; just a template?)
-            #                 'Dedicated' (toil does not support; these are pricier)
-            #                 'Shared' (AWS default and what toil uses)
-            if "tenancy" in v["attributes"] and v["attributes"]["tenancy"] == "Shared":
-                if v["attributes"]["operatingSystem"] == "Linux":
-                    # The same instance can appear with multiple "operation"
-                    # values; "RunInstances" is normal, and
-                    # "RunInstances:<code>" is e.g. Linux with MS SQL Server
-                    # installed.
-                    if v["attributes"]["operation"] == "RunInstances":
-                        disks, disk_capacity = parseStorage(v["attributes"]["storage"])
-                        memory = parseMemory(v["attributes"]["memory"])
-                        instance = InstanceType(name=v["attributes"]["instanceType"],
-                                                cores=v["attributes"]["vcpu"],
-                                                memory=memory,
-                                                disks=disks,
-                                                disk_capacity=disk_capacity)
-                        if instance not in ec2InstanceList:
-                            ec2InstanceList.append(instance)
-                        else:
-                            raise RuntimeError('EC2 JSON format has likely changed.  '
-                                               'Duplicate instance {} found.'.format(instance))
+    for k, v in iteritems(awsProductDict['products']):
+        # NOTES:
+        #
+        # 3 tenant types: 'Host' (always $0.00; just a template?)
+        #                 'Dedicated' (toil does not support; these are pricier)
+        #                 'Shared' (AWS default and what toil uses)
+        #
+        # The same instance can appear with multiple "operation" values;
+        # "RunInstances" is normal
+        # "RunInstances:<code>" is e.g. Linux with MS SQL Server installed.
+        i = v['attributes']
+        if (i.get('location') == region and
+            i.get('tenancy') == 'Shared' and
+            i.get('operatingSystem') == 'Linux' and
+            i.get('operation') == 'RunInstances'):
+
+            normal_use = i.get('usagetype').endswith('-BoxUsage:' + i['instanceType'])  # not reserved or unused
+            if normal_use:
+                disks, disk_capacity = parseStorage(v["attributes"]["storage"])
+                instance = InstanceType(name=i["instanceType"],
+                                        cores=i["vcpu"],
+                                        memory=parseMemory(i["memory"]),
+                                        disks=disks,
+                                        disk_capacity=disk_capacity)
+                if instance in ec2InstanceList:
+                    raise RuntimeError('EC2 JSON format has likely changed.  '
+                                       'Duplicate instance {} found.'.format(instance))
+                ec2InstanceList.append(instance)
+                print(str(i["instanceType"]) + ' Added!')
+    print('Finished for ' + str(region) + '.  ' + str(len(ec2InstanceList)) + ' added.\n')
     return ec2InstanceList
 
 
@@ -216,17 +223,26 @@ def updateStaticEC2Instances():
     logger.info("Updating Toil's EC2 lists to the most current version from AWS's bulk API.  "
                 "This may take a while, depending on your internet connection.")
 
-    dirname = os.path.dirname(__file__)
-    # the file Toil uses to get info about EC2 instance types
-    origFile = os.path.join(dirname, 'generatedEC2Lists.py')
+    origFile = os.path.join(dirname, 'generatedEC2Lists.py')  # original
     assert os.path.exists(origFile)
     # use a temporary file until all info is fetched
-    genFile = os.path.join(dirname, 'generatedEC2Lists_tmp.py')
-    assert not os.path.exists(genFile)
-    # will be used to save a copy of the original when finished
-    oldFile = os.path.join(dirname, 'generatedEC2Lists_old.py')
+    genFile = os.path.join(dirname, 'generatedEC2Lists_tmp.py')  # temp
+    if os.path.exists(genFile):
+        os.remove(genFile)
 
-    # provenance note, copyright and imports
+    if not os.path.exists(awsJsonIndex):
+        fetchEC2Index(filename=awsJsonIndex)
+
+    currentEC2List = []
+    instancesByRegion = {}
+    for regionNickname in EC2Regions:
+        currentEC2Dict = fetchEC2InstanceDict(regionNickname=regionNickname)
+        for instanceName, instanceTypeObj in iteritems(currentEC2Dict):
+            if instanceTypeObj not in currentEC2List:
+                currentEC2List.append(instanceTypeObj)
+            instancesByRegion.setdefault(regionNickname, []).append(instanceName)
+
+    # write provenance note, copyright and imports
     with open(genFile, 'w') as f:
         f.write(textwrap.dedent('''
         # !!! AUTOGENERATED FILE !!!
@@ -247,15 +263,6 @@ def updateStaticEC2Instances():
         # limitations under the License.
         from six import iteritems
         from toil.lib.ec2nodes import InstanceType\n\n\n''').format(year=datetime.date.today().strftime("%Y"))[1:])
-
-    currentEC2List = []
-    instancesByRegion = {}
-    for regionNickname, _ in iteritems(EC2Regions):
-        currentEC2Dict = fetchEC2InstanceDict(regionNickname=regionNickname)
-        for instanceName, instanceTypeObj in iteritems(currentEC2Dict):
-            if instanceTypeObj not in currentEC2List:
-                currentEC2List.append(instanceTypeObj)
-            instancesByRegion.setdefault(regionNickname, []).append(instanceName)
 
     # write header of total EC2 instance type list
     genString = "# {num} Instance Types.  Generated {date}.\n".format(
@@ -289,11 +296,11 @@ def updateStaticEC2Instances():
 
     with open(genFile, 'a+') as f:
         f.write(regionKey)
-    # preserve the original file unless it already exists
-    if not os.path.exists(oldFile):
-        os.rename(origFile, oldFile)
     # delete the original file if it's still there
     if os.path.exists(origFile):
         os.remove(origFile)
     # replace the instance list with a current list
     os.rename(genFile, origFile)
+    # delete the aws billing json file
+    if os.path.exists(awsJsonIndex):
+        os.remove(awsJsonIndex)
