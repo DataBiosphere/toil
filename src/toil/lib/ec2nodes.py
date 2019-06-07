@@ -22,7 +22,6 @@ import textwrap
 
 logger = logging.getLogger(__name__)
 dirname = os.path.dirname(__file__)
-awsJsonIndex = os.path.join(dirname, 'index.json')  # filepath to store the aws json request (will be cleaned up)
 
 
 EC2Regions = {'us-west-1': 'US West (N. California)',
@@ -142,7 +141,16 @@ def parseMemory(memAttribute):
 
 
 def fetchEC2Index(filename):
+    """Downloads and writes the AWS Billing JSON to a file using the AWS pricing API.
+
+    See: https://aws.amazon.com/blogs/aws/new-aws-price-list-api/
+
+    :return: A dict of InstanceType objects, where the key is the string:
+             aws instance name (example: 't2.micro'), and the value is an
+             InstanceType object representing that aws instance name.
+    """
     print('Downloading ~1Gb AWS billing file to parse for information.')
+
     response = requests.get('https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonEC2/current/index.json')
     if response.ok:
         with open(filename, 'w') as f:
@@ -152,34 +160,16 @@ def fetchEC2Index(filename):
         raise RuntimeError('Error: ' + str(response) + ' :: ' + str(response.text))
 
 
-def fetchEC2InstanceDict(regionNickname=None):
-    """
-    Fetches EC2 instances types by region programmatically using the AWS pricing API.
-
-    See: https://aws.amazon.com/blogs/aws/new-aws-price-list-api/
-
-    :return: A dict of InstanceType objects, where the key is the string:
-             aws instance name (example: 't2.micro'), and the value is an
-             InstanceType object representing that aws instance name.
-    """
-    regionNickname = regionNickname if regionNickname else 'us-west-2'
-    region = EC2Regions[regionNickname]  # JSON uses verbose region names as keys
-    ec2InstanceList = parseEC2Json2List(region=region)
-    return dict((_.name, _) for _ in ec2InstanceList)
-
-
-def parseEC2Json2List(region):
+def fetchEC2InstanceDict(awsBillingJson, region):
     """
     Takes a JSON and returns a list of InstanceType objects representing EC2 instance params.
 
-    :param jsontext:
     :param region:
     :return:
     """
-    with open(awsJsonIndex, 'r') as f:
-        awsProductDict = json.loads(f.read())
     ec2InstanceList = []
-    for k, v in iteritems(awsProductDict['products']):
+    for k, v in iteritems(awsBillingJson['products']):
+        i = v['attributes']
         # NOTES:
         #
         # 3 tenant types: 'Host' (always $0.00; just a template?)
@@ -189,13 +179,12 @@ def parseEC2Json2List(region):
         # The same instance can appear with multiple "operation" values;
         # "RunInstances" is normal
         # "RunInstances:<code>" is e.g. Linux with MS SQL Server installed.
-        i = v['attributes']
         if (i.get('location') == region and
             i.get('tenancy') == 'Shared' and
             i.get('operatingSystem') == 'Linux' and
             i.get('operation') == 'RunInstances'):
 
-            normal_use = i.get('usagetype').endswith('-BoxUsage:' + i['instanceType'])  # not reserved or unused
+            normal_use = i.get('usagetype').endswith('BoxUsage:' + i['instanceType'])  # not reserved or unused
             if normal_use:
                 disks, disk_capacity = parseStorage(v["attributes"]["storage"])
                 instance = InstanceType(name=i["instanceType"],
@@ -209,7 +198,7 @@ def parseEC2Json2List(region):
                 ec2InstanceList.append(instance)
                 print(str(i["instanceType"]) + ' Added!')
     print('Finished for ' + str(region) + '.  ' + str(len(ec2InstanceList)) + ' added.\n')
-    return ec2InstanceList
+    return dict((_.name, _) for _ in ec2InstanceList)
 
 
 def updateStaticEC2Instances():
@@ -220,8 +209,8 @@ def updateStaticEC2Instances():
 
     :return: Nothing.  Writes a new 'generatedEC2Lists.py' file.
     """
-    logger.info("Updating Toil's EC2 lists to the most current version from AWS's bulk API.  "
-                "This may take a while, depending on your internet connection.")
+    print("Updating Toil's EC2 lists to the most current version from AWS's bulk API.  "
+          "This may take a while, depending on your internet connection (~1Gb file).\n")
 
     origFile = os.path.join(dirname, 'generatedEC2Lists.py')  # original
     assert os.path.exists(origFile)
@@ -230,13 +219,23 @@ def updateStaticEC2Instances():
     if os.path.exists(genFile):
         os.remove(genFile)
 
+    # filepath to store the aws json request (will be cleaned up)
+    # this is done because AWS changes their json format from time to time
+    # and debugging is faster with the file stored locally
+    awsJsonIndex = os.path.join(dirname, 'index.json')
+
     if not os.path.exists(awsJsonIndex):
         fetchEC2Index(filename=awsJsonIndex)
+    else:
+        print('Reusing previously downloaded json @: ' + awsJsonIndex)
+
+    with open(awsJsonIndex, 'r') as f:
+        awsProductDict = json.loads(f.read())
 
     currentEC2List = []
     instancesByRegion = {}
     for regionNickname in EC2Regions:
-        currentEC2Dict = fetchEC2InstanceDict(regionNickname=regionNickname)
+        currentEC2Dict = fetchEC2InstanceDict(awsProductDict, region=EC2Regions[regionNickname])
         for instanceName, instanceTypeObj in iteritems(currentEC2Dict):
             if instanceTypeObj not in currentEC2List:
                 currentEC2List.append(instanceTypeObj)
@@ -296,7 +295,7 @@ def updateStaticEC2Instances():
 
     with open(genFile, 'a+') as f:
         f.write(regionKey)
-    # delete the original file if it's still there
+    # delete the original file
     if os.path.exists(origFile):
         os.remove(origFile)
     # replace the instance list with a current list
