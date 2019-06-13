@@ -14,6 +14,6 @@
 from __future__ import absolute_import
 
 __all__ = ['fileStore', 'nonCachingFileStore', 'cachingFileStore']
-from toil.fileStore.fileStore import *
-from toil.fileStore.nonCachingFileStore import *
-from toil.fileStore.cachingFileStore import *
+from toil.fileStore.fileStore import WriteWatchingStream, FileID, FileStore, shutdownFileStore
+from toil.fileStore.nonCachingFileStore import NonCachingFileStore
+from toil.fileStore.cachingFileStore import CacheError, CacheUnbalancedError, IllegalDeletionCacheError, InvalidSourceCacheError, CachingFileStore
