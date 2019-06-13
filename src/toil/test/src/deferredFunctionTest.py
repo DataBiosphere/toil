@@ -265,7 +265,7 @@ def _deferredFunctionRunsWithFailuresFn(job, files):
         os.kill(os.getpid(), signal.SIGKILL)
     else:
         assert os.path.exists(files[1])
-        job.defer(cls._deleteFile, files[1])
+        job.defer(_deleteFile, files[1])
 
 def _deleteFile(nonLocalFile, nlf=None):
     """
@@ -322,4 +322,28 @@ def _testNewJobsCanHandleOtherJobDeaths_C(job, files, expectedResult):
     """
     for testFile in files:
         assert os.path.exists(testFile) is expectedResult
+
+
+class _deleteMethods(object):
+    @staticmethod
+    def _deleteFileMethod(nonLocalFile, nlf=None):
+        """
+        Delete nonLocalFile and nlf
+
+        :return: None
+        """
+        os.remove(nonLocalFile)
+        if nlf is not None:
+            os.remove(nlf)
+
+    @classmethod
+    def _deleteFileClassMethod(cls, nonLocalFile, nlf=None):
+        """
+        Delete nonLocalFile and nlf
+
+        :return: None
+        """
+        os.remove(nonLocalFile)
+        if nlf is not None:
+            os.remove(nlf)
 
