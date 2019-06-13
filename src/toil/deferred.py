@@ -26,6 +26,7 @@ import dill
 import fcntl
 import logging
 import os
+import shutil
 import tempfile
 
 from toil.lib.misc import mkdir_p
@@ -205,8 +206,9 @@ class DeferredFunctionManager(object):
         del cleaner
 
         # Clean up the directory we have been using.
-        # If it isn't empty, something is wrong.
-        os.rmdir(os.path.join(stateDirBase, "deferred"))
+        # It might not be empty if .tmp files escaped: nobody can tell they
+        # aren't just waiting to be locked.
+        shutil.rmtree(os.path.join(stateDirBase, "deferred"))
 
 
 
