@@ -24,7 +24,7 @@ from six.moves import xrange
 from toil.common import Toil
 from toil.job import Job
 from toil.fileStore import FileID
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, travis_test
 
 PREFIX_LENGTH=200
 
@@ -35,17 +35,18 @@ class JobFileStoreTest(ToilTest):
     """
     Tests testing the methods defined in :class:toil.fileStore.FileStore.
     """
+    @travis_test
     def testCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
-
+    @travis_test
     def testNonCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.disableCaching = True
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
-
+    @travis_test
     def _testJobFileStore(self, retryCount=0, badWorker=0.0, stringNo=1, stringLength=1000000,
                           testNo=2):
         """

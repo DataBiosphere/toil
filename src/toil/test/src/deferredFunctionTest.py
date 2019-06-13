@@ -25,7 +25,7 @@ from uuid import uuid4
 
 from toil.job import Job
 from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow
+from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.fileStore import CacheUnbalancedError
@@ -77,6 +77,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         self.options.logFile = os.path.join(testDir, 'logFile')
 
     # Tests for the various defer possibilities
+    @travis_test
     def testDeferredFunctionRunsWithMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -84,6 +85,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         """
         self._testDeferredFunctionRuns(_writeNonLocalFilesMethod)
 
+    @travis_test
     def testDeferredFunctionRunsWithClassMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -91,6 +93,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         """
         self._testDeferredFunctionRuns(_writeNonLocalFilesClassMethod)
 
+    @travis_test
     def testDeferredFunctionRunsWithLambda(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -184,6 +187,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         except FailedJobsException as e:
             pass
 
+    @travis_test
     def testBatchSystemCleanupCanHandleWorkerDeaths(self):
         """
         Create a non-local files. Create a job that registers a deferred job to delete the file
