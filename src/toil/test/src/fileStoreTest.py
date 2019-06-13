@@ -194,7 +194,7 @@ class hidden(object):
         def _testDeferredFunctionRuns(self, callableFn):
             """
             Create 2 files. Make a job that writes data to them. Register a deferred function that
-            deletes the two files (one passed as an arg, adn one as a kwarg) and later assert that
+            deletes the two files (one passed as an arg, and one as a kwarg) and later assert that
             the files have been deleted.
 
             :param function callableFn: The function to use in the test.
@@ -403,8 +403,6 @@ class hidden(object):
 
             Assert that the file is missing after the pipeline fails.
             """
-
-            self.options.realTimeLogging = True
 
             # There can be no retries
             self.options.retryCount = 0
