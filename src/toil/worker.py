@@ -25,6 +25,7 @@ import json
 import tempfile
 import traceback
 import time
+import signal
 import socket
 import logging
 import shutil
@@ -38,7 +39,8 @@ from toil.job import Job
 from toil.lib.bioio import setLogLevel
 from toil.lib.bioio import getTotalCpuTime
 from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
-import signal
+from toil.deferredFunctionManager import DeferredFunctionManager
+
 
 logging.basicConfig()
 logger = logging.getLogger(__name__)

@@ -22,12 +22,12 @@ from builtins import object
 from contextlib import contextmanager
 
 import dill
-import fnctl
+import fcntl
 import logging
 import os
 import tempfile
 
-from toil.util.misc import mkdir_p
+from toil.lib.misc import mkdir_p
 
 logger = logging.getLogger(__name__)
 
@@ -78,17 +78,19 @@ class DeferredFunctionManager(object):
 
         # Lock the state file. The lock will automatically go away if our process does.
         try:
-            fnctl.lockf(self.stateFD, fnctl.LOCK_EX | fnctl.LOCK_NB)
+            fcntl.lockf(self.stateFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except IOError as e:
             # Someone else might have locked it even though they should not have.
             raise RuntimeError("Could not lock deferred function state file %s: %s" % (self.stateFileName, str(e)))
 
         # Rename it to remove the ".tmp"
-        os.move(self.stateFileName, self.StateFileName[:-4])
+        os.rename(self.stateFileName, self.stateFileName[:-4])
         self.stateFileName = self.stateFileName[:-4]
 
         # Wrap the FD in a Python file object, which we will use to actually use it.
-        self.stateFile = os.fdopen(self.stateFD, 'rw')
+        # Problem: we can't be readable and writable at the same time. So we need two file objects.
+        self.stateFileOut = os.fdopen(self.stateFD, 'wb')
+        self.stateFileIn = open(self.stateFileName, 'rb')
 
     def __del__(self):
         """
@@ -100,10 +102,10 @@ class DeferredFunctionManager(object):
         os.unlink(self.stateFileName)
 
         # Unlock it
-        fnctl.lockf(self.stateFD, fnctl.LOCK_UN)
+        fcntl.lockf(self.stateFD, fcntl.LOCK_UN)
 
-        # Close it. This also closes the FD
-        self.stateFile.close()
+        # Don't bother with close, destroying will close and it seems to maybe
+        # have been GC'd already anyway. 
         
     @contextmanager
     def open(self):
@@ -121,7 +123,7 @@ class DeferredFunctionManager(object):
                 # Just serialize defered functions one after the other.
                 # If serializing later ones fails, eariler ones will still be intact.
                 # We trust dill to protect sufficiently against partial reads later.
-                dill.dump(deferredFunction, self.parent.stateFile)
+                dill.dump(deferredFunction, self.parent.stateFileOut)
             yield defer
         finally:
             self._runOwnDeferredFunctions()
@@ -163,14 +165,15 @@ class DeferredFunctionManager(object):
         """
 
         # Seek back to the start of our file
-        self.stateFile.seek(0)
+        self.stateFileIn.seek(0)
 
         # Read and run each function in turn
-        self._runAllDeferredFunctions(self.stateFile)
+        self._runAllDeferredFunctions(self.stateFileIn)
 
         # Go back to the beginning and truncate, to prepare for a new set of deferred functions.
-        self.stateFile.seek(0)
-        self.stateFile.truncate()
+        self.stateFileIn.seek(0)
+        self.stateFileOut.seek(0)
+        self.stateFileOut.truncate()
 
     def _runOrphanedDeferredFunctions(self):
         """
@@ -194,18 +197,26 @@ class DeferredFunctionManager(object):
 
                 fullFilename = os.path.join(self.stateDir, filename)
 
+                if fullFilename == self.stateFileName:
+                    # We would be able to lock our own file, and it would appear unowned.
+                    # So skip it.
+                    continue
+
                 fd = None
 
                 try:
                     # Try locking each file.
                     # The file may have vanished since we saw it, so we have to ignore failures.
-                    fd = os.open(fullFilename, os.O_RDRW)
+                    # We open in read write mode because the fcntl docs say you
+                    # might only be able to exclusively lock files opened for
+                    # writing.
+                    fd = os.open(fullFilename, os.O_RDWR)
                 except OSError:
                     # Maybe the file vanished. Try the next one
                     continue
 
                 try:
-                    fnctl.lockf(fd, fnctl.LOCK_EX | fnctl.LOCK_NB)
+                    fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except IOError:
                     # File is still locked by someone else.
                     # Look at the next file instead
@@ -215,7 +226,7 @@ class DeferredFunctionManager(object):
                 foundFiles = True
 
                 # Actually run all the stored deferred functions
-                fileObj = os.fdopen(fd)
+                fileObj = os.fdopen(fd, 'rb')
                 self._runAllDeferredFunctions(fileObj)
 
                 try:
@@ -226,7 +237,7 @@ class DeferredFunctionManager(object):
                     pass
                 
                 # Unlock it
-                fnctl.lockf(fd, fnctl.LOCK_UN)
+                fcntl.lockf(fd, fcntl.LOCK_UN)
 
                 # Now close it.
                 fileObj.close()
