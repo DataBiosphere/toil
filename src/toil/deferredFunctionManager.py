@@ -28,6 +28,7 @@ import os
 import tempfile
 
 from toil.lib.misc import mkdir_p
+from toil.realtimeLogger import RealtimeLogger
 
 logger = logging.getLogger(__name__)
 
@@ -92,11 +93,15 @@ class DeferredFunctionManager(object):
         self.stateFileOut = os.fdopen(self.stateFD, 'wb')
         self.stateFileIn = open(self.stateFileName, 'rb')
 
+        RealtimeLogger.info("Running for file %s" % self.stateFileName)
+
     def __del__(self):
         """
         Clean up our state on disk. We assume that the deferred functions we
         manage have all been executed, and none are currently recorded.
         """
+
+        RealtimeLogger.info("Deleting %s" % self.stateFileName)
 
         # Hide the state from other processes
         os.unlink(self.stateFileName)
@@ -123,7 +128,10 @@ class DeferredFunctionManager(object):
                 # Just serialize defered functions one after the other.
                 # If serializing later ones fails, eariler ones will still be intact.
                 # We trust dill to protect sufficiently against partial reads later.
-                dill.dump(deferredFunction, self.parent.stateFileOut)
+                RealtimeLogger.info("Deferring function %s" % repr(deferredFunction))
+                dill.dump(deferredFunction, self.stateFileOut)
+
+            RealtimeLogger.info("Running job")
             yield defer
         finally:
             self._runOwnDeferredFunctions()
@@ -139,7 +147,8 @@ class DeferredFunctionManager(object):
         try:
             deferredFunction.invoke()
         except:
-            logger.exception('%s failed.', deferredFunction)
+            logger.exception('%s failed.', repr(deferredFunction))
+            RealtimeLogger.error("Failed to run deferred function %s" % repr(deferredFunction))
             # TODO: we can't report deferredFunction.name with a logToMaster,
             # since we don't have the FileStore.
             # TODO: report in real-time.
@@ -153,16 +162,23 @@ class DeferredFunctionManager(object):
             while True:
                 # Load each function
                 deferredFunction = dill.load(fileObj)
+                RealtimeLogger.info("Loaded deferred function %s" % repr(deferredFunction))
                 # Run it
                 self._runDeferredFunction(deferredFunction)
-        except EOFError:
+        except EOFError as e:
             # This is expected and means we read all the complete entries.
+            RealtimeLogger.info("Out of deferred functions!")
             pass
 
     def _runOwnDeferredFunctions(self):
         """
         Run all of the deferred functions that were registered.
         """
+        
+        RealtimeLogger.info("Running own deferred functions")
+
+        # Flush output so we can see it for input
+        self.stateFileOut.flush()
 
         # Seek back to the start of our file
         self.stateFileIn.seek(0)
@@ -179,6 +195,8 @@ class DeferredFunctionManager(object):
         """
         Scan for files that aren't locked by anybody and run all their deferred functions, then clean them up.
         """
+
+        RealtimeLogger.info("Running orphaned deferred functions")
 
         # Track whether we found any work to do.
         # We will keep looping as long as there is work to do.
@@ -202,6 +220,8 @@ class DeferredFunctionManager(object):
                     # So skip it.
                     continue
 
+                RealtimeLogger.info("Try file %s" % fullFilename)
+
                 fd = None
 
                 try:
@@ -221,6 +241,8 @@ class DeferredFunctionManager(object):
                     # File is still locked by someone else.
                     # Look at the next file instead
                     continue
+
+                RealtimeLogger.info("Locked file %s" % fullFilename)
 
                 # File is locked successfully. Our problem now.
                 foundFiles = True

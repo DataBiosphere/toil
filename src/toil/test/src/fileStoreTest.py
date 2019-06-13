@@ -208,6 +208,7 @@ class hidden(object):
             assert os.path.exists(nonLocalFile1)
             assert os.path.exists(nonLocalFile2)
             A = Job.wrapJobFn(callableFn, files=(nonLocalFile1, nonLocalFile2))
+            self.options.realTimeLogging = True
             Job.Runner.startToil(A, self.options)
             assert not os.path.exists(nonLocalFile1)
             assert not os.path.exists(nonLocalFile2)
