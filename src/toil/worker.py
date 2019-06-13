@@ -169,6 +169,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 sys.path.append(e)
 
     toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
+
+    # Connect to the deferred function system
+    deferredFunctionManager = DeferredFunctionManager(toilWorkflowDir)
     
     ##########################################
     #Setup the temporary directories.
@@ -324,11 +327,12 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 with job._executor(jobGraph=jobGraph,
                                    stats=statsDict if config.stats else None,
                                    fileStore=fileStore):
-                    with fileStore.open(job):
-                        # Get the next block function and list that will contain any messages
-                        blockFn = fileStore._blockFn
+                    with deferredFunctionManager.open() as defer:
+                        with fileStore.open(job):
+                            # Get the next block function and list that will contain any messages
+                            blockFn = fileStore._blockFn
 
-                        job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore)
+                            job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore, defer=defer)
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages

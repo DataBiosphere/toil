@@ -309,6 +309,7 @@ class Job(BaseJob):
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
         self._fileStore = None
+        self._defer = None
         self._tempDir = None
         self._succeeded = True
 
@@ -719,9 +720,9 @@ class Job(BaseJob):
 
         :param dict kwargs: The keyword arguments to the function
         """
-        if self._fileStore is None:
+        if self._defer is None:
             raise Exception('A deferred function may only be registered with a job while that job is running.')
-        self._fileStore._registerDeferredFunction(DeferredFunction.create(function, *args, **kwargs))
+        self._defer(DeferredFunction.create(function, *args, **kwargs))
 
 
     ####################################################
@@ -1365,22 +1366,35 @@ class Job(BaseJob):
                 )
             )
 
-    def _runner(self, jobGraph, jobStore, fileStore):
+    def _runner(self, jobGraph, jobStore, fileStore, defer):
         """
         This method actually runs the job, and serialises the next jobs.
 
         :param class jobGraph: Instance of a jobGraph object
         :param class jobStore: Instance of the job store
-        :param toil.fileStore.FileStore fileStore: Instance of a Cached on uncached
+        :param toil.fileStore.FileStore fileStore: Instance of a cached or uncached
                filestore
+        :param defer: Function yielded by open() context
+               manager of :class:`toil.DeferredFunctionManager`, which is called to
+               register deferred functions.
         :return:
         """
+
+        # Make deferred function registration available during run().
+        self._defer = defer
         # Make fileStore available as an attribute during run() ...
         self._fileStore = fileStore
         # ... but also pass it to run() as an argument for backwards compatibility.
         returnValues = self._run(jobGraph, fileStore)
+        # Clean up state changes made for run()
+        self._defer = None
+        self._fileStore = None
+
+
         # Serialize the new jobs defined by the run method to the jobStore
         self._serialiseExistingJob(jobGraph, jobStore, returnValues)
+
+        
 
     def _jobName(self):
         """
