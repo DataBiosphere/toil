@@ -39,7 +39,7 @@ from toil.job import Job
 from toil.lib.bioio import setLogLevel
 from toil.lib.bioio import getTotalCpuTime
 from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
-from toil.deferredFunctionManager import DeferredFunctionManager
+from toil.deferred import DeferredFunctionManager
 
 
 logging.basicConfig()

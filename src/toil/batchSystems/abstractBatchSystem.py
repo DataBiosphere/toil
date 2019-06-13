@@ -27,7 +27,7 @@ from toil.lib.objects import abstractclassmethod
 from toil.batchSystems import registry
 from toil.common import Toil, cacheDirName
 from toil.fileStore import shutdownFileStore
-from toil.deferredFunctionManager import DeferredFunctionManager
+from toil.deferred import DeferredFunctionManager
 
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS

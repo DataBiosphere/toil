@@ -20,7 +20,6 @@ from builtins import str
 from builtins import range
 from builtins import object
 from abc import abstractmethod, ABCMeta
-from collections import namedtuple, defaultdict
 from contextlib import contextmanager
 from fcntl import flock, LOCK_EX, LOCK_UN
 from functools import partial
@@ -43,7 +42,6 @@ from toil.lib.objects import abstractclassmethod
 from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
-from toil.resource import ModuleDescriptor
 
 logger = logging.getLogger(__name__)
 
@@ -126,48 +124,6 @@ class FileID(str):
     def forPath(cls, fileStoreID, filePath):
         return cls(fileStoreID, os.stat(filePath).st_size)
 
-
-class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
-    """
-    >>> df = DeferredFunction.create(defaultdict, None, {'x':1}, y=2)
-    >>> df
-    DeferredFunction(defaultdict, ...)
-    >>> df.invoke() == defaultdict(None, x=1, y=2)
-    True
-    """
-    @classmethod
-    def create(cls, function, *args, **kwargs):
-        """
-        Capture the given callable and arguments as an instance of this class.
-
-        :param callable function: The deferred action to take in the form of a function
-        :param tuple args: Non-keyword arguments to the function
-        :param dict kwargs: Keyword arguments to the function
-        """
-        # The general principle is to deserialize as late as possible, i.e. when the function is
-        # to be invoked, as that will avoid redundantly deserializing deferred functions for
-        # concurrently running jobs when the cache state is loaded from disk. By implication we
-        # should serialize as early as possible. We need to serialize the function as well as its
-        # arguments.
-        return cls(*list(map(dill.dumps, (function, args, kwargs))),
-                   name=function.__name__,
-                   module=ModuleDescriptor.forModule(function.__module__).globalize())
-
-    def invoke(self):
-        """
-        Invoke the captured function with the captured arguments.
-        """
-        logger.debug('Running deferred function %s.', self)
-        self.module.makeLoadable()
-        function, args, kwargs = list(map(dill.loads, (self.function, self.args, self.kwargs)))
-        return function(*args, **kwargs)
-
-    def __str__(self):
-        return '%s(%s, ...)' % (self.__class__.__name__, self.name)
-
-    __repr__ = __str__
-
-
 class FileStore(with_metaclass(ABCMeta, object)):
     """
     Interface used to allow user code run by Toil to read and write files.
@@ -179,9 +135,6 @@ class FileStore(with_metaclass(ABCMeta, object)):
      * finding the correct temporary directory for scratch work
      * importing and exporting files into and out of the workflow
    
-    Also provides the backend for implementing deferred functions, although the
-    user-facing interface goes through the job object.
-
     Stores user files in the jobStore, but keeps them separate from actual
     jobs.
 
@@ -438,44 +391,16 @@ class FileStore(with_metaclass(ABCMeta, object)):
                 dill.dump(self.__dict__, fH)
             os.rename(fileName + '.tmp', fileName)
 
-    # Methods related to the deferred function logic
     @abstractclassmethod
     def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
         """
         This function looks at the state of all jobs registered on the node and will handle them
-        (clean up their presence on the node, and run any registered defer functions)
+        (clean up their presence on the node)
 
         :param nodeInfo: Information regarding the node required for identifying dead jobs.
         :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
         """
         raise NotImplementedError()
-
-    @abstractmethod
-    def _registerDeferredFunction(self, deferredFunction):
-        """
-        Register the given deferred function with this job.
-
-        :param DeferredFunction deferredFunction: the function to register
-        """
-        raise NotImplementedError()
-
-    @staticmethod
-    def _runDeferredFunctions(deferredFunctions):
-        """
-        Invoke the specified deferred functions and return a list of names of functions that
-        raised an exception while being invoked.
-
-        :param list[DeferredFunction] deferredFunctions: the DeferredFunctions to run
-        :rtype: list[str]
-        """
-        failures = []
-        for deferredFunction in deferredFunctions:
-            try:
-                deferredFunction.invoke()
-            except:
-                failures.append(deferredFunction.name)
-                logger.exception('%s failed.', deferredFunction)
-        return failures
 
     # Functions related to logging
     def logToMaster(self, text, level=logging.INFO):
@@ -544,12 +469,10 @@ class FileStore(with_metaclass(ABCMeta, object)):
 
 def shutdownFileStore(workflowDir, workflowID):
     """
-    Run the deferred functions from any prematurely terminated jobs still lingering on the system
-    and carry out any necessary filestore-specific cleanup.
+    Carry out any necessary filestore-specific cleanup.
 
     This is a destructive operation and it is important to ensure that there are no other running
     processes on the system that are modifying or using the file store for this workflow.
-
 
     This is the intended to be the last call to the file store in a Toil run, called by the
     batch system cleanup function upon batch system shutdown.

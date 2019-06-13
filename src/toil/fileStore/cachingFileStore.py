@@ -191,11 +191,6 @@ class CachingFileStore(FileStore):
             # Delete all the job specific files and return sizes to jobReqs
             self.returnJobReqs(jobReqs)
             with self._CacheState.open(self) as cacheInfo:
-                # Carry out any user-defined cleanup actions
-                deferredFunctions = cacheInfo.jobState[self.jobID]['deferredFunctions']
-                failures = self._runDeferredFunctions(deferredFunctions)
-                for failure in failures:
-                    self.logToMaster('Deferred function "%s" failed.' % failure, logging.WARN)
                 # Finally delete the job from the cache state file
                 cacheInfo.jobState.pop(self.jobID)
 
@@ -792,8 +787,7 @@ class CachingFileStore(FileStore):
                 'jobDir': self.localTempDir,
                 'jobSpecificFiles': defaultdict(partial(defaultdict,int)),
                 'filesToFSIDs': defaultdict(set),
-                'pid': os.getpid(),
-                'deferredFunctions': []}
+                'pid': os.getpid()}
             # If the caching equation is balanced, do nothing.
             if cacheInfo.isBalanced():
                 return None
@@ -967,7 +961,6 @@ class CachingFileStore(FileStore):
             # totalFree = totalStats.f_bavail * totalStats.f_frsize
             # return totalFree < jobReqs
 
-    # Methods related to the deferred function logic
     @classmethod
     def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
         """
@@ -989,15 +982,8 @@ class CachingFileStore(FileStore):
                     if os.path.exists(jobState.jobDir):
                         shutil.rmtree(jobState.jobDir)
                     nodeInfo.sigmaJob -= jobState.jobReqs
-                logger.debug('Running user-defined deferred functions.')
-                cls._runDeferredFunctions(jobState.deferredFunctions)
                 # Remove job from the cache state file
                 nodeInfo.jobState.pop(jobID)
-
-    def _registerDeferredFunction(self, deferredFunction):
-        with self._CacheState.open(self) as cacheInfo:
-            cacheInfo.jobState[self.jobID]['deferredFunctions'].append(deferredFunction)
-            logger.debug('Registered "%s" with job "%s".', deferredFunction, self.jobName)
 
     class _JobState(object):
         """

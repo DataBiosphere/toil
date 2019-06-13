@@ -19,6 +19,7 @@ from builtins import map
 from builtins import str
 from builtins import range
 from builtins import object
+from collections import namedtuple
 from contextlib import contextmanager
 
 import dill
@@ -29,8 +30,50 @@ import tempfile
 
 from toil.lib.misc import mkdir_p
 from toil.realtimeLogger import RealtimeLogger
+from toil.resource import ModuleDescriptor
 
 logger = logging.getLogger(__name__)
+
+class DeferredFunction(namedtuple('DeferredFunction', 'function args kwargs name module')):
+    """
+    >>> df = DeferredFunction.create(defaultdict, None, {'x':1}, y=2)
+    >>> df
+    DeferredFunction(defaultdict, ...)
+    >>> df.invoke() == defaultdict(None, x=1, y=2)
+    True
+    """
+    @classmethod
+    def create(cls, function, *args, **kwargs):
+        """
+        Capture the given callable and arguments as an instance of this class.
+
+        :param callable function: The deferred action to take in the form of a function
+        :param tuple args: Non-keyword arguments to the function
+        :param dict kwargs: Keyword arguments to the function
+        """
+        # The general principle is to deserialize as late as possible, i.e. when the function is
+        # to be invoked, as that will avoid redundantly deserializing deferred functions for
+        # concurrently running jobs when the cache state is loaded from disk. By implication we
+        # should serialize as early as possible. We need to serialize the function as well as its
+        # arguments.
+        return cls(*list(map(dill.dumps, (function, args, kwargs))),
+                   name=function.__name__,
+                   module=ModuleDescriptor.forModule(function.__module__).globalize())
+
+    def invoke(self):
+        """
+        Invoke the captured function with the captured arguments.
+        """
+        logger.debug('Running deferred function %s.', self)
+        self.module.makeLoadable()
+        function, args, kwargs = list(map(dill.loads, (self.function, self.args, self.kwargs)))
+        return function(*args, **kwargs)
+
+    def __str__(self):
+        return '%s(%s, ...)' % (self.__class__.__name__, self.name)
+
+    __repr__ = __str__
+
 
 class DeferredFunctionManager(object):
     """
@@ -94,7 +137,7 @@ class DeferredFunctionManager(object):
         self.stateFileOut = os.fdopen(self.stateFD, 'wb')
         self.stateFileIn = open(self.stateFileName, 'rb')
 
-        RealtimeLogger.info("Running for file %s" % self.stateFileName)
+        logger.debug("Running for file %s" % self.stateFileName)
 
     def __del__(self):
         """
@@ -102,7 +145,7 @@ class DeferredFunctionManager(object):
         manage have all been executed, and none are currently recorded.
         """
 
-        RealtimeLogger.info("Deleting %s" % self.stateFileName)
+        logger.debug("Deleting %s" % self.stateFileName)
 
         # Hide the state from other processes
         os.unlink(self.stateFileName)
@@ -132,12 +175,12 @@ class DeferredFunctionManager(object):
                 # Just serialize defered functions one after the other.
                 # If serializing later ones fails, eariler ones will still be intact.
                 # We trust dill to protect sufficiently against partial reads later.
-                RealtimeLogger.info("Deferring function %s" % repr(deferredFunction))
+                logger.debug("Deferring function %s" % repr(deferredFunction))
                 dill.dump(deferredFunction, self.stateFileOut)
                 # Flush before returning so we can guarantee the write is on disk if we die.
                 self.stateFileOut.flush()
 
-            RealtimeLogger.info("Running job")
+            logger.debug("Running job")
             yield defer
         finally:
             self._runOwnDeferredFunctions()
@@ -151,7 +194,7 @@ class DeferredFunctionManager(object):
         once more for orphaned deferred functions and runs them.
         """
 
-        RealtimeLogger.info("Cleaning up deferred functions system")
+        logger.debug("Cleaning up deferred functions system")
 
         # Open up
         cleaner = cls(stateDirBase)
@@ -176,12 +219,11 @@ class DeferredFunctionManager(object):
 
         try:
             deferredFunction.invoke()
+        except Exception as err:
+            # Report this in real time, if enabled. Otherwise the only place it ends up is the worker log.
+            RealtimeLogger.error("Failed to run deferred function %s: %s", repr(deferredFunction), str(err))
         except:
-            logger.exception('%s failed.', repr(deferredFunction))
-            RealtimeLogger.error("Failed to run deferred function %s" % repr(deferredFunction))
-            # TODO: we can't report deferredFunction.name with a logToMaster,
-            # since we don't have the FileStore.
-            # TODO: report in real-time.
+            RealtimeLogger.error("Failed to run deferred function %s", repr(deferredFunction))
 
     def _runAllDeferredFunctions(self, fileObj):
         """
@@ -192,12 +234,12 @@ class DeferredFunctionManager(object):
             while True:
                 # Load each function
                 deferredFunction = dill.load(fileObj)
-                RealtimeLogger.info("Loaded deferred function %s" % repr(deferredFunction))
+                logger.debug("Loaded deferred function %s" % repr(deferredFunction))
                 # Run it
                 self._runDeferredFunction(deferredFunction)
         except EOFError as e:
             # This is expected and means we read all the complete entries.
-            RealtimeLogger.info("Out of deferred functions!")
+            logger.debug("Out of deferred functions!")
             pass
 
     def _runOwnDeferredFunctions(self):
@@ -205,7 +247,7 @@ class DeferredFunctionManager(object):
         Run all of the deferred functions that were registered.
         """
         
-        RealtimeLogger.info("Running own deferred functions")
+        logger.debug("Running own deferred functions")
 
         # Seek back to the start of our file
         self.stateFileIn.seek(0)
@@ -223,7 +265,7 @@ class DeferredFunctionManager(object):
         Scan for files that aren't locked by anybody and run all their deferred functions, then clean them up.
         """
 
-        RealtimeLogger.info("Running orphaned deferred functions")
+        logger.debug("Running orphaned deferred functions")
 
         # Track whether we found any work to do.
         # We will keep looping as long as there is work to do.
@@ -247,7 +289,7 @@ class DeferredFunctionManager(object):
                     # So skip it.
                     continue
 
-                RealtimeLogger.info("Try file %s" % fullFilename)
+                logger.debug("Try file %s" % fullFilename)
 
                 fd = None
 
@@ -269,7 +311,7 @@ class DeferredFunctionManager(object):
                     # Look at the next file instead
                     continue
 
-                RealtimeLogger.info("Locked file %s" % fullFilename)
+                logger.debug("Locked file %s" % fullFilename)
 
                 # File is locked successfully. Our problem now.
                 foundFiles = True

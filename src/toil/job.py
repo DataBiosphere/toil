@@ -48,7 +48,7 @@ from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
 
 from toil.common import Toil, addOptions, safeUnpickleFromStream
-from toil.fileStore import DeferredFunction
+from toil.deferred import DeferredFunction
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
                             getTotalCpuTime)
