@@ -188,6 +188,7 @@ class NonCachingFileStore(FileStore):
         :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
         :return:
         """
+
         # A list of tuples of (job name, pid or process running job, registered defer functions)
         for jobState in cls._getAllJobStates(nodeInfo):
             if not cls._pidExists(jobState['jobPID']):

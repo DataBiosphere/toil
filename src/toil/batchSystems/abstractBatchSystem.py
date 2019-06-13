@@ -27,6 +27,7 @@ from toil.lib.objects import abstractclassmethod
 from toil.batchSystems import registry
 from toil.common import Toil, cacheDirName
 from toil.fileStore import shutdownFileStore
+from toil.deferredFunctionManager import DeferredFunctionManager
 
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
@@ -315,6 +316,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         assert isinstance(info, WorkerCleanupInfo)
         workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
+        DeferredFunctionManager.cleanupWorker(workflowDir)
         workflowDirContents = os.listdir(workflowDir)
         shutdownFileStore(workflowDir, info.workflowID)
         if (info.cleanWorkDir == 'always'

@@ -41,8 +41,9 @@ class DeferredFunctionManager(object):
 
     If the Python process terminates before properly exiting the context
     manager and running the deferred functions, and some other worker process
-    exits the per-job context manager of this class at a later time, the
-    earlier job's deferred functions will be picked up and run.
+    enters or exits the per-job context manager of this class at a later time,
+    or when the DeferredFunctionManager is shut down on the worker, the earlier
+    job's deferred functions will be picked up and run.
 
     Note that deferred function cleanup is on a best-effort basis, and deferred
     functions may end up getting executed multiple times.
@@ -123,6 +124,9 @@ class DeferredFunctionManager(object):
         Not thread safe.
         """
 
+        # Clean up other jobs before we run, so our job has a nice clean node
+        self._runOrphanedDeferredFunctions()
+    
         try:
             def defer(deferredFunction):
                 # Just serialize defered functions one after the other.
@@ -130,12 +134,38 @@ class DeferredFunctionManager(object):
                 # We trust dill to protect sufficiently against partial reads later.
                 RealtimeLogger.info("Deferring function %s" % repr(deferredFunction))
                 dill.dump(deferredFunction, self.stateFileOut)
+                # Flush before returning so we can guarantee the write is on disk if we die.
+                self.stateFileOut.flush()
 
             RealtimeLogger.info("Running job")
             yield defer
         finally:
             self._runOwnDeferredFunctions()
             self._runOrphanedDeferredFunctions()
+
+    @classmethod
+    def cleanupWorker(cls, stateDirBase):
+        """
+        Called by the batch system when it shuts down the node, after all
+        workers are done, if the batch system supports worker cleanup. Checks
+        once more for orphaned deferred functions and runs them.
+        """
+
+        RealtimeLogger.info("Cleaning up deferred functions system")
+
+        # Open up
+        cleaner = cls(stateDirBase)
+        # Do the final round of cleanup
+        cleaner._runOrphanedDeferredFunctions()
+
+        # Close all the files in there.
+        del cleaner
+
+        # Clean up the directory we have been using.
+        # If it isn't empty, something is wrong.
+        os.rmdir(os.path.join(stateDirBase, "deferred"))
+
+
 
     def _runDeferredFunction(self, deferredFunction):
         """
@@ -176,9 +206,6 @@ class DeferredFunctionManager(object):
         """
         
         RealtimeLogger.info("Running own deferred functions")
-
-        # Flush output so we can see it for input
-        self.stateFileOut.flush()
 
         # Seek back to the start of our file
         self.stateFileIn.seek(0)
