@@ -60,6 +60,7 @@ from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        needs_aws,
                        needs_azure,
+                       needs_encryption,
                        make_tests,
                        needs_google,
                        travis_test,
