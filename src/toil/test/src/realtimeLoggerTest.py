@@ -20,6 +20,7 @@ from toil.realtimeLogger import RealtimeLogger
 
 
 class RealtimeLoggerTest(ToilTest):
+    
     @travis_test
     def testRealtimeLogger(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())

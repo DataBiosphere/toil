@@ -303,6 +303,7 @@ class UtilsTest(ToilTest):
 
         # Delete output file
         os.remove(self.outputFile)
+    
     @travis_test
     def testUnicodeSupport(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
@@ -334,6 +335,7 @@ class UtilsTest(ToilTest):
             if i > seconds:
                 s = status_fn(self.toilDir)
                 self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
+    
     @travis_test
     def testGetPIDStatus(self):
         """Test that ToilStatus.getPIDStatus() behaves as expected."""
@@ -346,6 +348,7 @@ class UtilsTest(ToilTest):
         # delete this shared file. We assume we know its internal layout.
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
         self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
+    
     @travis_test
     def testGetStatusFailedToilWF(self):
         """

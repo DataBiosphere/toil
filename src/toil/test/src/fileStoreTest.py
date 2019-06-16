@@ -170,7 +170,7 @@ class hidden(object):
                             localFileIDs.remove(fsID)
                 i += 1
 
-        # Tests for the various defer possibilities
+        # Tests for the various defer possibilities 
         @travis_test
         def testDeferredFunctionRunsWithMethod(self):
             """
@@ -178,6 +178,7 @@ class hidden(object):
             Test with Method
             """
             self._testDeferredFunctionRuns(self._writeNonLocalFilesMethod)
+        
         @travis_test
         def testDeferredFunctionRunsWithClassMethod(self):
             """
@@ -185,6 +186,7 @@ class hidden(object):
             Test with Class Method
             """
             self._testDeferredFunctionRuns(self._writeNonLocalFilesClassMethod)
+        
         @travis_test
         def testDeferredFunctionRunsWithLambda(self):
             """
@@ -397,6 +399,7 @@ class hidden(object):
             """
             for testFile in files:
                 assert os.path.exists(testFile) is expectedResult
+        
         @travis_test
         def testBatchSystemCleanupCanHandleWorkerDeaths(self):
             """
@@ -784,6 +787,7 @@ class hidden(object):
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
+        
         @travis_test
         def testWriteNonLocalFileToJobStore(self):
             """
@@ -794,6 +798,7 @@ class hidden(object):
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=False,
                               nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
+        
         @travis_test
         def testWriteLocalFileToJobStore(self):
             """
@@ -804,6 +809,7 @@ class hidden(object):
             Job.Runner.startToil(A, self.options)
 
         # readGlobalFile tests
+        
         @travis_test
         def testReadCacheMissFileFromJobStoreWithoutCachingReadFile(self):
             """
@@ -811,6 +817,7 @@ class hidden(object):
             cache the read file.  Ensure the number of links on the file are appropriate.
             """
             self._testCacheMissFunction(cacheReadFile=False)
+        
         @travis_test
         def testReadCacheMissFileFromJobStoreWithCachingReadFile(self):
             """
@@ -867,6 +874,7 @@ class hidden(object):
                 return None
             else:
                 return outfile
+        
         @travis_test
         def testReadCachHitFileFromJobStore(self):
             """
@@ -1219,6 +1227,7 @@ class hidden(object):
                     outfile = testFile.name
                 else:
                     break
+        
         @travis_test
         def testDeleteLocalFile(self):
             """
