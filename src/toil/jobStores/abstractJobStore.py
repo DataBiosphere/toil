@@ -35,7 +35,7 @@ import six.moves.urllib.parse as urlparse
 from toil.lib.retry import retry_http
 
 from toil.common import safeUnpickleFromStream
-from toil.fileStore import FileID
+from toil.fileStores import FileID
 from toil.job import JobException
 from toil.lib.memoize import memoize
 from toil.lib.objects import abstractclassmethod
@@ -297,7 +297,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
         :return: The jobStoreFileId of the imported file or None if sharedFileName was given
-        :rtype: toil.fileStore.FileID or None
+        :rtype: toil.fileStores.FileID or None
         """
         # Note that the helper method _importFile is used to read from the source and write to
         # destination (which is the current job store in this case). To implement any
@@ -322,7 +322,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
         :return The jobStoreFileId of imported file or None if sharedFileName was given
-        :rtype: toil.fileStore.FileID or None
+        :rtype: toil.fileStores.FileID or None
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):

@@ -44,8 +44,8 @@ from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
-from toil.fileStore.fileStore import FileStore
-from toil.fileStore import FileID
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class InvalidSourceCacheError(CacheError):
     def __init__(self, message):
         super(InvalidSourceCacheError, self).__init__(message)
 
-class CachingFileStore(FileStore):
+class CachingFileStore(AbstractFileStore):
     """
     A cache-enabled file store.
 
@@ -920,7 +920,7 @@ class CachingFileStore(FileStore):
             cacheInfo.sigmaJob -= jobReqs
             # assert cacheInfo.isBalanced() # commenting this out for now. God speed
 
-    class _CacheState(FileStore._StateFile):
+    class _CacheState(AbstractFileStore._StateFile):
         """
         Utility class to read and write the cache lock file. Also for checking whether the
         caching equation is balanced or not.  It extends the _StateFile class to add other cache
@@ -965,7 +965,7 @@ class CachingFileStore(FileStore):
     @classmethod
     def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
         """
-        :param toil.fileStore.CachingFileStore._CacheState nodeInfo: The state of the node cache as
+        :param toil.fileStores.CachingFileStore._CacheState nodeInfo: The state of the node cache as
                a _CacheState object
         """
         # A list of tuples of (hashed job id, pid or process running job)
@@ -1001,7 +1001,7 @@ class CachingFileStore(FileStore):
             """
             This method will update the job specifc files in the job state object. It deals with
             opening a cache lock file, etc.
-            :param toil.fileStore.CachingFileStore outer: An instance of CachingFileStore
+            :param toil.fileStores.CachingFileStore outer: An instance of CachingFileStore
             :param str jobStoreFileID: job store Identifier for the file
             :param str filePath: The path to the file
             :param float fileSize: The size of the file (may be deprecated soon)
@@ -1098,7 +1098,7 @@ class CachingFileStore(FileStore):
                 # Ensure that the process downloading the file is still alive.  The PID will
                 # be in the harbinger file.
                 pid = self.read()
-                if FileStore._pidExists(pid):
+                if AbstractFileStore._pidExists(pid):
                     # Release the file lock and then wait for a bit before repeating.
                     flock(lockFileHandle, LOCK_UN)
                     time.sleep(20)

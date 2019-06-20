@@ -41,12 +41,12 @@ from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
-from toil.fileStore.fileStore import FileStore
-from toil.fileStore import FileID
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
-class NonCachingFileStore(FileStore):
+class NonCachingFileStore(AbstractFileStore):
     def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
         self.jobStore = jobStore
         self.jobGraph = jobGraph

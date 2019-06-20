@@ -317,7 +317,7 @@ class Job(BaseJob):
         """
         Override this function to perform work and dynamically create successor jobs.
 
-        :param toil.fileStore.fileStore.FileStore fileStore: Used to create local and 
+        :param toil.fileStores.abstractFileStore.AbstractFileStore fileStore: Used to create local and 
                globally sharable temporary files and to send log messages to the leader
                process.
 
@@ -1373,7 +1373,7 @@ class Job(BaseJob):
 
         :param class jobGraph: Instance of a jobGraph object
         :param class jobStore: Instance of the job store
-        :param toil.fileStore.fileStore.FileStore fileStore: Instance of a cached
+        :param toil.fileStores.abstractFileStore.AbstractFileStore fileStore: Instance of a cached
                or uncached filestore
         :param defer: Function yielded by open() context
                manager of :class:`toil.DeferredFunctionManager`, which is called to
@@ -1504,7 +1504,7 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     :class:`.Job` class provides.
 
     To enable the job function to get access to the
-    :class:`toil.fileStore.fileStore.FileStore` instance (see
+    :class:`toil.fileStores.abstractFileStore.AbstractFileStore` instance (see
     :func:`toil.job.Job.run`), it is made a variable of the wrapping job called
     fileStore.
 

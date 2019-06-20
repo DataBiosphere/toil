@@ -43,11 +43,11 @@ from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 
-from toil.fileStore import FileID
+from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
-class FileStore(with_metaclass(ABCMeta, object)):
+class AbstractFileStore(with_metaclass(ABCMeta, object)):
     """
     Interface used to allow user code run by Toil to read and write files.
     
@@ -66,7 +66,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
     Passed as argument to the :meth:`toil.job.Job.run` method.
 
     Access to files is only permitted inside the context manager provided by
-    :meth:`toil.fileStore.FileStore.open`. 
+    :meth:`toil.fileStores.abstractFileStore.AbstractFileStore.open`. 
     """
     # Variables used for syncing reads/writes
     _pendingFileWritesLock = Semaphore()
@@ -87,8 +87,8 @@ class FileStore(with_metaclass(ABCMeta, object)):
     @staticmethod
     def createFileStore(jobStore, jobGraph, localTempDir, inputBlockFn, caching):
         # Defer these imports until runtime, since these classes depend on us
-        from toil.fileStore.cachingFileStore import CachingFileStore
-        from toil.fileStore.nonCachingFileStore import NonCachingFileStore
+        from toil.fileStores.cachingFileStore import CachingFileStore
+        from toil.fileStores.nonCachingFileStore import NonCachingFileStore
         fileStoreCls = CachingFileStore if caching else NonCachingFileStore
         return fileStoreCls(jobStore, jobGraph, localTempDir, inputBlockFn)
 
@@ -108,8 +108,8 @@ class FileStore(with_metaclass(ABCMeta, object)):
         """
 
         # Defer these imports until runtime, since these classes depend on our file
-        from toil.fileStore.cachingFileStore import CachingFileStore
-        from toil.fileStore.nonCachingFileStore import NonCachingFileStore
+        from toil.fileStores.cachingFileStore import CachingFileStore
+        from toil.fileStores.nonCachingFileStore import NonCachingFileStore
 
         cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
         if os.path.exists(cacheDir):
@@ -183,7 +183,7 @@ class FileStore(with_metaclass(ABCMeta, object)):
                job and all its successors have completed running.  If not the global file must be
                deleted manually.
         :return: an ID that can be used to retrieve the file.
-        :rtype: toil.fileStore.FileID
+        :rtype: toil.fileStores.FileID
         """
         raise NotImplementedError()
 
@@ -193,10 +193,10 @@ class FileStore(with_metaclass(ABCMeta, object)):
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
 
-        :param bool cleanup: is as in :func:`toil.fileStore.FileStore.writeGlobalFile`.
+        :param bool cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and
-                  2) the toil.fileStore.FileID of the resulting file in the job store.
+                  2) the toil.fileStores.FileID of the resulting file in the job store.
         """
         
         # TODO: Make this work with FileID
@@ -230,11 +230,11 @@ class FileStore(with_metaclass(ABCMeta, object)):
         If a user path is specified, it is used as the destination. If a user path isn't
         specified, the file is stored in the local temp directory with an encoded name.
 
-        :param toil.fileStore.FileID fileStoreID: job store id for the file
+        :param toil.fileStores.FileID fileStoreID: job store id for the file
         :param string userPath: a path to the name of file to which the global file will be copied
                or hard-linked (see below).
-        :param bool cache: Described in :func:`toil.fileStore.CachingFileStore.readGlobalFile`
-        :param bool mutable: Described in :func:`toil.fileStore.CachingFileStore.readGlobalFile`
+        :param bool cache: Described in :func:`toil.fileStores.CachingFileStore.readGlobalFile`
+        :param bool mutable: Described in :func:`toil.fileStores.CachingFileStore.readGlobalFile`
         :return: An absolute path to a local, temporary copy of the file keyed by fileStoreID.
         :rtype: str
         """

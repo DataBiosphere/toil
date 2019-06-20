@@ -50,7 +50,7 @@ from toil.lib.exceptions import panic
 from mock import patch
 
 from toil.common import Config, Toil
-from toil.fileStore import FileID
+from toil.fileStores import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
