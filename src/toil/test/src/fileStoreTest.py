@@ -528,6 +528,7 @@ class hidden(object):
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
+        
         @travis_test
         def testWriteNonLocalFileToJobStore(self):
             """
@@ -538,6 +539,7 @@ class hidden(object):
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=False,
                               nonLocalDir=workdir)
             Job.Runner.startToil(A, self.options)
+        
         @travis_test
         def testWriteLocalFileToJobStore(self):
             """
@@ -548,6 +550,7 @@ class hidden(object):
             Job.Runner.startToil(A, self.options)
 
         # readGlobalFile tests
+        
         @travis_test
         def testReadCacheMissFileFromJobStoreWithoutCachingReadFile(self):
             """
@@ -555,6 +558,7 @@ class hidden(object):
             cache the read file.  Ensure the number of links on the file are appropriate.
             """
             self._testCacheMissFunction(cacheReadFile=False)
+        
         @travis_test
         def testReadCacheMissFileFromJobStoreWithCachingReadFile(self):
             """
@@ -611,6 +615,7 @@ class hidden(object):
                 return None
             else:
                 return outfile
+        
         @travis_test
         def testReadCachHitFileFromJobStore(self):
             """
@@ -963,6 +968,7 @@ class hidden(object):
                     outfile = testFile.name
                 else:
                     break
+        
         @travis_test
         def testDeleteLocalFile(self):
             """

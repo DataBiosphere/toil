@@ -61,6 +61,7 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.childMessage in toilOutput.decode('utf-8')
+    
     @travis_test
     def testWriteLogs(self):
         subprocess.check_call([sys.executable,
@@ -89,6 +90,7 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.parentMessage in toilOutput.decode('utf-8')
+    
     @travis_test
     def testRegularLog(self):
         toilOutput = subprocess.check_output([sys.executable,

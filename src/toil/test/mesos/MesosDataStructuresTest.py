@@ -34,6 +34,7 @@ class DataStructuresTest(ToilTest):
                       environment=None,
                       workerCleanupInfo=None)
         return job
+    
     @travis_test
     def testJobQueue(self, testJobs=1000):
         """

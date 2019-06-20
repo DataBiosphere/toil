@@ -76,9 +76,11 @@ class ImportExportFileTest(ToilTest):
     @slow
     def testImportExportRestartTrue(self):
         self._importExport(restart=True)
+    
     @travis_test
     def testImportExportRestartFalse(self):
         self._importExport(restart=False)
+    
     @travis_test
     def testImportSharedFileName(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())

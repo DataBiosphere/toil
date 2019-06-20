@@ -88,6 +88,7 @@ class JobTest(ToilTest):
             self.assertEqual(open(outFile, 'r').readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
+    
     @travis_test
     def testStatic2(self):
         """
@@ -143,6 +144,7 @@ class JobTest(ToilTest):
                 pass
             else:
                 self.fail()
+    
     @travis_test
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
@@ -175,6 +177,7 @@ class JobTest(ToilTest):
                 pass
             else:
                 self.fail()
+    
     @travis_test
     def testDeadlockDetection(self):
         """

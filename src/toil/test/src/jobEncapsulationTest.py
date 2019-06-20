@@ -24,6 +24,7 @@ class JobEncapsulationTest(ToilTest):
     """
     Tests testing the EncapsulationJob class
     """
+    
     @travis_test
     def testEncapsulation(self):
         """
@@ -50,6 +51,7 @@ class JobEncapsulationTest(ToilTest):
             self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
+    
     @travis_test
     def testAddChildEncapsulate(self):
         """

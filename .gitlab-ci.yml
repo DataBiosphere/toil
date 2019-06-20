@@ -25,7 +25,6 @@ py2_batch_systems:
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
-    - python -m pytest src/toil/test/mesos/mesosTest.py
 
 py2_cwl:
   stage: test
@@ -71,7 +70,6 @@ py3_batch_systems:
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
-    - python -m pytest src/toil/test/mesos/mesosTest.py
 
 py3_cwl:
   stage: test
