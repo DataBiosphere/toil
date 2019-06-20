@@ -30,6 +30,7 @@ class WorkerTests(ToilTest):
         self.config.jobStore = 'file:%s' % path
         self.jobStore.initialize(self.config)
         self.jobGraphNumber = 0
+    
     @travis_test
     def testNextChainableJobGraph(self):
         """Make sure chainable/non-chainable jobs are identified correctly."""

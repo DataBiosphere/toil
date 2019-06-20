@@ -19,6 +19,7 @@ from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 
 class CheckpointTest(ToilTest):
+    
     @travis_test
     def testCheckpointNotRetried(self):
         """A checkpoint job should not be retried if the workflow has a retryCount of 0."""

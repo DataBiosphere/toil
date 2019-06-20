@@ -38,6 +38,7 @@ class MiscTests(ToilTest):
     def setUp(self):
         super(MiscTests, self).setUp()
         self.testDir = self._createTempDir()
+    
     @travis_test
     def testIDStability(self):
         prevNodeID = None
@@ -93,24 +94,28 @@ class MiscTests(ToilTest):
 
 
 class TestPanic(ToilTest):
+    
     @travis_test
     def test_panic_by_hand(self):
         try:
             self.try_and_panic_by_hand()
         except:
             self.__assert_raised_exception_is_primary()
+    
     @travis_test
     def test_panic(self):
         try:
             self.try_and_panic()
         except:
             self.__assert_raised_exception_is_primary()
+    
     @travis_test
     def test_panic_with_secondary(self):
         try:
             self.try_and_panic_with_secondary()
         except:
             self.__assert_raised_exception_is_primary()
+    
     @travis_test
     def test_nested_panic(self):
         try:

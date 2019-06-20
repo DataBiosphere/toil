@@ -12,6 +12,7 @@ class SystemTest(ToilTest):
     """
     Test various assumptions about the operating system's behavior
     """
+    
     @travis_test
     def testAtomicityOfNonEmptyDirectoryRenames(self):
         for _ in range(100):
