@@ -60,6 +60,7 @@ from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        needs_aws,
                        needs_azure,
+                       needs_encryption,
                        make_tests,
                        needs_google,
                        travis_test,
@@ -1457,6 +1458,11 @@ class InvalidAzureJobStoreTest(ToilTest):
                           'toiltest:a_b')
 
 
+@needs_aws	
+@needs_encryption	
+@slow	
+class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):	
+    pass	
 
 class StubHttpRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
     fileContents = 'A good programmer looks both ways before crossing a one-way street'
