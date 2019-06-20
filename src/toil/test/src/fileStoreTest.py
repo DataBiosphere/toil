@@ -24,11 +24,10 @@ from struct import pack, unpack
 from uuid import uuid4
 
 from toil.job import Job
-from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
+from toil.fileStore.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
 from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.fileStore import CacheUnbalancedError
 
 import collections
 import inspect
@@ -55,7 +54,7 @@ class hidden(object):
     class AbstractFileStoreTest(with_metaclass(ABCMeta, ToilTest)):
         """
         An abstract base class for testing the various general functions described in
-        :class:toil.fileStore.FileStore
+        :class:toil.fileStore.fileStore.FileStore
         """
         # This is overwritten in the inheriting classs
         jobStoreType = None
@@ -192,8 +191,9 @@ class hidden(object):
 
     class AbstractNonCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
         """
-        Abstract tests for the the various functions in :class:toil.fileStore.NonCachingFileStore.
-        These tests are general enough that they can also be used for
+        Abstract tests for the the various functions in
+        :class:toil.fileStore.nonCachingFileStore.NonCachingFileStore. These
+        tests are general enough that they can also be used for
         :class:toil.fileStore.CachingFileStore.
         """
 
@@ -204,7 +204,7 @@ class hidden(object):
     class AbstractCachingFileStoreTest(with_metaclass(ABCMeta, AbstractFileStoreTest)):
         """
         Abstract tests for the the various cache-related functions in
-        :class:toil.fileStore.CachingFileStore.
+        :class:toil.fileStore.cachingFileStore.CachingFileStore.
         """
 
         def setUp(self):

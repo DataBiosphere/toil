@@ -317,8 +317,9 @@ class Job(BaseJob):
         """
         Override this function to perform work and dynamically create successor jobs.
 
-        :param toil.fileStore.FileStore fileStore: Used to create local and globally
-               sharable temporary files and to send log messages to the leader process.
+        :param toil.fileStore.fileStore.FileStore fileStore: Used to create local and 
+               globally sharable temporary files and to send log messages to the leader
+               process.
 
         :return: The return value of the function can be passed to other jobs by means of
                  :func:`toil.job.Job.rv`.
@@ -1372,8 +1373,8 @@ class Job(BaseJob):
 
         :param class jobGraph: Instance of a jobGraph object
         :param class jobStore: Instance of the job store
-        :param toil.fileStore.FileStore fileStore: Instance of a cached or uncached
-               filestore
+        :param toil.fileStore.fileStore.FileStore fileStore: Instance of a cached
+               or uncached filestore
         :param defer: Function yielded by open() context
                manager of :class:`toil.DeferredFunctionManager`, which is called to
                register deferred functions.
@@ -1502,9 +1503,10 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     add successor jobs for the function and perform all the functions the
     :class:`.Job` class provides.
 
-    To enable the job function to get access to the :class:`toil.fileStore.FileStore`
-    instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job
-    called fileStore.
+    To enable the job function to get access to the
+    :class:`toil.fileStore.fileStore.FileStore` instance (see
+    :func:`toil.job.Job.run`), it is made a variable of the wrapping job called
+    fileStore.
 
     To specify a job's resource requirements the following default keyword arguments
     can be specified:

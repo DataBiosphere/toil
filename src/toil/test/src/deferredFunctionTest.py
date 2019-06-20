@@ -24,11 +24,10 @@ from struct import pack, unpack
 from uuid import uuid4
 
 from toil.job import Job
-from toil.fileStore import IllegalDeletionCacheError, CachingFileStore
+from toil.fileStore.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
 from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
-from toil.fileStore import CacheUnbalancedError
 
 import collections
 import inspect

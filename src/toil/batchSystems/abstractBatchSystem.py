@@ -26,7 +26,7 @@ from contextlib import contextmanager
 from toil.lib.objects import abstractclassmethod
 from toil.batchSystems import registry
 from toil.common import Toil, cacheDirName
-from toil.fileStore import shutdownFileStore
+from toil.fileStore.fileStore import FileStore
 from toil.deferred import DeferredFunctionManager
 
 try:
@@ -318,7 +318,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
         DeferredFunctionManager.cleanupWorker(workflowDir)
         workflowDirContents = os.listdir(workflowDir)
-        shutdownFileStore(workflowDir, info.workflowID)
+        FileStore.shutdownFileStore(workflowDir, info.workflowID)
         if (info.cleanWorkDir == 'always'
             or info.cleanWorkDir in ('onSuccess', 'onError')
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):

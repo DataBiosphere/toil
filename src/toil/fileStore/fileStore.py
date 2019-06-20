@@ -43,86 +43,9 @@ from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 
+from toil.fileStore import FileID
+
 logger = logging.getLogger(__name__)
-
-class WriteWatchingStream(object):
-    """
-    A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
-    
-    Not seekable.
-    """
-    
-    def __init__(self, backingStream):
-        """
-        Wrap the given backing stream.
-        """
-        
-        self.backingStream = backingStream
-        # We have no write listeners yet
-        self.writeListeners = []
-        
-    def onWrite(self, listener):
-        """
-        Call the given listener with the number of bytes written on every write.
-        """
-        
-        self.writeListeners.append(listener)
-        
-    # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
-        
-    def write(self, data):
-        """
-        Write the given data to the file.
-        """
-        
-        # Do the write
-        self.backingStream.write(data)
-        
-        for listener in self.writeListeners:
-            # Send out notifications
-            listener(len(data))
-            
-    def writelines(self, datas):
-        """
-        Write each string from the given iterable, without newlines.
-        """
-        
-        for data in datas:
-            self.write(data)
-            
-    def flush(self):
-        """
-        Flush the backing stream.
-        """
-        
-        self.backingStream.flush()
-        
-    def close(self):
-        """
-        Close the backing stream.
-        """
-        
-        self.backingStream.close()
-
-
-class FileID(str):
-    """
-    A small wrapper around Python's builtin string class. It is used to represent a file's ID in the file store, and
-    has a size attribute that is the file's size in bytes. This object is returned by importFile and writeGlobalFile.
-    """
-
-    def __new__(cls, fileStoreID, *args):
-        return super(FileID, cls).__new__(cls, fileStoreID)
-
-    def __init__(self, fileStoreID, size):
-        # Don't pass an argument to parent class's __init__.
-        # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
-        super(FileID, self).__init__()
-        self.size = size
-
-    @classmethod
-    def forPath(cls, fileStoreID, filePath):
-        return cls(fileStoreID, os.stat(filePath).st_size)
 
 class FileStore(with_metaclass(ABCMeta, object)):
     """
@@ -168,6 +91,35 @@ class FileStore(with_metaclass(ABCMeta, object)):
         from toil.fileStore.nonCachingFileStore import NonCachingFileStore
         fileStoreCls = CachingFileStore if caching else NonCachingFileStore
         return fileStoreCls(jobStore, jobGraph, localTempDir, inputBlockFn)
+
+    @staticmethod
+    def shutdownFileStore(workflowDir, workflowID):
+        """
+        Carry out any necessary filestore-specific cleanup.
+
+        This is a destructive operation and it is important to ensure that there are no other running
+        processes on the system that are modifying or using the file store for this workflow.
+
+        This is the intended to be the last call to the file store in a Toil run, called by the
+        batch system cleanup function upon batch system shutdown.
+
+        :param str workflowDir: The path to the cache directory
+        :param str workflowID: The workflow ID for this invocation of the workflow
+        """
+
+        # Defer these imports until runtime, since these classes depend on our file
+        from toil.fileStore.cachingFileStore import CachingFileStore
+        from toil.fileStore.nonCachingFileStore import NonCachingFileStore
+
+        cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
+        if os.path.exists(cacheDir):
+            # The presence of the cacheDir suggests this was a cached run. We don't need the cache lock
+            # for any of this since this is the final cleanup of a job and there should be  no other
+            # conflicting processes using the cache.
+            CachingFileStore.shutdown(cacheDir)
+        else:
+            # This absence of cacheDir suggests otherwise.
+            NonCachingFileStore.shutdown(workflowDir)
 
     @abstractmethod
     @contextmanager
@@ -467,33 +419,61 @@ class FileStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
 
-def shutdownFileStore(workflowDir, workflowID):
+class WriteWatchingStream(object):
     """
-    Carry out any necessary filestore-specific cleanup.
-
-    This is a destructive operation and it is important to ensure that there are no other running
-    processes on the system that are modifying or using the file store for this workflow.
-
-    This is the intended to be the last call to the file store in a Toil run, called by the
-    batch system cleanup function upon batch system shutdown.
-
-    :param str workflowDir: The path to the cache directory
-    :param str workflowID: The workflow ID for this invocation of the workflow
+    A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
+    
+    Not seekable.
     """
-
-    # Defer these imports until runtime, since these classes depend on our file
-    from toil.fileStore.cachingFileStore import CachingFileStore
-    from toil.fileStore.nonCachingFileStore import NonCachingFileStore
-
-    cacheDir = os.path.join(workflowDir, cacheDirName(workflowID))
-    if os.path.exists(cacheDir):
-        # The presence of the cacheDir suggests this was a cached run. We don't need the cache lock
-        # for any of this since this is the final cleanup of a job and there should be  no other
-        # conflicting processes using the cache.
-        CachingFileStore.shutdown(cacheDir)
-    else:
-        # This absence of cacheDir suggests otherwise.
-        NonCachingFileStore.shutdown(workflowDir)
-
-
-
+    
+    def __init__(self, backingStream):
+        """
+        Wrap the given backing stream.
+        """
+        
+        self.backingStream = backingStream
+        # We have no write listeners yet
+        self.writeListeners = []
+        
+    def onWrite(self, listener):
+        """
+        Call the given listener with the number of bytes written on every write.
+        """
+        
+        self.writeListeners.append(listener)
+        
+    # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
+        
+    def write(self, data):
+        """
+        Write the given data to the file.
+        """
+        
+        # Do the write
+        self.backingStream.write(data)
+        
+        for listener in self.writeListeners:
+            # Send out notifications
+            listener(len(data))
+            
+    def writelines(self, datas):
+        """
+        Write each string from the given iterable, without newlines.
+        """
+        
+        for data in datas:
+            self.write(data)
+            
+    def flush(self):
+        """
+        Flush the backing stream.
+        """
+        
+        self.backingStream.flush()
+        
+    def close(self):
+        """
+        Close the backing stream.
+        """
+        
+        self.backingStream.close()

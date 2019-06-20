@@ -14,6 +14,22 @@
 from __future__ import absolute_import
 
 __all__ = ['fileStore', 'nonCachingFileStore', 'cachingFileStore']
-from toil.fileStore.fileStore import WriteWatchingStream, FileID, FileStore, shutdownFileStore
-from toil.fileStore.nonCachingFileStore import NonCachingFileStore
-from toil.fileStore.cachingFileStore import CacheError, CacheUnbalancedError, IllegalDeletionCacheError, InvalidSourceCacheError, CachingFileStore
+
+class FileID(str):
+    """
+    A small wrapper around Python's builtin string class. It is used to represent a file's ID in the file store, and
+    has a size attribute that is the file's size in bytes. This object is returned by importFile and writeGlobalFile.
+    """
+
+    def __new__(cls, fileStoreID, *args):
+        return super(FileID, cls).__new__(cls, fileStoreID)
+
+    def __init__(self, fileStoreID, size):
+        # Don't pass an argument to parent class's __init__.
+        # In Python 3 we can have super(FileID, self) hand us object's __init__ which chokes on any arguments.
+        super(FileID, self).__init__()
+        self.size = size
+
+    @classmethod
+    def forPath(cls, fileStoreID, filePath):
+        return cls(fileStoreID, os.stat(filePath).st_size)

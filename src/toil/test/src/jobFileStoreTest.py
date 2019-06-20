@@ -33,7 +33,7 @@ PREFIX_LENGTH=200
 # at the contents of read files and thus we will let this test remain as-is.
 class JobFileStoreTest(ToilTest):
     """
-    Tests testing the methods defined in :class:toil.fileStore.FileStore.
+    Tests testing the methods defined in :class:toil.fileStore.fileStore.FileStore.
     """
     @travis_test
     def testCachingFileStore(self):

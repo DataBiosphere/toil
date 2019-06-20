@@ -41,7 +41,8 @@ from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.resource import ModuleDescriptor
-from toil.fileStore.fileStore import FileStore, FileID
+from toil.fileStore.fileStore import FileStore
+from toil.fileStore import FileID
 
 logger = logging.getLogger(__name__)
 

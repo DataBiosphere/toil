@@ -33,7 +33,7 @@ from threading import Thread
 
 from toil.lib.expando import MagicExpando
 from toil.common import Toil, safeUnpickleFromStream
-from toil.fileStore import FileStore
+from toil.fileStore.fileStore import FileStore
 from toil import logProcessContext
 from toil.job import Job
 from toil.lib.bioio import setLogLevel
