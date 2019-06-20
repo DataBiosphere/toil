@@ -31,6 +31,7 @@ from toil.jobStores.abstractJobStore import NoSuchFileException
 
 import collections
 import inspect
+import logging
 import os
 import random
 import signal
@@ -44,6 +45,8 @@ from future.utils import with_metaclass
 # Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
 testingIsAutomatic = True
+
+logger = logging.getLogger(__name__)
 
 
 class hidden(object):
@@ -234,65 +237,6 @@ class hidden(object):
                 Job.Runner.startToil(E, self.options)
 
         @slow
-        def testCacheLockRace(self):
-            """
-            Make 3 jobs compete for the same cache lock file.  If they have the lock at the same
-            time, the test will fail.  This test abuses the _CacheState class and modifies values in
-            the lock file.  DON'T TRY THIS AT HOME.
-            """
-            A = Job.wrapJobFn(self._setUpLockFile)
-            B = Job.wrapJobFn(self._selfishLocker, cores=1)
-            C = Job.wrapJobFn(self._selfishLocker, cores=1)
-            D = Job.wrapJobFn(self._selfishLocker, cores=1)
-            E = Job.wrapJobFn(self._raceTestSuccess)
-            A.addChild(B)
-            A.addChild(C)
-            A.addChild(D)
-            B.addChild(E)
-            C.addChild(E)
-            D.addChild(E)
-            Job.Runner.startToil(A, self.options)
-
-        @staticmethod
-        def _setUpLockFile(job):
-            """
-            Set nlink=0 for the cache test
-            """
-            with job.fileStore.cacheLock():
-                cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
-                cacheInfo.nlink = 0
-                cacheInfo.write(job.fileStore.cacheStateFile)
-
-        @staticmethod
-        def _selfishLocker(job):
-            """
-            Try to acquire a lock on the lock file.  If 2 threads have the lock concurrently, then
-            abort.
-            """
-            for i in range(0, 1000):
-                with job.fileStore.cacheLock():
-                    cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
-                    cacheInfo.nlink += 1
-                    cacheInfo.cached = max(cacheInfo.nlink, cacheInfo.cached)
-                    cacheInfo.write(job.fileStore.cacheStateFile)
-                time.sleep(0.001)
-                with job.fileStore.cacheLock():
-                    cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
-                    cacheInfo.nlink -= 1
-                    cacheInfo.write(job.fileStore.cacheStateFile)
-
-        @staticmethod
-        def _raceTestSuccess(job):
-            """
-            Assert that the cache test passed successfully.
-            """
-            with job.fileStore.cacheLock():
-                cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
-                # Value of the nlink has to be zero for successful run
-                assert cacheInfo.nlink == 0
-                assert cacheInfo.cached > 1
-
-        @slow
         def testCacheEvictionPartialEvict(self):
             """
             Ensure the cache eviction happens as expected.  Two files (20MB and 30MB) are written
@@ -371,10 +315,10 @@ class hidden(object):
                 B = Job.wrapJobFn(self._sleepy, timeToSleep=1)
                 C = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True,
                                   fileMB=file2MB)
-                D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=50, disk='0M')
+                D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=50, disk='0M')
                 E = Job.wrapJobFn(self._uselessFunc, disk=''.join([str(diskRequestMB), 'M']))
                 # Set it to > 2GB such that the cleanup jobs don't die in the non-fail cases
-                F = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='10M')
+                F = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk='10M')
                 G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, cached=expectedResult,
                                   disk='100M')
                 A.addChild(B)
@@ -425,18 +369,17 @@ class hidden(object):
             time.sleep(timeToSleep)
 
         @staticmethod
-        def _forceModifyCacheLockFile(job, newTotalMB):
+        def _adjustCacheLimit(job, newTotalMB):
             """
-            This function opens and modifies the cache lock file to reflect a new "total"
-            value = newTotalMB and thereby fooling the cache logic into believing only newTotalMB is
-            allowed for the run.
+            This function tells the cache to adopt a new "total" value =
+            newTotalMB, changing the maximum cache disk space allowed for the
+            run.
 
-            :param int newTotalMB: New value for "total" in the cacheLockFile
+            :param int newTotalMB: New total cache disk space limit in MB. 
             """
-            with job.fileStore.cacheLock() as _:
-                cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
-                cacheInfo.total = float(newTotalMB * 1024 * 1024)
-                cacheInfo.write(job.fileStore.cacheStateFile)
+
+            # Convert to bytes and pass on to the actual cache
+            job.fileStore.adjustCacheLimit(float(newTotalMB * 1024 * 1024))
 
         @staticmethod
         def _probeJobReqs(job, total=None, cached=None, sigmaJob=None):
@@ -450,22 +393,26 @@ class hidden(object):
             """
             valueDict = locals()
             assert (total or cached or sigmaJob)
-            with job.fileStore.cacheLock() as x:
-                cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
-                for value in ('total', 'cached', 'sigmaJob'):
-                    # If the value wasn't provided, it is None and should be ignored
-                    if valueDict[value] is None:
-                        continue
-                    expectedMB = valueDict[value] * 1024 * 1024
-                    cacheInfoMB = getattr(cacheInfo, value)
-                    assert cacheInfoMB == expectedMB, 'Testing %s: Expected ' % value + \
-                                                      '%s but got %s.' % (expectedMB, cacheInfoMB)
+
+            # Work out which function to call for which value
+            toCall = {'total': job.fileStore.getCacheLimit,
+                      'cached': job.fileStore.getCacheUsed,
+                      'sigmaJob': job.fileStore.getCacheExtraJobSpace}
+
+            for value in ('total', 'cached', 'sigmaJob'):
+                # If the value wasn't provided, it is None and should be ignored
+                if valueDict[value] is None:
+                    continue
+                expectedBytes = valueDict[value] * 1024 * 1024
+                cacheInfoBytes = toCall[value]()
+                assert cacheInfoBytes == expectedBytes, 'Testing %s: Expected ' % value + \
+                                                  '%s but got %s.' % (expectedBytes, cacheInfoBytes)
 
         @slow
         def testAsyncWriteWithCaching(self):
             """
             Ensure the Async Writing of files happens as expected.  The first Job forcefully
-            modifies the cache lock file to 1GB. The second asks for 1GB of disk and  writes a 900MB
+            modifies the cache size to 1GB. The second asks for 1GB of disk and  writes a 900MB
             file into cache then rewrites it to the job store triggering an async write since the
             two unique jobstore IDs point to the same local file.  Also, the second write is not
             cached since the first was written to cache, and there "isn't enough space" to cache the
@@ -475,11 +422,11 @@ class hidden(object):
             """
             self.options.retryCount = 0
             self.options.logLevel = 'DEBUG'
-            A = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=1024, disk='1G')
+            A = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=1024, disk='1G')
             B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=850, disk='900M')
             # Set it to > 2GB such that the cleanup jobs don't die.
             C = Job.wrapJobFn(self._readFromJobStoreWithoutAssertions, fsID=B.rv(), disk='1G')
-            D = Job.wrapJobFn(self._forceModifyCacheLockFile, newTotalMB=5000, disk='1G')
+            D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk='1G')
             A.addChild(B)
             B.addChild(C)
             C.addChild(D)
@@ -523,7 +470,7 @@ class hidden(object):
             :return: None
             """
             job.fileStore.logToMaster('Reading the written file')
-            assert not job.fileStore._fileIsCached(fsID)
+            assert not job.fileStore.fileIsCached(fsID)
             assert job.fileStore.HarbingerFile(job.fileStore, fileStoreID=fsID).exists()
             job.fileStore.readGlobalFile(fsID)
 
@@ -632,10 +579,10 @@ class hidden(object):
         def testMultipleJobsReadSameCacheHitGlobalFile(self):
             """
             Write a local file to the job store (hence adding a copy to cache), then have 10 jobs
-            read it.  Assert cached file size in the cache lock file never goes up, assert sigma job
-            reqs is always
-                   (a multiple of job reqs) - (number of files linked to the cachedfile * filesize).
-            At the end, assert the cache lock file shows sigma job = 0.
+            read it. Assert cached file size never goes up, assert unused job
+            required disk space is always:
+                   (a multiple of job reqs) - (number of current file readers * filesize).
+            At the end, assert the cache shows unused job-required space = 0.
             """
             self._testMultipleJobsReadGlobalFileFunction(cacheHit=True)
 
@@ -643,10 +590,10 @@ class hidden(object):
         def testMultipleJobsReadSameCacheMissGlobalFile(self):
             """
             Write a non-local file to the job store(hence no cached copy), then have 10 jobs read
-            it. Assert cached file size in the cache lock file never goes up, assert sigma job reqs
-            is always
-                   (a multiple of job reqs) - (number of files linked to the cachedfile * filesize).
-            At the end, assert the cache lock file shows sigma job = 0.
+            it. Assert cached file size never goes up, assert unused job
+            required disk space is always:
+                   (a multiple of job reqs) - (number of current file readers * filesize).
+            At the end, assert the cache shows unused job-required space = 0.
             """
             self._testMultipleJobsReadGlobalFileFunction(cacheHit=False)
 
@@ -679,36 +626,50 @@ class hidden(object):
         def _multipleFileReader(job, diskMB, fsID, maxWriteFile):
             """
             Read a file from the job store immutable and explicitly ask to have it in the cache.
-            If we are using the File Job Store, assert sum of cached file sizes in the cache lock
-            file is zero, else assert it is equal to the read file.
-            Also assert the sum job reqs + (number of files linked to the cachedfile * filesize) is
+            If caching files is free, assert used cache space is zero, else
+            assert it is equal to the read file.
+            Also assert the sum job reqs + (number of readers of file * filesize) is
             and integer multiple of the disk requirements provided to this job.
 
             :param int diskMB: disk requirements provided to the job
             :param str fsID: job store file ID
             :param str maxWriteFile: path to file where the max number of concurrent readers of
-                                     cache lock file will be written
+                                     file will be written
             """
             work_dir = job.fileStore.getLocalTempDir()
             outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']), cache=True,
                                                    mutable=False)
-            diskMB = diskMB * 1024 * 1024
-            with job.fileStore.cacheLock():
-                fileStats = os.stat(outfile)
-                fileSize = fileStats.st_size
-                fileNlinks = fileStats.st_nlink
-                with open(maxWriteFile, 'r+') as x:
-                    prev_max = int(x.read())
-                    x.seek(0)
-                    x.truncate()
-                    x.write(str(max(prev_max, fileNlinks)))
-                cacheInfo = job.fileStore._CacheState._load(job.fileStore.cacheStateFile)
-                if cacheInfo.nlink == 2:
-                    assert cacheInfo.cached == 0.0  # Since fileJobstore on same filesystem
-                else:
-                    assert cacheInfo.cached == fileSize
-                assert ((cacheInfo.sigmaJob + (fileNlinks - cacheInfo.nlink) * fileSize) %
-                        diskMB) == 0.0
+            diskBytes = diskMB * 1024 * 1024
+            fileStats = os.stat(outfile)
+            fileSize = fileStats.st_size
+
+            currentReaders = job.fileStore.getFileReaderCount(fsID)
+
+            extraJobSpace = job.fileStore.getCacheExtraJobSpace()
+
+            usedCache = job.fileStore.getCacheUsed()
+
+            logger.info('Extra job space: %s', str(extraJobSpace))
+            logger.info('Current file readers: %s', str(currentReaders))
+            logger.info('File size: %s', str(fileSize))
+            logger.info('Job disk bytes: %s', str(diskBytes))
+            logger.info('Used cache: %s', str(usedCache))
+
+            with open(maxWriteFile, 'r+') as x:
+                prev_max = int(x.read())
+                x.seek(0)
+                x.truncate()
+                x.write(str(max(prev_max, currentReaders)))
+            if job.fileStore.cachingIsFree():
+                # No space should be used when caching is free
+                assert usedCache == 0.0
+            else:
+                # The right amount of space should be used otherwise
+                assert usedCache == fileSize
+
+            # Make sure that there's no over-usage of job requirements
+            assert ((extraJobSpace + currentReaders * fileSize) %
+                    diskBytes) == 0.0
             # Sleep so there's no race conditions where a job ends before another can get a hold of
             # the file
             time.sleep(3)
@@ -783,7 +744,7 @@ class hidden(object):
             cls = hidden.AbstractCachingFileStoreTest
             fsId = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True, fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
-            if job.fileStore._fileIsCached(list(writtenFiles.keys())[0]):
+            if job.fileStore.fileIsCached(list(writtenFiles.keys())[0]):
                 cached += writeFileSize * 1024 * 1024
             localFileIDs[list(writtenFiles.keys())[0]].append('local')
             cls._requirementsConcur(job, jobDisk, cached)
@@ -798,7 +759,7 @@ class hidden(object):
                         writtenFiles[fsID] = writeFileSize
                         localFileIDs[fsID].append('local')
                         jobDisk -= writeFileSize * 1024 * 1024
-                        if job.fileStore._fileIsCached(fsID):
+                        if job.fileStore.fileIsCached(fsID):
                             cached += writeFileSize * 1024 * 1024
                     else:  # Write a non-local file
                         fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=False,
@@ -814,7 +775,7 @@ class hidden(object):
                     else:
                         fsID, rdelFileSize = random.choice(list(writtenFiles.items()))
                         rdelRandVal = random.random()
-                        fileWasCached = job.fileStore._fileIsCached(fsID)
+                        fileWasCached = job.fileStore.fileIsCached(fsID)
                     if randVal < 0.66:  # Read
                         if rdelRandVal <= 0.5:  # Read as mutable
                             job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
@@ -827,7 +788,7 @@ class hidden(object):
                             localFileIDs[fsID].append('immutable')
                             jobDisk -= rdelFileSize * 1024 * 1024
                         if not fileWasCached:
-                            if job.fileStore._fileIsCached(fsID):
+                            if job.fileStore.fileIsCached(fsID):
                                 cached += rdelFileSize * 1024 * 1024
                         cls._requirementsConcur(job, jobDisk, cached)
                     else:  # Delete
@@ -845,7 +806,7 @@ class hidden(object):
                                     jobDisk += rdelFileSize * 1024 * 1024
                             localFileIDs.pop(fsID)
                         if fileWasCached:
-                            if not job.fileStore._fileIsCached(fsID):
+                            if not job.fileStore.fileIsCached(fsID):
                                 cached -= rdelFileSize * 1024 * 1024
                         cls._requirementsConcur(job, jobDisk, cached)
                 i += 1
@@ -854,18 +815,15 @@ class hidden(object):
         @staticmethod
         def _requirementsConcur(job, jobDisk, cached):
             """
-            Assert the values for job disk and total cached file sizes tracked in the job's cache
-            state file is equal to the values we expect.
+            Assert the values for job disk and total cached file sizes tracked
+            by the file store are equal to the values we expect.
             """
-            with job.fileStore._CacheState.open(job.fileStore) as cacheInfo:
-                jobState = cacheInfo.jobState[job.fileStore.jobID]
-                # cached should have a value only if the job store is on a different file system
-                # than the cache
-                if cacheInfo.nlink != 2:
-                    assert cacheInfo.cached == cached
-                else:
-                    assert cacheInfo.cached == 0
-            assert jobState['jobReqs'] == jobDisk
+
+            if not job.fileStore.cachingIsFree():
+                assert job.fileStore.getCacheUsed() == cached
+            else:
+                assert job.fileStore.getCacheUsed() == 0
+            assert job.fileStore.getCacheJobRequirement() == jobDisk
 
         # Testing the resumability of a failed worker
         @slow

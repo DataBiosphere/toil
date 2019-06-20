@@ -142,6 +142,110 @@ class CachingFileStore(AbstractFileStore):
         # job if required.
         self._setupCache()
 
+    # Caching-specific API
+
+    def getCacheLimit(self):
+        """
+        Return the total number of bytes to which the cache is limited.
+
+        If no limit is in place, return None.
+        """
+
+        with self.cacheLock():
+            cacheInfo = self._CacheState._load(self.cacheStateFile)
+            return getattr(cacheInfo, 'total')
+
+    def getCacheUsed(self):
+        """
+        Return the total number of bytes used in the cache.
+
+        If no value is available, return None.
+        """
+
+        with self.cacheLock():
+            cacheInfo = self._CacheState._load(self.cacheStateFile)
+            return getattr(cacheInfo, 'cached')
+
+    def getCacheExtraJobSpace(self):
+        """
+        Return the total number of bytes of disk space requested by jobs
+        running against this cache but not yet used.
+
+        If no value is available, return None.
+        """
+
+        with self.cacheLock():
+            cacheInfo = self._CacheState._load(self.cacheStateFile)
+            return getattr(cacheInfo, 'sigmaJob')
+
+    def getCacheJobRequirement(self):
+        """
+        Return the total number of bytes of disk space requested by the current
+        job.
+
+        The cache tracks this in order to enable the cache's disk space to grow
+        and shrink as jobs start and stop using it.
+
+        If no value is available, return None.
+        """
+
+        with self.cacheLock():
+            cacheInfo = self._CacheState._load(self.cacheStateFile)
+            jobState = cacheInfo.jobState[self.jobID]
+            return jobState.get('jobReqs')
+
+
+    def adjustCacheLimit(self, newTotalBytes):
+        """
+        Adjust the total cache size limit to the given number of megabytes.
+        """
+
+        with self.cacheLock():
+            cacheInfo = self._CacheState._load(self.cacheStateFile)
+            cacheInfo.total = float(newTotalBytes)
+            cacheInfo.write(self.cacheStateFile)
+
+    def fileIsCached(self, fileID):
+        """
+        Return true if the given file is currently cached, and false otherwise.
+        """
+
+        # TODO: rename this function everywhere that used it as an internal function.
+        return self._fileIsCached(fileID)
+
+    def getFileReaderCount(self, fileID):
+        """
+        Return the number of current outstanding reads of the given file from
+        the cache.
+        """
+
+        try:
+            # We have one reader per extra hard link.
+            return os.stat(self.encodedFileID(fileID)).st_nlink - self.nlinkThreshold
+        except FileNotFoundError:
+            # Avoid a race with deleters by just catching the error if the file isn't there, instead of checking first
+            return 0
+        
+
+    def cachingIsFree(self):
+        """
+        Return true if files can be cached for free, without taking up space.
+        Return false otherwise.
+
+        This will be true when working with certain job stores in certain
+        configurations, most notably the FileJobStore.
+        """
+
+        with self.cacheLock():
+            cacheInfo = self._CacheState._load(self.cacheStateFile)
+            # If we expect 2 links for an unused file, one of them is in the job store.
+            # So caching is free to us.
+            return cacheInfo.nlink == 2
+
+
+
+    # Normal AbstractFileStore API
+
     @contextmanager
     def open(self, job):
         """
