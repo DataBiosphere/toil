@@ -1015,8 +1015,6 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
-    parser.add_argument("--parallel", action="store_true", default=False,
-                        help="[experimental] Run jobs in parallel. ")
                         
     dockergroup = parser.add_mutually_exclusive_group()
     dockergroup.add_argument(
