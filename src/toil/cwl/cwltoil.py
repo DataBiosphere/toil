@@ -1075,9 +1075,6 @@ def main(args=None, stdout=sys.stdout):
         "--no-read-only", action="store_true", default=False,
         help="Do not set root directory in the container as read-only")
     parser.add_argument(
-        "--cachedir", type=Text, default="",
-        help="Directory to cache intermediate workflow outputs to avoid recomputing steps.")
-    parser.add_argument(
         "--strict-memory-limit", action="store_true", help="When running with "
         "software containers and the Docker engine, pass either the "
         "calculated memory allocation from ResourceRequirements or the "
