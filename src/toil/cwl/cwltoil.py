@@ -1082,6 +1082,10 @@ def main(args=None, stdout=sys.stdout):
         "software containers and the Docker engine, pass either the "
         "calculated memory allocation from ResourceRequirements or the "
         "default of 1 gigabyte to Docker's --memory option.")    
+     parser.add_argument(
+        "--relax-path-checks", action="store_true",
+        default=False, help="Relax requirements on path names to permit "
+        "spaces and hash characters.", dest="relax_path_checks")
 
     if args is None:
         args = sys.argv[1:]
