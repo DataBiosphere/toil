@@ -70,10 +70,11 @@ print(heredoc('''
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
 
     RUN add-apt-repository -y ppa:jonathonf/python-3.6
-    
-    RUN add-apt-repository -y ppa:xapienz/curl34 
 
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
+    RUN add-apt-repository -y ppa:xapienz/curl34
+    
+    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install {dependencies} && \
+        apt-get install curl=7.58.0-2ubuntu* && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
