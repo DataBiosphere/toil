@@ -134,7 +134,7 @@ def _resolve_indirect_inner(maybe_idict):
             if isinstance(value, (SourceMerge, DefaultWithSource)):
                 result[key] = value.resolve()
             else:
-                result[key] = value[1].get(value[0])
+                result[key] = _filter_skip_null(value[0], value[1].get(value[0]))
         return result
     return maybe_idict
 
@@ -143,7 +143,6 @@ def resolve_indirect(pdict):
     """Resolve the contents an indirect dictionary (containing promises) and
     evaluate expressions to produce the dictionary of actual values.
     """
-
     inner = IndirectDict() if isinstance(pdict, IndirectDict) else {}
     needs_eval = False
     for k, value in iteritems(pdict):
@@ -930,16 +929,20 @@ class SourceMerge(object):
                 self.link_merge_type)
 
     def clean_skipnulls(self, items):
-        _result = []
-        for r in items:
-            if isinstance(r, SkipNull):
-                cwllogger.warning(
-                    "In %s, SkipNull result found and cast to None. \n"
-                    "You had a conditional step that did not run, "
-                    "but you did not use branchSelect to handle the skipped input." % self.name)
-                r = None
-            _result.append(r)
-        return _result
+        return [
+            _filter_skip_null(self.name, r)
+            for r in items
+        ]
+
+
+def _filter_skip_null(name, value):
+    if isinstance(value, SkipNull):
+        cwllogger.warning(
+            "In %s, SkipNull result found and cast to None. \n"
+            "You had a conditional step that did not run, "
+            "but you did not use branchSelect to handle the skipped input." % name)
+        value = None
+    return value
 
 
 class CWLWorkflow(Job):
