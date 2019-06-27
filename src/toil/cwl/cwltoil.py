@@ -1014,7 +1014,6 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument("--basedir", type=str)
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
-
     dockergroup = parser.add_mutually_exclusive_group()
     dockergroup.add_argument(
         "--user-space-docker-cmd",
@@ -1023,12 +1022,16 @@ def main(args=None, stdout=sys.stdout):
     dockergroup.add_argument(
         "--singularity", action="store_true", default=False,
         help="[experimental] Use Singularity runtime for running containers. "
-        "Requires Singularity v2.3.2+ and Linux with kernel version v3.18+ or "
+        "Requires Singularity v2.6.1+ and Linux with kernel version v3.18+ or "
         "with overlayfs support backported.")
     dockergroup.add_argument(
         "--no-container", action="store_true", help="Do not execute jobs in a "
         "Docker container, even when `DockerRequirement` "
         "is specified under `hints`.")
+    dockergroup.add_argument(
+        "--leave-container", action="store_false", default=True,
+        help="Do not delete Docker container used by jobs after they exit",
+        dest="rm_container")
 
     parser.add_argument(
         "--preserve-environment", type=str, nargs='+',
@@ -1069,6 +1072,15 @@ def main(args=None, stdout=sys.stdout):
     parser.add_argument(
         "--no-read-only", action="store_true", default=False,
         help="Do not set root directory in the container as read-only")
+    parser.add_argument(
+        "--strict-memory-limit", action="store_true", help="When running with "
+        "software containers and the Docker engine, pass either the "
+        "calculated memory allocation from ResourceRequirements or the "
+        "default of 1 gigabyte to Docker's --memory option.")    
+    parser.add_argument(
+        "--relax-path-checks", action="store_true",
+        default=False, help="Relax requirements on path names to permit "
+        "spaces and hash characters.", dest="relax_path_checks")
 
     if args is None:
         args = sys.argv[1:]
