@@ -373,17 +373,6 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
                 dill.dump(self.__dict__, fH)
             os.rename(fileName + '.tmp', fileName)
 
-    @abstractclassmethod
-    def _removeDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
-        """
-        This function looks at the state of all jobs registered on the node and will handle them
-        (clean up their presence on the node)
-
-        :param nodeInfo: Information regarding the node required for identifying dead jobs.
-        :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
-        """
-        raise NotImplementedError()
-
     # Functions related to logging
     def logToMaster(self, text, level=logging.INFO):
         """
@@ -445,8 +434,9 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
 
         This is intended to be called on batch system shutdown.
 
-        :param dir_: The jeystone directory containing the required information for fixing the state
-               of failed workers on the node before cleaning up.
+        :param dir_: The implementation-specific directory containing the required information for
+               shutting down the file store and removing all its state and all job local temp
+               directories from the node.
         """
         raise NotImplementedError()
 
