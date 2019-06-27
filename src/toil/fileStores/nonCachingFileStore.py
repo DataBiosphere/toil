@@ -47,16 +47,8 @@ from toil.fileStores import FileID
 logger = logging.getLogger(__name__)
 
 class NonCachingFileStore(AbstractFileStore):
-    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
-        self.jobStore = jobStore
-        self.jobGraph = jobGraph
-        self.jobName = str(self.jobGraph)
-        self.localTempDir = os.path.abspath(localTempDir)
-        self.inputBlockFn = inputBlockFn
-        self.jobsToDelete = set()
-        self.loggingMessages = []
-        self.filesToDelete = set()
-        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
+    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
+        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile = None
         self.localFileMap = defaultdict(list)
@@ -66,7 +58,7 @@ class NonCachingFileStore(AbstractFileStore):
         jobReqs = job.disk
         startingDir = os.getcwd()
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
-        self.findAndHandleDeadJobs(self.workFlowDir)
+        cls._removeDeadJobs(self.workFlowDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
@@ -142,11 +134,11 @@ class NonCachingFileStore(AbstractFileStore):
                 raise
         self.filesToDelete.add(fileStoreID)
 
-    def _blockFn(self):
+    def waitForCommit(self):
         # there is no asynchronicity in this file store so no need to block at all
         return True
 
-    def _updateJobWhenDone(self):
+    def commitCurrentJob(self):
         try:
             # Indicate any files that should be deleted once the update of
             # the job wrapper is completed.
@@ -174,7 +166,7 @@ class NonCachingFileStore(AbstractFileStore):
         pass
 
     @classmethod
-    def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
+    def _removeDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
         """
         Look at the state of all jobs registered in the individual job state files, and handle them
         (clean up the disk)
@@ -271,5 +263,5 @@ class NonCachingFileStore(AbstractFileStore):
         """
         :param dir_: The workflow directory that will contain all the individual worker directories.
         """
-        cls.findAndHandleDeadJobs(dir_, batchSystemShutdown=True)
+        cls._removeDeadJobs(dir_, batchSystemShutdown=True)
 

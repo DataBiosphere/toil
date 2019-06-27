@@ -332,7 +332,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                     with deferredFunctionManager.open() as defer:
                         with fileStore.open(job):
                             # Get the next block function and list that will contain any messages
-                            blockFn = fileStore._blockFn
+                            blockFn = fileStore.waitForCommit
 
                             job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore, defer=defer)
 
@@ -390,13 +390,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                                                           caching=not config.disableCaching)
 
             #Update blockFn
-            blockFn = fileStore._blockFn
+            blockFn = fileStore.waitForCommit
 
             #Add successorJobGraph to those to be deleted
             fileStore.jobsToDelete.add(successorJobGraph.jobStoreID)
             
             #This will update the job once the previous job is done
-            fileStore._updateJobWhenDone()            
+            fileStore.commitCurrentJob()            
             
             #Clone the jobGraph and its stack again, so that updates to it do
             #not interfere with this update
