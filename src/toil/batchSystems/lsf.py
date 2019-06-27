@@ -93,9 +93,10 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                          "{}".format(job))
             process = subprocess.Popen(args, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT)
-            started = 0
-            for line in process.stdout:
-                if "Done successfully" in line:
+            output = process.stdout.read().decode('ascii').replace("\n                     ", "")
+            process_output = output.split('\n')
+            for line in process_output:
+                if "Done successfully" in line or "<DONE>" in line:
                     logger.debug("bjobs detected job completed for job: "
                                  "{}".format(job))
                     return 0
@@ -103,11 +104,11 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.debug("bjobs detected job pending scheduling for "
                                  "job: {}".format(job))
                     return None
-                elif "PENDING REASONS" in line:
+                elif "PENDING REASONS" in line or "<PEND>" in line:
                     logger.debug("bjobs detected job pending for job: "
                                  "{}".format(job))
                     return None
-                elif "Exited with exit code" in line:
+                elif "Exited with exit code" in line or "<EXIT>" in line:
                     exit = int(line[line.find("Exited with exit code ")+22:]
                                .split('.')[0])
                     logger.error("bjobs detected job exit code "
@@ -117,13 +118,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.error("bjobs detected job failed for job: "
                                  "{}".format(job))
                     return 1
-                elif line.find("Started on ") > -1:
+                elif line.find("Started on ") > -1 or line.find(": Started") > -1:
                     started = 1
-
-            if started == 1:
-                logger.debug("bjobs detected job started but not completed: "
-                             "{}".format(job))
-                return None
+                    if started == 1:
+                        logger.debug("bjobs detected job started but not completed: "
+                                     "{}".format(job))
+                        return None
 
             # if not found in bjobs, then try bacct (slower than bjobs)
             logger.debug("bjobs failed to detect job - trying bacct: "
@@ -132,12 +132,14 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             args = ["bacct", "-l", str(job)]
             process = subprocess.Popen(args, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT)
-            for line in process.stdout:
-                if line.find("Completed <done>") > -1:
+            output = process.stdout.read().decode('ascii')
+            process_output = output.split('\n')
+            for line in process_output:
+                if line.find("Completed <done>") > -1 or line.find("<DONE>") > -1:
                     logger.debug("Detected job completed for job: "
                                  "{}".format(job))
                     return 0
-                elif line.find("Completed <exit>") > -1:
+                elif line.find("Completed <exit>") > -1 or line.find("<EXIT>") > -1:
                     logger.error("Detected job failed for job: "
                                  "{}".format(job))
                     return 1
@@ -167,18 +169,18 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     mem = old_div(float(mem), 1024**3)
                     mem_resource = parse_memory_resource(mem)
                     mem_limit = parse_memory_limit(mem)
-                bsubMem = ['-R', 'select[type==X86_64 && mem > {m}] '
+                bsubMem = ['-R',
                            'rusage[mem={m}]'.format(m=mem_resource),
                            '-M', str(mem_limit)]
             else:
                 bsubMem = []
             bsubCpu = [] if cpu is None else ['-n', str(math.ceil(cpu))]
-            bsubline = ["bsub", "-cwd", ".", "-J", "toil_job_{}".format(jobID)]
+            bsubline = ["bsub", "-cwd", ".",
+                        "-J", "toil_job_{}".format(jobID),
+                        "-o", "toil_job_{}.out".format(jobID),
+                        "-e", "toil_job_{}.err".format(jobID)]
             bsubline.extend(bsubMem)
             bsubline.extend(bsubCpu)
-            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_output')
-            stderrfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_error')
-            bsubline.extend(['-o', stdoutfile, '-e', stderrfile])
             lsfArgs = os.getenv('TOIL_LSF_ARGS')
             if lsfArgs:
                 bsubline.extend(lsfArgs.split())
@@ -213,15 +215,16 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         maxCPU = 0
         maxMEM = MemoryString("0")
         for line in p.stdout:
-                items = line.strip().split()
-                if len(items) < num_columns:
-                        RuntimeError("lshosts output has a varying number of "
-                                     "columns")
-                if items[cpu_index] != '-' and items[cpu_index] > maxCPU:
-                        maxCPU = items[cpu_index]
-                if (items[mem_index] != '-' and
-                        MemoryString(items[mem_index]) > maxMEM):
-                    maxMEM = MemoryString(items[mem_index])
+            split_items = line.strip().split()
+            items = [item.decode('ascii') for item in split_items if isinstance(item, bytes)]
+            if len(items) < num_columns:
+                RuntimeError("lshosts output has a varying number of "
+                             "columns")
+            if items[cpu_index] != '-' and int(items[cpu_index]) > int(maxCPU):
+                maxCPU = items[cpu_index]
+            if (items[mem_index] != '-' and
+                MemoryString(items[mem_index]) > maxMEM):
+                maxMEM = MemoryString(items[mem_index])
 
         if maxCPU is 0 or maxMEM is 0:
                 RuntimeError("lshosts returns null ncpus or maxmem info")
