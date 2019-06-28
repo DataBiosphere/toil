@@ -95,8 +95,9 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                                        stderr=subprocess.STDOUT)
             output = process.stdout.read().decode('ascii').replace("\n                     ", "")
             process_output = output.split('\n')
+            started = 0
             for line in process_output:
-                if "Done successfully" in line or "<DONE>" in line:
+                if "Done successfully" in line or "Status <DONE>" in line:
                     logger.debug("bjobs detected job completed for job: "
                                  "{}".format(job))
                     return 0
@@ -104,11 +105,11 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.debug("bjobs detected job pending scheduling for "
                                  "job: {}".format(job))
                     return None
-                elif "PENDING REASONS" in line or "<PEND>" in line:
+                elif "PENDING REASONS" in line or "Status <PEND>" in line:
                     logger.debug("bjobs detected job pending for job: "
                                  "{}".format(job))
                     return None
-                elif "Exited with exit code" in line or "<EXIT>" in line:
+                elif "Exited with exit code" in line or "Status <EXIT>" in line:
                     exit = int(line[line.find("Exited with exit code ")+22:]
                                .split('.')[0])
                     logger.error("bjobs detected job exit code "
@@ -118,12 +119,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.error("bjobs detected job failed for job: "
                                  "{}".format(job))
                     return 1
-                elif line.find("Started on ") > -1 or line.find(": Started") > -1:
+                elif line.find("Started on ") > -1 or "Status <RUN>" in line:
                     started = 1
-                    if started == 1:
-                        logger.debug("bjobs detected job started but not completed: "
-                                     "{}".format(job))
-                        return None
+            if started == 1:
+                logger.debug("bjobs detected job started but not completed: "
+                             "{}".format(job))
+                return None
 
             # if not found in bjobs, then try bacct (slower than bjobs)
             logger.debug("bjobs failed to detect job - trying bacct: "
@@ -150,8 +151,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         """
         Implementation-specific helper methods
         """
-        @staticmethod
-        def prepareBsub(cpu, mem, jobID):
+        def prepareBsub(self, cpu, mem, jobID):
             """
             Make a bsub commandline to execute.
 
@@ -175,12 +175,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             else:
                 bsubMem = []
             bsubCpu = [] if cpu is None else ['-n', str(math.ceil(cpu))]
-            bsubline = ["bsub", "-cwd", ".",
-                        "-J", "toil_job_{}".format(jobID),
-                        "-o", "toil_job_{}.out".format(jobID),
-                        "-e", "toil_job_{}.err".format(jobID)]
+            bsubline = ["bsub", "-cwd", ".", "-J", "toil_job_{}".format(jobID)]
             bsubline.extend(bsubMem)
             bsubline.extend(bsubCpu)
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'lsf', '%J', 'std_error')
+            bsubline.extend(['-o', stdoutfile, '-e', stderrfile])
             lsfArgs = os.getenv('TOIL_LSF_ARGS')
             if lsfArgs:
                 bsubline.extend(lsfArgs.split())
