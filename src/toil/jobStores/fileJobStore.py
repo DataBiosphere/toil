@@ -33,7 +33,7 @@ except ImportError:
     import pickle
 
 # toil dependencies
-from toil.fileStore import FileID
+from toil.fileStores import FileID
 from toil.lib.bioio import absSymPath
 from toil.lib.misc import mkdir_p
 from toil.jobStores.abstractJobStore import (AbstractJobStore,

@@ -5,7 +5,7 @@ import sys
 
 def globalFileStoreJobFn(job):
     job.log("The following example exercises all the methods provided"
-            " by the toil.fileStore.FileStore class")
+            " by the toil.fileStores.abstractFileStore.AbstractFileStore class")
 
     # Create a local temporary file.
     scratchFile = job.fileStore.getLocalTempFile()

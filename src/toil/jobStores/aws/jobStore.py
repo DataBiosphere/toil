@@ -46,7 +46,7 @@ import boto.sdb
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 
-from toil.fileStore import FileID
+from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              ConcurrentFileModificationException,

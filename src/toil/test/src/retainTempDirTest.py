@@ -20,7 +20,7 @@ from toil.test import ToilTest, travis_test
 
 class CleanWorkDirTest(ToilTest):
     """
-    Tests testing :class:toil.fileStore.FileStore
+    Tests testing :class:toil.fileStores.abstractFileStore.AbstractFileStore
     """
     def setUp(self):
         super(CleanWorkDirTest, self).setUp()
