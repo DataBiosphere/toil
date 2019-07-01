@@ -93,7 +93,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                          "{}".format(job))
             process = subprocess.Popen(args, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT)
-            output = process.stdout.read().decode('ascii').replace("\n                     ", "")
+            output = process.stdout.read().decode('utf-8').replace("\n                     ", "")
             process_output = output.split('\n')
             started = 0
             for line in process_output:
@@ -133,7 +133,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             args = ["bacct", "-l", str(job)]
             process = subprocess.Popen(args, stdout=subprocess.PIPE,
                                        stderr=subprocess.STDOUT)
-            output = process.stdout.read().decode('ascii')
+            output = process.stdout.read().decode('utf-8')
             process_output = output.split('\n')
             for line in process_output:
                 if line.find("Completed <done>") > -1 or line.find("<DONE>") > -1:
@@ -216,7 +216,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         maxMEM = MemoryString("0")
         for line in p.stdout:
             split_items = line.strip().split()
-            items = [item.decode('ascii') for item in split_items if isinstance(item, bytes)]
+            items = [item.decode('utf-8') for item in split_items if isinstance(item, bytes)]
             if len(items) < num_columns:
                 RuntimeError("lshosts output has a varying number of "
                              "columns")
