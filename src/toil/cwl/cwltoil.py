@@ -211,11 +211,10 @@ def simplify_list(maybe_list):
 
 
 class ToilPathMapper(PathMapper):
-    """ToilPathMapper keeps track of a file's symbolic identifier (the Toil
-    FileStore token), its local path on the host (the value returned by
-    readGlobalFile) and the the location of the file inside the Docker
-    container.
-
+    """
+    ToilPathMapper keeps track of a file's symbolic identifier (the Toil
+    FileID), its local path on the host (the value returned by readGlobalFile)
+    and the the location of the file inside the Docker container.
     """
 
     def __init__(self, referenced_files, basedir, stagedir,

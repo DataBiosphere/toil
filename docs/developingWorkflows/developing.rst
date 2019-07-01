@@ -344,9 +344,10 @@ Managing files within a workflow
 --------------------------------
 
 It is frequently the case that a workflow will want to create files, both
-persistent and temporary, during its run. The :class:`toil.fileStore.FileStore`
-class is used by jobs to manage these files in a manner that guarantees cleanup
-and resumption on failure.
+persistent and temporary, during its run. The
+:class:`toil.fileStores.abstractFileStore.AbstractFileStore` class is used by
+jobs to manage these files in a manner that guarantees cleanup and resumption
+on failure.
 
 The :func:`toil.job.Job.run` method has a file store instance as an argument.
 The following example shows how this can be used to create temporary files that
