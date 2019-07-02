@@ -287,8 +287,8 @@ class DirectoryResource(Resource):
         else:
             # This is a simple user script (with possibly a few helper files)
             rootDir = path
-        blacklistDir = ['/tmp', '/var', '/etc', '/bin', '/sbin', '/home', '/dev', '/sys', '/usr', '/run']
-        if path not in blacklistDir:
+        skipdirList = ['/tmp', '/var', '/etc', '/bin', '/sbin', '/home', '/dev', '/sys', '/usr', '/run']
+        if path not in skipdirList:
             with ZipFile(file=bytesIO, mode='w') as zipFile:
                 for dirName, _, fileList in os.walk(path):
                     for fileName in fileList:
