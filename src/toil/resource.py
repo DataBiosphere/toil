@@ -287,11 +287,21 @@ class DirectoryResource(Resource):
         else:
             # This is a simple user script (with possibly a few helper files)
             rootDir = path
-        with ZipFile(file=bytesIO, mode='w') as zipFile:
-            for dirName, _, fileList in os.walk(path):
-                for fileName in fileList:
-                    fullPath = os.path.join(dirName, fileName)
-                    zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
+        blacklistDir = ['/tmp', '/var', '/etc', '/bin', '/sbin', '/home', '/dev', '/sys', '/usr', '/run']
+        if path not in blacklistDir:
+            with ZipFile(file=bytesIO, mode='w') as zipFile:
+                for dirName, _, fileList in os.walk(path):
+                    for fileName in fileList:
+                        try:
+                            fullPath = os.path.join(dirName, fileName)
+                            zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
+                        except IOError:
+                            log.critical('Cannot access and read the file at address: %s' % fullPath)
+                            sys.exit()
+        else:
+            log.critical("Couldn't package the directory at %s for hot deployment. Would recommend to create a \
+                subdirectory (ie %s/MYDIR_HERE/)" % (path, path))
+            sys.exit()
         bytesIO.seek(0)
         return bytesIO
 
