@@ -491,7 +491,7 @@ class Leader(object):
             if result == 0:
                 cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
                               else logger.info)
-                cur_logger('Job ended successfully: %s', updatedJob)
+                cur_logger('Job ended: %s', updatedJob)
                 if self.toilMetrics:
                     self.toilMetrics.logCompletedJob(updatedJob)
             else:

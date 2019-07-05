@@ -233,7 +233,7 @@ class ToilStatus():
         try:
             return self.jobStore.loadRootJob()
         except JobException:
-            print('Root job is absent. The workflow may have completed successfully.', file=sys.stderr)
+            print('Root job is absent. The workflow has may have completed successfully.', file=sys.stderr)
             raise
 
     def fetchUserJobs(self, jobs):
