@@ -296,12 +296,12 @@ class DirectoryResource(Resource):
                             fullPath = os.path.join(dirName, fileName)
                             zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
                         except IOError:
-                            log.critical('Cannot access and read the file at address: %s' % fullPath)
-                            sys.exit()
+                            log.critical('Cannot access and read the file at path: %s' % fullPath)
+                            sys.exit(1)
         else:
             log.critical("Couldn't package the directory at %s for hot deployment. Would recommend to create a \
                 subdirectory (ie %s/MYDIR_HERE/)" % (path, path))
-            sys.exit()
+            sys.exit(1)
         bytesIO.seek(0)
         return bytesIO
 
