@@ -27,7 +27,6 @@ except ImportError:
     import pickle
 
 import re
-import os
 import uuid
 import base64
 import hashlib
@@ -1171,7 +1170,6 @@ class AWSJobStore(AbstractJobStore):
                                                          version_id=info.version)
                             if self.fileID.size != key.content_length:
                                 raise ValueError('Did not download all of the data')
-                                continue
                     else:
                         assert False
 
