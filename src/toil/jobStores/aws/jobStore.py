@@ -1148,7 +1148,7 @@ class AWSJobStore(AbstractJobStore):
                                                      version_id=self.version,
                                                      headers=headers)
                         if self.fileID.size != key.content_length:
-                            continue
+                            boto.s3.resumable_download_handler.ResumableDownloadHandler(key.get_file())
             else:
                 assert False
 
@@ -1168,8 +1168,10 @@ class AWSJobStore(AbstractJobStore):
                                 key.get_contents_to_file(writable,
                                                          headers=headers,
                                                          version_id=info.version)
-                            if self.fileID.size != key.content_length:
-                                raise ValueError('Did not download all of the data')
+                                if self.fileID.size != key.content_length:
+                                    boto.s3.resumable_download_handler.ResumableDownloadHandler(key.get_file())
+                        if self.fileID.size != key.content_length:
+                            raise ValueError('Did not download all of the data')
                     else:
                         assert False
 
