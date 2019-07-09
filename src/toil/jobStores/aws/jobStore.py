@@ -1148,11 +1148,7 @@ class AWSJobStore(AbstractJobStore):
                                                      version_id=self.version,
                                                      headers=headers)
                         if self.fileID.size != key.content_length:
-                            boto.s3.resumable_download_handler.ResumableDownloadHandler.get_file(key)
-                    if self.fileID.size == key.content_length:
-                        break
-                    else:
-                        continue
+                            continue
             else:
                 assert False
 
@@ -1172,11 +1168,7 @@ class AWSJobStore(AbstractJobStore):
                                 key.get_contents_to_file(writable,
                                                          headers=headers,
                                                          version_id=info.version)
-                                if self.fileID.size != key.content_length:
-                                    boto.s3.resumable_download_handler.ResumableDownloadHandler.get_file(key)
-                            if self.fileID.size == key.content_length:
-                                break
-                            else:
+                            if self.fileID.size != key.content_length:
                                 raise ValueError('Did not download all of the data')
                     else:
                         assert False
@@ -1216,8 +1208,7 @@ class AWSJobStore(AbstractJobStore):
                 encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest())
                 return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
                         'x-amz-server-side-encryption-customer-key': encodedSseKey,
-                        'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5
-                        'Range': 'bytes=0-{}'.format(self.fileID.size)}
+                        'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
             else:
                 return {}
 
