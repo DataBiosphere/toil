@@ -1142,13 +1142,11 @@ class AWSJobStore(AbstractJobStore):
             elif self.version:
                 headers = self._s3EncryptionHeaders()
                 key = self.outer.filesBucket.get_key(bytes(self.fileID), validate=False)
-                for attempt in retry_s3():
-                    with attempt:
-                        key.get_contents_to_filename(localFilePath,
-                                                     version_id=self.version,
-                                                     headers=headers)
-                        if self.fileID.size != key.content_length:
-                            boto.s3.resumable_download_handler.ResumableDownloadHandler(key.get_file())
+                with open(localFilePath, 'wb') as fileObject:
+                    handler = boto.s3.resumable_download_handler.ResumableDownloadHandler(num_retries=10)
+                    handler.get_file(key, fileObject, headers, version_id=info.version)
+                if handler.content_length != self.fileID.size:
+                    return ValueError("Failed to download all the data")
             else:
                 assert False
 
@@ -1163,15 +1161,11 @@ class AWSJobStore(AbstractJobStore):
                     elif info.version:
                         headers = info._s3EncryptionHeaders()
                         key = info.outer.filesBucket.get_key(bytes(info.fileID), validate=False)
-                        for attempt in retry_s3():
-                            with attempt:
-                                key.get_contents_to_file(writable,
-                                                         headers=headers,
-                                                         version_id=info.version)
-                                if self.fileID.size != key.content_length:
-                                    boto.s3.resumable_download_handler.ResumableDownloadHandler(key.get_file())
-                        if self.fileID.size != key.content_length:
-                            raise ValueError('Did not download all of the data')
+                        with open(writable, 'wb') as fileObject
+                            handler = boto.s3.resumable_download_handler.ResumableDownloadHandler(num_retries=10)
+                            handler.get_file(key, fileObject, headers, version_id=info.version)
+                        if handler.content_length != self.fileID.size:
+                            return ValueError("Failed to download all the data")
                     else:
                         assert False
 
