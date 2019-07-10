@@ -38,6 +38,7 @@ from toil.lib.memoize import less_strict_bool, memoize
 from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread
 from toil.lib.misc import mkdir_p
+from toil.provisioners.aws import runningOnEC2
 from toil import subprocess
 from toil import which
 from toil import toilPackageDirPath, applianceSelf
@@ -300,16 +301,6 @@ def travis_test(test_item):
         return unittest.skip("Set TRAVIS='true' to include this test.")(test_item)
     else:
         return test_item
-
-
-def file_begins_with(path, prefix):
-    with open(path) as f:
-        return f.read(len(prefix)) == prefix
-
-
-def runningOnEC2():
-    hv_uuid_path = '/sys/hypervisor/uuid'
-    return os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2')
 
 
 def needs_google(test_item):
