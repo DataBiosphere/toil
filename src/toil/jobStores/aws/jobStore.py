@@ -1161,7 +1161,7 @@ class AWSJobStore(AbstractJobStore):
                     elif info.version:
                         headers = info._s3EncryptionHeaders()
                         key = info.outer.filesBucket.get_key(bytes(info.fileID), validate=False)
-                        with open(writable, 'wb') as fileObject
+                        with open(writable, 'wb') as fileObject:
                             handler = boto.s3.resumable_download_handler.ResumableDownloadHandler(num_retries=10)
                             handler.get_file(key, fileObject, headers, version_id=info.version)
                         if handler.content_length != self.fileID.size:
