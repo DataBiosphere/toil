@@ -169,7 +169,7 @@ class SDBHelper(object):
         chunks.sort()
         numChunks = int(attributes[u'numChunks'])
         if numChunks:
-            serializedJob = b''.join(v for k, v in chunks)
+            serializedJob = b''.join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
             if compressed[0] == b'C'[0]:
                 binary = bz2.decompress(compressed[1:])

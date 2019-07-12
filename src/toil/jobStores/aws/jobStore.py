@@ -33,6 +33,7 @@ import hashlib
 import itertools
 import urllib.parse
 import urllib.request, urllib.parse, urllib.error
+from io import BytesIO
 
 # Python 3 compatibility imports
 from six.moves import StringIO, reprlib
@@ -320,7 +321,7 @@ class AWSJobStore(AbstractJobStore):
         item = None
         for attempt in retry_sdb():
             with attempt:
-                item = self.jobsDomain.get_attributes(str(jobStoreID), consistent_read=True)
+                item = self.jobsDomain.get_attributes(jobStoreID.encode(), consistent_read=True)
         if not item:
             raise NoSuchJobException(jobStoreID)
         job = self._awsJobFromItem(item)
@@ -892,7 +893,7 @@ class AWSJobStore(AbstractJobStore):
             for attempt in retry_sdb():
                 with attempt:
                     self = cls.fromItem(
-                        cls.outer.filesDomain.get_attributes(item_name=str(jobStoreFileID),
+                        cls.outer.filesDomain.get_attributes(item_name=jobStoreFileID,
                                                              consistent_read=True))
                     return self
 
@@ -1051,7 +1052,7 @@ class AWSJobStore(AbstractJobStore):
                                     break
                                 for attempt in retry_s3():
                                     with attempt:
-                                        upload.upload_part_from_file(fp=StringIO(buf),
+                                        upload.upload_part_from_file(fp=BytesIO(buf),
                                                                      # part numbers are 1-based
                                                                      part_num=part_num + 1,
                                                                      headers=headers)
@@ -1160,7 +1161,7 @@ class AWSJobStore(AbstractJobStore):
                         writable.write(info.content)
                     elif info.version:
                         headers = info._s3EncryptionHeaders()
-                        key = info.outer.filesBucket.get_key(str(info.fileID), validate=False)
+                        key = info.outer.filesBucket.get_key(info.fileID, validate=False)
                         for attempt in retry_s3():
                             with attempt:
                                 key.get_contents_to_file(writable,
