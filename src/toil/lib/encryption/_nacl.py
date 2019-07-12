@@ -55,7 +55,7 @@ def encrypt(message, keyPath):
     # recommended in the libsodium documentation.)
     nonce = nacl.utils.random(SecretBox.NONCE_SIZE)
     assert len(nonce) == SecretBox.NONCE_SIZE
-    return bytes(sb.encrypt(message, nonce))
+    return str(sb.encrypt(message, nonce))
 
 def decrypt(ciphertext, keyPath):
     """

@@ -204,7 +204,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
     """
     file_size, file_time = fileSizeAndTime(localFilePath)
     if file_size <= partSize:
-        key = bucket.new_key(key_name=bytes(fileID))
+        key = bucket.new_key(key_name=str(fileID))
         key.name = fileID
         for attempt in retry_s3():
             with attempt:
@@ -215,7 +215,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
             version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
     for attempt in retry_s3():
         with attempt:
-            key = bucket.get_key(bytes(fileID),
+            key = bucket.get_key(str(fileID),
                                  headers=headers,
                                  version_id=version)
     assert key.size == file_size
@@ -228,7 +228,7 @@ def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSiz
     for attempt in retry_s3():
         with attempt:
             upload = bucket.initiate_multipart_upload(
-                key_name=bytes(fileID),
+                key_name=str(fileID),
                 headers=headers)
     try:
         start = 0
