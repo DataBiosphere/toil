@@ -125,22 +125,34 @@ class CachingFileStore(AbstractFileStore):
       references.
       
     - "uploading": stored in the cache and being written to the job store by a
-      non-null owner. Can be read. Transitions to "cached" when successfully
-      uploaded. If the worker dies, goes to state "cached", because it may have
-      outstanding immutable references from the dead-but-not-cleaned-up job
-      that was writing it.
+      non-null owner. Transitions to "cached" when successfully uploaded. If
+      the worker dies, goes to state "cached", because it may have outstanding
+      immutable references from the dead-but-not-cleaned-up job that was
+      writing it.
+
+      TODO: uploading-state files ought to be readable by follow-on jobs, but
+      we can't do the link/copy and the database entry atomically.
     
     - "deleting": in the process of being removed from the cache by a non-null
       owner. Will eventually be removed from the database.
 
     references contains one entry for each outstanding reference to a cached
     file (hard link, symlink, or full copy). It remembers what job ID has the
-    reference, and the path the reference is at.
-    References can be mutable (link) or immutable (full copy).
-    Only files with no  immutable references are eligible for eviction.
-    Mutable references only exist to let deleteLocalFile find all the
-    previously read copies, and can exist even when the file is not cached.
+    reference, and the path the reference is at. References have three states:
 
+    - "immutable": represents a hardlink or symlink to a file in the cache.
+      Dedicates the file's size in bytes of the job's disk requirement to the
+      cache, to be used to cache this file or to keep around other files
+      without references. May be upgraded to "copying" if the link can't
+      actually be created.
+
+    - "copying": records that a file in the cache is in the process of being
+      copied to a path. Will be upgraded to a mutable reference eventually.
+
+    - "mutable": records that a file from the cache was copied to a certain
+      path. Exist only to support deleteLocalFile's API. Only files with only
+      mutable references (or no references) are eligible for eviction.
+    
     jobs contains one entry for each job currently running. It keeps track of
     the job's ID, the worker that is supposed to be running the job, the job's
     disk requirement, and the job's local temp dir path that will need to be
@@ -210,7 +222,7 @@ class CachingFileStore(AbstractFileStore):
                 path TEXT NOT NULL PRIMARY KEY,
                 file_id TEXT NOT NULL,
                 job_id TEXT NOT NULL,
-                mutable BOOLEAN NOT NULL
+                state TEXT NOT NULL
             )
         """)
         self.db.execute("""
@@ -277,7 +289,7 @@ class CachingFileStore(AbstractFileStore):
         for row in self.db.execute("""
             SELECT (
                 (SELECT SUM(disk) FROM jobs) - 
-                (SELECT SUM(files.size) FROM references INNER JOIN files ON references.file_id = files.id WHERE references.mutable = 'FALSE')
+                (SELECT SUM(files.size) FROM references INNER JOIN files ON references.file_id = files.id WHERE references.state == 'immutable')
             ) as result
         """):
             return row[0]
@@ -301,7 +313,7 @@ class CachingFileStore(AbstractFileStore):
                 (SELECT value FROM properties WHERE name = 'maxSpace') -
                 (SELECT SUM(size) FROM files) -
                 ((SELECT SUM(disk) FROM jobs) - 
-                (SELECT SUM(files.size) FROM references INNER JOIN files ON references.file_id = files.id WHERE references.mutable = 'FALSE'))
+                (SELECT SUM(files.size) FROM references INNER JOIN files ON references.file_id = files.id WHERE references.state = 'immutable'))
             ) as result
         """):
             return row[0]
@@ -346,8 +358,9 @@ class CachingFileStore(AbstractFileStore):
 
     def getFileReaderCount(self, fileID):
         """
-        Return the number of current outstanding reads of the given file from
-        the cache.
+        Return the number of current outstanding reads of the given file.
+
+        Counts mutable references too.
         """
 
         for row in self.db.execute('SELECT COUNT(*) FROM references WHERE file_id = ?', (fileID,)):
@@ -532,10 +545,10 @@ class CachingFileStore(AbstractFileStore):
             # Otherwise, not enough files could be found in deleting state to solve our problem.
             # We need to put something into the deleting state.
             
-            # Find something that has no immutable references and is not already being deleted.
+            # Find something that has no non-mutable references and is not already being deleted.
             self.db.execute("""
                 SELECT files.id FROM files WHERE files.state = 'cached' AND NOT EXISTS (
-                    SELECT NULL FROM references WHERE references.file_id = files.id AND references.mutable = FALSE
+                    SELECT NULL FROM references WHERE references.file_id = files.id AND references.state != 'mutable'
                 ) LIMIT 1
             """)
             row = self.db.fetch()
@@ -553,7 +566,7 @@ class CachingFileStore(AbstractFileStore):
             self.db.execute("""
                 UPDATE files SET (files.owner = ?, files.state = ?) WHERE files.id = ? AND files.state = ? 
                 AND files.owner IS NULL AND NOT EXISTS (
-                    SELECT NULL FROM references WHERE references.file_id = files.id AND references.mutable = FALSE
+                    SELECT NULL FROM references WHERE references.file_id = files.id AND references.state != 'mutable'
                 )
                 """,
                 (pid, 'deleting' fileID, 'cached'))
@@ -638,7 +651,7 @@ class CachingFileStore(AbstractFileStore):
         # Create a file in uploading state and a reference, in the same transaction.
         # Say the reference is an immutable reference
         self.db.execute('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploading', pid))
-        self.db.execute('INSERT INTO references VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, False))
+        self.db.execute('INSERT INTO references VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))
         self.db.execute('COMMIT')
         
         try:
@@ -647,19 +660,26 @@ class CachingFileStore(AbstractFileStore):
             # file we're trying to link to has too many hardlinks to it
             # already, or something.
             os.link(absLocalFileName, cachePath)
-        except:
-            # If that fails, demote the reference to mutable
-            self.db.execute('UPDATE references SET mutable = ? WHERE path = ?', (True, absLocalFileName))
-            self.db.execute('COMMIT')
             
-            # And copy it into the cache
-            shutil.copyfile(absLocalFileName, cachePath)
-        
-        # Don't do the upload now. Let it be deferred until later (when the job is committing).
+            # Don't do the upload now. Let it be deferred until later (when the job is committing).
+        except OSError:
+            # If we can't do the link into the cache and upload from there, we
+            # have to just upload right away.  We can't guarantee sufficient
+            # space to make a full copy in the cache, if we aren't allowed to
+            # take this copy away from the writer.
+
+
+            # Change the reference to 'mutable', which it will be 
+            self.db.execute('UPDATE references SET state = ? WHERE path = ?', ('mutable', absLocalFileName))
+            # And drop the file altogether
+            self.db.execute('DELETE FROM files WHERE id = ?', (fileID,))
+            self.db.execute('COMMIT')
+
+            # Save the file to the job store right now
+            self.jobStore.updateFile(fileID, absLocalFileName)
         
         # Ship out the completed FileID object with its real size.
-        # Will only read peoperly through us until the upload completes.
-        return FileID.forPath(fileID, cachePath)
+        return FileID.forPath(fileID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
         if userPath is not None:
