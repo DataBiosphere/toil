@@ -1145,8 +1145,6 @@ class AWSJobStore(AbstractJobStore):
                 with open(localFilePath, 'wb') as fileObject:
                     handler = boto.s3.resumable_download_handler.ResumableDownloadHandler(num_retries=10)
                     handler.get_file(key, fileObject, headers, version_id=info.version)
-                if handler.content_length != self.fileID.size:
-                    return ValueError("Failed to download all the data")
             else:
                 assert False
 
@@ -1161,11 +1159,8 @@ class AWSJobStore(AbstractJobStore):
                     elif info.version:
                         headers = info._s3EncryptionHeaders()
                         key = info.outer.filesBucket.get_key(bytes(info.fileID), validate=False)
-                        with open(writable, 'wb') as fileObject:
-                            handler = boto.s3.resumable_download_handler.ResumableDownloadHandler(num_retries=10)
-                            handler.get_file(key, fileObject, headers, version_id=info.version)
-                        if handler.content_length != self.fileID.size:
-                            return ValueError("Failed to download all the data")
+                        handler = boto.s3.resumable_download_handler.ResumableDownloadHandler(num_retries=10)
+                        handler.get_file(key, writable, headers, version_id=info.version)
                     else:
                         assert False
 
