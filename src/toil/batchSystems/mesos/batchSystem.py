@@ -505,7 +505,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def _trackOfferedNodes(self, offers):
         for offer in offers:
             # All AgentID messages are required to have a value according to the Mesos Protobuf file.
-            assert(offer.agent_id.has_key('value'))
+            assert('value' in offer.agent_id)
             try:
                 nodeAddress = socket.gethostbyname(offer.hostname)
             except:
@@ -651,7 +651,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                         jobID, update.state, update.message, update.reason)
             jobEnded(255)
             
-        if update.has_key('limitation'):
+        if 'limitation' in update:
             log.warning("Job limit info: %s" % update.limitation)
             
     def frameworkMessage(self, driver, executorId, agentId, message):
