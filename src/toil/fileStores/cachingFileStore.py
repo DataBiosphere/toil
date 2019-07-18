@@ -136,9 +136,11 @@ class CachingFileStore(AbstractFileStore):
     - "deleting": in the process of being removed from the cache by a non-null
       owner. Will eventually be removed from the database.
 
-    references contains one entry for each outstanding reference to a cached
-    file (hard link, symlink, or full copy). It remembers what job ID has the
-    reference, and the path the reference is at. References have three states:
+    refs contains one entry for each outstanding reference to a cached file
+    (hard link, symlink, or full copy). The table name is refs instead of
+    references because references is an SQL reserved word. It remembers what
+    job ID has the reference, and the path the reference is at. References have
+    three states:
 
     - "immutable": represents a hardlink or symlink to a file in the cache.
       Dedicates the file's size in bytes of the job's disk requirement to the
@@ -208,39 +210,7 @@ class CachingFileStore(AbstractFileStore):
         os.link(dbPath, os.path.join(self.localCacheDir, 'cache.db'))
 
         # Set up the tables
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS files (
-                id TEXT NOT NULL PRIMARY KEY, 
-                path TEXT UNIQUE NOT NULL,
-                size INT NOT NULL,
-                state TEXT NOT NULL,
-                owner INT 
-            )
-        """)
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS references (
-                path TEXT NOT NULL PRIMARY KEY,
-                file_id TEXT NOT NULL,
-                job_id TEXT NOT NULL,
-                state TEXT NOT NULL
-            )
-        """)
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS jobs (
-                id TEXT NOT NULL PRIMARY KEY,
-                temp TEXT NOT NULL,
-                disk INT NOT NULL,
-                worker INT
-            )
-        """)
-        self.db.execute("""
-            CREATE TABLE IF NOT EXISTS properties (
-                name TEXT NOT NULL PRIMARY KEY,
-                value INT NOT NULL
-            )
-        """)
-        self.db.execute('COMMIT')
-
+        self._ensureTables(self.db)
         
         # Initialize the space accounting properties
         freeSpace, _ = getFileSystemSize(tempCacheDir)
@@ -249,6 +219,45 @@ class CachingFileStore(AbstractFileStore):
 
         # Space used by caching and by jobs is accounted with queries
 
+    @classmethod
+    def _ensureTables(cls, db):
+        """
+        Ensure that the database tables we expect exist.
+        """
+
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS files (
+                id TEXT NOT NULL PRIMARY KEY, 
+                path TEXT UNIQUE NOT NULL,
+                size INT NOT NULL,
+                state TEXT NOT NULL,
+                owner INT 
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS refs (
+                path TEXT NOT NULL PRIMARY KEY,
+                file_id TEXT NOT NULL,
+                job_id TEXT NOT NULL,
+                state TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS jobs (
+                id TEXT NOT NULL PRIMARY KEY,
+                temp TEXT NOT NULL,
+                disk INT NOT NULL,
+                worker INT
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS properties (
+                name TEXT NOT NULL PRIMARY KEY,
+                value INT NOT NULL
+            )
+        """)
+        db.execute('COMMIT')
+    
     # Caching-specific API
 
     def getCacheLimit(self):
@@ -289,7 +298,7 @@ class CachingFileStore(AbstractFileStore):
         for row in self.db.execute("""
             SELECT (
                 (SELECT SUM(disk) FROM jobs) - 
-                (SELECT SUM(files.size) FROM references INNER JOIN files ON references.file_id = files.id WHERE references.state == 'immutable')
+                (SELECT SUM(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state == 'immutable')
             ) as result
         """):
             return row[0]
@@ -313,7 +322,7 @@ class CachingFileStore(AbstractFileStore):
                 (SELECT value FROM properties WHERE name = 'maxSpace') -
                 (SELECT SUM(size) FROM files) -
                 ((SELECT SUM(disk) FROM jobs) - 
-                (SELECT SUM(files.size) FROM references INNER JOIN files ON references.file_id = files.id WHERE references.state = 'immutable'))
+                (SELECT SUM(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'))
             ) as result
         """):
             return row[0]
@@ -363,7 +372,7 @@ class CachingFileStore(AbstractFileStore):
         Counts mutable references too.
         """
 
-        for row in self.db.execute('SELECT COUNT(*) FROM references WHERE file_id = ?', (fileID,)):
+        for row in self.db.execute('SELECT COUNT(*) FROM refs WHERE file_id = ?', (fileID,)):
             return row[0]
         return 0
         
@@ -477,7 +486,7 @@ class CachingFileStore(AbstractFileStore):
         
         # Remember the file IDs we are deleting
         deletedFiles = []
-        for row in self.db.execute('SELECT (id, path) FROM files WHERE owner = ? AND state = ?', (pid, 'deleting'))
+        for row in self.db.execute('SELECT (id, path) FROM files WHERE owner = ? AND state = ?', (pid, 'deleting')):
             # Grab everything we are supposed to delete and delete it
             fileID = row[0]
             filePath = row[1]
@@ -493,8 +502,34 @@ class CachingFileStore(AbstractFileStore):
             # Drop all the files. They should have stayed in deleting state. We move them from there to not present at all.
             self.db.execute('DELETE FROM files WHERE id = ? AND state = ?', (fileID, 'deleting'))
             # Also drop their references, if they had any from dead downloaders.
-            self.db.execute('DELETE FROM references WHERE file_id = ?', (fileID,))
+            self.db.execute('DELETE FROM refs WHERE file_id = ?', (fileID,))
         self.db.execute('COMMIT')
+
+    def _executePendingUploads(self):
+        """
+        Uploads all files in uploading state that we own.
+
+        Returns the number of files that were uploaded.
+        """
+
+        # Work out who we are
+        pid = os.getpid()
+        
+        # Record what we upload
+        uploadedIDs = []
+        for row in self.db.execute('SELECT id, path FROM files WHERE state = ? AND owner = ?', ('uploading', pid)):
+            # Upload the file
+            self.jobStore.updateFile(row[0], row[1])
+            # Remember it
+            uploadedIDs.append(row[0])
+
+        for fileID in uploadedIDs:
+            # Now change all those files to cached
+            self.db.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?', ('cached', fileID))
+            self.db.execute('COMMIT')
+
+        return len(uploadedIDs)
+
             
     
     def _allocateSpaceForJob(self, newJobReqs):
@@ -549,6 +584,10 @@ class CachingFileStore(AbstractFileStore):
             # Maybe there is space now
             return
 
+        if self._executePendingUploads() > 0:
+            # We had something to upload. Maybe it can be evicted now.
+            return
+
         # Otherwise, not enough files could be found in deleting state to solve our problem.
         # We need to put something into the deleting state.
         # TODO: give other people time to finish their in-progress
@@ -558,7 +597,7 @@ class CachingFileStore(AbstractFileStore):
         # Find something that has no non-mutable references and is not already being deleted.
         self.db.execute("""
             SELECT files.id FROM files WHERE files.state = 'cached' AND NOT EXISTS (
-                SELECT NULL FROM references WHERE references.file_id = files.id AND references.state != 'mutable'
+                SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
             ) LIMIT 1
         """)
         row = self.db.fetch()
@@ -575,10 +614,10 @@ class CachingFileStore(AbstractFileStore):
         self.db.execute("""
             UPDATE files SET (files.owner = ?, files.state = ?) WHERE files.id = ? AND files.state = ? 
             AND files.owner IS NULL AND NOT EXISTS (
-                SELECT NULL FROM references WHERE references.file_id = files.id AND references.state != 'mutable'
+                SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
             )
             """,
-            (pid, 'deleting' fileID, 'cached'))
+            (pid, 'deleting', fileID, 'cached'))
         self.db.execute('COMMIT')
             
         # Whether we actually got it or not, try deleting everything we have to delete
@@ -671,7 +710,7 @@ class CachingFileStore(AbstractFileStore):
         # Create a file in uploading state and a reference, in the same transaction.
         # Say the reference is an immutable reference
         self.db.execute('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploading', pid))
-        self.db.execute('INSERT INTO references VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))
+        self.db.execute('INSERT INTO refs VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))
         self.db.execute('COMMIT')
         
         try:
@@ -690,7 +729,7 @@ class CachingFileStore(AbstractFileStore):
 
 
             # Change the reference to 'mutable', which it will be 
-            self.db.execute('UPDATE references SET state = ? WHERE path = ?', ('mutable', absLocalFileName))
+            self.db.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', absLocalFileName))
             # And drop the file altogether
             self.db.execute('DELETE FROM files WHERE id = ?', (fileID,))
             self.db.execute('COMMIT')
@@ -740,7 +779,7 @@ class CachingFileStore(AbstractFileStore):
             if not mutable:
                 # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
                 # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
-                self.db.execute('INSERT INTO references SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
+                self.db.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
                     (localFilePath, readerID, 'copying' if mutable else 'immutable', fileStoreID, 'downloading', pid))
             self.db.execute('COMMIT')
 
@@ -757,12 +796,12 @@ class CachingFileStore(AbstractFileStore):
        
             # A record already existed for this file.
             # Try and create an immutable or copying reference to an entry that is in 'cached' state
-            self.db.execute('INSERT INTO references SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ?',
+            self.db.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ?',
             (localFilePath, readerID, 'copying' if mutable else 'immutable', fileStoreID, 'cached'))
             self.db.execute('COMMIT')
 
             # See if we got it
-            for row in self.db.execute('SELECT COUNT(*) FROM references WHERE path = ?', localFilePath):
+            for row in self.db.execute('SELECT COUNT(*) FROM refs WHERE path = ?', localFilePath):
                 have_reference = row[0] > 0
 
             if have_reference:
@@ -813,7 +852,7 @@ class CachingFileStore(AbstractFileStore):
                         raise
             except OSError:
                 # If we can't, change the reference to copying.
-                self.db.execute('UPDATE references SET state = ? WHERE path = ?', ('copying', localFilePath))
+                self.db.execute('UPDATE refs SET state = ? WHERE path = ?', ('copying', localFilePath))
                 self.db.execute('COMMIT')
 
                 # Decide to be mutable
@@ -825,7 +864,7 @@ class CachingFileStore(AbstractFileStore):
         if not have_reference:
             # We might not yet have the reference for the mutable case. Create
             # it as a copying reference and consume more space.
-            self.db.execute('INSERT INTO references VALUES (?, ?, ?, ?)',
+            self.db.execute('INSERT INTO refs VALUES (?, ?, ?, ?)',
                 (localFilePath, fileID, readerID, 'copying'))
             self.db.execute('COMMIT')
             have_reference = True
@@ -845,10 +884,10 @@ class CachingFileStore(AbstractFileStore):
             self.db.execute("""
                 UPDATE files SET (files.owner = ?, files.state = ?) WHERE files.id = ? AND files.state = ? 
                 AND files.owner IS NULL AND NOT EXISTS (
-                    SELECT NULL FROM references WHERE references.file_id = files.id AND references.state != 'mutable'
+                    SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
                 )
                 """,
-                (pid, 'downloading' fileID, 'cached'))
+                (pid, 'downloading', fileID, 'cached'))
             self.db.execute('COMMIT')
 
             # See if we got it
@@ -873,7 +912,7 @@ class CachingFileStore(AbstractFileStore):
             os.move(cachedPath, localFilePath)
 
             # Record that.
-            self.db.execute('UPDATE references SET state = ? WHERE path = ?', ('mutable', localFilePath))
+            self.db.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', localFilePath))
             self.db.execute('DELETE FROM files WHERE id = ?', (fileID,))
             self.db.execute('COMMIT')
 
@@ -882,7 +921,7 @@ class CachingFileStore(AbstractFileStore):
         else:
             # We are copying it
             shutil.copyfile(cachedPath, localFilePath)
-            self.db.execute('UPDATE references SET state = ? WHERE path = ?', ('mutable', localFilePath))
+            self.db.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', localFilePath))
             self.db.execute('COMMIT')
 
             # Now we're done
@@ -890,6 +929,8 @@ class CachingFileStore(AbstractFileStore):
     
 
     def readGlobalFileStream(self, fileStoreID):
+        # TODO: can we fulfil this from the cache if the file is in the cache?
+        # I think we can because if a job is keeping the file data on disk due to having it open, it must be paying for it itself.
         return self.jobStore.readFileStream(fileStoreID)
 
     def deleteLocalFile(self, fileStoreID):
@@ -897,32 +938,39 @@ class CachingFileStore(AbstractFileStore):
         jobID = self.jobGraph.jobStoreID
         # What paths did we delete
         deleted = []
-        for row in self.db.execute('SELECT path FROM references WHERE file_id = ? AND job_id = ?', (fileStoreID, jobID)):
+        for row in self.db.execute('SELECT path FROM refs WHERE file_id = ? AND job_id = ?', (fileStoreID, jobID)):
             # Delete all the files that are references to this cached file (even mutable copies)
             os.remove(row[0])
         # Drop the references
-        self.db.execute('DELETE FROM references WHERE file_id = ? AND job_id = ?', (fileStoreID, jobID))
+        self.db.execute('DELETE FROM refs WHERE file_id = ? AND job_id = ?', (fileStoreID, jobID))
+        self.db.execute('COMMIT')
+
+        # Now space has been revoked from the cache because that job needs its space back.
+        # That might result in stuff having to be evicted.
+        self._freeUpSpace()
 
     def deleteGlobalFile(self, fileStoreID):
-        jobStateIsPopulated = False
-        with self._CacheState.open(self) as cacheInfo:
-            if self.jobID in cacheInfo.jobState:
-                jobState = self._JobState(cacheInfo.jobState[self.jobID])
-                jobStateIsPopulated = True
-        if jobStateIsPopulated and fileStoreID in list(jobState.jobSpecificFiles.keys()):
-            # Use deleteLocalFile in the backend to delete the local copy of the file.
-            self.deleteLocalFile(fileStoreID)
-            # At this point, the local file has been deleted, and possibly the cached copy. If
-            # the cached copy exists, it is either because another job is using the file, or
-            # because retaining the file in cache doesn't unbalance the caching equation. The
-            # first case is unacceptable for deleteGlobalFile and the second requires explicit
-            # deletion of the cached copy.
-        # Check if the fileStoreID is in the cache. If it is, ensure only the current job is
-        # using it.
-        cachedFile = self.encodedFileID(fileStoreID)
-        if os.path.exists(cachedFile):
-            self.removeSingleCachedFile(fileStoreID)
-        # Add the file to the list of files to be deleted once the run method completes.
+        # Delete local copies for this job
+        self.deleteLocalFile(fileStoreID)
+
+        # Work out who we are
+        pid = os.getpid()
+
+        # Make sure nobody else has references to it
+        for row in self.db.execute('SELECT job_id FROM refs WHERE file_id = ?', (fileStoreID, 'mutable')):
+            raise RuntimeError('Deleted file ID %s which is still in use by job %s' % (fileStoreID, row[0]))
+        # TODO: should we just let other jobs and the cache keep the file until
+        # it gets evicted, and only delete at the back end?
+
+        # Pop the file into deleting state owned by us if it exists
+        self.db.execute('UPDATE files SET state = ?, owner = ? WHERE id = ?', ('deleting', pid, fileStoreID))
+        self.db.commit()
+            
+        # Finish the delete if the file is present
+        self._executePendingDeletions()
+
+        # Add the file to the list of files to be deleted from the job store
+        # once the run method completes.
         self.filesToDelete.add(fileStoreID)
         self.logToMaster('Added file with ID \'%s\' to the list of files to be' % fileStoreID +
                          ' globally deleted.', level=logging.DEBUG)
@@ -936,6 +984,11 @@ class CachingFileStore(AbstractFileStore):
 
     def commitCurrentJob(self):
         try:
+            # Finish all uploads
+            self._executePendingUploads()
+            # Finish all deletions
+            self._executePendingDeletions()
+
             # Indicate any files that should be deleted once the update of
             # the job wrapper is completed.
             self.jobGraph.filesToDelete = list(self.filesToDelete)
@@ -964,7 +1017,8 @@ class CachingFileStore(AbstractFileStore):
         
         # We don't have access to a class instance, nor do we have access to
         # the workflow attempt number that we would need in order to find the
-        # right database.
+        # right database. So we rely on this hard link to the most recent
+        # database.
         dbPath = os.path.join(dir_, 'cache.db')
 
         if os.path.exists(dbPath):
@@ -977,10 +1031,16 @@ class CachingFileStore(AbstractFileStore):
             else:
                 # We got a database connection
 
-                
+                # Create the tables if they don't exist so deletion of dead
+                # jobs won't fail.
+                cls._ensureTables(db)
+
+                # Remove dead jobs
+                cls._removeDeadJobs(db)
 
                 db.close()
         
+        # Delete the state DB and everything cached.
         shutil.rmtree(dir_)
 
     def __del__(self):
@@ -1016,6 +1076,7 @@ class CachingFileStore(AbstractFileStore):
         # Clear them off of the jobs they had.
         for deadWorker in deadWorkers:
             db.execute('UPDATE jobs SET worker = NULL WHERE worker = ?', (pid, deadWorker))
+            db.execute('COMMIT')
 
         
         # Work out our PID for taking ownership of jobs
@@ -1032,6 +1093,7 @@ class CachingFileStore(AbstractFileStore):
 
             # Try to own this job
             db.execute('UPDATE jobs SET worker = ? WHERE id = ? AND worker IS NULL', (pid, row[0]))
+            db.execute('COMMIT')
 
             # See if we won the race
             db.execute('SELECT (id, temp) FROM jobs WHERE id = ? AND worker = ?', (row[0], pid))
@@ -1045,7 +1107,7 @@ class CachingFileStore(AbstractFileStore):
             jobTemp = row[1]
             
 
-            for row in db.execute('SELECT path FROM references WHERE job_id = ?', (jobId,)):
+            for row in db.execute('SELECT path FROM refs WHERE job_id = ?', (jobId,)):
                 try:
                     # Delete all the reference files.
                     os.unlink(row[0])
@@ -1053,7 +1115,8 @@ class CachingFileStore(AbstractFileStore):
                     # May not exist
                     pass
             # And their database entries
-            db.execute('DELETE FROM references WHERE job_id = ?', (jobId,))
+            db.execute('DELETE FROM refs WHERE job_id = ?', (jobId,))
+            db.execute('COMMIT')
 
             try: 
                 # Delete the job's temp directory.
@@ -1063,6 +1126,7 @@ class CachingFileStore(AbstractFileStore):
 
             # Strike the job from the database
             db.execute('DELETE FROM jobs WHERE id = ?', (jobId,))
+            db.execute('COMMIT')
 
         # Now we have cleaned up all the jobs that belonged to dead workers that were dead when we entered this function.
 
