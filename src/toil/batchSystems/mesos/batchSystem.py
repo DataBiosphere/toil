@@ -660,7 +660,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         
         # Take it out of base 64 encoding from Protobuf
-        message = decode_data(message)
+        message = decode_data(message).decode()
         
         log.debug('Got framework message from executor %s running on agent %s: %s',
                   executorId.value, agentId.value, message)
