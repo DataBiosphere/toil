@@ -209,13 +209,22 @@ class CachingFileStore(AbstractFileStore):
 
         # Make sure to register this as the current database, clobbering any previous attempts.
         # We need this for shutdown to be able to find the database from the most recent execution and clean up all its files.
-        os.link(dbPath, os.path.join(self.localCacheDir, 'cache.db'))
+        linkDir = tempfile.mkdtemp(dir=self.localCacheDir)
+        linkName = os.path.join(linkDir, 'cache.db')
+        os.link(dbPath, linkName)
+        os.rename(linkName, os.path.join(self.localCacheDir, 'cache.db'))
+        if os.path.exists(linkName):
+            # TODO: How can this file exist if it got renamed away?
+            os.unlink(linkName)
+        os.rmdir(linkDir)
+        assert(os.path.exists(os.path.join(self.localCacheDir, 'cache.db')))
+        assert(os.stat(os.path.join(self.localCacheDir, 'cache.db')).st_ino == os.stat(dbPath).st_ino)
 
         # Set up the tables
         self._ensureTables(self.con)
         
         # Initialize the space accounting properties
-        freeSpace, _ = getFileSystemSize(tempCacheDir)
+        freeSpace, _ = getFileSystemSize(self.localCacheDir)
         self.cur.execute('INSERT OR IGNORE INTO properties VALUES (?, ?)', ('maxSpace', freeSpace))
         self.con.commit()
 
@@ -250,7 +259,7 @@ class CachingFileStore(AbstractFileStore):
         cur.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 id TEXT NOT NULL PRIMARY KEY,
-                temp TEXT NOT NULL,
+                tempdir TEXT NOT NULL,
                 disk INT NOT NULL,
                 worker INT
             )
@@ -283,7 +292,7 @@ class CachingFileStore(AbstractFileStore):
         If no value is available, return None.
         """
 
-        for row in self.cur.execute('SELECT SUM(size) FROM files'):
+        for row in self.cur.execute('SELECT TOTAL(size) FROM files'):
             return row[0]
         return None
 
@@ -302,8 +311,8 @@ class CachingFileStore(AbstractFileStore):
         # Total up the sizes of all the reads of files and subtract it from the total disk reservation of all jobs
         for row in self.cur.execute("""
             SELECT (
-                (SELECT SUM(disk) FROM jobs) - 
-                (SELECT SUM(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state == 'immutable')
+                (SELECT TOTAL(disk) FROM jobs) - 
+                (SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state == 'immutable')
             ) as result
         """):
             return row[0]
@@ -325,9 +334,9 @@ class CachingFileStore(AbstractFileStore):
         for row in self.cur.execute("""
             SELECT (
                 (SELECT value FROM properties WHERE name = 'maxSpace') -
-                (SELECT SUM(size) FROM files) -
-                ((SELECT SUM(disk) FROM jobs) - 
-                (SELECT SUM(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'))
+                (SELECT TOTAL(size) FROM files) -
+                ((SELECT TOTAL(disk) FROM jobs) - 
+                (SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'))
             ) as result
         """):
             return row[0]
@@ -491,7 +500,7 @@ class CachingFileStore(AbstractFileStore):
         
         # Remember the file IDs we are deleting
         deletedFiles = []
-        for row in self.cur.execute('SELECT (id, path) FROM files WHERE owner = ? AND state = ?', (pid, 'deleting')):
+        for row in self.cur.execute('SELECT id, path FROM files WHERE owner = ? AND state = ?', (pid, 'deleting')):
             # Grab everything we are supposed to delete and delete it
             fileID = row[0]
             filePath = row[1]
@@ -579,7 +588,7 @@ class CachingFileStore(AbstractFileStore):
 
         # First we want to make sure that dead jobs aren't holding
         # references to files and keeping them from looking unused.
-        self._removeDeadJobs(self.cur)
+        self._removeDeadJobs(self.con)
         
         # Adopt work from any dead workers
         self._stealWorkFromTheDead()
@@ -655,7 +664,7 @@ class CachingFileStore(AbstractFileStore):
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
-        self._removeDeadJobs(self.cur)
+        self._removeDeadJobs(self.con)
         # Get the requirements for the job.
         self.jobDiskBytes = job.disk
         # Register the current job as taking this much space, and evict files
@@ -815,7 +824,7 @@ class CachingFileStore(AbstractFileStore):
 
             # If we didn't get one of those either, adopt and do work from dead workers and loop again.
             # We may have to wait for someone else's download to finish. If they die, we will notice.
-            self._removeDeadJobs(self.cur)
+            self._removeDeadJobs(self.con)
             self._stealWorkFromTheDead()
             self._executePendingDeletions()
 
@@ -1066,7 +1075,7 @@ class CachingFileStore(AbstractFileStore):
         """
     
         # Get a cursor
-        cur = con.Cursor()
+        cur = con.cursor()
 
         # Get all the worker PIDs
         workers = []
@@ -1093,7 +1102,7 @@ class CachingFileStore(AbstractFileStore):
         while True:
             # Find an unowned job.
             # Don't take all of them; other people could come along and want to help us with the other jobs.
-            cur.execute('SELECT (id, temp) FROM jobs WHERE worker IS NULL LIMIT 1')
+            cur.execute('SELECT id, tempdir FROM jobs WHERE worker IS NULL LIMIT 1')
             row = cur.fetchone()
             if row is None:
                 # We cleaned up all the jobs
@@ -1104,7 +1113,7 @@ class CachingFileStore(AbstractFileStore):
             con.commit()
 
             # See if we won the race
-            cur.execute('SELECT (id, temp) FROM jobs WHERE id = ? AND worker = ?', (row[0], pid))
+            cur.execute('SELECT id, tempdir FROM jobs WHERE id = ? AND worker = ?', (row[0], pid))
             row = cur.fetchone()
             if row is None:
                 # We didn't win the race. Try another one.
