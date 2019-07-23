@@ -455,6 +455,12 @@ An example of a basic ``dockerCall`` is below::
                 workDir=job.tempDir,
                 parameters=['index', '/data/reference.fa'])
 
+Note the assumption that `reference.fa` file is located in `/data`. This is Toil's
+standard convention as a mount location to reduce boilerplate when calling `dockerCall`.
+Users can choose their own mount locations by supplying a `volumes` kwarg to `dockerCall`,
+such as: `volumes={working_dir: {'bind': '/data', 'mode': 'rw'}}`, where `working_dir`
+is an absolute path on the user's filesystem.
+
 ``dockerCall`` can also be added to workflows like any other job function:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_docker.py
