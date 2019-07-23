@@ -542,8 +542,7 @@ class CWLJob(Job):
                 cwljob.pop(inp_id)
 
         # Exports temporary directory for batch systems that reset TMPDIR
-        os.environ["TMPDIR"] = os.path.realpath(
-            self.runtime_context.tmpdir or file_store.getLocalTempDir())
+        os.environ["TMPDIR"] = os.path.realpath(file_store.getLocalTempDir())
         outdir = os.path.join(file_store.getLocalTempDir(), "out")
         os.mkdir(outdir)
         # Just keep the temporary output prefix under the job's local temp dir,
@@ -1128,7 +1127,6 @@ def main(args=None, stdout=sys.stdout):
 
     outdir = os.path.abspath(options.outdir)
     tmp_outdir_prefix = os.path.abspath(options.tmp_outdir_prefix)
-    tmpdir_prefix = os.path.abspath(options.tmpdir_prefix)
 
     fileindex = {}
     existing = {}
@@ -1228,7 +1226,6 @@ def main(args=None, stdout=sys.stdout):
 
             try:
                 runtime_context.use_container = use_container
-                runtime_context.tmpdir = os.path.realpath(tmpdir_prefix)
                 runtime_context.tmp_outdir_prefix = os.path.realpath(
                     tmp_outdir_prefix)
                 runtime_context.job_script_provider = job_script_provider
