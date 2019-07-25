@@ -34,7 +34,7 @@ from unittest.util import strclass
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
-from toil.lib.memoize import less_strict_bool, memoize
+from toil.lib.memoize import memoize
 from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread
 from toil.lib.misc import mkdir_p
@@ -322,9 +322,7 @@ def needs_azure(test_item):
 
 
 def needs_gridengine(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if GridEngine is installed.
-    """
+    """Use as a decorator before test classes or methods to run only if GridEngine is installed."""
     test_item = _mark_test('gridengine', test_item)
     if which('qhost'):
         return test_item
@@ -332,9 +330,7 @@ def needs_gridengine(test_item):
 
 
 def needs_torque(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if PBS/Torque is installed.
-    """
+    """Use as a decorator before test classes or methods to run only ifPBS/Torque is installed."""
     test_item = _mark_test('torque', test_item)
     if which('pbsnodes'):
         return test_item
@@ -342,15 +338,11 @@ def needs_torque(test_item):
 
 
 def needs_mesos(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if the Mesos is installed
-    and configured.
-    """
+    """Use as a decorator before test classes or methods to run only if Mesos is installed."""
     test_item = _mark_test('mesos', test_item)
     if not (which('mesos-master') or which('mesos-slave')):
         return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
-        # noinspection PyUnresolvedReferences
         import pymesos
         import psutil
     except ImportError:
@@ -359,31 +351,23 @@ def needs_mesos(test_item):
 
 
 def needs_parasol(test_item):
-    """
-    Use as decorator so tests are only run if Parasol is installed.
-    """
+    """Use as decorator so tests are only run if Parasol is installed."""
     test_item = _mark_test('parasol', test_item)
     if which('parasol'):
         return test_item
-    else:
-        return unittest.skip("Install Parasol to include this test.")(test_item)
+    return unittest.skip("Install Parasol to include this test.")(test_item)
 
 
 def needs_slurm(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if Slurm is installed.
-    """
+    """Use as a decorator before test classes or methods to run only if Slurm is installed."""
     test_item = _mark_test('slurm', test_item)
     if which('squeue'):
         return test_item
-    else:
-        return unittest.skip("Install Slurm to include this test.")(test_item)
+    return unittest.skip("Install Slurm to include this test.")(test_item)
 
 
 def needs_htcondor(test_item):
-    """
-    Use a decorator before test classes or methods to only run them if the HTCondor Python bindings are installed.
-    """
+    """Use a decorator before test classes or methods to run only if the HTCondor is installed."""
     test_item = _mark_test('htcondor', test_item)
     try:
         import htcondor
