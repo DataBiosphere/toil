@@ -14,6 +14,7 @@ after_script:
 stages:
   - main_tests
   - test
+  - integration
 
 #
 # Python2.7
@@ -54,6 +55,14 @@ py2_jobstore_and_provisioning:
 
 py2_main:
   stage: main_tests
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/src
+    - python -m pytest src/toil/test/utils
+
+py2_aws_integration:
+  stage: integration
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
