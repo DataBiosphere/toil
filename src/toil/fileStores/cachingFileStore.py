@@ -324,6 +324,8 @@ class CachingFileStore(AbstractFileStore):
         Return the total number of free bytes available for caching, or, if
         negative, the total number of bytes of cached files that need to be
         evicted to free up enough space for all the currently scheduled jobs.
+
+        Returns None if not retrievable.
         """
 
         # Get the max space on our disk.
@@ -332,12 +334,39 @@ class CachingFileStore(AbstractFileStore):
         # aren't being spent by those jobs on immutable references to cached
         # content.
 
+        # Do a little report first
+        for row in self.cur.execute("SELECT value FROM properties WHERE name = 'maxSpace'"):
+            logger.info('Max space: %d', row[0])
+        for row in self.cur.execute("SELECT TOTAL(size) FROM files"):
+            logger.info('Total file size: %d', row[0])
+        for row in self.cur.execute("SELECT TOTAL(disk) FROM jobs"):
+            logger.info('Total job disk requirement size: %d', row[0])
+        for row in self.cur.execute("SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'"):
+            logger.info('Total immutable reference size: %d', row[0])
+
         for row in self.cur.execute("""
             SELECT (
                 (SELECT value FROM properties WHERE name = 'maxSpace') -
                 (SELECT TOTAL(size) FROM files) -
                 ((SELECT TOTAL(disk) FROM jobs) - 
                 (SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'))
+            ) as result
+        """):
+            return row[0]
+        return None
+
+    def getSpaceUsableForJobs(self):
+        """
+        Return the total number of bytes that are not taken up by job requirements, ignoring files and file usage.
+        We can't ever run more jobs than we actually have room for, even with caching.
+
+        Returns None if not retrievable.
+        """
+
+        for row in self.cur.execute("""
+            SELECT (
+                (SELECT value FROM properties WHERE name = 'maxSpace') -
+                (SELECT TOTAL(disk) FROM jobs)
             ) as result
         """):
             return row[0]
@@ -511,6 +540,8 @@ class CachingFileStore(AbstractFileStore):
             self.cur.execute('UPDATE files SET (owner = NULL, state = ?) WHERE owner = ? AND state = ?',
                 ('cached', owner, 'uploading'))
             self.con.commit()
+
+            logger.info('Tried to adopt file operations from dead worker %d', owner)
             
     def _executePendingDeletions(self):
         """
@@ -609,7 +640,7 @@ class CachingFileStore(AbstractFileStore):
     def _tryToFreeUpSpace(self):
         """
         If disk space is overcommitted, try one round of collecting files to upload/download/delete/evict.
-        Return whether we manage to get sufficient space freed or not.
+        Return whether we manage to get any space freed or not.
         """
 
         # First we want to make sure that dead jobs aren't holding
@@ -622,11 +653,13 @@ class CachingFileStore(AbstractFileStore):
         if self._executePendingDeletions() > 0:
             # We actually had something to delete, which we deleted.
             # Maybe there is space now
-            return
+            logger.info('Successfully executed pending deletions to free space')
+            return True
 
         if self._executePendingUploads() > 0:
             # We had something to upload. Maybe it can be evicted now.
-            return
+            logger.info('Successfully executed pending uploads to free space')
+            return True
 
         # Otherwise, not enough files could be found in deleting state to solve our problem.
         # We need to put something into the deleting state.
@@ -645,7 +678,8 @@ class CachingFileStore(AbstractFileStore):
             # Nothing can be evicted by us.
             # Someone else might be in the process of evicting something that will free up space for us too.
             # Or someone mught be uploading something and we have to wait for them to finish before it can be deleted.
-            return
+            logger.info('Could not find anything to evict! Cannot free up space!')
+            return False
 
         # Otherwise we found an eviction candidate.
         fileID = row[0]
@@ -662,11 +696,14 @@ class CachingFileStore(AbstractFileStore):
             """,
             (pid, 'deleting', fileID, 'cached'))
         self.con.commit()
+
+        logger.info('Evicting file %s', fileID)
             
         # Whether we actually got it or not, try deleting everything we have to delete
         if self._executePendingDeletions() > 0:
             # We deleted something
-            return
+            logger.info('Successfully executed pending deletions to free space')
+            return True
 
     def _freeUpSpace(self):
         """
@@ -674,9 +711,38 @@ class CachingFileStore(AbstractFileStore):
         cache until it is no longer overcommitted.
         """
 
-        while self.getCacheAvailable() < 0:
-            # While there isn't enough space for the thing we want, free up space.
-            self._tryToFreeUpSpace()
+        availableSpace = self.getCacheAvailable()
+
+        # Track how long we are willing to wait for cache space to free up without making progress evicting things before we give up.
+        # This is the longes that we will wait for uploads and other deleters.
+        patience = 10
+
+        while availableSpace < 0:
+            # While there isn't enough space for the thing we want
+            logger.info('Cache is full ({} bytes free). Trying to free up space!'.format(availableSpace))
+            # Free up space. See if we made any progress
+            progress = self._tryToFreeUpSpace()
+            availableSpace = self.getCacheAvailable()
+
+            if progress:
+                # Reset our patience
+                patience = 10
+            else:
+                # See if we've been oversubscribed.
+                jobSpace = self.getSpaceUsableForJobs()
+                if jobSpace < 0:
+                    logger.critical('Jobs on this machine have oversubscribed our total available space (%d bytes)!', jobSpace)
+                    raise CacheUnbalancedError
+                else:
+                    patience -= 1
+                    if patience <= 0:
+                        logger.critical('Waited implausibly long for active uploads and deletes.')
+                        raise CacheUnbalancedError
+                    else:
+                        # Wait a bit and come back
+                        time.sleep(2)
+
+        logger.info('Cache has {} bytes free.'.format(availableSpace))
             
             
     # Normal AbstractFileStore API
@@ -1129,8 +1195,10 @@ class CachingFileStore(AbstractFileStore):
         # Now we know which workers are dead.
         # Clear them off of the jobs they had.
         for deadWorker in deadWorkers:
-            cur.execute('UPDATE jobs SET worker = NULL WHERE worker = ?', (pid, deadWorker))
+            cur.execute('UPDATE jobs SET worker = NULL WHERE worker = ?', (deadWorker,))
             con.commit()
+        if len(deadWorkers) > 0:
+            logger.info('Reaped %d dead workers', len(deadWorkers))
 
         while True:
             # Find an unowned job.
@@ -1176,6 +1244,8 @@ class CachingFileStore(AbstractFileStore):
             # Strike the job from the database
             cur.execute('DELETE FROM jobs WHERE id = ?', (jobId,))
             con.commit()
+
+            logger.info('Cleaned up orphanded job %s', jobId)
 
         # Now we have cleaned up all the jobs that belonged to dead workers that were dead when we entered this function.
 
