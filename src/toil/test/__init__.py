@@ -186,8 +186,7 @@ class ToilTest(unittest.TestCase):
         assert all(path.startswith('src') for path in dirty)
         dirty = set(dirty)
         dirty.difference_update(excluded)
-        assert not dirty, \
-            "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        assert not dirty, "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
         return sdistPath
 
     @classmethod
@@ -267,12 +266,9 @@ def needs_rsync3(test_item):
 
 
 def needs_aws(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if AWS usable.
-    """
+    """Use as a decorator before test classes or methods to only run them if AWS usable."""
     test_item = _mark_test('aws', test_item)
-    keyName = os.getenv('TOIL_AWS_KEYNAME')
-    if not keyName or keyName is None:
+    if not os.getenv('TOIL_AWS_KEYNAME'):
         return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
 
     try:
@@ -280,19 +276,13 @@ def needs_aws(test_item):
         from boto import config
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
-    except:
-        raise
+
+    boto_credentials = config.get('Credentials', 'aws_access_key_id')
+    if boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2():
+        return test_item
     else:
-        dot_aws_credentials_path = os.path.expanduser('~/.aws/credentials')
-        boto_credentials = config.get('Credentials', 'aws_access_key_id')
-        if boto_credentials:
-            return test_item
-        if os.path.exists(dot_aws_credentials_path) or runningOnEC2():
-            # Assume that EC2 machines like the Jenkins slave that we run CI on will have IAM roles
-            return test_item
-        else:
-            return unittest.skip("Configure ~/.aws/credentials with AWS credentials to include "
-                                 "this test.")(test_item)
+        return unittest.skip("Configure ~/.aws/credentials with AWS credentials to include "
+                             "this test.")(test_item)
 
 
 def travis_test(test_item):
@@ -308,15 +298,13 @@ def needs_google(test_item):
     Use as a decorator before test classes or methods to only run them if Google Storage usable.
     """
     test_item = _mark_test('google', test_item)
-    projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-    if not projectID or projectID is None:
+    if not os.getenv('TOIL_GOOGLE_PROJECTID'):
         return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
     try:
         # noinspection PyUnresolvedReferences
         from boto import config
     except ImportError:
-        return unittest.skip(
-            "Install Toil with the 'google' extra to include this test.")(test_item)
+        return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
     else:
         boto_credentials = config.get('Credentials', 'gs_access_key_id')
         if boto_credentials:
@@ -366,6 +354,7 @@ def needs_gridengine(test_item):
         return test_item
     else:
         return unittest.skip("Install GridEngine to include this test.")(test_item)
+
 
 def needs_torque(test_item):
     """
@@ -421,6 +410,7 @@ def needs_slurm(test_item):
     else:
         return unittest.skip("Install Slurm to include this test.")(test_item)
 
+
 def needs_htcondor(test_item):
     """
     Use a decorator before test classes or methods to only run them if the HTCondor Python bindings are installed.
@@ -457,7 +447,7 @@ def needs_docker(test_item):
     docker is installed and docker-based tests are enabled.
     """
     test_item = _mark_test('docker', test_item)
-    if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
+    if os.getenv('TOIL_SKIP_DOCKER').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     if which('docker'):
         return test_item
@@ -477,8 +467,6 @@ def needs_encryption(test_item):
     except ImportError:
         return unittest.skip(
             "Install Toil with the 'encryption' extra to include this test.")(test_item)
-    except:
-        raise
     else:
         return test_item
 
@@ -494,8 +482,6 @@ def needs_cwl(test_item):
         import cwltool
     except ImportError:
         return unittest.skip("Install Toil with the 'cwl' extra to include this test.")(test_item)
-    except:
-        raise
     else:
         return test_item
 
@@ -525,20 +511,6 @@ def needs_appliance(test_item):
         return unittest.skip('Install Docker to include this test.')(test_item)
 
 
-def experimental(test_item):
-    """
-    Use this to decorate experimental or brittle tests in order to skip them during regular builds.
-    """
-    # We'll pytest.mark_test the test as experimental but we'll also unittest.skip it via an
-    # environment variable.
-    test_item = _mark_test('experimental', test_item)
-    if less_strict_bool(os.getenv('TOIL_TEST_EXPERIMENTAL')):
-        return test_item
-    else:
-        return unittest.skip(
-            'Set TOIL_TEST_EXPERIMENTAL="True" to include this experimental test.')(test_item)
-
-
 def integrative(test_item):
     """
     Use this to decorate integration tests so as to skip them during regular builds. We define
@@ -547,27 +519,25 @@ def integrative(test_item):
     being integrative. Neither does involvement of external services such as AWS, since that
     would cover most of Toil's test.
     """
-    # We'll pytest.mark_test the test as integrative but we'll also unittest.skip it via an
-    # environment variable.
     test_item = _mark_test('integrative', test_item)
-    if less_strict_bool(os.getenv('TOIL_TEST_INTEGRATIVE')):
+    if os.getenv('TOIL_TEST_INTEGRATIVE').lower() == 'true':
         return test_item
     else:
-        return unittest.skip(
-            'Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
-            'or run `make integration_test_local` to run all integration tests.')(test_item)
+        return unittest.skip('Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
+                             'or run `make integration_test_local` to run all integration tests.')(test_item)
+
 
 def slow(test_item):
     """
     Use this decorator to identify tests that are slow and not critical.
-    Skip them if TOIL_TEST_QUICK is true.
+    Skip if TOIL_TEST_QUICK is true.
     """
     test_item = _mark_test('slow', test_item)
-    if not less_strict_bool(os.getenv('TOIL_TEST_QUICK')):
+    if os.environ.get('TOIL_TEST_QUICK').lower() != 'true':
         return test_item
     else:
-        return unittest.skip(
-            'Skipped because TOIL_TEST_QUICK is "True"')(test_item)
+        return unittest.skip('Skipped because TOIL_TEST_QUICK is "True"')(test_item)
+
 
 methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
 

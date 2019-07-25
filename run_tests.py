@@ -168,8 +168,7 @@ def run_series(suite, args):
     :return: exit status
     """
     keyword = '"' + ' and '.join(keyword for keyword in test_suites[suite]) + '"'
-    args = [sys.executable, '-m', 'pytest', '-vv', '--timeout=600', '-s',
-            '-k', keyword] + args
+    args = [sys.executable, '-m', 'pytest', '-vv', '--timeout=600', '-s', '-k', keyword] + args
     log.info('Running %r in series', args)
     return subprocess.Popen(args)
 
