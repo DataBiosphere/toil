@@ -68,7 +68,8 @@ py2_integration:
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
-    - python -m pytest src/toil/test/jobStores/jobStoreTest
+    - python setup_gitlab_ssh.py
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
 
 #
 # Python3.6
@@ -123,4 +124,5 @@ py3_integration:
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
-    - python -m pytest src/toil/test/jobStores/jobStoreTest
+    - python setup_gitlab_ssh.py
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py

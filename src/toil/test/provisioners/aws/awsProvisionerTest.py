@@ -143,13 +143,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         assert len(self.getMatchingRoles()) == 1
 
-        checkStatsCommand = ['/home/venv/bin/python', '-c',
-                             'import json; import os; '
-                             'json.load(open("/home/" + [f for f in os.listdir("/home/") '
-                                                   'if f.endswith(".json")].pop()))'
-                             ]
-
-        self.sshUtil(checkStatsCommand)
+        # check stats
+        self.sshUtil(['/home/venv/bin/python', '-c', 'import json; import os; '
+                      'json.load(open("/home/" + [f for f in os.listdir("/home/") if f.endswith(".json")].pop()))'])
 
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
@@ -171,6 +167,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         assert len(self.getMatchingRoles()) == 0
 
 
+@pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
         super(AWSAutoscaleTest, self).__init__(name)
