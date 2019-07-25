@@ -31,6 +31,7 @@ from six.moves.queue import Empty, Queue
 import base64
 import dill
 import errno
+import hashlib
 import logging
 import os
 import shutil
@@ -441,6 +442,29 @@ class CachingFileStore(AbstractFileStore):
 
 
     # Internal caching logic
+
+    def _getCachedPath(self, fileStoreID):
+        """
+        Get a path at which the given file ID can be cached.
+
+        May or may not depend on or be determined by the file ID.
+
+        The file will not be created if it does not exist.
+        """
+
+        # Hash the file ID
+        hasher = hashlib.sha1()
+        hasher.update(fileStoreID)
+
+        # Get a unique temp file name, including the file ID's hash to make
+        # sure we can never collide even though we are going to remove the
+        # file.
+        # TODO: use a de-slashed version of the ID instead?
+        handle, path = tempfile.mkstemp(dir=self.localCacheDir, suffix=hasher.hexdigest())
+        os.close(handle)
+        os.unlink(path)
+
+        return path
     
     def _stealWorkFromTheDead(self):
         """
@@ -453,7 +477,7 @@ class CachingFileStore(AbstractFileStore):
         
         # Get a list of all file owner processes on this node
         owners = []
-        for row in self.cur.execute('SELECT UNIQUE(owner) FROM files'):
+        for row in self.cur.execute('SELECT DISTINCT owner FROM files'):
             owners.append(row[0])
             
         # Work out which of them have died.
@@ -518,6 +542,8 @@ class CachingFileStore(AbstractFileStore):
             # Also drop their references, if they had any from dead downloaders.
             self.cur.execute('DELETE FROM refs WHERE file_id = ?', (fileID,))
         self.con.commit()
+
+        return len(deletedFiles)
 
     def _executePendingUploads(self):
         """
@@ -614,7 +640,7 @@ class CachingFileStore(AbstractFileStore):
                 SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
             ) LIMIT 1
         """)
-        row = self.cur.fetch()
+        row = self.cur.fetchone()
         if row is None:
             # Nothing can be evicted by us.
             # Someone else might be in the process of evicting something that will free up space for us too.
@@ -624,6 +650,9 @@ class CachingFileStore(AbstractFileStore):
         # Otherwise we found an eviction candidate.
         fileID = row[0]
         
+        # Work out who we are
+        pid = os.getpid()
+
         # Try and grab it for deletion, subject to the condition that nothing has started reading it
         self.cur.execute("""
             UPDATE files SET (files.owner = ?, files.state = ?) WHERE files.id = ? AND files.state = ? 
@@ -772,7 +801,7 @@ class CachingFileStore(AbstractFileStore):
         # Now we know to use the cache
 
         # Work out where to cache the file if it isn't cached already
-        cachedPath = self._getCachedPath(fileID)
+        cachedPath = self._getCachedPath(fileStoreID)
 
         # Work out who we are
         pid = os.getpid()
@@ -789,7 +818,7 @@ class CachingFileStore(AbstractFileStore):
         while True:
             # Try and create a downloading entry if no entry exists
             self.cur.execute('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
-                (fileID, cachedPath, filID.size, 'downloading', pid))
+                (fileStoreID, cachedPath, fileStoreID.size, 'downloading', pid))
             if not mutable:
                 # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
                 # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
@@ -798,7 +827,7 @@ class CachingFileStore(AbstractFileStore):
             self.con.commit()
 
             # See if we won the race
-            for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileID, 'downloading', pid)):
+            for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', pid)):
                 own_download = row[0] > 0
 
             if own_download:
@@ -820,6 +849,11 @@ class CachingFileStore(AbstractFileStore):
 
             if have_reference:
                 # The file is cached and we can copy or link it
+
+                # Get the path it is actually at in the cache, instead of where we wanted to put it
+                for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                    cachedPath = row[0]
+
                 break
 
             # If we didn't get one of those either, adopt and do work from dead workers and loop again.
@@ -840,7 +874,7 @@ class CachingFileStore(AbstractFileStore):
 
             # Change state from downloading to cached
             self.cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?',
-                ('cached', fileID))
+                ('cached', fileStoreID))
             self.con.commit()
             # We no longer own the download
             own_download = False
@@ -879,7 +913,7 @@ class CachingFileStore(AbstractFileStore):
             # We might not yet have the reference for the mutable case. Create
             # it as a copying reference and consume more space.
             self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)',
-                (localFilePath, fileID, readerID, 'copying'))
+                (localFilePath, fileStoreID, readerID, 'copying'))
             self.con.commit()
             have_reference = True
 
@@ -901,12 +935,12 @@ class CachingFileStore(AbstractFileStore):
                     SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
                 )
                 """,
-                (pid, 'downloading', fileID, 'cached'))
+                (pid, 'downloading', fileStoreID, 'cached'))
             self.con.commit()
 
             # See if we got it
             for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?',
-                (fileID, 'downloading', pid)):
+                (fileStoreID, 'downloading', pid)):
                 own_download = row[0] > 0
 
             if own_download:
@@ -923,11 +957,11 @@ class CachingFileStore(AbstractFileStore):
 
         if own_download:
             # We are giving it away
-            os.move(cachedPath, localFilePath)
+            shutil.move(cachedPath, localFilePath)
 
             # Record that.
             self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', localFilePath))
-            self.cur.execute('DELETE FROM files WHERE id = ?', (fileID,))
+            self.cur.execute('DELETE FROM files WHERE id = ?', (fileStoreID,))
             self.con.commit()
 
             # Now we're done
@@ -1052,7 +1086,7 @@ class CachingFileStore(AbstractFileStore):
                 # Remove dead jobs
                 cls._removeDeadJobs(con)
 
-                cur.close()
+                con.close()
         
         # Delete the state DB and everything cached.
         shutil.rmtree(dir_)
@@ -1076,8 +1110,11 @@ class CachingFileStore(AbstractFileStore):
     
         # Get a cursor
         cur = con.cursor()
+        
+        # Work out our PID for taking ownership of jobs
+        pid = os.getpid()
 
-        # Get all the worker PIDs
+        # Get all the dead worker PIDs
         workers = []
         for row in cur.execute('SELECT DISTINCT worker FROM jobs WHERE worker IS NOT NULL'):
             workers.append(row[0])
@@ -1095,10 +1132,6 @@ class CachingFileStore(AbstractFileStore):
             cur.execute('UPDATE jobs SET worker = NULL WHERE worker = ?', (pid, deadWorker))
             con.commit()
 
-        
-        # Work out our PID for taking ownership of jobs
-        pid = os.getpid()
-        
         while True:
             # Find an unowned job.
             # Don't take all of them; other people could come along and want to help us with the other jobs.
@@ -1108,22 +1141,21 @@ class CachingFileStore(AbstractFileStore):
                 # We cleaned up all the jobs
                 break
 
+            jobId = row[0]
+            jobTemp = row[1]
+
             # Try to own this job
-            cur.execute('UPDATE jobs SET worker = ? WHERE id = ? AND worker IS NULL', (pid, row[0]))
+            cur.execute('UPDATE jobs SET worker = ? WHERE id = ? AND worker IS NULL', (pid, jobId))
             con.commit()
 
             # See if we won the race
-            cur.execute('SELECT id, tempdir FROM jobs WHERE id = ? AND worker = ?', (row[0], pid))
+            cur.execute('SELECT id, tempdir FROM jobs WHERE id = ? AND worker = ?', (jobId, pid))
             row = cur.fetchone()
             if row is None:
                 # We didn't win the race. Try another one.
                 continue
 
             # Now we own this job, so do it
-            jobId = row[0]
-            jobTemp = row[1]
-            
-
             for row in cur.execute('SELECT path FROM refs WHERE job_id = ?', (jobId,)):
                 try:
                     # Delete all the reference files.
@@ -1136,9 +1168,9 @@ class CachingFileStore(AbstractFileStore):
             con.commit()
 
             try: 
-                # Delete the job's temp directory.
-                shutil.rmtree(jobTmp)
-            except FileNotFoundError:
+                # Delete the job's temp directory to the extent that we can.
+                shutil.rmtree(jobTemp)
+            except OSError:
                 pass
 
             # Strike the job from the database
