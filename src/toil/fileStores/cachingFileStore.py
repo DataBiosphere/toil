@@ -968,8 +968,9 @@ class CachingFileStore(AbstractFileStore):
                 self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
             else:
                 # Always copy
-                with open(localFilePath, 'wb') as out:
-                     shutil.copyfileobj(self.jobStore.readFileStream(fileStoreID), out)
+                with open(localFilePath, 'wb') as outStream:
+                    with self.jobStore.readFileStream(fileStoreID) as inStream:
+                        shutil.copyfileobj(inStream, outStream)
             return localFilePath
 
         # Now we know to use the cache
