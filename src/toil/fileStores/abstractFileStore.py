@@ -279,11 +279,13 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def deleteLocalFile(self, fileStoreID):
         """
-        Deletes Local copies of files associated with the provided job store ID.
+        Deletes local copies of files associated with the provided job store ID.
 
         The files deleted are all those previously read from this file ID via
-        readGlobalFile by the current job, plus the file that was written to
-        create the given file ID, if it was written by the current job.
+        readGlobalFile by the current job into the job's file-store-provided
+        temp directory, plus the file that was written to create the given file
+        ID, if it was written by the current job from the job's
+        file-store-provided temp directory.
 
         :param str fileStoreID: File Store ID of the file to be deleted.
         """

@@ -24,6 +24,7 @@ from struct import pack, unpack
 from uuid import uuid4
 
 from toil.job import Job
+from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
 from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
@@ -417,15 +418,16 @@ class hidden(object):
             two unique jobstore IDs point to the same local file.  Also, the second write is not
             cached since the first was written to cache, and there "isn't enough space" to cache the
             second.  Imediately assert that the second write isn't cached, and is being
-            asynchronously written to the job store (through the presence of a harbinger file).
-             Attempting to get the file from the jobstore should not fail.
+            asynchronously written to the job store.
+
+            Attempting to get the file from the jobstore should not fail.
             """
             self.options.retryCount = 0
             self.options.logLevel = 'DEBUG'
             A = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=1024, disk='1G')
             B = Job.wrapJobFn(self._doubleWriteFileToJobStore, fileMB=850, disk='900M')
-            # Set it to > 2GB such that the cleanup jobs don't die.
             C = Job.wrapJobFn(self._readFromJobStoreWithoutAssertions, fsID=B.rv(), disk='1G')
+            # Set it to > 2GB such that the cleanup jobs don't die.
             D = Job.wrapJobFn(self._adjustCacheLimit, newTotalMB=5000, disk='1G')
             A.addChild(B)
             B.addChild(C)
@@ -442,22 +444,20 @@ class hidden(object):
             :param fileMB: File Size
             :return: Job store file ID for second written file
             """
-            # Make this take longer so we can test asynchronous writes across jobs/workers.
-            oldHarbingerFileRead = job.fileStore.HarbingerFile.read
-            def newHarbingerFileRead(self):
-                time.sleep(5)
-                return oldHarbingerFileRead(self)
-
             job.fileStore.logToMaster('Double writing a file into job store')
             work_dir = job.fileStore.getLocalTempDir()
             with open(os.path.join(work_dir, str(uuid4())), 'wb') as testFile:
                 testFile.write(os.urandom(fileMB * 1024 * 1024))
 
+            job.fileStore.logToMaster('Writing copy 1 and discarding ID')
             job.fileStore.writeGlobalFile(testFile.name)
+            job.fileStore.logToMaster('Writing copy 2 and saving ID')
             fsID = job.fileStore.writeGlobalFile(testFile.name)
+            job.fileStore.logToMaster('Copy 2 ID: {}'.format(fsID))
+
             hidden.AbstractCachingFileStoreTest._readFromJobStoreWithoutAssertions(job, fsID)
-            # Make this take longer so we can test asynchronous writes across jobs/workers.
-            job.fileStore.HarbingerFile.read = newHarbingerFileRead
+            
+            job.fileStore.logToMaster('Writing copy 3 and returning ID')
             return job.fileStore.writeGlobalFile(testFile.name)
 
         @staticmethod
@@ -471,7 +471,6 @@ class hidden(object):
             """
             job.fileStore.logToMaster('Reading the written file')
             assert not job.fileStore.fileIsCached(fsID)
-            assert job.fileStore.HarbingerFile(job.fileStore, fileStoreID=fsID).exists()
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
@@ -968,10 +967,15 @@ class hidden(object):
             job.fileStore.deleteLocalFile(localFsID)
             assert not os.path.exists(readBackFile1)
             assert not os.path.exists(readBackFile2)
-            # Try to get a bogus FSID
+            # Try to get a non-FileID
             try:
                 job.fileStore.readGlobalFile('bogus')
-            except NoSuchFileException:
+            except TypeError:
+                pass
+            # Try to get a FileID for something that doesn't exist
+            try:
+                job.fileStore.readGlobalFile(FileID('bogus', 4096))
+            except TypeError:
                 pass
 
 

@@ -95,6 +95,9 @@ class NonCachingFileStore(AbstractFileStore):
         return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
+        if not isinstance(fileStoreID, FileID):
+            # Don't let the user forge File IDs.
+            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
@@ -108,6 +111,9 @@ class NonCachingFileStore(AbstractFileStore):
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
+        if not isinstance(fileStoreID, FileID):
+            # Don't let the user forge File IDs.
+            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         with self.jobStore.readFileStream(fileStoreID) as f:
             yield f
 
@@ -115,6 +121,9 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def deleteLocalFile(self, fileStoreID):
+        if not isinstance(fileStoreID, FileID):
+            # Don't let the user forge File IDs.
+            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
@@ -124,6 +133,9 @@ class NonCachingFileStore(AbstractFileStore):
                 os.remove(localFilePath)
 
     def deleteGlobalFile(self, fileStoreID):
+        if not isinstance(fileStoreID, FileID):
+            # Don't let the user forge File IDs.
+            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         try:
             self.deleteLocalFile(fileStoreID)
         except OSError as e:
@@ -139,6 +151,10 @@ class NonCachingFileStore(AbstractFileStore):
         return True
 
     def commitCurrentJob(self):
+        # Make sure the previous job is committed, if any
+        if self.waitForPreviousCommit is not None:
+            self.waitForPreviousCommit()
+
         try:
             # Indicate any files that should be deleted once the update of
             # the job wrapper is completed.
