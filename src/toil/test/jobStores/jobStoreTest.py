@@ -57,6 +57,7 @@ from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
+                       integrative,
                        needs_aws,
                        needs_azure,
                        needs_encryption,
@@ -1080,6 +1081,7 @@ class AbstractEncryptedJobStoreTest(object):
                 self.fail("Read encryption content with encryption off.")
 
 
+@integrative
 class FileJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         # Make a FileJobStore with an artificially low fan out threshold, to
@@ -1175,6 +1177,8 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             bucket.delete()
 
 
+@integrative
+@needs_aws
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1322,6 +1326,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
 
 @needs_aws
+@integrative
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1337,6 +1342,7 @@ class InvalidAWSJobStoreTest(ToilTest):
 
 
 @needs_azure
+@integrative
 class AzureJobStoreTest(AbstractJobStoreTest.Test):
     accountName = os.getenv('TOIL_AZURE_KEYNAME')
 
@@ -1413,6 +1419,7 @@ class AzureJobStoreTest(AbstractJobStoreTest.Test):
 
 
 @needs_azure
+@integrative
 class InvalidAzureJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.azureJobStore import AzureJobStore
@@ -1429,7 +1436,8 @@ class InvalidAzureJobStoreTest(ToilTest):
 
 @needs_aws	
 @needs_encryption	
-@slow	
+@slow
+@integrative
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):	
     pass	
 

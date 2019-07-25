@@ -99,18 +99,16 @@ class ToilTest(unittest.TestCase):
         Use us-west-2 unless running on EC2, in which case use the region in which
         the instance is located
         """
-        if runningOnEC2():
-            return cls._region()
-        else:
-            return 'us-west-2'
+        return cls._region() if runningOnEC2() else 'us-west-2'
 
     @classmethod
     def _availabilityZone(cls):
         """
         Used only when running on EC2. Query this instance's metadata to determine
-        in which availability zone it is running
+        in which availability zone it is running.
         """
-        return urlopen('http://169.254.169.254/latest/meta-data/placement/availability-zone').read()
+        zone = urlopen('http://169.254.169.254/latest/meta-data/placement/availability-zone').read()
+        return zone if not isinstance(zone, bytes) else zone.decode('utf-8')
 
     @classmethod
     @memoize
@@ -120,10 +118,9 @@ class ToilTest(unittest.TestCase):
         The region will not change over the life of the instance so the result
         is memoized to avoid unnecessary work.
         """
-        m = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$', cls._availabilityZone())
-        assert m
-        region = m.group(1)
-        return region
+        region = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$', cls._availabilityZone())
+        assert region
+        return region.group(1)
 
     @classmethod
     def _getUtilScriptPath(cls, script_name):
@@ -175,8 +172,7 @@ class ToilTest(unittest.TestCase):
         :rtype: str
         """
         sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % distVersion)
-        assert os.path.isfile(
-            sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
+        assert os.path.isfile(sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
         excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
                                 capture=True,
                                 cwd=cls._projectRootPath()).splitlines())
@@ -254,22 +250,22 @@ def needs_rsync3(test_item):
     test_item = _mark_test('rsync', test_item)
     try:
         versionInfo = subprocess.check_output(['rsync', '--version']).decode('utf-8')
+        if int(versionInfo.split()[2].split('.')[0]) < 3:  # output looks like: 'rsync  version 2.6.9 ...'
+            return unittest.skip('This test depends on rsync version 3.0.0+.')(test_item)
     except subprocess.CalledProcessError:
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
-    else:
-        # version output looks like: 'rsync  version 2.6.9 ...'
-        versionNum = int(versionInfo.split()[2].split('.')[0])
-        if versionNum < 3:
-            return unittest.skip('This test depends on rsync version 3.0.0+.')(test_item)
-
     return test_item
 
 
 def needs_aws(test_item):
     """Use as a decorator before test classes or methods to only run them if AWS usable."""
     test_item = _mark_test('aws', test_item)
+    boto_credentials = config.get('Credentials', 'aws_access_key_id')
+
     if not os.getenv('TOIL_AWS_KEYNAME'):
         return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+    elif boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2():
+        return test_item
 
     try:
         # noinspection PyUnresolvedReferences
@@ -277,20 +273,17 @@ def needs_aws(test_item):
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
 
-    boto_credentials = config.get('Credentials', 'aws_access_key_id')
     if boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2():
         return test_item
     else:
-        return unittest.skip("Configure ~/.aws/credentials with AWS credentials to include "
-                             "this test.")(test_item)
+        return unittest.skip("Configure AWS credentials to include this test.")(test_item)
 
 
 def travis_test(test_item):
     test_item = _mark_test('travis', test_item)
     if os.environ.get('TRAVIS') != 'true':
         return unittest.skip("Set TRAVIS='true' to include this test.")(test_item)
-    else:
-        return test_item
+    return test_item
 
 
 def needs_google(test_item):
