@@ -298,7 +298,8 @@ def needs_google(test_item):
 def needs_azure(test_item):
     """Use as a decorator before test classes or methods to run only if Azure is usable."""
     test_item = _mark_test('azure', test_item)
-    if not os.getenv('TOIL_AZURE_KEYNAME'):
+    keyName = os.getenv('TOIL_AZURE_KEYNAME')
+    if not keyName:
         return unittest.skip("Set TOIL_AZURE_KEYNAME to include this test.")(test_item)
 
     try:
@@ -309,15 +310,14 @@ def needs_azure(test_item):
     else:
         # check for the credentials file
         from toil.jobStores.azureJobStore import credential_file_path
-        full_credential_file_path = os.path.expanduser(credential_file_path)
-        if not os.path.exists(full_credential_file_path):
+        if not os.path.exists(os.path.expanduser(credential_file_path)):
             # no file, check for environment variables
             try:
                 from toil.jobStores.azureJobStore import _fetchAzureAccountKey
                 _fetchAzureAccountKey(keyName)
             except:
-                 return unittest.skip("Configure %s with the access key for the '%s' storage "
-                                     "account." % (credential_file_path, keyName))(test_item)
+                 return unittest.skip("Configure %s with the access key for the '%s' storage account." %
+                                      (credential_file_path, keyName))(test_item)
         return test_item
 
 
@@ -328,8 +328,7 @@ def needs_gridengine(test_item):
     test_item = _mark_test('gridengine', test_item)
     if which('qhost'):
         return test_item
-    else:
-        return unittest.skip("Install GridEngine to include this test.")(test_item)
+    return unittest.skip("Install GridEngine to include this test.")(test_item)
 
 
 def needs_torque(test_item):
@@ -339,8 +338,7 @@ def needs_torque(test_item):
     test_item = _mark_test('torque', test_item)
     if which('pbsnodes'):
         return test_item
-    else:
-        return unittest.skip("Install PBS/Torque to include this test.")(test_item)
+    return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
 
 def needs_mesos(test_item):
@@ -350,19 +348,14 @@ def needs_mesos(test_item):
     """
     test_item = _mark_test('mesos', test_item)
     if not (which('mesos-master') or which('mesos-slave')):
-        return unittest.skip(
-            "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
+        return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
         # noinspection PyUnresolvedReferences
         import pymesos
         import psutil
     except ImportError:
-        return unittest.skip(
-            "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
-    except:
-        raise
-    else:
-        return test_item
+        return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
+    return test_item
 
 
 def needs_parasol(test_item):

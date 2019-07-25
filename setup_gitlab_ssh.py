@@ -9,7 +9,7 @@ stdout, stderr = p.communicate()
 good_spot = os.path.expanduser('~/.ssh')
 os.mkdir(good_spot)
 
-with open(os.path.join(good_spot, 'id_rsa.pub')) as f:
+with open(os.path.join(good_spot, 'id_rsa.pub'), 'w') as f:
     f.write(json.loads(json.loads(stdout)['SecretString'])['id_rsa'])
 
 if stderr:
