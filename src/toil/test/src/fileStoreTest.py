@@ -338,26 +338,39 @@ class hidden(object):
                     self.fail('Toil did not raise the expected CacheUnbalancedError but failed for some other reason')
 
         @staticmethod
-        def _writeFileToJobStoreWithAsserts(job, isLocalFile, nonLocalDir=None, fileMB=1):
+        def _writeFileToJobStoreWithAsserts(job, isLocalFile, nonLocalDir=None, fileMB=1, expectAsyncUpload=True):
             """
             This function creates a file and writes it to the jobstore.
 
-            :param bool isLocalFile: Is the file local(T) or Non-Local(F)?
+            :param bool isLocalFile: Is the file local(T) (i.e. in the file
+                                     store managed temp dir) or Non-Local(F)?
             :param str nonLocalDir: A dir to write the file to.  If unspecified, a local directory
                                     is created.
             :param int fileMB: Size of the created file in MB
+            :param bool expectAsyncUpload: Whether we expect the upload to hit
+                                           the job store later(T) or immediately(F) 
             """
             cls = hidden.AbstractNonCachingFileStoreTest
             fsID, testFile = cls._writeFileToJobStore(job, isLocalFile, nonLocalDir, fileMB)
             actual = os.stat(testFile.name).st_nlink
+
+            # If the caching is free, the job store must have hard links to
+            # everything the file store has.
+            expectJobStoreLink = job.fileStore.cachingIsFree()
+
+            # How many links ought this file to have?
+            expected = 1
+
             if isLocalFile:
-                # Since the file has been hard linked it should have nlink_count = threshold + 1
-                # (local, cached, and possibly job store).
-                expected = job.fileStore.nlinkThreshold + 1
-                assert actual == expected, 'Should have %i nlinks. Got %i' % (expected, actual)
-            else:
-                # Since the file hasn't been hard linked it should have nlink_count = 1
-                assert actual == 1, 'Should have one nlink. Got %i.' % actual
+                # We expect a hard link into the cache and not a copy
+                expected += 1
+
+                if expectJobStoreLink and not expectAsyncUpload:
+                    # We also expect a link in the job store
+                    expected += 1
+
+            assert actual == expected, 'Should have %d links. Got %d.' % (expected, actual)
+            
             return fsID
 
         @staticmethod
@@ -533,31 +546,33 @@ class hidden(object):
             Read a file from the filestore.  If the file was cached, ensure it was hard linked
             correctly.  If it wasn't, ensure it was put into cache.
 
-            :param bool isCachedFile: Flag.  Was the read file read from cache(T)? This defines the
-             nlink count to be asserted.
+            :param bool isCachedFile: Flag.  Was the read file read from cache(T)? If so, we look for a hard link.
             :param bool cacheReadFile: Should the the file that is read be cached(T)?
             :param str fsID: job store file ID
             :param bool isTest: Is this being run as a test(T) or an accessory to another test(F)?
 
             """
             work_dir = job.fileStore.getLocalTempDir()
-            x = job.fileStore.nlinkThreshold
+            wantHardLink = False
             if isCachedFile:
                 outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
                                                        mutable=False)
-                expected = x + 1
+                wantHardLink = True
             else:
                 if cacheReadFile:
                     outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
                                                            cache=True, mutable=False)
-                    expected = x + 1
+                    wantHardLink = True
                 else:
                     outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
                                                            cache=False, mutable=False)
-                    expected = x
+                    wantHardLink = False
             if isTest:
                 actual = os.stat(outfile).st_nlink
-                assert actual == expected, 'Should have %i nlinks. Got %i.' % (expected, actual)
+                if wantHardLink:
+                    assert actual > 1, 'Should have multiple links. Got %i.' % actual
+                else:
+                    assert actual == 1, 'Should have one link. Got %i.' % actual
                 return None
             else:
                 return outfile
@@ -693,9 +708,9 @@ class hidden(object):
         @slow
         def testReturnFileSizes(self):
             """
-            Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
-            and locally deleted files.  Ensure that after every step that the cache state file is
-            describing the correct values.
+            Write a couple of files to the jobstore. Delete a couple of them.
+            Read back written and locally deleted files. Ensure that after
+            every step that the cache is in a valid state.
             """
             workdir = self._createTempDir(purpose='nonLocalDir')
             F = Job.wrapJobFn(self._returnFileTestFn,
@@ -708,9 +723,9 @@ class hidden(object):
         @slow
         def testReturnFileSizesWithBadWorker(self):
             """
-            Write a couple of files to the jobstore.  Delete a couple of them.  Read back written
-            and locally deleted files.  Ensure that after every step that the cache state file is
-            describing the correct values.
+            Write a couple of files to the jobstore. Delete a couple of them.
+            Read back written and locally deleted files. Ensure that after
+            every step that the cache is in a valid state. 
             """
             self.options.retryCount = 20
             self.options.badWorker = 0.5
@@ -727,7 +742,7 @@ class hidden(object):
         def _returnFileTestFn(job, jobDisk, initialCachedSize, nonLocalDir, numIters=100):
             """
             Aux function for jobCacheTest.testReturnFileSizes Conduct numIters operations and ensure
-            the cache state file is tracked appropriately.
+            the cache has the right amount of data in it at all times. 
 
             Track the cache calculations even thought they won't be used in filejobstore
 
@@ -740,6 +755,8 @@ class hidden(object):
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             jobDisk -= writeFileSize * 1024 * 1024
+            # We keep jobDisk in sync with the amount of free space the job
+            # still has that the file store doesn't know it has used.
             cls = hidden.AbstractCachingFileStoreTest
             fsId = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True, fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
@@ -797,7 +814,14 @@ class hidden(object):
                             job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
                             job.fileStore.deleteGlobalFile(fsID)
-                            assert not os.path.exists(job.fileStore.encodedFileID(fsID))
+                            try:
+                                job.fileStore.readGlobalFile(fsID)
+                            except FileNotFoundError:
+                                pass
+                            except:
+                                raise RuntimeError('Got wrong error type for read of deleted file')
+                            else:
+                                raise RuntimeError('Able to read deleted file')
                             writtenFiles.pop(fsID)
                         if fsID in list(localFileIDs.keys()):
                             for lFID in localFileIDs[fsID]:
@@ -818,11 +842,16 @@ class hidden(object):
             by the file store are equal to the values we expect.
             """
 
+            used = job.fileStore.getCacheUsed()
+
             if not job.fileStore.cachingIsFree():
-                assert job.fileStore.getCacheUsed() == cached
+                assert used == cached, 'Cache should have %d bytes used, but actually has %d bytes used' % (cached, used)
             else:
-                assert job.fileStore.getCacheUsed() == 0
-            assert job.fileStore.getCacheJobRequirement() == jobDisk
+                assert used == 0, 'Cache should have nothing in it, but actually has %d bytes used' % used
+            
+            jobUnused = job.fileStore.getCacheUnusedJobRequirement()
+            
+            assert jobUnused == jobDisk, 'Job should have %d bytes of disk for non-FileStore use but the FileStore reports %d' % (jobDisk, jobUnused)
 
         # Testing the resumability of a failed worker
         @slow
@@ -833,9 +862,10 @@ class hidden(object):
             """
             workdir = self._createTempDir(purpose='nonLocalDir')
             self.options.retryCount = 1
-            F = Job.wrapJobFn(self._controlledFailTestFn, jobDisk=2 * 1024 * 1024 * 1024,
+            jobDiskBytes = 2 * 1024 * 1024 * 1024
+            F = Job.wrapJobFn(self._controlledFailTestFn, jobDisk=jobDiskBytes,
                               testDir=workdir,
-                              disk='2G')
+                              disk=jobDiskBytes)
             G = Job.wrapJobFn(self._probeJobReqs, sigmaJob=100, disk='100M')
             F.addChild(G)
             Job.Runner.startToil(F, self.options)
@@ -845,11 +875,16 @@ class hidden(object):
             """
             This is the aux function for the controlled failed worker test.  It does a couple of
             cache operations, fails, then checks whether the new worker starts with the expected
-            value, and whether it exits with zero for sigmaJob.
+            value, and whether it computes cache statistics correctly. 
 
             :param float jobDisk: Disk space supplied for this job
-            :param str testDir: T3sting directory
+            :param str testDir: Testing directory
             """
+
+            # Make sure we actually have the disk size we are supposed to
+            job.fileStore.logToMaster('Job is running with %d bytes of disk, %d requested' % (job.disk, jobDisk))
+            assert job.disk == jobDisk, 'Job was scheduled with %d bytes but requested %d' % (job.disk, jobDisk)
+
             cls = hidden.AbstractCachingFileStoreTest
             if os.path.exists(os.path.join(testDir, 'testfile.test')):
                 with open(os.path.join(testDir, 'testfile.test'), 'rb') as fH:

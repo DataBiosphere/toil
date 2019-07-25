@@ -181,7 +181,7 @@ class CachingFileStore(AbstractFileStore):
         # Since each worker has it's own unique CachingFileStore instance, and only one Job can run
         # at a time on a worker, we can track some stuff about the running job in ourselves.
         self.jobName = str(self.jobGraph)
-        self.jobID = hashlib.sha1(self.jobName.encode('utf-8')).hexdigest()
+        self.jobID = self.jobGraph.jobStoreID
         logger.debug('Starting job (%s) with ID (%s).', self.jobName, self.jobID)
 
         # When the job actually starts, we will fill this in with the job's disk requirement.
@@ -293,6 +293,10 @@ class CachingFileStore(AbstractFileStore):
         If no value is available, return None.
         """
 
+        # Space never counts as used if caching is free
+        if self.cachingIsFree():
+            return 0
+
         for row in self.cur.execute('SELECT TOTAL(size) FROM files'):
             return row[0]
         return None
@@ -344,6 +348,13 @@ class CachingFileStore(AbstractFileStore):
         for row in self.cur.execute("SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'"):
             logger.info('Total immutable reference size: %d', row[0])
 
+        if self.cachingIsFree():
+            # If caching is free, we just say that all the space is always available.
+            for row in self.cur.execute("SELECT value FROM properties WHERE name = 'maxSpace'"):
+                return row[0]
+            return None
+            
+
         for row in self.cur.execute("""
             SELECT (
                 (SELECT value FROM properties WHERE name = 'maxSpace') -
@@ -372,22 +383,31 @@ class CachingFileStore(AbstractFileStore):
             return row[0]
         return None
 
-    def getCacheJobRequirement(self):
+    def getCacheUnusedJobRequirement(self):
         """
         Return the total number of bytes of disk space requested by the current
-        job.
+        job and not used by files the job is using in the cache.
 
-        The cache tracks this in order to enable the cache's disk space to grow
-        and shrink as jobs start and stop using it.
+        Mutable references don't count, but immutable/uploading ones do.
 
         If no value is available, return None.
         """
 
-        # TODO: remove "cache" from name?
+        logger.info('Get unused space for job %s', self.jobID)
+
+        for row in self.cur.execute('SELECT * FROM files'):
+            logger.info('File record: %s', str(row))
+
+        for row in self.cur.execute('SELECT * FROM refs'):
+            logger.info('Ref record: %s', str(row))
+
+
+        for row in self.cur.execute('SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.job_id = ? AND refs.state != ?',
+            (self.jobID, 'mutable')):
+            # Sum up all the sizes of our referenced files, then subtract that from how much we came in with    
+            return self.jobDiskBytes - row[0]
+        return None
     
-        return self.jobDiskBytes
-
-
     def adjustCacheLimit(self, newTotalBytes):
         """
         Adjust the total cache size limit to the given number of bytes.
@@ -405,12 +425,7 @@ class CachingFileStore(AbstractFileStore):
         file you need to do it in a transaction.
         """
 
-        logger.info('Want to know if file %s is cached', fileID)
-        for row in self.cur.execute('SELECT * FROM files'):
-            logger.info('File record: %s', str(row))
-
         for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ?', (fileID, 'cached')):
-            logger.info('Cached count: %d', row[0])
             return row[0] > 0
         return False
 
@@ -650,7 +665,7 @@ class CachingFileStore(AbstractFileStore):
     @classmethod
     def _removeJob(cls, con, cur, jobID):
         """
-        Get rid of the job with the given (locally generated, hash-based) ID.
+        Get rid of the job with the given ID.
         The job must be owned by us.
         
         Deletes the job's database entry, all its references, and its whole
@@ -887,21 +902,33 @@ class CachingFileStore(AbstractFileStore):
         self.cur.execute('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploading', pid))
         self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))
         self.con.commit()
-        
-        try:
-            # Try and hardlink the file into the cache.
-            # This can only fail if the system doesn't have hardlinks, or the
-            # file we're trying to link to has too many hardlinks to it
-            # already, or something.
-            os.link(absLocalFileName, cachePath)
-            
-            # Don't do the upload now. Let it be deferred until later (when the job is committing).
-        except OSError:
+
+        if absLocalFileName.startswith(self.localTempDir):
+            # We should link into the cache, because the upload is coming from our local temp dir
+            try:
+                # Try and hardlink the file into the cache.
+                # This can only fail if the system doesn't have hardlinks, or the
+                # file we're trying to link to has too many hardlinks to it
+                # already, or something.
+                os.link(absLocalFileName, cachePath)
+
+                linkedToCache = True
+                
+                # Don't do the upload now. Let it be deferred until later (when the job is committing).
+            except OSError:
+                # We couldn't make the link for some reason
+                linkedToCache = False
+        else:
+            # The tests insist that if you are uploading a file from outside
+            # the local temp dir, it should not be linked into the cache.
+            linkedToCache = False
+
+
+        if not linkedToCache:
             # If we can't do the link into the cache and upload from there, we
             # have to just upload right away.  We can't guarantee sufficient
             # space to make a full copy in the cache, if we aren't allowed to
             # take this copy away from the writer.
-
 
             # Change the reference to 'mutable', which it will be 
             self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', absLocalFileName))
@@ -920,6 +947,10 @@ class CachingFileStore(AbstractFileStore):
         if not isinstance(fileStoreID, FileID):
             # Don't let the user forge File IDs.
             raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
+
+        if fileStoreID in self.filesToDelete:
+            # File has already been deleted
+            raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
             
         if userPath is not None:
             # Validate the destination we got
@@ -932,7 +963,13 @@ class CachingFileStore(AbstractFileStore):
 
         if not cache:
             # Just read directly
-            self.jobStore.readFile(fileStoreID, localFilePath, mutable=mutable, symlink=symlink)
+            if not mutable:
+                # Link or maybe copy
+                self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+            else:
+                # Always copy
+                with open(localFilePath, 'wb') as out:
+                     shutil.copyfileobj(self.jobStore.readFileStream(fileStoreID), out)
             return localFilePath
 
         # Now we know to use the cache
@@ -1019,7 +1056,7 @@ class CachingFileStore(AbstractFileStore):
 
             # Do the download into the cache.
             # Fine if it is a hardlink.
-            self.jobStore.readFile(fileStoreID, cachedPath, mutable=False, symlink=False)
+            self.jobStore.readFile(fileStoreID, cachedPath, symlink=False)
 
             # Change state from downloading to cached
             self.cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?',
@@ -1130,6 +1167,10 @@ class CachingFileStore(AbstractFileStore):
             # Don't let the user forge File IDs.
             raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
 
+        if fileStoreID in self.filesToDelete:
+            # File has already been deleted
+            raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
+
         # TODO: can we fulfil this from the cache if the file is in the cache?
         # I think we can because if a job is keeping the file data on disk due to having it open, it must be paying for it itself.
         return self.jobStore.readFileStream(fileStoreID)
@@ -1140,7 +1181,7 @@ class CachingFileStore(AbstractFileStore):
             raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
 
         # What job are we operating as?
-        jobID = self.jobGraph.jobStoreID
+        jobID = self.jobID 
         # What paths did we delete
         deleted = []
         for row in self.cur.execute('SELECT path FROM refs WHERE file_id = ? AND job_id = ?', (fileStoreID, jobID)):
@@ -1173,7 +1214,7 @@ class CachingFileStore(AbstractFileStore):
         pid = os.getpid()
 
         # Make sure nobody else has references to it
-        for row in self.cur.execute('SELECT job_id FROM refs WHERE file_id = ?', (fileStoreID, 'mutable')):
+        for row in self.cur.execute('SELECT job_id FROM refs WHERE file_id = ? AND state != ?', (fileStoreID, 'mutable')):
             raise RuntimeError('Deleted file ID %s which is still in use by job %s' % (fileStoreID, row[0]))
         # TODO: should we just let other jobs and the cache keep the file until
         # it gets evicted, and only delete at the back end?
