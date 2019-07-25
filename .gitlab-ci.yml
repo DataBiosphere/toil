@@ -46,7 +46,6 @@ py2_jobstore_and_provisioning:
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
     - python -m pytest src/toil/test/sort/sortTest.py
     - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
@@ -61,13 +60,15 @@ py2_main:
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 
-py2_aws_integration:
+py2_integration:
   stage: integration
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/src
-    - python -m pytest src/toil/test/utils
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_AWS_KEYNAME=id_rsa
+    - export TOIL_AWS_ZONE=us-west-2a
+    - python -m pytest src/toil/test/jobStores/jobStoreTest
 
 #
 # Python3.6
@@ -113,3 +114,13 @@ py3_main:
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
+
+py3_integration:
+  stage: integration
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_AWS_KEYNAME=id_rsa
+    - export TOIL_AWS_ZONE=us-west-2a
+    - python -m pytest src/toil/test/jobStores/jobStoreTest
