@@ -6,7 +6,10 @@ p = subprocess.Popen('aws secretsmanager --region us-west-2 get-secret-value --s
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 stdout, stderr = p.communicate()
 
-with open(os.path.expanduser('~/.ssh/id_rsa.pub')) as f:
+good_spot = os.path.expanduser('~/.ssh')
+os.mkdir(good_spot)
+
+with open(os.path.join(good_spot, 'id_rsa.pub')) as f:
     f.write(json.loads(json.loads(stdout)['SecretString'])['id_rsa'])
 
 if stderr:

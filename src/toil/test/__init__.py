@@ -258,25 +258,19 @@ def needs_rsync3(test_item):
 
 
 def needs_aws(test_item):
-    """Use as a decorator before test classes or methods to only run them if AWS usable."""
+    """Use as a decorator before test classes or methods to run only if AWS is usable."""
     test_item = _mark_test('aws', test_item)
-    boto_credentials = config.get('Credentials', 'aws_access_key_id')
-
-    if not os.getenv('TOIL_AWS_KEYNAME'):
-        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
-    elif boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2():
-        return test_item
-
     try:
-        # noinspection PyUnresolvedReferences
         from boto import config
+        boto_credentials = config.get('Credentials', 'aws_access_key_id')
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
 
-    if boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2():
-        return test_item
-    else:
+    if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2()):
         return unittest.skip("Configure AWS credentials to include this test.")(test_item)
+    elif not os.getenv('TOIL_AWS_KEYNAME'):
+        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+    return test_item
 
 
 def travis_test(test_item):
@@ -287,33 +281,24 @@ def travis_test(test_item):
 
 
 def needs_google(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if Google Storage usable.
-    """
+    """Use as a decorator before test classes or methods to run only if Google is usable."""
     test_item = _mark_test('google', test_item)
-    if not os.getenv('TOIL_GOOGLE_PROJECTID'):
-        return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
     try:
-        # noinspection PyUnresolvedReferences
         from boto import config
     except ImportError:
         return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
-    else:
-        boto_credentials = config.get('Credentials', 'gs_access_key_id')
-        if boto_credentials:
-            return test_item
-        else:
-            return unittest.skip(
-                "Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
+
+    if not os.getenv('TOIL_GOOGLE_PROJECTID'):
+        return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
+    elif not config.get('Credentials', 'gs_access_key_id'):
+        return unittest.skip("Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
+    return test_item
 
 
 def needs_azure(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if Azure is usable.
-    """
+    """Use as a decorator before test classes or methods to run only if Azure is usable."""
     test_item = _mark_test('azure', test_item)
-    keyName = os.getenv('TOIL_AZURE_KEYNAME')
-    if not keyName or keyName is None:
+    if not os.getenv('TOIL_AZURE_KEYNAME'):
         return unittest.skip("Set TOIL_AZURE_KEYNAME to include this test.")(test_item)
 
     try:
@@ -321,8 +306,6 @@ def needs_azure(test_item):
         import azure.storage
     except ImportError:
         return unittest.skip("Install Toil with the 'azure' extra to include this test.")(test_item)
-    except:
-        raise
     else:
         # check for the credentials file
         from toil.jobStores.azureJobStore import credential_file_path
