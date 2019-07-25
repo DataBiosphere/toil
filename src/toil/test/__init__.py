@@ -447,7 +447,7 @@ def needs_docker(test_item):
     docker is installed and docker-based tests are enabled.
     """
     test_item = _mark_test('docker', test_item)
-    if os.getenv('TOIL_SKIP_DOCKER').lower() == 'true':
+    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     if which('docker'):
         return test_item
@@ -489,7 +489,7 @@ def needs_cwl(test_item):
 def needs_appliance(test_item):
     import json
     test_item = _mark_test('appliance', test_item)
-    if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
+    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     if which('docker'):
         image = applianceSelf()
@@ -520,7 +520,7 @@ def integrative(test_item):
     would cover most of Toil's test.
     """
     test_item = _mark_test('integrative', test_item)
-    if os.getenv('TOIL_TEST_INTEGRATIVE').lower() == 'true':
+    if os.getenv('TOIL_TEST_INTEGRATIVE', '').lower() == 'true':
         return test_item
     else:
         return unittest.skip('Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
@@ -533,7 +533,7 @@ def slow(test_item):
     Skip if TOIL_TEST_QUICK is true.
     """
     test_item = _mark_test('slow', test_item)
-    if os.environ.get('TOIL_TEST_QUICK').lower() != 'true':
+    if os.environ.get('TOIL_TEST_QUICK', '').lower() != 'true':
         return test_item
     else:
         return unittest.skip('Skipped because TOIL_TEST_QUICK is "True"')(test_item)
