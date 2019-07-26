@@ -388,17 +388,11 @@ def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable
 
 
 def region_to_bucket_location(region):
-    if region == 'us-east-1':
-        return ''
-    else:
-        return region
+    return '' if region == 'us-east-1' else region
 
 
 def bucket_location_to_region(location):
-    if location == '':
-        return 'us-east-1'
-    else:
-        return location
+    return 'us-east-1' if location == '' else location
 
 
 def bucket_location_to_http_url(location):
