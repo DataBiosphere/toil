@@ -6,10 +6,10 @@ p = subprocess.Popen('aws secretsmanager --region us-west-2 get-secret-value --s
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 stdout, stderr = p.communicate()
 
-# good_spot = os.path.expanduser('~/.ssh')
-# os.mkdir(good_spot)
+good_spot = os.path.expanduser('~/.ssh')
+os.mkdir(good_spot)
 
-good_spot = '/home/quokka/Desktop/delete/i'
+# good_spot = '/home/quokka/Desktop/delete/i'
 
 try:
     keys = json.loads(json.loads(stdout)['SecretString'])
