@@ -141,7 +141,7 @@ class GoogleJobStore(AbstractJobStore):
         # set up sever side encryption after we set up config in super
         if self.config.sseKey is not None:
             with open(self.config.sseKey) as f:
-                self.sseKey = bytes(f.read())
+                self.sseKey = str(f.read())
                 assert len(self.sseKey) == 32
 
     @googleRetry
@@ -188,11 +188,11 @@ class GoogleJobStore(AbstractJobStore):
 
     @googleRetry
     def exists(self, jobStoreID):
-        return self.bucket.blob(bytes(jobStoreID), encryption_key=self.sseKey).exists()
+        return self.bucket.blob(str(jobStoreID), encryption_key=self.sseKey).exists()
 
     @googleRetry
     def getPublicUrl(self, fileName):
-        blob = self.bucket.get_blob(bytes(fileName), encryption_key=self.sseKey)
+        blob = self.bucket.get_blob(str(fileName), encryption_key=self.sseKey)
         if blob is None:
             raise NoSuchFileException(fileName)
         return blob.generate_signed_url(self.publicUrlExpiration)
@@ -215,7 +215,7 @@ class GoogleJobStore(AbstractJobStore):
         self._delete(jobStoreID)
 
         # best effort delete associated files
-        for blob in self.bucket.list_blobs(prefix=bytes(jobStoreID)):
+        for blob in self.bucket.list_blobs(prefix=str(jobStoreID)):
             self._delete(blob.name)
             
     def getEnv(self):
@@ -264,7 +264,7 @@ class GoogleJobStore(AbstractJobStore):
         if not self.fileExists(jobStoreFileID):
             raise NoSuchFileException(jobStoreFileID)
         with open(localFilePath, 'w') as writeable:
-            blob = self.bucket.get_blob(bytes(jobStoreFileID), encryption_key=self.sseKey)
+            blob = self.bucket.get_blob(str(jobStoreFileID), encryption_key=self.sseKey)
             blob.download_to_file(writeable)
 
     @contextmanager
@@ -277,7 +277,7 @@ class GoogleJobStore(AbstractJobStore):
 
     @googleRetry
     def fileExists(self, jobStoreFileID):
-        return self.bucket.blob(bytes(jobStoreFileID), encryption_key=self.sseKey).exists()
+        return self.bucket.blob(str(jobStoreFileID), encryption_key=self.sseKey).exists()
 
     def updateFile(self, jobStoreFileID, localFilePath):
         with open(localFilePath) as f:
@@ -323,7 +323,7 @@ class GoogleJobStore(AbstractJobStore):
 
         storageClient = storage.Client()
         bucket = storageClient.get_bucket(bucketName)
-        blob = bucket.blob(bytes(fileName))
+        blob = bucket.blob(str(fileName))
 
         if exists:
             if not blob.exists():
@@ -365,7 +365,7 @@ class GoogleJobStore(AbstractJobStore):
         while True:
             filesReadThisLoop = 0
             # prefix seems broken
-            for blob in self.bucket.list_blobs(prefix=bytes(prefix)):
+            for blob in self.bucket.list_blobs(prefix=str(prefix)):
                 try:
                     with self.readSharedFileStream(blob.name) as readable:
                         log.debug("Reading stats file: %s", blob.name)
@@ -376,7 +376,7 @@ class GoogleJobStore(AbstractJobStore):
                         # rereading it
                         newID = self.readStatsBaseID + blob.name[len(self.statsBaseID):]
                         # NOTE: just copies then deletes old.
-                        self.bucket.rename_blob(blob, bytes(newID))
+                        self.bucket.rename_blob(blob, str(newID))
                 except NoSuchFileException:
                     log.debug("Stats file not found: %s", blob.name)
             if readAll:
@@ -413,7 +413,7 @@ class GoogleJobStore(AbstractJobStore):
     @googleRetry
     def _delete(self, jobStoreFileID):
         if self.fileExists(jobStoreFileID):
-            self.bucket.get_blob(bytes(jobStoreFileID)).delete()
+            self.bucket.get_blob(str(jobStoreFileID)).delete()
         # remember, this is supposed to be idempotent, so we don't do anything
         # if the file doesn't exist
 
@@ -426,14 +426,14 @@ class GoogleJobStore(AbstractJobStore):
         :return: contents of the job file
         :rtype: string
         """
-        job = self.bucket.get_blob(bytes(jobStoreID), encryption_key=self.sseKey)
+        job = self.bucket.get_blob(str(jobStoreID), encryption_key=self.sseKey)
         if job is None:
             raise NoSuchJobException(jobStoreID)
         return job.download_as_string()
 
     @googleRetry
     def _writeFile(self, jobStoreID, fileObj, update=False, encrypt=True):
-        blob = self.bucket.blob(bytes(jobStoreID), encryption_key=self.sseKey if encrypt else None)
+        blob = self.bucket.blob(str(jobStoreID), encryption_key=self.sseKey if encrypt else None)
         if not update:
             # TODO: should probably raise a special exception and be added to all jobStores
             assert not blob.exists()
@@ -464,7 +464,7 @@ class GoogleJobStore(AbstractJobStore):
         :return: an instance of WritablePipe.
         :rtype: :class:`~toil.jobStores.utils.writablePipe`
         """
-        blob = self.bucket.blob(bytes(fileName), encryption_key=self.sseKey if encrypt else None)
+        blob = self.bucket.blob(str(fileName), encryption_key=self.sseKey if encrypt else None)
 
         class UploadPipe(WritablePipe):
             def readFrom(self, readable):
@@ -489,7 +489,7 @@ class GoogleJobStore(AbstractJobStore):
         :return: an instance of ReadablePipe.
         :rtype: :class:`~toil.jobStores.utils.ReadablePipe`
         """
-        blob = self.bucket.get_blob(bytes(fileName), encryption_key=self.sseKey if encrypt else None)
+        blob = self.bucket.get_blob(str(fileName), encryption_key=self.sseKey if encrypt else None)
         if blob is None:
             raise NoSuchFileException(fileName)
 
