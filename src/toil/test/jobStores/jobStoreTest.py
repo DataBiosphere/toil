@@ -1081,100 +1081,100 @@ class AbstractEncryptedJobStoreTest(object):
                 self.fail("Read encryption content with encryption off.")
 
 
-@integrative
-class FileJobStoreTest(AbstractJobStoreTest.Test):
-    def _createJobStore(self):
-        # Make a FileJobStore with an artificially low fan out threshold, to
-        # make sure to test fan out logic
-        return FileJobStore(self.namePrefix, fanOut=2)
-
-    def _corruptJobStore(self):
-        assert isinstance(self.jobstore_initialized, FileJobStore)  # type hint
-        shutil.rmtree(self.jobstore_initialized.jobStoreDir)
-
-    def _prepareTestFile(self, dirPath, size=None):
-        fileName = 'testfile_%s' % uuid.uuid4()
-        localFilePath = dirPath + fileName
-        url = 'file://%s' % localFilePath
-        if size is None:
-            return url
-        else:
-            content = os.urandom(size)
-            with open(localFilePath, 'wb') as writable:
-                writable.write(content)
-
-            return url, hashlib.md5(content).hexdigest()
-
-    def _hashTestFile(self, url):
-        localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
-        with open(localFilePath, 'rb') as f:
-            return hashlib.md5(f.read()).hexdigest()
-
-    def _createExternalStore(self):
-        return tempfile.mkdtemp()
-
-    def _cleanUpExternalStore(self, dirPath):
-        shutil.rmtree(dirPath)
-    
-    @travis_test
-    def testPreserveFileName(self):
-        "Check that the fileID ends with the given file name."
-        fh, path = tempfile.mkstemp()
-        try:
-            os.close(fh)
-            job = self.jobstore_initialized.create(self.arbitraryJob)
-            fileID = self.jobstore_initialized.writeFile(path, job.jobStoreID, cleanup=True)
-            self.assertTrue(fileID.endswith(os.path.basename(path)))
-        finally:
-            os.unlink(path)
-
-
-@needs_google
-class GoogleJobStoreTest(AbstractJobStoreTest.Test):
-    projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-    headers = {"x-goog-project-id": projectID}
-
-    def _createJobStore(self):
-        from toil.jobStores.googleJobStore import GoogleJobStore
-        return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
-
-    def _corruptJobStore(self):
-        # The Google job store has only one resource, the bucket, so we can't corrupt it without
-        # fully deleting it.
-        pass
-
-    def _prepareTestFile(self, bucket, size=None):
-        from toil.jobStores.googleJobStore import GoogleJobStore
-        fileName = 'testfile_%s' % uuid.uuid4()
-        url = 'gs://%s/%s' % (bucket.name, fileName)
-        if size is None:
-            return url
-        with open('/dev/urandom', 'r') as readable:
-            contents = readable.read(size)
-        GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
-        return url, hashlib.md5(contents).hexdigest()
-
-    def _hashTestFile(self, url):
-        from toil.jobStores.googleJobStore import GoogleJobStore
-        contents = GoogleJobStore._getBlobFromURL(urlparse.urlparse(url)).download_as_string()
-        return hashlib.md5(contents).hexdigest()
-
-    @googleRetry
-    def _createExternalStore(self):
-        from google.cloud import storage
-        bucketName = ("import-export-test-" + str(uuid.uuid4()))
-        storageClient = storage.Client()
-        return storageClient.create_bucket(bucketName)
-
-    @googleRetry
-    def _cleanUpExternalStore(self, bucket):
-        # this is copied from googleJobStore.destroy
-        try:
-            bucket.delete(force=True)
-            # throws ValueError if bucket has more than 256 objects. Then we must delete manually
-        except ValueError:
-            bucket.delete_blobs(bucket.list_blobs)
-            bucket.delete()
+# @integrative
+# class FileJobStoreTest(AbstractJobStoreTest.Test):
+#     def _createJobStore(self):
+#         # Make a FileJobStore with an artificially low fan out threshold, to
+#         # make sure to test fan out logic
+#         return FileJobStore(self.namePrefix, fanOut=2)
+#
+#     def _corruptJobStore(self):
+#         assert isinstance(self.jobstore_initialized, FileJobStore)  # type hint
+#         shutil.rmtree(self.jobstore_initialized.jobStoreDir)
+#
+#     def _prepareTestFile(self, dirPath, size=None):
+#         fileName = 'testfile_%s' % uuid.uuid4()
+#         localFilePath = dirPath + fileName
+#         url = 'file://%s' % localFilePath
+#         if size is None:
+#             return url
+#         else:
+#             content = os.urandom(size)
+#             with open(localFilePath, 'wb') as writable:
+#                 writable.write(content)
+#
+#             return url, hashlib.md5(content).hexdigest()
+#
+#     def _hashTestFile(self, url):
+#         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
+#         with open(localFilePath, 'rb') as f:
+#             return hashlib.md5(f.read()).hexdigest()
+#
+#     def _createExternalStore(self):
+#         return tempfile.mkdtemp()
+#
+#     def _cleanUpExternalStore(self, dirPath):
+#         shutil.rmtree(dirPath)
+#
+#     @travis_test
+#     def testPreserveFileName(self):
+#         "Check that the fileID ends with the given file name."
+#         fh, path = tempfile.mkstemp()
+#         try:
+#             os.close(fh)
+#             job = self.jobstore_initialized.create(self.arbitraryJob)
+#             fileID = self.jobstore_initialized.writeFile(path, job.jobStoreID, cleanup=True)
+#             self.assertTrue(fileID.endswith(os.path.basename(path)))
+#         finally:
+#             os.unlink(path)
+#
+#
+# @needs_google
+# class GoogleJobStoreTest(AbstractJobStoreTest.Test):
+#     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
+#     headers = {"x-goog-project-id": projectID}
+#
+#     def _createJobStore(self):
+#         from toil.jobStores.googleJobStore import GoogleJobStore
+#         return GoogleJobStore(GoogleJobStoreTest.projectID + ":" + self.namePrefix)
+#
+#     def _corruptJobStore(self):
+#         # The Google job store has only one resource, the bucket, so we can't corrupt it without
+#         # fully deleting it.
+#         pass
+#
+#     def _prepareTestFile(self, bucket, size=None):
+#         from toil.jobStores.googleJobStore import GoogleJobStore
+#         fileName = 'testfile_%s' % uuid.uuid4()
+#         url = 'gs://%s/%s' % (bucket.name, fileName)
+#         if size is None:
+#             return url
+#         with open('/dev/urandom', 'r') as readable:
+#             contents = readable.read(size)
+#         GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
+#         return url, hashlib.md5(contents).hexdigest()
+#
+#     def _hashTestFile(self, url):
+#         from toil.jobStores.googleJobStore import GoogleJobStore
+#         contents = GoogleJobStore._getBlobFromURL(urlparse.urlparse(url)).download_as_string()
+#         return hashlib.md5(contents).hexdigest()
+#
+#     @googleRetry
+#     def _createExternalStore(self):
+#         from google.cloud import storage
+#         bucketName = ("import-export-test-" + str(uuid.uuid4()))
+#         storageClient = storage.Client()
+#         return storageClient.create_bucket(bucketName)
+#
+#     @googleRetry
+#     def _cleanUpExternalStore(self, bucket):
+#         # this is copied from googleJobStore.destroy
+#         try:
+#             bucket.delete(force=True)
+#             # throws ValueError if bucket has more than 256 objects. Then we must delete manually
+#         except ValueError:
+#             bucket.delete_blobs(bucket.list_blobs)
+#             bucket.delete()
 
 
 @integrative
@@ -1325,121 +1325,121 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         return AWSJobStore.itemsPerBatchDelete
 
 
-@needs_aws
-@integrative
-class InvalidAWSJobStoreTest(ToilTest):
-    def testInvalidJobStoreName(self):
-        from toil.jobStores.aws.jobStore import AWSJobStore
-        self.assertRaises(ValueError,
-                          AWSJobStore,
-                          'us-west-2:a--b')
-        self.assertRaises(ValueError,
-                          AWSJobStore,
-                          'us-west-2:' + ('a' * 100))
-        self.assertRaises(ValueError,
-                          AWSJobStore,
-                          'us-west-2:a_b')
+# @needs_aws
+# @integrative
+# class InvalidAWSJobStoreTest(ToilTest):
+#     def testInvalidJobStoreName(self):
+#         from toil.jobStores.aws.jobStore import AWSJobStore
+#         self.assertRaises(ValueError,
+#                           AWSJobStore,
+#                           'us-west-2:a--b')
+#         self.assertRaises(ValueError,
+#                           AWSJobStore,
+#                           'us-west-2:' + ('a' * 100))
+#         self.assertRaises(ValueError,
+#                           AWSJobStore,
+#                           'us-west-2:a_b')
+#
+#
+# @needs_azure
+# @integrative
+# class AzureJobStoreTest(AbstractJobStoreTest.Test):
+#     accountName = os.getenv('TOIL_AZURE_KEYNAME')
+#
+#     def _createJobStore(self):
+#         from toil.jobStores.azureJobStore import AzureJobStore
+#         return AzureJobStore(self.accountName + ':' + self.namePrefix)
+#
+#     def _corruptJobStore(self):
+#         from toil.jobStores.azureJobStore import AzureJobStore
+#         assert isinstance(self.jobstore_initialized, AzureJobStore)  # type hinting
+#         self.jobstore_initialized.tableService.delete_table(self.jobstore_initialized.jobFileIDs)
+#
+#     def _partSize(self):
+#         from toil.jobStores.azureJobStore import AzureJobStore
+#         return AzureJobStore._maxAzureBlockBytes
+#
+#     def testLargeJob(self):
+#         from toil.jobStores.azureJobStore import maxAzureTablePropertySize
+#         command = os.urandom(maxAzureTablePropertySize * 2)
+#         jobNode1 = self.arbitraryJob
+#         jobNode1.command=command
+#         job1 = self.jobstore_initialized.create(jobNode1)
+#         self.assertEqual(job1.command, command)
+#         job2 = self.jobstore_initialized.load(job1.jobStoreID)
+#         self.assertIsNot(job1, job2)
+#         self.assertEqual(job2.command, command)
+#
+#     def testJobStoreExists(self):
+#         from toil.jobStores.azureJobStore import AzureJobStore
+#         assert isinstance(self.jobstore_initialized, AzureJobStore)  # mostly for type hinting
+#         self.assertTrue(self.jobstore_initialized._jobStoreExists())
+#         self.jobstore_initialized.destroy()
+#         self.assertFalse(self.jobstore_initialized._jobStoreExists())
+#
+#     def _prepareTestFile(self, containerName, size=None):
+#         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+#         from azure.storage.blob.blockblobservice import BlockBlobService
+#
+#         fileName = 'testfile_%s' % uuid.uuid4()
+#         url = 'wasb://%s@%s.blob.core.windows.net/%s' % (containerName, self.accountName, fileName)
+#         if size is None:
+#             return url
+#         blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
+#                                        account_name=self.accountName)
+#         content = os.urandom(size)
+#         blobService.create_blob_from_text(containerName, fileName, content)
+#         return url, hashlib.md5(content).hexdigest()
+#
+#     def _hashTestFile(self, url):
+#         from toil.jobStores.azureJobStore import AzureJobStore, retry_azure
+#         url = urlparse.urlparse(url)
+#         blob = AzureJobStore._parseWasbUrl(url)
+#         for attempt in retry_azure():
+#             with attempt:
+#                 blob = blob.service.get_blob_to_bytes(blob.container, blob.name)
+#                 return hashlib.md5(blob.content).hexdigest()
+#
+#     def _createExternalStore(self):
+#         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+#         from azure.storage.blob.blockblobservice import BlockBlobService
+#
+#         blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
+#                                        account_name=self.accountName)
+#         containerName = 'import-export-test-%s' % uuid.uuid4()
+#         blobService.create_container(containerName)
+#         return containerName
+#
+#     def _cleanUpExternalStore(self, containerName):
+#         from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+#         from azure.storage.blob.blockblobservice import BlockBlobService
+#         blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
+#                                        account_name=self.accountName)
+#         blobService.delete_container(containerName)
 
 
-@needs_azure
-@integrative
-class AzureJobStoreTest(AbstractJobStoreTest.Test):
-    accountName = os.getenv('TOIL_AZURE_KEYNAME')
-
-    def _createJobStore(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore(self.accountName + ':' + self.namePrefix)
-
-    def _corruptJobStore(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        assert isinstance(self.jobstore_initialized, AzureJobStore)  # type hinting
-        self.jobstore_initialized.tableService.delete_table(self.jobstore_initialized.jobFileIDs)
-
-    def _partSize(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore._maxAzureBlockBytes
-
-    def testLargeJob(self):
-        from toil.jobStores.azureJobStore import maxAzureTablePropertySize
-        command = os.urandom(maxAzureTablePropertySize * 2)
-        jobNode1 = self.arbitraryJob
-        jobNode1.command=command
-        job1 = self.jobstore_initialized.create(jobNode1)
-        self.assertEqual(job1.command, command)
-        job2 = self.jobstore_initialized.load(job1.jobStoreID)
-        self.assertIsNot(job1, job2)
-        self.assertEqual(job2.command, command)
-
-    def testJobStoreExists(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        assert isinstance(self.jobstore_initialized, AzureJobStore)  # mostly for type hinting
-        self.assertTrue(self.jobstore_initialized._jobStoreExists())
-        self.jobstore_initialized.destroy()
-        self.assertFalse(self.jobstore_initialized._jobStoreExists())
-
-    def _prepareTestFile(self, containerName, size=None):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-
-        fileName = 'testfile_%s' % uuid.uuid4()
-        url = 'wasb://%s@%s.blob.core.windows.net/%s' % (containerName, self.accountName, fileName)
-        if size is None:
-            return url
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        content = os.urandom(size)
-        blobService.create_blob_from_text(containerName, fileName, content)
-        return url, hashlib.md5(content).hexdigest()
-
-    def _hashTestFile(self, url):
-        from toil.jobStores.azureJobStore import AzureJobStore, retry_azure
-        url = urlparse.urlparse(url)
-        blob = AzureJobStore._parseWasbUrl(url)
-        for attempt in retry_azure():
-            with attempt:
-                blob = blob.service.get_blob_to_bytes(blob.container, blob.name)
-                return hashlib.md5(blob.content).hexdigest()
-
-    def _createExternalStore(self):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        containerName = 'import-export-test-%s' % uuid.uuid4()
-        blobService.create_container(containerName)
-        return containerName
-
-    def _cleanUpExternalStore(self, containerName):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        blobService.delete_container(containerName)
-
-
-@needs_azure
-@integrative
-class InvalidAzureJobStoreTest(ToilTest):
-    def testInvalidJobStoreName(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:a--b')
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:' + ('a' * 100))
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:a_b')
-
-
-@needs_aws	
-@needs_encryption	
-@slow
-@integrative
-class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):	
-    pass	
+# @needs_azure
+# @integrative
+# class InvalidAzureJobStoreTest(ToilTest):
+#     def testInvalidJobStoreName(self):
+#         from toil.jobStores.azureJobStore import AzureJobStore
+#         self.assertRaises(ValueError,
+#                           AzureJobStore,
+#                           'toiltest:a--b')
+#         self.assertRaises(ValueError,
+#                           AzureJobStore,
+#                           'toiltest:' + ('a' * 100))
+#         self.assertRaises(ValueError,
+#                           AzureJobStore,
+#                           'toiltest:a_b')
+#
+#
+# @needs_aws
+# @needs_encryption
+# @slow
+# @integrative
+# class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):
+#     pass
 
 
 class StubHttpRequestHandler(SimpleHTTPServer.SimpleHTTPRequestHandler):
