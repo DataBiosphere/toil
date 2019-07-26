@@ -64,7 +64,8 @@ py2_integration:
   stage: integration
   script:
     - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - apt install -y awscli
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
@@ -120,7 +121,8 @@ py3_integration:
   stage: integration
   script:
     - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - apt install -y awscli
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
