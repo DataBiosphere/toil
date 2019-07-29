@@ -28,7 +28,7 @@ There are several environment variables that affect the way Toil runs.
 | TOIL_DOCKER_REGISTRY             | The URL of the registry of the Toil Appliance      |
 |                                  | image you wish to use. Docker will use Dockerhub   |
 |                                  | by default, but the quay.io registry is also       |
-|                                  | very popular and easily specifiable by settting    |
+|                                  | very popular and easily specifiable by setting     |
 |                                  | this option to ``quay.io``.                        |
 +----------------------------------+----------------------------------------------------+
 | TOIL_DOCKER_NAME                 | The name of the Toil Appliance image you           |
