@@ -323,7 +323,7 @@ multiple jobs' output values::
 
     Just like regular promises, the return value must be determined prior to
     scheduling any job that depends on the return value. In our example above, notice
-    how the dependant jobs were follow ons to the parent while promising jobs are
+    how the dependent jobs were follow ons to the parent while promising jobs are
     children of the parent. This ordering ensures that all promises are
     properly fulfilled.
 
