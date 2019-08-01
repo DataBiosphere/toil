@@ -1007,11 +1007,15 @@ class hidden(object):
                 job.fileStore.readGlobalFile('bogus')
             except TypeError:
                 pass
+            else:
+                raise RuntimeError("Managed to get a file from a non-FileID")
             # Try to get a FileID for something that doesn't exist
             try:
                 job.fileStore.readGlobalFile(FileID('bogus', 4096))
-            except TypeError:
+            except NoSuchFileException:
                 pass
+            else:
+                raise RuntimeError("Managed to read a non-existent file")
 
 
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
