@@ -68,6 +68,8 @@ class StatsAndLogging( object ):
             while True:
                 suffix = str(counter).zfill(3) + logExtension
                 fullName = os.path.join(logPath, logName + suffix)
+                if len(fullName) >= 255:
+                    return fullName[:247] + suffix
                 if not os.path.exists(fullName):
                     return fullName
                 counter += 1
