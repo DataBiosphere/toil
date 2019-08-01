@@ -913,6 +913,8 @@ class CachingFileStore(AbstractFileStore):
                 os.link(absLocalFileName, cachePath)
 
                 linkedToCache = True
+
+                logger.info('Linked file %s into cache; deferring write to job store', localFileName)
                 
                 # Don't do the upload now. Let it be deferred until later (when the job is committing).
             except OSError:
@@ -1234,6 +1236,18 @@ class CachingFileStore(AbstractFileStore):
                          ' globally deleted.', level=logging.DEBUG)
 
     def exportFile(self, jobStoreFileID, dstUrl):
+        # First we need to make sure the file is actually in the job store if
+        # we have it cached and need to upload it.
+
+        # We don't have to worry about the case where a different process is
+        # uploading it because we aren't supposed to have the ID from them
+        # until they are done.
+
+        # For safety and simplicity, we just execute all pending uploads now.
+        self._executePendingUploads()
+
+        # Then we let the job store export. TODO: let the export come from the
+        # cache? How would we write the URL?
         self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def waitForCommit(self):

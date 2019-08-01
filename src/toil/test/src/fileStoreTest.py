@@ -695,7 +695,10 @@ class hidden(object):
                 f.write(os.urandom(1024 * 30000)) # 30 Mb
             outputFile = os.path.join(job.fileStore.getLocalTempDir(), 'exportedFile')
             job.fileStore.exportFile(job.fileStore.writeGlobalFile(fileName), 'File://' + outputFile)
-            assert filecmp.cmp(fileName, outputFile)
+            if not filecmp.cmp(fileName, outputFile):
+                logger.warning('Source file: %s', str(os.stat(fileName)))
+                logger.warning('Destination file: %s', str(os.stat(outputFile)))
+                raise RuntimeError("File {} did not properly get copied to {}".format(fileName, outputFile))
 
         @slow
         def testFileStoreExportFile(self):
