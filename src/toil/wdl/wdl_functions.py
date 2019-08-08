@@ -512,7 +512,8 @@ def basename(path, suffix=None):
     path = path.strip()
     if suffix:
         suffix = suffix.strip()
-        path = path[:-len(suffix)]
+        if path.endswith(suffix):
+            path = path[:-len(suffix)]
     return os.path.basename(path)
 
 
