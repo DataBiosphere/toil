@@ -508,9 +508,10 @@ def combine_dicts(dict1, dict2):
 
 
 def basename(path, suffix=None):
+    """https://software.broadinstitute.org/wdl/documentation/article?id=10554"""
     path = path.strip()
-    suffix = suffix.strip()
     if suffix:
+        suffix = suffix.strip()
         path = path[:-len(suffix)]
     return os.path.basename(path)
 
