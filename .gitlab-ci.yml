@@ -70,6 +70,7 @@ py2_integration:
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
     - python setup_gitlab_ssh.py
+    - mkdir ~/.aws
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
     - python -m pytest src/toil/test/jobStores/jobStoreTest.py
 
@@ -128,5 +129,6 @@ py3_integration:
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
     - python setup_gitlab_ssh.py
+    - mkdir ~/.aws
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
     - python -m pytest src/toil/test/jobStores/jobStoreTest.py
