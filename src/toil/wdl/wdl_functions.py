@@ -507,9 +507,18 @@ def combine_dicts(dict1, dict2):
     return combineddict
 
 
+def basename(path, suffix=None):
+    path = path.strip()
+    suffix = suffix.strip()
+    if suffix:
+        path = path[:-len(suffix)]
+    return os.path.basename(path)
+
+
 def heredoc_wdl(template, dictionary={}, indent=''):
     template = textwrap.dedent(template).format(**dictionary)
     return template.replace('\n', '\n' + indent) + '\n'
+
 
 def read_tsv(f, delimiter="\t"):
     '''
@@ -532,6 +541,7 @@ def read_tsv(f, delimiter="\t"):
         for line in data_file:
             tsv_array.append(line)
     return (tsv_array)
+
 
 def read_csv(f):
     '''
