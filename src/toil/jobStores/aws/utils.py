@@ -42,6 +42,7 @@ from boto.exception import (SDBResponseError,
                             S3CreateError,
                             S3CopyError)
 import boto3
+from boto.sdb.connection import SDBConnection
 
 log = logging.getLogger(__name__)
 
@@ -167,7 +168,7 @@ class SDBHelper(object):
         chunks.sort()
         numChunks = int(attributes[u'numChunks'])
         if numChunks:
-            serializedJob = b''.join(v.encode() for k, v in chunks)
+            serializedJob = b''.join(compat_str(v) for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
             if compressed[0] == b'C'[0]:
                 binary = bz2.decompress(compressed[1:])
@@ -178,9 +179,6 @@ class SDBHelper(object):
         else:
             binary = None
         return binary, numChunks
-
-
-from boto.sdb.connection import SDBConnection
 
 
 def fileSizeAndTime(localFilePath):
