@@ -15,7 +15,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from builtins import str
-from past.builtins import str as oldstr
 from builtins import next
 from builtins import range
 from past.utils import old_div
@@ -26,7 +25,6 @@ import os
 import socket
 import logging
 import types
-
 import errno
 from ssl import SSLError
 
@@ -36,7 +34,7 @@ import itertools
 
 from toil.lib.exceptions import panic
 from six import iteritems
-
+from toil.lib.compatibility import compat_str
 from toil.lib.retry import retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
@@ -187,8 +185,7 @@ from boto.sdb.connection import SDBConnection
 
 def fileSizeAndTime(localFilePath):
     file_stat = os.stat(localFilePath)
-    file_size, file_time = file_stat.st_size, file_stat.st_mtime
-    return file_size, file_time
+    return file_stat.st_size, file_stat.st_mtime
 
 
 def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
@@ -276,12 +273,12 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     :rtype: str
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
-    s3 = boto3.resource('s3')
-    dstBucket = s3.Bucket(oldstr(dstBucketName))
-    dstObject = dstBucket.Object(oldstr(dstKeyName))
-    copySource = {'Bucket': oldstr(srcBucketName), 'Key': oldstr(srcKeyName)}
+    s3 = boto3.resource('s3', region_name='us-west-2')
+    dstBucket = s3.Bucket(compat_str(dstBucketName))
+    dstObject = dstBucket.Object(compat_str(dstKeyName))
+    copySource = {'Bucket': compat_str(srcBucketName), 'Key': compat_str(srcKeyName)}
     if srcKeyVersion is not None:
-        copySource['VersionId'] = oldstr(srcKeyVersion)
+        copySource['VersionId'] = compat_str(srcKeyVersion)
 
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work
@@ -296,17 +293,29 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
         copyEncryptionArgs.update({'CopySourceSSECustomerAlgorithm': copySourceSseAlgorithm,
                                    'CopySourceSSECustomerKey': copySourceSseKey})
     copyEncryptionArgs.update(destEncryptionArgs)
+    # with open('/home/quokka/git/toil/src/toil/lib/encryption/log.txt', 'a+') as f:
+    #     f.write('\n\n!copySource type: ' + str(type(copySource)))
+    #     f.write('\n!copySource: ' + str(copySource))
+    #     f.write('\n!dstObject.bucket_name type: ' + str(type(dstObject.bucket_name)))
+    #     f.write('\n!dstObject.bucket_name: ' + str(dstObject.bucket_name))
+    #     f.write('\n!destEncryptionArgs type: ' + str(type(destEncryptionArgs)))
+    #     f.write('\n!destEncryptionArgs: ' + str(destEncryptionArgs) + '\n\n')
 
-    dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
+    r = dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
+    # with open('/home/quokka/git/toil/src/toil/lib/encryption/log.txt', 'a+') as f:
+    #     f.write('\n\n!r: ' + str(type(r)))
+    #     f.write('\n!r: ' + str(r) + '\n\n')
 
     # Unfortunately, boto3's managed copy doesn't return the version
     # that it actually copied to. So we have to check immediately
     # after, leaving open the possibility that it may have been
     # modified again in the few seconds since the copy finished. There
     # isn't much we can do about it.
-    info = boto3.client('s3').head_object(Bucket=dstObject.bucket_name, Key=dstObject.key,
-                                          **destEncryptionArgs)
+    info = boto3.client('s3', region_name='us-west-2').head_object(Bucket=compat_str(dstObject.bucket_name),
+                                                                   Key=compat_str(dstObject.key),
+                                                                   **destEncryptionArgs)
     return info.get('VersionId', None)
+
 
 def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
                                replace=True, expected_value=None):
@@ -393,10 +402,3 @@ def region_to_bucket_location(region):
 
 def bucket_location_to_region(location):
     return 'us-east-1' if location == '' else location
-
-
-def bucket_location_to_http_url(location):
-    if location:
-        return 'https://s3-' + location + '.amazonaws.com'
-    else:
-        return 'https://s3.amazonaws.com'

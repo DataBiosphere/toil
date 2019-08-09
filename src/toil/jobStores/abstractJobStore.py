@@ -305,6 +305,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         # subclasses of AbstractJobStore.
         srcUrl = urlparse.urlparse(srcUrl)
         otherCls = self._findJobStoreForUrl(srcUrl)
+        # with open('/home/quokka/git/toil/src/toil/lib/encryption/log.txt', 'a+') as f:
+        #     f.write('\n\n!srcUrl' + str(type(srcUrl)) + '\n\n')
+        #     f.write('\n!srcUrl' + str(srcUrl) + '\n\n')
         return self._importFile(otherCls, srcUrl, sharedFileName=sharedFileName, hardlink=hardlink)
 
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
