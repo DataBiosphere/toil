@@ -1,4 +1,4 @@
-ATTENTION: Toil will be dropping python 2.7 support on January 1, 2020 when python 2.7 itself is scheduled to die.
+ATTENTION: Toil will be dropping python 2.7 support on January 1, 2020 when python 2.7 itself is scheduled to die.  This is when the last release of python 2.7 compatible toil will be.
 
 Toil is a scalable, efficient, cross-platform (Linux & macOS) pipeline management system,
 written entirely in Python, and designed around the principles of functional
