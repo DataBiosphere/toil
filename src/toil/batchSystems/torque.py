@@ -123,7 +123,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command):
-            return self.prepareQsub(cpu, memory, jobID) + [self.generateTorqueWrapper(command)]
+            return self.prepareQsub(cpu, memory, jobID) + [self.generateTorqueWrapper(command, jobID)]
 
         def submitJob(self, subLine):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
@@ -204,7 +204,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             return qsubline
 
-        def generateTorqueWrapper(self, command):
+        def generateTorqueWrapper(self, command, jobID):
             """
             A very simple script generator that just wraps the command given; for
             now this goes to default tempdir
