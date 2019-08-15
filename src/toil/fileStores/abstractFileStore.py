@@ -256,6 +256,9 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         If a user path is specified, it is used as the destination. If a user path isn't
         specified, the file is stored in the local temp directory with an encoded name.
 
+        The destination file must not be deleted by the user; it can only be
+        deleted through deleteLocalFile.
+
         :param toil.fileStores.FileID fileStoreID: job store id for the file
         :param string userPath: a path to the name of file to which the global file will be copied
                or hard-linked (see below).

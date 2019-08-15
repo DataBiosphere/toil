@@ -74,18 +74,26 @@ class CacheUnbalancedError(CacheError):
 
 class IllegalDeletionCacheError(CacheError):
     """
-    Error Raised if the Toil detects the user deletes a cached file
+    Error raised if the caching code discovers a file that represents a
+    reference to a cached file to have gone missing.
+
+    This can be a big problem if a hard link is moved, because then the cache
+    will be unable to evict the file it links to.
+    
+    Remember that files read with readGlobalFile may not be deleted by the user
+    and need to be deleted with deleteLocalFile.
     """
 
     def __init__(self, deletedFile):
-        message = 'Cache tracked file (%s) deleted explicitly by user. Use deleteLocalFile to ' \
+        message = 'Cache tracked file (%s) has been deleted or moved by user ' \
+                  ' without updating cache database. Use deleteLocalFile to ' \
                   'delete such files.' % deletedFile
         super(IllegalDeletionCacheError, self).__init__(message)
 
 
 class InvalidSourceCacheError(CacheError):
     """
-    Error Raised if the user attempts to add a non-local file to cache
+    Error raised if the user attempts to add a non-local file to cache
     """
 
     def __init__(self, message):
@@ -1184,16 +1192,26 @@ class CachingFileStore(AbstractFileStore):
             raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
 
         # What job are we operating as?
-        jobID = self.jobID 
+        jobID = self.jobID
+
         # What paths did we delete
         deleted = []
+        # What's the first path, if any, that was missing? If we encounter a
+        # missing ref file, we will raise an error about it and stop deleting
+        # things.
+        missingFile = None
         for row in self.cur.execute('SELECT path FROM refs WHERE file_id = ? AND job_id = ?', (fileStoreID, jobID)):
             # Delete all the files that are references to this cached file (even mutable copies)
             path = row[0]
 
             if path.startswith(self.localTempDir):
                 # It is actually in the local temp dir where we are supposed to be deleting things
-                os.remove(path)
+                try:
+                    os.remove(path)
+                except FileNotFoundError:
+                    # File is missing!
+                    missingFile = path
+                    break
                 deleted.append(path)
 
         for path in deleted:
@@ -1204,6 +1222,13 @@ class CachingFileStore(AbstractFileStore):
         # Now space has been revoked from the cache because that job needs its space back.
         # That might result in stuff having to be evicted.
         self._freeUpSpace()
+
+        if missingFile is not None:
+            # Now throw an error about the file we couldn't find to delete, if
+            # any. TODO: Only users who know to call deleteLocalFile will ever
+            # see this.  We also should check at the end of the job to make
+            # sure all the refs are intact.
+            raise IllegalDeletionCacheError(missingFile)
 
     def deleteGlobalFile(self, fileStoreID):
         if not isinstance(fileStoreID, FileID):
