@@ -514,11 +514,11 @@ class CachingFileStore(AbstractFileStore):
 
     # Internal caching logic
 
-    def _getCachedPath(self, fileStoreID):
+    def _getNewCachingPath(self, fileStoreID):
         """
         Get a path at which the given file ID can be cached.
 
-        May or may not depend on or be determined by the file ID.
+        Will be unique for every call. 
 
         The file will not be created if it does not exist.
         """
@@ -938,8 +938,8 @@ class CachingFileStore(AbstractFileStore):
         # Work out who we are
         pid = os.getpid()
         
-        # Work out where the file is going to go in the cache
-        cachePath = self._getCachedPath(fileID)
+        # Work out where the file ought to go in the cache
+        cachePath = self._getNewCachingPath(fileID)
     
         # Create a file in uploadable state and a reference, in the same transaction.
         # Say the reference is an immutable reference
@@ -958,7 +958,7 @@ class CachingFileStore(AbstractFileStore):
 
                 linkedToCache = True
 
-                logger.info('Linked file %s into cache; deferring write to job store', localFileName)
+                logger.info('Linked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
                 
                 # Don't do the upload now. Let it be deferred until later (when the job is committing).
             except OSError:
@@ -1034,10 +1034,13 @@ class CachingFileStore(AbstractFileStore):
                 # because if we didn't do this we'd be getting a fresh copy from
                 # the job store.
 
-                cachedPath = self._getCachedPath(fileStoreID)
+                # Find where the file is cached
+                for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                    cachedPath = row[0]
 
                 with open(localFilePath, 'wb') as outStream:
                     with open(cachedPath, 'rb') as inStream:
+                        # Copy it
                         shutil.copyfileobj(inStream, outStream)
 
                 # Change the reference to mutable
@@ -1072,7 +1075,7 @@ class CachingFileStore(AbstractFileStore):
         # Now we know to use the cache
 
         # Work out where to cache the file if it isn't cached already
-        cachedPath = self._getCachedPath(fileStoreID)
+        cachedPath = self._getNewCachingPath(fileStoreID)
 
         # This tracks if we are responsible for downloading this file
         own_download = False
