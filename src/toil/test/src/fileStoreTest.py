@@ -38,6 +38,7 @@ import random
 import signal
 import time
 import pytest
+import subprocess
 
 # Python 3 compatibility imports
 from six.moves import xrange
@@ -344,6 +345,7 @@ class hidden(object):
 
             :param bool isLocalFile: Is the file local(T) (i.e. in the file
                                      store managed temp dir) or Non-Local(F)?
+                                     Non-local files should not be cached.
             :param str nonLocalDir: A dir to write the file to.  If unspecified, a local directory
                                     is created.
             :param int fileMB: Size of the created file in MB
@@ -370,6 +372,12 @@ class hidden(object):
                     expected += 1
 
             assert actual == expected, 'Should have %d links. Got %d.' % (expected, actual)
+
+            logger.info('Uploaded %s with %d links', fsID, actual)
+
+            if not isLocalFile:
+                # Make sure it isn't cached if we don't want it to be
+                assert not job.fileStore.fileIsCached(fsID), "File uploaded from non-local-temp directory %s should not be cached" % nonLocalDir
             
             return fsID
 
@@ -546,6 +554,10 @@ class hidden(object):
             Read a file from the filestore.  If the file was cached, ensure it was hard linked
             correctly.  If it wasn't, ensure it was put into cache.
 
+            Note that we may see hard links when we don't expect it based on
+            caching, because immutable reads from the FileJobStore can be
+            fulfilled by hardlinks. We only do immutable reads.
+
             :param bool isCachedFile: Flag.  Was the read file read from cache(T)? If so, we look for a hard link.
             :param bool cacheReadFile: Should the the file that is read be cached(T)?
             :param str fsID: job store file ID
@@ -564,15 +576,19 @@ class hidden(object):
                                                            cache=True, mutable=False)
                     wantHardLink = True
                 else:
+                    assert not job.fileStore.fileIsCached(fsID), "File mistakenly cached before read"
                     outfile = job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, 'temp']),
                                                            cache=False, mutable=False)
+                    assert not job.fileStore.fileIsCached(fsID), "File mistakenly cached after read"
                     wantHardLink = False
             if isTest:
                 actual = os.stat(outfile).st_nlink
                 if wantHardLink:
-                    assert actual > 1, 'Should have multiple links. Got %i.' % actual
-                else:
-                    assert actual == 1, 'Should have one link. Got %i.' % actual
+                    assert actual > 1, 'Should have multiple links for file that was %s and %s. Got %i.' % ('cached' if isCachedFile else 'not cached',
+                        'saved' if cacheReadFile else 'not saved', actual)
+                # We need to accept harf links even if we don't want them,
+                # because we may get them straight from the FileJobStore since
+                # we asked for immutable reads.
                 return None
             else:
                 return outfile
