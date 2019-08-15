@@ -131,6 +131,13 @@ class CachingFileStore(AbstractFileStore):
       dies, goes to state "deleting", because we don't know if it was fully
       downloaded or if anyone still needs it. No references can be created to a
       "downloading" file except by the worker responsible for downloading it.
+
+    - "uploadable": stored in the cache and ready to be written to the job
+      store by a non-null owner. Transitions to "uploading" when a (thread of)
+      the owning worker process picks it up and begins uploading it, to free
+      cache space or to commit a completed job. If the worker dies, goes to
+      state "cached", because it may have outstanding immutable references from
+      the dead-but-not-cleaned-up job that was going to write it.
       
     - "uploading": stored in the cache and being written to the job store by a
       non-null owner. Transitions to "cached" when successfully uploaded. If
@@ -138,9 +145,6 @@ class CachingFileStore(AbstractFileStore):
       immutable references from the dead-but-not-cleaned-up job that was
       writing it.
 
-      TODO: uploading-state files ought to be readable by follow-on jobs, but
-      we can't do the link/copy and the database entry atomically.
-    
     - "deleting": in the process of being removed from the cache by a non-null
       owner. Will eventually be removed from the database.
 
@@ -204,9 +208,9 @@ class CachingFileStore(AbstractFileStore):
         # Determine if caching is free
 
         # Connect to the cache database in there, or create it if not present
-        dbPath = os.path.join(self.localCacheDir, 'cache-{}.db'.format(self.workflowAttemptNumber))
+        self.dbPath = os.path.join(self.localCacheDir, 'cache-{}.db'.format(self.workflowAttemptNumber))
         # We need to hold onto both a connection (to commit) and a cursor (to actually use the database)
-        self.con = sqlite3.connect(dbPath)
+        self.con = sqlite3.connect(self.dbPath)
         self.cur = self.con.cursor()
         
         # Note that sqlite3 automatically starts a transaction when we go to
@@ -219,14 +223,14 @@ class CachingFileStore(AbstractFileStore):
         # We need this for shutdown to be able to find the database from the most recent execution and clean up all its files.
         linkDir = tempfile.mkdtemp(dir=self.localCacheDir)
         linkName = os.path.join(linkDir, 'cache.db')
-        os.link(dbPath, linkName)
+        os.link(self.dbPath, linkName)
         os.rename(linkName, os.path.join(self.localCacheDir, 'cache.db'))
         if os.path.exists(linkName):
             # TODO: How can this file exist if it got renamed away?
             os.unlink(linkName)
         os.rmdir(linkDir)
         assert(os.path.exists(os.path.join(self.localCacheDir, 'cache.db')))
-        assert(os.stat(os.path.join(self.localCacheDir, 'cache.db')).st_ino == os.stat(dbPath).st_ino)
+        assert(os.stat(os.path.join(self.localCacheDir, 'cache.db')).st_ino == os.stat(self.dbPath).st_ino)
 
         # Set up the tables
         self._ensureTables(self.con)
@@ -237,6 +241,16 @@ class CachingFileStore(AbstractFileStore):
         self.con.commit()
 
         # Space used by caching and by jobs is accounted with queries
+
+        # We maintain an asynchronous upload thread, which gets kicked off when
+        # we commit the job's completion. It will be None until then. When it
+        # is running, it has exclusive control over our database connection,
+        # because the job we exist for will have already completed. However, it
+        # has to coordinate its activities with other CachingFileStore objects
+        # in the same process (and thus sharing the same PID) and ensure that
+        # only one of them is working on uploading any given file at any given
+        # time.
+        self.uploadThread = None
 
     @classmethod
     def _ensureTables(cls, con):
@@ -554,19 +568,19 @@ class CachingFileStore(AbstractFileStore):
             # can't be in use since they are from the dead downloader. 
             self.cur.execute('UPDATE files SET (owner = ?, state = ?) WHERE owner = ? AND state = ?',
                 (pid, 'deleting', owner, 'downloading'))
-            # If they were uploading, we mark as cached even though it never
-            # made it to the job store (and leave it unowned).
+            # If they were uploading or uploadable, we mark as cached even
+            # though it never made it to the job store (and leave it unowned).
             #
             # Once the dead job that it was being uploaded from is cleaned up,
             # and there are no longer any immutable references, it will be
             # evicted as normal. Since the dead job can't have been marked
-            # successfully completed (since the file is still uploading),
+            # successfully completed (since the file is still not uploaded),
             # nobody is allowed to actually try and use the file.
             #
             # TODO: if we ever let other PIDs be responsible for writing our
             # files asynchronously, this will need to change.
-            self.cur.execute('UPDATE files SET (owner = NULL, state = ?) WHERE owner = ? AND state = ?',
-                ('cached', owner, 'uploading'))
+            self.cur.execute('UPDATE files SET (owner = NULL, state = ?) WHERE owner = ? AND (state = ? OR state = ?)',
+                ('cached', owner, 'uploadable', 'uploading'))
             self.con.commit()
 
             logger.info('Tried to adopt file operations from dead worker %d', owner)
@@ -606,7 +620,7 @@ class CachingFileStore(AbstractFileStore):
 
     def _executePendingUploads(self):
         """
-        Uploads all files in uploading state that we own.
+        Uploads all files in uploadable state that we own.
 
         Returns the number of files that were uploaded.
         """
@@ -614,21 +628,43 @@ class CachingFileStore(AbstractFileStore):
         # Work out who we are
         pid = os.getpid()
         
-        # Record what we upload
-        uploadedIDs = []
-        for row in self.cur.execute('SELECT id, path FROM files WHERE state = ? AND owner = ?', ('uploading', pid)):
-            # Upload the file
-            logger.info('Actually executing upload for file %s', row[0])
-            self.jobStore.updateFile(row[0], row[1])
-            # Remember it
-            uploadedIDs.append(row[0])
+        # Record how many files we upload
+        uploadedCount = 0
+        while True:
+            # Try and find a file we might want to upload
+            fileID = None
+            filePath = None
+            for row in self.cur.execute('SELECT id, path FROM files WHERE state = ? AND owner = ? LIMIT 1', ('uploadable', pid)):
+                fileID = row[0]
+                filePath = row[1]
 
-        for fileID in uploadedIDs:
-            # Now change all those files to cached
+            if fileID is None:
+                # Nothing else exists to upload
+                break
+
+            # We need to set it to uploading in a way that we can detect that *we* won the update race instead of anyone else.
+            self.cur.execute('UPDATE files SET state = ? WHERE id = ? AND state = ?', ('uploading', fileID, 'uploadable'))
+            self.con.commit()
+            if self.cur.rowcount != 1:
+                # We didn't manage to update it. Someone else (a running job if
+                # we are a committing thread, or visa versa) must have grabbed
+                # it.
+                logger.info('Lost race to upload %s', fileID)
+                # Try again to see if there is something else to grab.
+                continue
+
+            # Upload the file
+            logger.info('Actually executing upload for file %s', fileID)
+            self.jobStore.updateFile(filePath, fileID)
+
+            # Count it for the total uploaded files value we need to return
+            uploadedCount += 1
+
+            # Remember that we uploaded it in the database
             self.cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?', ('cached', fileID))
             self.con.commit()
 
-        return len(uploadedIDs)
+        return uploadedCount
 
             
     
@@ -905,9 +941,9 @@ class CachingFileStore(AbstractFileStore):
         # Work out where the file is going to go in the cache
         cachePath = self._getCachedPath(fileID)
     
-        # Create a file in uploading state and a reference, in the same transaction.
+        # Create a file in uploadable state and a reference, in the same transaction.
         # Say the reference is an immutable reference
-        self.cur.execute('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploading', pid))
+        self.cur.execute('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploadable', pid))
         self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))
         self.con.commit()
 
@@ -971,28 +1007,72 @@ class CachingFileStore(AbstractFileStore):
             # Make our own destination
             localFilePath = self.getLocalTempFileName()
 
+        # Work out who we are
+        pid = os.getpid()
+
+        # And what job we are operating on behalf of
+        readerID = self.jobGraph.jobStoreID
+
         if not cache:
-            # Just read directly
-            if not mutable:
-                # Link or maybe copy
-                self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
-            else:
-                # Always copy
+            # We would like to read directly from the backing job store, since
+            # we don't want to cache the result. However, we may be trying to
+            # read a file that is 'uploadable' or 'uploading' and hasn't hit
+            # the backing job store yet.
+
+            # Try and make a 'copying' reference to such a file
+            self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ?)',
+                (localFilePath, readerID, 'copying', fileStoreID, 'uploadable', 'uploading'))
+            self.con.commit()
+
+            # See if we got it
+            have_reference = False
+            for row in self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID)):
+                have_reference = row[0] > 0
+
+            if have_reference:
+                # If we succeed, copy the file. We know the job has space for it
+                # because if we didn't do this we'd be getting a fresh copy from
+                # the job store.
+
+                cachedPath = self._getCachedPath(fileStoreID)
+
                 with open(localFilePath, 'wb') as outStream:
-                    with self.jobStore.readFileStream(fileStoreID) as inStream:
+                    with open(cachedPath, 'rb') as inStream:
                         shutil.copyfileobj(inStream, outStream)
+
+                # Change the reference to mutable
+                self.cur.execute('UPDATE refs SET state = ? WHERE path = ? and file_id = ?', ('mutable', localFilePath, fileStoreID))
+                self.con.commit()
+            
+            else:
+
+                # If we fail, the file isn't cached here in 'uploadable' or
+                # 'uploading' state, so that means it must actually be in the
+                # backing job store, so we can get it from the backing job store.
+
+                # Create a 'mutable' reference (even if we end up with a link)
+                # so we can see this file in deleteLocalFile.
+                self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)',
+                    (localFilePath, fileStoreID, readerID, 'mutable'))
+                self.con.commit()
+
+                # Just read directly
+                if not mutable:
+                    # Link or maybe copy
+                    self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
+                else:
+                    # Always copy
+                    with open(localFilePath, 'wb') as outStream:
+                        with self.jobStore.readFileStream(fileStoreID) as inStream:
+                            shutil.copyfileobj(inStream, outStream)
+
+            # Now we got the file, somehow.
             return localFilePath
 
         # Now we know to use the cache
 
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getCachedPath(fileStoreID)
-
-        # Work out who we are
-        pid = os.getpid()
-
-        # And what job we are operating on behalf of
-        readerID = self.jobGraph.jobStoreID
 
         # This tracks if we are responsible for downloading this file
         own_download = False
@@ -1010,7 +1090,7 @@ class CachingFileStore(AbstractFileStore):
                 # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
                 logger.info('Trying to make file reference to %s', fileStoreID)
                 self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
-                    (localFilePath, readerID, 'copying' if mutable else 'immutable', fileStoreID, 'downloading', pid))
+                    (localFilePath, readerID, 'immutable', fileStoreID, 'downloading', pid))
             self.con.commit()
 
             # See if we won the race
@@ -1030,11 +1110,12 @@ class CachingFileStore(AbstractFileStore):
                     logger.info('File record: %s', str(row))
        
             # A record already existed for this file.
-            # Try and create an immutable or copying reference to an entry that is in 'cached' or 'uploading' state.
+            # Try and create an immutable or copying reference to an entry that
+            # is in 'cached' or 'uploadable' or 'uploading' state.
             # It might be uploading because *we* are supposed to be uploading it.
             logger.info('Trying to make reference to file %s', fileStoreID)
-            self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ?)',
-            (localFilePath, readerID, 'copying' if mutable else 'immutable', fileStoreID, 'cached', 'uploading'))
+            self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
+                (localFilePath, readerID, 'copying' if mutable else 'immutable', fileStoreID, 'cached', 'uploadable', 'uploading'))
             self.con.commit()
 
             # See if we got it
@@ -1276,15 +1357,35 @@ class CachingFileStore(AbstractFileStore):
         self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def waitForCommit(self):
-        # there is no asynchronicity in this file store so no need to block at all
-        return True
+        # We need to block on the upload thread.
+        # We will only ever be called after commitCurrentJob, so it must exist.
+
+        assert self.uploadThread is not None
+
+        self.uploadThread.join()
 
     def commitCurrentJob(self):
+        # Start the commit thread
+        self.uploadThread = threading.Thread(target=self.commitCurrentJobThread)
+        self.uploadThread.start()
+        
+    def commitCurrentJobThread(self):
+        """
+        Run in a thread to actually commit the current job.
+        """
+
         # Make sure the previous job is committed, if any
         if self.waitForPreviousCommit is not None:
             self.waitForPreviousCommit()
 
         try:
+            # Reconnect to the database from this thread. The main thread
+            # should no longer do anything other then waitForCommit, so this
+            # will be safe. We need to do this because SQLite objects are tied
+            # to a thread.
+            self.con = sqlite3.connect(self.dbPath)
+            self.cur = self.con.cursor()
+
             # Finish all uploads
             self._executePendingUploads()
             # Finish all deletions
@@ -1307,6 +1408,8 @@ class CachingFileStore(AbstractFileStore):
         except:
             self._terminateEvent.set()
             raise
+
+
 
     @classmethod
     def shutdown(cls, dir_):
