@@ -27,6 +27,7 @@ except ImportError:
     import pickle
 
 import re
+import os
 import uuid
 import base64
 import hashlib
@@ -43,6 +44,11 @@ from toil.lib.exceptions import panic
 from toil.lib.objects import InnerClass
 import boto.s3
 import boto.sdb
+
+import boto3 
+from boto3.s3.transfer import TransferConfig
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 
@@ -1034,55 +1040,51 @@ class AWSJobStore(AbstractJobStore):
 
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
+                    s3_client = boto3.client('s3')
                     buf = readable.read(store.partSize)
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-                        headers = info._s3EncryptionHeaders()
-                        for attempt in retry_s3():
-                            with attempt:
-                                upload = store.filesBucket.initiate_multipart_upload(
-                                    key_name=bytes(info.fileID),
-                                    headers=headers)
-                        try:
-                            for part_num in itertools.count():
-                                # There must be at least one part, even if the file is empty.
-                                if len(buf) == 0 and part_num > 0:
+                        mpu = s3_client.create_multipart_upload(Bucket=store.namePrefix, Key=info.fileID)
+
+                        def _copy_part(data, part_number):
+                            resp = s3_client.upload_part(
+                                Body=data,
+                                Bucket=store.filesBucket.name,
+                                Key=info.fileID,
+                                PartNumber=part_number,
+                                UploadId=mpu['UploadId'],
+                            )
+                            return resp['ETag']
+                    
+                        def _chunks():
+                            while True:
+                                data = readable.read(store.partSize)
+                                if not data:
                                     break
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        upload.upload_part_from_file(fp=StringIO(buf),
-                                                                     # part numbers are 1-based
-                                                                     part_num=part_num + 1,
-                                                                     headers=headers)
-                                if len(buf) == 0:
-                                    break
-                                buf = readable.read(info.outer.partSize)
-                        except:
-                            with panic(log=log):
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        upload.cancel_upload()
-                        else:
-                            for attempt in retry_s3():
-                                with attempt:
-                                    info.version = upload.complete_upload().version_id
+                                yield data
+                    
+                        with ThreadPoolExecutor(max_workers=8) as e:
+                            futures = {e.submit(_copy_part, data, part_number): part_number
+                                       for part_number, data in enumerate(_chunks(), start=1)}
+                            parts = [dict(ETag=f.result(), PartNumber=futures[f]) for f in as_completed(futures)]
+                            parts.sort(key=lambda p: p['PartNumber'])
+                        info.version = s3_client.complete_multipart_upload(
+                            Bucket=store.filesBucket,
+                            Key=info.fileID,
+                            MultipartUpload=dict(Parts=parts),
+                            UploadId=mpu['UploadId'],
+                        )["VersionId"]
 
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
+                    s3 = boto3.resource('s3')
                     buf = readable.read()
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-                        key = store.filesBucket.new_key(key_name=bytes(info.fileID))
-                        buf = StringIO(buf)
-                        headers = info._s3EncryptionHeaders()
-                        for attempt in retry_s3():
-                            with attempt:
-                                assert buf.len == key.set_contents_from_file(fp=buf,
-                                                                             headers=headers)
-                        info.version = key.version_id
-
+                        info.version = s3.Object(store.filesBucket.name, info.fileID).put(readable)["VersionId"]
+                    
             with MultiPartPipe() if multipart else SinglePartPipe() as writable:
                 yield writable
 
@@ -1136,36 +1138,35 @@ class AWSJobStore(AbstractJobStore):
                 assert False
 
         def download(self, localFilePath):
+            store = self.outer
+            s3 = boto3.resource('s3')
+            bucket = s3.Bucket(store.filesBucket.name)
+            config = TransferConfig(num_download_attempts=8)
+
             if self.content is not None:
                 with open(localFilePath, 'w') as f:
                     f.write(self.content)
             elif self.version:
-                headers = self._s3EncryptionHeaders()
-                key = self.outer.filesBucket.get_key(bytes(self.fileID), validate=False)
-                for attempt in retry_s3():
-                    with attempt:
-                        key.get_contents_to_filename(localFilePath,
-                                                     version_id=self.version,
-                                                     headers=headers)
+                for s3_object in bucket.all():
+                    bucket.download_file(s3_object.key, localFilePath, Config=config)
             else:
                 assert False
 
         @contextmanager
         def downloadStream(self):
             info = self
+            store = self.outer
+            s3 = boto3.resource('s3')
+            bucket = s3.Bucket(store.filesBucket.name)
+            config = TransferConfig(num_download_attempts=8)
 
             class DownloadPipe(ReadablePipe):
                 def writeTo(self, writable):
                     if info.content is not None:
                         writable.write(info.content)
                     elif info.version:
-                        headers = info._s3EncryptionHeaders()
-                        key = info.outer.filesBucket.get_key(bytes(info.fileID), validate=False)
-                        for attempt in retry_s3():
-                            with attempt:
-                                key.get_contents_to_file(writable,
-                                                         headers=headers,
-                                                         version_id=info.version)
+                        for s3_object in bucket.all():
+                            bucket.download_file(s3_object.key, writable, Config=config)            
                     else:
                         assert False
 

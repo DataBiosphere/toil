@@ -38,6 +38,10 @@ from toil.lib.exceptions import panic
 from six import iteritems
 
 from toil.lib.retry import retry
+import botocore
+import boto3
+from boto3.s3.transfer import TransferConfig
+
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
@@ -202,60 +206,26 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
     :param headers: http headers to use when uploading - generally used for encryption purposes
     :return: version of the newly uploaded file
     """
+    s3 = boto3.resource('s3')
     file_size, file_time = fileSizeAndTime(localFilePath)
     if file_size <= partSize:
-        key = bucket.new_key(key_name=bytes(fileID))
-        key.name = fileID
-        for attempt in retry_s3():
-            with attempt:
-                key.set_contents_from_filename(localFilePath, headers=headers)
-        version = key.version_id
+        s3.meta.client.upload_file(localFilePath, bucket.name)
     else:
-        with open(localFilePath, 'rb') as f:
-            version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
-    for attempt in retry_s3():
-        with attempt:
-            key = bucket.get_key(bytes(fileID),
-                                 headers=headers,
-                                 version_id=version)
-    assert key.size == file_size
-    # Make reasonably sure that the file wasn't touched during the upload
-    assert fileSizeAndTime(localFilePath) == (file_size, file_time)
+        while True:
+            try:
+                config = TransferConfig(multipart_threshold=1024 * 25, max_concurrency=10,
+                                                    multipart_chunksize=1024 * 25, use_threads=True)
+                s3.meta.client.upload_file(localFilePath, bucket.name, fileID, Config=config)
+                print("Upload successful")
+                break
+            except botocore.exceptions.EndpointConnectionError:
+                print("Network Error: Check your Internet Connection")
+            except Exception as e:
+                print(e)
+    version = s3.get_object(bucket=str(bucket), key=fileID).get('VersionID')
+
     return version
-
-
-def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSize=50 << 20):
-    for attempt in retry_s3():
-        with attempt:
-            upload = bucket.initiate_multipart_upload(
-                key_name=bytes(fileID),
-                headers=headers)
-    try:
-        start = 0
-        part_num = itertools.count()
-        while start < file_size:
-            end = min(start + partSize, file_size)
-            assert readable.tell() == start
-            for attempt in retry_s3():
-                with attempt:
-                    upload.upload_part_from_file(fp=readable,
-                                                 part_num=next(part_num) + 1,
-                                                 size=end - start,
-                                                 headers=headers)
-            start = end
-        assert readable.tell() == file_size == start
-    except:
-        with panic(log=log):
-            for attempt in retry_s3():
-                with attempt:
-                    upload.cancel_upload()
-    else:
-        for attempt in retry_s3():
-            with attempt:
-                version = upload.complete_upload().version_id
-    return version
-
-
+   
 def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName, sseAlgorithm=None, sseKey=None,
                      copySourceSseAlgorithm=None, copySourceSseKey=None):
     """
