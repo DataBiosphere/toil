@@ -1045,7 +1045,7 @@ class AWSJobStore(AbstractJobStore):
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-                        mpu = s3_client.create_multipart_upload(Bucket=store.namePrefix, Key=info.fileID)
+                        mpu = s3_client.create_multipart_upload(Bucket=store.filesBucket.name, Key=info.fileID)
 
                         def _copy_part(data, part_number):
                             resp = s3_client.upload_part(
@@ -1070,7 +1070,7 @@ class AWSJobStore(AbstractJobStore):
                             parts = [dict(ETag=f.result(), PartNumber=futures[f]) for f in as_completed(futures)]
                             parts.sort(key=lambda p: p['PartNumber'])
                         info.version = s3_client.complete_multipart_upload(
-                            Bucket=store.filesBucket,
+                            Bucket=store.filesBucket.name,
                             Key=info.fileID,
                             MultipartUpload=dict(Parts=parts),
                             UploadId=mpu['UploadId'],
