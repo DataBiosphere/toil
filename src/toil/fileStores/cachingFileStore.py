@@ -655,7 +655,7 @@ class CachingFileStore(AbstractFileStore):
 
             # Upload the file
             logger.info('Actually executing upload for file %s', fileID)
-            self.jobStore.updateFile(filePath, fileID)
+            self.jobStore.updateFile(fileID, filePath)
 
             # Count it for the total uploaded files value we need to return
             uploadedCount += 1
