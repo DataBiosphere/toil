@@ -106,11 +106,7 @@ docker_tag:=$(shell $(python) version_template.py dockerTag)
 default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
 docker_path:=$(strip $(shell which docker))
 
-ifdef docker_registry
-    export TOIL_DOCKER_REGISTRY?=$(docker_registry)
-else
-    export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
-endif
+export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
 export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
@@ -158,18 +154,17 @@ test_offline: check_venv check_build_reqs
 
 # The auto-deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
-	TOIL_APPLIANCE_SELF=$(docker_registry)/$(docker_base_name):$(docker_tag) \
 	TRAVIS=true \
 	    $(python) -m pytest --cov=toil $(pytest_args_local) $(tests)
 
 # For running integration tests locally in series (uses the -s argument for pyTest)
 integration_test_local: check_venv check_build_reqs sdist push_docker
-	TOIL_TEST_INTEGRATIVE=True \
 	TRAVIS=true \
 	    $(python) run_tests.py --local integration-test $(tests)
 
 test_integration: check_venv check_build_reqs docker
-    TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
+	TRAVIS=true \
+	    $(python) run_tests.py integration-test $(tests)
 
 ifdef TOIL_DOCKER_REGISTRY
 
@@ -219,13 +214,6 @@ docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
 clean_docker:
 	-rm docker/Dockerfile docker/$(sdist_name)
 	-docker rmi $(docker_image):$(docker_tag)
-
-obliterate_docker: clean_docker
-	-@set -x \
-	; docker images $(docker_image) \
-	    | tail -n +2 | awk '{print $$1 ":" $$2}' | uniq \
-	    | xargs docker rmi
-	-docker images -qf dangling=true | xargs docker rmi
 
 push_docker: docker check_docker_registry
 	for i in $$(seq 1 5); do docker push $(docker_image):$(docker_tag) && break || sleep 60; done

@@ -41,6 +41,7 @@ from six import iteritems
 from toil.lib.memoize import strict_bool
 from toil.lib.exceptions import panic
 from toil.lib.objects import InnerClass
+import boto3
 import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError
@@ -66,6 +67,9 @@ from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
+
+s3_boto3_resource = boto3.resource('s3')
+s3_boto3_client = boto3.client('s3')
 log = logging.getLogger(__name__)
 
 
@@ -1278,27 +1282,27 @@ class AWSJobStore(AbstractJobStore):
                     else:
                         raise
 
-    def _delete_bucket(self, bucket):
+    def _delete_bucket(self, b):
         for attempt in retry_s3():
             with attempt:
                 try:
-                    for upload in bucket.list_multipart_uploads():
-                        upload.cancel_upload()
-                    keys = list()
-                    for key in bucket.list_versions():
-                        keys.append((key.name, key.version_id))
-                    bucket.delete_keys(keys, quiet=True)
+                    for upload in b.list_multipart_uploads():
+                        upload.cancel_upload()  # TODO: upgrade this portion to boto3
+                    bucket = s3_boto3_resource.Bucket(bytes(b.name))
+                    bucket.objects.all().delete()
+                    bucket.object_versions.delete()
                     bucket.delete()
+                except s3_boto3_resource.meta.client.exceptions.NoSuchBucket:
+                    pass
                 except S3ResponseError as e:
-                    if e.error_code == 'NoSuchBucket':
-                        pass
-                    else:
+                    if e.error_code != 'NoSuchBucket':
                         raise
 
 
 aRepr = reprlib.Repr()
 aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quotes)
 custom_repr = aRepr.repr
+
 
 class BucketLocationConflictException(Exception):
     def __init__(self, bucketRegion):

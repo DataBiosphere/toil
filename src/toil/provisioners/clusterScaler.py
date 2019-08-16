@@ -960,5 +960,3 @@ class ClusterStats(object):
                 threadName = 'Preemptable' if preemptable else 'Non-preemptable'
                 logger.debug('%s provisioner stats thread shut down successfully.', threadName)
                 self.stats[threadName] = stats
-        else:
-            pass
