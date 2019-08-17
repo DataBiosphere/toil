@@ -40,6 +40,7 @@ from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
+from toil.lib.compatibility import USING_PYTHON2
 from toil import pickle
 from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
@@ -660,7 +661,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         
         # Take it out of base 64 encoding from Protobuf
-        message = decode_data(message)
+        if USING_PYTHON2:
+            message = decode_data(message)
+        else:
+            message = decode_data(message).decode()
         
         log.debug('Got framework message from executor %s running on agent %s: %s',
                   executorId.value, agentId.value, message)
