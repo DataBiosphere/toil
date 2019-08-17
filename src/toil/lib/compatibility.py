@@ -18,3 +18,10 @@ def compat_bytes(s):
         return bytes(s)
     else:
         return s.decode('utf-8') if isinstance(s, bytes) else s
+
+
+def compat_plain(s):
+    if USING_PYTHON2:
+        return s
+    else:
+        return s.decode('utf-8') if isinstance(s, bytes) else s

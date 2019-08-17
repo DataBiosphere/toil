@@ -47,7 +47,7 @@ import boto.sdb
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 
-from toil.lib.compatibility import compat_bytes, USING_PYTHON2
+from toil.lib.compatibility import compat_bytes, compat_plain, USING_PYTHON2
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
@@ -874,7 +874,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def create(cls, ownerID):
-            return cls(compat_bytes(uuid.uuid4()), ownerID, encrypted=cls.outer.sseKeyPath is not None)
+            return cls(str(uuid.uuid4()), ownerID, encrypted=cls.outer.sseKeyPath is not None)
 
         @classmethod
         def presenceIndicator(cls):
@@ -1107,13 +1107,13 @@ class AWSJobStore(AbstractJobStore):
             if srcKey.size <= self.maxInlinedSize():
                 self.content = srcKey.get_contents_as_string()
             else:
-                self.version = copyKeyMultipart(srcBucketName=compat_bytes(srcKey.bucket.name),
-                                                srcKeyName=compat_bytes(srcKey.name),
-                                                srcKeyVersion=compat_bytes(srcKey.version_id),
-                                                dstBucketName=compat_bytes(self.outer.filesBucket.name),
-                                                dstKeyName=compat_bytes(self._fileID),
+                self.version = copyKeyMultipart(srcBucketName=compat_plain(srcKey.bucket.name),
+                                                srcKeyName=compat_plain(srcKey.name),
+                                                srcKeyVersion=compat_plain(srcKey.version_id),
+                                                dstBucketName=compat_plain(self.outer.filesBucket.name),
+                                                dstKeyName=compat_plain(self._fileID),
                                                 sseAlgorithm='AES256',
-                                                sseKey=compat_bytes(self._getSSEKey()))
+                                                sseKey=self._getSSEKey())
 
         def copyTo(self, dstKey):
             """
@@ -1134,13 +1134,13 @@ class AWSJobStore(AbstractJobStore):
                         srcKey = self.outer.filesBucket.get_key(compat_bytes(self.fileID))
                     srcKey.version_id = self.version
                     with attempt:
-                        copyKeyMultipart(srcBucketName=compat_bytes(srcKey.bucket.name),
-                                         srcKeyName=compat_bytes(srcKey.name),
-                                         srcKeyVersion=compat_bytes(srcKey.version_id),
-                                         dstBucketName=compat_bytes(dstKey.bucket.name),
-                                         dstKeyName=compat_bytes(dstKey.name),
+                        copyKeyMultipart(srcBucketName=compat_plain(srcKey.bucket.name),
+                                         srcKeyName=compat_plain(srcKey.name),
+                                         srcKeyVersion=compat_plain(srcKey.version_id),
+                                         dstBucketName=compat_plain(dstKey.bucket.name),
+                                         dstKeyName=compat_plain(dstKey.name),
                                          copySourceSseAlgorithm='AES256',
-                                         copySourceSseKey=compat_bytes(self._getSSEKey()))
+                                         copySourceSseKey=self._getSSEKey())
             else:
                 assert False
 
