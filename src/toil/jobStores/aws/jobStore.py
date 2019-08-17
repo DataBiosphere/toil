@@ -34,10 +34,9 @@ import hashlib
 import itertools
 import urllib.parse
 import urllib.request, urllib.parse, urllib.error
-
+from io import BytesIO
 # Python 3 compatibility imports
 from six.moves import StringIO, reprlib
-from six import iteritems
 
 from toil.lib.memoize import strict_bool
 from toil.lib.exceptions import panic
@@ -48,7 +47,7 @@ import boto.sdb
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 
-from toil.lib.compatibility import compat_bytes
+from toil.lib.compatibility import compat_bytes, USING_PYTHON2
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
@@ -476,10 +475,13 @@ class AWSJobStore(AbstractJobStore):
 
         :rtype: Key
         """
+        keyName = url.path[1:]
+        bucketName = url.netloc
+
         # Get the bucket's region to avoid a redirect per request
         try:
             with closing(boto.connect_s3()) as s3:
-                location = s3.get_bucket(url.netloc).get_location()
+                location = s3.get_bucket(bucketName).get_location()
                 region = bucket_location_to_region(location)
         except S3ResponseError as e:
             if e.error_code == 'AccessDenied':
@@ -491,8 +493,6 @@ class AWSJobStore(AbstractJobStore):
             s3 = boto.s3.connect_to_region(region)
 
         try:
-            keyName = url.path[1:]
-            bucketName = url.netloc
             bucket = s3.get_bucket(bucketName)
             key = bucket.get_key(keyName.encode('utf-8'))
             if existing is True:
@@ -658,9 +658,7 @@ class AWSJobStore(AbstractJobStore):
         """
         db = boto.sdb.connect_to_region(self.region)
         if db is None:
-            raise ValueError("Could not connect to SimpleDB. Make sure '%s' is a valid SimpleDB "
-                             "region." % self.region)
-        assert db is not None
+            raise ValueError("Could not connect to SimpleDB. Make sure '%s' is a valid SimpleDB region." % self.region)
         monkeyPatchSdbConnection(db)
         return db
 
@@ -670,8 +668,7 @@ class AWSJobStore(AbstractJobStore):
         """
         s3 = boto.s3.connect_to_region(self.region)
         if s3 is None:
-            raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." %
-                             self.region)
+            raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." % self.region)
         return s3
 
     def _bindBucket(self, bucket_name, create=False, block=True, versioning=False):
@@ -877,7 +874,7 @@ class AWSJobStore(AbstractJobStore):
 
         @classmethod
         def create(cls, ownerID):
-            return cls(str(uuid.uuid4()), ownerID, encrypted=cls.outer.sseKeyPath is not None)
+            return cls(compat_bytes(uuid.uuid4()), ownerID, encrypted=cls.outer.sseKeyPath is not None)
 
         @classmethod
         def presenceIndicator(cls):
@@ -1056,10 +1053,17 @@ class AWSJobStore(AbstractJobStore):
                                     break
                                 for attempt in retry_s3():
                                     with attempt:
-                                        upload.upload_part_from_file(fp=StringIO(buf),
-                                                                     # part numbers are 1-based
-                                                                     part_num=part_num + 1,
-                                                                     headers=headers)
+                                        if USING_PYTHON2:
+                                            upload.upload_part_from_file(fp=StringIO(buf),
+                                                                         # part numbers are 1-based
+                                                                         part_num=part_num + 1,
+                                                                         headers=headers)
+                                        else:
+                                            upload.upload_part_from_file(fp=BytesIO(buf),
+                                                                         # part numbers are 1-based
+                                                                         part_num=part_num + 1,
+                                                                         headers=headers)
+
                                 if len(buf) == 0:
                                     break
                                 buf = readable.read(info.outer.partSize)
@@ -1103,13 +1107,13 @@ class AWSJobStore(AbstractJobStore):
             if srcKey.size <= self.maxInlinedSize():
                 self.content = srcKey.get_contents_as_string()
             else:
-                self.version = copyKeyMultipart(srcBucketName=srcKey.bucket.name,
-                                                srcKeyName=srcKey.name,
-                                                srcKeyVersion=srcKey.version_id,
-                                                dstBucketName=self.outer.filesBucket.name,
-                                                dstKeyName=self._fileID,
+                self.version = copyKeyMultipart(srcBucketName=compat_bytes(srcKey.bucket.name),
+                                                srcKeyName=compat_bytes(srcKey.name),
+                                                srcKeyVersion=compat_bytes(srcKey.version_id),
+                                                dstBucketName=compat_bytes(self.outer.filesBucket.name),
+                                                dstKeyName=compat_bytes(self._fileID),
                                                 sseAlgorithm='AES256',
-                                                sseKey=self._getSSEKey())
+                                                sseKey=compat_bytes(self._getSSEKey()))
 
         def copyTo(self, dstKey):
             """
@@ -1130,13 +1134,13 @@ class AWSJobStore(AbstractJobStore):
                         srcKey = self.outer.filesBucket.get_key(compat_bytes(self.fileID))
                     srcKey.version_id = self.version
                     with attempt:
-                        copyKeyMultipart(srcBucketName=srcKey.bucket.name,
-                                         srcKeyName=srcKey.name,
-                                         srcKeyVersion=srcKey.version_id,
-                                         dstBucketName=dstKey.bucket.name,
-                                         dstKeyName=dstKey.name,
+                        copyKeyMultipart(srcBucketName=compat_bytes(srcKey.bucket.name),
+                                         srcKeyName=compat_bytes(srcKey.name),
+                                         srcKeyVersion=compat_bytes(srcKey.version_id),
+                                         dstBucketName=compat_bytes(dstKey.bucket.name),
+                                         dstKeyName=compat_bytes(dstKey.name),
                                          copySourceSseAlgorithm='AES256',
-                                         copySourceSseKey=self._getSSEKey())
+                                         copySourceSseKey=compat_bytes(self._getSSEKey()))
             else:
                 assert False
 
