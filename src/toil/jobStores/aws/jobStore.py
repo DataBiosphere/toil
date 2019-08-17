@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 
 from future import standard_library
+
 standard_library.install_aliases()
 from builtins import str
 from builtins import range
@@ -41,6 +42,7 @@ from six import iteritems
 from toil.lib.memoize import strict_bool
 from toil.lib.exceptions import panic
 from toil.lib.objects import InnerClass
+import boto3
 import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError
@@ -66,6 +68,8 @@ from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
+s3_boto3_resource = boto3.resource('s3')
+s3_boto3_client = boto3.client('s3')
 log = logging.getLogger(__name__)
 
 
@@ -242,13 +246,13 @@ class AWSJobStore(AbstractJobStore):
         self._checkItem(item)
         if item["overlargeID"]:
             assert self.fileExists(item["overlargeID"])
-            #This is an overlarge job, download the actual attributes
-            #from the file store
+            # This is an overlarge job, download the actual attributes
+            # from the file store
             log.debug("Loading overlarge job from S3.")
             with self.readFileStream(item["overlargeID"]) as fh:
                 binary = fh.read()
         else:
-            binary,_ = SDBHelper.attributesToBinary(item)
+            binary, _ = SDBHelper.attributesToBinary(item)
             assert binary is not None
         job = pickle.loads(binary)
         return job
@@ -256,7 +260,7 @@ class AWSJobStore(AbstractJobStore):
     def _awsJobToItem(self, job):
         binary = pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL)
         if len(binary) > SDBHelper.maxBinarySize(extraReservedChunks=1):
-            #Store as an overlarge job in S3
+            # Store as an overlarge job in S3
             with self.writeFileStream() as (writable, fileID):
                 writable.write(binary)
             item = SDBHelper.binaryToAttributes(None)
@@ -272,15 +276,15 @@ class AWSJobStore(AbstractJobStore):
     def batch(self):
         self._batchedJobGraphs = []
         yield
-        batches = [self._batchedJobGraphs[i:i + self.jobsPerBatchInsert] for i in range(0, len(self._batchedJobGraphs), self.jobsPerBatchInsert)]
+        batches = [self._batchedJobGraphs[i:i + self.jobsPerBatchInsert] for i in
+                   range(0, len(self._batchedJobGraphs), self.jobsPerBatchInsert)]
 
         for batch in batches:
-            items = {jobGraph.jobStoreID:self._awsJobToItem(jobGraph) for jobGraph in batch}
+            items = {jobGraph.jobStoreID: self._awsJobToItem(jobGraph) for jobGraph in batch}
             for attempt in retry_sdb():
                 with attempt:
                     assert self.jobsDomain.batch_put_attributes(items)
         self._batchedJobGraphs = None
-            
 
     def create(self, jobNode):
         jobStoreID = self._newJobID()
@@ -331,7 +335,7 @@ class AWSJobStore(AbstractJobStore):
 
     def update(self, job):
         log.debug("Updating job %s", job.jobStoreID)
-        item = self._awsJobToItem(job)        
+        item = self._awsJobToItem(job)
         for attempt in retry_sdb():
             with attempt:
                 assert self.jobsDomain.put_attributes(bytes(job.jobStoreID), item)
@@ -342,7 +346,7 @@ class AWSJobStore(AbstractJobStore):
         # remove job and replace with jobStoreId.
         log.debug("Deleting job %s", jobStoreID)
 
-        #If the job is overlarge, delete its file from the filestore
+        # If the job is overlarge, delete its file from the filestore
         item = None
         for attempt in retry_sdb():
             with attempt:
@@ -1208,7 +1212,6 @@ class AWSJobStore(AbstractJobStore):
             else:
                 return {}
 
-
         def __repr__(self):
             r = custom_repr
             d = (('fileID', r(self.fileID)),
@@ -1278,27 +1281,27 @@ class AWSJobStore(AbstractJobStore):
                     else:
                         raise
 
-    def _delete_bucket(self, bucket):
+    def _delete_bucket(self, b):
         for attempt in retry_s3():
             with attempt:
                 try:
-                    for upload in bucket.list_multipart_uploads():
-                        upload.cancel_upload()
-                    keys = list()
-                    for key in bucket.list_versions():
-                        keys.append((key.name, key.version_id))
-                    bucket.delete_keys(keys, quiet=True)
+                    for upload in b.list_multipart_uploads():
+                        upload.cancel_upload()  # TODO: upgrade this portion to boto3
+                    bucket = s3_boto3_resource.Bucket(bytes(b.name))
+                    bucket.objects.all().delete()
+                    bucket.object_versions.delete()
                     bucket.delete()
+                except s3_boto3_resource.meta.client.exceptions.NoSuchBucket:
+                    pass
                 except S3ResponseError as e:
-                    if e.error_code == 'NoSuchBucket':
-                        pass
-                    else:
+                    if e.error_code != 'NoSuchBucket':
                         raise
 
 
 aRepr = reprlib.Repr()
 aRepr.maxstring = 38  # so UUIDs don't get truncated (36 for UUID plus 2 for quotes)
 custom_repr = aRepr.repr
+
 
 class BucketLocationConflictException(Exception):
     def __init__(self, bucketRegion):
