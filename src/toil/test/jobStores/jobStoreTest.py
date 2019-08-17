@@ -49,6 +49,7 @@ from toil.lib.exceptions import panic
 # (installed by `make prepare`)
 from mock import patch
 
+from toil.lib.compatibility import USING_PYTHON2
 from toil.common import Config, Toil
 from toil.fileStores import FileID
 from toil.job import Job, JobNode
@@ -519,13 +520,8 @@ class AbstractJobStoreTest(object):
 
             # Test stats and logging
             stats = None
-            one = 'one'
-            two = 'two'
-            three = 'three'
-            if sys.version_info >= (3, 0):
-                one = b'one'
-                two = b'two'
-                three = b'three'
+            one = b'one' if not USING_PYTHON2 else 'one'
+            two = b'two' if not USING_PYTHON2 else 'two'
 
             # Allows stats to be read/written to/from in read/writeStatsAndLogging.
             def callback(f2):
@@ -1179,7 +1175,8 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         url = 'gs://%s/%s' % (bucket.name, fileName)
         if size is None:
             return url
-        with open('/dev/urandom', 'r') as readable:
+        read_type = 'r' if USING_PYTHON2 else 'rb'
+        with open('/dev/urandom', read_type) as readable:
             contents = readable.read(size)
         GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
         return url, hashlib.md5(contents).hexdigest()
@@ -1291,7 +1288,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                                    jobStoreID=None, predecessorNumber=0)
 
         # Make the pickled size of the job larger than 256K
-        with open("/dev/urandom", "r") as random:
+        read_type = 'r' if USING_PYTHON2 else 'rb'
+        with open("/dev/urandom", read_type) as random:
             overlargeJobNode.jobName = random.read(512 * 1024)
         overlargeJob = jobstore.create(overlargeJobNode)
         self.assertTrue(jobstore.exists(overlargeJob.jobStoreID))
