@@ -1303,7 +1303,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         url = 's3://%s/%s' % (bucket.name, fileName)
         if size is None:
             return url
-        with open('/dev/urandom', 'r') as readable:
+        read_type = 'r' if USING_PYTHON2 else 'rb'
+        with open('/dev/urandom', read_type) as readable:
             bucket.new_key(fileName).set_contents_from_string(readable.read(size))
         return url, hashlib.md5(bucket.get_key(fileName).get_contents_as_string()).hexdigest()
 
