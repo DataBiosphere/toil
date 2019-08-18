@@ -1175,8 +1175,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         url = 'gs://%s/%s' % (bucket.name, fileName)
         if size is None:
             return url
-        read_type = 'r' if USING_PYTHON2 else 'rb'
-        with open('/dev/urandom', read_type) as readable:
+        with open('/dev/urandom', 'r') as readable:
             contents = readable.read(size)
         GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
         return url, hashlib.md5(contents).hexdigest()
