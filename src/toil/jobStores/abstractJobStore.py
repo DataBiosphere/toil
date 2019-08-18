@@ -1039,7 +1039,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
     @classmethod
     def _supportsUrl(cls, url, export=False):
-        return url.scheme.lower() in ('s3','http', 'https', 'ftp') and not export
+        return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
     def getSize(cls, url):
