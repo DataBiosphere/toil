@@ -12,8 +12,8 @@ after_script:
 
 
 stages:
-#  - main_tests
-#  - test
+  - main_tests
+  - test
   - integration
 
 
