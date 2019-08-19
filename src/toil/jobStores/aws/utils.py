@@ -220,6 +220,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
                 print("Network Error: Check your Internet Connection")
             except Exception as e:
                 print(e)
+   
     version = s3.get_object(bucket=str(bucket), key=fileID).get('VersionID')
 
     return version
