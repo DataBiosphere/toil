@@ -1047,7 +1047,6 @@ class AWSJobStore(AbstractJobStore):
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-<<<<<<< HEAD
                         mpu = s3_client.create_multipart_upload(Bucket=store.filesBucket.name, Key=info.fileID)
 
                         def _copy_part(data, part_number):
@@ -1064,33 +1063,6 @@ class AWSJobStore(AbstractJobStore):
                             while True:
                                 data = readable.read(store.partSize)
                                 if not data:
-=======
-                        headers = info._s3EncryptionHeaders()
-                        for attempt in retry_s3():
-                            with attempt:
-                                upload = store.filesBucket.initiate_multipart_upload(
-                                    key_name=compat_bytes(info.fileID),
-                                    headers=headers)
-                        try:
-                            for part_num in itertools.count():
-                                # There must be at least one part, even if the file is empty.
-                                if len(buf) == 0 and part_num > 0:
-                                    break
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        if USING_PYTHON2:
-                                            upload.upload_part_from_file(fp=StringIO(buf),
-                                                                         # part numbers are 1-based
-                                                                         part_num=part_num + 1,
-                                                                         headers=headers)
-                                        else:
-                                            upload.upload_part_from_file(fp=BytesIO(buf),
-                                                                         # part numbers are 1-based
-                                                                         part_num=part_num + 1,
-                                                                         headers=headers)
-
-                                if len(buf) == 0:
->>>>>>> fe8da483370a8cb89f66584cf2994731c5c4eacd
                                     break
                                 yield data
                     
@@ -1113,20 +1085,8 @@ class AWSJobStore(AbstractJobStore):
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-<<<<<<< HEAD
                         info.version = s3.Object(store.filesBucket.name, info.fileID).put(readable)["VersionId"]
                     
-=======
-                        key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
-                        buf = StringIO(buf)
-                        headers = info._s3EncryptionHeaders()
-                        for attempt in retry_s3():
-                            with attempt:
-                                assert buf.len == key.set_contents_from_file(fp=buf,
-                                                                             headers=headers)
-                        info.version = key.version_id
-
->>>>>>> fe8da483370a8cb89f66584cf2994731c5c4eacd
             with MultiPartPipe() if multipart else SinglePartPipe() as writable:
                 yield writable
 
@@ -1189,18 +1149,8 @@ class AWSJobStore(AbstractJobStore):
                 with open(localFilePath, 'w') as f:
                     f.write(self.content)
             elif self.version:
-<<<<<<< HEAD
                 for s3_object in bucket.all():
                     bucket.download_file(s3_object.key, localFilePath, Config=config)
-=======
-                headers = self._s3EncryptionHeaders()
-                key = self.outer.filesBucket.get_key(compat_bytes(self.fileID), validate=False)
-                for attempt in retry_s3():
-                    with attempt:
-                        key.get_contents_to_filename(localFilePath,
-                                                     version_id=self.version,
-                                                     headers=headers)
->>>>>>> fe8da483370a8cb89f66584cf2994731c5c4eacd
             else:
                 assert False
 
@@ -1217,18 +1167,8 @@ class AWSJobStore(AbstractJobStore):
                     if info.content is not None:
                         writable.write(info.content)
                     elif info.version:
-<<<<<<< HEAD
                         for s3_object in bucket.all():
                             bucket.download_file(s3_object.key, writable, Config=config)            
-=======
-                        headers = info._s3EncryptionHeaders()
-                        key = info.outer.filesBucket.get_key(compat_bytes(info.fileID), validate=False)
-                        for attempt in retry_s3():
-                            with attempt:
-                                key.get_contents_to_file(writable,
-                                                         headers=headers,
-                                                         version_id=info.version)
->>>>>>> fe8da483370a8cb89f66584cf2994731c5c4eacd
                     else:
                         assert False
 
