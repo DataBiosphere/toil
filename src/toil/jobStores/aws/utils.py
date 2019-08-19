@@ -207,7 +207,6 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
     s3 = boto3.resource('s3')
     file_size, file_time = fileSizeAndTime(localFilePath)
     if file_size <= partSize:
-<<<<<<< HEAD
         s3.meta.client.upload_file(localFilePath, bucket.name)
     else:
         while True:
@@ -223,57 +222,6 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
                 print(e)
     version = s3.get_object(bucket=str(bucket), key=fileID).get('VersionID')
 
-=======
-        key = bucket.new_key(key_name=compat_bytes(fileID))
-        key.name = fileID
-        for attempt in retry_s3():
-            with attempt:
-                key.set_contents_from_filename(localFilePath, headers=headers)
-        version = key.version_id
-    else:
-        with open(localFilePath, 'rb') as f:
-            version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
-    for attempt in retry_s3():
-        with attempt:
-            key = bucket.get_key(compat_bytes(fileID),
-                                 headers=headers,
-                                 version_id=version)
-    assert key.size == file_size
-    # Make reasonably sure that the file wasn't touched during the upload
-    assert fileSizeAndTime(localFilePath) == (file_size, file_time)
-    return version
-
-
-def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSize=50 << 20):
-    for attempt in retry_s3():
-        with attempt:
-            upload = bucket.initiate_multipart_upload(
-                key_name=compat_bytes(fileID),
-                headers=headers)
-    try:
-        start = 0
-        part_num = itertools.count()
-        while start < file_size:
-            end = min(start + partSize, file_size)
-            assert readable.tell() == start
-            for attempt in retry_s3():
-                with attempt:
-                    upload.upload_part_from_file(fp=readable,
-                                                 part_num=next(part_num) + 1,
-                                                 size=end - start,
-                                                 headers=headers)
-            start = end
-        assert readable.tell() == file_size == start
-    except:
-        with panic(log=log):
-            for attempt in retry_s3():
-                with attempt:
-                    upload.cancel_upload()
-    else:
-        for attempt in retry_s3():
-            with attempt:
-                version = upload.complete_upload().version_id
->>>>>>> fe8da483370a8cb89f66584cf2994731c5c4eacd
     return version
    
 def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName, sseAlgorithm=None, sseKey=None,
