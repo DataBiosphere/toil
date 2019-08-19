@@ -29,8 +29,8 @@ import signal
 import socket
 import logging
 import shutil
-from threading import Thread
 
+from toil.lib.compatibility import USING_PYTHON2
 from toil.lib.expando import MagicExpando
 from toil.common import Toil, safeUnpickleFromStream
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -501,7 +501,10 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not workerFailed:  # We have stats/logging to report back
-        jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True))
+        if USING_PYTHON2:
+            jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True))
+        else:
+            jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True).encode())
 
     #Remove the temp dir
     cleanUp = config.cleanWorkDir

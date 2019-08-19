@@ -242,7 +242,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
     log.debug("Starting executor")
 
-    if not os.environ.has_key("MESOS_AGENT_ENDPOINT"):
+    if not os.environ.get("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a
         # fake one to maybe convince the executor driver to work.
         os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get("MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051")
@@ -259,7 +259,7 @@ def main():
         
     # Parse the agent state
     agent_state = json.loads(urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
-    if agent_state.has_key('completed_frameworks'):
+    if 'completed_frameworks' in agent_state:
         # Drop the completed frameworks which grow over time
         del agent_state['completed_frameworks']
     log.debug("Agent state: %s", str(agent_state))

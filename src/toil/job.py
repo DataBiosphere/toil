@@ -274,11 +274,11 @@ class Job(BaseJob):
             exhausting all their retries, remove any successor jobs and rerun this job to restart the
             subtree. Job must be a leaf vertex in the job graph when initially defined, see
             :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
-        :type cores: int or string convertable by toil.lib.humanize.human2bytes to an int
-        :type disk: int or string convertable by toil.lib.humanize.human2bytes to an int
+        :type cores: int or string convertible by toil.lib.humanize.human2bytes to an int
+        :type disk: int or string convertible by toil.lib.humanize.human2bytes to an int
         :type preemptable: bool
-        :type cache: int or string convertable by toil.lib.humanize.human2bytes to an int
-        :type memory: int or string convertable by toil.lib.humanize.human2bytes to an int
+        :type cache: int or string convertible by toil.lib.humanize.human2bytes to an int
+        :type memory: int or string convertible by toil.lib.humanize.human2bytes to an int
         """
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}
