@@ -805,8 +805,6 @@ class AbstractJobStoreTest(object):
             This test is meant to cover multi-part uploads in the AWSJobStore but it doesn't hurt
             running it against the other job stores as well.
             """
-            # Should not block. On Linux, /dev/random blocks when it's running low on entropy
-            random_device = '/dev/urandom'
             # http://unix.stackexchange.com/questions/11946/how-big-is-the-pipe-buffer
             bufSize = 65536
             partSize = self._partSize()
@@ -831,7 +829,8 @@ class AbstractJobStoreTest(object):
                 checksumThread = Thread(target=checksumThreadFn)
                 checksumThread.start()
                 try:
-                    with open(random_device, 'rb') as readable:
+                    # Should not block. On Linux, /dev/random blocks when it's running low on entropy
+                    with open('/dev/urandom', 'rb') as readable:
                         with self.jobstore_initialized.writeFileStream(job.jobStoreID, cleanup=True) as (
                         writable, fileId):
                             for i in range(int(partSize * partsPerFile / bufSize)):
@@ -859,7 +858,7 @@ class AbstractJobStoreTest(object):
                 fh, path = tempfile.mkstemp()
                 try:
                     with os.fdopen(fh, 'wb+') as writable:
-                        with open(random_device, 'rb') as readable:
+                        with open('/dev/urandom', 'rb') as readable:
                             for i in range(int(partSize * partsPerFile / bufSize)):
                                 buf = readable.read(bufSize)
                                 writable.write(buf)
@@ -1175,8 +1174,12 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
         url = 'gs://%s/%s' % (bucket.name, fileName)
         if size is None:
             return url
-        with open('/dev/urandom', 'r') as readable:
-            contents = readable.read(size)
+        read_type = 'r' if USING_PYTHON2 else 'rb'
+        with open('/dev/urandom', read_type) as readable:
+            if USING_PYTHON2:
+                contents = readable.read(size)
+            else:
+                contents = str(readable.read(size))
         GoogleJobStore._writeToUrl(StringIO(contents), urlparse.urlparse(url))
         return url, hashlib.md5(contents).hexdigest()
 
@@ -1289,7 +1292,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         # Make the pickled size of the job larger than 256K
         read_type = 'r' if USING_PYTHON2 else 'rb'
         with open("/dev/urandom", read_type) as random:
-            overlargeJobNode.jobName = random.read(512 * 1024)
+            if USING_PYTHON2:
+                overlargeJobNode.jobName = random.read(512 * 1024)
+            else:
+                overlargeJobNode.jobName = str(random.read(512 * 1024))
         overlargeJob = jobstore.create(overlargeJobNode)
         self.assertTrue(jobstore.exists(overlargeJob.jobStoreID))
         overlargeJobDownloaded = jobstore.load(overlargeJob.jobStoreID)
@@ -1304,7 +1310,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             return url
         read_type = 'r' if USING_PYTHON2 else 'rb'
         with open('/dev/urandom', read_type) as readable:
-            bucket.new_key(fileName).set_contents_from_string(readable.read(size))
+            if USING_PYTHON2:
+                bucket.new_key(fileName).set_contents_from_string(readable.read(size))
+            else:
+                bucket.new_key(fileName).set_contents_from_string(str(readable.read(size)))
         return url, hashlib.md5(bucket.get_key(fileName).get_contents_as_string()).hexdigest()
 
     def _hashTestFile(self, url):
