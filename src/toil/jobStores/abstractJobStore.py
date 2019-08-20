@@ -237,6 +237,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         jobStoreClassNames = (
             "toil.jobStores.azureJobStore.AzureJobStore",
             "toil.jobStores.fileJobStore.FileJobStore",
+            "toil.jobStores.aws.jobStore.AWSJobStore",
             "toil.jobStores.googleJobStore.GoogleJobStore",
             "toil.jobStores.abstractJobStore.JobStoreSupport")
         jobStoreClasses = []
@@ -251,8 +252,6 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             else:
                 jobStoreClass = getattr(module, className)
                 jobStoreClasses.append(jobStoreClass)
-        module = import_module('toil.jobStores.aws.jobStore')
-        jobStoreClasses.append(getattr(module, 'AWSJobStore'))
         return jobStoreClasses
 
     def _findJobStoreForUrl(self, url, export=False):
