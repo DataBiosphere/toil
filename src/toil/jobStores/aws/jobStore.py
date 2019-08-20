@@ -69,7 +69,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_s3,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
-                                      uploadFromPath, chunkedFileUpload, fileSizeAndTime)
+                                      uploadFromPath, fileSizeAndTime)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
@@ -523,8 +523,8 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
-        url_scheme_string = url.geturl()
-        return url.scheme.lower() == 's3' or url_scheme_string[:2] == 's3' or url.scheme == 's3' 
+        print("HERE")
+        return url.scheme.lower() == 's3' or url.scheme == 's3' 
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
