@@ -523,7 +523,6 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
-        print("HERE")
         return url.scheme.lower() == 's3' or url.scheme == 's3' 
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
