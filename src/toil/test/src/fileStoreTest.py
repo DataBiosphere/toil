@@ -83,7 +83,8 @@ class hidden(object):
             testDir = self._createTempDir()
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
             self.options.logLevel = 'DEBUG'
-            self.options.realTimeLogging = True 
+            self.options.realTimeLogging = True
+            self.options.debugWorker = True
             self.options.workDir = testDir
             self.options.clean = 'always'
             self.options.logFile = os.path.join(testDir, 'logFile')
