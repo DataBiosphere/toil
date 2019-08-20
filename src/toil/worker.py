@@ -172,9 +172,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
     toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
 
-    # Connect to the deferred function system
-    deferredFunctionManager = DeferredFunctionManager(toilWorkflowDir)
-    
     ##########################################
     #Setup the temporary directories.
     ##########################################
@@ -248,6 +245,11 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         sys.stdout.flush()
         
         logProcessContext(config)
+        
+        ##########################################
+        #Connect to the deferred function system
+        ##########################################
+        deferredFunctionManager = DeferredFunctionManager(toilWorkflowDir)
 
         ##########################################
         #Load the jobGraph
