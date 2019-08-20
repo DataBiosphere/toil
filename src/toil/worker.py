@@ -169,7 +169,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-
+                
     toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
 
     ##########################################

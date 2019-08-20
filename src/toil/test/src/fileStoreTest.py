@@ -82,7 +82,8 @@ class hidden(object):
             super(hidden.AbstractFileStoreTest, self).setUp()
             testDir = self._createTempDir()
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
-            self.options.logLevel = 'INFO'
+            self.options.logLevel = 'DEBUG'
+            self.options.realTimeLogging = True 
             self.options.workDir = testDir
             self.options.clean = 'always'
             self.options.logFile = os.path.join(testDir, 'logFile')
