@@ -36,37 +36,26 @@ log = logging.getLogger(__name__)
 @needs_appliance
 @slow
 class AbstractAWSAutoscaleTest(ToilTest):
-
     def sshUtil(self, command):
-        baseCommand = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName]
-        callCommand = baseCommand + command
-        subprocess.check_call(callCommand)
+        subprocess.check_call(['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command)
 
     def rsyncUtil(self, src, dest):
-        baseCommand = ['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName]
-        callCommand = baseCommand + [src, dest]
-        subprocess.check_call(callCommand)
+        subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName] + [src, dest])
 
     def destroyClusterUtil(self):
-        callCommand = ['toil', 'destroy-cluster', '-p=aws', self.clusterName]
-        subprocess.check_call(callCommand)
+        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
 
     def createClusterUtil(self, args=None):
-        if args is None:
-            args = []
-        callCommand = ['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a','--keyPairName=%s' % self.keyName,
-                       '--leaderNodeType=%s' % self.leaderInstanceType, self.clusterName]
-        callCommand = callCommand + args if args else callCommand
-        subprocess.check_call(callCommand)
+        args = [] if args is None else args
+        subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a', '--keyPairName=%s' % self.keyName,
+                               '--leaderNodeType=t2.medium', self.clusterName] + args)
 
     def cleanJobStoreUtil(self):
-        callCommand = ['toil', 'clean', self.jobStore]
-        subprocess.check_call(callCommand)
+        subprocess.check_call(['toil', 'clean', self.jobStore])
 
     def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
         self.keyName = os.getenv('TOIL_AWS_KEYNAME')
-        self.leaderInstanceType = 't2.medium'
         self.instanceTypes = ["m3.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.numWorkers = ['2']
@@ -82,8 +71,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.cleanJobStoreUtil()
 
     def getMatchingRoles(self):
-        roles = list(self.cluster._ctx.local_roles())
-        return roles
+        return list(self.cluster._ctx.local_roles())
 
     def launchCluster(self):
         self.createClusterUtil()
@@ -100,9 +88,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     @abstractmethod
     def _getScript(self):
-        """
-        Download the test script needed by the inheriting unit test class.
-        """
+        """Download the test script needed by the inheriting unit test class."""
         raise NotImplementedError()
 
 
@@ -118,10 +104,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         raise NotImplementedError()
 
     def _test(self, preemptableJobs=False):
-        """
-        Does the work of the testing. Many features' test are thrown in here is no particular
-        order
-        """
+        """Does the work of the testing.  Many features' tests are thrown in here in no particular order."""
         self.launchCluster()
         # get the leader so we know the IP address - we don't need to wait since create cluster
         # already insures the leader is running
@@ -130,8 +113,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         assert len(self.getMatchingRoles()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = ['virtualenv', '--system-site-packages', '--never-download',
-                        '/home/venv']
+        venv_command = ['virtualenv', '--system-site-packages', '--never-download', '/home/venv']
         self.sshUtil(venv_command)
 
         upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
@@ -161,18 +143,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         assert len(self.getMatchingRoles()) == 1
 
-        checkStatsCommand = ['/home/venv/bin/python', '-c',
-                             'import json; import os; '
-                             'json.load(open("/home/" + [f for f in os.listdir("/home/") '
-                                                   'if f.endswith(".json")].pop()))'
-                             ]
-
-        self.sshUtil(checkStatsCommand)
+        # check stats
+        self.sshUtil(['/home/venv/bin/python', '-c', 'import json; import os; '
+                      'json.load(open("/home/" + [f for f in os.listdir("/home/") if f.endswith(".json")].pop()))'])
 
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
         self.cluster.destroyCluster()
-        #self.leader.update()
         for attempt in range(6):
             # https://github.com/BD2KGenomics/toil/issues/1567
             # retry this for up to 1 minute until the volume disappears
@@ -190,9 +167,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
         assert len(self.getMatchingRoles()) == 0
 
 
-@pytest.mark.timeout(1200)
+@pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
-
     def __init__(self, name):
         super(AWSAutoscaleTest, self).__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
@@ -315,7 +291,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     @needs_aws
     def testAutoScale(self):
         self.instanceTypes = ["t2.small", "m3.large"]
-        self.numWorkers = ['2','1']
+        self.numWorkers = ['2', '1']
         self._test()
 
 @pytest.mark.timeout(1200)
@@ -426,8 +402,7 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         leader.sshAppliance('tee', '/home/userScript.py', input=script)
 
     def _runScript(self, toilOptions):
-        toilOptions.extend([
-            '--preemptableCompensation=1.0'])
+        toilOptions.extend(['--preemptableCompensation=1.0'])
         command = ['/home/venv/bin/python', '/home/userScript.py']
         command.extend(toilOptions)
         self.sshUtil(command)

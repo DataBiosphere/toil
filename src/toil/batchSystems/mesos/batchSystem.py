@@ -40,6 +40,7 @@ from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
+from toil.lib.compatibility import USING_PYTHON2
 from toil import pickle
 from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
@@ -505,7 +506,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def _trackOfferedNodes(self, offers):
         for offer in offers:
             # All AgentID messages are required to have a value according to the Mesos Protobuf file.
-            assert(offer.agent_id.has_key('value'))
+            assert 'value' in offer.agent_id
             try:
                 nodeAddress = socket.gethostbyname(offer.hostname)
             except:
@@ -651,7 +652,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                         jobID, update.state, update.message, update.reason)
             jobEnded(255)
             
-        if update.has_key('limitation'):
+        if 'limitation' in update:
             log.warning("Job limit info: %s" % update.limitation)
             
     def frameworkMessage(self, driver, executorId, agentId, message):
@@ -660,7 +661,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         
         # Take it out of base 64 encoding from Protobuf
-        message = decode_data(message)
+        if USING_PYTHON2:
+            message = decode_data(message)
+        else:
+            message = decode_data(message).decode()
         
         log.debug('Got framework message from executor %s running on agent %s: %s',
                   executorId.value, agentId.value, message)

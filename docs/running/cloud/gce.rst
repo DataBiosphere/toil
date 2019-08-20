@@ -32,7 +32,7 @@ Toil supports using the `Google Cloud Platform`_. Setting this up is easy!
 
        $ chmod 400 ~/.ssh/id_rsa ~/.ssh/id_rsa.pub
 
-#. Add your newly formated public key to Google. To do this, log into your Google Cloud account
+#. Add your newly formatted public key to Google. To do this, log into your Google Cloud account
    and go to `metadata`_ section under the Compute tab.
 
    .. image:: googleScreenShot.png

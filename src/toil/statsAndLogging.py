@@ -68,6 +68,9 @@ class StatsAndLogging( object ):
             while True:
                 suffix = str(counter).zfill(3) + logExtension
                 fullName = os.path.join(logPath, logName + suffix)
+                #  The maximum file name size in the default HFS+ file system is 255 UTF-16 encoding units, so basically 255 characters
+                if len(fullName) >= 255:
+                    return fullName[:(255-len(suffix))] + suffix
                 if not os.path.exists(fullName):
                     return fullName
                 counter += 1

@@ -767,7 +767,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def jobs(self):
         """
         Best effort attempt to return iterator on all jobs in the store. The iterator may not
-        return all jobs and may also contain orphaned jobs that have already finished succesfully
+        return all jobs and may also contain orphaned jobs that have already finished successfully
         and should not be rerun. To guarantee you get any and all jobs that can be run instead
         construct a more expensive ToilState object
 
