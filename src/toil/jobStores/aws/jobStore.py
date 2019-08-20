@@ -69,7 +69,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_s3,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
-                                      uploadFromPath, fileSizeAndTime)
+                                      uploadFromPath, chunkedFileUpload, fileSizeAndTime)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
