@@ -101,7 +101,7 @@ def nextChainableJobGraph(jobGraph, jobStore):
     # Made it through! This job is chainable.
     return successorJobGraph
 
-def workerScript(jobStore, config, jobName, jobStoreID):
+def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=True):
     """
     Worker process script, runs a job. 
     
@@ -192,8 +192,8 @@ def workerScript(jobStore, config, jobName, jobStoreID):
     #When we start, standard input is file descriptor 0, standard output is
     #file descriptor 1, and standard error is file descriptor 2.
     
-    # Do we even want to redirect output?
-    redirectOutputToLogFile = not config.disableWorkerOutputCapture
+    # Do we even want to redirect output? Let the config make us not do it.
+    redirectOutputToLogFile = redirectOutputToLogFile and not config.disableWorkerOutputCapture
 
     #What file do we want to point FDs 1 and 2 to?
     tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")

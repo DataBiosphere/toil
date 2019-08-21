@@ -583,7 +583,8 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil debug options", "Debug options")
     addOptionFn("--debugWorker", default=False, action="store_true",
                 help="Experimental no forking mode for local debugging."
-                     " Specifically, workers are not forked.")
+                     " Specifically, workers are not forked and"
+                     " stderr/stdout are not redirected to the log.")
     addOptionFn("--disableWorkerOutputCapture", default=False, action="store_true",
                 help="Let worker output go to worker's standard"
                      " out/error instead of per-job logs.")
