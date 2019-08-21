@@ -49,6 +49,7 @@ import boto.sdb
 import boto3 
 from boto3.s3.transfer import TransferConfig
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import botocore
 
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
@@ -697,59 +698,100 @@ class AWSJobStore(AbstractJobStore):
         assert self.bucketNameRe.match(bucket_name)
         log.debug("Binding to job store bucket '%s'.", bucket_name)
 
-        def bucket_creation_pending(e):
-            # https://github.com/BD2KGenomics/toil/issues/955
-            # https://github.com/BD2KGenomics/toil/issues/995
-            # https://github.com/BD2KGenomics/toil/issues/1093
-            return (isinstance(e, (S3CreateError, S3ResponseError))
-                    and e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
+        # def bucket_creation_pending(e):
+        #     # https://github.com/BD2KGenomics/toil/issues/955
+        #     # https://github.com/BD2KGenomics/toil/issues/995
+        #     # https://github.com/BD2KGenomics/toil/issues/1093
+        #     return (isinstance(e, (S3CreateError, S3ResponseError))
+        #             and e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
+        s3 = boto3.resource('s3')
+        bucket = s3.Bucket(bucket_name)
+        exists = True
+        try:
+            s3.meta.client.head_bucket(Bucket=bucket_name)
+        except botocore.exceptions.ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '301':
+                bucket = s3.meta.client.head_bucket(Bucket=bucket_name)
+                raise BucketLocationConflictException(self.__getBucketRegion(bucket))
+            elif error_code == 'NoSuchBucket':
+                exists = False
+                if create:
+                    s3.create_bucket(Bucket = bucket_name, 
+                                    CreateBucketConfiguration = {
+                                    'LocationConstraint': self.region
+                                    })
+                elif block:
+                    raise
+                else:
+                    return None
+        else:
+            if self.__getBucketRegion(bucket) != self.region:
+                raise BucketLocationConflictException(self.__getBucketRegion(bucket))
+            if versioning and not exists:
+                # only call this method on bucket creation
+                bucket.versioning()
+            else:
+                # now test for versioning consistency
+                # we should never see any of these errors since 'versioning' should always be true
+                bucket_versioning = self.__getBucketVersioning(bucket)
+                if bucket_versioning != versioning:
+                    assert False, 'Cannot modify versioning on existing bucket'
+                elif bucket_versioning is None:
+                    assert False, 'Cannot use a bucket with versioning suspended'
+            if exists:
+                log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
+            else:
+                log.debug("Created new job store bucket '%s'.", bucket_name)
+            
+            return bucket
 
-        bucketExisted = True
-        for attempt in retry_s3(predicate=bucket_creation_pending):
-            with attempt:
-                try:
-                    bucket = self.s3.get_bucket(bucket_name, validate=True)
-                except S3ResponseError as e:
-                    if e.error_code == 'NoSuchBucket':
-                        bucketExisted = False
-                        log.debug("Bucket '%s' does not exist.", bucket_name)
-                        if create:
-                            log.debug("Creating bucket '%s'.", bucket_name)
-                            location = region_to_bucket_location(self.region)
-                            bucket = self.s3.create_bucket(bucket_name, location=location)
-                            assert self.__getBucketRegion(bucket) == self.region
-                        elif block:
-                            raise
-                        else:
-                            return None
-                    elif e.status == 301:
-                        # This is raised if the user attempts to get a bucket in a region outside
-                        # the specified one, if the specified one is not `us-east-1`.  The us-east-1
-                        # server allows a user to use buckets from any region.
-                        bucket = self.s3.get_bucket(bucket_name, validate=False)
-                        raise BucketLocationConflictException(self.__getBucketRegion(bucket))
-                    else:
-                        raise
-                else:
-                    if self.__getBucketRegion(bucket) != self.region:
-                        raise BucketLocationConflictException(self.__getBucketRegion(bucket))
-                if versioning and not bucketExisted:
-                    # only call this method on bucket creation
-                    bucket.configure_versioning(True)
-                else:
-                    # now test for versioning consistency
-                    # we should never see any of these errors since 'versioning' should always be true
-                    bucket_versioning = self.__getBucketVersioning(bucket)
-                    if bucket_versioning != versioning:
-                        assert False, 'Cannot modify versioning on existing bucket'
-                    elif bucket_versioning is None:
-                        assert False, 'Cannot use a bucket with versioning suspended'
-                if bucketExisted:
-                    log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
-                else:
-                    log.debug("Created new job store bucket '%s'.", bucket_name)
+        # bucketExisted = True
+        # for attempt in retry_s3(predicate=bucket_creation_pending):
+        #     with attempt:
+        #         try:
+        #             bucket = self.s3.get_bucket(bucket_name, validate=True)
+        #         except S3ResponseError as e:
+        #             if e.error_code == 'NoSuchBucket':
+        #                 bucketExisted = False
+        #                 log.debug("Bucket '%s' does not exist.", bucket_name)
+        #                 if create:
+        #                     log.debug("Creating bucket '%s'.", bucket_name)
+        #                     location = region_to_bucket_location(self.region)
+        #                     bucket = self.s3.create_bucket(bucket_name, location=location)
+        #                     assert self.__getBucketRegion(bucket) == self.region
+        #                 elif block:
+        #                     raise
+        #                 else:
+        #                     return None
+        #             elif e.status == 301:
+        #                 # This is raised if the user attempts to get a bucket in a region outside
+        #                 # the specified one, if the specified one is not `us-east-1`.  The us-east-1
+        #                 # server allows a user to use buckets from any region.
+        #                 bucket = self.s3.get_bucket(bucket_name, validate=False)
+        #                 raise BucketLocationConflictException(self.__getBucketRegion(bucket))
+        #             else:
+        #                 raise
+        #         else:
+        #             if self.__getBucketRegion(bucket) != self.region:
+        #                 raise BucketLocationConflictException(self.__getBucketRegion(bucket))
+        #         if versioning and not bucketExisted:
+        #             # only call this method on bucket creation
+        #             bucket.configure_versioning(True)
+        #         else:
+        #             # now test for versioning consistency
+        #             # we should never see any of these errors since 'versioning' should always be true
+        #             bucket_versioning = self.__getBucketVersioning(bucket)
+        #             if bucket_versioning != versioning:
+        #                 assert False, 'Cannot modify versioning on existing bucket'
+        #             elif bucket_versioning is None:
+        #                 assert False, 'Cannot use a bucket with versioning suspended'
+        #         if bucketExisted:
+        #             log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
+        #         else:
+        #             log.debug("Created new job store bucket '%s'.", bucket_name)
 
-                return bucket
+        #         return bucket
 
     def _bindDomain(self, domain_name, create=False, block=True):
         """
@@ -1032,7 +1074,7 @@ class AWSJobStore(AbstractJobStore):
             else:
                 headers = self._s3EncryptionHeaders()
                 self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
-                                              bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
+                                              bucket=self.outer.filesBucket.name, fileID=compat_bytes(self.fileID),
                                               headers=headers)
 
         @contextmanager
@@ -1047,7 +1089,7 @@ class AWSJobStore(AbstractJobStore):
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-                        mpu = s3_client.create_multipart_upload(Bucket=store.filesBucket.name, Key=info.fileID)
+                        mpu = s3_client.create_multipart_upload(Bucket=store.filesBucket.name, Key=compat_bytes(info.fileID))
 
                         try:
                             for part_num in itertools.count():
@@ -1056,7 +1098,7 @@ class AWSJobStore(AbstractJobStore):
                                 s3_client.upload_part(
                                     Bucket=store.filesBucket.name,
                                     Key=compat_bytes(info.fileID),
-                                    PartNumber=part_num + 1,
+                                    PartNumber=part_number + 1,
                                     UploadId=mpu['UploadId'],
                                 )
                         except:
@@ -1260,16 +1302,15 @@ class AWSJobStore(AbstractJobStore):
         get_versioning_status to then return 'Suspended' even on a new bucket that never had
         versioning enabled.
         """
-        for attempt in retry_s3():
-            with attempt:
-                status = bucket.get_versioning_status()
-                return self.versionings[status['Versioning']] if status else False
+        s3 = boto3.resource('s3')
+        bucket_versioning = s3.BucketVersioning(bucket)
+
+        return bucket_versioning.status() if bucket_versioning else False
 
     def __getBucketRegion(self, bucket):
-        for attempt in retry_s3():
-            with attempt:
-                return bucket_location_to_region(bucket.get_location())
-
+        s3 = boto3.resource('s3')
+        return s3.meta.client.get_bucket_location(bucket)
+        
     def destroy(self):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
         # See https://github.com/BD2KGenomics/toil/issues/1041
