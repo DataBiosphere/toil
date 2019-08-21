@@ -1377,6 +1377,8 @@ class CachingFileStore(AbstractFileStore):
         assert self.uploadThread is not None
 
         self.uploadThread.join()
+        
+        return True
 
     def commitCurrentJob(self):
         # Start the commit thread
