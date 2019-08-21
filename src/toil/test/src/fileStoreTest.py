@@ -29,6 +29,7 @@ from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnb
 from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
+from toil.realtimeLogger import RealtimeLogger
 
 import collections
 import inspect
@@ -771,10 +772,13 @@ class hidden(object):
             the cache has the right amount of data in it at all times. 
 
             Track the cache calculations even thought they won't be used in filejobstore
+            
+            Assumes nothing is evicted from the cache.
 
             :param float jobDisk: The value of disk passed to this job.
             """
             cached = initialCachedSize
+            RealtimeLogger.info('Expecting %d bytes cached initially', cached)
             work_dir = job.fileStore.getLocalTempDir()
             writtenFiles = {}  # fsID: (size, isLocal)
             localFileIDs = collections.defaultdict(list)  # fsid: local/non-local/mutable/immutable
@@ -788,14 +792,20 @@ class hidden(object):
             writtenFiles[fsId] = writeFileSize
             if job.fileStore.fileIsCached(list(writtenFiles.keys())[0]):
                 cached += writeFileSize * 1024 * 1024
+                RealtimeLogger.info('Expecting %d bytes cached because file of %d MB is cached', cached, writeFileSize)
+            else:
+                RealtimeLogger.info('Expecting %d bytes cached because file of %d MB is not cached', cached, writeFileSize)
             localFileIDs[list(writtenFiles.keys())[0]].append('local')
+            RealtimeLogger.info('Checking for %d bytes cached', cached)
             cls._requirementsConcur(job, jobDisk, cached)
             i = 0
             while i <= numIters:
                 randVal = random.random()
                 if randVal < 0.33:  # Write
+                    RealtimeLogger.info('Writing a file')
                     writeFileSize = random.randint(0, 30)
                     if random.random() <= 0.5:  # Write a local file
+                        RealtimeLogger.info('Writing a local file of %d MB', writeFileSize)
                         fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True,
                                                                    fileMB=writeFileSize)
                         writtenFiles[fsID] = writeFileSize
@@ -803,13 +813,18 @@ class hidden(object):
                         jobDisk -= writeFileSize * 1024 * 1024
                         if job.fileStore.fileIsCached(fsID):
                             cached += writeFileSize * 1024 * 1024
+                            RealtimeLogger.info('Expecting %d bytes cached because file of %d MB is cached', cached, writeFileSize)
+                        else:
+                            RealtimeLogger.info('Expecting %d bytes cached because file of %d MB is not cached', cached, writeFileSize)
                     else:  # Write a non-local file
+                        RealtimeLogger.info('Writing a non-local file of %d MB', writeFileSize)
                         fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=False,
                                                                    nonLocalDir=nonLocalDir,
                                                                    fileMB=writeFileSize)
                         writtenFiles[fsID] = writeFileSize
                         localFileIDs[fsID].append('non-local')
                         # No change to the job since there was no caching
+                    RealtimeLogger.info('Checking for %d bytes cached', cached)
                     cls._requirementsConcur(job, jobDisk, cached)
                 else:
                     if len(writtenFiles) == 0:
@@ -819,26 +834,37 @@ class hidden(object):
                         rdelRandVal = random.random()
                         fileWasCached = job.fileStore.fileIsCached(fsID)
                     if randVal < 0.66:  # Read
-                        if rdelRandVal <= 0.5:  # Read as mutable
+                        RealtimeLogger.info('Reading a file with size %d and previous cache status %s', rdelFileSize, str(fileWasCached))
+                        if rdelRandVal <= 0.5:  # Read as mutable, uncached
+                            RealtimeLogger.info('Reading as mutable and uncached; should still have %d bytes cached', cached)
                             job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
-                                                         mutable=True)
+                                                         mutable=True, cache=False)
                             localFileIDs[fsID].append('mutable')
                             # No change because the file wasn't cached
                         else:  # Read as immutable
+                            RealtimeLogger.info('Reading as immutable and cacheable')
                             job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
-                                                         mutable=False)
+                                                         mutable=False, cache=True)
                             localFileIDs[fsID].append('immutable')
                             jobDisk -= rdelFileSize * 1024 * 1024
                         if not fileWasCached:
                             if job.fileStore.fileIsCached(fsID):
+                                RealtimeLogger.info('File was not cached before and is now. Should have %d bytes cached', cached)
                                 cached += rdelFileSize * 1024 * 1024
+                            else:
+                                RealtimeLogger.info('File was not cached before and still is not now. '
+                                                    'Should still have %d bytes cached', cached)
+                        else:
+                            RealtimeLogger.info('File was cached before. Should still have %d bytes cached', cached)
                         cls._requirementsConcur(job, jobDisk, cached)
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in list(localFileIDs.keys()):
                                 continue
+                            RealtimeLogger.info('Deleting a file locally')
                             job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
+                            RealtimeLogger.info('Deleting a file globally')
                             job.fileStore.deleteGlobalFile(fsID)
                             try:
                                 job.fileStore.readGlobalFile(fsID)
@@ -857,6 +883,12 @@ class hidden(object):
                         if fileWasCached:
                             if not job.fileStore.fileIsCached(fsID):
                                 cached -= rdelFileSize * 1024 * 1024
+                                RealtimeLogger.info('File was cached before and is not now. Should have %d bytes cached', cached)
+                            else:
+                                RealtimeLogger.info('File was cached before and still is cached now. '
+                                                    'Should still have %d bytes cached', cached)
+                        else:
+                            RealtimeLogger.info('File was not cached before deletion. Should still have %d bytes cached', cached)
                         cls._requirementsConcur(job, jobDisk, cached)
                 i += 1
             return jobDisk, cached
@@ -871,8 +903,10 @@ class hidden(object):
             used = job.fileStore.getCacheUsed()
 
             if not job.fileStore.cachingIsFree():
+                RealtimeLogger.info('Caching is not free; %d bytes are used and %d bytes are expected', used, cached)
                 assert used == cached, 'Cache should have %d bytes used, but actually has %d bytes used' % (cached, used)
             else:
+                RealtimeLogger.info('Caching is free; %d bytes are used and %d bytes would be expected if caching were not free', used, cached)
                 assert used == 0, 'Cache should have nothing in it, but actually has %d bytes used' % used
             
             jobUnused = job.fileStore.getCacheUnusedJobRequirement()
@@ -915,12 +949,15 @@ class hidden(object):
             if os.path.exists(os.path.join(testDir, 'testfile.test')):
                 with open(os.path.join(testDir, 'testfile.test'), 'rb') as fH:
                     cached = unpack('d', fH.read())[0]
+                RealtimeLogger.info('Loaded expected cache size of %d from testfile.test', cached)
                 cls._requirementsConcur(job, jobDisk, cached)
                 cls._returnFileTestFn(job, jobDisk, cached, testDir, 20)
             else:
+                RealtimeLogger.info('Expecting cache size of 0 because testfile.test is absent')
                 modifiedJobReqs, cached = cls._returnFileTestFn(job, jobDisk, 0, testDir, 20)
                 with open(os.path.join(testDir, 'testfile.test'), 'wb') as fH:
                     fH.write(pack('d', cached))
+                    RealtimeLogger.info('Wrote cache size of %d to testfile.test', cached)
                 os.kill(os.getpid(), signal.SIGKILL)
 
         @slow
@@ -939,8 +976,6 @@ class hidden(object):
 
         def _deleteLocallyReadFilesFn(self, readAsMutable):
             self.options.retryCount = 0
-            # Enable worker debugging (incompatible with badWorker because we would kill our own process)
-            self.options.debugWorker = True
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True, memory='10M')
             B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable,
                               memory='20M')
