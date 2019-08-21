@@ -359,6 +359,10 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             successorJobGraph = nextChainableJobGraph(jobGraph, jobStore)
             if successorJobGraph is None or config.disableChaining:
                 # Can't chain any more jobs.
+                # TODO: why don't we commit the last job's file store? Won't
+                # its async uploads never necessarily finish?
+                # If we do call commitCurrentJob here it messes with the job
+                # itself and Toil thinks the job needs to run again.
                 break
 
             ##########################################
