@@ -36,6 +36,7 @@ import logging
 import os
 import random
 import signal
+import sys
 import time
 import pytest
 import subprocess
@@ -43,6 +44,11 @@ import subprocess
 # Python 3 compatibility imports
 from six.moves import xrange
 from future.utils import with_metaclass
+
+if sys.version_info[0] < 3:
+    # Define a usable FileNotFoundError as will be raised by os.remove on a
+    # nonexistent file.
+    FileNotFoundError = OSError
 
 # Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -836,7 +842,7 @@ class hidden(object):
                             job.fileStore.deleteGlobalFile(fsID)
                             try:
                                 job.fileStore.readGlobalFile(fsID)
-                            except FileNotFoundError:
+                            except FileNotFoundError as err:
                                 pass
                             except:
                                 raise RuntimeError('Got wrong error type for read of deleted file')

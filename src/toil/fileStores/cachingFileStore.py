@@ -35,6 +35,7 @@ import os
 import shutil
 import sqlite3
 import stat
+import sys
 import tempfile
 import threading
 import time
@@ -50,6 +51,11 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
+
+if sys.version_info[0] < 3:
+    # Define a usable FileNotFoundError as will be raised by os.remove on a
+    # nonexistent file.
+    FileNotFoundError = OSError
 
 class CacheError(Exception):
     """
@@ -1293,8 +1299,12 @@ class CachingFileStore(AbstractFileStore):
                 # It is actually in the local temp dir where we are supposed to be deleting things
                 try:
                     os.remove(path)
-                except FileNotFoundError:
-                    # File is missing!
+                except FileNotFoundError as err:
+                    if err.errno != errno.ENOENT:
+                        # Something else went wrong
+                        raise
+                        
+                    # Otherwise, file is missing, but that's fine.
                     missingFile = path
                     break
                 deleted.append(path)
