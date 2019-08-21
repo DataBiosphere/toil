@@ -1056,7 +1056,7 @@ class AWSJobStore(AbstractJobStore):
                                 s3_client.upload_part(
                                     Bucket=store.filesBucket.name,
                                     Key=compat_bytes(info.fileID),
-                                    PartNumber=part_number + 1,
+                                    PartNumber=part_num + 1,
                                     UploadId=mpu['UploadId'],
                                 )
                         except:
