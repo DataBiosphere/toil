@@ -555,8 +555,10 @@ class CachingFileStore(AbstractFileStore):
         # TODO: use GUIDs or something to account for PID re-use?
         deadOwners = []
         for owner in owners:
-            if not self._pidExists(owner):
-                deadOwners.append(owner)
+            if owner != 0:
+                # Only accept nonzero owners (NULL comes out as 0 I think)
+                if not self._pidExists(owner):
+                    deadOwners.append(owner)
 
         for owner in deadOwners:
             # Try and adopt all the files that any dead owner had
