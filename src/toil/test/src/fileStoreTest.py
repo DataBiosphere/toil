@@ -84,7 +84,6 @@ class hidden(object):
             self.options = Job.Runner.getDefaultOptions(self._getTestJobStore())
             self.options.logLevel = 'DEBUG'
             self.options.realTimeLogging = True
-            self.options.debugWorker = True
             self.options.workDir = testDir
             self.options.clean = 'always'
             self.options.logFile = os.path.join(testDir, 'logFile')
@@ -934,6 +933,8 @@ class hidden(object):
 
         def _deleteLocallyReadFilesFn(self, readAsMutable):
             self.options.retryCount = 0
+            # Enable worker debugging (incompatible with badWorker because we would kill our own process)
+            self.options.debugWorker = True
             A = Job.wrapJobFn(self._writeFileToJobStoreWithAsserts, isLocalFile=True, memory='10M')
             B = Job.wrapJobFn(self._removeReadFileFn, A.rv(), readAsMutable=readAsMutable,
                               memory='20M')

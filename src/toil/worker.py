@@ -118,7 +118,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
 
     logFileByteReportLimit = config.maxLogFileSize
-
+    
     if config.badWorker > 0 and random.random() < config.badWorker:
         # We need to kill the process we are currently in, to simulate worker
         # failure. We don't want to just send SIGKILL, because we can't tell
