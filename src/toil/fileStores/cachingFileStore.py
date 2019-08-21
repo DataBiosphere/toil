@@ -546,19 +546,18 @@ class CachingFileStore(AbstractFileStore):
         
         pid = os.getpid()
         
-        # Get a list of all file owner processes on this node
+        # Get a list of all file owner processes on this node.
+        # Exclude NULL because it comes out as 0 and we can't look for PID 0.
         owners = []
-        for row in self.cur.execute('SELECT DISTINCT owner FROM files'):
+        for row in self.cur.execute('SELECT DISTINCT owner FROM files WHERE owner IS NOT NULL'):
             owners.append(row[0])
             
         # Work out which of them have died.
         # TODO: use GUIDs or something to account for PID re-use?
         deadOwners = []
         for owner in owners:
-            if owner != 0:
-                # Only accept nonzero owners (NULL comes out as 0 I think)
-                if not self._pidExists(owner):
-                    deadOwners.append(owner)
+            if not self._pidExists(owner):
+                deadOwners.append(owner)
 
         for owner in deadOwners:
             # Try and adopt all the files that any dead owner had
