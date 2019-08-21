@@ -1372,11 +1372,13 @@ class CachingFileStore(AbstractFileStore):
 
     def waitForCommit(self):
         # We need to block on the upload thread.
-        # We will only ever be called after commitCurrentJob, so it must exist.
+        # We may be called even if commitCurrentJob is not called. In that
+        # case, a new instance of this class should have been created by the
+        # worker and ought to pick up all our work by PID via the database, and
+        # this instance doesn't actually have to commit.
 
-        assert self.uploadThread is not None
-
-        self.uploadThread.join()
+        if self.uploadThread is not None:
+            self.uploadThread.join()
         
         return True
 

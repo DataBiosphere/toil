@@ -335,18 +335,10 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                                    fileStore=fileStore):
                     with deferredFunctionManager.open() as defer:
                         with fileStore.open(job):
-                            # Run the job
-                            job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore, defer=defer)
-                            
-                            # Now that the job finished without errors, start it committing.
-                            fileStore.commitCurrentJob()
-                            
-                            # Grab the function we need to use to wait on its
-                            # committing its changes (uploading async uploads,
-                            # etc.). If the job fails, we don't want to wait on
-                            # this commitment process, because we won't be
-                            # committing.
+                            # Get the next block function and list that will contain any messages
                             blockFn = fileStore.waitForCommit
+
+                            job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore, defer=defer)
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
@@ -397,12 +389,11 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             assert jobGraph.memory >= successorJobGraph.memory
             assert jobGraph.cores >= successorJobGraph.cores
             
-            #Build another fileStore to update the job.
-            #Make it wait on the job's file store's commitment when committing.
+            #Build a fileStore to update the job
             fileStore = AbstractFileStore.createFileStore(jobStore, jobGraph, localWorkerTempDir, blockFn,
                                                           caching=not config.disableCaching)
 
-            #Update blockFn for the next loop or the cleanup.
+            #Update blockFn
             blockFn = fileStore.waitForCommit
 
             #Add successorJobGraph to those to be deleted
@@ -439,9 +430,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         traceback.print_exc()
         logger.error("Exiting the worker because of a failed job on host %s", socket.gethostname())
         AbstractFileStore._terminateEvent.set()
-        
+    
     ##########################################
-    #Wait for the asynchronous chain of writes/updates from successful jobs to finish
+    #Wait for the asynchronous chain of writes/updates to finish
     ########################################## 
        
     blockFn() 

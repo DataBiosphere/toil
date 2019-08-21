@@ -406,6 +406,8 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         Blocks while commitCurrentJob is running. This function is called by this job's
         successor to ensure that it does not begin modifying the job store until after this job has
         finished doing so.
+        
+        Might be called when commitCurrentJob is never called on a particular instance.
         """
         raise NotImplementedError()
 
