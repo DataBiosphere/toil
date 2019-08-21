@@ -101,7 +101,7 @@ def nextChainableJobGraph(jobGraph, jobStore):
     # Made it through! This job is chainable.
     return successorJobGraph
 
-def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=True):
+def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=False):
     """
     Worker process script, runs a job. 
     
