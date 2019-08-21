@@ -132,6 +132,7 @@ class Config(object):
 
         # Debug options
         self.debugWorker = False
+        self.disableWorkerOutputCapture = False
         self.badWorker = 0.0
         self.badWorkerFailInterval = 0.01
 
@@ -283,6 +284,7 @@ class Config(object):
 
         # Debug options
         setOption("debugWorker")
+        setOption("disableWorkerOutputCapture")
         setOption("badWorker", float, fC(0.0, 1.0))
         setOption("badWorkerFailInterval", float, fC(0.0))
 
@@ -581,8 +583,10 @@ def _addOptions(addGroupFn, config):
     addOptionFn = addGroupFn("toil debug options", "Debug options")
     addOptionFn("--debugWorker", default=False, action="store_true",
                 help="Experimental no forking mode for local debugging."
-                     " Specifically, workers are not forked and"
-                     " stderr/stdout are not redirected to the log.")
+                     " Specifically, workers are not forked.")
+    addOptionFn("--disableWorkerOutputCapture", default=False, action="store_true",
+                help="Let worker output go to worker's standard"
+                     " out/error instead of per-job logs.")
     addOptionFn("--badWorker", dest="badWorker", default=None,
                 help=(
                 "For testing purposes randomly kill 'badWorker' proportion of jobs using SIGKILL, default=%s" % config.badWorker))
