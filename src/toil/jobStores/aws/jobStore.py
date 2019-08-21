@@ -1049,34 +1049,57 @@ class AWSJobStore(AbstractJobStore):
                     else:
                         mpu = s3_client.create_multipart_upload(Bucket=store.filesBucket.name, Key=info.fileID)
 
-                        def _copy_part(data, part_number):
-                            resp = s3_client.upload_part(
-                                Body=data,
-                                Bucket=store.filesBucket.name,
-                                Key=info.fileID,
-                                PartNumber=part_number,
-                                UploadId=mpu['UploadId'],
-                            )
-                            return resp['ETag']
-                    
-                        def _chunks():
-                            while True:
-                                data = readable.read(store.partSize)
-                                if not data:
+                        try:
+                            for part_num in itertools.count():
+                                if len(buf) == 0 and part_num >0:
                                     break
-                                yield data
+                                s3_client.upload_part(
+                                    Bucket=store.filesBucket.name,
+                                    Key=compat_bytes(info.fileID),
+                                    PartNumber=part_number + 1,
+                                    UploadId=mpu['UploadId'],
+                                )
+                        except:
+                            s3_client.abort_mutlipart_upload(
+                                Bucket=store.filesBucket.name,
+                                Key=compat_bytes(info.fileID),
+                                UploadId=mpu['UploadId']
+                            )
+                        else:
+                            s3_client.complete_multipart_upload(
+                                Bucket=store.filesBucket.name,
+                                Key=compat_bytes(info.fileID),
+                                UploadId=mpu['UploadId'],
+                            )["VersionId"]
+
+                        # def _copy_part(data, part_number):
+                        #     resp = s3_client.upload_part(
+                        #         Body=data,
+                        #         Bucket=store.filesBucket.name,
+                        #         Key=info.fileID,
+                        #         PartNumber=part_number,
+                        #         UploadId=mpu['UploadId'],
+                        #     )
+                        #     return resp['ETag']
                     
-                        with ThreadPoolExecutor(max_workers=8) as e:
-                            futures = {e.submit(_copy_part, data, part_number): part_number
-                                       for part_number, data in enumerate(_chunks(), start=1)}
-                            parts = [dict(ETag=f.result(), PartNumber=futures[f]) for f in as_completed(futures)]
-                            parts.sort(key=lambda p: p['PartNumber'])
-                        info.version = s3_client.complete_multipart_upload(
-                            Bucket=store.filesBucket.name,
-                            Key=info.fileID,
-                            MultipartUpload=dict(Parts=parts),
-                            UploadId=mpu['UploadId'],
-                        )["VersionId"]
+                        # def _chunks():
+                        #     while True:
+                        #         data = readable.read(store.partSize)
+                        #         if not data:
+                        #             break
+                        #         yield data
+                    
+                        # with ThreadPoolExecutor(max_workers=8) as e:
+                        #     futures = {e.submit(_copy_part, data, part_number): part_number
+                        #                for part_number, data in enumerate(_chunks(), start=1)}
+                        #     parts = [dict(ETag=f.result(), PartNumber=futures[f]) for f in as_completed(futures)]
+                        #     parts.sort(key=lambda p: p['PartNumber'])
+                        # info.version = s3_client.complete_multipart_upload(
+                        #     Bucket=store.filesBucket.name,
+                        #     Key=info.fileID,
+                        #     MultipartUpload=dict(Parts=parts),
+                        #     UploadId=mpu['UploadId'],
+                        # )["VersionId"]
 
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
@@ -1085,7 +1108,7 @@ class AWSJobStore(AbstractJobStore):
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-                        info.version = s3.Object(store.filesBucket.name, info.fileID).put(readable)["VersionId"]
+                        info.version = s3.Object(store.filesBucket.name, compat_bytes(info.fileID)).put(readable)["VersionId"]
                     
             with MultiPartPipe() if multipart else SinglePartPipe() as writable:
                 yield writable
