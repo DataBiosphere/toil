@@ -483,22 +483,26 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
     # Now our file handles are in exactly the state they were in before.
 
-    #Copy back the log file to the global dir, if needed
+    # Copy back the log file to the global dir, if needed.
+    # Note that we work with bytes instead of characters so we can seek
+    # relative to the end (since Python won't decode Unicode backward, or even
+    # interpret seek offsets in characters for us). TODO: We may get invalid or
+    # just different Unicode by breaking up a character at the boundary!
     if workerFailed and redirectOutputToLogFile:
         jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID, cleanup=True)
         jobGraph.chainedJobs = listOfJobs
         with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
-            with open(tempWorkerLogPath, "r") as f:
+            with open(tempWorkerLogPath, 'rb') as f:
                 if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit !=0:
                     if logFileByteReportLimit > 0:
                         f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                     elif logFileByteReportLimit < 0:
                         f.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
-                w.write(f.read().encode('utf-8')) # TODO load file using a buffer
+                w.write(f.read()) # TODO load file using a buffer
         jobStore.update(jobGraph)
 
     elif debugging and redirectOutputToLogFile:  # write log messages
-        with open(tempWorkerLogPath, 'r') as logFile:
+        with open(tempWorkerLogPath, 'rb') as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
                 if logFileByteReportLimit > 0:
                     logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
