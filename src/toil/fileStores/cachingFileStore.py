@@ -185,7 +185,7 @@ class CachingFileStore(AbstractFileStore):
     
     """
 
-    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit, forceNonFreeCaching=False):
+    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit, forceNonFreeCaching=True):
         super(CachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
@@ -454,7 +454,9 @@ class CachingFileStore(AbstractFileStore):
         file you need to do it in a transaction.
         """
 
-        for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ?', (fileID, 'cached')):
+        for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
+            (fileID, 'cached', 'uploadable', 'uploading')):
+            
             return row[0] > 0
         return False
 
