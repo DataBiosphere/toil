@@ -53,6 +53,7 @@ import cwltool.stdfsaccess
 import cwltool.command_line_tool
 
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException
+from toil.fileStores import FileID
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
