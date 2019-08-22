@@ -498,6 +498,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                         f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                     elif logFileByteReportLimit < 0:
                         f.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
+                # Dump the possibly-invalid-Unicode bytes into the log file
                 w.write(f.read()) # TODO load file using a buffer
         jobStore.update(jobGraph)
 
@@ -508,7 +509,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                     logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                 elif logFileByteReportLimit < 0:
                     logFile.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
-            logMessages = logFile.read().splitlines()
+            # Make sure lines are Unicode so they can be JSON serialized as part of the dict.
+            # We may have damaged the Unicode text by cutting it at an arbitrary byte so we drop bad characters.
+            logMessages = [line.decode('utf-8', 'skip') for line in logFile.read().splitlines()]
         statsDict.logs.names = listOfJobs
         statsDict.logs.messages = logMessages
 
