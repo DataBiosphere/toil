@@ -1074,7 +1074,7 @@ class AWSJobStore(AbstractJobStore):
             else:
                 headers = self._s3EncryptionHeaders()
                 self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
-                                              bucket=self.outer.filesBucket.name, fileID=compat_bytes(self.fileID),
+                                              bucket=compat_plain(self.outer.filesBucket.name), fileID=compat_bytes(self.fileID),
                                               headers=headers)
 
         @contextmanager
@@ -1089,27 +1089,27 @@ class AWSJobStore(AbstractJobStore):
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-                        mpu = s3_client.create_multipart_upload(Bucket=store.filesBucket.name, Key=compat_bytes(info.fileID))
+                        mpu = s3_client.create_multipart_upload(Bucket=compat_plain(self.outer.filesBucket.name)t, Key=compat_bytes(info.fileID))
 
                         try:
                             for part_num in itertools.count():
                                 if len(buf) == 0 and part_num >0:
                                     break
                                 s3_client.upload_part(
-                                    Bucket=store.filesBucket.name,
+                                    Bucket=compat_plain(self.outer.filesBucket.name),
                                     Key=compat_bytes(info.fileID),
                                     PartNumber=part_number + 1,
                                     UploadId=mpu['UploadId'],
                                 )
                         except:
                             s3_client.abort_mutlipart_upload(
-                                Bucket=store.filesBucket.name,
+                                Bucket=compat_plain(self.outer.filesBucket.name),
                                 Key=compat_bytes(info.fileID),
                                 UploadId=mpu['UploadId']
                             )
                         else:
                             s3_client.complete_multipart_upload(
-                                Bucket=store.filesBucket.name,
+                                Bucket=compat_plain(self.outer.filesBucket.name),
                                 Key=compat_bytes(info.fileID),
                                 UploadId=mpu['UploadId'],
                             )["VersionId"]
@@ -1150,7 +1150,7 @@ class AWSJobStore(AbstractJobStore):
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
-                        info.version = s3.Object(store.filesBucket.name, compat_bytes(info.fileID)).put(readable)["VersionId"]
+                        info.version = s3.Object(store.filesBucket, compat_bytes(info.fileID)).put(readable)["VersionId"]
                     
             with MultiPartPipe() if multipart else SinglePartPipe() as writable:
                 yield writable
