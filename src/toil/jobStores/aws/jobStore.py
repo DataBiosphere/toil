@@ -82,20 +82,7 @@ class AWSJobStore(AbstractJobStore):
     item representing the job. UUIDs are used to identify jobs and files.
     """
 
-    # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
-    # URLs where the may interfere with the certificate common name. We use a double
-    # underscore as a separator instead.
-    #
-    bucketNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
-
-    # See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html
-    #
-    minBucketNameLen = 3
-    maxBucketNameLen = 63
-    maxNameLen = 10
-    nameSeparator = '--'
-
-    def __init__(self, locator, partSize=50 << 20):
+    def __init__(self, locator, partSize=None):
         """
         Create a new job store in AWS or load an existing one from there.
 
@@ -104,34 +91,52 @@ class AWSJobStore(AbstractJobStore):
                whole file
         """
         super(AWSJobStore, self).__init__()
-        region, namePrefix = locator.split(':')
-        if not self.bucketNameRe.match(namePrefix):
-            raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
-                             "hyphens or lower-case letters and must not start or end in a "
-                             "hyphen." % namePrefix)
-        # Reserve 13 for separator and suffix
-        if len(namePrefix) > self.maxBucketNameLen - self.maxNameLen - len(self.nameSeparator):
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not be longer than 50 "
-                             "characters." % namePrefix)
-        if '--' in namePrefix:
-            raise ValueError("Invalid name prefix '%s'. Name prefixes may not contain "
-                             "%s." % (namePrefix, self.nameSeparator))
-        log.debug("Instantiating %s for region %s and name prefix '%s'",
-                  self.__class__, region, namePrefix)
+        region, bucket_name = locator.split(':')
+        self.validate_bucket_name(bucket_name)
+        log.debug("Instantiating %s for region %s and name prefix '%s'", self.__class__, region, bucket_name)
+
         self.locator = locator
         self.region = region
-        self.namePrefix = namePrefix
-        self.partSize = partSize
+        self.namePrefix = bucket_name
+        self.partSize = partSize or 50 << 20
         self.jobsDomain = None
         self.filesDomain = None
         self.filesBucket = None
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
 
+        self.db_client = boto3.client('sdb')
+        self.s3_client = boto3.client('s3')
+
+    def validate_bucket_name(self, bucket_name):
+        """See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html ."""
+        minBucketNameLen = 3
+        maxBucketNameLen = 63
+        maxNameLen = 10
+        nameSeparator = '--'
+
+        # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
+        # URLs where they may interfere with the certificate common name. We use a double
+        # underscore as a separator instead.
+        bucketNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
+        assert minBucketNameLen <= len(bucket_name) <= maxBucketNameLen
+        if not (minBucketNameLen <= len(bucket_name) <= maxBucketNameLen):
+            raise ValueError("Invalid bucket name '%s'. Name must be between %s and %s chars long."
+                             "" % (bucket_name, minBucketNameLen, maxBucketNameLen))
+        if not bucketNameRe.match(bucket_name):
+            raise ValueError("Invalid bucket name '%s'. Name prefixes must contain only digits, "
+                             "hyphens or lower-case letters and must not start or end in a hyphen." % bucket_name)
+        # Reserve 13 for separator and suffix
+        if len(bucket_name) > maxBucketNameLen - maxNameLen - len(nameSeparator):
+            raise ValueError("Invalid bucket name '%s'. Name prefixes may not be longer than 50 characters."
+                             "" % bucket_name)
+        if '--' in bucket_name:
+            raise ValueError("Invalid bucket name '%s'. Name prefixes may not contain %s."
+                             "" % bucket_name, nameSeparator)
+
     def initialize(self, config):
         if self._registered:
             raise JobStoreExistsException(self.locator)
-        self._registered = None
         try:
             self._bind(create=True)
         except:
@@ -154,7 +159,6 @@ class AWSJobStore(AbstractJobStore):
 
     def _bind(self, create=False, block=True):
         def qualify(name):
-            assert len(name) <= self.maxNameLen
             return self.namePrefix + self.nameSeparator + name
 
         # The order in which this sequence of events happens is important.  We can easily handle the
@@ -287,9 +291,8 @@ class AWSJobStore(AbstractJobStore):
         self._batchedJobGraphs = None
 
     def create(self, jobNode):
-        jobStoreID = self._newJobID()
-        log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
+        jobStoreID = str(uuid.uuid4())
+        log.debug(f"Creating job %s for '%s'", jobStoreID, jobNode.command or '<no command>')
         job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
 
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
@@ -688,8 +691,7 @@ class AWSJobStore(AbstractJobStore):
         :raises S3ResponseError: If `block` is True and the bucket still doesn't exist after the
                 retry timeout expires.
         """
-        assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
-        assert self.bucketNameRe.match(bucket_name)
+        self.validate_bucket_name(bucket_name)
         log.debug("Binding to job store bucket '%s'.", bucket_name)
 
         def bucket_creation_pending(e):
@@ -781,9 +783,6 @@ class AWSJobStore(AbstractJobStore):
                     else:
                         raise
 
-    def _newJobID(self):
-        return str(uuid.uuid4())
-
     # A dummy job ID under which all shared files are stored
     sharedFileOwnerID = uuid.UUID('891f7db6-e4d9-4221-a58e-ab6cc4395f94')
 
@@ -872,9 +871,10 @@ class AWSJobStore(AbstractJobStore):
         def content(self, content):
             def compat(c):
                 return c.decode('utf-8') if not isinstance(c, bytes) else c
-            if not self._content:
-                self._content = content
-            self._content = content if (USING_PYTHON2 or not self._content) else compat(content)
+
+            self._content = content
+            if self._content:
+                self._content = content if (USING_PYTHON2 or not self._content) else compat(content)
             assert isinstance(self._content, bytes) or not self._content, type(self._content)
             if content is not None:
                 self.version = ''
