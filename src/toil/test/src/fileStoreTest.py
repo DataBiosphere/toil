@@ -295,8 +295,10 @@ class hidden(object):
             self._testCacheEviction(file1MB=20, file2MB=30, diskRequestMB=60)
 
         def _testValidityOfCacheEvictTest(self):
-            # If the job store and cache are on the same file system, file sizes are accounted for
-            # by the job store and are not reflected in the cache hence this test is redundant.
+            # If the job store and cache are on the same file system, file
+            # sizes are accounted for by the job store and are not reflected in
+            # the cache hence this test is redundant (caching will be free).
+            return
             if not self.options.jobStore.startswith(('aws', 'azure', 'google')):
                 workDirDev = os.stat(self.options.workDir).st_dev
                 jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
