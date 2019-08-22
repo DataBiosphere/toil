@@ -537,9 +537,9 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         assert self._validateSharedFileName(sharedFileName)
-        fileowner = str(self.sharedFileOwnerID) if USING_PYTHON2 else str(self.sharedFileOwnerID).encode('utf-8')
+        # fileowner = str(self.sharedFileOwnerID) if USING_PYTHON2 else str(self.sharedFileOwnerID).encode('utf-8')
         info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
-                                          ownerID=fileowner,
+                                          ownerID=str(self.sharedFileOwnerID),
                                           encrypted=isProtected)
         with info.uploadStream() as writable:
             yield writable
