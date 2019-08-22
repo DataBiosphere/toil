@@ -91,13 +91,13 @@ class AWSJobStore(AbstractJobStore):
                whole file
         """
         super(AWSJobStore, self).__init__()
-        region, bucket_name = locator.split(':')
-        self.validate_bucket_name(bucket_name)
-        log.debug("Instantiating %s for region %s and name prefix '%s'", self.__class__, region, bucket_name)
+        region, bucket_name_prefix = locator.split(':')
+        self.validate_bucket_name(bucket_name_prefix, prefix=True)
+        log.debug("Instantiating %s for region %s and name prefix '%s'", self.__class__, region, bucket_name_prefix)
 
         self.locator = locator
         self.region = region
-        self.namePrefix = bucket_name
+        self.namePrefix = bucket_name_prefix
         self.partSize = partSize or 50 << 20
         self.jobsDomain = None
         self.filesDomain = None
@@ -108,7 +108,7 @@ class AWSJobStore(AbstractJobStore):
         self.db_client = boto3.client('sdb')
         self.s3_client = boto3.client('s3')
 
-    def validate_bucket_name(self, bucket_name):
+    def validate_bucket_name(self, bucket_name, prefix=False):
         """See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html ."""
         minBucketNameLen = 3
         maxBucketNameLen = 63
@@ -119,20 +119,21 @@ class AWSJobStore(AbstractJobStore):
         # URLs where they may interfere with the certificate common name. We use a double
         # underscore as a separator instead.
         bucketNameRe = re.compile(r'^[a-z0-9][a-z0-9-]+[a-z0-9]$')
-        assert minBucketNameLen <= len(bucket_name) <= maxBucketNameLen
+
+        if not bucketNameRe.match(bucket_name):
+            raise ValueError("Invalid bucket name '%s'. Bucket names must contain only digits, "
+                             "hyphens or lower-case letters and must not start or end in a hyphen." % bucket_name)
         if not (minBucketNameLen <= len(bucket_name) <= maxBucketNameLen):
             raise ValueError("Invalid bucket name '%s'. Name must be between %s and %s chars long."
                              "" % (bucket_name, minBucketNameLen, maxBucketNameLen))
-        if not bucketNameRe.match(bucket_name):
-            raise ValueError("Invalid bucket name '%s'. Name prefixes must contain only digits, "
-                             "hyphens or lower-case letters and must not start or end in a hyphen." % bucket_name)
-        # Reserve 13 for separator and suffix
-        if len(bucket_name) > maxBucketNameLen - maxNameLen - len(nameSeparator):
-            raise ValueError("Invalid bucket name '%s'. Name prefixes may not be longer than 50 characters."
-                             "" % bucket_name)
-        if '--' in bucket_name:
-            raise ValueError("Invalid bucket name '%s'. Name prefixes may not contain %s."
-                             "" % bucket_name, nameSeparator)
+        if prefix:
+            # Reserve 13 for separator and suffix
+            if len(bucket_name) > maxBucketNameLen - maxNameLen - len(nameSeparator):
+                raise ValueError("Invalid bucket name '%s'. Name prefixes may not be longer than 50 characters."
+                                 "" % bucket_name)
+            if '--' in bucket_name:
+                raise ValueError("Invalid bucket name '%s'. Name prefixes may not contain %s."
+                                 "" % bucket_name, nameSeparator)
 
     def initialize(self, config):
         if self._registered:
