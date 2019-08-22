@@ -293,7 +293,7 @@ class AWSJobStore(AbstractJobStore):
 
     def create(self, jobNode):
         jobStoreID = str(uuid.uuid4())
-        log.debug(f"Creating job %s for '%s'", jobStoreID, jobNode.command or '<no command>')
+        log.debug("Creating job %s for '%s'", jobStoreID, jobNode.command or '<no command>')
         job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
 
         if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
@@ -541,7 +541,6 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         assert self._validateSharedFileName(sharedFileName)
-        # fileowner = str(self.sharedFileOwnerID) if USING_PYTHON2 else str(self.sharedFileOwnerID).encode('utf-8')
         info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
                                           ownerID=str(self.sharedFileOwnerID),
                                           encrypted=isProtected)
