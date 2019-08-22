@@ -56,7 +56,6 @@ py2_main:
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/src/fileStoreTest.py::CachingFileStoreTestWithFileJobStore::testAsyncWriteWithCaching
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 
@@ -115,7 +114,6 @@ py3_main:
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/src/fileStoreTest.py::CachingFileStoreTestWithFileJobStore::testAsyncWriteWithCaching
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 
