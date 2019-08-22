@@ -42,6 +42,8 @@ def encrypt(message, keyPath):
     >>> import os
     >>> os.remove(k)
     """
+    if not USING_PYTHON2:
+        raise RuntimeError('Toil does not currently support encryption in python3+.')
     with open(keyPath, 'rb') as f:
         key = f.read()
     if len(key) != SecretBox.KEY_SIZE:
@@ -56,10 +58,7 @@ def encrypt(message, keyPath):
     # recommended in the libsodium documentation.)
     nonce = nacl.utils.random(SecretBox.NONCE_SIZE)
     assert len(nonce) == SecretBox.NONCE_SIZE
-    if USING_PYTHON2:
-        return bytes(sb.encrypt(message, nonce))
-    else:
-        return str(sb.encrypt(message, nonce))
+    return bytes(sb.encrypt(message, nonce))
 
 
 def decrypt(ciphertext, keyPath):
@@ -76,7 +75,7 @@ def decrypt(ciphertext, keyPath):
     >>> import tempfile
     >>> k = tempfile.mktemp()
     >>> with open(k, 'wb') as f:
-    ...     _ = f.write(nacl.utils.random(SecretBox.KEY_SIZE))
+    ...     f.write(nacl.utils.random(SecretBox.KEY_SIZE))
     >>> ciphertext = encrypt("testMessage".encode('utf-8'), k)
     >>> ciphertext = b'5' + ciphertext[1:]
     >>> decrypt(ciphertext, k) # doctest: +IGNORE_EXCEPTION_DETAIL
@@ -91,6 +90,8 @@ def decrypt(ciphertext, keyPath):
     >>> import os
     >>> os.remove(k)
     """
+    if not USING_PYTHON2:
+        raise RuntimeError('Toil does not currently support encryption in python3+.')
     with open(keyPath, 'rb') as f:
         key = f.read()
     if len(key) != SecretBox.KEY_SIZE:

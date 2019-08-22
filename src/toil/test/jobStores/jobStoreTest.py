@@ -65,6 +65,7 @@ from toil.test import (ToilTest,
                        make_tests,
                        needs_google,
                        travis_test,
+                       needs_python2,
                        slow)
 from future.utils import with_metaclass
 
@@ -81,7 +82,6 @@ class AbstractJobStoreTest(object):
 
     http://stackoverflow.com/questions/1323455/python-unit-test-with-base-and-sub-class#answer-25695512
     """
-
     class Test(with_metaclass(ABCMeta, ToilTest)):
         @classmethod
         def setUpClass(cls):
@@ -143,10 +143,10 @@ class AbstractJobStoreTest(object):
             super(AbstractJobStoreTest.Test, self).tearDown()
 
         @travis_test
-        def testInitialState(self):
-            """Ensure proper handling of nonexistant files."""
-            self.assertFalse(self.jobstore_initialized.exists('nonexistantFile'))
-            self.assertRaises(NoSuchJobException, self.jobstore_initialized.load, 'nonexistantFile')
+        def testNonexistentFile(self):
+            """Ensure proper handling of nonexistent files."""
+            self.assertFalse(self.jobstore_initialized.exists('nonexistentFile'))
+            self.assertRaises(NoSuchJobException, self.jobstore_initialized.load, 'nonexistentFile')
 
         @travis_test
         def testJobCreation(self):
@@ -156,7 +156,6 @@ class AbstractJobStoreTest(object):
             Does the job exist in the jobstore it is supposed to be in?
             Are its attributes what is expected?
             """
-
             jobstore = self.jobstore_initialized
 
             # Create a job and verify its existence/properties
@@ -990,9 +989,7 @@ class AbstractJobStoreTest(object):
                 # but this gives us a lot of extra room just to be sure.
 
                 # python 3 requires self.fileContents to be a bytestring
-                a = 'a'
-                if sys.version_info >= (3, 0):
-                    a = b'a'
+                a = 'a' if USING_PYTHON2 else b'a'
                 f.write(a * 300000)
             with self.jobstore_initialized.readFileStream(fileID) as f:
                 self.assertEqual(f.read(1), a)
@@ -1074,7 +1071,6 @@ class AbstractEncryptedJobStoreTest(object):
             with open(sseKeyFile, 'w') as f:
                 f.write('01234567890123456789012345678901')
             config.sseKey = sseKeyFile
-            # config.attrib['sse_key'] = sseKeyFile
 
             cseKeyFile = os.path.join(self.cseKeyDir, 'keyFile')
             with open(cseKeyFile, 'w') as f:
@@ -1082,12 +1078,13 @@ class AbstractEncryptedJobStoreTest(object):
             config.cseKey = cseKeyFile
             return config
 
+        @needs_python2
         def testEncrypted(self):
             """
             Create an encrypted file. Read it in encrypted mode then try with encryption off
             to ensure that it fails.
             """
-            phrase = 'This file is encrypted.'
+            phrase = 'This file is encrypted.' if USING_PYTHON2 else b'This file is encrypted.'
             fileName = 'foo'
             with self.jobstore_initialized.writeSharedFileStream(fileName, isProtected=True) as f:
                 f.write(phrase)
@@ -1117,18 +1114,15 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         shutil.rmtree(self.jobstore_initialized.jobStoreDir)
 
     def _prepareTestFile(self, dirPath, size=None):
-        import binascii
-        fileName = 'testfile_%s' % uuid.uuid4()
-        localFilePath = dirPath + fileName
-        url = 'file://%s' % localFilePath
+        fileName = dirPath + 'testfile_%s' % uuid.uuid4()
+        url = 'file://' + fileName
         if size is None:
             return url
-        else:
-            content = os.urandom(size)
-            with open(localFilePath, 'wb') as writable:
-                writable.write(content)
+        content = os.urandom(size)
+        with open(fileName, 'wb') as writable:
+            writable.write(content)
 
-            return url, hashlib.md5(content).hexdigest()
+        return url, hashlib.md5(content).hexdigest()
 
     def _hashTestFile(self, url):
         localFilePath = FileJobStore._extractPathFromUrl(urlparse.urlparse(url))
@@ -1463,6 +1457,7 @@ class InvalidAzureJobStoreTest(ToilTest):
 @needs_aws
 @needs_encryption
 @slow
+@needs_python2  # encryption is python2.7 only atm
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):
     pass
 

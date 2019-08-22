@@ -537,8 +537,9 @@ class AWSJobStore(AbstractJobStore):
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         assert self._validateSharedFileName(sharedFileName)
+        fileowner = str(self.sharedFileOwnerID) if USING_PYTHON2 else str(self.sharedFileOwnerID).encode('utf-8')
         info = self.FileInfo.loadOrCreate(jobStoreFileID=self._sharedFileID(sharedFileName),
-                                          ownerID=str(self.sharedFileOwnerID),
+                                          ownerID=fileowner,
                                           encrypted=isProtected)
         with info.uploadStream() as writable:
             yield writable
@@ -864,11 +865,17 @@ class AWSJobStore(AbstractJobStore):
 
         @property
         def content(self):
+            assert isinstance(self._content, bytes) or not self._content, type(self._content)
             return self._content
 
         @content.setter
         def content(self, content):
-            self._content = content
+            def compat(c):
+                return c.decode('utf-8') if not isinstance(c, bytes) else c
+            if not self._content:
+                self._content = content
+            self._content = content if (USING_PYTHON2 or not self._content) else compat(content)
+            assert isinstance(self._content, bytes) or not self._content, type(self._content)
             if content is not None:
                 self.version = ''
 
@@ -951,7 +958,7 @@ class AWSJobStore(AbstractJobStore):
                     sseKeyPath = cls.outer.sseKeyPath
                     if sseKeyPath is None:
                         raise AssertionError('Content is encrypted but no key was provided.')
-                    if content is not None:
+                    if content:
                         content = encryption.decrypt(content, sseKeyPath)
                 self = cls(fileID=item.name, ownerID=ownerID, encrypted=encrypted, version=version,
                            content=content, numContentChunks=numContentChunks)
@@ -972,6 +979,9 @@ class AWSJobStore(AbstractJobStore):
                 if sseKeyPath is None:
                     raise AssertionError('Encryption requested but no key was provided.')
                 content = encryption.encrypt(content, sseKeyPath)
+            if content:
+                content = content.encode('utf-8') if not isinstance(content, bytes) else content
+            assert isinstance(content, bytes) or not content, type(content)
             attributes = self.binaryToAttributes(content)
             numChunks = attributes['numChunks']
             attributes.update(dict(ownerID=self.ownerID,

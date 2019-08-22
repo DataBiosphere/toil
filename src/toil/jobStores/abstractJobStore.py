@@ -34,6 +34,7 @@ import six.moves.urllib.parse as urlparse
 
 from toil.lib.retry import retry_http
 
+from toil.lib.compatibility import USING_PYTHON2
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
 from toil.job import JobException

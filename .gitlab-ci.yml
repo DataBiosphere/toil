@@ -117,16 +117,16 @@ py3_main:
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 
-#py3_integration:
-#  stage: integration
-#  script:
-#    - pwd
-#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
-#    - export TOIL_TEST_INTEGRATIVE=True
-#    - export TOIL_AWS_KEYNAME=id_rsa
-#    - export TOIL_AWS_ZONE=us-west-2a
-#    - python setup_gitlab_ssh.py
-#    - mkdir ~/.aws
-#    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
-#    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+py3_integration:
+  stage: integration
+  script:
+    - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_AWS_KEYNAME=id_rsa
+    - export TOIL_AWS_ZONE=us-west-2a
+    - python setup_gitlab_ssh.py
+    - mkdir ~/.aws
+    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
