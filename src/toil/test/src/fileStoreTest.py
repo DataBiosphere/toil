@@ -499,7 +499,6 @@ class hidden(object):
             :return: None
             """
             job.fileStore.logToMaster('Reading the written file')
-            assert not job.fileStore.fileIsCached(fsID)
             job.fileStore.readGlobalFile(fsID)
 
         # writeGlobalFile tests
