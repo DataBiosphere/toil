@@ -1396,8 +1396,8 @@ class CachingFileStore(AbstractFileStore):
         # worker and ought to pick up all our work by PID via the database, and
         # this instance doesn't actually have to commit.
 
-        if self.uploadThread is not None:
-            self.uploadThread.join()
+        if self.commitThread is not None:
+            self.commitThread.join()
         
         return True
 
