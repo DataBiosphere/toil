@@ -816,8 +816,8 @@ class CachingFileStore(AbstractFileStore):
 
         # Try and grab it for deletion, subject to the condition that nothing has started reading it
         self.cur.execute("""
-            UPDATE files SET files.owner = ?, files.state = ? WHERE files.id = ? AND files.state = ? 
-            AND files.owner IS NULL AND NOT EXISTS (
+            UPDATE files SET owner = ?, state = ? WHERE id = ? AND state = ? 
+            AND owner IS NULL AND NOT EXISTS (
                 SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
             )
             """,
