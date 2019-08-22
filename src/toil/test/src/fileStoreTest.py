@@ -421,6 +421,9 @@ class hidden(object):
             :param int cached: Expected Total size of files in the cache in MB.
             :param int sigmaJob: Expected sum of job requirements in MB.
             """
+
+            RealtimeLogger.info('Probing job requirements')
+
             valueDict = locals()
             assert (total or cached or sigmaJob)
 
@@ -433,8 +436,14 @@ class hidden(object):
                 # If the value wasn't provided, it is None and should be ignored
                 if valueDict[value] is None:
                     continue
+
+                RealtimeLogger.info('Probing cache state: %s', value)
+
                 expectedBytes = valueDict[value] * 1024 * 1024
                 cacheInfoBytes = toCall[value]()
+
+                RealtimeLogger.info('Got %d for %s; expected %d', cacheInfoBytes, value, expectedBytes)
+
                 assert cacheInfoBytes == expectedBytes, 'Testing %s: Expected ' % value + \
                                                   '%s but got %s.' % (expectedBytes, cacheInfoBytes)
 
