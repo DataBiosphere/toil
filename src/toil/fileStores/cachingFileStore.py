@@ -185,8 +185,11 @@ class CachingFileStore(AbstractFileStore):
     
     """
 
-    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
+    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit, forceNonFreeCaching=False):
         super(CachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
+
+        # For testing, we have the ability to force caching to be non-free, by never linking from the file store
+        self.forceNonFreeCaching = forceNonFreeCaching
         
         # Variables related to caching
         # Decide where the cache directory will be. We put it next to the
@@ -210,8 +213,6 @@ class CachingFileStore(AbstractFileStore):
 
         # Make sure the cache directory exists
         mkdir_p(self.localCacheDir)
-
-        # Determine if caching is free
 
         # Connect to the cache database in there, or create it if not present
         self.dbPath = os.path.join(self.localCacheDir, 'cache-{}.db'.format(self.workflowAttemptNumber))
@@ -483,7 +484,7 @@ class CachingFileStore(AbstractFileStore):
 
         # Otherwise we need to set it
         from toil.jobStores.fileJobStore import FileJobStore
-        if isinstance(self.jobStore, FileJobStore):
+        if isinstance(self.jobStore, FileJobStore) and not self.forceNonFreeCaching:
             # Caching may be free since we are using a file job store.
 
             # Create an empty file.
@@ -1067,14 +1068,14 @@ class CachingFileStore(AbstractFileStore):
                 self.con.commit()
 
                 # Just read directly
-                if not mutable:
-                    # Link or maybe copy
-                    self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
-                else:
+                if mutable or self.forceNonFreeCaching:
                     # Always copy
                     with open(localFilePath, 'wb') as outStream:
                         with self.jobStore.readFileStream(fileStoreID) as inStream:
                             shutil.copyfileobj(inStream, outStream)
+                else:
+                    # Link or maybe copy
+                    self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
 
             # Now we got the file, somehow.
             return localFilePath
@@ -1157,8 +1158,14 @@ class CachingFileStore(AbstractFileStore):
             self._freeUpSpace()
 
             # Do the download into the cache.
-            # Fine if it is a hardlink.
-            self.jobStore.readFile(fileStoreID, cachedPath, symlink=False)
+            if self.forceNonFreeCaching:
+                # Always copy
+                with open(cachedPath, 'wb') as outStream:
+                    with self.jobStore.readFileStream(fileStoreID) as inStream:
+                        shutil.copyfileobj(inStream, outStream)
+            else:
+                # Link or maybe copy
+                self.jobStore.readFile(fileStoreID, cachedPath, symlink=False)
 
             # Change state from downloading to cached
             self.cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?',
