@@ -296,7 +296,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
     def _abs(self, path):
         if path.startswith("toilfs:"):
-            return self.file_store.readGlobalFile(path[7:])
+            return self.file_store.readGlobalFile(FileID.unpack(path[7:]))
         return super(ToilFsAccess, self)._abs(path)
 
 
@@ -305,7 +305,7 @@ def toil_get_file(file_store, index, existing, file_store_id):
 
     if not file_store_id.startswith("toilfs:"):
         return file_store.jobStore.getPublicUrl(file_store.jobStore.importFile(file_store_id))
-    src_path = file_store.readGlobalFile(file_store_id[7:])
+    src_path = file_store.readGlobalFile(FileID.unpack(file_store_id[7:]))
     index[src_path] = file_store_id
     existing[file_store_id] = src_path
     return schema_salad.ref_resolver.file_uri(src_path)
@@ -333,7 +333,7 @@ def write_file(writeFunc, index, existing, x):
             else:
                 rp = x
             try:
-                index[x] = "toilfs:" + writeFunc(rp)
+                index[x] = "toilfs:" + writeFunc(rp).pack()
                 existing[index[x]] = x
             except Exception as e:
                 cwllogger.error("Got exception '%s' while copying '%s'", e, x)
@@ -421,14 +421,14 @@ def toilStageFiles(file_store, cwljob, outdir, index, existing, export,
                 destUrl = '/'.join(s.strip('/')
                                    for s in [destBucket, unstageTargetPath])
 
-                file_store.exportFile(p.resolved[7:], destUrl)
+                file_store.exportFile(FileID.unpack(p.resolved[7:]), destUrl)
 
             continue
 
         if not os.path.exists(os.path.dirname(p.target)):
             os.makedirs(os.path.dirname(p.target), 0o0755)
         if p.type == "File":
-            file_store.exportFile(p.resolved[7:], "file://" + p.target)
+            file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
         elif p.type == "Directory" and not os.path.exists(p.target):
             os.makedirs(p.target, 0o0755)
         elif p.type == "CreateFile":
