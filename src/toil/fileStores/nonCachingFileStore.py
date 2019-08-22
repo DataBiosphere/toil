@@ -150,10 +150,14 @@ class NonCachingFileStore(AbstractFileStore):
         # there is no asynchronicity in this file store so no need to block at all
         return True
 
-    def commitCurrentJob(self):
+    def startCommit(self, jobState=False):
         # Make sure the previous job is committed, if any
         if self.waitForPreviousCommit is not None:
             self.waitForPreviousCommit()
+
+        if not jobState:
+            # All our operations that need committing are job state related
+            return
 
         try:
             # Indicate any files that should be deleted once the update of

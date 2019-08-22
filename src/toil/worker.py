@@ -335,10 +335,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                                    fileStore=fileStore):
                     with deferredFunctionManager.open() as defer:
                         with fileStore.open(job):
-                            # Get the next block function and list that will contain any messages
+                            # Get the next block function to wait on committing this job
                             blockFn = fileStore.waitForCommit
 
                             job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore, defer=defer)
+
+                            # When the job succeeds, start committing files immediately.
+                            fileStore.startCommit(jobState=False)      
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
@@ -361,7 +364,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 # Can't chain any more jobs.
                 # TODO: why don't we commit the last job's file store? Won't
                 # its async uploads never necessarily finish?
-                # If we do call commitCurrentJob here it messes with the job
+                # If we do call startCommit here it messes with the job
                 # itself and Toil thinks the job needs to run again.
                 break
 
@@ -404,7 +407,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             fileStore.jobsToDelete.add(successorJobGraph.jobStoreID)
             
             #This will update the job once the previous job is done
-            fileStore.commitCurrentJob()            
+            fileStore.startCommit(jobState=True)            
             
             #Clone the jobGraph and its stack again, so that updates to it do
             #not interfere with this update

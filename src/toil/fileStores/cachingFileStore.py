@@ -257,7 +257,7 @@ class CachingFileStore(AbstractFileStore):
         # in the same process (and thus sharing the same PID) and ensure that
         # only one of them is working on uploading any given file at any given
         # time.
-        self.uploadThread = None
+        self.commitThread = None
 
     @classmethod
     def _ensureTables(cls, con):
@@ -594,20 +594,25 @@ class CachingFileStore(AbstractFileStore):
             self.con.commit()
 
             logger.info('Tried to adopt file operations from dead worker %d', owner)
-            
-    def _executePendingDeletions(self):
+    
+    @classmethod        
+    def _executePendingDeletions(cls, con, cur):
         """
         Delete all the files that are registered in the database as in the
-        process of being deleted by us.
+        process of being deleted from the cache by us.
         
         Returns the number of files that were deleted.
+
+        Implemented as a class method so it can use the database connection
+        appropriate to its thread without any chance of getting at the main
+        thread's connection and cursor in self.
         """
         
         pid = os.getpid()
         
         # Remember the file IDs we are deleting
         deletedFiles = []
-        for row in self.cur.execute('SELECT id, path FROM files WHERE owner = ? AND state = ?', (pid, 'deleting')):
+        for row in cur.execute('SELECT id, path FROM files WHERE owner = ? AND state = ?', (pid, 'deleting')):
             # Grab everything we are supposed to delete and delete it
             fileID = row[0]
             filePath = row[1]
@@ -621,18 +626,22 @@ class CachingFileStore(AbstractFileStore):
 
         for fileID in deletedFiles:
             # Drop all the files. They should have stayed in deleting state. We move them from there to not present at all.
-            self.cur.execute('DELETE FROM files WHERE id = ? AND state = ?', (fileID, 'deleting'))
+            cur.execute('DELETE FROM files WHERE id = ? AND state = ?', (fileID, 'deleting'))
             # Also drop their references, if they had any from dead downloaders.
-            self.cur.execute('DELETE FROM refs WHERE file_id = ?', (fileID,))
-        self.con.commit()
+            cur.execute('DELETE FROM refs WHERE file_id = ?', (fileID,))
+        con.commit()
 
         return len(deletedFiles)
 
-    def _executePendingUploads(self):
+    def _executePendingUploads(self, con, cur):
         """
         Uploads all files in uploadable state that we own.
 
         Returns the number of files that were uploaded.
+
+        Needs access to self to get at the job store for uploading files, but
+        still needs to take con and cur so it can run in a thread with the
+        thread's database connection.
         """
 
         # Work out who we are
@@ -644,7 +653,7 @@ class CachingFileStore(AbstractFileStore):
             # Try and find a file we might want to upload
             fileID = None
             filePath = None
-            for row in self.cur.execute('SELECT id, path FROM files WHERE state = ? AND owner = ? LIMIT 1', ('uploadable', pid)):
+            for row in cur.execute('SELECT id, path FROM files WHERE state = ? AND owner = ? LIMIT 1', ('uploadable', pid)):
                 fileID = row[0]
                 filePath = row[1]
 
@@ -653,9 +662,9 @@ class CachingFileStore(AbstractFileStore):
                 break
 
             # We need to set it to uploading in a way that we can detect that *we* won the update race instead of anyone else.
-            self.cur.execute('UPDATE files SET state = ? WHERE id = ? AND state = ?', ('uploading', fileID, 'uploadable'))
-            self.con.commit()
-            if self.cur.rowcount != 1:
+            cur.execute('UPDATE files SET state = ? WHERE id = ? AND state = ?', ('uploading', fileID, 'uploadable'))
+            con.commit()
+            if cur.rowcount != 1:
                 # We didn't manage to update it. Someone else (a running job if
                 # we are a committing thread, or visa versa) must have grabbed
                 # it.
@@ -671,8 +680,8 @@ class CachingFileStore(AbstractFileStore):
             uploadedCount += 1
 
             # Remember that we uploaded it in the database
-            self.cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?', ('cached', fileID))
-            self.con.commit()
+            cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?', ('cached', fileID))
+            con.commit()
 
         return uploadedCount
 
@@ -779,13 +788,13 @@ class CachingFileStore(AbstractFileStore):
         # Adopt work from any dead workers
         self._stealWorkFromTheDead()
         
-        if self._executePendingDeletions() > 0:
+        if self._executePendingDeletions(self.con, self.cur) > 0:
             # We actually had something to delete, which we deleted.
             # Maybe there is space now
             logger.info('Successfully executed pending deletions to free space')
             return True
 
-        if self._executePendingUploads() > 0:
+        if self._executePendingUploads(self.con, self.cur) > 0:
             # We had something to upload. Maybe it can be evicted now.
             logger.info('Successfully executed pending uploads to free space')
             return True
@@ -829,7 +838,7 @@ class CachingFileStore(AbstractFileStore):
         logger.info('Evicting file %s', fileID)
             
         # Whether we actually got it or not, try deleting everything we have to delete
-        if self._executePendingDeletions() > 0:
+        if self._executePendingDeletions(self.con, self.cur) > 0:
             # We deleted something
             logger.info('Successfully executed pending deletions to free space')
             return True
@@ -1148,10 +1157,11 @@ class CachingFileStore(AbstractFileStore):
                 logger.info('Could not obtain reference to file %s', fileStoreID)
 
             # If we didn't get one of those either, adopt and do work from dead workers and loop again.
-            # We may have to wait for someone else's download to finish. If they die, we will notice.
+            # We may have to wait for someone else's download or delete to
+            # finish. If they die, we will notice.
             self._removeDeadJobs(self.con)
             self._stealWorkFromTheDead()
-            self._executePendingDeletions()
+            self._executePendingDeletions(self.con, self.cur)
 
         if own_download:
             # If we ended up with a downloading entry
@@ -1356,7 +1366,7 @@ class CachingFileStore(AbstractFileStore):
         self.con.commit()
             
         # Finish the delete if the file is present
-        self._executePendingDeletions()
+        self._executePendingDeletions(self.con, self.cur)
 
         # Add the file to the list of files to be deleted from the job store
         # once the run method completes.
@@ -1373,7 +1383,7 @@ class CachingFileStore(AbstractFileStore):
         # until they are done.
 
         # For safety and simplicity, we just execute all pending uploads now.
-        self._executePendingUploads()
+        self._executePendingUploads(self.con, self.cur)
 
         # Then we let the job store export. TODO: let the export come from the
         # cache? How would we write the URL?
@@ -1381,7 +1391,7 @@ class CachingFileStore(AbstractFileStore):
 
     def waitForCommit(self):
         # We need to block on the upload thread.
-        # We may be called even if commitCurrentJob is not called. In that
+        # We may be called even if startCommit is not called. In that
         # case, a new instance of this class should have been created by the
         # worker and ought to pick up all our work by PID via the database, and
         # this instance doesn't actually have to commit.
@@ -1391,12 +1401,17 @@ class CachingFileStore(AbstractFileStore):
         
         return True
 
-    def commitCurrentJob(self):
+    def startCommit(self, jobState=False):
+        if self.commitThread is not None:
+            # If we already started a commit (maybe with a different parameter
+            # value?) wait on it, so we can't forget to join it later.
+            self.commitThread.join()
+
         # Start the commit thread
-        self.uploadThread = threading.Thread(target=self.commitCurrentJobThread)
-        self.uploadThread.start()
+        self.commitThread = threading.Thread(target=self.startCommitThread, args=(jobState,))
+        self.commitThread.start()
         
-    def commitCurrentJobThread(self):
+    def startCommitThread(self, jobState):
         """
         Run in a thread to actually commit the current job.
         """
@@ -1406,32 +1421,38 @@ class CachingFileStore(AbstractFileStore):
             self.waitForPreviousCommit()
 
         try:
-            # Reconnect to the database from this thread. The main thread
-            # should no longer do anything other then waitForCommit, so this
-            # will be safe. We need to do this because SQLite objects are tied
-            # to a thread.
-            self.con = sqlite3.connect(self.dbPath)
-            self.cur = self.con.cursor()
+            # Reconnect to the database from this thread. The main thread can
+            # keep using self.con and self.cur. We need to do this because
+            # SQLite objects are tied to a thread.
+            con = sqlite3.connect(self.dbPath)
+            cur = con.cursor()
+
+            logger.debug('Committing file uploads asynchronously')
 
             # Finish all uploads
-            self._executePendingUploads()
-            # Finish all deletions
-            self._executePendingDeletions()
+            self._executePendingUploads(con, cur)
+            # Finish all deletions out of the cache (not from the job store)
+            self._executePendingDeletions(con, cur)
 
-            # Indicate any files that should be deleted once the update of
-            # the job wrapper is completed.
-            self.jobGraph.filesToDelete = list(self.filesToDelete)
-            # Complete the job
-            self.jobStore.update(self.jobGraph)
-            # Delete any remnant jobs
-            list(map(self.jobStore.delete, self.jobsToDelete))
-            # Delete any remnant files
-            list(map(self.jobStore.deleteFile, self.filesToDelete))
-            # Remove the files to delete list, having successfully removed the files
-            if len(self.filesToDelete) > 0:
-                self.jobGraph.filesToDelete = []
-                # Update, removing emptying files to delete
+            if jobState:
+                # Do all the things that make this job not redoable
+
+                logger.debug('Committing file deletes and job state changes asynchronously')
+
+                # Indicate any files that should be deleted once the update of
+                # the job wrapper is completed.
+                self.jobGraph.filesToDelete = list(self.filesToDelete)
+                # Complete the job
                 self.jobStore.update(self.jobGraph)
+                # Delete any remnant jobs
+                list(map(self.jobStore.delete, self.jobsToDelete))
+                # Delete any remnant files
+                list(map(self.jobStore.deleteFile, self.filesToDelete))
+                # Remove the files to delete list, having successfully removed the files
+                if len(self.filesToDelete) > 0:
+                    self.jobGraph.filesToDelete = []
+                    # Update, removing emptying files to delete
+                    self.jobStore.update(self.jobGraph)
         except:
             self._terminateEvent.set()
             raise

@@ -89,8 +89,8 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
 
         :param waitForPreviousCommit: the waitForCommit method of the previous job's file
                store, when jobs are running in sequence on the same worker. Used to
-               prevent this file store's commitCurrentJob and the previous job's
-               commitCurrentJob methods from running at the same time and racing. If
+               prevent this file store's startCommit and the previous job's
+               startCommit methods from running at the same time and racing. If
                they did race, it might be possible for the later job to be fully
                marked as completed in the job store before the eralier job was.
         """
@@ -392,22 +392,30 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
 
     # Functions run after the completion of the job.
     @abstractmethod
-    def commitCurrentJob(self):
+    def startCommit(self, jobState=False):
         """
         Update the status of the job on the disk.
 
         May start an asynchronous process. Call waitForCommit() to wait on that process.
+
+        :param bool jobState: If True, commit the state of the FileStore's job,
+                    and file deletes. Otherwise, commit only file creates/updates.
+
         """
         raise NotImplementedError()
 
     @abstractmethod
     def waitForCommit(self):
         """
-        Blocks while commitCurrentJob is running. This function is called by this job's
+        Blocks while startCommit is running. This function is called by this job's
         successor to ensure that it does not begin modifying the job store until after this job has
         finished doing so.
         
-        Might be called when commitCurrentJob is never called on a particular instance.
+        Might be called when startCommit is never called on a particular
+        instance, in which case it does not block.
+
+        :return: Always returns True
+        :rtype: bool
         """
         raise NotImplementedError()
 

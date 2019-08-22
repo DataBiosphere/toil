@@ -1354,7 +1354,7 @@ class Job(BaseJob):
             jobGraph.checkpointFilesToDelete = list(Promise.filesToDelete)
         Promise.filesToDelete.clear()
         # Now indicate the asynchronous update of the job can happen
-        fileStore.commitCurrentJob()
+        fileStore.startCommit(jobState=True)
         # Change dir back to cwd dir, if changed by job (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)
