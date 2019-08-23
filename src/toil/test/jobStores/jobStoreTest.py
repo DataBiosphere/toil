@@ -1046,6 +1046,7 @@ class AbstractJobStoreTest(object):
             return 5 * 1024 * 1024
 
 
+@needs_python2
 class AbstractEncryptedJobStoreTest(object):
     # noinspection PyAbstractClass
     class Test(with_metaclass(ABCMeta, AbstractJobStoreTest.Test)):
@@ -1078,7 +1079,6 @@ class AbstractEncryptedJobStoreTest(object):
             config.cseKey = cseKeyFile
             return config
 
-        @needs_python2
         def testEncrypted(self):
             """
             Create an encrypted file. Read it in encrypted mode then try with encryption off
@@ -1265,15 +1265,14 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def testInlinedFiles(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
         jobstore = self.jobstore_initialized
-        for encrypted in (True, False):
-            n = AWSJobStore.FileInfo.maxInlinedSize()
-            sizes = (1, old_div(n, 2), n - 1, n, n + 1, 2 * n)
-            for size in chain(sizes, islice(reversed(sizes), 1)):
-                s = os.urandom(size)
-                with jobstore.writeSharedFileStream('foo') as f:
-                    f.write(s)
-                with jobstore.readSharedFileStream('foo') as f:
-                    self.assertEqual(s, f.read())
+        n = AWSJobStore.FileInfo.maxInlinedSize()
+        sizes = (1, old_div(n, 2), n - 1, n, n + 1, 2 * n)
+        for size in chain(sizes, islice(reversed(sizes), 1)):
+            s = os.urandom(size)
+            with jobstore.writeSharedFileStream('foo') as f:
+                f.write(s)
+            with jobstore.readSharedFileStream('foo') as f:
+                self.assertEqual(s, f.read())
 
     def testOverlargeJob(self):
         jobstore = self.jobstore_initialized

@@ -68,8 +68,6 @@ from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
-s3_boto3_resource = boto3.resource('s3')
-s3_boto3_client = boto3.client('s3')
 log = logging.getLogger(__name__)
 
 

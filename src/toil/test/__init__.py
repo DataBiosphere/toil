@@ -418,11 +418,9 @@ def needs_encryption(test_item):
     try:
         # noinspection PyUnresolvedReferences
         import nacl
-    except ImportError:
-        return unittest.skip(
-            "Install Toil with the 'encryption' extra to include this test.")(test_item)
-    else:
         return test_item
+    except ImportError:
+        return unittest.skip("Install Toil with the 'encryption' extra to include this test.")(test_item)
 
 
 def needs_cwl(test_item):
@@ -434,22 +432,17 @@ def needs_cwl(test_item):
     try:
         # noinspection PyUnresolvedReferences
         import cwltool
+        return test_item
     except ImportError:
         return unittest.skip("Install Toil with the 'cwl' extra to include this test.")(test_item)
-    else:
-        return test_item
 
 
 def needs_python2(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if CWLTool is installed
-    and configured.
-    """
+    """Use as a decorator before test classes or methods to only run them if running on python2.7."""
     test_item = _mark_test('py2', test_item)
     if not USING_PYTHON2:
-        return unittest.skip("Currently only supported in python2.7.")(test_item)
-    else:
         return test_item
+    return unittest.skip("Currently only supported in python2.7.")(test_item)
 
 
 def needs_appliance(test_item):
