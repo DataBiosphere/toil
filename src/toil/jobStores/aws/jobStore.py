@@ -81,6 +81,7 @@ class AWSJobStore(AbstractJobStore):
     partitioned into chunks of 1024 bytes and each chunk is stored as a an attribute of the SDB
     item representing the job. UUIDs are used to identify jobs and files.
     """
+    nameSeparator = '--'
 
     def __init__(self, locator, partSize=None):
         """
@@ -105,12 +106,15 @@ class AWSJobStore(AbstractJobStore):
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
 
+        self.db_boto3_client = boto3.client('sdb', region_name=region)
+        self.s3_boto3_client = boto3.client('s3')
+        self.s3_boto3_resource = boto3.resource('s3')
+
     def validate_bucket_name(self, bucket_name, prefix=False):
         """See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html ."""
         minBucketNameLen = 3
         maxBucketNameLen = 63
         maxNameLen = 10
-        nameSeparator = '--'
 
         # Dots in bucket names should be avoided because bucket names are used in HTTPS bucket
         # URLs where they may interfere with the certificate common name. We use a double
@@ -125,12 +129,12 @@ class AWSJobStore(AbstractJobStore):
                              "" % (bucket_name, minBucketNameLen, maxBucketNameLen))
         if prefix:
             # Reserve 13 for separator and suffix
-            if len(bucket_name) > maxBucketNameLen - maxNameLen - len(nameSeparator):
+            if len(bucket_name) > maxBucketNameLen - maxNameLen - len(self.nameSeparator):
                 raise ValueError("Invalid bucket name '%s'. Name prefixes may not be longer than 50 characters."
                                  "" % bucket_name)
             if '--' in bucket_name:
                 raise ValueError("Invalid bucket name '%s'. Name prefixes may not contain %s."
-                                 "" % bucket_name, nameSeparator)
+                                 "" % bucket_name, self.nameSeparator)
 
     def initialize(self, config):
         if self._registered:
