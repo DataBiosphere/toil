@@ -138,6 +138,7 @@ class AWSJobStore(AbstractJobStore):
     def initialize(self, config):
         if self._registered:
             raise JobStoreExistsException(self.locator)
+        self._registered = None
         try:
             self._bind(create=True)
         except:
