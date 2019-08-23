@@ -106,10 +106,6 @@ class AWSJobStore(AbstractJobStore):
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
 
-        self.db_boto3_client = boto3.client('sdb', region_name=region)
-        self.s3_boto3_client = boto3.client('s3')
-        self.s3_boto3_resource = boto3.resource('s3')
-
     def validate_bucket_name(self, bucket_name, prefix=False):
         """See http://docs.aws.amazon.com/AmazonS3/latest/dev/BucketRestrictions.html ."""
         minBucketNameLen = 3
