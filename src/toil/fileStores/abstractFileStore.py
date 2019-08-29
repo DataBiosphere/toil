@@ -101,7 +101,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         self.jobName = self.jobGraph.command.split()[1]
         self.waitForPreviousCommit = waitForPreviousCommit
         self.loggingMessages = []
-        # Records file IDs of files deleted during the cirrent job. Doesn't get
+        # Records file IDs of files deleted during the current job. Doesn't get
         # committed back until the job is completely successful, because if the
         # job is re-run it will need to be able to re-delete these files.
         self.filesToDelete = set()

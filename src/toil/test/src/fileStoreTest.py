@@ -75,7 +75,7 @@ class hidden(object):
             if self.jobStoreType == 'file':
                 return self._getTestJobStorePath()
             elif self.jobStoreType == 'aws':
-                return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
+                return 'aws:%s:cache-tests-%s' % (self.awsRegion(), str(uuid4()))
             elif self.jobStoreType == 'azure':
                 accountName = os.getenv('TOIL_AZURE_KEYNAME')
                 return 'azure:%s:cache-tests-%s' % (accountName, str(uuid4()))

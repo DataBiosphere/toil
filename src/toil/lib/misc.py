@@ -3,6 +3,8 @@ from six.moves import xrange
 from math import sqrt
 import errno
 import os
+import shutil
+import time
 
 
 def mkdir_p(path):
@@ -14,6 +16,34 @@ def mkdir_p(path):
             pass
         else:
             raise
+
+def robust_rmtree(self, path, max_retries=3):
+    """Robustly tries to delete paths.
+
+    Retries several times (with increasing delays) if an OSError
+    occurs.  If the final attempt fails, the Exception is propagated
+    to the caller.
+
+    Borrowing patterns from:
+    https://github.com/hashdist/hashdist
+    """
+    
+    if not os.path.exists(path):
+        # Nothing to do!
+        return
+
+    delay = 1
+    for _ in range(max_retries):
+        try:
+            shutil.rmtree(path)
+            break
+        except OSError:
+            time.sleep(delay)
+            delay *= 2
+
+    if os.path.exists(path):
+        # Final attempt, pass any Exceptions up to caller.
+        shutil.rmtree(path)
 
 
 def mean(xs):

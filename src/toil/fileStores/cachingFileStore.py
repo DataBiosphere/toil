@@ -44,7 +44,7 @@ import uuid
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
-from toil.lib.misc import mkdir_p
+from toil.lib.misc import mkdir_p, robust_rmtree
 from toil.lib.objects import abstractclassmethod
 from toil.resource import ModuleDescriptor
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -263,6 +263,8 @@ class CachingFileStore(AbstractFileStore):
     def _ensureTables(cls, con):
         """
         Ensure that the database tables we expect exist.
+
+        :param sqlite3.Connection con: Connection to the cache database.
         """
 
         # Get a cursor
@@ -308,18 +310,20 @@ class CachingFileStore(AbstractFileStore):
         """
         Return the total number of bytes to which the cache is limited.
 
-        If no limit is in place, return None.
+        If no limit is available, raises an error.
         """
 
         for row in self.cur.execute('SELECT value FROM properties WHERE name = ?', ('maxSpace',)):
             return row[0]
-        return None
+        
+        raise RuntimeError('Unable to retrieve cache limit')
+
 
     def getCacheUsed(self):
         """
         Return the total number of bytes used in the cache.
 
-        If no value is available, return None.
+        If no value is available, raises an error.
         """
 
         # Space never counts as used if caching is free
@@ -328,7 +332,8 @@ class CachingFileStore(AbstractFileStore):
 
         for row in self.cur.execute('SELECT TOTAL(size) FROM files'):
             return row[0]
-        return None
+        
+        raise RuntimeError('Unable to retrieve cache usage')
 
     def getCacheExtraJobSpace(self):
         """
@@ -339,7 +344,7 @@ class CachingFileStore(AbstractFileStore):
         space, but then they want to write to or read from the cache. So when
         that happens, we need to debit space from them somehow...
 
-        If no value is available, return None.
+        If no value is available, raises an error.
         """
 
         # Total up the sizes of all the reads of files and subtract it from the total disk reservation of all jobs
@@ -350,7 +355,8 @@ class CachingFileStore(AbstractFileStore):
             ) as result
         """):
             return row[0]
-        return None
+        
+        raise RuntimeError('Unable to retrieve extra job space')
 
     def getCacheAvailable(self):
         """
@@ -358,7 +364,7 @@ class CachingFileStore(AbstractFileStore):
         negative, the total number of bytes of cached files that need to be
         evicted to free up enough space for all the currently scheduled jobs.
 
-        Returns None if not retrievable.
+        If no value is available, raises an error.
         """
 
         # Get the max space on our disk.
@@ -381,7 +387,8 @@ class CachingFileStore(AbstractFileStore):
             # If caching is free, we just say that all the space is always available.
             for row in self.cur.execute("SELECT value FROM properties WHERE name = 'maxSpace'"):
                 return row[0]
-            return None
+            
+            raise RuntimeError('Unable to retrieve available cache space')
             
 
         for row in self.cur.execute("""
@@ -393,14 +400,15 @@ class CachingFileStore(AbstractFileStore):
             ) as result
         """):
             return row[0]
-        return None
+        
+        raise RuntimeError('Unable to retrieve available cache space')
 
     def getSpaceUsableForJobs(self):
         """
         Return the total number of bytes that are not taken up by job requirements, ignoring files and file usage.
         We can't ever run more jobs than we actually have room for, even with caching.
 
-        Returns None if not retrievable.
+        If not retrievable, raises an error.
         """
 
         for row in self.cur.execute("""
@@ -410,7 +418,8 @@ class CachingFileStore(AbstractFileStore):
             ) as result
         """):
             return row[0]
-        return None
+        
+        raise RuntimeError('Unable to retrieve usabel space for jobs')
 
     def getCacheUnusedJobRequirement(self):
         """
@@ -419,7 +428,7 @@ class CachingFileStore(AbstractFileStore):
 
         Mutable references don't count, but immutable/uploading ones do.
 
-        If no value is available, return None.
+        If no value is available, raises an error.
         """
 
         logger.info('Get unused space for job %s', self.jobID)
@@ -435,7 +444,8 @@ class CachingFileStore(AbstractFileStore):
             (self.jobID, 'mutable')):
             # Sum up all the sizes of our referenced files, then subtract that from how much we came in with    
             return self.jobDiskBytes - row[0]
-        return None
+        
+        raise RuntimeError('Unable to retrieve unused job requirement space')
     
     def adjustCacheLimit(self, newTotalBytes):
         """
@@ -606,6 +616,9 @@ class CachingFileStore(AbstractFileStore):
         Implemented as a class method so it can use the database connection
         appropriate to its thread without any chance of getting at the main
         thread's connection and cursor in self.
+
+        :param sqlite3.Connection con: Connection to the cache database.
+        :param sqlite3.Cursor cur: Cursor in the cache database.
         """
         
         pid = os.getpid()
@@ -622,6 +635,9 @@ class CachingFileStore(AbstractFileStore):
                 # Probably already deleted
                 continue
 
+            # Whether we deleted the file or just found out that it is gone, we
+            # need to take credit for deleting it so that we remove it from the
+            # database.
             deletedFiles.append(fileID)
 
         for fileID in deletedFiles:
@@ -642,6 +658,9 @@ class CachingFileStore(AbstractFileStore):
         Needs access to self to get at the job store for uploading files, but
         still needs to take con and cur so it can run in a thread with the
         thread's database connection.
+
+        :param sqlite3.Connection con: Connection to the cache database.
+        :param sqlite3.Cursor cur: Cursor in the cache database.
         """
 
         # Work out who we are
@@ -1054,8 +1073,12 @@ class CachingFileStore(AbstractFileStore):
                 # the job store.
 
                 # Find where the file is cached
+                cachedPath = None
                 for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
                     cachedPath = row[0]
+
+                if cachedPath is None:
+                    raise RuntimeError('File %s went away while we had a reference to it!' % fileStoreID)
 
                 with open(localFilePath, 'wb') as outStream:
                     with open(cachedPath, 'rb') as inStream:
@@ -1265,23 +1288,17 @@ class CachingFileStore(AbstractFileStore):
         if own_download:
             # We are giving it away
             shutil.move(cachedPath, localFilePath)
-
             # Record that.
             self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', localFilePath))
             self.cur.execute('DELETE FROM files WHERE id = ?', (fileStoreID,))
-            self.con.commit()
-
-            # Now we're done
-            return localFilePath
         else:
             # We are copying it
             shutil.copyfile(cachedPath, localFilePath)
             self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', localFilePath))
-            self.con.commit()
+        self.con.commit()
 
-            # Now we're done
-            return localFilePath
-    
+        # Now we're done
+        return localFilePath
 
     def readGlobalFileStream(self, fileStoreID):
         if not isinstance(fileStoreID, FileID):
@@ -1402,10 +1419,9 @@ class CachingFileStore(AbstractFileStore):
         return True
 
     def startCommit(self, jobState=False):
-        if self.commitThread is not None:
-            # If we already started a commit (maybe with a different parameter
-            # value?) wait on it, so we can't forget to join it later.
-            self.commitThread.join()
+        # If we already started a commit (maybe with a different parameter
+        # value?) wait on it, so we can't forget to join it later.
+        self.waitForCommit()
 
         # Start the commit thread
         self.commitThread = threading.Thread(target=self.startCommitThread, args=(jobState,))
@@ -1492,15 +1508,17 @@ class CachingFileStore(AbstractFileStore):
 
                 con.close()
         
-        # Delete the state DB and everything cached.
-        shutil.rmtree(dir_)
+        if os.path.exists(dir_) and os.path.isdir(dir_):
+            # Delete the state DB and everything cached.
+            robust_rmtree(dir_)
 
     def __del__(self):
         """
         Cleanup function that is run when destroying the class instance that ensures that all the
         file writing threads exit.
         """
-        pass
+        
+        self.waitForCommit()
 
     @classmethod
     def _removeDeadJobs(cls, con):
