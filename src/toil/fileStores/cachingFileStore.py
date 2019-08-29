@@ -375,13 +375,13 @@ class CachingFileStore(AbstractFileStore):
 
         # Do a little report first
         for row in self.cur.execute("SELECT value FROM properties WHERE name = 'maxSpace'"):
-            logger.info('Max space: %d', row[0])
+            logger.debug('Max space: %d', row[0])
         for row in self.cur.execute("SELECT TOTAL(size) FROM files"):
-            logger.info('Total file size: %d', row[0])
+            logger.debug('Total file size: %d', row[0])
         for row in self.cur.execute("SELECT TOTAL(disk) FROM jobs"):
-            logger.info('Total job disk requirement size: %d', row[0])
+            logger.debug('Total job disk requirement size: %d', row[0])
         for row in self.cur.execute("SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.state = 'immutable'"):
-            logger.info('Total immutable reference size: %d', row[0])
+            logger.debug('Total immutable reference size: %d', row[0])
 
         if self.cachingIsFree():
             # If caching is free, we just say that all the space is always available.
@@ -431,13 +431,13 @@ class CachingFileStore(AbstractFileStore):
         If no value is available, raises an error.
         """
 
-        logger.info('Get unused space for job %s', self.jobID)
+        logger.debug('Get unused space for job %s', self.jobID)
 
         for row in self.cur.execute('SELECT * FROM files'):
-            logger.info('File record: %s', str(row))
+            logger.debug('File record: %s', str(row))
 
         for row in self.cur.execute('SELECT * FROM refs'):
-            logger.info('Ref record: %s', str(row))
+            logger.debug('Ref record: %s', str(row))
 
 
         for row in self.cur.execute('SELECT TOTAL(files.size) FROM refs INNER JOIN files ON refs.file_id = files.id WHERE refs.job_id = ? AND refs.state != ?',
@@ -603,7 +603,7 @@ class CachingFileStore(AbstractFileStore):
                 ('cached', owner, 'uploadable', 'uploading'))
             self.con.commit()
 
-            logger.info('Tried to adopt file operations from dead worker %d', owner)
+            logger.debug('Tried to adopt file operations from dead worker %d', owner)
     
     @classmethod        
     def _executePendingDeletions(cls, con, cur):
@@ -687,12 +687,12 @@ class CachingFileStore(AbstractFileStore):
                 # We didn't manage to update it. Someone else (a running job if
                 # we are a committing thread, or visa versa) must have grabbed
                 # it.
-                logger.info('Lost race to upload %s', fileID)
+                logger.debug('Lost race to upload %s', fileID)
                 # Try again to see if there is something else to grab.
                 continue
 
             # Upload the file
-            logger.info('Actually executing upload for file %s', fileID)
+            logger.debug('Actually executing upload for file %s', fileID)
             self.jobStore.updateFile(fileID, filePath)
 
             # Count it for the total uploaded files value we need to return
@@ -735,7 +735,7 @@ class CachingFileStore(AbstractFileStore):
 
         available = self.getCacheAvailable()
 
-        logger.info('Available space with job: %d bytes', available)
+        logger.debug('Available space with job: %d bytes', available)
 
         if available >= 0:
             # We're fine on disk space
@@ -810,12 +810,12 @@ class CachingFileStore(AbstractFileStore):
         if self._executePendingDeletions(self.con, self.cur) > 0:
             # We actually had something to delete, which we deleted.
             # Maybe there is space now
-            logger.info('Successfully executed pending deletions to free space')
+            logger.debug('Successfully executed pending deletions to free space')
             return True
 
         if self._executePendingUploads(self.con, self.cur) > 0:
             # We had something to upload. Maybe it can be evicted now.
-            logger.info('Successfully executed pending uploads to free space')
+            logger.debug('Successfully executed pending uploads to free space')
             return True
 
         # Otherwise, not enough files could be found in deleting state to solve our problem.
@@ -835,7 +835,7 @@ class CachingFileStore(AbstractFileStore):
             # Nothing can be evicted by us.
             # Someone else might be in the process of evicting something that will free up space for us too.
             # Or someone mught be uploading something and we have to wait for them to finish before it can be deleted.
-            logger.info('Could not find anything to evict! Cannot free up space!')
+            logger.debug('Could not find anything to evict! Cannot free up space!')
             return False
 
         # Otherwise we found an eviction candidate.
@@ -854,12 +854,12 @@ class CachingFileStore(AbstractFileStore):
             (pid, 'deleting', fileID, 'cached'))
         self.con.commit()
 
-        logger.info('Evicting file %s', fileID)
+        logger.debug('Evicting file %s', fileID)
             
         # Whether we actually got it or not, try deleting everything we have to delete
         if self._executePendingDeletions(self.con, self.cur) > 0:
             # We deleted something
-            logger.info('Successfully executed pending deletions to free space')
+            logger.debug('Successfully executed pending deletions to free space')
             return True
 
     def _freeUpSpace(self):
@@ -876,7 +876,7 @@ class CachingFileStore(AbstractFileStore):
 
         while availableSpace < 0:
             # While there isn't enough space for the thing we want
-            logger.info('Cache is full (%d bytes free). Trying to free up space!', availableSpace)
+            logger.debug('Cache is full (%d bytes free). Trying to free up space!', availableSpace)
             # Free up space. See if we made any progress
             progress = self._tryToFreeUpSpace()
             availableSpace = self.getCacheAvailable()
@@ -899,7 +899,7 @@ class CachingFileStore(AbstractFileStore):
                         # Wait a bit and come back
                         time.sleep(2)
 
-        logger.info('Cache has %d bytes free.', availableSpace)
+        logger.debug('Cache has %d bytes free.', availableSpace)
             
             
     # Normal AbstractFileStore API
@@ -920,7 +920,7 @@ class CachingFileStore(AbstractFileStore):
         # Get the requirements for the job.
         self.jobDiskBytes = job.disk
 
-        logger.info('Actually running job (%s) with ID (%s) which wants %d of our %d bytes.',
+        logger.debug('Actually running job (%s) with ID (%s) which wants %d of our %d bytes.',
             self.jobName, self.jobID, self.jobDiskBytes, self.getCacheLimit())
 
         # Register the current job as taking this much space, and evict files
@@ -996,7 +996,7 @@ class CachingFileStore(AbstractFileStore):
 
                 linkedToCache = True
 
-                logger.info('Linked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
+                logger.debug('Linked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
                 
                 # Don't do the upload now. Let it be deferred until later (when the job is committing).
             except OSError:
@@ -1021,7 +1021,7 @@ class CachingFileStore(AbstractFileStore):
             self.con.commit()
 
             # Save the file to the job store right now
-            logger.info('Actually executing upload for file %s', fileID)
+            logger.debug('Actually executing upload for file %s', fileID)
             self.jobStore.updateFile(fileID, absLocalFileName)
         
         # Ship out the completed FileID object with its real size.
@@ -1127,13 +1127,13 @@ class CachingFileStore(AbstractFileStore):
         # Start a loop until we can do one of these
         while True:
             # Try and create a downloading entry if no entry exists
-            logger.info('Trying to make file record for id %s', fileStoreID)
+            logger.debug('Trying to make file record for id %s', fileStoreID)
             self.cur.execute('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
                 (fileStoreID, cachedPath, fileStoreID.size, 'downloading', pid))
             if not mutable:
                 # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
                 # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
-                logger.info('Trying to make file reference to %s', fileStoreID)
+                logger.debug('Trying to make file reference to %s', fileStoreID)
                 self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
                     (localFilePath, readerID, 'immutable', fileStoreID, 'downloading', pid))
             self.con.commit()
@@ -1144,21 +1144,21 @@ class CachingFileStore(AbstractFileStore):
 
             if own_download:
                 # We are responsible for downloading the file
-                logger.info('We are now responsible for downloading file %s', fileStoreID)
+                logger.debug('We are now responsible for downloading file %s', fileStoreID)
                 if not mutable:
                     # And we have a reference already
                     have_reference = True
                 break
             else:
-                logger.info('Someone else is already responsible for file %s', fileStoreID)
+                logger.debug('Someone else is already responsible for file %s', fileStoreID)
                 for row in self.cur.execute('SELECT * FROM files WHERE id = ?', (fileStoreID,)):
-                    logger.info('File record: %s', str(row))
+                    logger.debug('File record: %s', str(row))
        
             # A record already existed for this file.
             # Try and create an immutable or copying reference to an entry that
             # is in 'cached' or 'uploadable' or 'uploading' state.
             # It might be uploading because *we* are supposed to be uploading it.
-            logger.info('Trying to make reference to file %s', fileStoreID)
+            logger.debug('Trying to make reference to file %s', fileStoreID)
             self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
                 (localFilePath, readerID, 'copying' if mutable else 'immutable', fileStoreID, 'cached', 'uploadable', 'uploading'))
             self.con.commit()
@@ -1169,7 +1169,7 @@ class CachingFileStore(AbstractFileStore):
 
             if have_reference:
                 # The file is cached and we can copy or link it
-                logger.info('Obtained reference to file %s', fileStoreID)
+                logger.debug('Obtained reference to file %s', fileStoreID)
 
                 # Get the path it is actually at in the cache, instead of where we wanted to put it
                 for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
@@ -1177,7 +1177,7 @@ class CachingFileStore(AbstractFileStore):
 
                 break
             else:
-                logger.info('Could not obtain reference to file %s', fileStoreID)
+                logger.debug('Could not obtain reference to file %s', fileStoreID)
 
             # If we didn't get one of those either, adopt and do work from dead workers and loop again.
             # We may have to wait for someone else's download or delete to
@@ -1553,7 +1553,7 @@ class CachingFileStore(AbstractFileStore):
             cur.execute('UPDATE jobs SET worker = NULL WHERE worker = ?', (deadWorker,))
             con.commit()
         if len(deadWorkers) > 0:
-            logger.info('Reaped %d dead workers', len(deadWorkers))
+            logger.debug('Reaped %d dead workers', len(deadWorkers))
 
         while True:
             # Find an unowned job.
@@ -1580,7 +1580,7 @@ class CachingFileStore(AbstractFileStore):
             # If we did win, delete the job and its files and temp dir
             cls._removeJob(con, cur, jobID)
 
-            logger.info('Cleaned up orphanded job %s', jobID)
+            logger.debug('Cleaned up orphanded job %s', jobID)
 
         # Now we have cleaned up all the jobs that belonged to dead workers that were dead when we entered this function.
 
