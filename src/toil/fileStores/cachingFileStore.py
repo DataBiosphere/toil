@@ -1051,70 +1051,106 @@ class CachingFileStore(AbstractFileStore):
         # And what job we are operating on behalf of
         readerID = self.jobGraph.jobStoreID
 
-        if not cache:
-            # We would like to read directly from the backing job store, since
-            # we don't want to cache the result. However, we may be trying to
-            # read a file that is 'uploadable' or 'uploading' and hasn't hit
-            # the backing job store yet.
+        if cache:
+            # We want to use the cache
+            return self._readGlobalFileWithCache(fileStoreID, localFilePath, mutable, symlink, readerID)
+        else:
+            # We do not want to use the cache
+            return self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
 
-            # Try and make a 'copying' reference to such a file
-            self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ?)',
-                (localFilePath, readerID, 'copying', fileStoreID, 'uploadable', 'uploading'))
+
+    def _readGlobalFileWithoutCache(self, fileStoreID, localFilePath, mutable, symlink, readerID):
+        """
+        Read a file without putting it into the cache.
+
+        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param str localFilePath: absolute destination path. Already known not to exist.
+        :param bool mutable: Whether a mutable copy should be created, instead of a hard link or symlink.
+        :param bool symlink: Whether a symlink is acceptable.
+        :param str readerID: Job ID of the job reading the file.
+        :return: An absolute path to a local, temporary copy of or link to the file keyed by fileStoreID.
+        :rtype: str
+        """
+
+        # We would like to read directly from the backing job store, since
+        # we don't want to cache the result. However, we may be trying to
+        # read a file that is 'uploadable' or 'uploading' and hasn't hit
+        # the backing job store yet.
+
+        # Try and make a 'copying' reference to such a file
+        self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ?)',
+            (localFilePath, readerID, 'copying', fileStoreID, 'uploadable', 'uploading'))
+        self.con.commit()
+
+        # See if we got it
+        have_reference = False
+        for row in self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID)):
+            have_reference = row[0] > 0
+
+        if have_reference:
+            # If we succeed, copy the file. We know the job has space for it
+            # because if we didn't do this we'd be getting a fresh copy from
+            # the job store.
+
+            # Find where the file is cached
+            cachedPath = None
+            for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                cachedPath = row[0]
+
+            if cachedPath is None:
+                raise RuntimeError('File %s went away while we had a reference to it!' % fileStoreID)
+
+            with open(localFilePath, 'wb') as outStream:
+                with open(cachedPath, 'rb') as inStream:
+                    # Copy it
+                    shutil.copyfileobj(inStream, outStream)
+
+            # Change the reference to mutable
+            self.cur.execute('UPDATE refs SET state = ? WHERE path = ? and file_id = ?', ('mutable', localFilePath, fileStoreID))
+            self.con.commit()
+        
+        else:
+
+            # If we fail, the file isn't cached here in 'uploadable' or
+            # 'uploading' state, so that means it must actually be in the
+            # backing job store, so we can get it from the backing job store.
+
+            # Create a 'mutable' reference (even if we end up with a link)
+            # so we can see this file in deleteLocalFile.
+            self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)',
+                (localFilePath, fileStoreID, readerID, 'mutable'))
             self.con.commit()
 
-            # See if we got it
-            have_reference = False
-            for row in self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID)):
-                have_reference = row[0] > 0
-
-            if have_reference:
-                # If we succeed, copy the file. We know the job has space for it
-                # because if we didn't do this we'd be getting a fresh copy from
-                # the job store.
-
-                # Find where the file is cached
-                cachedPath = None
-                for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
-                    cachedPath = row[0]
-
-                if cachedPath is None:
-                    raise RuntimeError('File %s went away while we had a reference to it!' % fileStoreID)
-
+            # Just read directly
+            if mutable or self.forceNonFreeCaching:
+                # Always copy
                 with open(localFilePath, 'wb') as outStream:
-                    with open(cachedPath, 'rb') as inStream:
-                        # Copy it
+                    with self.jobStore.readFileStream(fileStoreID) as inStream:
                         shutil.copyfileobj(inStream, outStream)
-
-                # Change the reference to mutable
-                self.cur.execute('UPDATE refs SET state = ? WHERE path = ? and file_id = ?', ('mutable', localFilePath, fileStoreID))
-                self.con.commit()
-            
             else:
+                # Link or maybe copy
+                self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
 
-                # If we fail, the file isn't cached here in 'uploadable' or
-                # 'uploading' state, so that means it must actually be in the
-                # backing job store, so we can get it from the backing job store.
+        # Now we got the file, somehow.
+        return localFilePath
 
-                # Create a 'mutable' reference (even if we end up with a link)
-                # so we can see this file in deleteLocalFile.
-                self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)',
-                    (localFilePath, fileStoreID, readerID, 'mutable'))
-                self.con.commit()
+    def _readGlobalFileWithCache(self, fileStoreID, localFilePath, mutable, symlink, readerID):
+        """
+        Read a file, putting it into the cache if possible.
 
-                # Just read directly
-                if mutable or self.forceNonFreeCaching:
-                    # Always copy
-                    with open(localFilePath, 'wb') as outStream:
-                        with self.jobStore.readFileStream(fileStoreID) as inStream:
-                            shutil.copyfileobj(inStream, outStream)
-                else:
-                    # Link or maybe copy
-                    self.jobStore.readFile(fileStoreID, localFilePath, symlink=symlink)
-
-            # Now we got the file, somehow.
-            return localFilePath
+        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param str localFilePath: absolute destination path. Already known not to exist.
+        :param bool mutable: Whether a mutable copy should be created, instead of a hard link or symlink.
+        :param bool symlink: Whether a symlink is acceptable.
+        :param str readerID: Job ID of the job reading the file.
+        :return: An absolute path to a local, temporary copy of or link to the file keyed by fileStoreID.
+        :rtype: str
+        """
 
         # Now we know to use the cache
+
+        # Work out who we are
+        pid = os.getpid()
 
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getNewCachingPath(fileStoreID)
@@ -1232,7 +1268,7 @@ class CachingFileStore(AbstractFileStore):
                 # If we can't, change the reference to copying.
                 self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('copying', localFilePath))
                 self.con.commit()
-
+                
                 # Decide to be mutable
                 mutable = True
 
