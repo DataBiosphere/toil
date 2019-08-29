@@ -17,7 +17,7 @@ def mkdir_p(path):
         else:
             raise
 
-def robust_rmtree(self, path, max_retries=3):
+def robust_rmtree(path, max_retries=3):
     """Robustly tries to delete paths.
 
     Retries several times (with increasing delays) if an OSError
