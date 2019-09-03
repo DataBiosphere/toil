@@ -322,7 +322,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         if (info.cleanWorkDir == 'always'
             or info.cleanWorkDir in ('onSuccess', 'onError')
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
-            shutil.rmtree(workflowDir)
+            shutil.rmtree(workflowDir, ignore_errors=True)
 
 
 class BatchSystemLocalSupport(BatchSystemSupport):
