@@ -23,10 +23,10 @@ standard_library.install_aliases()
 from builtins import str
 from builtins import object
 from builtins import super
-from contextlib import contextmanager
 import logging
 import time
 import os
+import glob
 
 from toil.lib.humanize import bytes2human
 from toil import resolveEntryPoint
@@ -36,14 +36,13 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
-from toil.jobStores.fileJobStore import FileJobStore
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
 from toil.job import JobNode, ServiceJobNode
 from toil.toilState import ToilState
-from toil.common import ToilMetrics
+from toil.common import Toil, ToilMetrics
 
 logger = logging.getLogger( __name__ )
 
@@ -126,24 +125,24 @@ class Leader(object):
         # Get a snap shot of the current state of the jobs in the jobStore
         self.toilState = ToilState(jobStore, rootJob, jobCache=jobCache)
         logger.debug("Found %s jobs to start and %i jobs with successors to run",
-                        len(self.toilState.updatedJobs), len(self.toilState.successorCounts))
+                     len(self.toilState.updatedJobs), len(self.toilState.successorCounts))
 
         # Batch system
         self.batchSystem = batchSystem
-        assert len(self.batchSystem.getIssuedBatchJobIDs()) == 0 #Batch system must start with no active jobs!
+        assert len(self.batchSystem.getIssuedBatchJobIDs()) == 0  # Batch system must start with no active jobs!
         logger.debug("Checked batch system has no running jobs and no updated jobs")
 
         # Map of batch system IDs to IssuedJob tuples
         self.jobBatchSystemIDToIssuedJob = {}
 
-        # Number of preempetable jobs currently being run by batch system
+        # Number of preemptible jobs currently being run by batch system
         self.preemptableJobsIssued = 0
 
         # Tracking the number service jobs issued,
         # this is used limit the number of services issued to the batch system
         self.serviceJobsIssued = 0
         self.serviceJobsToBeIssued = [] # A queue of service jobs that await scheduling
-        #Equivalents for service jobs to be run on preemptable nodes
+        #Equivalents for service jobs to be run on preemptible nodes
         self.preemptableServiceJobsIssued = 0
         self.preemptableServiceJobsToBeIssued = []
 
@@ -231,21 +230,10 @@ class Leader(object):
         # Filter the failed jobs
         self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
-        logName = 'failed.log' if self.toilState.totalFailedJobs else 'succeeded.log'
-        localLog = os.path.join(os.getcwd(), logName)
-        logger.critical('localLog: {}\n'.format(localLog))
-        with open(localLog, 'w') as f:
-            f.write('')
-
-        logger.critical('localLog: {}\n'.format(localLog))
         try:
-            self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+            self.create_status_sentinel_file(self.toilState.totalFailedJobs)
         except IOError as e:
-            logger.critical('Error from importFile with hardlink=True: {}'.format(e))
-            self.jobStore.importFile('file://' + localLog, logName, hardlink=False)
-
-        if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
-            os.remove(localLog)
+            logger.debug('Error from importFile with hardlink=True: {}'.format(e))
 
         logger.info("Finished toil run %s" %
                      ("successfully." if not self.toilState.totalFailedJobs \
@@ -258,6 +246,16 @@ class Leader(object):
             raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
 
         return self.jobStore.getRootJobReturnValue()
+
+    def create_status_sentinel_file(self, fail):
+        """Create a file in the jobstore indicating failure or success."""
+        logName = 'failed.log' if fail else 'succeeded.log'
+        localLog = os.path.join(os.getcwd(), logName)
+        open(localLog, 'w').close()
+        self.jobStore.importFile('file://' + localLog, logName, hardlink=True)
+
+        if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
+            os.remove(localLog)
 
     def _handledFailedSuccessor(self, jobNode, jobGraph, successorJobStoreID):
         """Deal with the successor having failed. Return True if there are
@@ -493,7 +491,7 @@ class Leader(object):
             if result == 0:
                 cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
                               else logger.info)
-                cur_logger('Job ended successfully: %s', updatedJob)
+                cur_logger('Job ended: %s', updatedJob)
                 if self.toilMetrics:
                     self.toilMetrics.logCompletedJob(updatedJob)
             else:
@@ -599,9 +597,7 @@ class Leader(object):
             self.potentialDeadlockTime = 0
 
     def issueJob(self, jobNode):
-        """
-        Add a job to the queue of jobs
-        """
+        """Add a job to the queue of jobs."""
         jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
                                     jobNode.jobName,
                                     self.jobStoreLocator,
@@ -613,8 +609,7 @@ class Leader(object):
             # len(jobBatchSystemIDToIssuedJob) should always be greater than or equal to preemptableJobsIssued,
             # so increment this value after the job is added to the issuedJob dict
             self.preemptableJobsIssued += 1
-        cur_logger = (logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS)
-                      else logger.info)
+        cur_logger = logger.debug if jobNode.jobName.startswith(CWL_INTERNAL_JOBS) else logger.info
         cur_logger("Issued job %s with job batch system ID: "
                    "%s and cores: %s, disk: %s, and memory: %s",
                    jobNode, str(jobBatchSystemID), int(jobNode.cores),
@@ -624,9 +619,7 @@ class Leader(object):
             self.toilMetrics.logQueueSize(self.getNumberOfJobsIssued())
 
     def issueJobs(self, jobs):
-        """
-        Add a list of jobs, each represented as a jobNode object
-        """
+        """Add a list of jobs, each represented as a jobNode object."""
         for job in jobs:
             self.issueJob(job)
 
@@ -642,9 +635,7 @@ class Leader(object):
         self.issueQueingServiceJobs()
 
     def issueQueingServiceJobs(self):
-        """
-        Issues any queuing service jobs up to the limit of the maximum allowed.
-        """
+        """Issues any queuing service jobs up to the limit of the maximum allowed."""
         while len(self.serviceJobsToBeIssued) > 0 and self.serviceJobsIssued < self.config.maxServiceJobs:
             self.issueJob(self.serviceJobsToBeIssued.pop())
             self.serviceJobsIssued += 1
@@ -671,9 +662,7 @@ class Leader(object):
 
 
     def removeJob(self, jobBatchSystemID):
-        """
-        Removes a job from the system.
-        """
+        """Removes a job from the system."""
         assert jobBatchSystemID in self.jobBatchSystemIDToIssuedJob
         jobNode = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID]
         if jobNode.preemptable:
@@ -811,6 +800,33 @@ class Leader(object):
                 # reduce the retry count here.
                 if jobGraph.logJobStoreFileID is None:
                     logger.warn("No log file is present, despite job failing: %s", jobNode)
+
+                # Look for any standard output/error files created by the batch system
+                workflowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
+                batchSystemFilePrefix = 'toil_job_{}_batch_'.format(batchSystemID)
+                batchSystemFileGlob = os.path.join(workflowDir, batchSystemFilePrefix + '*.log')
+                batchSystemFiles = glob.glob(batchSystemFileGlob)
+                for batchSystemFile in batchSystemFiles:
+                    try:
+                        batchSystemFileStream = open(batchSystemFile, 'rb')
+                    except:
+                        logger.warn('The batch system left a file %s, but it could not be opened' % batchSystemFile)
+                    else:
+                        with batchSystemFileStream:
+                            if os.path.getsize(batchSystemFile) > 0:
+                                StatsAndLogging.logWithFormatting(jobStoreID, batchSystemFileStream, method=logger.warn,
+                                                                  message='The batch system left a non-empty file %s:' % batchSystemFile)
+                                if self.config.writeLogs or self.config.writeLogsGzip:
+                                    batchSystemFileRoot, _ = os.path.splitext(os.path.basename(batchSystemFile))
+                                    jobNames = jobGraph.chainedJobs
+                                    if jobNames is None:   # For jobs that fail this way, jobGraph.chainedJobs is not guaranteed to be set
+                                        jobNames = [str(jobGraph)]
+                                    jobNames = [jobName + '_' + batchSystemFileRoot for jobName in jobNames]
+                                    batchSystemFileStream.seek(0)
+                                    StatsAndLogging.writeLogFiles(jobNames, batchSystemFileStream, self.config)
+                            else:
+                                logger.warn('The batch system left an empty file %s' % batchSystemFile)
+
                 jobGraph.setupJobAfterFailure(self.config)
                 self.jobStore.update(jobGraph)
             elif jobStoreID in self.toilState.hasFailedSuccessors:
@@ -850,7 +866,7 @@ class Leader(object):
                         if jobStore.exists(successorJobNode.jobStoreID):
                             successorRecursion(jobStore.load(successorJobNode.jobStoreID))
 
-        successorRecursion(jobGraph) # Recurse from jobGraph
+        successorRecursion(jobGraph)  # Recurse from jobGraph
 
         return successors
 

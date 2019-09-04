@@ -150,7 +150,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
             path_key = cls.resourceEnvNamePrefix + pathHash
             s = os.environ[path_key]
         except KeyError:
-            log.warn("'%s' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).", str(path_key))
+            log.warning("'%s' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).", str(path_key))
             return None
         else:
             self = cls.unpickle(s)
@@ -287,11 +287,21 @@ class DirectoryResource(Resource):
         else:
             # This is a simple user script (with possibly a few helper files)
             rootDir = path
-        with ZipFile(file=bytesIO, mode='w') as zipFile:
-            for dirName, _, fileList in os.walk(path):
-                for fileName in fileList:
-                    fullPath = os.path.join(dirName, fileName)
-                    zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
+        skipdirList = ['/tmp', '/var', '/etc', '/bin', '/sbin', '/home', '/dev', '/sys', '/usr', '/run']
+        if path not in skipdirList:
+            with ZipFile(file=bytesIO, mode='w') as zipFile:
+                for dirName, _, fileList in os.walk(path):
+                    for fileName in fileList:
+                        try:
+                            fullPath = os.path.join(dirName, fileName)
+                            zipFile.write(fullPath, os.path.relpath(fullPath, rootDir))
+                        except IOError:
+                            log.critical('Cannot access and read the file at path: %s' % fullPath)
+                            sys.exit(1)
+        else:
+            log.critical("Couldn't package the directory at %s for hot deployment. Would recommend to create a \
+                subdirectory (ie %s/MYDIR_HERE/)" % (path, path))
+            sys.exit(1)
         bytesIO.seek(0)
         return bytesIO
 
@@ -483,7 +493,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         :rtype: toil.resource.Resource
         """
         if not self._runningOnWorker():
-            log.warn('The localize() method should only be invoked on a worker.')
+            log.warning('The localize() method should only be invoked on a worker.')
         resource = Resource.lookup(self._resourcePath)
         if resource is None:
             return self
@@ -530,7 +540,7 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
         except IOError as e:
             if e.errno == errno.ENOENT:
                 if self._runningOnWorker():
-                    log.warn("Can't globalize module %r.", self)
+                    log.warning("Can't globalize module %r.", self)
                 return self
             else:
                 raise

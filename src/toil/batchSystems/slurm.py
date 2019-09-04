@@ -46,7 +46,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # -h for no header
             # --format to get jobid i, state %t and time days-hours:minutes:seconds
 
-            lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).split('\n')
+            lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).decode('utf-8').split('\n')
             for line in lines:
                 values = line.split()
                 if len(values) < 3:
@@ -66,7 +66,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def submitJob(self, subLine):
             try:
-                output = subprocess.check_output(subLine, stderr=subprocess.STDOUT)
+                output = subprocess.check_output(subLine, stderr=subprocess.STDOUT).decode('utf-8')
                 # sbatch prints a line like 'Submitted batch job 2954103'
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)
@@ -107,15 +107,18 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 return (None, -999)
             
             for line in process.stdout:
-                values = line.strip().split('|')
+                values = line.decode('utf-8').strip().split('|')
                 if len(values) < 2:
                     continue
                 state, exitcode = values
                 logger.debug("sacct job state is %s", state)
                 # If Job is in a running state, return None to indicate we don't have an update
-                status, _ = exitcode.split(':')
-                logger.debug("sacct exit code is %s, returning status %s", exitcode, status)
-                return (state, int(status))
+                status, signal = [int(n) for n in exitcode.split(':')]
+                if signal > 0:
+                    # A non-zero signal may indicate e.g. an out-of-memory killed job
+                    status = 128 + signal
+                logger.debug("sacct exit code is %s, returning status %d", exitcode, status)
+                return (state, status)
             logger.debug("Did not find exit code for job in sacct output")
             return None
 
@@ -129,7 +132,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     
             job = dict()
             for line in process.stdout:
-                values = line.strip().split()
+                values = line.decode('utf-8').strip().split()
     
                 # If job information is not available an error is issued:
                 # slurm_load_jobs error: Invalid job id specified
@@ -148,9 +151,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             try:
                 exitcode = job['ExitCode']
                 if exitcode is not None:
-                    status, _ = exitcode.split(':')
-                    logger.debug("scontrol exit code is %s, returning status %s", exitcode, status)
-                    rc = int(status)
+                    status, signal = [int(n) for n in exitcode.split(':')]
+                    if signal > 0:
+                        # A non-zero signal may indicate e.g. an out-of-memory killed job
+                        status = 128 + signal
+                    logger.debug("scontrol exit code is %s, returning status %d", exitcode, status)
+                    rc = status
                 else:
                     rc = None
             except KeyError:
@@ -180,6 +186,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 sbatch_line.append('--mem={}'.format(old_div(int(mem), 2 ** 20)))
             if cpu is not None:
                 sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
+
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_error')
+            sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
 
             # "Native extensions" for SLURM (see DRMAA or SAGA)
             nativeConfig = os.getenv('TOIL_SLURM_ARGS')
@@ -227,7 +237,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         # --format to get memory, cpu
         max_cpu = 0
         max_mem = MemoryString('0')
-        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
+        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).decode('utf-8').split('\n')
         for line in lines:
             values = line.split()
             if len(values) < 2:

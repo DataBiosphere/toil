@@ -25,13 +25,13 @@ from toil.lib.memoize import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
+from boto.utils import get_instance_metadata
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
 from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import *
 from toil.lib.context import Context
-from boto.utils import get_instance_metadata
 from toil.lib.retry import retry
 from toil.lib.memoize import less_strict_bool
 from toil.provisioners import NoSuchClusterException
@@ -40,6 +40,12 @@ from toil.lib.generatedEC2Lists import E2Instances
 
 logger = logging.getLogger(__name__)
 logging.getLogger("boto").setLevel(logging.CRITICAL)
+# Role name (used as the suffix) for EC2 instance profiles that are automatically created by Toil.
+_INSTANCE_PROFILE_ROLE_NAME = 'toil'
+# The tag key that specifies the Toil node type ("leader" or "worker") so that
+# leader vs. worker nodes can be robustly identified.
+_TOIL_NODE_TYPE_TAG_KEY = 'ToilNodeType'
+
 
 def awsRetryPredicate(e):
     if not isinstance(e, BotoServerError):
@@ -88,6 +94,10 @@ def awsRetry(f):
     return wrapper
 
 
+class InvalidClusterStateException(Exception):
+    pass
+
+
 class AWSProvisioner(AbstractProvisioner):
     """
     Implements an AWS provisioner using the boto libraries.
@@ -95,6 +105,7 @@ class AWSProvisioner(AbstractProvisioner):
 
     def __init__(self, clusterName, zone, nodeStorage, sseKey):
         super(AWSProvisioner, self).__init__(clusterName, zone, nodeStorage)
+        self.cloud = 'aws'
         self._sseKey = sseKey
         if not zone:
             self._zone = getCurrentAWSZone()
@@ -109,7 +120,7 @@ class AWSProvisioner(AbstractProvisioner):
         is the leader.
         """
         instanceMetaData = get_instance_metadata()
-        region = Context.availability_zone_re.match(self._zone).group(1)
+        region = zoneToRegion(self._zone)
         conn = boto.ec2.connect_to_region(region)
         instance = conn.get_all_instances(instance_ids=[instanceMetaData["instance-id"]])[0].instances[0]
         self.clusterName = str(instance.tags["Name"])
@@ -119,6 +130,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._keyName = list(instanceMetaData['public-keys'].keys())[0]
         self._tags = self.getLeader().tags
         self._masterPublicKey = self._setSSH()
+        self._leaderProfileArn = instanceMetaData['iam']['info']['InstanceProfileArn']
 
     def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
         """
@@ -130,9 +142,9 @@ class AWSProvisioner(AbstractProvisioner):
         if 'keyName' not in kwargs:
             raise RuntimeError("A keyPairName is required for the AWS provisioner.")
         self._keyName = kwargs['keyName']
-        self._vpcSubnet = kwargs['vpcSubnet'] if 'vpcSubnet' in kwargs else None
+        self._vpcSubnet = kwargs.get('vpcSubnet')
 
-        profileARN = self._getProfileARN()
+        profileArn = kwargs.get('awsEc2ProfileArn') or self._getProfileArn()
         # the security group name is used as the cluster identifier
         sgs = self._createSecurityGroup()
         bdm = self._getBlockDeviceMapping(E2Instances[leaderNodeType], rootVolSize=leaderStorage)
@@ -142,7 +154,7 @@ class AWSProvisioner(AbstractProvisioner):
         specKwargs = {'key_name': self._keyName, 'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': leaderNodeType,
                   'user_data': userData, 'block_device_map': bdm,
-                  'instance_profile_arn': profileARN,
+                  'instance_profile_arn': profileArn,
                   'placement': self._zone}
         if self._vpcSubnet:
             specKwargs["subnet_id"] = self._vpcSubnet
@@ -158,7 +170,7 @@ class AWSProvisioner(AbstractProvisioner):
                           preemptable=False, tags=leader.tags)
         leaderNode.waitForNode('toil_leader')
 
-        defaultTags = {'Name': self.clusterName, 'Owner': owner}
+        defaultTags = {'Name': self.clusterName, 'Owner': owner, _TOIL_NODE_TYPE_TAG_KEY: 'leader'}
         if kwargs['userTags']:
             defaultTags.update(kwargs['userTags'])
 
@@ -200,16 +212,36 @@ class AWSProvisioner(AbstractProvisioner):
         def expectedShutdownErrors(e):
             return e.status == 400 and 'dependent object' in e.body
 
+        def destroyInstances(instances):
+            """
+            Similar to _terminateInstances, except that it also cleans up any
+            resources associated with the instances (e.g. IAM profiles).
+            """
+            self._deleteIAMProfiles(instances)
+            self._terminateInstances(instances)
+
+        # We should terminate the leader first in case a workflow is still running in the cluster.
+        # The leader may create more instances while we're terminating the workers.
+        vpcId = None
+        try:
+            leader = self.getLeader(returnRawInstance=True)
+            vpcId = leader.vpc_id
+            logger.info('Terminating the leader first ...')
+            destroyInstances([leader])
+            logger.info('Now terminating any remaining workers ...')
+        except (NoSuchClusterException, InvalidClusterStateException):
+            # It's ok if the leader is not found. We'll terminate any remaining
+            # instances below anyway.
+            pass
+
         instances = self._getNodesInCluster(nodeType=None, both=True)
         spotIDs = self._getSpotRequestIDs()
         if spotIDs:
             self._ctx.ec2.cancel_spot_instance_requests(request_ids=spotIDs)
         instancesToTerminate = awsFilterImpairedNodes(instances, self._ctx.ec2)
-        vpcId = None
         if instancesToTerminate:
-            vpcId = instancesToTerminate[0].vpc_id
-            self._deleteIAMProfiles(instances=instancesToTerminate)
-            self._terminateInstances(instances=instancesToTerminate)
+            vpcId = vpcId or instancesToTerminate[0].vpc_id
+            destroyInstances(instancesToTerminate)
         if len(instances) == len(instancesToTerminate):
             logger.debug('Deleting security group...')
             removed = False
@@ -247,7 +279,6 @@ class AWSProvisioner(AbstractProvisioner):
                 raise RuntimeError("No spot bid given for a preemptable node request.")
         instanceType = E2Instances[nodeType]
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self._nodeStorage)
-        arn = self._getProfileARN()
 
         keyPath = self._sseKey if self._sseKey else None
         userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
@@ -257,7 +288,7 @@ class AWSProvisioner(AbstractProvisioner):
                   'instance_type': instanceType.name,
                   'user_data': userData,
                   'block_device_map': bdm,
-                  'instance_profile_arn': arn,
+                  'instance_profile_arn': self._leaderProfileArn,
                   'placement': self._zone,
                   'subnet_id': self._subnetID}
 
@@ -265,7 +296,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         for attempt in retry(predicate=awsRetryPredicate):
             with attempt:
-                # after we start launching instances we want to insure the full setup is done
+                # after we start launching instances we want to ensure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
                 # every request in this method
                 if not preemptable:
@@ -291,6 +322,7 @@ class AWSProvisioner(AbstractProvisioner):
             with attempt:
                 wait_instances_running(self._ctx.ec2, instancesLaunched)
 
+        self._tags[_TOIL_NODE_TYPE_TAG_KEY] = 'worker'
         AWSProvisioner._addTags(instancesLaunched, self._tags)
         if self._sseKey:
             for i in instancesLaunched:
@@ -322,7 +354,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._zone = getCurrentAWSZone()
             if self._zone is None:
                 raise RuntimeError(
-                    'Could not determine availability zone. Insure that one of the following '
+                    'Could not determine availability zone. Ensure that one of the following '
                     'is true: the --zone flag is set, the TOIL_AWS_ZONE environment variable '
                     'is set, ec2_region_name is set in the .boto file, or that '
                     'you are running on EC2.')
@@ -358,7 +390,7 @@ class AWSProvisioner(AbstractProvisioner):
             namespace = '/' + namespace + '/'
         return namespace.replace('-', '/')
 
-    def getLeader(self, wait=False):
+    def getLeader(self, wait=False, returnRawInstance=False):
         assert self._ctx
         instances = self._getNodesInCluster(nodeType=None, both=True)
         instances.sort(key=lambda x: x.launch_time)
@@ -366,6 +398,12 @@ class AWSProvisioner(AbstractProvisioner):
             leader = instances[0]  # assume leader was launched first
         except IndexError:
             raise NoSuchClusterException(self.clusterName)
+        if (leader.tags.get(_TOIL_NODE_TYPE_TAG_KEY) or 'leader') != 'leader':
+            raise InvalidClusterStateException(
+                'Invalid cluster state! The first launched instance appears not to be the leader '
+                'as it is missing the "leader" tag. The safest recovery is to destroy the cluster '
+                'and restart the job. Incorrect Leader ID: %s' % leader.id
+            )
         leaderNode = Node(publicIP=leader.ip_address, privateIP=leader.private_ip_address,
                           name=leader.id, launchTime=leader.launch_time, nodeType=None,
                           preemptable=False, tags=leader.tags)
@@ -376,7 +414,7 @@ class AWSProvisioner(AbstractProvisioner):
             self._waitForIP(leader)
             leaderNode.waitForNode('toil_leader')
 
-        return leaderNode
+        return leader if returnRawInstance else leaderNode
 
     @classmethod
     @awsRetry
@@ -400,7 +438,7 @@ class AWSProvisioner(AbstractProvisioner):
         while True:
             time.sleep(a_short_time)
             instance.update()
-            if instance.ip_address or instance.public_dns_name:
+            if instance.ip_address or instance.public_dns_name or instance.private_ip_address:
                 logger.debug('...got ip')
                 break
 
@@ -426,6 +464,11 @@ class AWSProvisioner(AbstractProvisioner):
             # boto won't look things up by the ARN so we have to parse it to get
             # the profile name
             profileName = profile.rsplit('/')[-1]
+
+            # Only delete profiles that were automatically created by Toil.
+            if profileName != self._ctx.to_aws_name(_INSTANCE_PROFILE_ROLE_NAME):
+                continue
+
             try:
                 profileResult = self._ctx.iam.get_instance_profile(profileName)
             except BotoServerError as e:
@@ -476,7 +519,7 @@ class AWSProvisioner(AbstractProvisioner):
     @classmethod
     def _getBlockDeviceMapping(cls, instanceType, rootVolSize=50):
         # determine number of ephemeral drives via cgcloud-lib (actually this is moved into toil's lib
-        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.lowercase[1:]]
+        bdtKeys = [''] + ['/dev/xvd{}'.format(c) for c in string.ascii_lowercase[1:]]
         bdm = BlockDeviceMapping()
         # Change root volume size to allow for bigger Docker instances
         root_vol = BlockDeviceType(delete_on_termination=True)
@@ -554,14 +597,13 @@ class AWSProvisioner(AbstractProvisioner):
         return out
 
     @awsRetry
-    def _getProfileARN(self):
+    def _getProfileArn(self):
         assert self._ctx
         def addRoleErrors(e):
             return e.status == 404
-        roleName = 'toil'
         policy = dict(iam_full=iamFullPolicy, ec2_full=ec2FullPolicy,
                       s3_full=s3FullPolicy, sbd_full=sdbFullPolicy)
-        iamRoleName = self._ctx.setup_iam_ec2_role(role_name=roleName, policies=policy)
+        iamRoleName = self._ctx.setup_iam_ec2_role(role_name=_INSTANCE_PROFILE_ROLE_NAME, policies=policy)
 
         try:
             profile = self._ctx.iam.get_instance_profile(iamRoleName)

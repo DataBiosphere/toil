@@ -62,7 +62,7 @@ An example of this would be running the following::
 
 Where ``discoverfiles.py`` is the following:
 
-.. literalinclude:: ../../../src/toil/test/docs/scripts/discoverfiles.py
+.. literalinclude:: ../../../src/toil/test/docs/scripts/tutorial_discoverfiles.py
 
 Notice the ``displayName`` key, which can rename a job, giving it an alias when it is finally displayed in stats.
 Running this workflow file should record three job names: ``sysFiles`` (job1), ``userFiles`` (job2), and ``discoverFiles`` (job3).
@@ -267,7 +267,7 @@ Finally, you can execute remote commands with the following syntax::
     $ toil ssh-cluster CLUSTER-NAME-HERE remoteCommand
 
 It is not advised that you run your Toil workflow using remote execution like this
-unless a tool like `nohup <https://linux.die.net/man/1/nohup>`_ is used to insure the
+unless a tool like `nohup <https://linux.die.net/man/1/nohup>`_ is used to ensure the
 process does not die if the SSH connection is interrupted.
 
 For an example usage, see :ref:`Autoscaling`.

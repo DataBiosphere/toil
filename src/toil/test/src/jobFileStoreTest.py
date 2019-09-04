@@ -23,7 +23,8 @@ from six.moves import xrange
 
 from toil.common import Toil
 from toil.job import Job
-from toil.test import ToilTest, slow
+from toil.fileStores import FileID
+from toil.test import ToilTest, slow, travis_test
 
 PREFIX_LENGTH=200
 
@@ -32,24 +33,28 @@ PREFIX_LENGTH=200
 # at the contents of read files and thus we will let this test remain as-is.
 class JobFileStoreTest(ToilTest):
     """
-    Tests testing the methods defined in :class:toil.fileStore.FileStore.
+    Tests testing the methods defined in :class:toil.fileStores.abstractFileStore.AbstractFileStore.
     """
+    
+    @travis_test
     def testCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
-
+    
+    @travis_test
     def testNonCachingFileStore(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.disableCaching = True
         with Toil(options) as workflow:
             workflow.start(Job.wrapJobFn(simpleFileStoreJob))
-
+    
+    @travis_test
     def _testJobFileStore(self, retryCount=0, badWorker=0.0, stringNo=1, stringLength=1000000,
                           testNo=2):
         """
         Creates a chain of jobs, each reading and writing files using the 
-        toil.fileStore.FileStore interface. Verifies the files written are always what we
+        toil.fileStores.abstractFileStore.AbstractFileStore interface. Verifies the files written are always what we
         expect.
         """
         for test in range(testNo):
@@ -89,7 +94,7 @@ class JobFileStoreTest(ToilTest):
 
 def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
     """
-    Test job exercises toil.fileStore.FileStore functions
+    Test job exercises toil.fileStores.abstractFileStore.AbstractFileStore functions
     """
     outputFileStoreIds = [] #Strings passed to the next job in the chain
     
@@ -134,12 +139,22 @@ def fileTestJob(job, inputFileStoreIDs, testStrings, chainLength):
             with open(tempFile, 'w') as fH:
                 fH.write(testString)
             #Write a local copy of the file using the local file
-            outputFileStoreIds.append(job.fileStore.writeGlobalFile(tempFile))
+            fileStoreID = job.fileStore.writeGlobalFile(tempFile)
+            
+            # Make sure it returned a valid and correct FileID with the right size
+            assert isinstance(fileStoreID, FileID)
+            assert fileStoreID.size == len(testString.encode('utf-8'))
+            
+            outputFileStoreIds.append(fileStoreID)
         else:
             #Use the writeGlobalFileStream method to write the file
             with job.fileStore.writeGlobalFileStream() as (fH, fileStoreID):
                 fH.write(testString.encode('utf-8'))
                 outputFileStoreIds.append(fileStoreID)
+                
+            #Make sure it returned a valid and correct FileID with the right size
+            assert isinstance(fileStoreID, FileID)
+            assert fileStoreID.size == len(testString.encode('utf-8'))
 
     if chainLength > 0:
         #Make a child that will read these files and check it gets the same results

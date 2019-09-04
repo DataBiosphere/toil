@@ -95,6 +95,10 @@ def main():
                         help="The location of the file containing the Azure storage credentials. If not specified,"
                              " the default file is used with Azure provisioning. Use 'None' to disable"
                              " the transfer of credentials.")
+    parser.add_argument('--awsEc2ProfileArn', dest='awsEc2ProfileArn', default=None, type=str,
+                        help="If provided, the specified ARN is used as the instance profile for EC2 instances."
+                             "Useful for setting custom IAM profiles. If not specified, a new IAM role is created "
+                             "by default with sufficient access to perform basic cluster operations.")
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
     checkValidNodeTypes(config.provisioner, config.nodeTypes)
@@ -154,7 +158,8 @@ def main():
                           userTags=tagsDict,
                           vpcSubnet=config.vpcSubnet,
                           publicKeyFile=config.publicKeyFile,
-                          azureStorageCredentials=config.azureStorageCredentials)
+                          azureStorageCredentials=config.azureStorageCredentials,
+                          awsEc2ProfileArn=config.awsEc2ProfileArn)
 
     for nodeType, workers in zip(nodeTypes, numNodes):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)

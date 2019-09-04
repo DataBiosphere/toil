@@ -117,10 +117,10 @@ class ParasolBatchSystem(BatchSystemSupport):
                                        bufsize=-1)
             stdout, stderr = process.communicate()
             status = process.wait()
-            for line in stderr.split('\n'):
+            for line in stderr.decode('utf-8').split('\n'):
                 if line: logger.warn(line)
             if status == 0:
-                return 0, stdout.split('\n')
+                return 0, stdout.decode('utf-8').split('\n')
             message = 'Command %r failed with exit status %i' % (command, status)
             if autoRetry:
                 logger.warn(message)

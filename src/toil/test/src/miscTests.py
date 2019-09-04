@@ -24,7 +24,7 @@ import sys
 
 from toil.lib.exceptions import panic
 from toil.common import getNodeID
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, travis_test
 
 log = logging.getLogger(__name__)
 logging.basicConfig()
@@ -38,12 +38,13 @@ class MiscTests(ToilTest):
     def setUp(self):
         super(MiscTests, self).setUp()
         self.testDir = self._createTempDir()
-
+    
+    @travis_test
     def testIDStability(self):
         prevNodeID = None
         for i in range(10, 1):
             nodeID = getNodeID()
-            self.assertEquals(nodeID, prevNodeID)
+            self.assertEqual(nodeID, prevNodeID)
             prevNodeID = nodeID
 
     @slow
@@ -93,24 +94,29 @@ class MiscTests(ToilTest):
 
 
 class TestPanic(ToilTest):
+    
+    @travis_test
     def test_panic_by_hand(self):
         try:
             self.try_and_panic_by_hand()
         except:
             self.__assert_raised_exception_is_primary()
-
+    
+    @travis_test
     def test_panic(self):
         try:
             self.try_and_panic()
         except:
             self.__assert_raised_exception_is_primary()
-
+    
+    @travis_test
     def test_panic_with_secondary(self):
         try:
             self.try_and_panic_with_secondary()
         except:
             self.__assert_raised_exception_is_primary()
-
+    
+    @travis_test
     def test_nested_panic(self):
         try:
             self.try_and_nested_panic_with_secondary()
@@ -156,8 +162,8 @@ class TestPanic(ToilTest):
 
     def __assert_raised_exception_is_primary(self):
         exc_type, exc_value, exc_traceback = sys.exc_info()
-        self.assertEquals(exc_type, ValueError)
-        self.assertEquals(str(exc_value), "primary")
+        self.assertEqual(exc_type, ValueError)
+        self.assertEqual(str(exc_value), "primary")
         while exc_traceback.tb_next is not None:
             exc_traceback = exc_traceback.tb_next
-        self.assertEquals(exc_traceback.tb_lineno, self.line_of_primary_exc)
+        self.assertEqual(exc_traceback.tb_lineno, self.line_of_primary_exc)

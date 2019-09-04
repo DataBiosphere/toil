@@ -21,15 +21,18 @@ sdistName = os.environ['_TOIL_SDIST_NAME']
 
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure' extra with PyNACL
+                         'python3.6',
+                         'python3.6-dev',
                          'python-dev',  # For installing Python packages with native code
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
+                         'python3-pip',
                          'libcurl4-openssl-dev',
                          'libssl-dev',
                          'wget',
                          'curl',
                          'openssh-server',
-                         'mesos=1.0.1-2.0.93.ubuntu1404',
-                         "nodejs", # CWL support for javascript expressions
+                         'mesos=1.0.1-2.0.94.ubuntu1604',
+                         "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen'])
 
@@ -55,25 +58,30 @@ motd = heredoc('''
 motd = ''.join(l + '\\n\\\n' for l in motd.splitlines())
 
 print(heredoc('''
-    FROM ubuntu:14.04
+    FROM ubuntu:16.04
 
-    RUN echo "deb http://repos.mesosphere.io/ubuntu/ trusty main" \
+    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install apt-transport-https ca-certificates software-properties-common && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+    RUN echo "deb http://repos.mesosphere.io/ubuntu/ xenial main" \
         > /etc/apt/sources.list.d/mesosphere.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
-        && echo "deb http://deb.nodesource.com/node_6.x trusty main" \
+        && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
         > /etc/apt/sources.list.d/nodesource.list \
-        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280 \
-        && apt-get -y update \
-        && apt-get -y install {dependencies} \
-        && apt-get clean && rm -rf /var/lib/apt/lists/*
+        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
+
+    RUN add-apt-repository -y ppa:jonathonf/python-3.6
+    
+    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
 
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
 
     ADD waitForKey.sh /usr/bin/waitForKey.sh
 
-    RUN chmod 777 /usr/bin/waitForKey.sh
+    ADD customDockerInit.sh /usr/bin/customDockerInit.sh
 
+    RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh
+    
     # The stock pip is too old and can't install from sdist with extras
     RUN pip install --upgrade pip==9.0.1
 
@@ -95,9 +103,6 @@ print(heredoc('''
 
     # Fix for Mesos interface dependency missing on ubuntu
     RUN pip install protobuf==3.0.0
-
-    # Move the Mesos module onto the Python path
-    RUN ln -s /usr/lib/python2.7/site-packages/mesos /usr/local/lib/python2.7/dist-packages/mesos
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix

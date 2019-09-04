@@ -26,9 +26,8 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
 
-baseVersion = '3.19.0a1'
+baseVersion = '3.21.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
-dockerRegistry = 'quay.io/ucsc_cgl'
 dockerName = 'toil'
 
 
@@ -106,13 +105,18 @@ def buildNumber():
 def currentCommit():
     from subprocess import check_output
     try:
-        output = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).split()[0]
+        output = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).decode('utf-8').split()[0]
     except:
         # Return this we are not in a git environment.
         return '000'
     if isinstance(output, bytes):
         return output.decode('utf-8')
     return str(output)
+
+
+def dockerRegistry():
+    import os
+    return os.getenv('TOIL_DOCKER_REGISTRY', 'quay.io/ucsc_cgl')
 
 
 def dirty():

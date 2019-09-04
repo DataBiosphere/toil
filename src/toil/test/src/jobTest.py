@@ -30,7 +30,7 @@ from toil.common import Toil
 from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, travis_test
 
 logger = logging.getLogger(__name__)
 
@@ -85,10 +85,11 @@ class JobTest(ToilTest):
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCDEFG")
+            self.assertEqual(open(outFile, 'r').readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
-
+    
+    @travis_test
     def testStatic2(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -125,7 +126,7 @@ class JobTest(ToilTest):
             Job.Runner.startToil(A, options)
 
             # Check output
-            self.assertEquals(open(outFile, 'r').readline(), "ABCDE")
+            self.assertEqual(open(outFile, 'r').readline(), "ABCDE")
         finally:
             os.remove(outFile)
 
@@ -143,7 +144,8 @@ class JobTest(ToilTest):
                 pass
             else:
                 self.fail()
-
+    
+    @travis_test
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'
@@ -175,7 +177,8 @@ class JobTest(ToilTest):
                 pass
             else:
                 self.fail()
-
+    
+    @travis_test
     def testDeadlockDetection(self):
         """
         Randomly generate job graphs with various types of cycle in them and
@@ -200,7 +203,7 @@ class JobTest(ToilTest):
             rootJob.checkJobGraphAcylic()  # This should not throw an exception
             rootJob.checkJobGraphConnected()  # Nor this
             # Check root detection explicitly
-            self.assertEquals(rootJob.getRootJobs(), {rootJob})
+            self.assertEqual(rootJob.getRootJobs(), {rootJob})
 
             # Test making multiple roots
             childEdges2 = childEdges.copy()
@@ -437,7 +440,7 @@ class JobTest(ToilTest):
             for i in range(nodeNumber):
                 with open(os.path.join(tempDir, str(i)), 'r') as fH:
                     ordering = list(map(int, fH.readline().split()))
-                    self.assertEquals(int(ordering[-1]), i)
+                    self.assertEqual(int(ordering[-1]), i)
                     for j in ordering[:-1]:
                         adjacencyList[int(j)].add(i)
             # Check the ordering retains an acyclic graph

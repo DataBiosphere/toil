@@ -47,7 +47,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
-            for currline in stdout.split('\n'):
+            for currline in stdout.decode('utf-8').split('\n'):
                 items = currline.strip().split()
                 if items:
                     if items[0] in currentjobs and items[4] == 'r':
@@ -65,7 +65,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
         def submitJob(self, subLine):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
-            result = int(process.stdout.readline().strip())
+            result = int(process.stdout.readline().decode('utf-8').strip())
             return result
 
         def getJobExitCode(self, sgeJobID):
@@ -124,6 +124,11 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             if cpu is not None and math.ceil(cpu) > 1:
                 peConfig = os.getenv('TOIL_GRIDENGINE_PE') or 'shm'
                 qsubline.extend(['-pe', peConfig, str(int(math.ceil(cpu)))])
+
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_error')
+            sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
+
             return qsubline
 
     """
@@ -138,7 +143,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
     def obtainSystemConstants(cls):
         def byteStrip(s):
             return s.encode('utf-8').strip()
-        lines = [_f for _f in map(byteStrip, subprocess.check_output(["qhost"]).split('\n')) if _f]
+        lines = [_f for _f in map(byteStrip, subprocess.check_output(["qhost"]).decode('utf-8').split('\n')) if _f]
         line = lines[0]
         items = line.strip().split()
         num_columns = len(items)

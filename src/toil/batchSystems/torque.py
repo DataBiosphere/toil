@@ -48,7 +48,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             """ Determines PBS/Torque version via pbsnodes
             """
             try:
-                out = subprocess.check_output(["pbsnodes", "--version"])
+                out = subprocess.check_output(["pbsnodes", "--version"]).decode('utf-8')
 
                 if "PBSPro" in out:
                      logger.debug("PBS Pro proprietary Torque version detected")
@@ -86,7 +86,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             # qstat supports XML output which is more comprehensive, but PBSPro does not support it 
             # so instead we stick with plain commandline qstat tabular outputs
-            for currline in stdout.split('\n'):
+            for currline in stdout.decode('utf-8').split('\n'):
                 items = currline.strip().split()
                 if items:
                     jobid = items[0].strip()
@@ -123,7 +123,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command):
-            return self.prepareQsub(cpu, memory, jobID) + [self.generateTorqueWrapper(command)]
+            return self.prepareQsub(cpu, memory, jobID) + [self.generateTorqueWrapper(command, jobID)]
 
         def submitJob(self, subLine):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
@@ -162,13 +162,6 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             # TODO: passing $PWD on command line not working for -d, resorting to
             # $PBS_O_WORKDIR but maybe should fix this here instead of in script?
-
-            # TODO: we previosuly trashed the stderr/stdout, as in the commented
-            # code, but these may be retained by others, particularly for debugging.
-            # Maybe an option or attribute w/ a location for storing the logs?
-
-            # qsubline = ['qsub', '-V', '-j', 'oe', '-o', '/dev/null',
-            #             '-e', '/dev/null', '-N', 'toil_job_{}'.format(jobID)]
 
             qsubline = ['qsub', '-S', '/bin/sh', '-V', '-N', 'toil_job_{}'.format(jobID)]
 
@@ -211,14 +204,19 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             return qsubline
 
-        def generateTorqueWrapper(self, command):
+        def generateTorqueWrapper(self, command, jobID):
             """
             A very simple script generator that just wraps the command given; for
             now this goes to default tempdir
             """
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'torque', '$PBS_JOBID', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'torque', '$PBS_JOBID', 'std_error')
+
             _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
             fh = open(tmpFile , 'w')
             fh.write("#!/bin/sh\n")
+            fh.write("#PBS -o {}\n".format(stdoutfile))
+            fh.write("#PBS -e {}\n".format(stderrfile))
             fh.write("cd $PBS_O_WORKDIR\n\n")
             fh.write(command + "\n")
 

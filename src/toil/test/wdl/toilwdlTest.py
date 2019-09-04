@@ -25,11 +25,13 @@ from toil.wdl.wdl_functions import read_float
 from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
+from toil.wdl.wdl_functions import basename
 from toil.test import ToilTest, slow, needs_docker
 from toil import urlretrieve
 import zipfile
 import shutil
 import uuid
+
 
 class ToilWdlIntegrationTest(ToilTest):
     """A set of test cases for toilwdl.py"""
@@ -150,6 +152,13 @@ class ToilWdlIntegrationTest(ToilTest):
             assert small_file >= 1800, small_file
             assert larger_file >= 70000000, larger_file
             assert larger_file_in_mb >= 70, larger_file_in_mb
+
+    # estimated run time <1 sec
+    def testFn_Basename(self):
+        assert basename('/home/quokka/git/delete/toil/src/toil/wdl/toilwdl.py', '.py') == 'toilwdl'
+        assert basename('/home/quokka/git/delete/toil/src/toil/wdl/toilwdl.py') == 'toilwdl.py'
+        assert basename('toilwdl.py', '.py') == 'toilwdl'
+        assert basename('toilwdl.py') == 'toilwdl.py'
 
     # estimated run time <1 sec
     def testFn_Glob(self):
@@ -419,7 +428,9 @@ def remove_outputs(output_dir):
                       'post_mapping.log',
                       'wdl-stats.log',
                       'xcor.json',
-                      'xcor.log']
+                      'xcor.log',
+                      'toilwdl_compiled.pyc',
+                      'toilwdl_compiled.py']
     other_log_outputs = ['post_processing.log',
                          'md5.log']
     outputs = encode_outputs + other_log_outputs

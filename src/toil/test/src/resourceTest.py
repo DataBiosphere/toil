@@ -108,7 +108,7 @@ class ResourceTest(ToilTest):
     def testBuiltIn(self):
         # Create a ModuleDescriptor for the module containing ModuleDescriptor, i.e. toil.resource
         module_name = ModuleDescriptor.__module__
-        self.assertEquals(module_name, 'toil.resource')
+        self.assertEqual(module_name, 'toil.resource')
         self._test(module_name, shouldBelongToToil=True)
 
     def _test(self, module_name,
@@ -116,12 +116,12 @@ class ResourceTest(ToilTest):
         module = ModuleDescriptor.forModule(module_name)
         # Assert basic attributes and properties
         self.assertEqual(module.belongsToToil, shouldBelongToToil)
-        self.assertEquals(module.name, module_name)
+        self.assertEqual(module.name, module_name)
         if shouldBelongToToil:
             self.assertTrue(module.dirPath.endswith('/src'))
 
         # Before the module is saved as a resource, localize() and globalize() are identity
-        # methods. This should log warnings.
+        # methods. This should log.warnings.
         self.assertIs(module.localize(), module)
         self.assertIs(module.globalize(), module)
         # Create a mock job store ...
@@ -158,7 +158,7 @@ class ResourceTest(ToilTest):
                 else:
                     self.assertEqual(actualContents, expectedContents)
 
-        self.assertEquals(resource.url, url)
+        self.assertEqual(resource.url, url)
         # Now we're on the worker. Prepare the storage for localized resources
         Resource.prepareSystem()
         try:
@@ -168,7 +168,7 @@ class ResourceTest(ToilTest):
             # original resource. Lookup will also be used when we localize the module that was
             # originally used to create the resource.
             localResource = Resource.lookup(module._resourcePath)
-            self.assertEquals(resource, localResource)
+            self.assertEqual(resource, localResource)
             self.assertIsNot(resource, localResource)
             # Now show that we can localize the module using the registered resource. Set up a mock
             # urlopen() that yields the zipped tree ...
@@ -178,12 +178,12 @@ class ResourceTest(ToilTest):
                 # ... and use it to download and unpack the resource
                 localModule = module.localize()
             # The name should be equal between original and localized resource ...
-            self.assertEquals(module.name, localModule.name)
+            self.assertEqual(module.name, localModule.name)
             # ... but the directory should be different.
-            self.assertNotEquals(module.dirPath, localModule.dirPath)
+            self.assertNotEqual(module.dirPath, localModule.dirPath)
             # Show that we can 'undo' localization. This is necessary when the user script's jobs
             #  are invoked on the worker where they generate more child jobs.
-            self.assertEquals(localModule.globalize(), module)
+            self.assertEqual(localModule.globalize(), module)
         finally:
             Resource.cleanSystem()
 
@@ -222,5 +222,5 @@ class ResourceTest(ToilTest):
             process = subprocess.Popen([scriptPath, jobStorePath], stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
             self.assertTrue('The name of a user script/module must end in .py or .pyc.' in stderr.decode('utf-8'))
-            self.assertNotEquals(0, process.returncode)
+            self.assertNotEqual(0, process.returncode)
             self.assertFalse(os.path.exists(jobStorePath))

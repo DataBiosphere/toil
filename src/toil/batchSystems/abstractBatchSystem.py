@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,12 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-
 from __future__ import absolute_import
-
 from future import standard_library
 standard_library.install_aliases()
+from future.utils import with_metaclass
 from builtins import object
 import os
 import shutil
@@ -26,16 +24,17 @@ from collections import namedtuple
 from contextlib import contextmanager
 
 from toil.lib.objects import abstractclassmethod
-
 from toil.batchSystems import registry
 from toil.common import Toil, cacheDirName
-from toil.fileStore import shutdownFileStore
-from future.utils import with_metaclass
+from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.deferred import DeferredFunctionManager
+
 try:
     from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
 except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
+
 logger = logging.getLogger(__name__)
 
 
@@ -281,6 +280,32 @@ class BatchSystemSupport(AbstractBatchSystem):
                 raise RuntimeError("%s does not exist in current environment", name)
         self.environment[name] = value
 
+    def formatStdOutErrPath(self, jobID, batchSystem, batchJobIDfmt, fileDesc):
+        """
+        Format path for batch system standard output/error and other files.
+
+        Files will be written to the Toil workflow directory with names containing
+        both the Toil and batch system job IDs, for ease of debugging job failures.
+
+        :param: string jobID : Toil job ID
+        :param: string batchSystem : Name of the batch system
+        :param: string batchJobIDfmt : A string which the particular batch system
+            will format into the batch job ID once it is submitted
+        :param: string fileDesc : File description, should be 'std_output' for standard
+             output, 'std_error' for standard error, and as appropriate for other files
+
+        :rtype: string : Formatted filename; however if self.config.noStdOutErr is true,
+             returns '/dev/null' or equivalent.
+
+        """
+        if self.config.noStdOutErr:
+            return os.devnull
+
+        workflowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
+        fileName = 'toil_job_{jobID}_batch_{batchSystem}_{batchJobIDfmt}_{fileDesc}.log'.format(
+            jobID=jobID, batchSystem=batchSystem, batchJobIDfmt=batchJobIDfmt, fileDesc=fileDesc)
+        return os.path.join(workflowDir, fileName)
+
     @staticmethod
     def workerCleanup(info):
         """
@@ -291,12 +316,13 @@ class BatchSystemSupport(AbstractBatchSystem):
         """
         assert isinstance(info, WorkerCleanupInfo)
         workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
+        DeferredFunctionManager.cleanupWorker(workflowDir)
         workflowDirContents = os.listdir(workflowDir)
-        shutdownFileStore(workflowDir, info.workflowID)
+        AbstractFileStore.shutdownFileStore(workflowDir, info.workflowID)
         if (info.cleanWorkDir == 'always'
             or info.cleanWorkDir in ('onSuccess', 'onError')
             and workflowDirContents in ([], [cacheDirName(info.workflowID)])):
-            shutil.rmtree(workflowDir)
+            shutil.rmtree(workflowDir, ignore_errors=True)
 
 
 class BatchSystemLocalSupport(BatchSystemSupport):
@@ -317,7 +343,8 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         Returns the jobID if the jobNode has been submitted to the local queue,
         otherwise returns None
         """
-        if jobNode.jobName.startswith(CWL_INTERNAL_JOBS):
+        if (not self.config.runCwlInternalJobsOnWorkers
+                and jobNode.jobName.startswith(CWL_INTERNAL_JOBS)):
             return self.localBatch.issueBatchJob(jobNode)
         else:
             return None

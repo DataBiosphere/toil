@@ -5,13 +5,15 @@ import os
 import tempfile
 from functools import partial
 
-from toil.test import ToilTest
+from toil.test import ToilTest, travis_test
 
 
 class SystemTest(ToilTest):
     """
     Test various assumptions about the operating system's behavior
     """
+    
+    @travis_test
     def testAtomicityOfNonEmptyDirectoryRenames(self):
         for _ in range(100):
             parent = self._createTempDir(purpose='parent')
@@ -27,15 +29,15 @@ class SystemTest(ToilTest):
             finally:
                 pool.close()
                 pool.join()
-            self.assertEquals(len(grandChildIds), numTasks)
+            self.assertEqual(len(grandChildIds), numTasks)
             # Assert that we only had one winner
             grandChildIds = [n for n in grandChildIds if n is not None]
-            self.assertEquals(len(grandChildIds), 1)
+            self.assertEqual(len(grandChildIds), 1)
             # Assert that the winner's grandChild wasn't silently overwritten by a looser
             expectedGrandChildId = grandChildIds[0]
             actualGrandChild = os.path.join(child, 'grandChild')
             actualGrandChildId = os.stat(actualGrandChild).st_ino
-            self.assertEquals(actualGrandChildId, expectedGrandChildId)
+            self.assertEqual(actualGrandChildId, expectedGrandChildId)
 
 
 def _testAtomicityOfNonEmptyDirectoryRenamesTask(parent, child, _):

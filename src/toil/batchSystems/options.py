@@ -126,6 +126,13 @@ def addOptions(addOptionFn, config):
                 help="Do not add the default arguments: 'hv=MEMORY' & 'h_vmem=MEMORY' to "
                      "the qsub call, and instead rely on TOIL_GRIDGENGINE_ARGS to supply "
                      "alternative arguments.  Requires that TOIL_GRIDGENGINE_ARGS be set.")
+    addOptionFn("--runCwlInternalJobsOnWorkers", dest="runCwlInternalJobsOnWorkers",
+                action='store_true', default=None,
+                help=("Whether to run CWL internal jobs (e.g. CWLScatter) on the worker nodes "
+                      "instead of the primary node. If false (default), then all such jobs are run on "
+                      "the primary node. Setting this to true can speed up the pipeline for very large "
+                      "workflows with many sub-workflows and/or scatters, provided that the worker "
+                      "pool is large enough."))
 
     for o in _options:
         o(addOptionFn, config)

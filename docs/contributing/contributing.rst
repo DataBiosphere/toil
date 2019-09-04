@@ -11,7 +11,7 @@ environment variables are set (see :ref:`test_env_vars`).
 +-------------------------+---------------------------------------------------+
 |     TARGET              |        DESCRIPTION                                |
 +-------------------------+---------------------------------------------------+
-|  test                   | Invokes all tests.                                |
+| test                    | Invokes all tests.                                |
 +-------------------------+---------------------------------------------------+
 | integration_test        | Invokes only the integration tests.               |
 +-------------------------+---------------------------------------------------+
@@ -93,7 +93,7 @@ can be made available for local testing:
         $ export TOIL_X_KEYNAME=[Your Keyname]
         $ export TOIL_X_ZONE=[Desired Zone]
 
-   Where ``X`` is one of our currently supported cloud providers (``AZURE``, ``GCE``, ``AWS``).
+   Where ``X`` is one of our currently supported cloud providers (``AZURE (limited support)``, ``GCE``, ``AWS``).
 
  - For example, to prepare for running Azure related integration tests in the ``westus`` region::
 
@@ -317,80 +317,68 @@ Maintainer's Guidelines
 
 In general, as developers and maintainers of the code, we adhere to the following guidelines:
 
-* We strive to never break the build on master.
+* We strive to never break the build on master. All development should be done
+  on branches, in either the main Toil repository or in developers' forks.
 
 * Pull requests should be used for any and all changes (except truly trivial
   ones).
+  
+* Pull requests should be in response to issues. If you find yourself making a
+  pull request without an issue, you should create the issue first.
 
-* The commit message of direct commits to master must end in ``(resolves #``
-  followed by the issue number followed by ``)``.
 
 Naming Conventions
 ~~~~~~~~~~~~~~~~~~
 
-* The **branch name** for a pull request starts with ``issues/`` followed by the
-  issue number (or numbers, separated by a dash), followed by a short
-  snake-case description of the change. (There can be many open pull requests
-  with their associated branches at any given point in time and this convention
-  ensures that we can easily identify branches.)
-
-* The **commit message** of the first commit in a pull request needs to end in
-  ``(resolves #`` followed by the issue number, followed by ``)``. See `here`_
-  for details about writing properly-formatted and informative commit messages.
-
-* The title of the **pull request** needs to have the same ``(resolves #...)``
-  suffix as the commit message. This lets `Waffle`_ stack the pull request
-  and the associated issue. (Fortunately, Github automatically prepopulates the
-  title of the PR with the message of the first commit in the PR, so this isn't
-  any additional work.)
-
-Say there is an issue numbered #123 titled `Foo does not work`. The branch name
-would be ``issues/123-fix-foo`` and the title of the commit would be `Fix foo in
-case of bar (resolves #123).`
-
-* Pull requests that address **multiple issues** use the
-  ``(resolves #602, resolves #214)`` suffix in the request's title. These pull
-  requests can and should contain multiple commits, with each commit message
-  referencing the specific issue(s) it addresses. We may or may not squash the
-  commits in those PRs.
-
-.. _here: http://chris.beams.io/posts/git-commit/
-.. _Waffle: https://waffle.io/BD2KGenomics/toil
+* **Commit messages** *should* be `great`_. Most importantly, they *must*:
+  
+  - Have a short subject line. If in need of more space, drop down **two** lines
+    and write a body to explain what is changing and why it has to change.
+  
+  - Write the subject line as a command: `Destroy all humans`,
+    not `All humans destroyed`.
+  
+  - Reference the issue being fixed in a Github-parseable format, such as
+    `(resolves #1234)` at the end of the subject line, or `This will fix #1234.`
+    somewhere in the body. If no single commit on its own fixes the issue, the
+    cross-reference must appear in the pull request title or body instead.
+    
+* **Branches** in the main Toil repository *must* start with ``issues/``,
+  followed by the issue number (or numbers, separated by a dash), followed by a
+  short, lowercase, hyphenated description of the change. (There can be many open
+  pull requests with their associated branches at any given point in time and
+  this convention ensures that we can easily identify branches.)
+  
+  Say there is an issue numbered #123 titled `Foo does not work`. The branch name
+  would be ``issues/123-fix-foo`` and the title of the commit would be
+  `Fix foo in case of bar (resolves #123).`
+  
+.. _great: https://chris.beams.io/posts/git-commit/#seven-rules
 
 Pull Requests
 ~~~~~~~~~~~~~
 * All pull requests must be reviewed by a person other than the request's
   author.
 
-* Only the reviewer of a pull request can merge it.
+* Modified pull requests must be re-reviewed before merging. **Note that Github
+  does not enforce this!**
 
-* Until the pull request is merged, it should be continually rebased by the
-  author on top of master.
+* Pull requests will not be merged unless Travis and Gitlab CI tests pass.
+  Gitlab tests are only run on code in the main Toil repository on some branch,
+  so it is the responsibility of the approving reviewer to make sure that pull
+  requests from outside repositories are copied to branches in the main
+  repository. This can be accomplished with (from a Toil clone):
+  
+  .. code-block:: bash
+  
+      ./contrib/admin/test-pr theirusername their-branch issues/123-fix-description-here
+     
+  This must be repeated every time the PR submitter updates their PR, after
+  checking to see that the update is not malicious.
+  
+  If there is no issue corresponding to the PR, after which the branch can be
+  named, the reviewer of the PR should first create the issue.
+  
+  Developers who have push access to the main Toil repository are encouraged to
+  make their pull requests from within the repository, to avoid this step.
 
-* Pull requests are built automatically by Jenkins and won't be merged unless
-  all tests pass.
-
-* Ideally, a pull request should contain a single commit that addresses a
-  single, specific issue. Rebasing and squashing can be used to achieve that
-  goal (see :ref:`multi-author`).
-
-.. _multi-author:
-
-Multi-Author Pull Requests
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-* A pull request starts off as single-author and can be changed to multi-author
-  upon request via comment (typically by the reviewer) in the PR. The author of
-  a single-author PR has to explicitly grant the request.
-
-* Multi-author pull requests can have more than one commit. They must `not` be
-  rebased as doing so would create havoc for other contributors.
-
-* To keep a multi-author pull request up to date with master, merge from master
-  instead of rebasing on top of master.
-
-* Before the PR is merged, it may transition back to single-author mode, again
-  via comment request in the PR. Every contributor to the PR has to acknowledge
-  the request after making sure they don't have any unpushed changes they care
-  about. This is necessary because a single-author PR can be reabsed and
-  rebasing would make it hard to integrate these pushed commits.

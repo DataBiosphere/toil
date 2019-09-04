@@ -100,7 +100,7 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import read_tsv
                     from toil.wdl.wdl_functions import read_csv
                     from toil.wdl.wdl_functions import defined
-                    from os.path import basename
+                    from toil.wdl.wdl_functions import basename
                     import fnmatch
                     import textwrap
                     import subprocess
@@ -461,7 +461,6 @@ class SynthesizeWDL:
             fn_section += '        self.id_{input} = {input}\n'.format(input=input)
 
         fn_section += heredoc_wdl('''
-                                 super({jobname}Cls, self).__init__(*args, **kwargs)
 
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")
@@ -621,6 +620,7 @@ class SynthesizeWDL:
                 else:
                     fn_section += '{input}=None, '.format(input=var)
         fn_section += '*args, **kwargs):\n'
+        fn_section += '        super({jobname}Cls, self).__init__(*args, **kwargs)\n'.format(jobname=job)
 
         # TODO: Resolve inherent problems resolving resource requirements
         # In WDL, "local-disk " + 500 + " HDD" cannot be directly converted to python.
@@ -630,17 +630,17 @@ class SynthesizeWDL:
             if 'memory' in self.tasks_dictionary[job]['runtime']:
                 runtime_resources.append('memory=memory')
                 memory = self.tasks_dictionary[job]['runtime']['memory']
-                fn_section += '        # memory=parse_memory({})\n'.format(memory)
+                fn_section += '        memory=parse_memory({})\n'.format(memory)
             if 'cpu' in self.tasks_dictionary[job]['runtime']:
                 runtime_resources.append('cores=cores')
                 cores = self.tasks_dictionary[job]['runtime']['cpu']
-                fn_section += '        # cores=parse_cores({})\n'.format(cores)
+                fn_section += '        cores=parse_cores({})\n'.format(cores)
             if 'disks' in self.tasks_dictionary[job]['runtime']:
                 runtime_resources.append('disk=disk')
                 disk = self.tasks_dictionary[job]['runtime']['disks']
-                fn_section += '        # disk=parse_disk({})\n'.format(disk)
+                fn_section += '        disk=parse_disk({})\n'.format(disk)
             runtime_resources = ['self'] + runtime_resources
-            fn_section += '        # Job.__init__({})\n\n'.format(', '.join(runtime_resources))
+            fn_section += '        Job.__init__({})\n\n'.format(', '.join(runtime_resources))
 
         if 'inputs' in self.tasks_dictionary[job]:
             for i in self.tasks_dictionary[job]['inputs']:
@@ -658,7 +658,6 @@ class SynthesizeWDL:
                 fn_section += '        self.id_{} = {}\n'.format(var, var_expressn)
 
         fn_section += heredoc_wdl('''
-                                 super({jobname}Cls, self).__init__(*args, **kwargs)
 
                              def run(self, fileStore):
                                  fileStore.logToMaster("{jobname}")

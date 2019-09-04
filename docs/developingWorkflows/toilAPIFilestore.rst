@@ -1,12 +1,12 @@
 .. _api-filestore:
 
-Job.FileStore API
+job.fileStore API
 *****************
 
-The FileStore is an abstraction of a Toil run's shared storage.
+The AbstractFileStore is an abstraction of a Toil run's shared storage.
 
-.. autoclass:: toil.fileStore::FileStore
+.. autoclass:: toil.fileStores.abstractFileStore::AbstractFileStore
    :members:
 
-.. autoclass:: toil.fileStore::FileID
+.. autoclass:: toil.fileStores::FileID
    :members:

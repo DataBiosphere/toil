@@ -1,4 +1,4 @@
-# Copyright (C) 2017- Regents of the University of California
+# Copyright (C) 2017-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.

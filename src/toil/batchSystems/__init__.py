@@ -57,3 +57,6 @@ class MemoryString(object):
 
     def __cmp__(self, other):
         return cmp(self.bytes, other.bytes)
+
+    def __gt__(self, other):
+        return self.bytes > other.bytes

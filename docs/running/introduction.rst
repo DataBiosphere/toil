@@ -41,7 +41,6 @@ Cloud Job Stores
 Toil currently supports the following cloud storage systems as job stores:
 
  - :ref:`awsJobStore`: An AWS S3 bucket formatted as "aws:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `aws:us-west-2:my-aws-jobstore-name`.
- - :ref:`azureJobStore`: Experimental.
  - :ref:`googleJobStore`: A Google Cloud Storage bucket formatted as "gce:<zone>:<bucketname>" where only numbers, letters, and dashes are allowed in the bucket name.  Example: `gce:us-west2-a:my-google-jobstore-name`.
 
 These use cloud buckets to house all of the files. This is useful if there are several different
@@ -70,8 +69,8 @@ The Toil provisioner provides a tool set for running a Toil workflow on a partic
 The :ref:`clusterRef` are command line tools used to provision nodes in your desired cloud platform.
 They allows you to launch nodes, ssh to the leader, and rsync files back and forth.
 
-For detailed instructions for using the provisioner see :ref:`runningAWS` or :ref:`runningGCE`. An
-Azure provisioner is in the works and coming soon. For more details see the `Azure provisioner github ticket`_.
+For detailed instructions for using the provisioner see :ref:`runningAWS` or :ref:`runningGCE`.
+Azure provisioner has limited support. For more details see the `Azure provisioner github ticket`_.
 
 .. _Azure provisioner github ticket: https://github.com/BD2KGenomics/toil/pull/1912
 

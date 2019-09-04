@@ -1,0 +1,132 @@
+before_script:
+  - docker info
+  - cat /etc/hosts
+  - export PYTHONIOENCODING=utf-8
+after_script:
+  # We need to clean up any files that Toil may have made via Docker that
+  # aren't deletable by the Gitlab user. If we don't do this, Gitlab will try
+  # and clean them up before running the next job on the runner, fail, and fail
+  # that next job.
+  - pwd
+  - sudo rm -rf tmp
+
+
+stages:
+  - main_tests
+  - test
+  - integration
+
+
+# Python2.7
+py2_batch_systems:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+
+py2_cwl:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/cwl/cwlTest.py
+
+py2_wdl:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/wdl/toilwdlTest.py
+
+py2_jobstore_and_provisioning:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/sort/sortTest.py
+    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
+    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
+    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
+    - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
+
+py2_main:
+  stage: main_tests
+  script:
+    - pwd
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/src
+    - python -m pytest src/toil/test/utils
+
+py2_integration:
+  stage: integration
+  script:
+    - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_AWS_KEYNAME=id_rsa
+    - export TOIL_AWS_ZONE=us-west-2a
+    - python setup_gitlab_ssh.py
+    - mkdir ~/.aws
+    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+
+
+# Python3.6
+py3_batch_systems:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+
+py3_cwl:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/cwl/cwlTest.py
+
+py3_wdl:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/wdl/toilwdlTest.py
+
+py3_jobstore_and_provisioning:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+    - python -m pytest src/toil/test/sort/sortTest.py
+    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
+    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
+    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
+    - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
+
+py3_main:
+  stage: main_tests
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - python -m pytest src/toil/test/src
+    - python -m pytest src/toil/test/utils
+
+#py3_integration:
+#  stage: integration
+#  script:
+#    - pwd
+#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
+#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+#    - export TOIL_TEST_INTEGRATIVE=True
+#    - export TOIL_AWS_KEYNAME=id_rsa
+#    - export TOIL_AWS_ZONE=us-west-2a
+#    - python setup_gitlab_ssh.py
+#    - mkdir ~/.aws
+#    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+#    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
