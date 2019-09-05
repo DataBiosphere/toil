@@ -28,6 +28,7 @@ from future.utils import with_metaclass
 import base64
 import dill
 import errno
+import fcntl
 import logging
 import os
 import shutil
@@ -36,6 +37,7 @@ import tempfile
 import time
 import uuid
 
+from toil.lib.misc import robust_rmtree
 from toil.lib.objects import abstractclassmethod
 from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
@@ -198,37 +200,33 @@ class NonCachingFileStore(AbstractFileStore):
 
         for jobState in cls._getAllJobStates(nodeInfo):
             if not cls._pidExists(jobState['jobPID']):
-                # using same logic to prevent races as CachingFileStore._setupCache
-                myPID = str(os.getpid())
+                # We need to have a race to pick someone to clean up.
                 cleanupFile = os.path.join(jobState['jobDir'], '.cleanup')
-                with open(os.path.join(jobState['jobDir'], '.' + myPID), 'w') as f:
-                    f.write(myPID)
-                while True:
-                    try:
-                        os.rename(f.name, cleanupFile)
-                    except OSError as err:
-                        if err.errno == errno.ENOTEMPTY:
-                            with open(cleanupFile, 'r') as f:
-                                cleanupPID = f.read()
-                            if cls._pidExists(int(cleanupPID)):
-                                # Cleanup your own mess.  It's only polite.
-                                os.remove(f.name)
-                                break
-                            else:
-                                os.remove(cleanupFile)
-                                continue
-                        else:
-                            raise
-                    else:
-                        logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
-                                       'state of the job on disk.', jobState['jobName'])
-                        if not batchSystemShutdown:
-                            logger.debug("Deleting the stale working directory.")
-                            # Delete the old work directory if it still exists.  Do this only during
-                            # the life of the program and dont' do it during the batch system
-                            # cleanup.  Leave that to the batch system cleanup code.
-                            shutil.rmtree(jobState['jobDir'])
-                        break
+
+                # Make the cleanup file if it doesn't exist
+                cleanupFD = os.open(cleanupFile, os.O_CREAT | os.O_WRONLY)
+
+                try:
+                    # Try and lock it
+                    fcntl.lockf(cleanupFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except IOError as e:
+                    # We lost the race. Someone else is alive and has it locked.
+                    os.close(cleanupFD)
+                else:
+                    # We got it
+                    logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
+                                   'state of the job on disk.', jobState['jobName'])
+                    if not batchSystemShutdown:
+                        logger.debug("Deleting the stale working directory.")
+                        # Delete the old work directory if it still exists.  Do this only during
+                        # the life of the program and dont' do it during the batch system
+                        # cleanup. Leave that to the batch system cleanup code.
+                        robust_rmtree(jobState['jobDir'])
+                    
+                    # Unlock and clean up the file that adjucates the race
+                    fcntl.lockf(cleanupFD, fcntl.LOCK_UN)
+                    os.close(cleanupFD)
+                    os.unlink(cleanupFile)
 
     @staticmethod
     def _getAllJobStates(workflowDir):
