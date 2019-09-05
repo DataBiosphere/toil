@@ -42,6 +42,10 @@ class kubernetesBatchSystem():
         got_list = api.list_job_for_all_namespaces(pretty=True).items
         
         for job in got_list:
+            if not job.metadata.name.startswith(self.jobPrefix):
+                # Skip jobs we didn't make
+                continue
+
             print(job.metadata.clustername)
             try:
                 resp = api.delete_namespaced_job(job.metadata.name, job.metadata.namespace)
