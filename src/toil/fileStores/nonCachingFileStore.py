@@ -224,9 +224,10 @@ class NonCachingFileStore(AbstractFileStore):
                         robust_rmtree(jobState['jobDir'])
                     
                     # Unlock and clean up the file that adjucates the race
+                    # Make sure to remove before unlock so we don't remove a file locked by someone else.
+                    os.unlink(cleanupFile)
                     fcntl.lockf(cleanupFD, fcntl.LOCK_UN)
                     os.close(cleanupFD)
-                    os.unlink(cleanupFile)
 
     @staticmethod
     def _getAllJobStates(workflowDir):
