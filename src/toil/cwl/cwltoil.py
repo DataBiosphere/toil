@@ -155,7 +155,10 @@ class DefaultWithSource(object):
     def resolve(self):
         """Determine the final input value."""
         if self.source:
-            result = self.source[1][self.source[0]]
+            if isinstance(self.source, tuple):
+                result = self.source[1][0][self.source[0]]
+            else:
+                result = self.source[1][self.source[0]]
             if result:
                 return result
         return self.default
@@ -175,8 +178,12 @@ def _resolve_indirect_inner(maybe_idict):
                 result[key] = value.resolve()
             else:
                 if isinstance(value[1], tuple):
-                    result[key] = value[1][0].get(value[0])
-                    metadata[key] = value[1][1]
+                    if isinstance(value[1][0], tuple):
+                        result[key] = value[1][0][0].get(value[0])
+                        metadata[key] = value[1][0][1]
+                    else:
+                        result[key] = value[1][0].get(value[0])
+                        metadata[key] = value[1][1]
                 else:
                     result[key] = value[1].get(value[0])
         return result, metadata
@@ -190,6 +197,9 @@ def resolve_indirect(pdict):
 
     inner = IndirectDict() if isinstance(pdict, IndirectDict) else {}
     needs_eval = False
+    if isinstance(pdict, tuple):
+        #TODO should this return metadata
+        return resolve_indirect(pdict[0])
     for k, value in iteritems(pdict):
         if isinstance(value, StepValueFrom):
             inner[k] = value.inner
@@ -477,6 +487,7 @@ class CWLJobWrapper(Job):
 
     def run(self, file_store):
         resolved_cwljob = resolve_indirect(self.cwljob)
+        metadata = {}
         if isinstance(resolved_cwljob, tuple):
             cwljob = resolved_cwljob[0]
             metadata = resolved_cwljob[1]
@@ -796,6 +807,8 @@ class CWLGather(Job):
                     else:
                         cp.append(result)
             return cp, metadata
+        elif isinstance(obj, tuple):
+            return self.extract(obj[0], k)
         else:
             return []
 
