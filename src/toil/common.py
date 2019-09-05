@@ -123,6 +123,7 @@ class Config(object):
         self.maxLogFileSize = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
+        self.writeLogsFromAllJobs = False
         self.sseKey = None
         self.cseKey = None
         self.servicePollingInterval = 60
@@ -270,7 +271,13 @@ class Config(object):
         setOption("maxLogFileSize", h2b, iC(1))
         setOption("writeLogs")
         setOption("writeLogsGzip")
+        setOption("writeLogsFromAllJobs")
         setOption("runCwlInternalJobsOnWorkers")
+
+        assert not (self.writeLogs and self.writeLogsGzip), \
+            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
+        assert not self.writeLogsFromAllJobs or self.writeLogs or self.writeLogsGzip, \
+            "To enable --writeLogsFromAllJobs, either --writeLogs or --writeLogsGzip must be set."
 
         def checkSse(sseKey):
             with open(sseKey) as f:
@@ -545,13 +552,18 @@ def _addOptions(addGroupFn, config):
                      "specified path. Any non-empty standard output and error from failed batch "
                      "system jobs will also be written into files at this path. "
                      "The current working directory will be used if a path is "
-                     "not specified explicitly. Note: By default "
-                     "only the logs of failed jobs are returned to leader. Set log level to "
-                     "'debug' to get logs back from successful jobs, and adjust 'maxLogFileSize' "
-                     "to control the truncation limit for worker logs.")
+                     "not specified explicitly. Note: By default only the logs of failed jobs are "
+                     "returned to leader. Set log level to 'debug' or enable "
+                     "'--writeLogsFromAllJobs' to get logs back from successful jobs, and adjust "
+                     "'maxLogFileSize' to control the truncation limit for worker logs.")
     addOptionFn("--writeLogsGzip", dest="writeLogsGzip", nargs='?', action='store',
                 default=None, const=os.getcwd(),
                 help="Identical to --writeLogs except the logs files are gzipped on the leader.")
+    addOptionFn("--writeLogsFromAllJobs", dest="writeLogsFromAllJobs", action='store_true',
+                default=False,
+                help="Whether to write logs from all jobs (including the successful ones) without "
+                     "necessarily setting the log level to 'debug'. Ensure that either --writeLogs "
+                     "or --writeLogsGzip is set if enabling this option.")
     addOptionFn("--realTimeLogging", dest="realTimeLogging", action="store_true", default=False,
                 help="Enable real-time logging from workers to masters")
 
