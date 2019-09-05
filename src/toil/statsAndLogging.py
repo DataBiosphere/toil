@@ -78,9 +78,6 @@ class StatsAndLogging( object ):
         mainFileName = jobNames[0]
         extension = '.log'
 
-        assert not (config.writeLogs and config.writeLogsGzip), \
-            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
-
         if config.writeLogs:
             path = config.writeLogs
             writeFn = open

@@ -1081,7 +1081,9 @@ def main(args=None, stdout=sys.stdout):
         "--relax-path-checks", action="store_true",
         default=False, help="Relax requirements on path names to permit "
         "spaces and hash characters.", dest="relax_path_checks")
-
+    parser.add_argument("--default-container",
+                        help="Specify a default docker container that will be "
+                        "used if the workflow fails to specify one.")
     if args is None:
         args = sys.argv[1:]
 

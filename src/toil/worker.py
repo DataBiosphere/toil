@@ -40,6 +40,11 @@ from toil.lib.bioio import setLogLevel
 from toil.lib.bioio import getTotalCpuTime
 from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
 from toil.deferred import DeferredFunctionManager
+try:
+    from toil.cwl.cwltoil import CWL_INTERNAL_JOBS
+except ImportError:
+    # CWL extra not installed
+    CWL_INTERNAL_JOBS = ()
 
 
 logging.basicConfig()
@@ -505,8 +510,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 w.write(f.read()) # TODO load file using a buffer
         jobStore.update(jobGraph)
 
-    elif debugging and redirectOutputToLogFile:  # write log messages
-        with open(tempWorkerLogPath, 'rb') as logFile:
+    elif ((debugging or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS)))
+          and redirectOutputToLogFile):  # write log messages
+        with open(tempWorkerLogPath, 'r') as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
                 if logFileByteReportLimit > 0:
                     logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
