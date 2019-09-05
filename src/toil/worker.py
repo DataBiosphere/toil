@@ -512,7 +512,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
     elif ((debugging or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS)))
           and redirectOutputToLogFile):  # write log messages
-        with open(tempWorkerLogPath, 'r') as logFile:
+        with open(tempWorkerLogPath, 'rb') as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
                 if logFileByteReportLimit > 0:
                     logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
