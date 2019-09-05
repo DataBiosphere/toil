@@ -33,6 +33,7 @@ import logging
 import os
 import shutil
 import stat
+import sys
 import tempfile
 import time
 import uuid
