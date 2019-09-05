@@ -48,6 +48,11 @@ from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
+if sys.version_info[0] < 3:
+    # Define a usable FileNotFoundError as will be raised by os.oprn on a
+    # nonexistent parent directory.
+    FileNotFoundError = OSError
+
 class NonCachingFileStore(AbstractFileStore):
     def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
         super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
@@ -201,33 +206,35 @@ class NonCachingFileStore(AbstractFileStore):
         for jobState in cls._getAllJobStates(nodeInfo):
             if not cls._pidExists(jobState['jobPID']):
                 # We need to have a race to pick someone to clean up.
-                cleanupFile = os.path.join(jobState['jobDir'], '.cleanup')
-
-                # Make the cleanup file if it doesn't exist
-                cleanupFD = os.open(cleanupFile, os.O_CREAT | os.O_WRONLY)
+                
+                try:
+                    # Open the directory
+                    dirFD = os.open(jobState['jobDir'], os.O_RDONLY)
+                except FileNotFoundError:
+                    # The cleanup has happened and we can't contest for it
+                    continue
 
                 try:
                     # Try and lock it
-                    fcntl.lockf(cleanupFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.lockf(dirFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
                 except IOError as e:
                     # We lost the race. Someone else is alive and has it locked.
-                    os.close(cleanupFD)
+                    os.close(dirFD)
                 else:
                     # We got it
                     logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
                                    'state of the job on disk.', jobState['jobName'])
-                    if not batchSystemShutdown:
-                        logger.debug("Deleting the stale working directory.")
-                        # Delete the old work directory if it still exists.  Do this only during
-                        # the life of the program and dont' do it during the batch system
-                        # cleanup. Leave that to the batch system cleanup code.
-                        robust_rmtree(jobState['jobDir'])
                     
-                    # Unlock and clean up the file that adjucates the race
-                    # Make sure to remove before unlock so we don't remove a file locked by someone else.
-                    os.unlink(cleanupFile)
-                    fcntl.lockf(cleanupFD, fcntl.LOCK_UN)
-                    os.close(cleanupFD)
+                    try:
+                        if not batchSystemShutdown:
+                            logger.debug("Deleting the stale working directory.")
+                            # Delete the old work directory if it still exists.  Do this only during
+                            # the life of the program and dont' do it during the batch system
+                            # cleanup. Leave that to the batch system cleanup code.
+                            robust_rmtree(jobState['jobDir'])
+                    finally:
+                        fcntl.lockf(dirFD, fcntl.LOCK_UN)
+                        os.close(dirFD)
 
     @staticmethod
     def _getAllJobStates(workflowDir):
