@@ -1015,7 +1015,7 @@ class CachingFileStore(AbstractFileStore):
             # take this copy away from the writer.
 
             # Change the reference to 'mutable', which it will be 
-            self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', absLocalFileName))
+            self.cur.execute('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', absLocalFileName, fileID))
             # And drop the file altogether
             self.cur.execute('DELETE FROM files WHERE id = ?', (fileID,))
             self.con.commit()
@@ -1053,7 +1053,11 @@ class CachingFileStore(AbstractFileStore):
 
         if cache:
             # We want to use the cache
-            return self._readGlobalFileWithCache(fileStoreID, localFilePath, mutable, symlink, readerID)
+
+            if mutable:
+                return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+            else:
+                return self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
         else:
             # We do not want to use the cache
             return self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
@@ -1134,20 +1138,280 @@ class CachingFileStore(AbstractFileStore):
         # Now we got the file, somehow.
         return localFilePath
 
-    def _readGlobalFileWithCache(self, fileStoreID, localFilePath, mutable, symlink, readerID):
+    def _downloadToCache(self, fileStoreID, cachedPath):
+        """
+        Copy a file from the file store into the cache.
+
+        Will hardlink if appropriate.
+
+        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param str cachedPath: absolute destination path in the cache. Already known not to exist.
+        """
+        if self.forceNonFreeCaching:
+            # Always copy
+            with open(cachedPath, 'wb') as outStream:
+                with self.jobStore.readFileStream(fileStoreID) as inStream:
+                    shutil.copyfileobj(inStream, outStream)
+        else:
+            # Link or maybe copy
+            self.jobStore.readFile(fileStoreID, cachedPath, symlink=False)
+
+    def _readGlobalFileMutablyWithCache(self, fileStoreID, localFilePath, readerID):
+        """
+        Read a mutable copy of a file, putting it into the cache if possible.
+
+        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param str localFilePath: absolute destination path. Already known not to exist.
+        :param str readerID: Job ID of the job reading the file.
+        :return: An absolute path to a local, temporary copy of or link to the file keyed by fileStoreID.
+        :rtype: str
+        """
+
+        # Work out who we are
+        pid = os.getpid()
+
+        # Work out where to cache the file if it isn't cached already
+        cachedPath = self._getNewCachingPath(fileStoreID)
+        
+        # Start a loop until we can do one of these
+        while True:
+            # Try and create a downloading entry if no entry exists
+            logger.debug('Trying to make file record for id %s', fileStoreID)
+            self.cur.execute('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
+                (fileStoreID, cachedPath, fileStoreID.size, 'downloading', pid))
+            self.con.commit()
+
+            # See if we won the race
+            self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', pid))
+            if self.cur.fetchone()[0] > 0:
+                # We are responsible for downloading the file
+                logger.debug('We are now responsible for downloading file %s', fileStoreID)
+
+                # Make sure we have space for this download.
+                self._freeUpSpace()
+
+                # Do the download into the cache.
+                self._downloadToCache(fileStoreID, cachedPath)
+
+                # Now, we may have to immediately give away this file, because
+                # we don't have space for two copies.
+                # If so, we can't let it go to cached state, because someone
+                # else might make a reference to it, and we may get stuck with
+                # two readers, one cached copy, and space for two copies total.
+
+                # Make the copying reference
+                self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)',
+                    (localFilePath, fileStoreID, readerID, 'copying'))
+                self.con.commit()
+
+                # Fulfill it with a full copy or by giving away the cached copy
+                self._fulfillCopyingReference(fileStoreID, cachedPath, localFilePath)
+
+                # Now we're done
+                return localFilePath
+
+            else:
+                logger.debug('Someone else is already responsible for file %s', fileStoreID)
+       
+                # A record already existed for this file.
+                # Try and create an immutable or copying reference to an entry that
+                # is in 'cached' or 'uploadable' or 'uploading' state.
+                # It might be uploading because *we* are supposed to be uploading it.
+                logger.debug('Trying to make reference to file %s', fileStoreID)
+                self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
+                    (localFilePath, readerID, 'copying', fileStoreID, 'cached', 'uploadable', 'uploading'))
+                self.con.commit()
+
+                # See if we got it
+                self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID))
+                if self.cur.fetchone()[0] > 0:
+                    # The file is cached and we can copy or link it
+                    logger.debug('Obtained reference to file %s', fileStoreID)
+
+                    # Get the path it is actually at in the cache, instead of where we wanted to put it
+                    for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                        cachedPath = row[0]
+
+                    
+                    while self.getCacheAvailable() < 0:
+                        # Since we now have a copying reference, see if we have used too much space.
+                        # If so, try to free up some space by deleting or uploading, but
+                        # don't loop forever if we can't get enough.
+                        self._tryToFreeUpSpace()
+
+                        if self.getCacheAvailable() >= 0:
+                            # We made room
+                            break
+
+                        # See if we have no other references and we can give away the file.
+                        # Change it to downloading owned by us if we can grab it.
+                        self.cur.execute("""
+                            UPDATE files SET files.owner = ?, files.state = ? WHERE files.id = ? AND files.state = ? 
+                            AND files.owner IS NULL AND NOT EXISTS (
+                                SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
+                            )
+                            """,
+                            (pid, 'downloading', fileStoreID, 'cached'))
+                        self.con.commit()
+
+                        if self._giveAwayDownloadingFile(fileStoreID, cachedPath, localFilePath):
+                            # We got ownership of the file and managed to give it away.
+                            return localFilePath
+
+                        # If we don't have space, and we couldn't make space, and we
+                        # couldn't get exclusive control of the file to give it away, we
+                        # need to wait for one of those people with references to the file
+                        # to finish and give it up.
+                        # TODO: work out if that will never happen somehow.
+
+                    # OK, now we have space to make a copy. Do it
+                    shutil.copyfile(cachedPath, localFilePath)
+
+                    # Change the reference to mutable
+                    self.cur.execute('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID))
+                    self.con.commit()
+
+                    # Now we're done
+                    return localFilePath
+
+                else:
+                    # We didn't get a reference. Maybe it is still downloading.
+                    logger.debug('Could not obtain reference to file %s', fileStoreID)
+
+                    # Loop around again and see if either we can download it or we can get a reference to it.
+
+            # If we didn't get a download or a reference, adopt and do work
+            # from dead workers and loop again.
+            # We may have to wait for someone else's download or delete to
+            # finish. If they die, we will notice.
+            self._removeDeadJobs(self.con)
+            self._stealWorkFromTheDead()
+            self._executePendingDeletions(self.con, self.cur)
+
+    def _fulfillCopyingReference(self, fileStoreID, cachedPath, localFilePath):
+        """
+        For use when you own a file in 'downloading' state, and have a
+        'copying' reference to it.
+
+        Makes a full copy from the cache, and changes 'downloading' file state
+        to 'cached', if space can be found, or gives away the cached copy if
+        space cannot be found.
+
+        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param str cachedPath: absolute source path in the cache.
+        :param str localFilePath: absolute destination path. Already known not to exist.
+        """
+
+
+
+        if self.getCacheAvailable() < 0:
+            self._tryToFreeUpSpace()
+
+        if self.getCacheAvailable() < 0:
+            # No space for the cached copy and this copy. Give this copy away.
+            assert self._giveAwayDownloadingFile(fileStoreID, cachedPath, localFilePath)
+            return
+            
+        # Otherwise we have space for the cached copy and the user copy.
+        # Expose this file as cached so other people can copy off of it too.
+
+        # Change state from downloading to cached
+        self.cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?',
+            ('cached', fileStoreID))
+        self.con.commit()
+
+        # Make our copy
+        shutil.copyfile(cachedPath, localFilePath)
+
+        # Change our reference to mutable
+        self.cur.execute('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID))
+        self.con.commit()
+
+        # Now we're done
+        return
+        
+
+    def _giveAwayDownloadingFile(self, fileStoreID, cachedPath, localFilePath):
+        """
+        Move a downloaded file in 'downloading' state, owned by us, from the cache to a user-specified destination path.
+
+        Used when there's no room for both a cached copy of the file and the user's actual mutable copy.
+
+        Returns true if the file was moved, and false if the file was not owned by us in 'downloading' state.
+
+        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param str cachedPath: absolute source path in the cache.
+        :param str localFilePath: absolute destination path. Already known not to exist.
+        :return: True if the file is successfully moved. False if the file is not owned by us in 'downloading' state.
+        :rtype: bool
+        """
+
+        # Work out who we are
+        pid = os.getpid()
+
+        # See if we actually own this file and can giove it away
+        self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?',
+            (fileStoreID, 'downloading', pid))
+        if self.cur.fetchone()[0] > 0:
+            # Now we have exclusive control of the cached copy of the file, so we can give it away.
+            
+            # We are giving it away
+            shutil.move(cachedPath, localFilePath)
+            # Record that.
+            self.cur.execute('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID))
+            self.cur.execute('DELETE FROM files WHERE id = ?', (fileStoreID,))
+
+            # Now we're done
+            return True
+        else:
+            # We don't own this file in 'downloading' state
+            return False
+        
+    def _createLinkFromCache(self, cachedPath, localFilePath, symlink=True):
+        """
+        Create a hardlink or symlink from the given path in the cache to the
+        given user-provided path. Destination must not exist.
+
+        Only creates a symlink if a hardlink cannot be created and symlink is
+        true.
+
+        If no link can be created, returns False. Otherwise, returns True.
+
+        :param str cachedPath: absolute source path in the cache.
+        :param str localFilePath: absolute destination path. Already known not to exist.
+        :param bool symlink: True if a symlink is allowed, False otherwise.
+        :return: True if the file is successfully linked. False if the file cannot be linked.
+        :rtype: bool
+        """
+        
+        try:
+            # Try and make the hard link.
+            os.link(cachedPath, localFilePath)
+            return True
+        except OSError:
+            if symlink:
+                # Or symlink 
+                try:
+                    os.symlink(cachedPath, localFilePath)
+                    return True
+                except OSError:
+                    return False
+            else:
+                return False
+
+    def _readGlobalFileWithCache(self, fileStoreID, localFilePath, symlink, readerID):
         """
         Read a file, putting it into the cache if possible.
 
         :param toil.fileStores.FileID fileStoreID: job store id for the file
         :param str localFilePath: absolute destination path. Already known not to exist.
-        :param bool mutable: Whether a mutable copy should be created, instead of a hard link or symlink.
         :param bool symlink: Whether a symlink is acceptable.
         :param str readerID: Job ID of the job reading the file.
         :return: An absolute path to a local, temporary copy of or link to the file keyed by fileStoreID.
         :rtype: str
         """
 
-        # Now we know to use the cache
+        # Now we know to use the cache, and that we don't require a mutable copy.
 
         # Work out who we are
         pid = os.getpid()
@@ -1155,186 +1419,103 @@ class CachingFileStore(AbstractFileStore):
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getNewCachingPath(fileStoreID)
 
-        # This tracks if we are responsible for downloading this file
-        own_download = False
-        # This tracks if we have a reference to the file yet
-        have_reference = False
-
         # Start a loop until we can do one of these
         while True:
             # Try and create a downloading entry if no entry exists
             logger.debug('Trying to make file record for id %s', fileStoreID)
             self.cur.execute('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
                 (fileStoreID, cachedPath, fileStoreID.size, 'downloading', pid))
-            if not mutable:
-                # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
-                # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
-                logger.debug('Trying to make file reference to %s', fileStoreID)
-                self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
-                    (localFilePath, readerID, 'immutable', fileStoreID, 'downloading', pid))
+            # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
+            # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
+            logger.debug('Trying to make file reference to %s', fileStoreID)
+            self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
+                (localFilePath, readerID, 'immutable', fileStoreID, 'downloading', pid))
             self.con.commit()
 
             # See if we won the race
-            for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', pid)):
-                own_download = row[0] > 0
-
-            if own_download:
-                # We are responsible for downloading the file
+            self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', pid))
+            if self.cur.fetchone()[0] > 0:
+                # We are responsible for downloading the file (and we have the reference)
                 logger.debug('We are now responsible for downloading file %s', fileStoreID)
-                if not mutable:
-                    # And we have a reference already
-                    have_reference = True
-                break
-            else:
-                logger.debug('Someone else is already responsible for file %s', fileStoreID)
-                for row in self.cur.execute('SELECT * FROM files WHERE id = ?', (fileStoreID,)):
-                    logger.debug('File record: %s', str(row))
-       
-            # A record already existed for this file.
-            # Try and create an immutable or copying reference to an entry that
-            # is in 'cached' or 'uploadable' or 'uploading' state.
-            # It might be uploading because *we* are supposed to be uploading it.
-            logger.debug('Trying to make reference to file %s', fileStoreID)
-            self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
-                (localFilePath, readerID, 'copying' if mutable else 'immutable', fileStoreID, 'cached', 'uploadable', 'uploading'))
-            self.con.commit()
 
-            # See if we got it
-            for row in self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID)):
-                have_reference = row[0] > 0
+                # Make sure we have space for this download.
+                self._freeUpSpace()
 
-            if have_reference:
-                # The file is cached and we can copy or link it
-                logger.debug('Obtained reference to file %s', fileStoreID)
+                # Do the download into the cache.
+                self._downloadToCache(fileStoreID, cachedPath)
 
-                # Get the path it is actually at in the cache, instead of where we wanted to put it
-                for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
-                    cachedPath = row[0]
+                # Try and make the link before we let the file go to cached state.
+                # If we fail we may end up having to give away the file we just downloaded.
+                if self._createLinkFromCache(cachedPath, localFilePath, symlink):
+                    # We made the link!
 
-                break
-            else:
-                logger.debug('Could not obtain reference to file %s', fileStoreID)
+                    # Change file state from downloading to cached so other people can use it
+                    self.cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?',
+                        ('cached', fileStoreID))
+                    self.con.commit()
 
-            # If we didn't get one of those either, adopt and do work from dead workers and loop again.
-            # We may have to wait for someone else's download or delete to
-            # finish. If they die, we will notice.
-            self._removeDeadJobs(self.con)
-            self._stealWorkFromTheDead()
-            self._executePendingDeletions(self.con, self.cur)
+                    # Now we're done!
+                    return localFilePath
+                else:
+                    # We could not make a link. We need to make a copy.
 
-        if own_download:
-            # If we ended up with a downloading entry
-            
-            # Make sure we have space for this download.
-            self._freeUpSpace()
+                    # Change the reference to copying.
+                    self.cur.execute('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('copying', localFilePath, fileStoreID))
+                    self.con.commit()
 
-            # Do the download into the cache.
-            if self.forceNonFreeCaching:
-                # Always copy
-                with open(cachedPath, 'wb') as outStream:
-                    with self.jobStore.readFileStream(fileStoreID) as inStream:
-                        shutil.copyfileobj(inStream, outStream)
-            else:
-                # Link or maybe copy
-                self.jobStore.readFile(fileStoreID, cachedPath, symlink=False)
+                    # Fulfill it with a full copy or by giving away the cached copy
+                    self._fulfillCopyingReference(fileStoreID, cachedPath, localFilePath)
 
-            # Change state from downloading to cached
-            self.cur.execute('UPDATE files SET state = ?, owner = NULL WHERE id = ?',
-                ('cached', fileStoreID))
-            self.con.commit()
-            # We no longer own the download
-            own_download = False
-
-        if not mutable:
-            # If we are wanting an immutable reference.
-            # The reference should already exist.
-            assert(have_reference)
-            
-            try:
-                try:
-                    # Try and make the hard link.
-                    os.link(cachedPath, localFilePath)
                     # Now we're done
                     return localFilePath
-                except OSError:
-                    if symlink:
-                        # Or symlink 
-                        os.symlink(cachedPath, localFilePath)
-                        # Now we're done
+
+            else:
+                logger.debug('Someone else is already responsible for file %s', fileStoreID)
+       
+                # A record already existed for this file.
+                # Try and create an immutable reference to an entry that
+                # is in 'cached' or 'uploadable' or 'uploading' state.
+                # It might be uploading because *we* are supposed to be uploading it.
+                logger.debug('Trying to make reference to file %s', fileStoreID)
+                self.cur.execute('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND (state = ? OR state = ? OR state = ?)',
+                    (localFilePath, readerID, 'immutable', fileStoreID, 'cached', 'uploadable', 'uploading'))
+                self.con.commit()
+
+                # See if we got it
+                self.cur.execute('SELECT COUNT(*) FROM refs WHERE path = ? and file_id = ?', (localFilePath, fileStoreID))
+                if self.cur.fetchone()[0] > 0:
+                    # The file is cached and we can copy or link it
+                    logger.debug('Obtained reference to file %s', fileStoreID)
+
+                    # Get the path it is actually at in the cache, instead of where we wanted to put it
+                    for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                        cachedPath = row[0]
+
+                    if self._createLinkFromCache(cachedPath, localFilePath, symlink):
+                        # We managed to make the link
                         return localFilePath
                     else:
-                        raise
-            except OSError:
-                # If we can't, change the reference to copying.
-                self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('copying', localFilePath))
-                self.con.commit()
-                
-                # Decide to be mutable
-                mutable = True
+                        # We can't make the link. We need a copy instead.
 
-        # By now, we only have mutable reads to deal with
-        assert(mutable)
+                        # We could change the reference to copying, see if
+                        # there's space, make the copy, try and get ahold of
+                        # the file if there isn't space, and give it away, but
+                        # we already have code for that for mutable downloads,
+                        # so just clear the reference and download mutably.
 
-        if not have_reference:
-            # We might not yet have the reference for the mutable case. Create
-            # it as a copying reference and consume more space.
-            self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)',
-                (localFilePath, fileStoreID, readerID, 'copying'))
-            self.con.commit()
-            have_reference = True
+                        self.cur.execute('DELETE FROM refs WHERE path = ? AND file_id = ?', (localFilePath, fileStoreID))
+                        self.con.commit()
 
-        while self.getCacheAvailable() < 0:
-            # If the reference is (now) copying, see if we have used too much space.
-            # If so, try to free up some space by deleting or uploading, but
-            # don't loop forever if we can't get enough.
-            self._tryToFreeUpSpace()
+                        return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                else:
+                    logger.debug('Could not obtain reference to file %s', fileStoreID)
 
-            if self.getCacheAvailable() >= 0:
-                # We made room
-                break
-
-            # See if we have no other references and we can give away the file.
-            # Change it to downloading owned by us if we can grab it.
-            self.cur.execute("""
-                UPDATE files SET files.owner = ?, files.state = ? WHERE files.id = ? AND files.state = ? 
-                AND files.owner IS NULL AND NOT EXISTS (
-                    SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
-                )
-                """,
-                (pid, 'downloading', fileStoreID, 'cached'))
-            self.con.commit()
-
-            # See if we got it
-            for row in self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?',
-                (fileStoreID, 'downloading', pid)):
-                own_download = row[0] > 0
-
-            if own_download:
-                # Now we have exclusive control of the cached copy of the file, so we can give it away.
-                break
-
-            # If we don't have space, and we couldn't make space, and we
-            # couldn't get exclusive control of the file to give it away, we
-            # need to wait for one of those people with references to the file
-            # to finish and give it up.
-            # TODO: work out if that will never happen somehow.
-
-        # OK, now we either have space to make a copy, or control of the original to give it away.
-
-        if own_download:
-            # We are giving it away
-            shutil.move(cachedPath, localFilePath)
-            # Record that.
-            self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', localFilePath))
-            self.cur.execute('DELETE FROM files WHERE id = ?', (fileStoreID,))
-        else:
-            # We are copying it
-            shutil.copyfile(cachedPath, localFilePath)
-            self.cur.execute('UPDATE refs SET state = ? WHERE path = ?', ('mutable', localFilePath))
-        self.con.commit()
-
-        # Now we're done
-        return localFilePath
+                    # If we didn't get a download or a reference, adopt and do work from dead workers and loop again.
+                    # We may have to wait for someone else's download or delete to
+                    # finish. If they die, we will notice.
+                    self._removeDeadJobs(self.con)
+                    self._stealWorkFromTheDead()
+                    self._executePendingDeletions(self.con, self.cur)
 
     def readGlobalFileStream(self, fileStoreID):
         if not isinstance(fileStoreID, FileID):
