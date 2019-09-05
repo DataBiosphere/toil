@@ -98,6 +98,7 @@ py2_integration_provisioner:
     - python setup_gitlab_ssh.py
     - mkdir ~/.aws
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+    - make docker
     - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
 
 
