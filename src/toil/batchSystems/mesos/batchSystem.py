@@ -40,13 +40,14 @@ from six.moves.queue import Empty, Queue
 from six import iteritems, itervalues
 
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
+from toil.lib.compatibility import USING_PYTHON2
 from toil import pickle
 from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchSystemLocalSupport,
                                                    NodeInfo)
-from toil.batchSystems.mesos import ToilJob, ResourceRequirement, TaskData, JobQueue
+from toil.batchSystems.mesos import ToilJob, MesosShape, TaskData, JobQueue
 
 log = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         jobID = self.getNextJobID()
         job = ToilJob(jobID=jobID,
                       name=str(jobNode),
-                      resources=ResourceRequirement(**jobNode._requirements),
+                      resources=MesosShape(wallTime=0, **jobNode._requirements),
                       command=jobNode.command,
                       userScript=self.userScript,
                       environment=self.environment.copy(),
@@ -392,7 +393,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         return cores, memory, disk, preemptable
 
     def _prepareToRun(self, jobType, offer):
-        # Get the first element to insure FIFO
+        # Get the first element to ensure FIFO
         job = self.jobQueues.nextJobOfType(jobType)
         task = self._newMesosTask(job, offer)
         return task
@@ -422,10 +423,9 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         self._trackOfferedNodes(offers)
 
-        jobTypes = self.jobQueues.sorted()
+        jobTypes = self.jobQueues.sortedTypes
 
-        # TODO: We may want to assert that numIssued >= numRunning
-        if not jobTypes or len(self.getIssuedBatchJobIDs()) == len(self.getRunningBatchJobIDs()):
+        if not jobTypes:
             log.debug('There are no queued tasks. Declining Mesos offers.')
             # Without jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
@@ -506,11 +506,11 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def _trackOfferedNodes(self, offers):
         for offer in offers:
             # All AgentID messages are required to have a value according to the Mesos Protobuf file.
-            assert(offer.agent_id.has_key('value'))
+            assert 'value' in offer.agent_id
             try:
                 nodeAddress = socket.gethostbyname(offer.hostname)
             except:
-                log.deug("Failed to resolve hostname %s" % offer.hostname)
+                log.debug("Failed to resolve hostname %s" % offer.hostname)
                 raise
             self._registerNode(nodeAddress, offer.agent_id.value)
             preemptable = False
@@ -624,8 +624,14 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
         if update.state == 'TASK_FINISHED':
             # We get the running time of the job via the timestamp, which is in job-local time in seconds
-            assert(update.has_key('timestamp'))
-            jobEnded(0, wallTime=update.timestamp)
+            labels = update.labels.labels
+            wallTime = None
+            for label in labels:
+                if label['key'] == 'wallTime':
+                    wallTime = float(label['value'])
+                    break
+            assert(wallTime is not None)
+            jobEnded(0, wallTime=wallTime)
         elif update.state == 'TASK_FAILED':
             try:
                 exitStatus = int(update.message)
@@ -646,7 +652,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                         jobID, update.state, update.message, update.reason)
             jobEnded(255)
             
-        if update.has_key('limitation'):
+        if 'limitation' in update:
             log.warning("Job limit info: %s" % update.limitation)
             
     def frameworkMessage(self, driver, executorId, agentId, message):
@@ -655,7 +661,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         """
         
         # Take it out of base 64 encoding from Protobuf
-        message = decode_data(message)
+        if USING_PYTHON2:
+            message = decode_data(message)
+        else:
+            message = decode_data(message).decode()
         
         log.debug('Got framework message from executor %s running on agent %s: %s',
                   executorId.value, agentId.value, message)
@@ -729,7 +738,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                     executorID, agentID)
         
         try:
-            
             # Look up the IP. We should always know it unless we get answers
             # back without having accepted offers.
             agentAddress = self.agentsByID[agentID]
@@ -820,7 +828,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         self._handleFailedExecutor(agentId.value, failedId)
         
     @classmethod
-    def setOptions(cl, setOption):
+    def setOptions(cls, setOption):
         setOption("mesosMasterAddress", None, None, 'localhost:5050')
 
 

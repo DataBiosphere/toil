@@ -11,9 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
-
 from builtins import next
 from builtins import str
 import logging
@@ -33,16 +31,14 @@ from contextlib import contextmanager
 from inspect import getsource
 from textwrap import dedent
 from unittest.util import strclass
-
-# Python 3 compatibility imports
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
 
-from toil.lib.memoize import less_strict_bool, memoize
+from toil.lib.memoize import memoize
 from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread
 from toil.lib.misc import mkdir_p
-
+from toil.provisioners.aws import runningOnEC2
 from toil import subprocess
 from toil import which
 from toil import toilPackageDirPath, applianceSelf
@@ -79,23 +75,40 @@ class ToilTest(unittest.TestCase):
         cls._tempBaseDir = tempBaseDir
 
     @classmethod
+    def tearDownClass(cls):
+        if cls._tempBaseDir is None:
+            while cls._tempDirs:
+                tempDir = cls._tempDirs.pop()
+                if os.path.exists(tempDir):
+                    shutil.rmtree(tempDir)
+        else:
+            cls._tempDirs = []
+        super(ToilTest, cls).tearDownClass()
+
+    def setUp(self):
+        log.info("Setting up %s ...", self.id())
+        super(ToilTest, self).setUp()
+
+    def tearDown(self):
+        super(ToilTest, self).tearDown()
+        log.info("Tore down %s", self.id())
+
+    @classmethod
     def awsRegion(cls):
         """
         Use us-west-2 unless running on EC2, in which case use the region in which
         the instance is located
         """
-        if runningOnEC2():
-            return cls._region()
-        else:
-            return 'us-west-2'
+        return cls._region() if runningOnEC2() else 'us-west-2'
 
     @classmethod
     def _availabilityZone(cls):
         """
         Used only when running on EC2. Query this instance's metadata to determine
-        in which availability zone it is running
+        in which availability zone it is running.
         """
-        return urlopen('http://169.254.169.254/latest/meta-data/placement/availability-zone').read()
+        zone = urlopen('http://169.254.169.254/latest/meta-data/placement/availability-zone').read()
+        return zone if not isinstance(zone, bytes) else zone.decode('utf-8')
 
     @classmethod
     @memoize
@@ -105,10 +118,9 @@ class ToilTest(unittest.TestCase):
         The region will not change over the life of the instance so the result
         is memoized to avoid unnecessary work.
         """
-        m = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$', cls._availabilityZone())
-        assert m
-        region = m.group(1)
-        return region
+        region = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$', cls._availabilityZone())
+        assert region
+        return region.group(1)
 
     @classmethod
     def _getUtilScriptPath(cls, script_name):
@@ -130,21 +142,6 @@ class ToilTest(unittest.TestCase):
         projectRootPath = projectRootPath[:-len(expectedSuffix)]
         return projectRootPath
 
-    @classmethod
-    def tearDownClass(cls):
-        if cls._tempBaseDir is None:
-            while cls._tempDirs:
-                tempDir = cls._tempDirs.pop()
-                if os.path.exists(tempDir):
-                    shutil.rmtree(tempDir)
-        else:
-            cls._tempDirs = []
-        super(ToilTest, cls).tearDownClass()
-
-    def setUp(self):
-        log.info("Setting up %s ...", self.id())
-        super(ToilTest, self).setUp()
-
     def _createTempDir(self, purpose=None):
         return self._createTempDirEx(self._testMethodName, purpose)
 
@@ -156,10 +153,6 @@ class ToilTest(unittest.TestCase):
         temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
         cls._tempDirs.append(temp_dir_path)
         return temp_dir_path
-
-    def tearDown(self):
-        super(ToilTest, self).tearDown()
-        log.info("Tore down %s", self.id())
 
     def _getTestJobStorePath(self):
         path = self._createTempDir(purpose='jobstore')
@@ -179,8 +172,7 @@ class ToilTest(unittest.TestCase):
         :rtype: str
         """
         sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % distVersion)
-        assert os.path.isfile(
-            sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
+        assert os.path.isfile(sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
         excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
                                 capture=True,
                                 cwd=cls._projectRootPath()).splitlines())
@@ -190,8 +182,7 @@ class ToilTest(unittest.TestCase):
         assert all(path.startswith('src') for path in dirty)
         dirty = set(dirty)
         dirty.difference_update(excluded)
-        assert not dirty, \
-            "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        assert not dirty, "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
         return sdistPath
 
     @classmethod
@@ -259,94 +250,56 @@ def needs_rsync3(test_item):
     test_item = _mark_test('rsync', test_item)
     try:
         versionInfo = subprocess.check_output(['rsync', '--version']).decode('utf-8')
+        if int(versionInfo.split()[2].split('.')[0]) < 3:  # output looks like: 'rsync  version 2.6.9 ...'
+            return unittest.skip('This test depends on rsync version 3.0.0+.')(test_item)
     except subprocess.CalledProcessError:
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
-    else:
-        # version output looks like: 'rsync  version 2.6.9 ...'
-        versionNum = int(versionInfo.split()[2].split('.')[0])
-        if versionNum < 3:
-            return unittest.skip('This test depends on rsync version 3.0.0+.')(test_item)
-
     return test_item
 
 
 def needs_aws(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if AWS usable.
-    """
+    """Use as a decorator before test classes or methods to run only if AWS is usable."""
     test_item = _mark_test('aws', test_item)
-    keyName = os.getenv('TOIL_AWS_KEYNAME')
-    if not keyName or keyName is None:
-        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
-
     try:
-        # noinspection PyUnresolvedReferences
         from boto import config
+        boto_credentials = config.get('Credentials', 'aws_access_key_id')
     except ImportError:
         return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
-    except:
-        raise
-    else:
-        dot_aws_credentials_path = os.path.expanduser('~/.aws/credentials')
-        boto_credentials = config.get('Credentials', 'aws_access_key_id')
-        if boto_credentials:
-            return test_item
-        if os.path.exists(dot_aws_credentials_path) or runningOnEC2():
-            # Assume that EC2 machines like the Jenkins slave that we run CI on will have IAM roles
-            return test_item
-        else:
-            return unittest.skip("Configure ~/.aws/credentials with AWS credentials to include "
-                                 "this test.")(test_item)
+
+    if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2()):
+        return unittest.skip("Configure AWS credentials to include this test.")(test_item)
+    elif not os.getenv('TOIL_AWS_KEYNAME'):
+        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+    return test_item
 
 
 def travis_test(test_item):
     test_item = _mark_test('travis', test_item)
     if os.environ.get('TRAVIS') != 'true':
         return unittest.skip("Set TRAVIS='true' to include this test.")(test_item)
-    else:
-        return test_item
-
-
-def file_begins_with(path, prefix):
-    with open(path) as f:
-        return f.read(len(prefix)) == prefix
-
-
-def runningOnEC2():
-    hv_uuid_path = '/sys/hypervisor/uuid'
-    return os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2')
+    return test_item
 
 
 def needs_google(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if Google Storage usable.
-    """
+    """Use as a decorator before test classes or methods to run only if Google is usable."""
     test_item = _mark_test('google', test_item)
-    projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
-    if not projectID or projectID is None:
-        return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
     try:
-        # noinspection PyUnresolvedReferences
         from boto import config
     except ImportError:
-        return unittest.skip(
-            "Install Toil with the 'google' extra to include this test.")(test_item)
-    else:
-        boto_credentials = config.get('Credentials', 'gs_access_key_id')
-        if boto_credentials:
-            return test_item
-        else:
-            return unittest.skip(
-                "Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
+        return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
+
+    if not os.getenv('TOIL_GOOGLE_PROJECTID'):
+        return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
+    elif not config.get('Credentials'):  # TODO: Deprecate this check?  Needed by only by the ancients.
+        return unittest.skip("Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
+    return test_item
 
 
 def needs_azure(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if Azure is usable.
-    """
+    """Use as a decorator before test classes or methods to run only if Azure is usable."""
     test_item = _mark_test('azure', test_item)
     keyName = os.getenv('TOIL_AZURE_KEYNAME')
-    if not keyName or keyName is None:
+    if not keyName:
         return unittest.skip("Set TOIL_AZURE_KEYNAME to include this test.")(test_item)
 
     try:
@@ -354,91 +307,67 @@ def needs_azure(test_item):
         import azure.storage
     except ImportError:
         return unittest.skip("Install Toil with the 'azure' extra to include this test.")(test_item)
-    except:
-        raise
     else:
         # check for the credentials file
         from toil.jobStores.azureJobStore import credential_file_path
-        full_credential_file_path = os.path.expanduser(credential_file_path)
-        if not os.path.exists(full_credential_file_path):
+        if not os.path.exists(os.path.expanduser(credential_file_path)):
             # no file, check for environment variables
             try:
                 from toil.jobStores.azureJobStore import _fetchAzureAccountKey
                 _fetchAzureAccountKey(keyName)
             except:
-                 return unittest.skip("Configure %s with the access key for the '%s' storage "
-                                     "account." % (credential_file_path, keyName))(test_item)
+                 return unittest.skip("Configure %s with the access key for the '%s' storage account." %
+                                      (credential_file_path, keyName))(test_item)
         return test_item
 
 
 def needs_gridengine(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if GridEngine is installed.
-    """
+    """Use as a decorator before test classes or methods to run only if GridEngine is installed."""
     test_item = _mark_test('gridengine', test_item)
     if which('qhost'):
         return test_item
-    else:
-        return unittest.skip("Install GridEngine to include this test.")(test_item)
+    return unittest.skip("Install GridEngine to include this test.")(test_item)
+
 
 def needs_torque(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if PBS/Torque is installed.
-    """
+    """Use as a decorator before test classes or methods to run only ifPBS/Torque is installed."""
     test_item = _mark_test('torque', test_item)
     if which('pbsnodes'):
         return test_item
-    else:
-        return unittest.skip("Install PBS/Torque to include this test.")(test_item)
+    return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
 
 def needs_mesos(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if the Mesos is installed
-    and configured.
-    """
+    """Use as a decorator before test classes or methods to run only if Mesos is installed."""
     test_item = _mark_test('mesos', test_item)
     if not (which('mesos-master') or which('mesos-slave')):
-        return unittest.skip(
-            "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
+        return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
     try:
-        # noinspection PyUnresolvedReferences
         import pymesos
         import psutil
     except ImportError:
-        return unittest.skip(
-            "Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
-    except:
-        raise
-    else:
-        return test_item
+        return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
+    return test_item
 
 
 def needs_parasol(test_item):
-    """
-    Use as decorator so tests are only run if Parasol is installed.
-    """
+    """Use as decorator so tests are only run if Parasol is installed."""
     test_item = _mark_test('parasol', test_item)
     if which('parasol'):
         return test_item
-    else:
-        return unittest.skip("Install Parasol to include this test.")(test_item)
+    return unittest.skip("Install Parasol to include this test.")(test_item)
 
 
 def needs_slurm(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if Slurm is installed.
-    """
+    """Use as a decorator before test classes or methods to run only if Slurm is installed."""
     test_item = _mark_test('slurm', test_item)
     if which('squeue'):
         return test_item
-    else:
-        return unittest.skip("Install Slurm to include this test.")(test_item)
+    return unittest.skip("Install Slurm to include this test.")(test_item)
+
 
 def needs_htcondor(test_item):
-    """
-    Use a decorator before test classes or methods to only run them if the HTCondor Python bindings are installed.
-    """
+    """Use a decorator before test classes or methods to run only if the HTCondor is installed."""
     test_item = _mark_test('htcondor', test_item)
     try:
         import htcondor
@@ -471,7 +400,7 @@ def needs_docker(test_item):
     docker is installed and docker-based tests are enabled.
     """
     test_item = _mark_test('docker', test_item)
-    if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
+    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     if which('docker'):
         return test_item
@@ -491,8 +420,6 @@ def needs_encryption(test_item):
     except ImportError:
         return unittest.skip(
             "Install Toil with the 'encryption' extra to include this test.")(test_item)
-    except:
-        raise
     else:
         return test_item
 
@@ -508,8 +435,6 @@ def needs_cwl(test_item):
         import cwltool
     except ImportError:
         return unittest.skip("Install Toil with the 'cwl' extra to include this test.")(test_item)
-    except:
-        raise
     else:
         return test_item
 
@@ -517,12 +442,12 @@ def needs_cwl(test_item):
 def needs_appliance(test_item):
     import json
     test_item = _mark_test('appliance', test_item)
-    if less_strict_bool(os.getenv('TOIL_SKIP_DOCKER')):
+    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
     if which('docker'):
         image = applianceSelf()
         try:
-            images = subprocess.check_output(['docker', 'inspect', image])
+            images = subprocess.check_output(['docker', 'inspect', image]).decode('utf-8')
         except subprocess.CalledProcessError:
             images = []
         else:
@@ -539,20 +464,6 @@ def needs_appliance(test_item):
         return unittest.skip('Install Docker to include this test.')(test_item)
 
 
-def experimental(test_item):
-    """
-    Use this to decorate experimental or brittle tests in order to skip them during regular builds.
-    """
-    # We'll pytest.mark_test the test as experimental but we'll also unittest.skip it via an
-    # environment variable.
-    test_item = _mark_test('experimental', test_item)
-    if less_strict_bool(os.getenv('TOIL_TEST_EXPERIMENTAL')):
-        return test_item
-    else:
-        return unittest.skip(
-            'Set TOIL_TEST_EXPERIMENTAL="True" to include this experimental test.')(test_item)
-
-
 def integrative(test_item):
     """
     Use this to decorate integration tests so as to skip them during regular builds. We define
@@ -561,27 +472,25 @@ def integrative(test_item):
     being integrative. Neither does involvement of external services such as AWS, since that
     would cover most of Toil's test.
     """
-    # We'll pytest.mark_test the test as integrative but we'll also unittest.skip it via an
-    # environment variable.
     test_item = _mark_test('integrative', test_item)
-    if less_strict_bool(os.getenv('TOIL_TEST_INTEGRATIVE')):
+    if os.getenv('TOIL_TEST_INTEGRATIVE', '').lower() == 'true':
         return test_item
     else:
-        return unittest.skip(
-            'Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
-            'or run `make integration_test_local` to run all integration tests.')(test_item)
+        return unittest.skip('Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
+                             'or run `make integration_test_local` to run all integration tests.')(test_item)
+
 
 def slow(test_item):
     """
     Use this decorator to identify tests that are slow and not critical.
-    Skip them if TOIL_TEST_QUICK is true.
+    Skip if TOIL_TEST_QUICK is true.
     """
     test_item = _mark_test('slow', test_item)
-    if not less_strict_bool(os.getenv('TOIL_TEST_QUICK')):
+    if os.environ.get('TOIL_TEST_QUICK', '').lower() != 'true':
         return test_item
     else:
-        return unittest.skip(
-            'Skipped because TOIL_TEST_QUICK is "True"')(test_item)
+        return unittest.skip('Skipped because TOIL_TEST_QUICK is "True"')(test_item)
+
 
 methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
 
@@ -628,6 +537,8 @@ def make_tests(generalMethod, targetClass, **kwargs):
     of the form {str : type, ...} where the key represents the name of the value. The names will
     be used to represent the permutation of values passed for each parameter in the generalMethod.
 
+    The generated method names will list the parameters in lexicographic order by parameter name.
+
     :param generalMethod: A method that will be parameterized with values passed as kwargs. Note
            that the generalMethod must be a regular method.
 
@@ -652,13 +563,16 @@ def make_tests(generalMethod, targetClass, **kwargs):
 
     >>> b = Bar()
 
-    >>> assert b.test_has__num_one__letter_a() == b.has(1, 'a')
+    Note that num comes lexicographically before letter and so appears first in
+    the generated method names.
 
-    >>> assert b.test_has__num_one__letter_b() == b.has(1, 'b')
+    >>> assert b.test_has__letter_a__num_one() == b.has(1, 'a')
 
-    >>> assert b.test_has__num_two__letter_a() == b.has(2, 'a')
+    >>> assert b.test_has__letter_b__num_one() == b.has(1, 'b')
 
-    >>> assert b.test_has__num_two__letter_b() == b.has(2, 'b')
+    >>> assert b.test_has__letter_a__num_two() == b.has(2, 'a')
+
+    >>> assert b.test_has__letter_b__num_two() == b.has(2, 'b')
 
     >>> f = Foo()
 
@@ -720,12 +634,18 @@ def make_tests(generalMethod, targetClass, **kwargs):
             else:
                 return generalMethod(self)
 
-        setattr(targetClass, 'test_%s%s' % (generalMethod.__name__, prmNames), fx)
+        methodName = 'test_%s%s' % (generalMethod.__name__, prmNames)
+
+        setattr(targetClass, methodName, fx)
 
     if len(kwargs) > 0:
+        # Define order of kwargs.
+        # We keep them in reverse order of how we use them for efficient pop.
+        sortedKwargs = sorted(list(kwargs.items()), reverse=True)
+
         # create first left dict
         left = {}
-        prmName, vals = pop(kwargs)
+        prmName, vals = sortedKwargs.pop()
         for valName, val in list(vals.items()):
             pvName = '__%s_%s' % (prmName, valName.lower())
             if methodNamePartRegex.match(pvName) is None:
@@ -733,8 +653,8 @@ def make_tests(generalMethod, targetClass, **kwargs):
             left[pvName] = {prmName: val}
 
         # get cartesian product
-        while len(kwargs) > 0:
-            permuteIntoLeft(left, *pop(kwargs))
+        while len(sortedKwargs) > 0:
+            permuteIntoLeft(left, *sortedKwargs.pop())
 
         # set class attributes
         targetClass = targetClass or generalMethod.__class__
@@ -772,7 +692,6 @@ class ApplianceTestSupport(ToilTest):
     A Toil test that runs a user script on a minimal cluster of appliance containers,
     i.e. one leader container and one worker container.
     """
-
     @contextmanager
     def _applianceCluster(self, mounts=None, numCores=None):
         """
@@ -932,11 +851,11 @@ class ApplianceTestSupport(ToilTest):
             self.writeToAppliance(path + '/' + module + '.py', script)
 
     class LeaderThread(Appliance):
-        def _getRole(self):
-            return 'leader'
-
         def _entryPoint(self):
             return 'mesos-master'
+
+        def _getRole(self):
+            return 'leader'
 
         def _containerCommand(self):
             return ['--registry=in_memory',
@@ -960,4 +879,6 @@ class ApplianceTestSupport(ToilTest):
                     '--ip=127.0.0.1',
                     '--master=127.0.0.1:5050',
                     '--attributes=preemptable:False',
-                    '--resources=cpus(*):%i' % self.numCores]
+                    '--resources=cpus(*):%i' % self.numCores,
+                    '--no-hostname_lookup',
+                    '--no-systemd_enable_support']

@@ -14,9 +14,10 @@
 
 from __future__ import absolute_import
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, travis_test
 
 class HelloWorldTest(ToilTest):
+    @travis_test
     def testHelloWorld(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "INFO"

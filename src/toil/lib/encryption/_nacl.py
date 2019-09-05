@@ -15,10 +15,11 @@
 from builtins import str
 import nacl
 from nacl.secret import SecretBox
-
+from toil.lib.compatibility import USING_PYTHON2
 
 # 16-byte MAC plus a nonce is added to every message.
 overhead = 16 + SecretBox.NONCE_SIZE
+
 
 def encrypt(message, keyPath):
     """
@@ -55,7 +56,11 @@ def encrypt(message, keyPath):
     # recommended in the libsodium documentation.)
     nonce = nacl.utils.random(SecretBox.NONCE_SIZE)
     assert len(nonce) == SecretBox.NONCE_SIZE
-    return bytes(sb.encrypt(message, nonce))
+    if USING_PYTHON2:
+        return bytes(sb.encrypt(message, nonce))
+    else:
+        return str(sb.encrypt(message, nonce))
+
 
 def decrypt(ciphertext, keyPath):
     """
@@ -80,8 +85,8 @@ def decrypt(ciphertext, keyPath):
     CryptoError: Decryption failed. Ciphertext failed verification
 
     Otherwise works correctly
-    >>> decrypt(encrypt("testMessage".encode('utf-8'), k), k).decode('utf-8') # doctest: +ALLOW_UNICODE
-    u'testMessage'
+    >>> decrypt(encrypt("testMessage".encode('utf-8'), k), k).decode('utf-8') in (u'testMessage', b'testMessage', 'testMessage') # doctest: +ALLOW_UNICODE
+    True
 
     >>> import os
     >>> os.remove(k)

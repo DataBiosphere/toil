@@ -5,6 +5,13 @@ import os
 import urllib
 import re
 import logging
+import inspect
+
+try:
+    from urllib.parse import unquote
+except ImportError:
+    from urllib import unquote
+
 from boto import iam, sns, sqs, vpc
 from boto.exception import BotoServerError
 from boto.s3.connection import S3Connection
@@ -473,7 +480,7 @@ class Context(object):
         try:
             return self.iam.get_user().user_name
         except BaseException:
-            log.warn("IAMConnection.get_user() failed.", exc_info=True)
+            log.warning("IAMConnection.get_user() failed.", exc_info=True)
             return None
 
     current_user_placeholder = '__me__'
@@ -552,7 +559,7 @@ class Context(object):
         for policy_name, policy in iteritems(policies):
             current_policy = None
             try:
-                current_policy = json.loads(urllib.unquote(
+                current_policy = json.loads(unquote(
                     get_policy(entity_name, policy_name).policy_document))
             except BotoServerError as e:
                 if e.status == 404 and e.error_code == 'NoSuchEntity':

@@ -72,7 +72,7 @@ class JobServiceTest(ToilTest):
                 self.runToil(t)
 
                 # Check output
-                self.assertEquals(int(open(outFile, 'r').readline()), messageInt)
+                self.assertEqual(int(open(outFile, 'r').readline()), messageInt)
             finally:
                 os.remove(outFile)
 
@@ -133,7 +133,7 @@ class JobServiceTest(ToilTest):
                 self.runToil(t)
 
                 # Check output
-                self.assertEquals(list(map(int, open(outFile, 'r').readlines())), messages)
+                self.assertEqual(list(map(int, open(outFile, 'r').readlines())), messages)
             finally:
                 os.remove(outFile)
 
@@ -157,7 +157,7 @@ class JobServiceTest(ToilTest):
 
                 # Check output
                 for (messages, outFile) in zip(messageBundles, outFiles):
-                    self.assertEquals(list(map(int, open(outFile, 'r').readlines())), messages)
+                    self.assertEqual(list(map(int, open(outFile, 'r').readlines())), messages)
             finally:
                 list(map(os.remove, outFiles))
 
@@ -252,6 +252,8 @@ class ToyService(Job.Service):
         assert self.cores is not None
         self.terminate = Event()
         self.error = Event()
+        # Note that service jobs are special and do not necessarily have job.jobStoreID.
+        # So we don't associate these files with this job.
         inJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
         outJobStoreID = job.fileStore.jobStore.getEmptyFileStoreID()
         self.serviceThread = Thread(target=self.serviceWorker,

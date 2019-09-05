@@ -64,6 +64,7 @@ class BinPackedFit(object):
 
     def binPack(self, jobShapes):
         """Pack a list of jobShapes into the fewest nodes reasonable. Can be run multiple times."""
+        # TODO: Check for redundancy with batchsystems.mesos.JobQueue() sorting
         logger.debug('Running bin packing for node shapes %s and %s job(s).',
                      self.nodeShapes, len(jobShapes))
         # Sort in descending order from largest to smallest. The FFD like-strategy will pack the
@@ -959,5 +960,3 @@ class ClusterStats(object):
                 threadName = 'Preemptable' if preemptable else 'Non-preemptable'
                 logger.debug('%s provisioner stats thread shut down successfully.', threadName)
                 self.stats[threadName] = stats
-        else:
-            pass

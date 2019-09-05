@@ -12,14 +12,17 @@ from __future__ import print_function
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import logging
 import mimetypes
 import sys
 import os
 
 from toil import subprocess
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, travis_test
 from toil.test.mesos import helloWorld
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 class RegularLogTest(ToilTest):
 
@@ -32,20 +35,24 @@ class RegularLogTest(ToilTest):
 
     def _assertFileTypeExists(self, dir, extension, encoding=None):
         # an encoding of None implies no compression
+        logger.info("Checking for %s file in %s", extension, dir)
         onlyFiles = self._getFiles(dir)
-        print(os.listdir(dir))
+        logger.info("Found: %s", str(os.listdir(dir)))
         onlyLogs = [f for f in onlyFiles if f.endswith(extension)]
+        logger.info("Found matching: %s", str(onlyLogs))
         assert onlyLogs
-        for log in onlyLogs:
-            with open(log, "rb") as f:
-                if encoding == "gzip":
-                    # Check for gzip magic header '\x1f\x8b'
-                    assert f.read().startswith(b'\x1f\x8b')
-                else:
-                    mime = mimetypes.guess_type(log)
-                    self.assertEqual(mime[1], encoding)
-
-
+        
+        if encoding is not None:
+            for log in onlyLogs:
+                with open(log, "rb") as f:
+                    logger.info("Checking for encoding %s on file %s", str(encoding), log)
+                    if encoding == "gzip":
+                        # Check for gzip magic header '\x1f\x8b'
+                        assert f.read().startswith(b'\x1f\x8b')
+                    else:
+                        mime = mimetypes.guess_type(log)
+                        self.assertEqual(mime[1], encoding)
+    
     @slow
     def testLogToMaster(self):
         toilOutput = subprocess.check_output([sys.executable,
@@ -54,26 +61,25 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.childMessage in toilOutput.decode('utf-8')
-
+    
+    @travis_test
     def testWriteLogs(self):
-        toilOutput = subprocess.check_output([sys.executable,
-                                              '-m', helloWorld.__name__,
-                                              './toilTest',
-                                              '--clean=always',
-                                              '--logLevel=debug',
-                                              '--writeLogs=%s' % self.tempDir],
-                                             stderr=subprocess.STDOUT)
+        subprocess.check_call([sys.executable,
+                               '-m', helloWorld.__name__,
+                               './toilTest',
+                               '--clean=always',
+                               '--logLevel=debug',
+                               '--writeLogs=%s' % self.tempDir])
         self._assertFileTypeExists(self.tempDir, '.log')
 
     @slow
     def testWriteGzipLogs(self):
-        toilOutput = subprocess.check_output([sys.executable,
-                                              '-m', helloWorld.__name__,
-                                              './toilTest',
-                                              '--clean=always',
-                                              '--logLevel=debug',
-                                              '--writeLogsGzip=%s' % self.tempDir],
-                                              stderr=subprocess.STDOUT)
+        subprocess.check_call([sys.executable,
+                               '-m', helloWorld.__name__,
+                               './toilTest',
+                               '--clean=always',
+                               '--logLevel=debug',
+                               '--writeLogsGzip=%s' % self.tempDir])
         self._assertFileTypeExists(self.tempDir, '.log.gz', 'gzip')
 
     @slow
@@ -84,7 +90,8 @@ class RegularLogTest(ToilTest):
                                               '--clean=always',
                                               '--logLevel=info'], stderr=subprocess.STDOUT)
         assert helloWorld.parentMessage in toilOutput.decode('utf-8')
-
+    
+    @travis_test
     def testRegularLog(self):
         toilOutput = subprocess.check_output([sys.executable,
                                               '-m', helloWorld.__name__,

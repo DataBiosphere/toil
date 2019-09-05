@@ -73,16 +73,28 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
             memory = float(memory)/1024 # memory in KB
             disk = float(disk)/1024 # disk in KB
 
-            # Workaround for HTCondor Python bindings Unicode conversion bug
-            command = command.encode('utf-8')
+            # NOTE: formatStdOutErrPath() puts files in the Toil workflow directory, which defaults
+            # to being in the system temporary directory ($TMPDIR, /tmp) which is unlikely to be on
+            # a shared filesystem. So to make this work we need to set should_transfer_files = Yes
+            # in the submit file, so that HTCondor will write the standard output/error files on the
+            # compute node, then transfer back once the job has completed.
+            stdoutfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'std_output')
+            stderrfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'std_error')
+
+            condorlogfile = self.boss.formatStdOutErrPath(jobID, 'htcondor', '$(cluster)', 'job_events')
 
             # Execute the entire command as /bin/sh -c "command"
             # TODO: Transfer the jobStore directory if using a local file store with a relative path.
             submit_parameters = {
                 'executable': '/bin/sh',
                 'transfer_executable': 'False',
-                'arguments': '''"-c '{0}'"'''.format(command),
+                'arguments': '''"-c '{0}'"'''.format(command).encode('utf-8'),    # Workaround for HTCondor Python bindings Unicode conversion bug
                 'environment': self.getEnvString(),
+                'getenv': 'True',
+                'should_transfer_files': 'Yes',   # See note above for stdoutfile, stderrfile
+                'output': stdoutfile,
+                'error': stderrfile,
+                'log': condorlogfile,
                 'request_cpus': '{0}'.format(cpu),
                 'request_memory': '{0:.3f}KB'.format(memory),
                 'request_disk': '{0:.3f}KB'.format(disk),
@@ -92,6 +104,18 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
                 '+ToilJobName': '"{0}"'.format(jobName),
                 '+ToilJobKilled': 'False',
             }
+
+            # Extra parameters for HTCondor
+            extra_parameters = os.getenv('TOIL_HTCONDOR_PARAMS')
+            if extra_parameters is not None:
+                logger.debug("Extra HTCondor parameters added to submit file from TOIL_HTCONDOR_PARAMS env. variable: {}".format(extra_parameters))
+                for parameter, value in [parameter_value.split('=', 1) for parameter_value in extra_parameters.split(';')]:
+                    parameter = parameter.strip()
+                    value = value.strip()
+                    if parameter in submit_parameters:
+                        raise ValueError("Some extra parameters are incompatible: {}".format(extra_parameters))
+
+                    submit_parameters[parameter] = value
 
             # Return the Submit object
             return htcondor.Submit(submit_parameters)
@@ -161,7 +185,10 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             # Make sure a ClassAd was returned
             try:
-                ad = ads.next()
+                try:
+                    ad = next(ads)
+                except TypeError:
+                    ad = ads.next()
             except StopIteration:
                 logger.error(
                     "No HTCondor ads returned using constraint: {0}".format(requirements))
@@ -169,7 +196,10 @@ class HTCondorBatchSystem(AbstractGridEngineBatchSystem):
 
             # Make sure only one ClassAd was returned
             try:
-                ads.next()
+                try:
+                    next(ads)
+                except TypeError:
+                    ads.next()
             except StopIteration:
                 pass
             else:

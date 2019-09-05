@@ -186,8 +186,8 @@ the single_job_executor from CWLTool, providing a Toil-specific constructor for
 filesystem access, and overriding the default PathMapper to use ToilPathMapper.
 
 The ToilPathMapper keeps track of a file's symbolic identifier (the Toil
-FileStore token), its local path on the host (the value returned by
-readGlobalFile) and the the location of the file inside the Docker container.
+FileID), its local path on the host (the value returned by readGlobalFile) and
+the the location of the file inside the Docker container.
 
 After executing single_job_executor from CWLTool, it gets back the output
 object and status.  If the underlying job failed, raise an exception.  Files

@@ -98,7 +98,7 @@ class MesosExecutor(Executor):
         Kill parent task process and all its spawned children
         """
         try:
-            pid = self.runningTasks[taskId]
+            pid = self.runningTasks[taskId.value]
             pgid = os.getpgid(pid)
         except KeyError:
             pass
@@ -212,15 +212,20 @@ class MesosExecutor(Executor):
                                         preexec_fn=lambda: os.setpgrp(),
                                         shell=True, env=jobEnv)
 
-        def sendUpdate(task, taskState, wallTime=None, msg=''):
+        def sendUpdate(task, taskState, wallTime, msg=''):
             update = addict.Dict()
             update.task_id.value = task.task_id.value
             if self.id is not None:
                 # Sign our messages as from us, since the driver doesn't do it.
                 update.executor_id.value = self.id
             update.state = taskState
-            update.timestamp = wallTime
             update.message = msg
+
+            # Add wallTime as a label.
+            labels = addict.Dict()
+            labels.labels = [{'key': 'wallTime', 'value': str(wallTime)}]
+            update.labels = labels
+
             driver.sendStatusUpdate(update)
 
         thread = threading.Thread(target=runTask)
@@ -237,7 +242,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG)
     log.debug("Starting executor")
 
-    if not os.environ.has_key("MESOS_AGENT_ENDPOINT"):
+    if not os.environ.get("MESOS_AGENT_ENDPOINT"):
         # Some Mesos setups in our tests somehow lack this variable. Provide a
         # fake one to maybe convince the executor driver to work.
         os.environ["MESOS_AGENT_ENDPOINT"] = os.environ.get("MESOS_SLAVE_ENDPOINT", "127.0.0.1:5051")
@@ -254,7 +259,7 @@ def main():
         
     # Parse the agent state
     agent_state = json.loads(urlopen("http://%s/state" % os.environ["MESOS_AGENT_ENDPOINT"]).read())
-    if agent_state.has_key('completed_frameworks'):
+    if 'completed_frameworks' in agent_state:
         # Drop the completed frameworks which grow over time
         del agent_state['completed_frameworks']
     log.debug("Agent state: %s", str(agent_state))

@@ -34,20 +34,20 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20181115172452'
-    schemaSalad = 'schema-salad>=2.6, <3'
-    galaxyLib = 'galaxy-lib==17.9.3'
+    cwltool = 'cwltool==1.0.20190815141648'
+    schemaSalad = 'schema-salad<5,>=4.5.20190815125611'
+    galaxyLib = 'galaxy-lib==18.9.2'
     htcondor = 'htcondor>=8.6.0'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
     future = 'future'
-    requests = 'requests==2.18.4'
+    requests = 'requests>=2, <3'
     docker = 'docker==2.5.1'
     subprocess32 = 'subprocess32<=3.5.2'
     dateutil = 'python-dateutil'
-    pytest = 'pytest==3.7.4'
-    pytest_cov = 'pytest-cov==2.5.1'
     addict = 'addict<=2.2.0'
+    sphinx = 'sphinx==1.7.5'
+    pathlib2 = 'pathlib2==2.3.2'
 
     core_reqs = [
         dill,
@@ -58,9 +58,9 @@ def runSetup():
         dateutil,
         psutil,
         subprocess32,
-        pytest,
-        pytest_cov,
-        addict]
+        addict,
+        sphinx,
+        pathlib2]
 
     mesos_reqs = [
         pymesos,
@@ -112,7 +112,28 @@ def runSetup():
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
         url="https://github.com/BD2KGenomics/toil",
-        classifiers=["License :: OSI Approved :: Apache Software License"],
+        classifiers=[
+          'Development Status :: 5 - Production/Stable',
+          'Environment :: Console',
+          'Intended Audience :: Developers',
+          'Intended Audience :: Science/Research',
+          'Intended Audience :: Healthcare Industry',
+          'License :: OSI Approved :: Apache Software License',
+          'Natural Language :: English',
+          'Operating System :: MacOS :: MacOS X',
+          'Operating System :: POSIX',
+          'Operating System :: POSIX :: Linux',
+          'Programming Language :: Python :: 2.7',
+          'Programming Language :: Python :: 3.5',
+          'Programming Language :: Python :: 3.6',
+          'Topic :: Scientific/Engineering',
+          'Topic :: Scientific/Engineering :: Bio-Informatics',
+          'Topic :: Scientific/Engineering :: Astronomy',
+          'Topic :: Scientific/Engineering :: Atmospheric Science',
+          'Topic :: Scientific/Engineering :: Information Analysis',
+          'Topic :: Scientific/Engineering :: Medical Science Apps.',
+          'Topic :: System :: Distributed Computing',
+          'Topic :: Utilities'],
         license="Apache License v2.0",
         install_requires=core_reqs,
         extras_require={

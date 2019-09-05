@@ -16,7 +16,7 @@ Scripting Quick Start
 To begin, consider this short toil script which illustrates defining a
 workflow:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/quickstart.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_quickstart.py
 
 The workflow consists of a single job. The resource requirements for that job
 are (optionally) specified by keyword arguments (memory, cores, disk). The
@@ -61,7 +61,7 @@ run this as a workflow containing a single job. This uses the
 :class:`toil.job.Job.Runner` class, which is used to start and resume Toil
 workflows. For example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/invokeworkflow.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_invokeworkflow.py
 
 Alternatively, the more powerful :class:`toil.common.Toil` class can be used to
 run and resume workflows. It is used as a context manager and allows for
@@ -76,7 +76,7 @@ blocks is toil.options.restart.
 
 For example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/invokeworkflow2.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_invokeworkflow2.py
 
 The call to :func:`toil.job.Job.Runner.getDefaultOptions` creates a set of
 default options for the workflow. The only argument is a description of how to
@@ -147,7 +147,7 @@ of creating a constructor. To avoid this the classes
 :class:`toil.job.JobFunctionWrappingTarget` allow functions to be directly
 converted to jobs. For example, the quick start example (repeated here):
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/quickstart.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_quickstart.py
 
 Is equivalent to the previous example, but using a function to define the job.
 
@@ -168,7 +168,7 @@ whose first argument is a reference to the wrapping job. Just like a *self*
 argument in a class, this allows access to the methods of the wrapping job, see
 :class:`toil.job.JobFunctionWrappingTarget`. For example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/jobfunctions.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_jobfunctions.py
 
 Here ``helloWorld()`` is a job function. It uses the :func:`toil.job.Job.log`
 to log a message that will
@@ -200,7 +200,7 @@ allow the easy specification of cleanup tasks that happen after a set of
 parallel child tasks. The following shows a simple example that uses the
 earlier ``helloWorld()`` job function:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/multiplejobs.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_multiplejobs.py
 
 In the example four jobs are created, first ``j1`` is run, then ``j2`` and
 ``j3`` are run in parallel as children of ``j1``, finally ``j4`` is run as a
@@ -209,7 +209,7 @@ follow-on of ``j1``.
 There are multiple short hand functions to achieve the same workflow, for
 example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/multiplejobs2.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_multiplejobs2.py
 
 Equivalently defines the workflow, where the functions
 :func:`toil.job.Job.addChildJobFn` and :func:`toil.job.Job.addFollowOnJobFn`
@@ -220,7 +220,7 @@ graphs. For a precise definition of legal graphs see
 :func:`toil.job.Job.checkJobGraphForDeadlocks`. The previous example could be
 specified as a DAG as follows:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/multiplejobs3.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_multiplejobs3.py
 
 Note the use of an extra child edge to make ``j4`` a child of both ``j2`` and
 ``j3``.
@@ -232,7 +232,7 @@ Dynamic Job Creation
 The previous examples show a workflow being defined outside of a job. However,
 Toil also allows jobs to be created dynamically within jobs. For example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/dynamic.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_dynamic.py
 
 The job function ``binaryStringFn`` logs all possible binary strings of length
 ``n`` (here ``n=5``), creating a total of ``2^(n+2) - 1`` jobs dynamically and
@@ -286,7 +286,7 @@ Promises can be quite useful. For example, we can combine dynamic job creation
 with promises to achieve a job creation process that mimics the functional
 patterns possible in many programming languages:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/promises2.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_promises2.py
 
 The return value ``l`` of the workflow is a list of all binary strings of
 length 10, computed recursively. Although a toy example, it demonstrates how
@@ -301,7 +301,7 @@ return value to be used as another job's resource requirements.
 This is useful when, for example, a job's storage requirement is determined by a
 file staged to the job store by an earlier job:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/requirements.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_requirements.py
 
 Note that this also makes use of the ``size`` attribute of the :ref:`FileID` object.
 This promised requirements mechanism can also be used in combination with an aggregator for
@@ -323,7 +323,7 @@ multiple jobs' output values::
 
     Just like regular promises, the return value must be determined prior to
     scheduling any job that depends on the return value. In our example above, notice
-    how the dependant jobs were follow ons to the parent while promising jobs are
+    how the dependent jobs were follow ons to the parent while promising jobs are
     children of the parent. This ordering ensures that all promises are
     properly fulfilled.
 
@@ -344,16 +344,17 @@ Managing files within a workflow
 --------------------------------
 
 It is frequently the case that a workflow will want to create files, both
-persistent and temporary, during its run. The :class:`toil.fileStore.FileStore`
-class is used by jobs to manage these files in a manner that guarantees cleanup
-and resumption on failure.
+persistent and temporary, during its run. The
+:class:`toil.fileStores.abstractFileStore.AbstractFileStore` class is used by
+jobs to manage these files in a manner that guarantees cleanup and resumption
+on failure.
 
 The :func:`toil.job.Job.run` method has a file store instance as an argument.
 The following example shows how this can be used to create temporary files that
 persist for the length of the job, be placed in a specified local disk of the
 node and that will be cleaned up, regardless of failure, when the job finishes:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/managing.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_managing.py
 
 Job functions can also access the file store for the job. The equivalent of the
 ``LocalFileStoreJob`` class is ::
@@ -370,7 +371,7 @@ store allows the creation of files in a *global* store, which persists during
 the workflow and are globally accessible (hence the name) between jobs. For
 example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/managing2.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_managing2.py
 
 The example demonstrates the global read, write and delete functionality of the
 file-store, using both local copies of the files and streams to read and write
@@ -405,7 +406,7 @@ again when the workflow is resumed.
 
 Example:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/staging.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_staging.py
 
 Using Docker Containers in Toil
 -------------------------------
@@ -435,8 +436,8 @@ each node of the cluster.
 
 When invoking docker containers from within a Toil workflow, it is strongly
 recommended that you use :func:`dockerCall`, a toil job function provided in
-``toil.lib.docker``. ``dockerCall`` leverages docker's own python API, 
-and provides container cleanup on job failure. When docker containers are 
+``toil.lib.docker``. ``dockerCall`` leverages docker's own python API,
+and provides container cleanup on job failure. When docker containers are
 run without this feature, failed jobs can result in resource leaks.  Docker's
 API can be found at `docker-py`_.
 
@@ -454,12 +455,18 @@ An example of a basic ``dockerCall`` is below::
                 workDir=job.tempDir,
                 parameters=['index', '/data/reference.fa'])
 
+Note the assumption that `reference.fa` file is located in `/data`. This is Toil's
+standard convention as a mount location to reduce boilerplate when calling `dockerCall`.
+Users can choose their own mount locations by supplying a `volumes` kwarg to `dockerCall`,
+such as: `volumes={working_dir: {'bind': '/data', 'mode': 'rw'}}`, where `working_dir`
+is an absolute path on the user's filesystem.
+
 ``dockerCall`` can also be added to workflows like any other job function:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_docker.py
 
 `cgl-docker-lib`_ contains ``dockerCall``-compatible Dockerized tools that are
-commonly used in bioinformatics analysis. 
+commonly used in bioinformatics analysis.
 
 .. _cgl-docker-lib: https://github.com/BD2KGenomics/cgl-docker-lib/blob/master/README.md
 
@@ -467,7 +474,7 @@ The documentation provides guidelines for developing your own Docker containers
 that can be used with Toil and ``dockerCall``. In order for a container to be
 compatible with ``dockerCall``, it must have an ``ENTRYPOINT`` set to a wrapper
 script, as described in cgl-docker-lib containerization standards.  This can be
-set by passing in the optional keyword argument, 'entrypoint'.  Example: 
+set by passing in the optional keyword argument, 'entrypoint'.  Example:
 
      entrypoint=["/bin/bash","-c"]
 
@@ -548,12 +555,12 @@ encapsulated job the simplest way to specify a job ``B`` which runs after ``A``
 and all its successors is to create a parent of ``A``, call it ``Ap``, and then
 make ``B`` a follow-on of ``Ap``. e.g.:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/encapsulation.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_encapsulation.py
 
 An *encapsulated job* ``E(A)`` of ``A`` saves making ``Ap``, instead we can
 write:
 
-.. literalinclude:: ../../src/toil/test/docs/scripts/encapsulation2.py
+.. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_encapsulation2.py
 
 Note the call to :func:`toil.job.Job.encapsulate` creates the
 :class:`toil.job.Job.EncapsulatedJob`.
@@ -584,7 +591,7 @@ get that check for free.
 
 .. _setup.py: https://github.com/BD2KGenomics/toil-lib/blob/master/setup.py
 
-If your workflow depends on a dependency of Toil, e.g. ``bd2k-python-lib``,
+If your workflow depends on a dependency of Toil,
 consider not making that dependency explicit either. If you do, you risk a
 version conflict between your project and Toil. The ``pip`` utility may
 silently ignore that conflict, breaking either Toil or your workflow. It is

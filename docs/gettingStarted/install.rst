@@ -17,7 +17,7 @@ below.
 Preparing Your Python Runtime Environment
 -----------------------------------------
 
-Toil currently supports only Python 2.7 and requires a virtualenv to be active to install.
+Toil currently supports Python 2.7, 3.5, and 3.6, and requires a virtualenv to be active to install.
 
 If not already present, please install the latest Python ``virtualenv`` using pip_::
 

@@ -14,16 +14,40 @@
 import logging
 import os
 from collections import namedtuple
+from difflib import get_close_matches
 from operator import attrgetter
 import datetime
 from toil.lib.misc import std_dev, mean
 from six import string_types
-
-from toil.test import runningOnEC2
+from six.moves.urllib.request import urlopen
+from six.moves.urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
+
+
+def runningOnEC2():
+    def file_begins_with(path, prefix):
+        with open(path) as f:
+            return f.read(len(prefix)) == prefix
+
+    hv_uuid_path = '/sys/hypervisor/uuid'
+    if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
+        return True
+    # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
+    # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
+    try:
+        urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
+        return True
+    except URLError:
+        return False
+
+
+def zoneToRegion(zone):
+    """Get a region (e.g. us-west-2) from a zone (e.g. us-west-1c)."""
+    from toil.lib.context import Context
+    return Context.availability_zone_re.match(zone).group(1)
 
 
 def getSpotZone(spotBid, nodeType, ctx):
@@ -220,8 +244,14 @@ def checkValidNodeTypes(provisioner, nodeTypes):
             if nodeType and ':' in nodeType:
                 nodeType = nodeType.split(':')[0]
             if nodeType not in regionDict[currentZone]:
-                raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.'
-                                   '' % (nodeType, currentZone))
+                # They probably misspelled it and can't tell.
+                close = get_close_matches(nodeType, regionDict[currentZone], 1)
+                if len(close) > 0:
+                    helpText = ' Did you mean ' + close[0] + '?'
+                else:
+                    helpText = ''
+                raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.%s'
+                                   '' % (nodeType, currentZone, helpText))
     # Only checks if aws nodeType specified for gce/azure atm.
     if provisioner == 'gce' or provisioner == 'azure':
         for nodeType in nodeTypes:

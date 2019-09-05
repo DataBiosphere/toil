@@ -35,7 +35,7 @@ import six.moves.urllib.parse as urlparse
 from toil.lib.retry import retry_http
 
 from toil.common import safeUnpickleFromStream
-from toil.fileStore import FileID
+from toil.fileStores import FileID
 from toil.job import JobException
 from toil.lib.memoize import memoize
 from toil.lib.objects import abstractclassmethod
@@ -80,15 +80,24 @@ class ConcurrentFileModificationException(Exception):
 
 class NoSuchFileException(Exception):
     """Indicates that the specified file does not exist."""
-    def __init__(self, jobStoreFileID, customName=None):
+    def __init__(self, jobStoreFileID, customName=None, *extra):
         """
         :param str jobStoreFileID: the ID of the file that was mistakenly assumed to exist
         :param str customName: optionally, an alternate name for the nonexistent file
+        :param list extra: optional extra information to add to the error message
         """
+        # Having the extra argument may help resolve the __init__() takes at
+        # most three arguments error reported in
+        # https://github.com/DataBiosphere/toil/issues/2589#issuecomment-481912211
         if customName is None:
             message = "File '%s' does not exist." % jobStoreFileID
         else:
             message = "File '%s' (%s) does not exist." % (customName, jobStoreFileID)
+        
+        if extra:
+            # Append extra data.
+            message += " Extra info: " + " ".join((str(x) for x in extra))
+        
         super().__init__(message)
 
 
@@ -288,7 +297,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
         :return: The jobStoreFileId of the imported file or None if sharedFileName was given
-        :rtype: toil.fileStore.FileID or None
+        :rtype: toil.fileStores.FileID or None
         """
         # Note that the helper method _importFile is used to read from the source and write to
         # destination (which is the current job store in this case). To implement any
@@ -313,7 +322,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
         :return The jobStoreFileId of imported file or None if sharedFileName was given
-        :rtype: toil.fileStore.FileID or None
+        :rtype: toil.fileStores.FileID or None
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
@@ -459,7 +468,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 try:
                     return jobCache[jobId]
                 except KeyError:
-                    self.load(jobId)
+                    return self.load(jobId)
             else:
                 return self.load(jobId)
 
@@ -573,7 +582,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                     return jobStoreFileID
 
                 # Make a new flag
-                newFlag = self.getEmptyFileStoreID()
+                newFlag = self.getEmptyFileStoreID(jobStoreID, cleanup=False)
 
                 # Load the jobGraph for the service and initialise the link
                 serviceJobGraph = getJob(jobStoreID)
@@ -758,7 +767,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def jobs(self):
         """
         Best effort attempt to return iterator on all jobs in the store. The iterator may not
-        return all jobs and may also contain orphaned jobs that have already finished succesfully
+        return all jobs and may also contain orphaned jobs that have already finished successfully
         and should not be rerun. To guarantee you get any and all jobs that can be run instead
         construct a more expensive ToilState object
 
@@ -774,17 +783,19 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     ##########################################
 
     @abstractmethod
-    def writeFile(self, localFilePath, jobStoreID=None):
+    def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         """
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
         to retrieve the file at a later time.
 
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
 
-        :param jobStoreID: If specified the file will be associated with that job and when
-               jobStore.delete(job) is called all files written with the given job.jobStoreID will
-               be removed from the job store.
-        :type jobStoreID: str or None
+        :param str jobStoreID: the id of a job, or None. If specified, the may be associated
+               with that job in a job-store-specific way. This may influence the returned ID.
+               
+        :param bool cleanup: Whether to attempt to delete the file when the job
+               whose jobStoreID was given as jobStoreID is deleted with
+               jobStore.delete(job). If jobStoreID was not given, does nothing.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -801,16 +812,19 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     @contextmanager
-    def writeFileStream(self, jobStoreID=None):
+    def writeFileStream(self, jobStoreID=None, cleanup=False):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
         file in the job store. The yielded file handle does not need to and
         should not be closed explicitly.
 
-        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated
-               with that job and when when jobStore.delete(job) is called all files written with the
-               given job.jobStoreID will be removed from the job store.
+        :param str jobStoreID: the id of a job, or None. If specified, the may be associated
+               with that job in a job-store-specific way. This may influence the returned ID.
+               
+        :param bool cleanup: Whether to attempt to delete the file when the job
+               whose jobStoreID was given as jobStoreID is deleted with
+               jobStore.delete(job). If jobStoreID was not given, does nothing.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -826,14 +840,17 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
-    def getEmptyFileStoreID(self, jobStoreID=None):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
         """
         Creates an empty file in the job store and returns its ID.
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
 
-        :param str jobStoreID: the id of a job, or None. If specified, the file will be associated with
-               that job and when jobStore.delete(job) is called a best effort attempt is made to delete
-               all files written with the given job.jobStoreID
+        :param str jobStoreID: the id of a job, or None. If specified, the may be associated
+               with that job in a job-store-specific way. This may influence the returned ID.
+               
+        :param bool cleanup: Whether to attempt to delete the file when the job
+               whose jobStoreID was given as jobStoreID is deleted with
+               jobStore.delete(job). If jobStoreID was not given, does nothing.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.
@@ -844,8 +861,12 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         """
-        Copies the file referenced by jobStoreFileID to the given local file path. The version
-        will be consistent with the last copy of the file written/updated.
+        Copies or hard links the file referenced by jobStoreFileID to the given
+        local file path. The version will be consistent with the last copy of
+        the file written/updated. If the file in the job store is later
+        modified via updateFile or updateFileStream, it is
+        implementation-defined whether those writes will be visible at
+        localFilePath.
 
         The file at the given local path may not be modified after this method returns!
 
@@ -853,6 +874,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         :param str localFilePath: the local path indicating where to place the contents of the
                given file in the job store
+
+        :param bool symlink: whether the reader can tolerate a symlink. If set to true, the job
+               store may create a symlink instead of a full copy of the file or a hard link.
         """
         raise NotImplementedError()
 
