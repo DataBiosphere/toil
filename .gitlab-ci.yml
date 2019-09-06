@@ -96,6 +96,7 @@ py2_integration_provisioner:
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
     - mkdir ~/.aws
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
     - python setup_gitlab_docker.py
