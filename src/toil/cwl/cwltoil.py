@@ -1246,7 +1246,8 @@ def main(args=None, stdout=sys.stdout):
     if options.provenance:
         research_obj = cwltool.provenance.ResearchObject(
             temp_prefix_ro=options.tmp_outdir_prefix, orcid=options.orcid,
-            full_name=options.cwl_full_name)
+            full_name=options.cwl_full_name,
+            fsaccess=runtime_context.make_fs_access(''))
         runtime_context.research_obj = research_obj
 
     with Toil(options) as toil:
@@ -1284,12 +1285,13 @@ def main(args=None, stdout=sys.stdout):
             processobj = document_loader.idx
 
             if options.provenance and runtime_context.research_obj:
+                processobj['id'] = metadata['id']
+                processobj, metadata = loading_context.loader.resolve_ref(uri)
                 runtime_context.research_obj.packed_workflow(
                     cwltool.main.print_pack(document_loader, processobj, uri, metadata))
 
             loading_context.overrides_list.extend(
                 metadata.get("cwltool:overrides", []))
-
 
             try:
                 tool = cwltool.load_tool.make_tool(uri, loading_context)
