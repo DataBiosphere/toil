@@ -440,28 +440,22 @@ def needs_cwl(test_item):
 
 
 def needs_appliance(test_item):
-    import json
     test_item = _mark_test('appliance', test_item)
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
-    if which('docker'):
-        image = applianceSelf()
-        try:
-            images = subprocess.check_output(['docker', 'inspect', image]).decode('utf-8')
-        except subprocess.CalledProcessError:
-            images = []
-        else:
-            images = {i['Id'] for i in json.loads(images) if image in i['RepoTags']}
-        if len(images) == 0:
-            return unittest.skip("Cannot find appliance image %s. Use 'make test' target to "
-                                 "automatically build appliance, or just run 'make docker' "
-                                 "prior to running this test." % image)(test_item)
-        elif len(images) == 1:
-            return test_item
-        else:
-            assert False, 'Expected `docker inspect` to return zero or one image.'
-    else:
+
+    if not which('docker'):
         return unittest.skip('Install Docker to include this test.')(test_item)
+
+    image = applianceSelf()
+    stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+    if image in stdout:
+        return test_item
+
+    return unittest.skip("Cannot find appliance {image}. Use 'make test' target to "
+                         "automatically build appliance, or just run 'make docker' "
+                         "prior to running this test.".format(image=image))(test_item)
 
 
 def integrative(test_item):

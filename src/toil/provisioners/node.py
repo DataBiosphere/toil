@@ -149,16 +149,12 @@ class Node(object):
         startTime = time.time()
         while True:
             if time.time() - startTime > self.maxWaitTime:
-                raise RuntimeError("Appliance failed to start on machine with ip %s"
-                                   " Check if the appliance is valid, e.g. check if the environment variable"
-                                    " TOIL_APPLIANCE_SELF is set correctly and the container exists." % self.effectiveIP)
+                raise RuntimeError("Appliance failed to start on machine with IP: " + self.effectiveIP +
+                                   "\nCheck if TOIL_APPLIANCE_SELF is set correctly and the container exists.")
             try:
-                output = self.sshInstance('/usr/bin/docker', 'ps',
-                                          sshOptions=['-oBatchMode=yes'], user=keyName)
-                
-                if type(role) != type(output):
-                    # We need to encode the role as bytes
-                    role = bytes(role, encoding='utf-8')
+                output = self.sshInstance('/usr/bin/docker', 'ps', sshOptions=['-oBatchMode=yes'], user=keyName)
+
+                role = bytes(role, encoding='utf-8') if type(role) != type(output) else role
                 
                 if role in output:
                     logger.info('...Toil appliance started')
@@ -219,7 +215,7 @@ class Node(object):
 
         kwargs: input, tty, appliance, collectStdout, sshOptions, strict
         """
-        commandTokens = ['ssh', '-t']
+        commandTokens = ['ssh', '-tt']
         strict = kwargs.pop('strict', False)
         if not strict:
             kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] \
@@ -238,7 +234,7 @@ class Node(object):
             commandTokens.extend(sshOptions)
         # specify host
         user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
-        commandTokens.append('%s@%s' % (user,str(self.effectiveIP)))
+        commandTokens.append('%s@%s' % (user, str(self.effectiveIP)))
         appliance = kwargs.pop('appliance', None)
         if appliance:
             # run the args in the appliance
@@ -264,7 +260,9 @@ class Node(object):
         resultValue = popen.wait()
         # ssh has been throwing random 255 errors - why?
         if resultValue != 0:
-            logger.debug('SSH Error (%s) %s' % (resultValue, stderr))
+            logger.info('Executing the command "%s" on the appliance returned a non-zero '
+                        'exit code %s with stdout %s and stderr %s'
+                        % (' '.join(args), resultValue, stdout, stderr))
             raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
                                'exit code %s with stdout %s and stderr %s'
                                % (' '.join(args), resultValue, stdout, stderr))
