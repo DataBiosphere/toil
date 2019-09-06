@@ -170,7 +170,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def prepareSbatch(self, cpu, mem, jobID):
             #  Returns the sbatch command line before the script to run
-            sbatch_line = ['sbatch', '-Q', '-J', 'toil_job_{}'.format(jobID)]
+            sbatch_line = ['sbatch', '-J', 'toil_job_{}'.format(jobID)]
 
             if self.boss.environment:
                 argList = []
