@@ -1398,8 +1398,11 @@ def main(args=None, stdout=sys.stdout):
                                 remove_at_id(value)
                             if isinstance(value, MutableSequence):
                                 for entry in value:
-                                    remove_at_id(entry)
+                                    if isinstance(value, MutableMapping):
+                                        remove_at_id(entry)
             remove_at_id(outobj)
+            visit_class(outobj, ("File",), functools.partial(
+                add_sizes, runtime_context.make_fs_access('')))
             prov_dependencies = cwltool.main.prov_deps(workflowobj, document_loader, uri)
             runtime_context.research_obj.generate_snapshot(prov_dependencies)
             runtime_context.research_obj.close(options.provenance)
