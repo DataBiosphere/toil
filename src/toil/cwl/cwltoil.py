@@ -1044,14 +1044,6 @@ def visitSteps(t, op):
             op(s.tool)
             visitSteps(s.embedded_tool, op)
 
-def cleanTempDirs(job):
-    """Remove temporarly created directories."""
-    if job is CWLJob and job._succeeded:  # Only CWLJobs have this attribute.
-        for tempDir in job.openTempDirs:
-            if os.path.exists(tempDir):
-                shutil.rmtree(tempDir)
-        job.openTempDirs = []
-
 def main(args=None, stdout=sys.stdout):
     """Main method for toil-cwl-runner."""
     cwllogger.removeHandler(defaultStreamHandler)
@@ -1359,9 +1351,6 @@ def main(args=None, stdout=sys.stdout):
 
             wf1.cwljob = initialized_job_order
 
-            if wf1 is CWLJob:
-                # Clean up temporary directories only created with CWLJobs.
-                wf1.addFollowOnFn(cleanTempDirs, wf1)
             result = toil.start(wf1)
             if isinstance(result, tuple):
                 outobj, metadata = result
