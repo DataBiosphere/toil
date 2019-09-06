@@ -30,7 +30,7 @@ import logging
 import copy
 import functools
 import shutil
-from typing import Text, Mapping, MutableSequence
+from typing import Text, Mapping, MutableSequence, MutableMapping
 import hashlib
 import uuid
 import datetime
@@ -1384,6 +1384,20 @@ def main(args=None, stdout=sys.stdout):
 
         if runtime_context.research_obj is not None:
             runtime_context.research_obj.create_job(outobj, None, True)
+
+            def remove_at_id(doc):
+                if isinstance(doc, MutableMapping):
+                    for key in list(doc.keys()):
+                        if key == '@id':
+                            del doc[key]
+                        else:
+                            value = doc[key]
+                            if isinstance(value, MutableMapping):
+                                remove_at_id(value)
+                            if isinstance(value, MutableSequence):
+                                for entry in value:
+                                    remove_at_id(entry)
+            remove_at_id(outobj)
             prov_dependencies = cwltool.main.prov_deps(workflowobj, document_loader, uri)
             runtime_context.research_obj.generate_snapshot(prov_dependencies)
             runtime_context.research_obj.close(options.provenance)
