@@ -685,8 +685,8 @@ class ClusterScaler(object):
         #Remove any nodes that have already been terminated from the list
         # of ignored nodes
         allNodeIPs = [node.privateIP for node in nodeToNodeInfo]
-        terminatedIps = set([ip for ip in self.ignoredNodes if ip not in allNodeIPs])
-        for ip in terminatedIps:
+        terminatedIPs = set([ip for ip in self.ignoredNodes if ip not in allNodeIPs])
+        for ip in terminatedIPs:
             self.ignoredNodes.remove(ip)
             self.leader.batchSystem.unignoreNode(ip)
 
