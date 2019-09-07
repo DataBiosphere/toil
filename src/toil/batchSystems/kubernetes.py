@@ -17,7 +17,7 @@ import pickle
 import subprocess
 import uuid
 import time
-from pprint import pprint
+import logging
 from kubernetes.client.rest import ApiException
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
@@ -59,6 +59,7 @@ class KubernetesBatchSystem(AbstractBatchSystem):
 
         # TODO: set this to TOIL_APPLIANCE_SELF, somehow, even though we aren't technically autoscaling.
         self.dockerImage = 'quay.io/uscs_cgl/toil:latest'
+        
 
     def setUserScript(self, userScript):
         self.userScript = userScript
@@ -136,30 +137,94 @@ class KubernetesBatchSystem(AbstractBatchSystem):
 
         return launched
 
-    def shutdown():
-        api = kubernetes.client.BatchV1Api()
-        print("HERE")
-        got_list = api.list_job_for_all_namespaces(pretty=True).items
+    def shutdown(self):
+        # needed api to shutdown cluster
+        deleteoptions = kubernetes.client.V1DeleteOptions()
+        api_batch = kubernetes.client.BatchV1Api()
+        api_pod = kubernetes.client.CoreV1Api()
         
+        # Clears batches of any namespaced jobs
+        try:
+            jobs = api_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+        except ApiException as e:
+            print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
+        for job in jobs.items:
+            logging.debug(job)
+            jobname = job.metadata.name
+            jobstatus = job.status.conditions
+            if job.status.succeeded ==1:
+                try:
+                    response = api_batch.delete_namespaced_job(jobname, 
+                                                        self.namespace, 
+                                                        deleteoptions, 
+                                                        timeout_seconds=60,
+                                                        propagation_policy='Background')
+                    logging.debug(response)
+                except ApiException as e:
+                    print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
+         
+        # Clear worker pods 
+        try:
+            pods = api_pods.list_namespaced_pod(self.namespace,
+                                                    include_uninitialized=False,
+                                                    pretty=True,
+                                                    timeout_seconds=60)
+        except ApiException as e:
+            logging.error("Exception when calling CoreV1Api->list_namespaced_pod: %s\n" % e)
+
+        for pod in pods.items:
+            logging.debug("Pod {}".format(pod.metadata.name))
+            podname = pod.metadata.name
+            podstatus = pod.status.phase
+            try:
+                if podstatus == "succeeded":
+                    response = api_pod.delete_namespaced_pod(podname,
+                                                             self.namespace,
+                                                             deleteoptions)
+                    logging.debug("Pod {} deleted".format(podname))
+            except ApiException as e:
+                logging.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s\n" % e)
+
+
+    def getIssuedBatchJobIDs(self):
+        api_batch = kubectl.client.BatchV1API()
+        try:
+            got_list = api_batch.list_job_for_all_namespaces(pretty=True).items
+        except ApiException:
+            print("Exception when calling BatchV1Api->list_job_for_all_namespaces %s\n" % e)
+            
         for job in got_list:
             if not job.metadata.name.startswith(self.jobPrefix):
-                # Skip jobs we didn't make
                 continue
-
-            print(job.metadata.clustername)
-            try:
-                resp = api.delete_namespaced_job(job.metadata.name, job.metadata.namespace)
-                pprint(resp)
-            except ApiException as e:
-                print("Exception when calling BatchV1Api->delete_namespaced_job: %s\n" % e)
+            else:
+                jobname = job.status.name
+                jobstatus = job.status.conditions
+                logging.debug("{jobname} Status: {jobstatus}")
+            
+    def killBatchjobs(self):
+        # needed api to shutdown cluster
+        deleteoptions = kubernetes.client.V1DeleteOptions()
+        api_batch = kubernetes.client.BatchV1Api()
         
-    def get_job(self, jobIDs):
-         pass
-         
-    def killBatchjobs(self, jobIDs):
-        pass
-
-
+        # Clears batches of any namespaced jobs
+        try:
+            jobs = api_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+        except ApiException as e:
+            print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
+        for job in jobs.items:
+            logging.debug(job)
+            jobname = job.metadata.name
+            jobstatus = job.status.conditions
+            if job.status.succeeded ==1:
+                try:
+                    response = api_batch.delete_namespaced_job(jobname, 
+                                                        self.namespace, 
+                                                        deleteoptions, 
+                                                        timeout_seconds=60,
+                                                        propagation_policy='Background')
+                    logging.debug(response)
+                except ApiException as e:
+                    print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
 
 def executor():
     """
