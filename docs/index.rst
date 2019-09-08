@@ -72,6 +72,7 @@ If using Toil for your research, please cite
    :maxdepth: 2
 
    appendices/architecture
+   appendices/aws_min_permissions
    appendices/deploy
    appendices/environment_vars
    appendices/staticAzure

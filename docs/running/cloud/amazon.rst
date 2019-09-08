@@ -165,12 +165,14 @@ platforms, and you can even simulate a cluster locally (see :ref:`appliance_dev`
 
     When using the Toil provisioner, the appliance image will be automatically chosen
     based on the pip-installed version of Toil on your system. That choice can be
-    overriden by setting the environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
+    overridden by setting the environment variables ``TOIL_DOCKER_REGISTRY`` and ``TOIL_DOCKER_NAME`` or
     ``TOIL_APPLIANCE_SELF``. See :ref:`envars` for more information on these variables. If
     you are developing with autoscaling and want to test and build your own
     appliance have a look at :ref:`appliance_dev`.
 
 For information on using the Toil Provisioner have a look at :ref:`Autoscaling`.
+
+.. _launchAwsClusterDetails:
 
 Details about Launching a Cluster in AWS
 ----------------------------------------
@@ -195,6 +197,13 @@ Alternatively, you can specify this option via the ``TOIL_AWS_ZONE`` environment
 Note: the zone is different from an EC2 region. A region corresponds to a geographical area
 like ``us-west-2 (Oregon)``, and availability zones are partitions of this area like
 ``us-west-2a``.
+
+By default, Toil creates an IAM role for each cluster with sufficient permissions
+to perform cluster operations (e.g. full S3, EC2, and SDB access). If the default permissions
+are not sufficient for your use case (e.g. if you need access to ECR), you may create a
+custom IAM role with all necessary permissions and set the ``--awsEc2ProfileArn`` parameter
+when launching the cluster. Note that your custom role must at least have
+:ref:`these permissions <minAwsPermissions>` in order for the Toil cluster to function properly.
 
 For more information on options try: ::
 

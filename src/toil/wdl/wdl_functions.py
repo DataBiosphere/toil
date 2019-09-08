@@ -507,9 +507,20 @@ def combine_dicts(dict1, dict2):
     return combineddict
 
 
+def basename(path, suffix=None):
+    """https://software.broadinstitute.org/wdl/documentation/article?id=10554"""
+    path = path.strip()
+    if suffix:
+        suffix = suffix.strip()
+        if path.endswith(suffix):
+            path = path[:-len(suffix)]
+    return os.path.basename(path)
+
+
 def heredoc_wdl(template, dictionary={}, indent=''):
     template = textwrap.dedent(template).format(**dictionary)
     return template.replace('\n', '\n' + indent) + '\n'
+
 
 def read_tsv(f, delimiter="\t"):
     '''
@@ -532,6 +543,7 @@ def read_tsv(f, delimiter="\t"):
         for line in data_file:
             tsv_array.append(line)
     return (tsv_array)
+
 
 def read_csv(f):
     '''

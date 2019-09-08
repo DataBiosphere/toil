@@ -180,7 +180,7 @@ class ResourceTest(ToilTest):
             # The name should be equal between original and localized resource ...
             self.assertEqual(module.name, localModule.name)
             # ... but the directory should be different.
-            self.assertNotEquals(module.dirPath, localModule.dirPath)
+            self.assertNotEqual(module.dirPath, localModule.dirPath)
             # Show that we can 'undo' localization. This is necessary when the user script's jobs
             #  are invoked on the worker where they generate more child jobs.
             self.assertEqual(localModule.globalize(), module)
@@ -222,5 +222,5 @@ class ResourceTest(ToilTest):
             process = subprocess.Popen([scriptPath, jobStorePath], stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
             self.assertTrue('The name of a user script/module must end in .py or .pyc.' in stderr.decode('utf-8'))
-            self.assertNotEquals(0, process.returncode)
+            self.assertNotEqual(0, process.returncode)
             self.assertFalse(os.path.exists(jobStorePath))

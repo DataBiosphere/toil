@@ -294,6 +294,9 @@ the logging module:
   --servicePollingInterval SERVICEPOLLINGINTERVAL
                         Interval of time service jobs wait between polling for
                         the existence of the keep-alive flag (default=60)
+  --debugWorker         Experimental no forking mode for local debugging.
+                        Specifically, workers are not forked and stderr/stdout
+                        are not redirected to the log. (default=False)
 
 Restart Option
 --------------

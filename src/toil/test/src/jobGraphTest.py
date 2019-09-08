@@ -17,7 +17,7 @@ import os
 from argparse import ArgumentParser
 from toil.common import Toil
 from toil.job import Job
-from toil.test import ToilTest
+from toil.test import ToilTest, travis_test
 from toil.jobGraph import JobGraph
 
 class JobGraphTest(ToilTest):
@@ -36,7 +36,7 @@ class JobGraphTest(ToilTest):
         self.toil._jobStore.destroy()
         self.assertFalse(os.path.exists(self.jobStorePath))
         super(JobGraphTest, self).tearDown()
-    
+    @travis_test
     def testJob(self):       
         """
         Tests functions of a job.
@@ -77,6 +77,6 @@ class JobGraphTest(ToilTest):
         self.assertEqual(j, j2)
         #Change an attribute and check not equal
         j.predecessorsFinished = {"1", "2"}
-        self.assertNotEquals(j, j2)
+        self.assertNotEqual(j, j2)
         
         ###TODO test other functionality

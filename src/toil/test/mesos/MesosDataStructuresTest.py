@@ -16,7 +16,7 @@ from builtins import range
 import uuid
 import random
 
-from toil.test import ToilTest
+from toil.test import ToilTest, travis_test
 
 
 class DataStructuresTest(ToilTest):
@@ -34,7 +34,8 @@ class DataStructuresTest(ToilTest):
                       environment=None,
                       workerCleanupInfo=None)
         return job
-
+    
+    @travis_test
     def testJobQueue(self, testJobs=1000):
         """
         The mesos JobQueue sorts MesosShape objects by requirement and

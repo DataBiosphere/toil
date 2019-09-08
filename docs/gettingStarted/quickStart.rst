@@ -227,7 +227,7 @@ Now we can look at what ``down`` does.
     :pyobject: down
 
 Down is the recursive part of the workflow. First we read the file into the local filestore by calling
-:func:`Job.FileStore.readGlobalFile`. This puts a copy of the file in the temp directory for this particular job. This
+:func:`job.fileStore.readGlobalFile`. This puts a copy of the file in the temp directory for this particular job. This
 storage will disappear once this job ends. For a detailed explanation of the filestore, job store, and their interfaces
 have a look at :ref:`managingFiles`.
 
@@ -235,8 +235,8 @@ Next ``down`` checks the base case of the recursion: is the length of the input 
 was an option we added to the workflow in ``main``)? In the base case, we just sort the file, and return the file ID
 of this new sorted file.
 
-If the base case fails, then the file is split into two new tempFiles using :func:`Job.FileStore.getLocalTempFile` and
-the helper function ``copySubRangeOfFile``. Finally we add a follow on Job ``up`` with :func:`Job.addFollowOnJobFn`.
+If the base case fails, then the file is split into two new tempFiles using :func:`job.fileStore.getLocalTempFile` and
+the helper function ``copySubRangeOfFile``. Finally we add a follow on Job ``up`` with :func:`job.addFollowOnJobFn`.
 We've already seen child jobs. A follow-on Job is a job that runs after the current job and *all* of its children (and their children and follow-ons) have
 completed. Using a follow-on makes sense because ``up`` is responsible for merging the files together and we don't want
 to merge the files together until we *know* they are sorted. Again, the return value of the follow-on job is requested
@@ -248,7 +248,7 @@ Looking at ``up``
     :pyobject: up
 
 we see that the two input files are merged together and the output is written to a new file using
-:func:`job.FileStore.writeGlobalFileStream`. After a little cleanup, the output file is returned.
+:func:`job.fileStore.writeGlobalFileStream`. After a little cleanup, the output file is returned.
 
 Once the final ``up`` finishes and all of the ``rv()`` promises are fulfilled, ``main`` receives the sorted file's ID
 which it uses in ``exportFile`` to send it to the user.

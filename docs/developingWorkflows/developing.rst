@@ -323,7 +323,7 @@ multiple jobs' output values::
 
     Just like regular promises, the return value must be determined prior to
     scheduling any job that depends on the return value. In our example above, notice
-    how the dependant jobs were follow ons to the parent while promising jobs are
+    how the dependent jobs were follow ons to the parent while promising jobs are
     children of the parent. This ordering ensures that all promises are
     properly fulfilled.
 
@@ -344,9 +344,10 @@ Managing files within a workflow
 --------------------------------
 
 It is frequently the case that a workflow will want to create files, both
-persistent and temporary, during its run. The :class:`toil.fileStore.FileStore`
-class is used by jobs to manage these files in a manner that guarantees cleanup
-and resumption on failure.
+persistent and temporary, during its run. The
+:class:`toil.fileStores.abstractFileStore.AbstractFileStore` class is used by
+jobs to manage these files in a manner that guarantees cleanup and resumption
+on failure.
 
 The :func:`toil.job.Job.run` method has a file store instance as an argument.
 The following example shows how this can be used to create temporary files that
@@ -453,6 +454,12 @@ An example of a basic ``dockerCall`` is below::
                 tool='quay.io/ucsc_cgl/bwa',
                 workDir=job.tempDir,
                 parameters=['index', '/data/reference.fa'])
+
+Note the assumption that `reference.fa` file is located in `/data`. This is Toil's
+standard convention as a mount location to reduce boilerplate when calling `dockerCall`.
+Users can choose their own mount locations by supplying a `volumes` kwarg to `dockerCall`,
+such as: `volumes={working_dir: {'bind': '/data', 'mode': 'rw'}}`, where `working_dir`
+is an absolute path on the user's filesystem.
 
 ``dockerCall`` can also be added to workflows like any other job function:
 

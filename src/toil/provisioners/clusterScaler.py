@@ -671,7 +671,7 @@ class ClusterScaler(object):
         logger.debug('Terminating %i instance(s).', len(nodeToNodeInfo))
         if nodeToNodeInfo:
             for node in nodeToNodeInfo:
-                if node in self.ignoredNodes:
+                if node.privateIP in self.ignoredNodes:
                     self.ignoredNodes.remove(node.privateIP)
                     self.leader.batchSystem.unignoreNode(node.privateIP)
             self.provisioner.terminateNodes(nodeToNodeInfo)
@@ -685,7 +685,10 @@ class ClusterScaler(object):
         #Remove any nodes that have already been terminated from the list
         # of ignored nodes
         allNodeIPs = [node.privateIP for node in nodeToNodeInfo]
-        self.ignoredNodes = set([ip for ip in self.ignoredNodes if ip in allNodeIPs])
+        terminatedIPs = set([ip for ip in self.ignoredNodes if ip not in allNodeIPs])
+        for ip in terminatedIPs:
+            self.ignoredNodes.remove(ip)
+            self.leader.batchSystem.unignoreNode(ip)
 
         logger.debug("There are %i nodes being ignored by the batch system, "
                     "checking if they can be terminated" % len(self.ignoredNodes))
@@ -960,5 +963,3 @@ class ClusterStats(object):
                 threadName = 'Preemptable' if preemptable else 'Non-preemptable'
                 logger.debug('%s provisioner stats thread shut down successfully.', threadName)
                 self.stats[threadName] = stats
-        else:
-            pass

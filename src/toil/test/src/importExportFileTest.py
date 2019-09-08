@@ -21,8 +21,8 @@ import os
 from toil.common import Toil
 from toil.job import Job
 from toil.leader import FailedJobsException
-from toil.test import ToilTest, slow
-from toil.fileStore import FileID
+from toil.test import ToilTest, slow, travis_test
+from toil.fileStores import FileID
 from toil.common import getDirSizeRecursively
 
 
@@ -76,10 +76,12 @@ class ImportExportFileTest(ToilTest):
     @slow
     def testImportExportRestartTrue(self):
         self._importExport(restart=True)
-
+    
+    @travis_test
     def testImportExportRestartFalse(self):
         self._importExport(restart=False)
-
+    
+    @travis_test
     def testImportSharedFileName(self):
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "DEBUG"
