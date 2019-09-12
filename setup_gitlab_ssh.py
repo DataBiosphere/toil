@@ -3,7 +3,7 @@ import json
 import os
 
 
-def clean_key(private_key):
+def format_private_key(private_key):
     private_key_header = '-----BEGIN RSA PRIVATE KEY-----'
     private_key_footer = '-----END RSA PRIVATE KEY-----'
 
@@ -13,7 +13,7 @@ def clean_key(private_key):
     private_key_body = private_key_body[:-len(private_key_footer)]
     return private_key_header + private_key_body.replace(' ', '\n') + private_key_footer
 
-p = subprocess.Popen('/usr/local/bin/aws secretsmanager --region us-west-2 get-secret-value --secret-id /toil/gitlab/ssh_key',
+p = subprocess.Popen('aws secretsmanager --region us-west-2 get-secret-value --secret-id /toil/gitlab/ssh_key',
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 stdout, stderr = p.communicate()
 
@@ -25,8 +25,8 @@ try:
     keys = json.loads(json.loads(stdout)['SecretString'])
     with open(os.path.join(good_spot, 'id_rsa.pub'), 'w') as f:
         f.write(keys['public'])
-    private_key = clean_key(keys['private'])
+
     with open(os.path.join(good_spot, 'id_rsa'), 'w') as f:
-        f.write(private_key)
+        f.write(format_private_key(keys['private']))
 except:
     print('While attempting to set up the ssh key:\n' + str(stderr))
