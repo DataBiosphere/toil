@@ -37,6 +37,7 @@ import uuid
 import time
 import logging
 from kubernetes.client.rest import ApiException
+from six.moves.queue import Empty, Queue
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
@@ -66,9 +67,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         if not contexts:
             raise RuntimeError("No Kubernetes contexts available in ~/.kube/config")
             
-        # Connect to Kubernetes
-        self.api = kubernetes.client.BatchV1Api()
-
         # Identify the namespace to work in
         self.namespace = active_context.get('context', {}).get('namespace', 'default')
 
@@ -84,7 +82,23 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # TODO: set this to TOIL_APPLIANCE_SELF, somehow, even though we aren't technically autoscaling.
         self.dockerImage = 'quay.io/uscs_cgl/toil:latest'
+           
+        self.executors = {}
+
+        self.killJobIds = set()
+       
+        self.killedJobIds = set()
+
+        self.intendedKill = set()
         
+        self.jobQueues = Queue()
+        
+        # Required Api needed from kubernetes
+        self.batchApi = kubernetes.client.BatchV1Api()
+
+        self.deleteoptions = kubernetes.client.DeleteOptions()
+
+        self.podApi = kubernetes.client.CoreV1Api()
 
     def setUserScript(self, userScript):
         self.userScript = userScript
@@ -166,7 +180,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                           kind="Job")
             
             # Make the job
-            launched = self.api.create_namespaced_job(namespace, job)
+            launched = self.batchApi.create_namespaced_job(namespace, job)
 
             log.debug('Launched job: %s', str(launched))
             
@@ -217,18 +231,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Remember the continuation token
             
         
-        for job in 
-        
-
     def shutdown(self):
-        # needed api to shutdown cluster
-        deleteoptions = kubernetes.client.V1DeleteOptions()
-        api_batch = kubernetes.client.BatchV1Api()
-        api_pod = kubernetes.client.CoreV1Api()
-        
         # Clears batches of any namespaced jobs
         try:
-            jobs = api_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
         except ApiException as e:
             print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
         for job in jobs.items:
@@ -237,7 +243,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             jobstatus = job.status.conditions
             if job.status.succeeded ==1:
                 try:
-                    response = api_batch.delete_namespaced_job(jobname, 
+                    response = self.batchApi.delete_namespaced_job(jobname, 
                                                         self.namespace, 
                                                         deleteoptions, 
                                                         timeout_seconds=60,
@@ -248,7 +254,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
          
         # Clear worker pods 
         try:
-            pods = api_pods.list_namespaced_pod(self.namespace,
+            pods = self.podApi.list_namespaced_pod(self.namespace,
                                                     include_uninitialized=False,
                                                     pretty=True,
                                                     timeout_seconds=60)
@@ -261,18 +267,17 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             podstatus = pod.status.phase
             try:
                 if podstatus == "succeeded":
-                    response = api_pod.delete_namespaced_pod(podname,
+                    response = self.podApi.delete_namespaced_pod(podname,
                                                              self.namespace,
-                                                             deleteoptions)
+                                                             self.deleteoptions)
                     logging.debug("Pod {} deleted".format(podname))
             except ApiException as e:
                 logging.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s\n" % e)
 
 
     def getIssuedBatchJobIDs(self):
-        api_batch = kubectl.client.BatchV1API()
         try:
-            got_list = api_batch.list_job_for_all_namespaces(pretty=True).items
+            got_list = self.batchApi.list_job_for_all_namespaces(pretty=True).items
         except ApiException:
             print("Exception when calling BatchV1Api->list_job_for_all_namespaces %s\n" % e)
             
@@ -284,14 +289,12 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 jobstatus = job.status.conditions
                 logging.debug("{jobname} Status: {jobstatus}")
             
-    def killBatchjobs(self):
+    def killBatchjobs(self, jobIDs):
         # needed api to shutdown cluster
-        deleteoptions = kubernetes.client.V1DeleteOptions()
-        api_batch = kubernetes.client.BatchV1Api()
         
         # Clears batches of any namespaced jobs
         try:
-            jobs = api_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+            jobs = self.batchApi_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
         except ApiException as e:
             print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
         for job in jobs.items:
@@ -300,7 +303,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             jobstatus = job.status.conditions
             if job.status.succeeded ==1:
                 try:
-                    response = api_batch.delete_namespaced_job(jobname, 
+                    response = self.batchApi.delete_namespaced_job(jobname, 
                                                         self.namespace, 
                                                         deleteoptions, 
                                                         timeout_seconds=60,
@@ -315,7 +318,8 @@ def executor():
 
     Runs inside the Toil container.
 
-    Responsible for setting up the user script and running the command for the job (which may in turn invoke the Toil worker entrypoint.
+    Responsible for setting up the user script and running the command for the
+    job (which may in turn invoke the Toil worker entrypoint).
 
     """
 
