@@ -137,11 +137,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Encode it in a form we can send in a command-line argument
             encodedJob = base64.encode(pickle.dumps(job))
 
-            # TODO: remove some of these arguments and integrate the _runCommand method better into the object
-            # TODO: Propagate the job's requirements here
-            # TODO: Do something useful with the returned job like remembering we launched it
-            self._runCommand(, self.dockerImage, self.namespace, basename=self.jobPrefix)
-            
             # The Kubernetes API makes sense only in terms of the YAML format. Objects
             # represent sections of the YAML files. Except from our point of view, all
             # the internal nodes in the YAML structure are named and typed.
@@ -163,7 +158,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             volume_mount = kubernetes.client.V1VolumeMount(mount_path='/tmp', name=volume_name)
             # Make a container definition
             container = kubernetes.client.V1Container(command=['_toil_kubernetes_executor', encodedJob],
-                                                      image=image,
+                                                      image=self.dockerImage,
                                                       name="runner-container",
                                                       resources=resources,
                                                       volume_mounts=[volume_mount])
@@ -250,7 +245,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         return
                     
             # Remember the continuation token, if any
-            token = results.metadata.continue
+            token = getattr(results.metadata, 'continue', None)
             
             if token is None:
                 # There isn't one. We got everything.
@@ -285,7 +280,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 return pod
                     
             # Remember the continuation token, if any
-            token = results.metadata.continue
+            token = getattr(results.metadata, 'continue', None)
             
             if token is None:
                 # There isn't one. We got everything.
