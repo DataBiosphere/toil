@@ -281,7 +281,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         BatchSystemSupport.workerCleanup(self.workerCleanupInfo)
 
     def getUpdatedBatchJob(self, maxWait):
-        """Returns a map of the run jobs and the return value of their processes."""
+        """Returns a tuple of a no-longer-running, the return value of its process, and its runtime, or None."""
         try:
             item = self.outputQueue.get(timeout=maxWait)
         except Empty:

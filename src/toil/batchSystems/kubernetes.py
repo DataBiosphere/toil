@@ -206,9 +206,14 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         
     
-    def _allOurJobObjects(self):
+    def _ourJobObjects(self, selector=None, limit=None):
         """
-        Yield all Kubernetes V1Job objects that we are responsible for that the cluster knows about.
+        Yield all Kubernetes V1Job objects that we are responsible for that the
+        cluster knows about.
+        
+        :param str selector: a Kubernetes field selector, like
+                   "status.failed!=0,status.active=0", to restrict the search.
+        :param int limit: max results to yield.
         """
         
         # We need to page through the list from the cluster with a continuation
@@ -222,20 +227,127 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # time.
         token = None
         
+        # Do our own limiting since we need to apply a filter that the server
+        # can't.
+        seen = 0
+        
+        # TODO: We ought to label our jobs by owning Toil workflow so we can
+        # look them up instead of filtering down later.
+        
         while True:
-            try:
-                results = self.api.list_namespaced_job(self.namespace, _continue = token)
-            except:
-                
+            results = self.batchApi.list_namespaced_job(self.namespace,
+                                                        field_selector=selector,
+                                                        _continue = token)
             
             for job in results.items:
                 if self._isJobOurs(job):
                     # This job belongs to us
                     yield job
                     
-            # Remember the continuation token
+                    # Don't go over the limit
+                    seen += 1
+                    if limit is None or seen == limit:
+                        return
+                    
+            # Remember the continuation token, if any
+            token = results.metadata.continue
             
+            if token is None:
+                # There isn't one. We got everything.
+                break
+                
+    def _getPodForJob(self, jobObject):
+        """
+        Get the pod that belongs to the given job. The pod knows about things
+        like the job's exit code.
         
+        :param kubernetes.client.V1Job jobObject: a Kubernetes job to look up
+                                       pods for.
+
+        :return: The pod for the job.
+        :rtype: kubernetes.client.V1Pod
+        """
+        
+        token = None
+        
+        # Work out what the return code was (which we need to get from the
+        # pods) We get the associated pods by querying on the label selector
+        # `job-name=JOBNAME`
+        query = 'job-name={}'.format(jobObject.metadata.name)
+        
+        while True:
+            results = self.batchApi.list_namespaced_pod(self.namespace,
+                                                        label_selector=query,
+                                                        _continue = token)
+            
+            for pod in results.items:
+                # Return the first pod we find
+                return pod
+                    
+            # Remember the continuation token, if any
+            token = results.metadata.continue
+            
+            if token is None:
+                # There isn't one. We got everything.
+                break
+                
+        # If we get here, no pages had any pods.
+        raise RuntimeError('Could not find any pods for job {}'.format(jobObject.metadata.name))
+        
+            
+            
+    def getUpdatedBatchJob(self, maxWait):
+        
+        # See if a local batch job has updated and is available immediately
+        local_tuple = self.getUpdatedLocalJob(0)
+        if local_tuple:
+            # If so, use it
+            return local_tuple
+        else:
+            # Otherwise, go looking for other jobs
+            
+            # Everybody else does this with a queue and some other thread that
+            # is responsible for populating it.
+            # But we can just ask kubernetes now.
+            
+            # There's no way to filter for failed OR succeeded jobs, but we can
+            # look for one and then the other.
+            jobObject = None
+            for j in self._ourJobObjects("status.failed=1", limit=1):
+                jobObject = j
+            if jobObject is None:
+                for j in self._ourJobObjects("status.succeeded=1", limit=1):
+                    jobObject = j
+                    
+            if jobObject is None:
+                # TODO: block and wait for the jobs to update, until maxWait is hit
+                
+                # For now just say we couldn't get anything
+                return None
+            else:
+                # Work out what the job's ID was (whatever came after our name prefix)
+                jobID = int(jobObject.metadata.name[len(self.namePrefix):])
+                
+                # Grab the pod
+                pod = self._getPodForJob(jobObject)
+                
+                # Get the exit code form the pod
+                exitCode = pod.status.container_statuses[0].state.terminated.exit_code
+                
+                # Compute how long the job ran for (subtract datetimes)
+                runtime = (job.status.completion_time - job.status.start_time).total_seconds()
+                
+                
+                # Delete the job and all dependents (pods)
+                self.batchApi.delete_namespaced_job(jobObject.metadata.name,
+                                                    self.namespace,
+                                                    propagation_policy='Foreground')
+                                                    
+               
+                
+                # Return the one finished job we found
+                return jobID, exitCode, runtime
+            
     def shutdown(self):
         # Clears batches of any namespaced jobs
         try:
