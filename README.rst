@@ -4,8 +4,6 @@ Toil is a scalable, efficient, cross-platform (Linux & macOS) pipeline managemen
 written entirely in Python, and designed around the principles of functional
 programming.
 
-Our next scheduled release is July 11, 2019.
-
 * Check the `website`_ for a description of Toil and its features.
 * Full documentation for the latest stable release can be found at
   `Read the Docs`_.
