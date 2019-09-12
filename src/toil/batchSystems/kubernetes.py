@@ -19,6 +19,7 @@ import uuid
 import time
 import logging
 from kubernetes.client.rest import ApiException
+from six.moves.queue import Empty, Queue
 
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
@@ -59,7 +60,23 @@ class KubernetesBatchSystem(AbstractBatchSystem):
 
         # TODO: set this to TOIL_APPLIANCE_SELF, somehow, even though we aren't technically autoscaling.
         self.dockerImage = 'quay.io/uscs_cgl/toil:latest'
+           
+        self.executors = {}
+
+        self.killJobIds = set()
+       
+        self.killedJobIds = set()
+
+        self.intendedKill = set()
         
+        self.jobQueues = Queue()
+        
+        # Required Api needed from kubernetes
+        self.batchApi = kubernetes.client.BatchV1Api()
+
+        self.deleteoptions = kubernetes.client.DeleteOptions()
+
+        self.podApi = kubernetes.client.CoreV1Api()
 
     def setUserScript(self, userScript):
         self.userScript = userScript
@@ -118,34 +135,18 @@ class KubernetesBatchSystem(AbstractBatchSystem):
         # Wrap the container in a spec
         pod_spec = kubernetes.client.V1PodSpec(containers=[container], volumes=[volume], restart_policy="Never")
         # Wrap the spec in a template
-        template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec)
-        # Make another spec for the job, asking to run the template with backoff
-        job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=1)
-        # Make metadata to tag the job with info.
-        # We use generate_name to ensure a unique name
-        metadata = kubernetes.client.V1ObjectMeta(generate_name=basename)
-        # And make the actual job
-        job = kubernetes.client.V1Job(spec=job_spec, metadata=metadata, api_version="batch/v1", kind="Job")
-        
-        # Get a versioned Kubernetes batch API
-        api = kubernetes.client.BatchV1Api()
-
+        template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec) # Make another spec for the job, asking to run the template with backoff job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=1) # Make metadata to tag the job with info.  # We use generate_name to ensure a unique name metadata = kubernetes.client.V1ObjectMeta(generate_name=basename) # And make the actual job job = kubernetes.client.V1Job(spec=job_spec, metadata=metadata, api_version="batch/v1", kind="Job") # Get a versioned Kubernetes batch API api = kubernetes.client.BatchV1Api() 
         # Make the job
-        launched = api.create_namespaced_job(namespace, job)
+        launched = self.batchApi.create_namespaced_job(namespace, job)
 
         log.debug('Launched job: %s', str(launched))
 
         return launched
 
     def shutdown(self):
-        # needed api to shutdown cluster
-        deleteoptions = kubernetes.client.V1DeleteOptions()
-        api_batch = kubernetes.client.BatchV1Api()
-        api_pod = kubernetes.client.CoreV1Api()
-        
         # Clears batches of any namespaced jobs
         try:
-            jobs = api_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
         except ApiException as e:
             print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
         for job in jobs.items:
@@ -154,7 +155,7 @@ class KubernetesBatchSystem(AbstractBatchSystem):
             jobstatus = job.status.conditions
             if job.status.succeeded ==1:
                 try:
-                    response = api_batch.delete_namespaced_job(jobname, 
+                    response = self.batchApi.delete_namespaced_job(jobname, 
                                                         self.namespace, 
                                                         deleteoptions, 
                                                         timeout_seconds=60,
@@ -165,7 +166,7 @@ class KubernetesBatchSystem(AbstractBatchSystem):
          
         # Clear worker pods 
         try:
-            pods = api_pods.list_namespaced_pod(self.namespace,
+            pods = self.podApi.list_namespaced_pod(self.namespace,
                                                     include_uninitialized=False,
                                                     pretty=True,
                                                     timeout_seconds=60)
@@ -178,18 +179,17 @@ class KubernetesBatchSystem(AbstractBatchSystem):
             podstatus = pod.status.phase
             try:
                 if podstatus == "succeeded":
-                    response = api_pod.delete_namespaced_pod(podname,
+                    response = self.podApi.delete_namespaced_pod(podname,
                                                              self.namespace,
-                                                             deleteoptions)
+                                                             self.deleteoptions)
                     logging.debug("Pod {} deleted".format(podname))
             except ApiException as e:
                 logging.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s\n" % e)
 
 
     def getIssuedBatchJobIDs(self):
-        api_batch = kubectl.client.BatchV1API()
         try:
-            got_list = api_batch.list_job_for_all_namespaces(pretty=True).items
+            got_list = self.batchApi.list_job_for_all_namespaces(pretty=True).items
         except ApiException:
             print("Exception when calling BatchV1Api->list_job_for_all_namespaces %s\n" % e)
             
@@ -201,14 +201,12 @@ class KubernetesBatchSystem(AbstractBatchSystem):
                 jobstatus = job.status.conditions
                 logging.debug("{jobname} Status: {jobstatus}")
             
-    def killBatchjobs(self):
+    def killBatchjobs(self, jobIDs):
         # needed api to shutdown cluster
-        deleteoptions = kubernetes.client.V1DeleteOptions()
-        api_batch = kubernetes.client.BatchV1Api()
         
         # Clears batches of any namespaced jobs
         try:
-            jobs = api_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+            jobs = self.batchApi_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
         except ApiException as e:
             print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
         for job in jobs.items:
@@ -217,7 +215,7 @@ class KubernetesBatchSystem(AbstractBatchSystem):
             jobstatus = job.status.conditions
             if job.status.succeeded ==1:
                 try:
-                    response = api_batch.delete_namespaced_job(jobname, 
+                    response = self.batchApi.delete_namespaced_job(jobname, 
                                                         self.namespace, 
                                                         deleteoptions, 
                                                         timeout_seconds=60,
