@@ -262,10 +262,6 @@ class BatchSystemSupport(AbstractBatchSystem):
 
         If no value is provided it will be looked up from the current environment.
 
-        NB: Only the Mesos and single-machine batch systems support passing environment
-        variables. On other batch systems, this method has no effect. See
-        https://github.com/BD2KGenomics/toil/issues/547.
-
         :param str name: the environment variable to be set on the worker.
 
         :param str value: if given, the environment variable given by name will be set to this value.

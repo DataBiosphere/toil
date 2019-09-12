@@ -102,6 +102,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
     def setUserScript(self, userScript):
         self.userScript = userScript
+        
+    # setEnv is provided by BatchSystemSupport, updates self.environment
     
     def issueBatchJob(self, jobNode):
         # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
@@ -114,6 +116,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             return localID
         else:
             # We actually want to send to the cluster
+            
+            # Check resource requirements (managed by BatchSystemSupport)
+            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
             
             # Make a batch system scope job ID
             jobID = self.getNextJobID()
