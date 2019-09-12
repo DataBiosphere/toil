@@ -31,11 +31,13 @@ import base64
 import getpass
 import kubernetes
 import logging
+import os
 import pickle
 import subprocess
+import sys
 import uuid
 import time
-import logging
+
 from kubernetes.client.rest import ApiException
 from six.moves.queue import Empty, Queue
 
@@ -56,7 +58,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         return False
    
     def __init__(self, config, maxCores, maxMemory, maxDisk):
-        super(kubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
+        super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
         # Load ~/.kube/config
         kubernetes.config.load_kube_config()
@@ -93,12 +95,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         self.jobQueues = Queue()
         
-        # Required Api needed from kubernetes
+        # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()
-
-        self.deleteoptions = kubernetes.client.DeleteOptions()
-
-        self.podApi = kubernetes.client.CoreV1Api()
+        self.coreApi = kubernetes.client.CoreV1Api()
 
     def setUserScript(self, userScript):
         self.userScript = userScript
@@ -135,7 +134,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 job['userScript'] = self.userScript
 
             # Encode it in a form we can send in a command-line argument
-            encodedJob = base64.encode(pickle.dumps(job))
+            encodedJob = base64.b64encode(pickle.dumps(job))
 
             # The Kubernetes API makes sense only in terms of the YAML format. Objects
             # represent sections of the YAML files. Except from our point of view, all
@@ -180,7 +179,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                           kind="Job")
             
             # Make the job
-            launched = self.batchApi.create_namespaced_job(namespace, job)
+            launched = self.batchApi.create_namespaced_job(self.namespace, job)
 
             log.debug('Launched job: %s', str(launched))
             
@@ -271,9 +270,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         query = 'job-name={}'.format(jobObject.metadata.name)
         
         while True:
-            results = self.batchApi.list_namespaced_pod(self.namespace,
-                                                        label_selector=query,
-                                                        _continue = token)
+            results = self.coreApi.list_namespaced_pod(self.namespace,
+                                                       label_selector=query,
+                                                       _continue = token)
             
             for pod in results.items:
                 # Return the first pod we find
@@ -321,7 +320,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 return None
             else:
                 # Work out what the job's ID was (whatever came after our name prefix)
-                jobID = int(jobObject.metadata.name[len(self.namePrefix):])
+                jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
                 
                 # Grab the pod
                 pod = self._getPodForJob(jobObject)
@@ -330,7 +329,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 exitCode = pod.status.container_statuses[0].state.terminated.exit_code
                 
                 # Compute how long the job ran for (subtract datetimes)
-                runtime = (job.status.completion_time - job.status.start_time).total_seconds()
+                runtime = (jobObject.status.completion_time - 
+                           jobObject.status.start_time).total_seconds()
                 
                 
                 # Delete the job and all dependents (pods)
@@ -357,7 +357,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 try:
                     response = self.batchApi.delete_namespaced_job(jobname, 
                                                         self.namespace, 
-                                                        deleteoptions, 
                                                         timeout_seconds=60,
                                                         propagation_policy='Background')
                     logging.debug(response)
@@ -366,7 +365,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
          
         # Clear worker pods 
         try:
-            pods = self.podApi.list_namespaced_pod(self.namespace,
+            pods = self.coreApi.list_namespaced_pod(self.namespace,
                                                     include_uninitialized=False,
                                                     pretty=True,
                                                     timeout_seconds=60)
@@ -379,9 +378,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             podstatus = pod.status.phase
             try:
                 if podstatus == "succeeded":
-                    response = self.podApi.delete_namespaced_pod(podname,
-                                                             self.namespace,
-                                                             self.deleteoptions)
+                    response = self.coreApi.delete_namespaced_pod(podname,
+                                                             self.namespace)
                     logging.debug("Pod {} deleted".format(podname))
             except ApiException as e:
                 logging.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s\n" % e)
@@ -390,7 +388,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
     def getIssuedBatchJobIDs(self):
         try:
             got_list = self.batchApi.list_job_for_all_namespaces(pretty=True).items
-        except ApiException:
+        except ApiException as e:
             print("Exception when calling BatchV1Api->list_job_for_all_namespaces %s\n" % e)
             
         for job in got_list:
@@ -406,7 +404,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         # Clears batches of any namespaced jobs
         try:
-            jobs = self.batchApi_batch.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
         except ApiException as e:
             print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
         for job in jobs.items:
@@ -417,7 +415,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 try:
                     response = self.batchApi.delete_namespaced_job(jobname, 
                                                         self.namespace, 
-                                                        deleteoptions, 
                                                         timeout_seconds=60,
                                                         propagation_policy='Background')
                     logging.debug(response)
@@ -444,7 +441,7 @@ def executor():
 
     # Take in a base64-encoded pickled dict as our first argument and decode it
     try:
-        job = pickle.loads(base64.decode(sys.argv[1]))
+        job = pickle.loads(base64.b64decode(sys.argv[1]))
     except:
         exc_info = sys.exc_info()
         log.error('Exception while unpickling task: ', exc_info=exc_info)
