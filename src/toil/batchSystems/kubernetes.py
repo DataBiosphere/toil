@@ -85,19 +85,11 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # TODO: set this to TOIL_APPLIANCE_SELF, somehow, even though we aren't technically autoscaling.
         self.dockerImage = 'quay.io/uscs_cgl/toil:latest'
            
-        self.executors = {}
-
-        self.killJobIds = set()
-       
-        self.killedJobIds = set()
-
-        self.intendedKill = set()
-        
-        self.jobQueues = Queue()
-        
         # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()
         self.coreApi = kubernetes.client.CoreV1Api()
+    
+        self.jobIds = set()
 
     def setUserScript(self, userScript):
         self.userScript = userScript
@@ -344,45 +336,31 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 return jobID, exitCode, runtime
             
     def shutdown(self):
-        # Clears batches of any namespaced jobs
+        
+        # Shutdown local processes first
+        self.shutdownLocal()
+        
+        # Clears batch's job belonging to the owner in the namespace
         try:
-            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True)
         except ApiException as e:
             print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
         for job in jobs.items:
-            logging.debug(job)
-            jobname = job.metadata.name
-            jobstatus = job.status.conditions
-            if job.status.succeeded ==1:
-                try:
-                    response = self.batchApi.delete_namespaced_job(jobname, 
-                                                        self.namespace, 
-                                                        timeout_seconds=60,
-                                                        propagation_policy='Background')
-                    logging.debug(response)
-                except ApiException as e:
-                    print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
-         
-        # Clear worker pods 
-        try:
-            pods = self.coreApi.list_namespaced_pod(self.namespace,
-                                                    include_uninitialized=False,
-                                                    pretty=True,
-                                                    timeout_seconds=60)
-        except ApiException as e:
-            logging.error("Exception when calling CoreV1Api->list_namespaced_pod: %s\n" % e)
-
-        for pod in pods.items:
-            logging.debug("Pod {}".format(pod.metadata.name))
-            podname = pod.metadata.name
-            podstatus = pod.status.phase
-            try:
-                if podstatus == "succeeded":
-                    response = self.coreApi.delete_namespaced_pod(podname,
-                                                             self.namespace)
-                    logging.debug("Pod {} deleted".format(podname))
-            except ApiException as e:
-                logging.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s\n" % e)
+            if self._jobIsOurs(job): 
+                logging.debug(job)
+                jobname = job.metadata.name
+                jobstatus = job.status.conditions
+                if job.status.succeeded ==1:
+                    try:
+                        response = self.batchApi.delete_namespaced_job(jobname, 
+                                                            self.namespace, 
+                                                            propagation_policy='Foreground')
+                        logging.debug(response)
+                    except ApiException as e:
+                        print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
+            else:
+                logger.debug("{job.metadata.name} is }ot our job")
+                continue
 
 
     def getIssuedBatchJobIDs(self):
@@ -392,34 +370,42 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             print("Exception when calling BatchV1Api->list_job_for_all_namespaces %s\n" % e)
             
         for job in got_list:
-            if not job.metadata.name.startswith(self.jobPrefix):
+            if not self._isOurJob(job):
+                logger.debug("{job.metadata.name} is not our job")
                 continue
             else:
                 jobname = job.status.name
                 jobstatus = job.status.conditions
                 logging.debug("{jobname} Status: {jobstatus}")
+                self.jobIds.update(jobname)
+        return jobIds
             
     def killBatchjobs(self, jobIDs):
-        # needed api to shutdown cluster
         
-        # Clears batches of any namespaced jobs
+        self.killLocalJobs(jobIDs)
+        
+        # Clears owners job in namespace
+        
         try:
-            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True,timeout_seconds=60)
+            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True)
         except ApiException as e:
             print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
         for job in jobs.items:
-            logging.debug(job)
-            jobname = job.metadata.name
-            jobstatus = job.status.conditions
-            if job.status.succeeded ==1:
-                try:
-                    response = self.batchApi.delete_namespaced_job(jobname, 
-                                                        self.namespace, 
-                                                        timeout_seconds=60,
-                                                        propagation_policy='Background')
-                    logging.debug(response)
-                except ApiException as e:
-                    print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
+            if self._isJobOurs(job):
+                logging.debug(job)
+                jobname = job.metadata.name
+                jobstatus = job.status.conditions
+                if job.status.succeeded ==1:
+                    try:
+                        response = self.batchApi.delete_namespaced_job(jobname, 
+                                                            self.namespace, 
+                                                            propagation_policy='Foreground')
+                        logging.debug(response)
+                    except ApiException as e:
+                        print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
+            else:
+                logger.debug("{job.metadata.name} is not our job")
+                continue
 
 def executor():
     """
