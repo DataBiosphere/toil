@@ -180,10 +180,10 @@ class CWLTest(ToilTest):
         try:
             cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
                    '--timeout=2400', '--basedir=' + self.workDir]
-            if caching:
-                cmd.extend(['--disableCaching="False"'])
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
+            if caching:
+                cmd.extend(['--', '--disableCaching="False"'])
             subprocess.check_output(cmd, cwd=self.workDir, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
