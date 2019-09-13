@@ -10,11 +10,56 @@ Toil has full support for the CWL v1.0.1 specification.
 Running CWL Locally
 -------------------
 
+The `toil-cwl-runner` command provides cwl-parsing functionality using cwltool, and leverages the job-scheduling and
+batch system support of Toil.
+
 To run in local batch mode, provide the CWL file and the input object file::
 
     $ toil-cwl-runner example.cwl example-job.yml
 
 For a simple example of CWL with Toil see :ref:`cwlquickstart`.
+
+Detailed Usage Instructions
+---------------------------
+
+Help information can be found by using this toil command:
+
+    $ toil-cwl-runner -h
+
+A more detailed example shows how we can specify both Toil and cwltool arguments for our workflow:
+
+    $ toil-cwl-runner \
+        --singularity \
+        --jobStore my_jobStore \
+        --batchSystem lsf \
+        --workDir `pwd` \
+        --outdir `pwd` \
+        --logFile cwltoil.log \
+        --writeLogs `pwd` \
+        --logLevel DEBUG \
+        --retryCount 2 \
+        --disableCaching \
+        --maxLogFileSize 20000000000 \
+        --stats \
+        standard_bam_processing.cwl \
+        inputs.yaml
+
+In this case, we set the following options:
+
+    `--singularity`: (Passed to Toil) Specifies that all jobs should be run with Singularity containers instead of
+    Docker.
+    `--jobStore`: (Passed to Toil) Path to a folder that already exists, which will contain the Toil jobstore and all
+        related job-tracking information.
+    `--batchSystem`: (Passed to Toil) Use the specified HPC or Cloud-based cluster platform
+    `--workDir`: The directory where all temporary files will be created for the workflow. This can be referenced as
+        `$(runtime.tmpdir)` in CWL tools and workflows.
+    `--outdir`: Directory where final outputs will be written.
+    `--logFile`: Path to the main logfile with logs from all jobs.
+    `--writeLogs`: (Passed to Toil) Directory where all job logs will be stored to the current working directory
+    `--retryCount`: How many times to retry each Toil job.
+    `--disableCaching`: ?
+    `--maxLogFileSize`: Logs that get larger than this value will be truncated.
+    `--stats`: Save resources usages in json files that can be collected with the `toil stats` command after the workflow is done.
 
 Running CWL in the Cloud
 ------------------------
@@ -38,3 +83,141 @@ multiple files, it may be useful. For example, if you want to run a CWL workflow
 samples inputs, it could look something like:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_cwlexample.py
+
+Toil & CWL Tips
+---------------
+
+### See logs for just one job (by using the full log file, requires knowing the job's toil-generated ID)
+```
+cat cwltoil.log | grep jobVM1fIs
+```
+
+### Grep for full commands from toil logs
+
+This gives you a more concise view of the commands being run (note that this information is only available from Toil when running with `--logDebug`, or when using the `pipeline_submit` script with `--logLevel DEBUG`)
+```
+pcregrep -M "\[job .*\.cwl.*$\n(.*        .*$\n)*" cwltoil.log
+          ^allows for multiline matching
+```
+
+### Find Bams that have been generated for specific step while pipeline is running:
+```
+find . | grep -P '^./out_tmpdir.*_MD\.bam$'
+```
+
+### Print graphical representation of the workflow:
+```
+cwltool --print-dot workflows/innovation_pipeline.cwl | dot -Tpdf -o innovation_pipeline.pdf && open innovation_pipeline.pdf
+```
+
+### Get current running jobs:
+```
+bjobs -l | grep -P "\.cwl"
+```
+or
+```
+cat log/cwltoil.log | grep -i "issued job"
+```
+
+### See what jobs have run
+```
+cat log/cwltoil.log | grep -oP "\[job .*.cwl\]" | sort | uniq
+```
+
+### Run cwltool in debug mode
+```
+cwltool --debug --tmpdir-prefix /home/johnsoni/TEST_RUNS/ --cachedir /home/johnsoni/TEST_RUNS/ ../Innovation-Pipeline/workflows/innovation_pipeline.cwl inputs.yaml
+```
+`--cachedir` and `--tmpdir-prefix` will give you the ability to restart a failed test run by specifying the same command again after it fails. You will notice a `XXXXXX.pending` folder in the cachedir, which represents a step that hadn't yet been completed, but can be restarted.
+
+
+### Sort bams by steps
+This is useful for debugging a full pipeline run before deleting all of the intermediate outputs with the `pipeline_postprocessing` script.
+```
+find . | grep -v log | grep bam | awk '{ print length($0) " " $0; }' | sort -r -n | cut -d ' ' -f 2-
+```
+
+### Get status of a workflow
+```
+(pipeline_0.0.38)  ✘ johnsoni@luna ~/TEST_RUNS $> toil status /home/johnsoni/TEST_RUNS_3/TEST_run/tmp/jobstore-09ae0acc-c800-11e8-9d09-70106fb1697e
+luna.cbio.private 2018-10-04 15:01:44,184 MainThread INFO toil.lib.bioio: Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
+luna.cbio.private 2018-10-04 15:01:44,185 MainThread INFO toil.utils.toilStatus: Parsed arguments
+luna.cbio.private 2018-10-04 15:01:47,081 MainThread INFO toil.utils.toilStatus: Traversing the job graph gathering jobs. This may take a couple of minutes.
+Of the 286 jobs considered, there are 179 jobs with children, 107 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 0 jobs with log files currently in file:/home/johnsoni/TEST_RUNS_3/TEST_run/tmp/jobstore-09ae0acc-c800-11e8-9d09-70106fb1697e.
+```
+
+### Get stats after a workflow is done
+You can find the jobstore in the `tmp` directory of the workflow output folder. This only works once the workflow is finished.
+```
+(pipeline_0.0.39)  johnsoni@luna $ toil stats /ifs/work/bergerm1/Innovation/sandbox/ian/FF_pipeline_test-0.0.39/5500-FF_lane-2/tmp/jobstore-87c9be72-cfb9-11e8-a048-70106fb1697e
+```
+Output should look like:
+```
+luna.cbio.private 2018-10-15 12:06:19,003 MainThread INFO toil.lib.bioio: Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
+luna.cbio.private 2018-10-15 12:06:19,004 MainThread INFO toil.utils.toilStats: Parsed arguments
+luna.cbio.private 2018-10-15 12:06:19,004 MainThread INFO toil.utils.toilStats: Checking if we have files for toil
+luna.cbio.private 2018-10-15 12:06:19,004 MainThread INFO toil.utils.toilStats: Checked arguments
+Batch System: lsf
+Default Cores: 1  Default Memory: 10485760K
+Max Cores: 9.22337e+18
+Total Clock: 106608.01  Total Runtime: 86634.11
+Worker
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+     1659 |     0.00    0.80  264.87 12595.59 439424.40 |     0.00    0.46   449.05 42240.74 744968.80 |  -35336.69     0.16   -184.17  4230.65 -305544.39 |      48K    223K   1020K  40235K 1692300K
+Job
+ Worker Jobs  |     min    med    ave    max
+              |    1077   1077   1077   1077
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+     1077 |     0.04    1.18  407.06 12593.43 438404.73 |     0.01    0.28   691.17 42240.35 744394.14 |  -35336.83     0.27   -284.11  4230.49 -305989.41 |     135K    268K   1633K  40235K 1759734K
+ ResolveIndirect
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+      205 |     0.04    0.07    0.16     2.29     31.95 |     0.01    0.02     0.02     0.14      3.60 |       0.02     0.05      0.14     2.28      28.35 |     190K    266K    256K    314K   52487K
+ CWLGather
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+       40 |     0.05    0.17    0.29     1.90     11.62 |     0.01    0.02     0.02     0.05      0.80 |       0.03     0.14      0.27     1.88      10.82 |     188K    265K    250K    316K   10039K
+ CWLWorkflow
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+      205 |     0.09    0.40    0.98    13.70    200.82 |     0.04    0.15     0.16     1.08     31.78 |       0.04     0.26      0.82    12.62     169.04 |     190K    270K    257K    316K   52826K
+ file:///home/johnsoni/pipeline_0.0.39/ACCESS-Pipeline/cwl_tools/expression_tools/group_waltz_files.cwl
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+       99 |     0.29    0.49    0.59     2.50     58.11 |     0.14    0.26     0.29     1.04     28.95 |       0.14     0.22      0.29     1.48      29.16 |     135K    135K    135K    136K   13459K
+ file:///home/johnsoni/pipeline_0.0.39/ACCESS-Pipeline/cwl_tools/expression_tools/make_sample_output_dirs.cwl
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+       11 |     0.34    0.52    0.74     2.63      8.18 |     0.20    0.30     0.41     1.17      4.54 |       0.14     0.20      0.33     1.45       3.65 |     136K    136K    136K    136K    1496K
+ file:///home/johnsoni/pipeline_0.0.39/ACCESS-Pipeline/cwl_tools/expression_tools/consolidate_files.cwl
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+        8 |     0.31    0.59    0.71     1.80      5.69 |     0.18    0.35     0.37     0.63      2.94 |       0.13     0.27      0.34     1.17       2.75 |     136K    136K    136K    136K    1091K
+ file:///home/johnsoni/pipeline_0.0.39/ACCESS-Pipeline/cwl_tools/bwa-mem/bwa-mem.cwl
+    Count |                                       Time* |                                        Clock |                                              Wait |                                    Memory
+        n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
+       22 |   895.76 3098.13 3587.34 12593.43  78921.51 |  2127.02 7910.31  8123.06 16959.13 178707.34 |  -11049.84 -3827.96  -4535.72    19.49  -99785.83 |    5659K   5950K   5854K   6128K  128807K
+```
+
+### See usage and inputs that are required for a workflow
+```
+> cwltool <name_of_workflow>.cwl
+
+/home/johnsoni/virtualenvs/pipeline_1.2.0/bin/cwltool 1.0.20180306140409
+Resolved '/home/johnsoni/pipeline_1.2.0/ACCESS-Pipeline/workflows/subworkflows/manta.cwl' to 'file:///home/johnsoni/pipeline_1.2.0/ACCESS-Pipeline/workflows/subworkflows/manta.cwl'
+usage: /home/johnsoni/pipeline_1.2.0/ACCESS-Pipeline/workflows/subworkflows/manta.cwl
+       [-h] --normal_bam NORMAL_BAM --project_name PROJECT_NAME
+       --reference_fasta REFERENCE_FASTA --sample_id SAMPLE_ID --tumor_bams
+       TUMOR_BAMS --version VERSION
+       [job_order]
+/home/johnsoni/pipeline_1.2.0/ACCESS-Pipeline/workflows/subworkflows/manta.cwl: error: argument --normal_bam is required
+```
+
+### Understanding toil log files
+There is a `worker_log.txt` file for each job, this file is written to while the job is running, and deleted after the job finishes. The contents are printed to the main log file and transferred to a log file in the `--logDir` folder once the job is completed successfully.
+
+The new log file will be named something like:
+`file:---home-johnsoni-pipeline_1.1.14-ACCESS--Pipeline-cwl_tools-marianas-ProcessLoopUMIFastq.cwl_I-O-jobfGsQQw000.log`
+This is the toil job command with spaces replaced by dashes.
