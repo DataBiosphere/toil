@@ -90,7 +90,7 @@ samples inputs, it could look something like:
 Toil & CWL Tips
 ---------------
 
-See logs for just one job (by using the full log file, requires knowing the job's toil-generated ID):
+See logs for just one job by using the full log file (this requires knowing the job's toil-generated ID):
 ::
 
     cat cwltoil.log | grep jobVM1fIs
@@ -98,35 +98,26 @@ See logs for just one job (by using the full log file, requires knowing the job'
 Grep for full commands from toil logs
 
 This gives you a more concise view of the commands being run (note that this information is only available from
-Toil when running with `--logDebug`, or when using the `pipeline_submit` script with `--logLevel DEBUG`):
+Toil when running with `--logDebug`):
 ::
 
     pcregrep -M "\[job .*\.cwl.*$\n(.*        .*$\n)*" cwltoil.log
               ^allows for multiline matching
-
 
 Find Bams that have been generated for specific step while pipeline is running:
 ::
 
     find . | grep -P '^./out_tmpdir.*_MD\.bam$'
 
-
 Print graphical representation of the workflow:
 ::
 
-    cwltool --print-dot workflows/innovation_pipeline.cwl | dot -Tpdf -o innovation_pipeline.pdf && open innovation_pipeline.pdf
-
-
-Get current running jobs:
-::
-
-    bjobs -l | grep -P "\.cwl"
+    cwltool --print-dot workflow.cwl | dot -Tpdf -o output.pdf && xdg-open output.pdf
 
 or:
 ::
 
     cat log/cwltoil.log | grep -i "issued job"
-
 
 See what jobs have run:
 ::
@@ -136,35 +127,24 @@ See what jobs have run:
 Run cwltool in debug mode:
 ::
 
-    cwltool --debug --tmpdir-prefix /home/johnsoni/TEST_RUNS/ --cachedir /home/johnsoni/TEST_RUNS/ ../Innovation-Pipeline/workflows/innovation_pipeline.cwl inputs.yaml
+    cwltool --debug --tmpdir-prefix /home/user/workflow_run/ --cachedir /home/user/workflow_run/ workflow.cwl inputs.yaml
 
 Note: `--cachedir` and `--tmpdir-prefix` will give you the ability to restart a failed test run by specifying the
-same command again after it fails. You will notice a `XXXXXX.pending` folder in the cachedir, which represents a step that hadn't yet been completed, but can be restarted.
-
-
-Sort bams by steps:
-
-This is useful for debugging a full pipeline run before deleting all of the intermediate outputs with the `pipeline_postprocessing` script.
-::
-
-    find . | grep -v log | grep bam | awk '{ print length($0) " " $0; }' | sort -r -n | cut -d ' ' -f 2-
-
+same command again after it fails. You will notice a `XXXXXX.pending` folder in the cachedir, which represents a step
+that hadn't yet been completed, but can be restarted.
 
 Get status of a workflow:
 ::
     $ toil status /home/johnsoni/TEST_RUNS_3/TEST_run/tmp/jobstore-09ae0acc-c800-11e8-9d09-70106fb1697e
-    luna.cbio.private 2018-10-04 15:01:44,184 MainThread INFO toil.lib.bioio: Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
-    luna.cbio.private 2018-10-04 15:01:44,185 MainThread INFO toil.utils.toilStatus: Parsed arguments
-    luna.cbio.private 2018-10-04 15:01:47,081 MainThread INFO toil.utils.toilStatus: Traversing the job graph gathering jobs. This may take a couple of minutes.
+    <hostname> 2018-10-04 15:01:44,184 MainThread INFO toil.lib.bioio: Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
+    <hostname> 2018-10-04 15:01:44,185 MainThread INFO toil.utils.toilStatus: Parsed arguments
+    <hostname> 2018-10-04 15:01:47,081 MainThread INFO toil.utils.toilStatus: Traversing the job graph gathering jobs. This may take a couple of minutes.
 
-    Of the 286 jobs considered, there are 179 jobs with children, 107 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 0 jobs with log files currently in file:/home/johnsoni/TEST_RUNS_3/TEST_run/tmp/jobstore-09ae0acc-c800-11e8-9d09-70106fb1697e.
+    Of the 286 jobs considered, there are 179 jobs with children, 107 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 0 jobs with log files currently in file:/home/user/jobstore-09ae0acc-c800-11e8-9d09-70106fb1697e.
 
-
-Get stats after a workflow is done:
-
-You can find the jobstore in the `tmp` directory of the workflow output folder. This only works once the workflow is finished:
+You can get run statistics broken down by CWL file. This only works once the workflow is finished:
 ::
-    $ toil stats /ifs/work/bergerm1/Innovation/sandbox/ian/FF_pipeline_test-0.0.39/5500-FF_lane-2/tmp/jobstore-87c9be72-cfb9-11e8-a048-70106fb1697e
+    $ toil stats /path/to/jobstore
 
 The output will contain CPU, memory, and walltime information for all CWL job types:
 ::
@@ -216,7 +196,6 @@ The output will contain CPU, memory, and walltime information for all CWL job ty
             n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
            22 |   895.76 3098.13 3587.34 12593.43  78921.51 |  2127.02 7910.31  8123.06 16959.13 178707.34 |  -11049.84 -3827.96  -4535.72    19.49  -99785.83 |    5659K   5950K   5854K   6128K  128807K
 
-
 Understanding toil log files:
 ::
 
@@ -225,6 +204,6 @@ Understanding toil log files:
 The new log file will be named something like:
 ::
 
-    file:---home-johnsoni-pipeline_1.1.14-ACCESS--Pipeline-cwl_tools-marianas-ProcessLoopUMIFastq.cwl_I-O-jobfGsQQw000.log
+    file:<path to cwl tool>.cwl_<job ID>.log
 
 This is the toil job command with spaces replaced by dashes.
