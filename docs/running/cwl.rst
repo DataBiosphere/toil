@@ -206,4 +206,6 @@ The new log file will be named something like:
 
     file:<path to cwl tool>.cwl_<job ID>.log
 
+    file:---home-johnsoni-pipeline_1.1.14-ACCESS--Pipeline-cwl_tools-marianas-ProcessLoopUMIFastq.cwl_I-O-jobfGsQQw000.log
+
 This is the toil job command with spaces replaced by dashes.
