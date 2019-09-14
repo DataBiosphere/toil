@@ -90,51 +90,40 @@ samples inputs, it could look something like:
 Toil & CWL Tips
 ---------------
 
-See logs for just one job by using the full log file (this requires knowing the job's toil-generated ID):
+**See logs for just one job by using the full log file**
+
+This requires knowing the job's toil-generated ID, which can be found in the log files.
 ::
 
     cat cwltoil.log | grep jobVM1fIs
 
-Grep for full commands from toil logs
+**Grep for full tool commands from toil logs**
 
 This gives you a more concise view of the commands being run (note that this information is only available from
-Toil when running with `--logDebug`):
+Toil when running with `--logDebug`).
 ::
 
     pcregrep -M "\[job .*\.cwl.*$\n(.*        .*$\n)*" cwltoil.log
               ^allows for multiline matching
 
-Find Bams that have been generated for specific step while pipeline is running:
+**Find Bams that have been generated for specific step while pipeline is running:**
 ::
 
     find . | grep -P '^./out_tmpdir.*_MD\.bam$'
 
-Print graphical representation of the workflow:
+**See what jobs have been run**
 ::
 
-    cwltool --print-dot workflow.cwl | dot -Tpdf -o output.pdf && xdg-open output.pdf
+    cat log/cwltoil.log | grep -oP "\[job .*.cwl\]" | sort | uniq
 
 or:
 ::
 
     cat log/cwltoil.log | grep -i "issued job"
 
-See what jobs have run:
+**Get status of a workflow**
 ::
 
-    cat log/cwltoil.log | grep -oP "\[job .*.cwl\]" | sort | uniq
-
-Run cwltool in debug mode:
-::
-
-    cwltool --debug --tmpdir-prefix /home/user/workflow_run/ --cachedir /home/user/workflow_run/ workflow.cwl inputs.yaml
-
-Note: `--cachedir` and `--tmpdir-prefix` will give you the ability to restart a failed test run by specifying the
-same command again after it fails. You will notice a `XXXXXX.pending` folder in the cachedir, which represents a step
-that hadn't yet been completed, but can be restarted.
-
-Get status of a workflow:
-::
     $ toil status /home/johnsoni/TEST_RUNS_3/TEST_run/tmp/jobstore-09ae0acc-c800-11e8-9d09-70106fb1697e
     <hostname> 2018-10-04 15:01:44,184 MainThread INFO toil.lib.bioio: Root logger is at level 'INFO', 'toil' logger at level 'INFO'.
     <hostname> 2018-10-04 15:01:44,185 MainThread INFO toil.utils.toilStatus: Parsed arguments
@@ -142,8 +131,11 @@ Get status of a workflow:
 
     Of the 286 jobs considered, there are 179 jobs with children, 107 jobs ready to run, 0 zombie jobs, 0 jobs with services, 0 services, and 0 jobs with log files currently in file:/home/user/jobstore-09ae0acc-c800-11e8-9d09-70106fb1697e.
 
+**Toil Stats**
+
 You can get run statistics broken down by CWL file. This only works once the workflow is finished:
 ::
+
     $ toil stats /path/to/jobstore
 
 The output will contain CPU, memory, and walltime information for all CWL job types:
@@ -196,10 +188,9 @@ The output will contain CPU, memory, and walltime information for all CWL job ty
             n |      min    med*     ave      max     total |      min     med      ave      max     total |        min      med       ave      max      total |      min     med     ave     max    total
            22 |   895.76 3098.13 3587.34 12593.43  78921.51 |  2127.02 7910.31  8123.06 16959.13 178707.34 |  -11049.84 -3827.96  -4535.72    19.49  -99785.83 |    5659K   5950K   5854K   6128K  128807K
 
-Understanding toil log files:
-::
+**Understanding toil log files**
 
-    There is a `worker_log.txt` file for each job, this file is written to while the job is running, and deleted after the job finishes. The contents are printed to the main log file and transferred to a log file in the `--logDir` folder once the job is completed successfully.
+There is a `worker_log.txt` file for each job, this file is written to while the job is running, and deleted after the job finishes. The contents are printed to the main log file and transferred to a log file in the `--logDir` folder once the job is completed successfully.
 
 The new log file will be named something like:
 ::
