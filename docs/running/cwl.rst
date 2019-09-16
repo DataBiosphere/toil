@@ -46,23 +46,33 @@ A more detailed example shows how we can specify both Toil and cwltool arguments
         standard_bam_processing.cwl \
         inputs.yaml
 
-In this case, we set the following options:
+In this example, we set the following options, which are all passed to Toil:
 ::
 
-    `--singularity`: (Passed to Toil) Specifies that all jobs should be run with Singularity containers instead of
+    --singularity: Specifies that all jobs should be run with Singularity containers instead of
     Docker.
-    `--jobStore`: (Passed to Toil) Path to a folder that already exists, which will contain the Toil jobstore and all
+
+    --jobStore: Path to a folder that already exists, which will contain the Toil jobstore and all
         related job-tracking information.
-    `--batchSystem`: (Passed to Toil) Use the specified HPC or Cloud-based cluster platform
-    `--workDir`: The directory where all temporary files will be created for the workflow. This can be referenced as
-        `$(runtime.tmpdir)` in CWL tools and workflows.
-    `--outdir`: Directory where final outputs will be written.
-    `--logFile`: Path to the main logfile with logs from all jobs.
-    `--writeLogs`: (Passed to Toil) Directory where all job logs will be stored to the current working directory
-    `--retryCount`: How many times to retry each Toil job.
-    `--disableCaching`: ?
-    `--maxLogFileSize`: Logs that get larger than this value will be truncated.
-    `--stats`: Save resources usages in json files that can be collected with the `toil stats` command after the workflow is done.
+
+    --batchSystem: Use the specified HPC or Cloud-based cluster platform.
+
+    --workDir: The directory where all temporary files will be created for the workflow. This can be referenced as
+        $(runtime.tmpdir) in CWL tools and workflows.
+
+    --outdir: Directory where final outputs will be written.
+
+    --logFile: Path to the main logfile with logs from all jobs.
+
+    --writeLogs: Directory where all job logs will be stored to the current working directory.
+
+    --retryCount: How many times to retry each Toil job.
+
+    --disableCaching: Required for LSF batch system.
+
+    --maxLogFileSize: Logs that get larger than this value will be truncated.
+
+    --stats: Save resources usages in json files that can be collected with the toil stats command after the workflow is done.
 
 Running CWL in the Cloud
 ------------------------
