@@ -593,6 +593,9 @@ class AWSJobStore(AbstractJobStore):
     def writeStatsAndLogging(self, statsAndLoggingString):
         info = self.FileInfo.create(str(self.statsFileOwnerID))
         with info.uploadStream(multipart=False) as writeable:
+            if isinstance(statsAndLoggingString, str):
+                # This stream is for binary data, so encode any non-encoded things
+                statsAndLoggingString = statsAndLoggingString.encode('utf-8', errors='ignore')
             writeable.write(statsAndLoggingString)
         info.save()
 
@@ -1031,6 +1034,10 @@ class AWSJobStore(AbstractJobStore):
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
+            """
+            Context manager that gives out a binary-mode upload stream to upload data.
+            """
+
             info = self
             store = self.outer
 
@@ -1084,7 +1091,7 @@ class AWSJobStore(AbstractJobStore):
                         info.content = buf
                     else:
                         key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
-                        buf = StringIO(buf)
+                        buf = BytesIO(buf)
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
