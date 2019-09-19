@@ -128,8 +128,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 # If there's a user script resource be sure to send it along
                 job['userScript'] = self.userScript
 
-            # Encode it in a form we can send in a command-line argument
-            encodedJob = base64.b64encode(pickle.dumps(job))
+            # Encode it in a form we can send in a command-line argument.
+            # But make sure it is text so we can ship it to Kubernetes via JSON.
+            encodedJob = base64.b64encode(pickle.dumps(job)).decode('utf-8')
 
             # The Kubernetes API makes sense only in terms of the YAML format. Objects
             # represent sections of the YAML files. Except from our point of view, all
@@ -195,13 +196,15 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         
     
-    def _ourJobObjects(self, selector=None, limit=None):
+    def _ourJobObjects(self, onlySucceeded=False, limit=None):
         """
         Yield all Kubernetes V1Job objects that we are responsible for that the
         cluster knows about.
+
+        Doesn't support a free-form selector, because there's only about 3
+        things jobs can be selected on: https://stackoverflow.com/a/55808444
         
-        :param str selector: a Kubernetes field selector, like
-                   "status.failed!=0,status.active=0", to restrict the search.
+        :param bool onlySucceeded: restrict results to succeeded jobs.
         :param int limit: max results to yield.
         """
         
@@ -224,9 +227,18 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # look them up instead of filtering down later.
         
         while True:
-            results = self.batchApi.list_namespaced_job(self.namespace,
-                                                        field_selector=selector,
-                                                        _continue = token)
+            # We can't just pass e.g. a None continue token when there isn't
+            # one, because the Kubernetes module reads its kwargs dict and
+            # cares about presence/absence. So we build a dict to send.
+            kwargs = {}
+            if onlySucceeded:
+                # Check only successful jobs.
+                # Note that for selectors it is "successful" while for the
+                # actual object field it is "succeeded".
+                kwargs['field_selector'] = 'status.successful==1'
+            if token is not None:
+                kwargs['_continue'] = token
+            results = self.batchApi.list_namespaced_job(self.namespace, **kwargs)
             
             for job in results.items:
                 if self._isJobOurs(job):
@@ -240,7 +252,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
-            
+
             if token is None:
                 # There isn't one. We got everything.
                 break
@@ -265,9 +277,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         query = 'job-name={}'.format(jobObject.metadata.name)
         
         while True:
-            results = self.coreApi.list_namespaced_pod(self.namespace,
-                                                       label_selector=query,
-                                                       _continue = token)
+            # We can't just pass e.g. a None continue token when there isn't
+            # one, because the Kubernetes module reads its kwargs dict and
+            # cares about presence/absence. So we build a dict to send.
+            kwargs = {'label_selector': query}
+            if token is not None:
+                kwargs['_continue'] = token
+            results = self.coreApi.list_namespaced_pod(self.namespace, **kwargs)
             
             for pod in results.items:
                 # Return the first pod we find
@@ -310,14 +326,23 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # is responsible for populating it.
             # But we can just ask kubernetes now.
             
-            # There's no way to filter for failed OR succeeded jobs, but we can
-            # look for one and then the other.
             jobObject = None
-            for j in self._ourJobObjects("status.failed=1", limit=1):
+            for j in self._ourJobObjects(onlySucceeded=True, limit=1):
+                # Look for succeeded jobs because that's the only filter Kubernetes has
                 jobObject = j
             if jobObject is None:
-                for j in self._ourJobObjects("status.succeeded=1", limit=1):
-                    jobObject = j
+                for j in self._ourJobObjects():
+                    # If there aren't any succeeded jobs, scan all jobs
+                    # See how many times each failed
+                    failCount = getattr(j.status, 'failed', 0)
+                    if failCount is None:
+                        # Make sure it is an int
+                        failCount = 0
+                    if failCount > 0:
+                        # Take the first failed one you find
+                        jobObject = j
+                        break
+                
                     
             if jobObject is None:
                 # TODO: block and wait for the jobs to update, until maxWait is hit
@@ -381,6 +406,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         for job in got_list:
             # Get the ID for each job
             jobIDs.append(self._getIDForOurJob(job))
+        return jobIDs
 
     def getIssuedBatchJobIDs(self):
         # Make sure to send the local jobs also
@@ -453,7 +479,8 @@ def executor():
 
     # Take in a base64-encoded pickled dict as our first argument and decode it
     try:
-        job = pickle.loads(base64.b64decode(sys.argv[1]))
+        # Make sure to encode the text arguments to bytes before base 64 decoding
+        job = pickle.loads(base64.b64decode(sys.argv[1].encode('utf-8')))
     except:
         exc_info = sys.exc_info()
         log.error('Exception while unpickling task: ', exc_info=exc_info)
