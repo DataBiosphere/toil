@@ -959,7 +959,8 @@ class CachingFileStore(AbstractFileStore):
             self._deallocateSpaceForJob()
 
     def writeGlobalFile(self, localFileName, cleanup=False):
-    
+        logger.debug('writeGlobalFile(%s, %s)', localFileName, str(cleanup))
+
         # Work out the file itself
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         
@@ -1028,6 +1029,7 @@ class CachingFileStore(AbstractFileStore):
         return FileID.forPath(fileID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
+        logger.debug('readGlobalFile(%s, %s, %s, %s, %s)', fileStoreID, str(userPath), str(cache), str(mutable), str(symlink))
         if not isinstance(fileStoreID, FileID):
             # Don't let the user forge File IDs.
             raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))

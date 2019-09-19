@@ -96,6 +96,7 @@ class NonCachingFileStore(AbstractFileStore):
             os.remove(self.jobStateFile)
 
     def writeGlobalFile(self, localFileName, cleanup=False):
+        logger.debug('writeGlobalFile(%s, %s)', localFileName, str(cleanup))
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         creatorID = self.jobGraph.jobStoreID
         fileStoreID = self.jobStore.writeFile(absLocalFileName, creatorID, cleanup)
@@ -103,6 +104,7 @@ class NonCachingFileStore(AbstractFileStore):
         return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
+        logger.debug('readGlobalFile(%s, %s, %s, %s, %s)', fileStoreID, str(userPath), str(cache), str(mutable), str(symlink))
         if not isinstance(fileStoreID, FileID):
             # Don't let the user forge File IDs.
             raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
@@ -119,6 +121,7 @@ class NonCachingFileStore(AbstractFileStore):
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
+        logger.debug('readGlobalFileStream(%s)', fileStoreID)
         if not isinstance(fileStoreID, FileID):
             # Don't let the user forge File IDs.
             raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
