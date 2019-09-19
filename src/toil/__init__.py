@@ -136,6 +136,13 @@ def resolveEntryPoint(entryPoint):
     Returns the path to the given entry point (see setup.py) that *should* work on a worker. The
     return value may be an absolute or a relative path.
     """
+
+    # TODO: When running against a Kubernetes cluster from a virtualenv, we
+    # can't assume that the virtualenv is at the same path on the worker.  This
+    # system needs to be made more flexible to accomodate clusters with shared
+    # filesystems as well as Dockerized clusters.
+    return entryPoint
+
     if inVirtualEnv():
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
         # Inside a virtualenv we try to use absolute paths to the entrypoints.
