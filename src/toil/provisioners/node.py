@@ -256,21 +256,23 @@ class Node(object):
         args = list(map(pipes.quote, args))
         commandTokens += args
         logger.debug('Full command %s', ' '.join(commandTokens))
-        popen = subprocess.Popen(commandTokens, **kwargs)
+        process = subprocess.Popen(commandTokens, **kwargs)
         logger.debug(str(commandTokens))
         logger.debug(str(kwargs))
         logger.debug(str(inputString))
-        stdout, stderr = popen.communicate(input=inputString)
+        logger.debug('====================================================')
+        stdout, stderr = process.communicate(input=inputString)
+        logger.debug('====================================================')
         # at this point the process has already exited, no need for a timeout
-        resultValue = popen.wait()
+        exit_code = process.returncode
         # ssh has been throwing random 255 errors - why?
-        if resultValue != 0:
+        if exit_code != 0:
             logger.info('Executing the command "%s" on the appliance returned a non-zero '
                         'exit code %s with stdout %s and stderr %s'
-                        % (' '.join(args), resultValue, stdout, stderr))
+                        % (' '.join(args), exit_code, stdout, stderr))
             raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
                                'exit code %s with stdout %s and stderr %s'
-                               % (' '.join(args), resultValue, stdout, stderr))
+                               % (' '.join(args), exit_code, stdout, stderr))
         return stdout
 
     def coreRsync(self, args, applianceName='toil_leader', **kwargs):
