@@ -93,10 +93,11 @@ py2_integration_provisioner:
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+    - virtualenv -p python2.7 --system-site-packages --never-download venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
+    - export LIBPROCESS_IP=127.0.0.1; export PUBLIC_KEY_FILE=/root/.ssh/id_rsa.pub
     - mkdir ~/.aws
     - python setup_gitlab_docker.py
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials

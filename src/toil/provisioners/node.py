@@ -257,6 +257,9 @@ class Node(object):
         commandTokens += args
         logger.debug('Full command %s', ' '.join(commandTokens))
         popen = subprocess.Popen(commandTokens, **kwargs)
+        logger.debug(str(commandTokens))
+        logger.debug(str(kwargs))
+        logger.debug(str(inputString))
         stdout, stderr = popen.communicate(input=inputString)
         # at this point the process has already exited, no need for a timeout
         resultValue = popen.wait()
