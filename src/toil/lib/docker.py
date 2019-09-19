@@ -57,6 +57,7 @@ def apiDockerCall(job,
                   stdout=None,
                   stderr=False,
                   streamfile=None,
+                  timeout=365 * 24 * 60 * 60,
                   **kwargs):
     """
     A toil wrapper for the python docker API.
@@ -128,6 +129,11 @@ def apiDockerCall(job,
                      (some other user : some other user group).
     :param environment: Allows one to set environment variables inside of the
                         container, such as:
+    :param int timeout: Use the given timeout in seconds for interactions with
+                        the Docker daemon. Note that the underlying docker module is
+                        not always able to abort ongoing reads and writes in order
+                        to respect the timeout. Defaults to 1 year (i.e. wait
+                        essentially indefinitely).
     :param kwargs: Additional keyword arguments supplied to the docker API's
                    run command.  The list is 75 keywords total, for examples
                    and full documentation see:
@@ -192,7 +198,7 @@ def apiDockerCall(job,
     assert deferParam in (None, FORGO, STOP, RM), \
         'Please provide a valid value for deferParam.'
 
-    client = docker.from_env(version='auto')
+    client = docker.from_env(version='auto', timeout=timeout)
 
     if deferParam == STOP:
         job.defer(dockerStop, containerName)
@@ -283,14 +289,19 @@ def apiDockerCall(job,
         raise create_api_error_from_http_exception(e)
 
 
-def dockerKill(container_name, gentleKill=False):
+def dockerKill(container_name, gentleKill=False, timeout=365 * 24 * 60 * 60):
     """
     Immediately kills a container.  Equivalent to "docker kill":
     https://docs.docker.com/engine/reference/commandline/kill/
     :param container_name: Name of the container being killed.
     :param client: The docker API client object to call.
+    :param int timeout: Use the given timeout in seconds for interactions with
+                        the Docker daemon. Note that the underlying docker module is
+                        not always able to abort ongoing reads and writes in order
+                        to respect the timeout. Defaults to 1 year (i.e. wait
+                        essentially indefinitely).
     """
-    client = docker.from_env(version='auto')
+    client = docker.from_env(version='auto', timeout=timeout)
     try:
         this_container = client.containers.get(container_name)
         while this_container.status == 'running':
@@ -318,14 +329,19 @@ def dockerStop(container_name):
     dockerKill(container_name, gentleKill=True)
 
 
-def containerIsRunning(container_name):
+def containerIsRunning(container_name, timeout=365 * 24 * 60 * 60):
     """
     Checks whether the container is running or not.
     :param container_name: Name of the container being checked.
     :returns: True if status is 'running', False if status is anything else,
     and None if the container does not exist.
+    :param int timeout: Use the given timeout in seconds for interactions with
+                        the Docker daemon. Note that the underlying docker module is
+                        not always able to abort ongoing reads and writes in order
+                        to respect the timeout. Defaults to 1 year (i.e. wait
+                        essentially indefinitely).
     """
-    client = docker.from_env(version='auto')
+    client = docker.from_env(version='auto', timeout=timeout)
     try:
         this_container = client.containers.get(container_name)
         if this_container.status == 'running':

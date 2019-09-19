@@ -127,7 +127,7 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
             stdoutfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_output')
             stderrfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_error')
-            sbatch_line.extend(['-o', stdoutfile, '-e', stderrfile])
+            qsubline.extend(['-o', stdoutfile, '-e', stderrfile])
 
             return qsubline
 
