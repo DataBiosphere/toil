@@ -42,6 +42,7 @@ import time
 from kubernetes.client.rest import ApiException
 from six.moves.queue import Empty, Queue
 
+from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
 
@@ -83,8 +84,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # Here is where we will store the user script resource object if we get one.
         self.userScript = None
 
-        # TODO: set this to TOIL_APPLIANCE_SELF, somehow, even though we aren't technically autoscaling.
-        self.dockerImage = 'quay.io/uscs_cgl/toil:latest'
+        # Ge tthe image to deploy from Toil's configuration
+        self.dockerImage = applianceSelf()
            
         # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()
@@ -121,6 +122,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # First just wrap the command and the environment to run it in
             job = {'command': jobNode.command,
                    'environment': self.environment.copy()}
+            # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
 
             if self.userScript is not None:
                 # If there's a user script resource be sure to send it along
