@@ -366,7 +366,6 @@ class FileJobStore(AbstractJobStore):
         return '_'.join(parts)
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
-        logger.debug('writeFile(%s, %s, %s)', localFilePath, str(jobStoreID), str(cleanup))
         absPath = self._getUniqueFilePath(localFilePath, jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
         shutil.copyfile(localFilePath, absPath)
@@ -374,7 +373,6 @@ class FileJobStore(AbstractJobStore):
 
     @contextmanager
     def writeFileStream(self, jobStoreID=None, cleanup=False):
-        logger.debug('writeFileStream(%s, %s)', str(jobStoreID), str(cleanup))
         absPath = self._getUniqueFilePath('stream', jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
         with open(absPath, 'wb') as f:
@@ -388,7 +386,6 @@ class FileJobStore(AbstractJobStore):
             return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):
-        logger.debug('updateFile(%s, %s)', str(jobStoreFileID), localFilePath)
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
 
@@ -399,7 +396,6 @@ class FileJobStore(AbstractJobStore):
         shutil.copyfile(localFilePath, jobStoreFilePath)
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
-        logger.debug('readFile(%s, %s, %s)', str(jobStoreFileID), localFilePath, str(symlink))
         self._checkJobStoreFileID(jobStoreFileID)
         jobStoreFilePath = self._getFilePathFromId(jobStoreFileID)
         localDirPath = os.path.dirname(localFilePath)
@@ -469,7 +465,6 @@ class FileJobStore(AbstractJobStore):
         shutil.copyfile(jobStoreFilePath, localFilePath)
 
     def deleteFile(self, jobStoreFileID):
-        logger.debug('deleteFile(%s)', jobStoreFileID)
         if not self.fileExists(jobStoreFileID):
             return
         os.remove(self._getFilePathFromId(jobStoreFileID))
@@ -493,7 +488,6 @@ class FileJobStore(AbstractJobStore):
 
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
-        logger.debug('updateFileStream(%s)', jobStoreFileID)
         self._checkJobStoreFileID(jobStoreFileID)
         # File objects are context managers (CM) so we could simply return what open returns.
         # However, it is better to wrap it in another CM so as to prevent users from accessing
@@ -503,7 +497,6 @@ class FileJobStore(AbstractJobStore):
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
-        logger.debug('readFileStream(%s)', jobStoreFileID)
         self._checkJobStoreFileID(jobStoreFileID)
         with open(self._getFilePathFromId(jobStoreFileID), 'rb') as f:
             yield f
