@@ -28,6 +28,7 @@ standard_library.install_aliases()
 from builtins import str
 
 import base64
+import datetime
 import getpass
 import kubernetes
 import logging
@@ -279,7 +280,18 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 
         # If we get here, no pages had any pods.
         raise RuntimeError('Could not find any pods for job {}'.format(jobObject.metadata.name))
-        
+   
+   def _getIDForOurJob(self, jobObject):
+        """
+        Get the JobID number that belongs to the given job that we own.
+
+        :param kubernetes.client.V1Job jobObject: a Kubernetes job object that is a job we issued.
+
+        :return: The JobID for the job.
+        :rtype: int
+        """
+
+        return int(jobObject.metadata.name[len(self.jobPrefix):])
             
             
     def getUpdatedBatchJob(self, maxWait):
@@ -321,8 +333,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 exitCode = pod.status.container_statuses[0].state.terminated.exit_code
                 
                 # Compute how long the job ran for (subtract datetimes)
+                # We need to look at the pod's start time because the job's
+                # start time is just when the job is created.
                 runtime = (jobObject.status.completion_time - 
-                           jobObject.status.start_time).total_seconds()
+                           pod.status.start_time).total_seconds()
                 
                 
                 # Delete the job and all dependents (pods)
@@ -340,72 +354,82 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # Shutdown local processes first
         self.shutdownLocal()
         
-        # Clears batch's job belonging to the owner in the namespace
-        try:
-            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True)
-        except ApiException as e:
-            print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
-        for job in jobs.items:
-            if self._jobIsOurs(job): 
-                logging.debug(job)
-                jobname = job.metadata.name
-                jobstatus = job.status.conditions
-                if job.status.succeeded ==1:
-                    try:
-                        response = self.batchApi.delete_namespaced_job(jobname, 
-                                                            self.namespace, 
-                                                            propagation_policy='Foreground')
-                        logging.debug(response)
-                    except ApiException as e:
-                        print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
-            else:
-                logger.debug("{job.metadata.name} is }ot our job")
-                continue
+        # Clears jobs belonging to this run
+        for job in self._ourJobObjects():
+            logging.debug(job)
+            jobname = job.metadata.name
+            jobstatus = job.status.conditions
+            # Kill jobs whether they succeeded or failed
+            try:
+                # Delete with background poilicy so we can quickly issue lots of commands
+                response = self.batchApi.delete_namespaced_job(jobname, 
+                                                               self.namespace, 
+                                                               propagation_policy='Background')
+                logging.debug(response)
+            except ApiException as e:
+                print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
 
+
+    def _getIssuedNonLocalBatchJobIDs(self):
+        """
+        Get the issued batch job IDs that are not for local jobs.
+        """
+        jobIDs = []
+        got_list = self._ourJobObjects()
+        for job in got_list:
+            # Get the ID for each job
+            jobIDs.append(self._getIDForOurJob(job))
 
     def getIssuedBatchJobIDs(self):
-        try:
-            got_list = self.batchApi.list_job_for_all_namespaces(pretty=True).items
-        except ApiException as e:
-            print("Exception when calling BatchV1Api->list_job_for_all_namespaces %s\n" % e)
-            
-        for job in got_list:
-            if not self._isOurJob(job):
-                logger.debug("{job.metadata.name} is not our job")
-                continue
-            else:
-                jobname = job.status.name
-                jobstatus = job.status.conditions
-                logging.debug("{jobname} Status: {jobstatus}")
-                self.jobIds.update(jobname)
-        return jobIds
+        # Make sure to send the local jobs also
+        return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
+
+    def getRunningBatchJobIDs(self):
+        # We need a dict from jobID (string?) to seconds it has been running
+        secondsPerJob = dict()
+        for job in self._ourJobObjects():
+            # Grab the pod for each job
+            pod = self._getPodForJob(job)
+
+            if pod.status.phase == 'Running':
+                # The job's pod is running
+
+                # The only time we have handy is when the pod got assigned to a
+                # kubelet, which is technically before it started running.
+                runtime = (datetime.utcnow() - pod.status.start_time).totalseconds()
+
+                # Save it under the stringified job ID
+                secondsPerJob[str(self._getIDForOurJob(job))] = runtime
+
+        # Mix in the local jobs
+        secondsPerJob.update(self.getRunningLocalJobIDs())
+        return secondsPerJob
             
     def killBatchjobs(self, jobIDs):
         
+        # Kill all the ones that are local
         self.killLocalJobs(jobIDs)
         
-        # Clears owners job in namespace
-        
-        try:
-            jobs = self.batchApi.list_namespaced_job(self.namespace,pretty=True)
-        except ApiException as e:
-            print("Exception when calling BatchV1Api->list_namespaced_job: %s\n" % e)
-        for job in jobs.items:
-            if self._isJobOurs(job):
-                logging.debug(job)
-                jobname = job.metadata.name
-                jobstatus = job.status.conditions
-                if job.status.succeeded ==1:
-                    try:
-                        response = self.batchApi.delete_namespaced_job(jobname, 
-                                                            self.namespace, 
-                                                            propagation_policy='Foreground')
-                        logging.debug(response)
-                    except ApiException as e:
-                        print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
-            else:
-                logger.debug("{job.metadata.name} is not our job")
+        # Clears workflow's jobs listed in jobIDs.
+
+        # First get the jobs we even issued non-locally
+        issuedOnKubernetes = set(self._getIssuedNonLocalBatchJobIDs())
+
+        for jobID in jobIDs:
+            # For each job we are supposed to kill
+            if jobID not in issuedOnKubernetes:
+                # It never went to Kubernetes (or wasn't there when we just
+                # looked), so we can't kill it on Kubernetes.
                 continue
+            # Work out what the job would be named
+            jobName = self.jobPrefix + str(jobID)
+
+            # Delete the requested job in the foreground.
+            # TODO: are we supposed to support multiple deletes?
+            response = self.batchApi.delete_namespaced_job(jobName, 
+                                                           self.namespace, 
+                                                           propagation_policy='Foreground')
+            logging.debug(response)
 
 def executor():
     """
