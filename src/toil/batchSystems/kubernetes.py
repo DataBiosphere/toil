@@ -163,8 +163,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                                    restart_policy="Never")
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec)
-            # Make another spec for the job, asking to run the template with backoff
-            job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=1)
+            # Make another spec for the job, asking to run the template with no backoff
+            job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=0)
             # Make metadata to tag the job with info.
             # We use generate_name to ensure a unique name
             metadata = kubernetes.client.V1ObjectMeta(name=jobName)
@@ -298,6 +298,21 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 
         # If we get here, no pages had any pods.
         return None
+
+    def _getLogForPod(self, podObject):
+        """
+        Get the log for a pod.
+
+        :param kubernetes.client.V1Pod podObject: a Kubernetes pod with one
+                                       container to get the log from.
+
+        :return: The log for the only container in the pod.
+        :rtype: str
+
+        """
+
+        return self.coreApi.read_namespaced_pod_log(podObject.metadata.name,
+                                                    namespace=self.namespace)
    
     def _getIDForOurJob(self, jobObject):
         """
@@ -399,8 +414,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                             # job only gets a completion time if successful.
                             runtime = (terminatedInfo.finished_at - 
                                        pod.status.start_time).total_seconds()
+
+                            if chosenFor == 'failed':
+                                # Warn the user with the failed pod's log
+                                # TODO: cut this down somehow?
+                                logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
                         else:
-                            logging.warning('Exit code and runtime unavailable; pod stopped without container terminating')
+                            logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
                             exitCode = -1
                             runtime = 0
                             
