@@ -294,7 +294,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         self.numWorkers = ['2', '1']
         self._test()
 
-@pytest.mark.timeout(240)
+@pytest.mark.timeout(600)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """
     This test insures autoscaling works on a restarted Toil run
