@@ -281,7 +281,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # If we get here, no pages had any pods.
         raise RuntimeError('Could not find any pods for job {}'.format(jobObject.metadata.name))
    
-   def _getIDForOurJob(self, jobObject):
+    def _getIDForOurJob(self, jobObject):
         """
         Get the JobID number that belongs to the given job that we own.
 
