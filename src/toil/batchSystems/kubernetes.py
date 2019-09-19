@@ -46,7 +46,7 @@ from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
 
-log = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 class KubernetesBatchSystem(BatchSystemLocalSupport):
@@ -177,7 +177,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Make the job
             launched = self.batchApi.create_namespaced_job(self.namespace, job)
 
-            log.debug('Launched job: %s', str(launched))
+            logger.debug('Launched job: %s', str(launched))
             
             return jobID
             
@@ -326,10 +326,15 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # is responsible for populating it.
             # But we can just ask kubernetes now.
             
+            # Find a job that is done, failed, or stuck
             jobObject = None
+            # Put 'done', 'failed', or 'stuck' here
+            chosenFor = ''
             for j in self._ourJobObjects(onlySucceeded=True, limit=1):
                 # Look for succeeded jobs because that's the only filter Kubernetes has
                 jobObject = j
+                chosenFor = 'done'
+
             if jobObject is None:
                 for j in self._ourJobObjects():
                     # If there aren't any succeeded jobs, scan all jobs
@@ -341,8 +346,25 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     if failCount > 0:
                         # Take the first failed one you find
                         jobObject = j
+                        chosenFor = 'failed'
                         break
-                
+
+            if jobObject is None:
+                # If no jobs are failed, look for jobs with pods with
+                # containers stuck in Waiting with reason ImagePullBackOff
+                for j in self._ourJobObjects():
+                    pod = self._getPodForJob(j)
+
+                    waitingInfo = getattr(pod.status.container_statuses[0].state, 'waiting')
+                    if waitingInfo is not None and waitingInfo.reason == 'ImagePullBackOff':
+                        # Assume it will never finish, even if the registry comes back or whatever.
+                        # We can get into this state when we send in a non-existent image.
+                        # See https://github.com/kubernetes/kubernetes/issues/58384
+                        jobObject = j
+                        chosenFor = 'stuck'
+                        logger.warning('Failing stuck job; did you try to run a non-existent Docker image?'
+                                       ' Check TOIL_APPLIANCE_SELF.')
+                        break
                     
             if jobObject is None:
                 # TODO: block and wait for the jobs to update, until maxWait is hit
@@ -356,14 +378,26 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 # Grab the pod
                 pod = self._getPodForJob(jobObject)
                 
-                # Get the exit code form the pod
-                exitCode = pod.status.container_statuses[0].state.terminated.exit_code
+                if chosenFor == 'done' or chosenFor == 'failed':
+                    # The job actually finished or failed
+
+                    # Get the exit code form the pod
+                    exitCode = pod.status.container_statuses[0].state.terminated.exit_code
                 
-                # Compute how long the job ran for (subtract datetimes)
-                # We need to look at the pod's start time because the job's
-                # start time is just when the job is created.
-                runtime = (jobObject.status.completion_time - 
-                           pod.status.start_time).total_seconds()
+                    # Compute how long the job ran for (subtract datetimes)
+                    # We need to look at the pod's start time because the job's
+                    # start time is just when the job is created.
+                    runtime = (jobObject.status.completion_time - 
+                               pod.status.start_time).total_seconds()
+                else:
+                    # The job has gotten stuck
+
+                    assert chosenFor == 'stuck'
+                    
+                    # Synthesize an exit code and runtime (since the job never
+                    # really could start running)
+                    exitCode = -1
+                    runtime = 0
                 
                 
                 # Delete the job and all dependents (pods)
@@ -383,7 +417,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         # Clears jobs belonging to this run
         for job in self._ourJobObjects():
-            logging.debug(job)
+            loggger.debug(job)
             jobname = job.metadata.name
             jobstatus = job.status.conditions
             # Kill jobs whether they succeeded or failed
@@ -392,7 +426,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 response = self.batchApi.delete_namespaced_job(jobname, 
                                                                self.namespace, 
                                                                propagation_policy='Background')
-                logging.debug(response)
+                logger.debug(response)
             except ApiException as e:
                 print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
 
@@ -457,7 +491,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             response = self.batchApi.delete_namespaced_job(jobName, 
                                                            self.namespace, 
                                                            propagation_policy='Foreground')
-            logging.debug(response)
+            logger.debug(response)
 
 def executor():
     """
@@ -471,7 +505,7 @@ def executor():
     """
 
     logging.basicConfig(level=logging.DEBUG)
-    log.debug("Starting executor")
+    logger.debug("Starting executor")
 
     if len(sys.argv) != 2:
         log.error('Executor requires exactly one base64-encoded argument')
@@ -483,15 +517,15 @@ def executor():
         job = pickle.loads(base64.b64decode(sys.argv[1].encode('utf-8')))
     except:
         exc_info = sys.exc_info()
-        log.error('Exception while unpickling task: ', exc_info=exc_info)
+        logger.error('Exception while unpickling task: ', exc_info=exc_info)
         sys.exit(1)
 
     if 'userScript' in job:
         job['userScript'].register()
-    log.debug("Invoking command: '%s'", job['command'])
+    logger.debug("Invoking command: '%s'", job['command'])
     # Construct the job's environment
     jobEnv = dict(os.environ, **job['environment'])
-    log.debug('Using environment variables: %s', jobEnv.keys())
+    logger.debug('Using environment variables: %s', jobEnv.keys())
     
     # Start the child process
     child = subprocess.Popen(job.command,
