@@ -110,12 +110,10 @@ export TOIL_DOCKER_REGISTRY=quay.io/ucsc_cgl
 export TOIL_DOCKER_NAME=toil
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
-ifndef BUILD_NUMBER
 green=\033[0;32m
 normal=\033[0m
 red=\033[0;31m
 cyan=\033[0;36m
-endif
 
 develop: check_venv
 	$(pip) install -e .$(extras)
@@ -199,11 +197,6 @@ docker: docker/Dockerfile
 	@set -ex \
 	; cd dashboard/mtail \
 	; docker build --tag=$(mtail_image):$(docker_tag) -f Dockerfile .
-
-ifdef BUILD_NUMBER
-	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_short_tag))
-	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_minimal_tag))
-endif
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
