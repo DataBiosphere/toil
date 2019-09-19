@@ -427,7 +427,7 @@ def _monkey_patch_boto():
     
     from boto import provider
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     # We cache the final credentials so that we don't send multiple processes to
     # simultaneously bang on the EC2 metadata server or ask for MFA pins from the
@@ -435,6 +435,9 @@ def _monkey_patch_boto():
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
     log = logging.getLogger(__name__)
+
+    # But in addition to our manual cache, we also are going to turn on boto3's
+    # new built-in caching layer.
 
     def datetime_to_str(dt):
         """
@@ -481,7 +484,9 @@ def _monkey_patch_boto():
             if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
                 # We are on AWS and we don't have credentials passed along and we aren't anonymous.
                 # We will backend into a boto3 resolver for getting credentials.
-                self._boto3_resolver = create_credential_resolver(Session(profile=profile_name))
+                # Make sure to enable boto3's own caching, so we can share that
+                # cash with pure boto3 code elsewhere in Toil.
+                self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
             else:
                 # We will use the normal flow
                 self._boto3_resolver = None
