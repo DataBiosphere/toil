@@ -259,13 +259,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 
     def _getPodForJob(self, jobObject):
         """
-        Get the pod that belongs to the given job. The pod knows about things
-        like the job's exit code.
-        
+        Get the pod that belongs to the given job, or None if the job's pod is
+        missing. The pod knows about things like the job's exit code.
+
         :param kubernetes.client.V1Job jobObject: a Kubernetes job to look up
                                        pods for.
 
-        :return: The pod for the job.
+        :return: The pod for the job, or None if no pod is found.
         :rtype: kubernetes.client.V1Pod
         """
         
@@ -297,7 +297,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 break
                 
         # If we get here, no pages had any pods.
-        raise RuntimeError('Could not find any pods for job {}'.format(jobObject.metadata.name))
+        return None
    
     def _getIDForOurJob(self, jobObject):
         """
@@ -355,6 +355,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 for j in self._ourJobObjects():
                     pod = self._getPodForJob(j)
 
+                    if pod is None:
+                        # Skip jobs with no pod
+                        continue
+
                     waitingInfo = getattr(pod.status.container_statuses[0].state, 'waiting')
                     if waitingInfo is not None and waitingInfo.reason == 'ImagePullBackOff':
                         # Assume it will never finish, even if the registry comes back or whatever.
@@ -377,25 +381,41 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 
                 # Grab the pod
                 pod = self._getPodForJob(jobObject)
-                
-                if chosenFor == 'done' or chosenFor == 'failed':
-                    # The job actually finished or failed
 
-                    # Get the exit code form the pod
-                    exitCode = pod.status.container_statuses[0].state.terminated.exit_code
-                
-                    # Compute how long the job ran for (subtract datetimes)
-                    # We need to look at the pod's start time because the job's
-                    # start time is just when the job is created.
-                    runtime = (jobObject.status.completion_time - 
-                               pod.status.start_time).total_seconds()
+                if pod is not None:
+                    if chosenFor == 'done' or chosenFor == 'failed':
+                        # The job actually finished or failed
+
+                        # Get the termination info from the pod
+                        terminatedInfo = getattr(pod.status.container_statuses[0].state, 'terminated')
+                        if terminatedInfo is not None:
+                            # Extract the exit code
+                            exitCode = terminatedInfo.exit_code
+
+                            # Compute how long the job ran for (subtract datetimes)
+                            # We need to look at the pod's start time because the job's
+                            # start time is just when the job is created.
+                            # And we need to look at the pod's end time because the
+                            # job only gets a completion time if successful.
+                            runtime = (terminatedInfo.finished_at - 
+                                       pod.status.start_time).total_seconds()
+                        else:
+                            logging.warning('Exit code and runtime unavailable; pod stopped without container terminating')
+                            exitCode = -1
+                            runtime = 0
+                            
+                    else:
+                        # The job has gotten stuck
+
+                        assert chosenFor == 'stuck'
+                        
+                        # Synthesize an exit code and runtime (since the job never
+                        # really could start running)
+                        exitCode = -1
+                        runtime = 0
                 else:
-                    # The job has gotten stuck
-
-                    assert chosenFor == 'stuck'
-                    
-                    # Synthesize an exit code and runtime (since the job never
-                    # really could start running)
+                    # The pod went away from under the job.
+                    logging.warning('Exit code and runtime unavailable; pod vanished')
                     exitCode = -1
                     runtime = 0
                 
@@ -417,7 +437,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         # Clears jobs belonging to this run
         for job in self._ourJobObjects():
-            loggger.debug(job)
+            logger.debug(job)
             jobname = job.metadata.name
             jobstatus = job.status.conditions
             # Kill jobs whether they succeeded or failed
@@ -452,6 +472,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         for job in self._ourJobObjects():
             # Grab the pod for each job
             pod = self._getPodForJob(job)
+
+            if pod is None:
+                # Jobs whose pods are gone are not running
+                continue
 
             if pod.status.phase == 'Running':
                 # The job's pod is running
