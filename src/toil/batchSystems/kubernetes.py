@@ -407,7 +407,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
             
-    def killBatchjobs(self, jobIDs):
+    def killBatchJobs(self, jobIDs):
         
         # Kill all the ones that are local
         self.killLocalJobs(jobIDs)
