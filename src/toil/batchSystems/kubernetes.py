@@ -129,8 +129,11 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 job['userScript'] = self.userScript
 
             # Encode it in a form we can send in a command-line argument.
-            # But make sure it is text so we can ship it to Kubernetes via JSON.
-            encodedJob = base64.b64encode(pickle.dumps(job)).decode('utf-8')
+            # Make sure we pickle in version 2 because right now the appliance
+            # runs Toil on Python 2.
+            # TODO: get the appliance to run on Python 3.
+            # Make sure it is text so we can ship it to Kubernetes via JSON.
+            encodedJob = base64.b64encode(pickle.dumps(job, 2)).decode('utf-8')
 
             # The Kubernetes API makes sense only in terms of the YAML format. Objects
             # represent sections of the YAML files. Except from our point of view, all
@@ -572,7 +575,7 @@ def executor():
     logger.debug('Using environment variables: %s', jobEnv.keys())
     
     # Start the child process
-    child = subprocess.Popen(job.command,
+    child = subprocess.Popen(job['command'],
                              preexec_fn=lambda: os.setpgrp(),
                              shell=True,
                              env=jobEnv)
