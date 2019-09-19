@@ -106,8 +106,8 @@ docker_tag:=$(shell $(python) version_template.py dockerTag)
 default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
 docker_path:=$(strip $(shell which docker))
 
-export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
-export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
+export TOIL_DOCKER_REGISTRY=quay.io/ucsc_cgl
+export TOIL_DOCKER_NAME=toil
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
 ifndef BUILD_NUMBER
@@ -215,7 +215,7 @@ clean_docker:
 	-rm docker/Dockerfile docker/$(sdist_name)
 	-docker rmi $(docker_image):$(docker_tag)
 
-push_docker: docker check_docker_registry
+push_docker: docker
 	for i in $$(seq 1 5); do docker push $(docker_image):$(docker_tag) && break || sleep 60; done
 	for i in $$(seq 1 5); do docker push $(grafana_image):$(docker_tag) && break || sleep 60; done
 	for i in $$(seq 1 5); do docker push $(prometheus_image):$(docker_tag) && break || sleep 60; done
@@ -259,12 +259,6 @@ check_clean_working_copy:
 		|| ( printf "$(red)You have untracked files:$(normal)\n" \
 			; git ls-files --other --exclude-standard --directory \
 			; false )
-
-check_docker_registry:
-	@test "$(default_docker_registry)" != "$(TOIL_DOCKER_REGISTRY)" || test -n "$$BUILD_NUMBER" \
-		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY to a value other than \
-	$(default_docker_registry) and ensure that you have permissions to push \
-	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)\n' ; false )
 
 check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL

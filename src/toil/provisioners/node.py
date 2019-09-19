@@ -78,7 +78,7 @@ class Node(object):
     def copySshKeys(self, keyName):
         """ Copy authorized_keys file to the core user from the keyName user."""
         if keyName == 'core':
-            return # No point.
+            return  # No point.
 
         # Make sure that keys are there.
         self._waitForSSHKeys(keyName=keyName)
@@ -120,7 +120,6 @@ class Node(object):
                 time.sleep(10)
             else:
                 logger.info('...SSH connection established.')
-                # ssh succeeded
                 return
 
     def _waitForDockerDaemon(self, keyName='core'):
@@ -161,6 +160,9 @@ class Node(object):
                     break
                 else:
                     logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
+                    logger.critical('Role: {role}\n'
+                                    'Output: {output}\n\n'.format(role=str(role),
+                                                                  output=str(output)))
                     time.sleep(sleepTime)
             except RuntimeError:
                 # ignore exceptions, keep trying

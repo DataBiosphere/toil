@@ -31,10 +31,10 @@ from toil.test import needs_aws, integrative, ToilTest, needs_appliance, timeLim
 log = logging.getLogger(__name__)
 
 
-@needs_aws
-@integrative
-@needs_appliance
-@slow
+# @needs_aws
+# @integrative
+# @needs_appliance
+# @slow
 class AbstractAWSAutoscaleTest(ToilTest):
     def sshUtil(self, command):
         subprocess.check_call(['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command)
@@ -352,7 +352,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
             command.extend(toilOptions)
             self.sshUtil(command)
 
-    @integrative
+    # @integrative
     def testAutoScaledCluster(self):
         self._test()
 
