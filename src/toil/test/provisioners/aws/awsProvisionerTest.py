@@ -14,6 +14,7 @@
 import logging
 import os
 import time
+import tempfile
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
@@ -37,7 +38,15 @@ log = logging.getLogger(__name__)
 # @slow
 class AbstractAWSAutoscaleTest(ToilTest):
     def sshUtil(self, command):
-        subprocess.check_call(['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command)
+        cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command
+        log.debug("Running %s.", str(cmd))
+        p = subprocess.Popen(['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command,
+                             stderr=-1, stdout=-1)
+        o, e = p.communicate()
+        log.debug('\n\nSTDOUT:\n')
+        log.debug(o)
+        log.debug('\n\nSTDERR:\n')
+        log.debug(e)
 
     def rsyncUtil(self, src, dest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName] + [src, dest])
@@ -91,7 +100,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """Download the test script needed by the inheriting unit test class."""
         raise NotImplementedError()
 
-
     @abstractmethod
     def _runScript(self, toilOptions):
         """
@@ -113,13 +121,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         assert len(self.getMatchingRoles()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = ['virtualenv', '--system-site-packages', '--never-download', '/home/venv']
+        venv_command = ['virtualenv', '--system-site-packages', '--never-download', '/tmp/venv']
         self.sshUtil(venv_command)
 
-        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
+        upgrade_command = ['/tmp/venv/bin/pip', 'install', 'setuptools==28.7.1']
         self.sshUtil(upgrade_command)
 
-        yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
+        yaml_command = ['/tmp/venv/bin/pip', 'install', 'pyyaml==3.12']
         self.sshUtil(yaml_command)
 
         self._getScript()
@@ -129,13 +137,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--workDir=/var/lib/toil',
                        '--clean=always',
                        '--retryCount=2',
-                       '--clusterStats=/home/',
+                       '--clusterStats=/tmp/',
                        '--logDebug',
-                       '--logFile=/home/sort.log',
+                       '--logFile=/tmp/sort.log',
                        '--provisioner=aws']
 
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
-                            '--maxNodes=%s' % ",".join(self.numWorkers)])
+                            '--maxNodes=' + ",".join(self.numWorkers)])
         if preemptableJobs:
             toilOptions.extend(['--defaultPreemptable'])
 
@@ -183,12 +191,12 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         with open(fileToSort, 'w') as f:
             # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
-        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
-        self.rsyncUtil(fileToSort, ':/home/sortFile')
+        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/tmp/sort.py')
+        self.rsyncUtil(fileToSort, ':/tmp/sortFile')
         os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
-        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
+        runCommand = ['/tmp/venv/bin/python', '/tmp/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/tmp/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
@@ -225,9 +233,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
 
 @pytest.mark.timeout(1200)
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
-    """
-    Runs the tests on a statically provisioned cluster with autoscaling enabled.
-    """
+    """Runs the tests on a statically provisioned cluster with autoscaling enabled."""
     def __init__(self, name):
         super(AWSStaticAutoscaleTest, self).__init__(name)
         self.requestedNodeStorage = 20
@@ -259,9 +265,9 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
+
 @pytest.mark.timeout(1200)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
-
     def __init__(self, name):
         super(AWSAutoscaleTestMultipleNodeTypes, self).__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
@@ -295,12 +301,9 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         self._test()
 
 
-@pytest.mark.timeout(7200)
+@pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
-    """
-    This test insures autoscaling works on a restarted Toil run
-    """
-
+    """This test insures autoscaling works on a restarted Toil run."""
     def __init__(self, name):
         super(AWSRestartTest, self).__init__(name)
         self.clusterName = 'restart-test-' + str(uuid4())
@@ -309,7 +312,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         super(AWSRestartTest, self).setUp()
         self.instanceTypes = ['t2.micro']
         self.numWorkers = ['1']
-        self.scriptName = "/home/restartScript.py"
+        self.scriptName = "/tmp/restartScript.py"
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
@@ -330,10 +333,12 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
                 Job.Runner.startToil(rootJob, options)
 
         script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
-        # use appliance ssh method instead of sshutil so we can specify input param
-        cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
-        leader = cluster.getLeader()
-        leader.sshAppliance('tee', self.scriptName, input=script)
+        with tempfile.NamedTemporaryFile() as temp:
+            # use appliance ssh method instead of sshutil so we can specify input param
+            temp.write(script)
+            cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+            leader = cluster.getLeader()
+            leader.injectFile(temp.name, self.scriptName, 'toil_leader')
 
     def _runScript(self, toilOptions):
         # clean = onSuccess
@@ -341,7 +346,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         newOptions = [option for option in toilOptions if option not in disallowedOptions]
         try:
             # include a default memory - on restart the minimum memory requirement is the default, usually 2 GB
-            command = ['/home/venv/bin/python', self.scriptName, '-e', 'FAIL=true', '--defaultMemory=50000000']
+            command = ['/tmp/venv/bin/python', self.scriptName, '-e', 'FAIL=true', '--defaultMemory=50000000']
             command.extend(newOptions)
             self.sshUtil(command)
         except subprocess.CalledProcessError:
@@ -349,7 +354,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         else:
             self.fail('Command succeeded when we expected failure')
         with timeLimit(600):
-            command = ['/home/venv/bin/python', self.scriptName, '--restart', '--defaultMemory=50000000']
+            command = ['/tmp/venv/bin/python', self.scriptName, '--restart', '--defaultMemory=50000000']
             command.extend(toilOptions)
             self.sshUtil(command)
 
@@ -357,17 +362,17 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
     def testAutoScaledCluster(self):
         self._test()
 
+
 @pytest.mark.timeout(1200)
 class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
-
     def __init__(self, name):
         super(PreemptableDeficitCompensationTest, self).__init__(name)
         self.clusterName = 'deficit-test-' + str(uuid4())
 
     def setUp(self):
         super(PreemptableDeficitCompensationTest, self).setUp()
-        self.instanceTypes = ['m3.large:0.01', "m3.large"] # instance needs to be available on the spot market
-        self.numWorkers = ['1','1']
+        self.instanceTypes = ['m3.large:0.01', "m3.large"]  # instance needs to be available on the spot market
+        self.numWorkers = ['1', '1']
         self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
     def test(self):
