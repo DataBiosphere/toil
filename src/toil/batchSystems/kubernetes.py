@@ -84,8 +84,12 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # Here is where we will store the user script resource object if we get one.
         self.userScript = None
 
-        # Ge tthe image to deploy from Toil's configuration
+        # Ge the image to deploy from Toil's configuration
         self.dockerImage = applianceSelf()
+
+        # Get the name of the AWS secret, if any, to mount in containers.
+        # TODO: have some way to specify this (env var?)!
+        self.awsSecretName = 'shared-s3-credentials'
            
         # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()
@@ -148,21 +152,40 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                  'ephemeral-storage': jobNode.disk}
             resources = kubernetes.client.V1ResourceRequirements(limits=requirements_dict,
                                                                  requests=requirements_dict)
-            # Make a volume to provision disk
-            volume_name = 'tmp'
-            volume_source = kubernetes.client.V1EmptyDirVolumeSource()
-            volume = kubernetes.client.V1Volume(name=volume_name, empty_dir=volume_source)
-            # Make a mount for the volume
-            volume_mount = kubernetes.client.V1VolumeMount(mount_path='/tmp', name=volume_name)
+            
+            # Collect volumes and mounts
+            volumes = []
+            mounts = []
+            
+            # Mount volume to provision disk
+            ephemeral_volume_name = 'tmp'
+            ephemeral_volume_source = kubernetes.client.V1EmptyDirVolumeSource()
+            ephemeral_volume = kubernetes.client.V1Volume(name=ephemeral_volume_name,
+                                                          empty_dir=ephemeral_volume_source)
+            volumes.append(ephemeral_volume)
+            ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/tmp', name=ephemeral_volume_name)
+            mounts.append(ephemeral_volume_mount)
+
+            if self.awsSecretName is not None:
+                # Also mount an AWS secret, if provided.
+                # TODO: make this generic somehow
+                secret_volume_name = 's3-credentials'
+                secret_volume_source = kubernetes.client.V1SecretVolumeSource(secret_name=self.awsSecretName)
+                secret_volume = kubernetes.client.V1Volume(name=secret_volume_name,
+                                                           secret=secret_volume_source)
+                volumes.append(secret_volume)
+                secret_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/root/.aws', name=secret_volume_name)
+                mounts.append(secret_volume_mount)
+            
             # Make a container definition
             container = kubernetes.client.V1Container(command=['_toil_kubernetes_executor', encodedJob],
                                                       image=self.dockerImage,
                                                       name="runner-container",
                                                       resources=resources,
-                                                      volume_mounts=[volume_mount])
+                                                      volume_mounts=mounts)
             # Wrap the container in a spec
             pod_spec = kubernetes.client.V1PodSpec(containers=[container],
-                                                   volumes=[volume],
+                                                   volumes=volumes,
                                                    restart_policy="Never")
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec)
