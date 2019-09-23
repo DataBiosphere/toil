@@ -29,3 +29,10 @@ into the jobStore.
 Stats and Status
 ----------------
 See :ref:`cli_status` for more about gathering statistics about job success, runtime, and resource usage from workflows.
+
+Using a Python debugger
+-----------------------
+
+If you execute a workflow using the :code:`--debugWorker` flag, Toil will not fork in order to run jobs, which means
+you can either use `pdb <https://docs.python.org/3/library/pdb.html>`_, or an `IDE that supports debugging Python <https://wiki.python.org/moin/PythonDebuggingTools#IDEs_with_Debug_Capabilities>`_ as you would normally. Note that the :code:`--debugWorker` flag will
+only work with the :code:`singleMachine` batch system (the default), and not any of the custom job schedulers.

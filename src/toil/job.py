@@ -48,7 +48,7 @@ from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
 
 from toil.common import Toil, addOptions, safeUnpickleFromStream
-from toil.fileStore import DeferredFunction
+from toil.deferred import DeferredFunction
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
                             getTotalCpuTime)
@@ -274,11 +274,11 @@ class Job(BaseJob):
             exhausting all their retries, remove any successor jobs and rerun this job to restart the
             subtree. Job must be a leaf vertex in the job graph when initially defined, see
             :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
-        :type cores: int or string convertable by toil.lib.humanize.human2bytes to an int
-        :type disk: int or string convertable by toil.lib.humanize.human2bytes to an int
+        :type cores: int or string convertible by toil.lib.humanize.human2bytes to an int
+        :type disk: int or string convertible by toil.lib.humanize.human2bytes to an int
         :type preemptable: bool
-        :type cache: int or string convertable by toil.lib.humanize.human2bytes to an int
-        :type memory: int or string convertable by toil.lib.humanize.human2bytes to an int
+        :type cache: int or string convertible by toil.lib.humanize.human2bytes to an int
+        :type memory: int or string convertible by toil.lib.humanize.human2bytes to an int
         """
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}
@@ -309,6 +309,7 @@ class Job(BaseJob):
         self._rvs = collections.defaultdict(list)
         self._promiseJobStore = None
         self._fileStore = None
+        self._defer = None
         self._tempDir = None
         self._succeeded = True
 
@@ -316,8 +317,9 @@ class Job(BaseJob):
         """
         Override this function to perform work and dynamically create successor jobs.
 
-        :param toil.fileStore.FileStore fileStore: Used to create local and globally
-               sharable temporary files and to send log messages to the leader process.
+        :param toil.fileStores.abstractFileStore.AbstractFileStore fileStore: Used to create local and 
+               globally sharable temporary files and to send log messages to the leader
+               process.
 
         :return: The return value of the function can be passed to other jobs by means of
                  :func:`toil.job.Job.rv`.
@@ -569,6 +571,7 @@ class Job(BaseJob):
         if self._promiseJobStore is None:
             raise RuntimeError('Trying to pass a promise from a promising job that is not a ' +
                                'predecessor of the job receiving the promise')
+        # TODO: can we guarantee self.jobStoreID is populated and so pass that here?
         with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
             promise = UnfulfilledPromiseSentinel(str(self), False)
             pickle.dump(promise, fileHandle, pickle.HIGHEST_PROTOCOL)
@@ -718,9 +721,9 @@ class Job(BaseJob):
 
         :param dict kwargs: The keyword arguments to the function
         """
-        if self._fileStore is None:
+        if self._defer is None:
             raise Exception('A deferred function may only be registered with a job while that job is running.')
-        self._fileStore._registerDeferredFunction(DeferredFunction.create(function, *args, **kwargs))
+        self._defer(DeferredFunction.create(function, *args, **kwargs))
 
 
     ####################################################
@@ -1147,7 +1150,7 @@ class Job(BaseJob):
         # The pickled job is "run" as the command of the job, see worker
         # for the mechanism which unpickles the job and executes the Job.run
         # method.
-        with jobStore.writeFileStream(rootJobGraph.jobStoreID) as (fileHandle, fileStoreID):
+        with jobStore.writeFileStream(rootJobGraph.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
             pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
         # Note that getUserScript() may have been overridden. This is intended. If we used
         # self.userModule directly, we'd be getting a reference to job.py if the job was
@@ -1176,7 +1179,9 @@ class Job(BaseJob):
             # Make a job wrapper
             serviceJobGraph = serviceJob._createEmptyJobGraphForJob(jobStore, predecessorNumber=1)
 
-            # Create the start and terminate flags
+            # Create the start and terminate flags.
+            # We can't associate these with the job they belong to because
+            # that job hasn't necessarily been saved yet.
             serviceJobGraph.startJobStoreID = jobStore.getEmptyFileStoreID()
             serviceJobGraph.terminateJobStoreID = jobStore.getEmptyFileStoreID()
             serviceJobGraph.errorJobStoreID = jobStore.getEmptyFileStoreID()
@@ -1362,22 +1367,35 @@ class Job(BaseJob):
                 )
             )
 
-    def _runner(self, jobGraph, jobStore, fileStore):
+    def _runner(self, jobGraph, jobStore, fileStore, defer):
         """
         This method actually runs the job, and serialises the next jobs.
 
         :param class jobGraph: Instance of a jobGraph object
         :param class jobStore: Instance of the job store
-        :param toil.fileStore.FileStore fileStore: Instance of a Cached on uncached
-               filestore
+        :param toil.fileStores.abstractFileStore.AbstractFileStore fileStore: Instance of a cached
+               or uncached filestore
+        :param defer: Function yielded by open() context
+               manager of :class:`toil.DeferredFunctionManager`, which is called to
+               register deferred functions.
         :return:
         """
+
+        # Make deferred function registration available during run().
+        self._defer = defer
         # Make fileStore available as an attribute during run() ...
         self._fileStore = fileStore
         # ... but also pass it to run() as an argument for backwards compatibility.
         returnValues = self._run(jobGraph, fileStore)
+        # Clean up state changes made for run()
+        self._defer = None
+        self._fileStore = None
+
+
         # Serialize the new jobs defined by the run method to the jobStore
         self._serialiseExistingJob(jobGraph, jobStore, returnValues)
+
+        
 
     def _jobName(self):
         """
@@ -1485,9 +1503,10 @@ class JobFunctionWrappingJob(FunctionWrappingJob):
     add successor jobs for the function and perform all the functions the
     :class:`.Job` class provides.
 
-    To enable the job function to get access to the :class:`toil.fileStore.FileStore`
-    instance (see :func:`toil.job.Job.run`), it is made a variable of the wrapping job
-    called fileStore.
+    To enable the job function to get access to the
+    :class:`toil.fileStores.abstractFileStore.AbstractFileStore` instance (see
+    :func:`toil.job.Job.run`), it is made a variable of the wrapping job called
+    fileStore.
 
     To specify a job's resource requirements the following default keyword arguments
     can be specified:

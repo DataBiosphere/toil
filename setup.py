@@ -25,7 +25,7 @@ def runSetup():
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'pymesos==0.3.7'
-    psutil = 'psutil==3.0.1'
+    psutil = 'psutil >= 3.0.1, <6'
     azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
     azureAnsible = 'ansible[azure]==2.5.0a1'
     azureStorage = 'azure-storage==0.35.1'
@@ -34,8 +34,8 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = ['cwltool>=1.0.20190506190846']
-    schemaSalad = 'schema-salad<5,>=4.1'
+    cwltool = 'cwltool==1.0.20190815141648'
+    schemaSalad = 'schema-salad<5,>=4.5.20190815125611'
     galaxyLib = 'galaxy-lib==18.9.2'
     htcondor = 'htcondor>=8.6.0'
     dill = 'dill==0.2.7.1'
@@ -124,6 +124,8 @@ def runSetup():
           'Operating System :: POSIX',
           'Operating System :: POSIX :: Linux',
           'Programming Language :: Python :: 2.7',
+          'Programming Language :: Python :: 3.5',
+          'Programming Language :: Python :: 3.6',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Bio-Informatics',
           'Topic :: Scientific/Engineering :: Astronomy',

@@ -15,7 +15,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from builtins import str
-from past.builtins import str as oldstr
 from builtins import next
 from builtins import range
 from past.utils import old_div
@@ -26,17 +25,14 @@ import os
 import socket
 import logging
 import types
-
-import errno
-from ssl import SSLError
-
-# Python 3 compatibility imports
 import itertools
+import errno
 
-
-from toil.lib.exceptions import panic
+from ssl import SSLError
 from six import iteritems
 
+from toil.lib.exceptions import panic
+from toil.lib.compatibility import compat_oldstr, compat_bytes, USING_PYTHON2
 from toil.lib.retry import retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
@@ -169,7 +165,10 @@ class SDBHelper(object):
         chunks.sort()
         numChunks = int(attributes[u'numChunks'])
         if numChunks:
-            serializedJob = b''.join(v for k, v in chunks)
+            if USING_PYTHON2:
+                serializedJob = b''.join(v for k, v in chunks)
+            else:
+                serializedJob = b''.join(v.encode() for k, v in chunks)
             compressed = base64.b64decode(serializedJob)
             if compressed[0] == b'C'[0]:
                 binary = bz2.decompress(compressed[1:])
@@ -187,8 +186,7 @@ from boto.sdb.connection import SDBConnection
 
 def fileSizeAndTime(localFilePath):
     file_stat = os.stat(localFilePath)
-    file_size, file_time = file_stat.st_size, file_stat.st_mtime
-    return file_size, file_time
+    return file_stat.st_size, file_stat.st_mtime
 
 
 def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
@@ -204,7 +202,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
     """
     file_size, file_time = fileSizeAndTime(localFilePath)
     if file_size <= partSize:
-        key = bucket.new_key(key_name=bytes(fileID))
+        key = bucket.new_key(key_name=compat_bytes(fileID))
         key.name = fileID
         for attempt in retry_s3():
             with attempt:
@@ -215,7 +213,7 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
             version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
     for attempt in retry_s3():
         with attempt:
-            key = bucket.get_key(bytes(fileID),
+            key = bucket.get_key(compat_bytes(fileID),
                                  headers=headers,
                                  version_id=version)
     assert key.size == file_size
@@ -228,7 +226,7 @@ def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSiz
     for attempt in retry_s3():
         with attempt:
             upload = bucket.initiate_multipart_upload(
-                key_name=bytes(fileID),
+                key_name=compat_bytes(fileID),
                 headers=headers)
     try:
         start = 0
@@ -277,11 +275,11 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
     s3 = boto3.resource('s3')
-    dstBucket = s3.Bucket(oldstr(dstBucketName))
-    dstObject = dstBucket.Object(oldstr(dstKeyName))
-    copySource = {'Bucket': oldstr(srcBucketName), 'Key': oldstr(srcKeyName)}
+    dstBucket = s3.Bucket(compat_oldstr(dstBucketName))
+    dstObject = dstBucket.Object(compat_oldstr(dstKeyName))
+    copySource = {'Bucket': compat_oldstr(srcBucketName), 'Key': compat_oldstr(srcKeyName)}
     if srcKeyVersion is not None:
-        copySource['VersionId'] = oldstr(srcKeyVersion)
+        copySource['VersionId'] = compat_oldstr(srcKeyVersion)
 
     # The boto3 functions don't allow passing parameters as None to
     # indicate they weren't provided. So we have to do a bit of work
@@ -388,21 +386,8 @@ def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable
 
 
 def region_to_bucket_location(region):
-    if region == 'us-east-1':
-        return ''
-    else:
-        return region
+    return '' if region == 'us-east-1' else region
 
 
 def bucket_location_to_region(location):
-    if location == '':
-        return 'us-east-1'
-    else:
-        return location
-
-
-def bucket_location_to_http_url(location):
-    if location:
-        return 'https://s3-' + location + '.amazonaws.com'
-    else:
-        return 'https://s3.amazonaws.com'
+    return 'us-east-1' if location == '' else location

@@ -57,26 +57,28 @@ class StatsAndLogging( object ):
             method('%s    %s', jobStoreID, line.rstrip('\n'))
 
     @classmethod
-    def writeLogFiles(cls, jobNames, jobLogList, config):
-        def createName(logPath, jobName, logExtension):
+    def writeLogFiles(cls, jobNames, jobLogList, config, failed=False):
+        def createName(logPath, jobName, logExtension, failed=False):
             logName = jobName.replace('-', '--')
             logName = logName.replace('/', '-')
             logName = logName.replace(' ', '_')
             logName = logName.replace("'", '')
             logName = logName.replace('"', '')
+            # Add a "failed_" prefix to logs from failed jobs.
+            logName = ('failed_' if failed else '') + logName
             counter = 0
             while True:
                 suffix = str(counter).zfill(3) + logExtension
                 fullName = os.path.join(logPath, logName + suffix)
+                #  The maximum file name size in the default HFS+ file system is 255 UTF-16 encoding units, so basically 255 characters
+                if len(fullName) >= 255:
+                    return fullName[:(255-len(suffix))] + suffix
                 if not os.path.exists(fullName):
                     return fullName
                 counter += 1
 
         mainFileName = jobNames[0]
         extension = '.log'
-
-        assert not (config.writeLogs and config.writeLogsGzip), \
-            "Cannot use both --writeLogs and --writeLogsGzip at the same time."
 
         if config.writeLogs:
             path = config.writeLogs
@@ -89,7 +91,7 @@ class StatsAndLogging( object ):
             # we don't have anywhere to write the logs, return now
             return
 
-        fullName = createName(path, mainFileName, extension)
+        fullName = createName(path, mainFileName, extension, failed)
         with writeFn(fullName, 'wb') as f:
             for l in jobLogList:
                 try:
@@ -102,7 +104,7 @@ class StatsAndLogging( object ):
         for alternateName in jobNames[1:]:
             # There are chained jobs in this output - indicate this with a symlink
             # of the job's name to this file
-            name = createName(path, alternateName, extension)
+            name = createName(path, alternateName, extension, failed)
             os.symlink(os.path.relpath(fullName, path), name)
 
     @classmethod

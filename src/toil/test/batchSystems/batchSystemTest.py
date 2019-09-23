@@ -51,7 +51,8 @@ from toil.test import (ToilTest,
                        needs_torque,
                        needs_htcondor,
                        slow,
-                       tempFileContaining)
+                       tempFileContaining,
+                       travis_test)
 from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
@@ -126,10 +127,12 @@ class hidden(object):
         def tearDown(self):
             self.batchSystem.shutdown()
             super(hidden.AbstractBatchSystemTest, self).tearDown()
-
+        
+        @travis_test
         def testAvailableCores(self):
             self.assertTrue(multiprocessing.cpu_count() >= numCores)
-
+        
+        @travis_test
         def testRunJobs(self):
             testPath = os.path.join(self.tempDir, "test.txt")
             jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
@@ -175,7 +178,8 @@ class hidden(object):
 
             # Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
-
+        
+        @travis_test
         def testSetEnv(self):
             # Parasol disobeys shell rules and stupidly splits the command at the space character
             # before exec'ing it, whether the space is quoted, escaped or not. This means that we
@@ -204,7 +208,8 @@ class hidden(object):
                 jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
                 self.assertEqual(exitStatus, 23)
                 self.assertEqual(jobID, job5)
-
+        
+        @travis_test
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
                 checkResourceRequest = self.batchSystem.checkResourceRequest
@@ -221,7 +226,8 @@ class hidden(object):
                 self.assertRaises(AssertionError, checkResourceRequest,
                                   memory=10, cores=None, disk=1000)
                 checkResourceRequest(memory=10, cores=1, disk=100)
-
+       
+        @travis_test
         def testScalableBatchSystem(self):
             # If instance of scalable batch system
             pass

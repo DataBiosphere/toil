@@ -30,7 +30,7 @@ from toil.common import Toil
 from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
-from toil.test import ToilTest, slow
+from toil.test import ToilTest, slow, travis_test
 
 logger = logging.getLogger(__name__)
 
@@ -88,7 +88,8 @@ class JobTest(ToilTest):
             self.assertEqual(open(outFile, 'r').readline(), "ABCDEFG")
         finally:
             os.remove(outFile)
-
+    
+    @travis_test
     def testStatic2(self):
         """
         Create a DAG of jobs non-dynamically and run it. DAG is:
@@ -143,7 +144,8 @@ class JobTest(ToilTest):
                 pass
             else:
                 self.fail()
-
+    
+    @travis_test
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'
@@ -175,7 +177,8 @@ class JobTest(ToilTest):
                 pass
             else:
                 self.fail()
-
+    
+    @travis_test
     def testDeadlockDetection(self):
         """
         Randomly generate job graphs with various types of cycle in them and

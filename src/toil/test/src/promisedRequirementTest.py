@@ -24,7 +24,7 @@ import toil.test.batchSystems.batchSystemTest as batchSystemTest
 
 from toil.job import Job
 from toil.job import PromisedRequirement
-from toil.test import needs_mesos, slow
+from toil.test import needs_mesos, slow, travis_test
 from toil.batchSystems.mesos.test import MesosTestSupport
 
 log = logging.getLogger(__name__)
@@ -101,10 +101,11 @@ class hidden(object):
             assert (minValue, maxValue) == (0, 0)
             return counterPath
 
-
+        @travis_test
         def testJobConcurrency(self):
             pass
-
+        
+        @travis_test
         def testPromisesWithJobStoreFileObjects(self, caching=True):
             """
             Check whether FileID objects are being pickled properly when used as return
@@ -124,7 +125,8 @@ class hidden(object):
             F2.addChild(G)
 
             Job.Runner.startToil(F1, self.getOptions(self._createTempDir('testFiles'), caching=caching))
-
+        
+        @travis_test
         def testPromisesWithNonCachingFileStore(self):
             self.testPromisesWithJobStoreFileObjects(caching=False)
 

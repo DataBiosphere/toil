@@ -19,12 +19,29 @@ from operator import attrgetter
 import datetime
 from toil.lib.misc import std_dev, mean
 from six import string_types
-
-from toil.test import runningOnEC2
+from six.moves.urllib.request import urlopen
+from six.moves.urllib.error import URLError
 
 logger = logging.getLogger(__name__)
 
 ZoneTuple = namedtuple('ZoneTuple', ['name', 'price_deviation'])
+
+
+def runningOnEC2():
+    def file_begins_with(path, prefix):
+        with open(path) as f:
+            return f.read(len(prefix)) == prefix
+
+    hv_uuid_path = '/sys/hypervisor/uuid'
+    if os.path.exists(hv_uuid_path) and file_begins_with(hv_uuid_path, 'ec2'):
+        return True
+    # Some instances do not have the /sys/hypervisor/uuid file, so check the identity document instead.
+    # See https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-identity-documents.html
+    try:
+        urlopen('http://169.254.169.254/latest/dynamic/instance-identity/document', timeout=1)
+        return True
+    except URLError:
+        return False
 
 
 def zoneToRegion(zone):
