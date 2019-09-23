@@ -1049,7 +1049,7 @@ class CWLWorkflow(Job):
                                         self.cwlwf.requirements)
 
                         conditional = Conditional(
-                            expression=step.tool.get("runIf"),
+                            expression=step.tool.get("when"),
                             outputs=step.tool["out"],
                             requirements=self.cwlwf.requirements)
 
