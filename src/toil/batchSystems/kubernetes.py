@@ -89,8 +89,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Get the name of the AWS secret, if any, to mount in containers.
         # TODO: have some way to specify this (env var?)!
-        self.awsSecretName = 'shared-s3-credentials'
-           
+        self.awsSecretName = os.environ["SECRET_NAME"]
+
         # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()
         self.coreApi = kubernetes.client.CoreV1Api()
@@ -176,7 +176,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 volumes.append(secret_volume)
                 secret_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/root/.aws', name=secret_volume_name)
                 mounts.append(secret_volume_mount)
-            
+
             # Make a container definition
             container = kubernetes.client.V1Container(command=['_toil_kubernetes_executor', encodedJob],
                                                       image=self.dockerImage,
@@ -317,7 +317,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
-            
+        
             if token is None:
                 # There isn't one. We got everything.
                 break
