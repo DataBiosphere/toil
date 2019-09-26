@@ -5,6 +5,11 @@ Environment Variables
 There are several environment variables that affect the way Toil runs.
 
 +----------------------------------+----------------------------------------------------+
+| TOIL_CHECK_ENV                   | A variable that checks what python environment is  |
+|                                  | currently used. It allows the system to accomodate |
+|                                  | clusters for different shared filesystems as well  | 
+|                                  | as dockerized clusters.                            |
++----------------------------------+----------------------------------------------------+
 | TOIL_WORKDIR                     | An absolute path to a directory where Toil will    |
 |                                  | write its temporary files. This directory must     |
 |                                  | exist on each worker node and may be set to a      |

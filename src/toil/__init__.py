@@ -141,9 +141,7 @@ def resolveEntryPoint(entryPoint):
     # can't assume that the virtualenv is at the same path on the worker.  This
     # system needs to be made more flexible to accomodate clusters with shared
     # filesystems as well as Dockerized clusters.
-    return entryPoint
-
-    if inVirtualEnv():
+    if os.environ.get("CHECK_ENV", None) and inVirtualEnv():
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
         # Inside a virtualenv we try to use absolute paths to the entrypoints.
         if os.path.isfile(path):
@@ -153,17 +151,7 @@ def resolveEntryPoint(entryPoint):
             # a virtualenv located at the same path on each worker as well.
             assert os.access(path, os.X_OK)
             return path
-        else:
-            # For virtualenv's that have the toil package directory on their sys.path but whose
-            # bin directory lacks the Toil entrypoints, i.e. where Toil is included via
-            # --system-site-packages, we rely on PATH just as if we weren't in a virtualenv.
-            return entryPoint
-    else:
-        # Outside a virtualenv it is hard to predict where the entry points got installed. It is
-        # the responsibility of the user to ensure that they are present on PATH and point to the
-        # correct version of Toil. This is still better than an absolute path because it gives
-        # the user control over Toil's location on both leader and workers.
-        return entryPoint
+    return entryPoint
 
 
 @memoize
