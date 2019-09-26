@@ -410,11 +410,18 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         logger.warning('Failing stuck job; did you try to run a non-existent Docker image?'
                                        ' Check TOIL_APPLIANCE_SELF.')
                         break
-                    
+           
+            w = kubernetes.watch.Watch()    
             if jobObject is None:
+                all_pods = []
                 # TODO: block and wait for the jobs to update, until maxWait is hit
-                
                 # For now just say we couldn't get anything
+                for j in self._ourJobObjects():
+                    all_pods += self._getPodForJob(j)
+                for event in w.stream(all_pods, timeout_seconds=maxWait):
+                    print("Event: %s %s" % (event['type'], event['object'].metadata.name))
+                    if event['object'] is not None:
+                        continue
                 return None
             else:
                 # Work out what the job's ID was (whatever came after our name prefix)
