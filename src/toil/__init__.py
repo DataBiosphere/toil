@@ -141,7 +141,7 @@ def resolveEntryPoint(entryPoint):
     # can't assume that the virtualenv is at the same path on the worker.  This
     # system needs to be made more flexible to accomodate clusters with shared
     # filesystems as well as Dockerized clusters.
-    if os.environ.get("CHECK_ENV", None) and inVirtualEnv():
+    if os.environ.get("TOIL_CHECK_ENV", None) and inVirtualEnv():
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
         # Inside a virtualenv we try to use absolute paths to the entrypoints.
         if os.path.isfile(path):
