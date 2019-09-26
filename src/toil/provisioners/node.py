@@ -251,7 +251,7 @@ class Node(object):
             # run the args in the appliance
             tty = kwargs.pop('tty', None)
             ttyFlag = '-t' if tty else ''
-            commandTokens += ['docker', 'exec', '-i', 'privileged', ttyFlag, 'toil_leader']
+            commandTokens += ['docker', 'exec', '-i', '--privileged', ttyFlag, 'toil_leader']
 
         logger.debug('Node %s: %s', self.effectiveIP, ' '.join(args))
         args = list(map(pipes.quote, args))
