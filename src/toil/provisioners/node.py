@@ -237,12 +237,6 @@ class Node(object):
         # specify host
         user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
         commandTokens.append('%s@%s' % (user, str(self.effectiveIP)))
-        appliance = kwargs.pop('appliance', None)
-        if appliance:
-            # run the args in the appliance
-            tty = kwargs.pop('tty', None)
-            ttyFlag = '-t' if tty else ''
-            commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
 
         inputString = kwargs.pop('input', None)
         if inputString is not None:
@@ -251,6 +245,13 @@ class Node(object):
         if collectStdout:
             kwargs['stdout'] = subprocess.PIPE
         kwargs['stderr'] = subprocess.PIPE
+
+        appliance = kwargs.pop('appliance', None)
+        if appliance:
+            # run the args in the appliance
+            tty = kwargs.pop('tty', None)
+            ttyFlag = '-t' if tty else ''
+            commandTokens += ['docker', 'exec', '-i', 'privileged', ttyFlag, 'toil_leader']
 
         logger.debug('Node %s: %s', self.effectiveIP, ' '.join(args))
         args = list(map(pipes.quote, args))
