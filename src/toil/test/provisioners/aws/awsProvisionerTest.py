@@ -115,13 +115,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         assert len(self.getMatchingRoles()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = ['virtualenv', '--system-site-packages', '--never-download', '/tmp/venv']
+        venv_command = ['virtualenv', '--system-site-packages', '--never-download', '/home/venv']
         self.sshUtil(venv_command)
 
-        upgrade_command = ['/tmp/venv/bin/pip', 'install', 'setuptools==28.7.1']
+        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
         self.sshUtil(upgrade_command)
 
-        yaml_command = ['/tmp/venv/bin/pip', 'install', 'pyyaml==3.12']
+        yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
         self.sshUtil(yaml_command)
 
         self._getScript()
@@ -131,9 +131,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--workDir=/var/lib/toil',
                        '--clean=always',
                        '--retryCount=2',
-                       '--clusterStats=/tmp/',
+                       '--clusterStats=/home/',
                        '--logDebug',
-                       '--logFile=/tmp/sort.log',
+                       '--logFile=/home/sort.log',
                        '--provisioner=aws']
 
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
@@ -185,12 +185,12 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         with open(fileToSort, 'w') as f:
             # Fixme: making this file larger causes the test to hang
             f.write('01234567890123456789012345678901')
-        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/tmp/sort.py')
-        self.rsyncUtil(fileToSort, ':/tmp/sortFile')
+        self.rsyncUtil(os.path.join(self._projectRootPath(), 'src/toil/test/sort/sort.py'), ':/home/sort.py')
+        self.rsyncUtil(fileToSort, ':/home/sortFile')
         os.unlink(fileToSort)
 
     def _runScript(self, toilOptions):
-        runCommand = ['/tmp/venv/bin/python', '/tmp/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/tmp/sortFile']
+        runCommand = ['/home/venv/bin/python', '/home/sort.py', '--fileToSort=/home/sortFile', '--sseKey=/home/sortFile']
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
@@ -306,7 +306,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         super(AWSRestartTest, self).setUp()
         self.instanceTypes = ['t2.micro']
         self.numWorkers = ['1']
-        self.scriptName = "/tmp/restartScript.py"
+        self.scriptName = "/home/restartScript.py"
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
@@ -343,7 +343,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         newOptions = [option for option in toilOptions if option not in disallowedOptions]
         try:
             # include a default memory - on restart the minimum memory requirement is the default, usually 2 GB
-            command = ['/tmp/venv/bin/python', self.scriptName, '-e', 'FAIL=true', '--defaultMemory=50000000']
+            command = ['/home/venv/bin/python', self.scriptName, '-e', 'FAIL=true', '--defaultMemory=50000000']
             command.extend(newOptions)
             self.sshUtil(command)
         except subprocess.CalledProcessError:
@@ -351,7 +351,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         else:
             self.fail('Command succeeded when we expected failure')
         with timeLimit(600):
-            command = ['/tmp/venv/bin/python', self.scriptName, '--restart', '--defaultMemory=50000000']
+            command = ['/home/venv/bin/python', self.scriptName, '--restart', '--defaultMemory=50000000']
             command.extend(toilOptions)
             self.sshUtil(command)
 
