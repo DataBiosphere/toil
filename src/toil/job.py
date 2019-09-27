@@ -958,7 +958,7 @@ class Job(BaseJob):
         :param fileHandle: An open, binary-mode file handle.
         :returns:
         """
-        
+
         def filter_main(module_name, class_name):
             try:
                 if module_name == '__main__':
@@ -980,13 +980,13 @@ class Job(BaseJob):
             # In Python 3 find_global isn't real and we are supposed to
             # subclass unpickler and override find_class. We can't just replace
             # it. But with cPickle in Pyhton 2 we can't subclass Unpickler.
-            
+
             class FilteredUnpickler(pickle.Unpickler):
                 def find_class(self, module, name):
                     return filter_main(module, name)
-                    
+
             unpickler = FilteredUnpickler(fileHandle)
-            
+
         runnable = unpickler.load()
         assert isinstance(runnable, BaseJob)
         runnable._config = config
