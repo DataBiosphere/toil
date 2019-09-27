@@ -102,6 +102,7 @@ py2_integration_provisioner:
     - python setup_gitlab_docker.py
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
     - export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:$(python version_template.py dockerTag)
+    - echo $TOIL_APPLIANCE_SELF
     - make push_docker
     - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster
 #    - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py

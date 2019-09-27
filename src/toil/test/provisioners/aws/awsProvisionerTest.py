@@ -51,16 +51,10 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def rsyncUtil(self, src, dest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName] + [src, dest])
 
-    def destroyClusterUtil(self):
-        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
-
     def createClusterUtil(self, args=None):
         args = [] if args is None else args
         subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a', '--keyPairName=%s' % self.keyName,
                                '--leaderNodeType=t2.medium', self.clusterName] + args)
-
-    def cleanJobStoreUtil(self):
-        subprocess.check_call(['toil', 'clean', self.jobStore])
 
     def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
@@ -76,8 +70,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def tearDown(self):
         super(AbstractAWSAutoscaleTest, self).tearDown()
-        self.destroyClusterUtil()
-        self.cleanJobStoreUtil()
+        # subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
+        # subprocess.check_call(['toil', 'clean', self.jobStore])
 
     def getMatchingRoles(self):
         return list(self.cluster._ctx.local_roles())
@@ -155,24 +149,24 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.sshUtil(['/home/venv/bin/python', '-c', 'import json; import os; '
                       'json.load(open("/home/" + [f for f in os.listdir("/home/") if f.endswith(".json")].pop()))'])
 
-        from boto.exception import EC2ResponseError
-        volumeID = self.getRootVolID()
-        self.cluster.destroyCluster()
-        for attempt in range(6):
-            # https://github.com/BD2KGenomics/toil/issues/1567
-            # retry this for up to 1 minute until the volume disappears
-            try:
-                self.cluster._ctx.ec2.get_all_volumes(volume_ids=[volumeID])
-                time.sleep(10)
-            except EC2ResponseError as e:
-                if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
-                    break
-                else:
-                    raise
-        else:
-            self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
-
-        assert len(self.getMatchingRoles()) == 0
+        # from boto.exception import EC2ResponseError
+        # volumeID = self.getRootVolID()
+        # self.cluster.destroyCluster()
+        # for attempt in range(6):
+        #     # https://github.com/BD2KGenomics/toil/issues/1567
+        #     # retry this for up to 1 minute until the volume disappears
+        #     try:
+        #         self.cluster._ctx.ec2.get_all_volumes(volume_ids=[volumeID])
+        #         time.sleep(10)
+        #     except EC2ResponseError as e:
+        #         if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
+        #             break
+        #         else:
+        #             raise
+        # else:
+        #     self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
+        #
+        # assert len(self.getMatchingRoles()) == 0
 
 
 @pytest.mark.timeout(1800)
@@ -333,12 +327,15 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
                 Job.Runner.startToil(rootJob, options)
 
         script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
-        with tempfile.NamedTemporaryFile() as temp:
+        tempfile_path = '/tmp/temp-or-ary.txt'
+        with open(tempfile_path, 'w') as f:
             # use appliance ssh method instead of sshutil so we can specify input param
-            temp.write(script)
-            cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
-            leader = cluster.getLeader()
-            leader.injectFile(temp.name, self.scriptName, 'toil_leader')
+            f.write(script)
+        cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
+        leader = cluster.getLeader()
+        leader.injectFile(tempfile_path, self.scriptName, 'toil_leader')
+        if os.path.exists(tempfile_path):
+            os.remove(tempfile_path)
 
     def _runScript(self, toilOptions):
         # clean = onSuccess

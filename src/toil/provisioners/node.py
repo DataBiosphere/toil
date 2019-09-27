@@ -88,8 +88,7 @@ class Node(object):
         # - even so, the key wasn't copied correctly to the core account
         keyFile = '/home/%s/.ssh/authorized_keys' % keyName
         self.sshInstance('/usr/bin/sudo', '/usr/bin/cp', keyFile, '/home/core/.ssh', user=keyName)
-        self.sshInstance('/usr/bin/sudo', '/usr/bin/chown', 'core',
-                         '/home/core/.ssh/authorized_keys', user=keyName)
+        self.sshInstance('/usr/bin/sudo', '/usr/bin/chown', 'core', '/home/core/.ssh/authorized_keys', user=keyName)
 
     def injectFile(self, fromFile, toFile, role):
         """
@@ -218,10 +217,8 @@ class Node(object):
         kwargs: input, tty, appliance, collectStdout, sshOptions, strict
         """
         commandTokens = ['ssh', '-tt']
-        strict = kwargs.pop('strict', False)
-        if not strict:
-            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] \
-                                 + kwargs.get('sshOptions', [])
+        if not kwargs.pop('strict', False):
+            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get('sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
         # Forward ports:
         # 3000 for Grafana dashboard
@@ -241,29 +238,22 @@ class Node(object):
         inputString = kwargs.pop('input', None)
         if inputString is not None:
             kwargs['stdin'] = subprocess.PIPE
-        collectStdout = kwargs.pop('collectStdout', None)
-        if collectStdout:
+
+        if kwargs.pop('collectStdout', None):
             kwargs['stdout'] = subprocess.PIPE
         kwargs['stderr'] = subprocess.PIPE
 
-        appliance = kwargs.pop('appliance', None)
-        if appliance:
-            # run the args in the appliance
-            tty = kwargs.pop('tty', None)
+        tty = kwargs.pop('tty', None)
+        if kwargs.pop('appliance', None):
             ttyFlag = '-t' if tty else ''
-            commandTokens += ['docker', 'exec', '-i', '--privileged', ttyFlag, 'toil_leader']
+            commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
 
         logger.debug('Node %s: %s', self.effectiveIP, ' '.join(args))
         args = list(map(pipes.quote, args))
         commandTokens += args
         logger.debug('Full command %s', ' '.join(commandTokens))
         process = subprocess.Popen(commandTokens, **kwargs)
-        logger.debug(str(commandTokens))
-        logger.debug(str(kwargs))
-        logger.debug(str(inputString))
-        logger.debug('====================================================')
         stdout, stderr = process.communicate(input=inputString)
-        logger.debug('====================================================')
         # at this point the process has already exited, no need for a timeout
         exit_code = process.returncode
         # ssh has been throwing random 255 errors - why?
@@ -277,11 +267,10 @@ class Node(object):
         return stdout
 
     def coreRsync(self, args, applianceName='toil_leader', **kwargs):
-        remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
+        remoteRsync = "docker exec -i %s rsync -v" % applianceName  # Access rsync inside appliance
         parsedArgs = []
         sshCommand = "ssh"
-        strict = kwargs.pop('strict', False)
-        if not strict:
+        if not kwargs.pop('strict', False):
             sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
         hostInserted = False
         # Insert remote host address
