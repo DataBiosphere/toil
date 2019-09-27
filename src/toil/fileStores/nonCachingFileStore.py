@@ -28,14 +28,17 @@ from future.utils import with_metaclass
 import base64
 import dill
 import errno
+import fcntl
 import logging
 import os
 import shutil
 import stat
+import sys
 import tempfile
 import time
 import uuid
 
+from toil.lib.misc import robust_rmtree
 from toil.lib.objects import abstractclassmethod
 from toil.lib.humanize import bytes2human
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
@@ -46,17 +49,14 @@ from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
 
+if sys.version_info[0] < 3:
+    # Define a usable FileNotFoundError as will be raised by os.oprn on a
+    # nonexistent parent directory.
+    FileNotFoundError = OSError
+
 class NonCachingFileStore(AbstractFileStore):
-    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
-        self.jobStore = jobStore
-        self.jobGraph = jobGraph
-        self.jobName = str(self.jobGraph)
-        self.localTempDir = os.path.abspath(localTempDir)
-        self.inputBlockFn = inputBlockFn
-        self.jobsToDelete = set()
-        self.loggingMessages = []
-        self.filesToDelete = set()
-        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, inputBlockFn)
+    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
+        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile = None
         self.localFileMap = defaultdict(list)
@@ -66,7 +66,7 @@ class NonCachingFileStore(AbstractFileStore):
         jobReqs = job.disk
         startingDir = os.getcwd()
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
-        self.findAndHandleDeadJobs(self.workFlowDir)
+        self._removeDeadJobs(self.workFlowDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
@@ -103,6 +103,9 @@ class NonCachingFileStore(AbstractFileStore):
         return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
+        if not isinstance(fileStoreID, FileID):
+            # Don't let the user forge File IDs.
+            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
@@ -116,6 +119,9 @@ class NonCachingFileStore(AbstractFileStore):
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
+        if not isinstance(fileStoreID, FileID):
+            # Don't let the user forge File IDs.
+            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         with self.jobStore.readFileStream(fileStoreID) as f:
             yield f
 
@@ -123,6 +129,9 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def deleteLocalFile(self, fileStoreID):
+        if not isinstance(fileStoreID, FileID):
+            # Don't let the user forge File IDs.
+            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
@@ -132,6 +141,9 @@ class NonCachingFileStore(AbstractFileStore):
                 os.remove(localFilePath)
 
     def deleteGlobalFile(self, fileStoreID):
+        if not isinstance(fileStoreID, FileID):
+            # Don't let the user forge File IDs.
+            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         try:
             self.deleteLocalFile(fileStoreID)
         except OSError as e:
@@ -142,11 +154,19 @@ class NonCachingFileStore(AbstractFileStore):
                 raise
         self.filesToDelete.add(fileStoreID)
 
-    def _blockFn(self):
+    def waitForCommit(self):
         # there is no asynchronicity in this file store so no need to block at all
         return True
 
-    def _updateJobWhenDone(self):
+    def startCommit(self, jobState=False):
+        # Make sure the previous job is committed, if any
+        if self.waitForPreviousCommit is not None:
+            self.waitForPreviousCommit()
+
+        if not jobState:
+            # All our operations that need committing are job state related
+            return
+
         try:
             # Indicate any files that should be deleted once the update of
             # the job wrapper is completed.
@@ -174,7 +194,7 @@ class NonCachingFileStore(AbstractFileStore):
         pass
 
     @classmethod
-    def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
+    def _removeDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
         """
         Look at the state of all jobs registered in the individual job state files, and handle them
         (clean up the disk)
@@ -186,37 +206,36 @@ class NonCachingFileStore(AbstractFileStore):
 
         for jobState in cls._getAllJobStates(nodeInfo):
             if not cls._pidExists(jobState['jobPID']):
-                # using same logic to prevent races as CachingFileStore._setupCache
-                myPID = str(os.getpid())
-                cleanupFile = os.path.join(jobState['jobDir'], '.cleanup')
-                with open(os.path.join(jobState['jobDir'], '.' + myPID), 'w') as f:
-                    f.write(myPID)
-                while True:
+                # We need to have a race to pick someone to clean up.
+                
+                try:
+                    # Open the directory
+                    dirFD = os.open(jobState['jobDir'], os.O_RDONLY)
+                except FileNotFoundError:
+                    # The cleanup has happened and we can't contest for it
+                    continue
+
+                try:
+                    # Try and lock it
+                    fcntl.lockf(dirFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except IOError as e:
+                    # We lost the race. Someone else is alive and has it locked.
+                    os.close(dirFD)
+                else:
+                    # We got it
+                    logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
+                                   'state of the job on disk.', jobState['jobName'])
+                    
                     try:
-                        os.rename(f.name, cleanupFile)
-                    except OSError as err:
-                        if err.errno == errno.ENOTEMPTY:
-                            with open(cleanupFile, 'r') as f:
-                                cleanupPID = f.read()
-                            if cls._pidExists(int(cleanupPID)):
-                                # Cleanup your own mess.  It's only polite.
-                                os.remove(f.name)
-                                break
-                            else:
-                                os.remove(cleanupFile)
-                                continue
-                        else:
-                            raise
-                    else:
-                        logger.warning('Detected that job (%s) prematurely terminated.  Fixing the '
-                                       'state of the job on disk.', jobState['jobName'])
                         if not batchSystemShutdown:
                             logger.debug("Deleting the stale working directory.")
                             # Delete the old work directory if it still exists.  Do this only during
                             # the life of the program and dont' do it during the batch system
-                            # cleanup.  Leave that to the batch system cleanup code.
-                            shutil.rmtree(jobState['jobDir'])
-                        break
+                            # cleanup. Leave that to the batch system cleanup code.
+                            robust_rmtree(jobState['jobDir'])
+                    finally:
+                        fcntl.lockf(dirFD, fcntl.LOCK_UN)
+                        os.close(dirFD)
 
     @staticmethod
     def _getAllJobStates(workflowDir):
@@ -271,5 +290,5 @@ class NonCachingFileStore(AbstractFileStore):
         """
         :param dir_: The workflow directory that will contain all the individual worker directories.
         """
-        cls.findAndHandleDeadJobs(dir_, batchSystemShutdown=True)
+        cls._removeDeadJobs(dir_, batchSystemShutdown=True)
 

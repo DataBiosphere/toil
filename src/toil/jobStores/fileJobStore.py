@@ -35,7 +35,7 @@ except ImportError:
 # toil dependencies
 from toil.fileStores import FileID
 from toil.lib.bioio import absSymPath
-from toil.lib.misc import mkdir_p
+from toil.lib.misc import mkdir_p, robust_rmtree
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchFileException,
@@ -119,38 +119,9 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchJobStoreException(self.jobStoreDir)
         super(FileJobStore, self).resume()
 
-    def robust_rmtree(self, path, max_retries=3):
-        """Robustly tries to delete paths.
-
-        Retries several times (with increasing delays) if an OSError
-        occurs.  If the final attempt fails, the Exception is propagated
-        to the caller.
-
-        Borrowing patterns from:
-        https://github.com/hashdist/hashdist
-        """
-        
-        if not os.path.exists(path):
-            # Nothing to do!
-            return
-
-        delay = 1
-        for _ in range(max_retries):
-            try:
-                shutil.rmtree(path)
-                break
-            except OSError:
-                logger.debug('Unable to remove path: {}.  Retrying in {} seconds.'.format(path, delay))
-                time.sleep(delay)
-                delay *= 2
-
-        if os.path.exists(path):
-            # Final attempt, pass any Exceptions up to caller.
-            shutil.rmtree(path)
-        
     def destroy(self):
         if os.path.exists(self.jobStoreDir):
-            self.robust_rmtree(self.jobStoreDir)
+            robust_rmtree(self.jobStoreDir)
 
     ##########################################
     # The following methods deal with creating/loading/updating/writing/checking for the
@@ -259,9 +230,9 @@ class FileJobStore(AbstractJobStore):
         if self.exists(jobStoreID):
             # Remove the job-associated files in need of cleanup, which may or
             # may not live under the job's directory.
-            self.robust_rmtree(self._getJobFilesCleanupDir(jobStoreID))
+            robust_rmtree(self._getJobFilesCleanupDir(jobStoreID))
             # Remove the job's directory itself.
-            self.robust_rmtree(self._getJobDirFromId(jobStoreID))
+            robust_rmtree(self._getJobDirFromId(jobStoreID))
 
     def jobs(self):
         # Walk through list of temporary directories searching for jobs.

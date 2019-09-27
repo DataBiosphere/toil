@@ -57,6 +57,17 @@ class LoggingDatagramHandler(SocketServer.BaseRequestHandler):
             message_attrs = json.loads(data.decode('utf-8'))
             # Fluff it up into a proper logging record
             record = logging.makeLogRecord(message_attrs)
+            if isinstance(record.args, list):
+                # Going through JSON turned tuples into lists. Lazy formatting
+                # means this might have happened to all the arguments.  We need
+                # to fix this at least for the root list of format string
+                # arguments, or formatting will fail
+                #
+                # TODO: Protect the arguments better by actually pickling
+                # instead of using JSON?
+                #
+                # TODO: Format the message on the sending side?
+                record.args = tuple(record.args)
         except:
             # Complain someone is sending us bad logging data
             logging.error("Malformed log message from {}".format(self.client_address[0]))
