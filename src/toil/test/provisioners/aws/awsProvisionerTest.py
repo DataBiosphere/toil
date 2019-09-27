@@ -70,8 +70,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def tearDown(self):
         super(AbstractAWSAutoscaleTest, self).tearDown()
-        # subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
-        # subprocess.check_call(['toil', 'clean', self.jobStore])
+        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
+        subprocess.check_call(['toil', 'clean', self.jobStore])
 
     def getMatchingRoles(self):
         return list(self.cluster._ctx.local_roles())
@@ -149,24 +149,24 @@ class AbstractAWSAutoscaleTest(ToilTest):
         self.sshUtil(['/home/venv/bin/python', '-c', 'import json; import os; '
                       'json.load(open("/home/" + [f for f in os.listdir("/home/") if f.endswith(".json")].pop()))'])
 
-        # from boto.exception import EC2ResponseError
-        # volumeID = self.getRootVolID()
-        # self.cluster.destroyCluster()
-        # for attempt in range(6):
-        #     # https://github.com/BD2KGenomics/toil/issues/1567
-        #     # retry this for up to 1 minute until the volume disappears
-        #     try:
-        #         self.cluster._ctx.ec2.get_all_volumes(volume_ids=[volumeID])
-        #         time.sleep(10)
-        #     except EC2ResponseError as e:
-        #         if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
-        #             break
-        #         else:
-        #             raise
-        # else:
-        #     self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
-        #
-        # assert len(self.getMatchingRoles()) == 0
+        from boto.exception import EC2ResponseError
+        volumeID = self.getRootVolID()
+        self.cluster.destroyCluster()
+        for attempt in range(6):
+            # https://github.com/BD2KGenomics/toil/issues/1567
+            # retry this for up to 1 minute until the volume disappears
+            try:
+                self.cluster._ctx.ec2.get_all_volumes(volume_ids=[volumeID])
+                time.sleep(10)
+            except EC2ResponseError as e:
+                if e.status == 400 and 'InvalidVolume.NotFound' in e.code:
+                    break
+                else:
+                    raise
+        else:
+            self.fail('Volume with ID %s was not cleaned up properly' % volumeID)
+
+        assert len(self.getMatchingRoles()) == 0
 
 
 @pytest.mark.timeout(1800)
