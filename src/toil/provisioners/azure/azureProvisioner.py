@@ -53,7 +53,7 @@ class AzureProvisioner(AnsibleDriver):
 
     """
 
-    def __init__(self, clusterName, zone, nodeStorage):
+    def __init__(self, clusterName, zone, nodeStorage, **kwargs):
         self.cloud = 'azure'
 
         self.playbook = {

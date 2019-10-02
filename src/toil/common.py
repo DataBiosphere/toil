@@ -386,9 +386,11 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'azure', 'gce'],
-                help="The provisioner for cluster auto-scaling. The currently supported choices are"
-                     "'azure', 'gce', or 'aws'. The default is %s." % config.provisioner)
+    addOptionFn("--provisioner", dest="provisioner",
+                help="The provisioner for cluster auto-scaling. The currently logical name "
+                     "supported choices are 'azure', 'gce', or 'aws'. You can use your own "
+                     "implementation ex: --provisioner my.own.implementation."
+                     "provisioner.MyProvisioner. The default is %s." % config.provisioner)
 
     addOptionFn('--nodeTypes', default=None,
                 help="List of node types separated by commas. The syntax for each node type "

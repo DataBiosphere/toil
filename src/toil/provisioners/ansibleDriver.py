@@ -24,7 +24,7 @@ class AnsibleDriver(AbstractProvisioner):
     """
     Wrapper class for Ansible calls.
     """
-    def __init__(self, playbooks, clusterName, zone, nodeStorage):
+    def __init__(self, playbooks, clusterName, zone, nodeStorage, **kwargs):
         self.playbooks = playbooks
         super(AnsibleDriver, self).__init__(clusterName, zone, nodeStorage)
 

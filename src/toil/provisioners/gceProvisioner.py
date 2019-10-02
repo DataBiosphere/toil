@@ -42,10 +42,10 @@ class GCEProvisioner(AbstractProvisioner):
     SOURCE_IMAGE = (b'https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/'
                     b'images/coreos-stable-1576-4-0-v20171206')
 
-    def __init__(self, clusterName, zone, nodeStorage, sseKey):
+    def __init__(self, clusterName, zone, nodeStorage, **kwargs):
         super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage)
         self.cloud = 'gce'
-        self._sseKey = sseKey
+        self._sseKey = kwargs.get('sseKey')
 
         # If the clusterName is not given, then Toil must be running on the leader
         # and should read the settings from the instance meta-data.

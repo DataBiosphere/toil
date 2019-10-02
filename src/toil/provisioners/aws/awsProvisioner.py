@@ -103,10 +103,10 @@ class AWSProvisioner(AbstractProvisioner):
     Implements an AWS provisioner using the boto libraries.
     """
 
-    def __init__(self, clusterName, zone, nodeStorage, sseKey):
+    def __init__(self, clusterName, zone, nodeStorage, **kwargs):
         super(AWSProvisioner, self).__init__(clusterName, zone, nodeStorage)
         self.cloud = 'aws'
-        self._sseKey = sseKey
+        self._sseKey = kwargs.get('sseKey')
         if not zone:
             self._zone = getCurrentAWSZone()
         if clusterName:

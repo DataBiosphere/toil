@@ -107,13 +107,14 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
     """
     LEADER_HOME_DIR = '/root/'  # home directory in the Toil appliance on an instance
 
-    def __init__(self, clusterName=None, zone=None, nodeStorage=50):
+    def __init__(self, clusterName=None, zone=None, nodeStorage=50, **kwargs):
         """
         Initialize provisioner.
 
         :param clusterName: The cluster identifier.
         :param zone: The zone the cluster runs in.
         :param nodeStorage: The amount of storage on the worker instances, in gigabytes.
+        :param kwargs: Optional additional parameters to fit specific provisioner needs.
         """
         self.clusterName = clusterName
         self._zone = zone

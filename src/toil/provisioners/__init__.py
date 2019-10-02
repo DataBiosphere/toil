@@ -13,40 +13,48 @@
 # limitations under the License.
 from __future__ import absolute_import
 
+import importlib
 import logging
 logger = logging.getLogger(__name__)
 
 
-def clusterFactory(provisioner, clusterName=None, zone=None, nodeStorage=50, sseKey=None):
+def getClassFromFQN(cls):
+    modules, className = cls.rsplit('.', 1)
+    module = importlib.import_module(modules)
+    return getattr(module, className)
+
+
+def clusterFactory(provisioner, clusterName=None, zone=None, nodeStorage=50, **kwargs):
     """
     :param clusterName: The name of the cluster.
     :param provisioner: The cloud type of the cluster.
     :param zone: The cloud zone
     :return: A cluster object for the the cloud type.
     """
-    if provisioner == 'aws':
-        try:
-            from toil.provisioners.aws.awsProvisioner import AWSProvisioner
-        except ImportError:
-            logger.error('The aws extra must be installed to use this provisioner')
-            raise
-        return AWSProvisioner(clusterName, zone, nodeStorage, sseKey)
-    elif provisioner == 'gce':
-        try:
-            from toil.provisioners.gceProvisioner import GCEProvisioner
-        except ImportError:
-            logger.error('The google extra must be installed to use this provisioner')
-            raise
-        return GCEProvisioner(clusterName, zone, nodeStorage, sseKey)
-    elif provisioner == 'azure':
-        try:
-            from toil.provisioners.azure.azureProvisioner import AzureProvisioner
-        except ImportError:
-            logger.error('The azure extra must be installed to use this provisioner')
-            raise
-        return AzureProvisioner(clusterName, zone, nodeStorage)
-    else:
-        raise RuntimeError("Invalid provisioner '%s'" % provisioner)
+    known_provisionners = {'aws': ('toil.provisioners.aws.awsProvisioner.AWSProvisioner',
+                                   'The aws extra must be installed to use this provisioner'),
+                           'gce': ('toil.provisioners.gceProvisioner.GCEProvisioner',
+                                   'The google extra must be installed to use this provisioner'),
+                           'azure': ('toil.provisioners.azure.azureProvisioner.AzureProvisioner',
+                                     'The azure extra must be installed to use this provisioner')}
+
+    _provisioner = provisioner
+    _err_msg = "Invalid provisioner '%s'" % provisioner
+
+    known_provisionner = known_provisionners.get(provisioner)
+    if known_provisionner:
+        _provisioner = known_provisionner[0]
+        _err_msg = known_provisionner[1]
+
+    try:
+        clazz = getClassFromFQN(_provisioner)
+        return clazz(clusterName=clusterName, zone=zone, nodeStorage=nodeStorage, **kwargs)
+    except ImportError:
+        logger.error(_err_msg)
+        raise
+    except (ValueError, AttributeError):
+        raise RuntimeError(_err_msg)
+
 
 class NoSuchClusterException(Exception):
     """Indicates that the specified cluster does not exist."""

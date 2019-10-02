@@ -8,9 +8,11 @@ logger = logging.getLogger(__name__)
 
 def addBasicProvisionerOptions(parser):
     parser.add_argument("--version", action='version', version=version)
-    parser.add_argument('-p', "--provisioner", dest='provisioner', choices=['aws', 'azure', 'gce'], required=False, default="aws",
-                        help="The provisioner for cluster auto-scaling. Only aws is currently "
-                             "supported")
+    parser.add_argument('-p', "--provisioner", dest='provisioner', required=False, default="aws",
+                        help="The provisioner for cluster auto-scaling. Possible choices "
+                             "(but not limited to) are 'aws', 'azure', 'gce'. Only aws is currently"
+                             " supported or your own implementation "
+                             "ex: -p my.own.implementation.provisioner.MyProvisioner")
     parser.add_argument('-z', '--zone', dest='zone', required=False, default=None,
                         help="The availability zone of the master. This parameter can also be set via the 'TOIL_X_ZONE' "
                              "environment variable, where X is AWS, GCE, or AZURE, or by the ec2_region_name parameter "
