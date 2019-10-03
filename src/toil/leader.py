@@ -793,7 +793,7 @@ class Leader(object):
                                                       message='The job seems to have left a log file, indicating failure: %s' % jobGraph)
                 if self.config.writeLogs or self.config.writeLogsGzip:
                     with jobGraph.getLogFileHandle(self.jobStore) as logFileStream:
-                        StatsAndLogging.writeLogFiles(jobGraph.chainedJobs, logFileStream, self.config)
+                        StatsAndLogging.writeLogFiles(jobGraph.chainedJobs, logFileStream, self.config, failed=True)
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
@@ -823,7 +823,7 @@ class Leader(object):
                                         jobNames = [str(jobGraph)]
                                     jobNames = [jobName + '_' + batchSystemFileRoot for jobName in jobNames]
                                     batchSystemFileStream.seek(0)
-                                    StatsAndLogging.writeLogFiles(jobNames, batchSystemFileStream, self.config)
+                                    StatsAndLogging.writeLogFiles(jobNames, batchSystemFileStream, self.config, failed=True)
                             else:
                                 logger.warn('The batch system left an empty file %s' % batchSystemFile)
 
