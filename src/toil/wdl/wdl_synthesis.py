@@ -166,7 +166,8 @@ class SynthesizeWDL:
     def write_main_header(self):
         main_header = heredoc_wdl('''
             if __name__=="__main__":
-                options = Job.Runner.getDefaultOptions("{jobstore}")
+                parser = Job.Runner.getDefaultArgumentParser()
+                options = parser.parse_args()
                 options.clean = 'always'
                 with Toil(options) as fileStore:
             ''', {'jobstore': self.jobstore})
