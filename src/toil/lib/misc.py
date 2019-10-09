@@ -56,6 +56,13 @@ def robust_rmtree(path):
             # Remove it if still present
             robust_rmtree(child_path)
             
+        try:
+            # Actually remove the directory once the children are gone
+            os.rmdir(path)
+        except FileNotFoundError:
+            # Directory went away
+            return
+            
     else:
         # It is not or was not a directory.
         try:
