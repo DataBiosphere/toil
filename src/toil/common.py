@@ -1337,11 +1337,11 @@ def getDirSizeRecursively(dirPath):
     This method will return the cumulative number of bytes occupied by the files
     on disk in the directory and its subdirectories.
 
-    This method will raise a 'subprocess.CalledProcessError' if it is unable to
-    access a folder or file because of insufficient permissions.  Therefore this
-    method should only be called on the jobStore, and will alert the user if some
-    portion is inaccessible.  Everything in the jobStore should have appropriate
-    permissions as there is no way to read the filesize without permissions.
+    If the method is unable to access a file or directory (due to insufficient
+    permissions, or due to the file or directory having been removed while this
+    function was attempting to traverse it), the error will be handled
+    internally, and a (possibly 0) lower bound on the size of the directory
+    will be returned.
 
     The environment variable 'BLOCKSIZE'='512' is set instead of the much cleaner
     --block-size=1 because Apple can't handle it.
@@ -1355,8 +1355,13 @@ def getDirSizeRecursively(dirPath):
     # The call: 'du -s /some/path' should give the number of 512-byte blocks
     # allocated with the environment variable: BLOCKSIZE='512' set, and we
     # multiply this by 512 to return the filesize in bytes.
-    return int(subprocess.check_output(['du', '-s', dirPath],
-                                       env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
+    
+    try:
+        return int(subprocess.check_output(['du', '-s', dirPath],
+                                           env=dict(os.environ, BLOCKSIZE='512')).decode('utf-8').split()[0]) * 512
+    except subprocess.CalledProcessError:
+        # Something was inaccessible or went away
+        return 0
 
 
 def getFileSystemSize(dirPath):
