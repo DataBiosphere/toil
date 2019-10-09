@@ -37,8 +37,8 @@ def robust_rmtree(path):
     if not os.path.exists(path):
         # Nothing to do!
         return
-            
-    if os.path.isdir(path):
+        
+    if not os.path.islink(path) and os.path.isdir(path):
         # It is or has been a directory
         
         try:
@@ -54,7 +54,7 @@ def robust_rmtree(path):
             child_path = os.path.join(path, child)
             
             # Remove it if still present
-            robust_rmtree(path)
+            robust_rmtree(child_path)
             
     else:
         # It is not or was not a directory.
