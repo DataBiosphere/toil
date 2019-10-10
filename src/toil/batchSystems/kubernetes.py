@@ -45,6 +45,7 @@ from six.moves.queue import Empty, Queue
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
+from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
 
@@ -603,6 +604,11 @@ def executor():
         exc_info = sys.exc_info()
         logger.error('Exception while unpickling task: ', exc_info=exc_info)
         sys.exit(1)
+
+    # Set JTRES_ROOT and other global state needed for resource
+    # downloading/deployment to work.
+    logger.debug('Preparing system for resource download')
+    Resource.prepareSystem()
 
     if 'userScript' in job:
         job['userScript'].register()
