@@ -32,7 +32,14 @@ def robust_rmtree(path):
     
     May raise an error if a path changes between file and directory while the
     function is executing, or if a permission error is encountered.
+
+    path may be str, bytes, or unicode.
     """
+
+    if not isinstance(path, bytes):
+        # Internally we must work in bytes, in case we find an undecodeable
+        # filename.
+        path = path.encode('utf-8')
     
     if not os.path.exists(path):
         # Nothing to do!
