@@ -91,6 +91,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # TODO: have some way to specify this (env var?)!
         self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
+        # Set this to True to enable the experimental wait-for-job-update code
+        self.enableWatching = False
+
         # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()
         self.coreApi = kubernetes.client.CoreV1Api()
@@ -133,11 +136,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 job['userScript'] = self.userScript
 
             # Encode it in a form we can send in a command-line argument.
-            # Make sure we pickle in version 2 because right now the appliance
-            # runs Toil on Python 2.
-            # TODO: get the appliance to run on Python 3.
+            # Pickle in the highest protocol to prevent mixed Python2/3 workflows from trying to work
+            # TODO: Make the appliance use/support Python 3
             # Make sure it is text so we can ship it to Kubernetes via JSON.
-            encodedJob = base64.b64encode(pickle.dumps(job, 2)).decode('utf-8')
+            encodedJob = base64.b64encode(pickle.dumps(job, pickle.HIGHEST_PROTOCOL)).decode('utf-8')
 
             # The Kubernetes API makes sense only in terms of the YAML format. Objects
             # represent sections of the YAML files. Except from our point of view, all
@@ -413,15 +415,20 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
            
             w = kubernetes.watch.Watch()    
             if jobObject is None:
-                all_pods = []
-                # TODO: block and wait for the jobs to update, until maxWait is hit
-                # For now just say we couldn't get anything
-                for j in self._ourJobObjects():
-                    all_pods += self._getPodForJob(j)
-                for event in w.stream(all_pods, timeout_seconds=maxWait):
-                    print("Event: %s %s" % (event['type'], event['object'].metadata.name))
-                    if event['object'] is not None:
-                        continue
+                # Nothing is ready yet.
+
+                if self.enableWatching:
+
+                    all_pods = []
+                    # TODO: block and wait for the jobs to update, until maxWait is hit
+                    for j in self._ourJobObjects():
+                        all_pods.append(self._getPodForJob(j))
+                    for event in w.stream(all_pods, timeout_seconds=maxWait):
+                        print("Event: %s %s" % (event['type'], event['object'].metadata.name))
+                        if event['object'] is not None:
+                            continue
+
+                 # For now just say we couldn't get anything
                 return None
             else:
                 # Work out what the job's ID was (whatever came after our name prefix)
@@ -535,7 +542,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 # The only time we have handy is when the pod got assigned to a
                 # kubelet, which is technically before it started running.
-                runtime = (datetime.utcnow() - pod.status.start_time).totalseconds()
+                runtime = (datetime.datetime.utcnow() - pod.status.start_time).totalseconds()
 
                 # Save it under the stringified job ID
                 secondsPerJob[str(self._getIDForOurJob(job))] = runtime
