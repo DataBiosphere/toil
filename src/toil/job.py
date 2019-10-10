@@ -49,6 +49,7 @@ from toil.lib.humanize import human2bytes
 
 from toil.common import Toil, addOptions, safeUnpickleFromStream
 from toil.deferred import DeferredFunction
+from toil.fileStores import FileID
 from toil.lib.bioio import (setLoggingFromOptions,
                             getTotalCpuTimeAndMemoryUsage,
                             getTotalCpuTime)
@@ -957,7 +958,7 @@ class Job(BaseJob):
         :param fileHandle: An open, binary-mode file handle.
         :returns:
         """
-        
+
         def filter_main(module_name, class_name):
             try:
                 if module_name == '__main__':
@@ -979,13 +980,13 @@ class Job(BaseJob):
             # In Python 3 find_global isn't real and we are supposed to
             # subclass unpickler and override find_class. We can't just replace
             # it. But with cPickle in Pyhton 2 we can't subclass Unpickler.
-            
+
             class FilteredUnpickler(pickle.Unpickler):
                 def find_class(self, module, name):
                     return filter_main(module, name)
-                    
+
             unpickler = FilteredUnpickler(fileHandle)
-            
+
         runnable = unpickler.load()
         assert isinstance(runnable, BaseJob)
         runnable._config = config
@@ -1345,13 +1346,15 @@ class Job(BaseJob):
         # to the list of jobStoreFileIDs to delete
         if not self.checkpoint:
             for jobStoreFileID in Promise.filesToDelete:
-                fileStore.deleteGlobalFile(jobStoreFileID)
+                # Make sure to wrap the job store ID in a FileID object so the file store will accept it
+                # TODO: talk directly to the job sotre here instead.
+                fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
         else:
             # Else copy them to the job wrapper to delete later
             jobGraph.checkpointFilesToDelete = list(Promise.filesToDelete)
         Promise.filesToDelete.clear()
         # Now indicate the asynchronous update of the job can happen
-        fileStore._updateJobWhenDone()
+        fileStore.startCommit(jobState=True)
         # Change dir back to cwd dir, if changed by job (this is a safety issue)
         if os.getcwd() != baseDir:
             os.chdir(baseDir)

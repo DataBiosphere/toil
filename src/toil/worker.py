@@ -113,7 +113,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     :param str jobName: The "job name" (a user friendly name) of the job to be run
     :param str jobStoreLocator: Specifies the job store to use
     :param str jobStoreID: The job store ID of the job to be run
-    :param bool redirectOutputToLogFile: Redirect standard out and standard error to a log file
     """
     logging.basicConfig()
     setLogLevel(config.logLevel)
@@ -123,7 +122,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
 
     logFileByteReportLimit = config.maxLogFileSize
-
+    
     if config.badWorker > 0 and random.random() < config.badWorker:
         # We need to kill the process we are currently in, to simulate worker
         # failure. We don't want to just send SIGKILL, because we can't tell
@@ -174,12 +173,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         for e in environment["PYTHONPATH"].split(':'):
             if e != '':
                 sys.path.append(e)
-
+                
     toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
 
-    # Connect to the deferred function system
-    deferredFunctionManager = DeferredFunctionManager(toilWorkflowDir)
-    
     ##########################################
     #Setup the temporary directories.
     ##########################################
@@ -200,6 +196,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     
     #When we start, standard input is file descriptor 0, standard output is
     #file descriptor 1, and standard error is file descriptor 2.
+    
+    # Do we even want to redirect output? Let the config make us not do it.
+    redirectOutputToLogFile = redirectOutputToLogFile and not config.disableWorkerOutputCapture
 
     #What file do we want to point FDs 1 and 2 to?
     tempWorkerLogPath = os.path.join(localWorkerTempDir, "worker_log.txt")
@@ -253,6 +252,11 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         sys.stdout.flush()
         
         logProcessContext(config)
+        
+        ##########################################
+        #Connect to the deferred function system
+        ##########################################
+        deferredFunctionManager = DeferredFunctionManager(toilWorkflowDir)
 
         ##########################################
         #Load the jobGraph
@@ -336,10 +340,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                                    fileStore=fileStore):
                     with deferredFunctionManager.open() as defer:
                         with fileStore.open(job):
-                            # Get the next block function and list that will contain any messages
-                            blockFn = fileStore._blockFn
+                            # Get the next block function to wait on committing this job
+                            blockFn = fileStore.waitForCommit
 
                             job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore, defer=defer)
+
+                            # When the job succeeds, start committing files immediately.
+                            fileStore.startCommit(jobState=False)      
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
@@ -360,6 +367,10 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             successorJobGraph = nextChainableJobGraph(jobGraph, jobStore)
             if successorJobGraph is None or config.disableChaining:
                 # Can't chain any more jobs.
+                # TODO: why don't we commit the last job's file store? Won't
+                # its async uploads never necessarily finish?
+                # If we do call startCommit here it messes with the job
+                # itself and Toil thinks the job needs to run again.
                 break
 
             ##########################################
@@ -395,13 +406,13 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                                                           caching=not config.disableCaching)
 
             #Update blockFn
-            blockFn = fileStore._blockFn
+            blockFn = fileStore.waitForCommit
 
             #Add successorJobGraph to those to be deleted
             fileStore.jobsToDelete.add(successorJobGraph.jobStoreID)
             
             #This will update the job once the previous job is done
-            fileStore._updateJobWhenDone()            
+            fileStore.startCommit(jobState=True)            
             
             #Clone the jobGraph and its stack again, so that updates to it do
             #not interfere with this update
@@ -480,29 +491,36 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
     # Now our file handles are in exactly the state they were in before.
 
-    #Copy back the log file to the global dir, if needed
+    # Copy back the log file to the global dir, if needed.
+    # Note that we work with bytes instead of characters so we can seek
+    # relative to the end (since Python won't decode Unicode backward, or even
+    # interpret seek offsets in characters for us). TODO: We may get invalid or
+    # just different Unicode by breaking up a character at the boundary!
     if workerFailed and redirectOutputToLogFile:
         jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID, cleanup=True)
         jobGraph.chainedJobs = listOfJobs
         with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
-            with open(tempWorkerLogPath, "r") as f:
+            with open(tempWorkerLogPath, 'rb') as f:
                 if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit !=0:
                     if logFileByteReportLimit > 0:
                         f.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                     elif logFileByteReportLimit < 0:
                         f.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
-                w.write(f.read().encode('utf-8')) # TODO load file using a buffer
+                # Dump the possibly-invalid-Unicode bytes into the log file
+                w.write(f.read()) # TODO load file using a buffer
         jobStore.update(jobGraph)
 
     elif ((debugging or (config.writeLogsFromAllJobs and not jobName.startswith(CWL_INTERNAL_JOBS)))
           and redirectOutputToLogFile):  # write log messages
-        with open(tempWorkerLogPath, 'r') as logFile:
+        with open(tempWorkerLogPath, 'rb') as logFile:
             if os.path.getsize(tempWorkerLogPath) > logFileByteReportLimit != 0:
                 if logFileByteReportLimit > 0:
                     logFile.seek(-logFileByteReportLimit, 2)  # seek to last tooBig bytes of file
                 elif logFileByteReportLimit < 0:
                     logFile.seek(logFileByteReportLimit, 0)  # seek to first tooBig bytes of file
-            logMessages = logFile.read().splitlines()
+            # Make sure lines are Unicode so they can be JSON serialized as part of the dict.
+            # We may have damaged the Unicode text by cutting it at an arbitrary byte so we drop bad characters.
+            logMessages = [line.decode('utf-8', 'skip') for line in logFile.read().splitlines()]
         statsDict.logs.names = listOfJobs
         statsDict.logs.messages = logMessages
 

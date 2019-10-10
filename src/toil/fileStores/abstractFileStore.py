@@ -67,30 +67,56 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
 
     Access to files is only permitted inside the context manager provided by
     :meth:`toil.fileStores.abstractFileStore.AbstractFileStore.open`. 
+
+    Also responsible for committing completed jobs back to the job store with
+    an update operation, and allowing that commit operation to be waited for.
     """
     # Variables used for syncing reads/writes
     _pendingFileWritesLock = Semaphore()
     _pendingFileWrites = set()
     _terminateEvent = Event()  # Used to signify crashes in threads
 
-    def __init__(self, jobStore, jobGraph, localTempDir, inputBlockFn):
+    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
+        """
+        Create a new file store object.
+
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: the job store
+               in use for the current Toil run.
+        :param toil.jobGraph.JobGraph jobGraph: the job graph object for the currently
+               running job.
+        :param str localTempDir: the per-worker local temporary directory, under which
+               per-job directories will be created.
+
+        :param waitForPreviousCommit: the waitForCommit method of the previous job's file
+               store, when jobs are running in sequence on the same worker. Used to
+               prevent this file store's startCommit and the previous job's
+               startCommit methods from running at the same time and racing. If
+               they did race, it might be possible for the later job to be fully
+               marked as completed in the job store before the eralier job was.
+        """
         self.jobStore = jobStore
         self.jobGraph = jobGraph
         self.localTempDir = os.path.abspath(localTempDir)
         self.workFlowDir = os.path.dirname(self.localTempDir)
         self.jobName = self.jobGraph.command.split()[1]
-        self.inputBlockFn = inputBlockFn
+        self.waitForPreviousCommit = waitForPreviousCommit
         self.loggingMessages = []
+        # Records file IDs of files deleted during the current job. Doesn't get
+        # committed back until the job is completely successful, because if the
+        # job is re-run it will need to be able to re-delete these files.
         self.filesToDelete = set()
+        # Records IDs of jobs that need to be deleted when the currently
+        # running job is cleaned up.
+        # May be modified by the worker to actually delete jobs!
         self.jobsToDelete = set()
 
     @staticmethod
-    def createFileStore(jobStore, jobGraph, localTempDir, inputBlockFn, caching):
+    def createFileStore(jobStore, jobGraph, localTempDir, waitForPreviousCommit, caching):
         # Defer these imports until runtime, since these classes depend on us
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
         fileStoreCls = CachingFileStore if caching else NonCachingFileStore
-        return fileStoreCls(jobStore, jobGraph, localTempDir, inputBlockFn)
+        return fileStoreCls(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
 
     @staticmethod
     def shutdownFileStore(workflowDir, workflowID):
@@ -230,6 +256,9 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         If a user path is specified, it is used as the destination. If a user path isn't
         specified, the file is stored in the local temp directory with an encoded name.
 
+        The destination file must not be deleted by the user; it can only be
+        deleted through deleteLocalFile.
+
         :param toil.fileStores.FileID fileStoreID: job store id for the file
         :param string userPath: a path to the name of file to which the global file will be copied
                or hard-linked (see below).
@@ -253,7 +282,13 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def deleteLocalFile(self, fileStoreID):
         """
-        Deletes Local copies of files associated with the provided job store ID.
+        Deletes local copies of files associated with the provided job store ID.
+
+        The files deleted are all those previously read from this file ID via
+        readGlobalFile by the current job into the job's file-store-provided
+        temp directory, plus the file that was written to create the given file
+        ID, if it was written by the current job from the job's
+        file-store-provided temp directory.
 
         :param str fileStoreID: File Store ID of the file to be deleted.
         """
@@ -343,17 +378,6 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
                 dill.dump(self.__dict__, fH)
             os.rename(fileName + '.tmp', fileName)
 
-    @abstractclassmethod
-    def findAndHandleDeadJobs(cls, nodeInfo, batchSystemShutdown=False):
-        """
-        This function looks at the state of all jobs registered on the node and will handle them
-        (clean up their presence on the node)
-
-        :param nodeInfo: Information regarding the node required for identifying dead jobs.
-        :param bool batchSystemShutdown: Is the batch system in the process of shutting down?
-        """
-        raise NotImplementedError()
-
     # Functions related to logging
     def logToMaster(self, text, level=logging.INFO):
         """
@@ -368,18 +392,30 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
 
     # Functions run after the completion of the job.
     @abstractmethod
-    def _updateJobWhenDone(self):
+    def startCommit(self, jobState=False):
         """
         Update the status of the job on the disk.
+
+        May start an asynchronous process. Call waitForCommit() to wait on that process.
+
+        :param bool jobState: If True, commit the state of the FileStore's job,
+                    and file deletes. Otherwise, commit only file creates/updates.
+
         """
         raise NotImplementedError()
 
     @abstractmethod
-    def _blockFn(self):
+    def waitForCommit(self):
         """
-        Blocks while _updateJobWhenDone is running. This function is called by this job's
+        Blocks while startCommit is running. This function is called by this job's
         successor to ensure that it does not begin modifying the job store until after this job has
         finished doing so.
+        
+        Might be called when startCommit is never called on a particular
+        instance, in which case it does not block.
+
+        :return: Always returns True
+        :rtype: bool
         """
         raise NotImplementedError()
 
@@ -413,8 +449,9 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
 
         This is intended to be called on batch system shutdown.
 
-        :param dir_: The jeystone directory containing the required information for fixing the state
-               of failed workers on the node before cleaning up.
+        :param dir_: The implementation-specific directory containing the required information for
+               shutting down the file store and removing all its state and all job local temp
+               directories from the node.
         """
         raise NotImplementedError()
 

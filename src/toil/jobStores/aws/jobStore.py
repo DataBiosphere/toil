@@ -706,8 +706,10 @@ class AWSJobStore(AbstractJobStore):
             # https://github.com/BD2KGenomics/toil/issues/995
             # https://github.com/BD2KGenomics/toil/issues/1093
             return (isinstance(e, (S3CreateError, S3ResponseError))
-                    and e.error_code in ('BucketAlreadyOwnedByYou', 'OperationAborted'))
-
+                    and e.error_code in ('BucketAlreadyOwnedByYou', 
+                                         'OperationAborted',
+                                         'NoSuchBucket'))
+                    
         bucketExisted = True
         for attempt in retry_s3(predicate=bucket_creation_pending):
             with attempt:
@@ -721,6 +723,11 @@ class AWSJobStore(AbstractJobStore):
                             log.debug("Creating bucket '%s'.", bucket_name)
                             location = region_to_bucket_location(self.region)
                             bucket = self.s3.create_bucket(bucket_name, location=location)
+                            # It is possible for create_bucket to return but
+                            # for an immediate request for the bucket region to
+                            # produce an S3ResponseError with code
+                            # NoSuchBucket. We let that kick us back up to the
+                            # main retry loop.
                             assert self.__getBucketRegion(bucket) == self.region
                         elif block:
                             raise

@@ -36,7 +36,7 @@ class ImportExportFileTest(ToilTest):
         with Toil(options) as toil:
             if not options.restart:
 
-                srcFile = '%s/%s%s' % (self._tempDir, 'in', uuid.uuid4())
+                srcFile = '%s/%s%s' % (self._tempDir, 'in', str(uuid.uuid4()))
                 with open(srcFile, 'w') as f:
                     f.write('Hello')
                 inputFileID = toil.importFile('file://' + srcFile)
@@ -45,13 +45,16 @@ class ImportExportFileTest(ToilTest):
                 self.assertEqual(os.stat(srcFile).st_size, inputFileID.size)
 
                 # Write a boolean that determines whether the job fails.
-                with toil._jobStore.writeFileStream() as (f, failFileID):
-                    self.failFileID = failFileID
+                failFilePath = '%s/%s%s' % (self._tempDir, 'failfile', str(uuid.uuid4()))
+                with open(failFilePath, 'wb') as f:
                     f.write(str(fail).encode('utf-8'))
-
+                self.failFileID = toil.importFile('file://' + failFilePath)
+                
                 outputFileID = toil.start(RestartingJob(inputFileID, self.failFileID))
             else:
                 # Set up job for failure
+                # TODO: We're hackily updating this file without using the
+                # correct FileStore interface. User code should not do this!
                 with toil._jobStore.updateFileStream(self.failFileID) as f:
                     f.write('False'.encode('utf-8'))
 

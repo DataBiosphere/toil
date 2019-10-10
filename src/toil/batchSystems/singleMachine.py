@@ -83,8 +83,16 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # squeezing more tasks onto each core (scale < 1) or stretching tasks over more cores
         # (scale > 1).
         self.scale = config.scale
-        # Number of worker threads that will be started
+        
+        if config.badWorker > 0 and config.debugWorker:
+            # We can't throw SIGUSR1 at the worker because it is also going to
+            # be the leader and/or test harness.
+            raise RuntimeError("Cannot use badWorker and debugWorker together; "
+                "worker would have to kill the leader")
+                
         self.debugWorker = config.debugWorker
+        
+        # Number of worker threads that will be started
         self.numWorkers = int(old_div(self.maxCores, self.minCores))
         # A counter to generate job IDs and a lock to guard it
         self.jobIndex = 0

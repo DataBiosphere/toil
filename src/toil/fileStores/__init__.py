@@ -32,6 +32,26 @@ class FileID(str):
         super(FileID, self).__init__()
         self.size = size
 
+    def pack(self):
+        """
+        Pack the FileID into a string so it can be passed through external code.
+        """
+        return '{}:{}'.format(self.size, self)
+
     @classmethod
     def forPath(cls, fileStoreID, filePath):
         return cls(fileStoreID, os.stat(filePath).st_size)
+
+    @classmethod
+    def unpack(cls, packedFileStoreID):
+        """
+        Unpack the result of pack() into a FileID object.
+        """
+
+        # Find the separating character (first instance)
+        sepPos = packedFileStoreID.find(':')
+        # Break up the packed value
+        size = int(packedFileStoreID[:sepPos])
+        value = packedFileStoreID[(sepPos + 1):]
+        # Create the FileID
+        return cls(value, size)
