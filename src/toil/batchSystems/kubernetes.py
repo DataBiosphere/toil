@@ -89,7 +89,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Get the name of the AWS secret, if any, to mount in containers.
         # TODO: have some way to specify this (env var?)!
-        self.awsSecretName = os.environ.get("SECRET_NAME", None)
+        self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()

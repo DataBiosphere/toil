@@ -137,11 +137,7 @@ def resolveEntryPoint(entryPoint):
     return value may be an absolute or a relative path.
     """
 
-    # TODO: When running against a Kubernetes cluster from a virtualenv, we
-    # can't assume that the virtualenv is at the same path on the worker.  This
-    # system needs to be made more flexible to accomodate clusters with shared
-    # filesystems as well as Dockerized clusters.
-    if os.environ.get("TOIL_CHECK_ENV", None) and inVirtualEnv():
+    if os.environ.get("TOIL_CHECK_ENV", None) == 'True' and inVirtualEnv():
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
         # Inside a virtualenv we try to use absolute paths to the entrypoints.
         if os.path.isfile(path):
@@ -151,6 +147,9 @@ def resolveEntryPoint(entryPoint):
             # a virtualenv located at the same path on each worker as well.
             assert os.access(path, os.X_OK)
             return path
+    # Otherwise, we aren't in a virtualenv, or we're in a virtualenv but Toil
+    # came in via --system-site-packages, or we think the virtualenv might not
+    # exist on the workers.
     return entryPoint
 
 
