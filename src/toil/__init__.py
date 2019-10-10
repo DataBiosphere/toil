@@ -136,7 +136,8 @@ def resolveEntryPoint(entryPoint):
     Returns the path to the given entry point (see setup.py) that *should* work on a worker. The
     return value may be an absolute or a relative path.
     """
-    if inVirtualEnv():
+
+    if os.environ.get("TOIL_CHECK_ENV", None) == 'True' and inVirtualEnv():
         path = os.path.join(os.path.dirname(sys.executable), entryPoint)
         # Inside a virtualenv we try to use absolute paths to the entrypoints.
         if os.path.isfile(path):
@@ -146,17 +147,10 @@ def resolveEntryPoint(entryPoint):
             # a virtualenv located at the same path on each worker as well.
             assert os.access(path, os.X_OK)
             return path
-        else:
-            # For virtualenv's that have the toil package directory on their sys.path but whose
-            # bin directory lacks the Toil entrypoints, i.e. where Toil is included via
-            # --system-site-packages, we rely on PATH just as if we weren't in a virtualenv.
-            return entryPoint
-    else:
-        # Outside a virtualenv it is hard to predict where the entry points got installed. It is
-        # the responsibility of the user to ensure that they are present on PATH and point to the
-        # correct version of Toil. This is still better than an absolute path because it gives
-        # the user control over Toil's location on both leader and workers.
-        return entryPoint
+    # Otherwise, we aren't in a virtualenv, or we're in a virtualenv but Toil
+    # came in via --system-site-packages, or we think the virtualenv might not
+    # exist on the workers.
+    return entryPoint
 
 
 @memoize
@@ -427,7 +421,7 @@ def _monkey_patch_boto():
     
     from boto import provider
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     # We cache the final credentials so that we don't send multiple processes to
     # simultaneously bang on the EC2 metadata server or ask for MFA pins from the
@@ -435,6 +429,9 @@ def _monkey_patch_boto():
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
     log = logging.getLogger(__name__)
+
+    # But in addition to our manual cache, we also are going to turn on boto3's
+    # new built-in caching layer.
 
     def datetime_to_str(dt):
         """
@@ -481,7 +478,9 @@ def _monkey_patch_boto():
             if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
                 # We are on AWS and we don't have credentials passed along and we aren't anonymous.
                 # We will backend into a boto3 resolver for getting credentials.
-                self._boto3_resolver = create_credential_resolver(Session(profile=profile_name))
+                # Make sure to enable boto3's own caching, so we can share that
+                # cash with pure boto3 code elsewhere in Toil.
+                self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
             else:
                 # We will use the normal flow
                 self._boto3_resolver = None
