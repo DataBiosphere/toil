@@ -63,6 +63,11 @@ workflows. For example:
 
 .. literalinclude:: ../../src/toil/test/docs/scripts/tutorial_invokeworkflow.py
 
+.. note::
+
+    Do not include a `.` in the name of your python script (besides `.py` at the end). 
+    This is to allow toil to import the types and  functions defined in your file while starting a new process. 
+
 Alternatively, the more powerful :class:`toil.common.Toil` class can be used to
 run and resume workflows. It is used as a context manager and allows for
 preliminary setup, such as staging of files into the job store on the leader

@@ -171,12 +171,21 @@ class CWLTest(ToilTest):
 
     @slow
     @pytest.mark.timeout(2400)
-    def test_run_conformance(self, batchSystem=None):
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail 
+    def test_run_conformance_with_caching(self):
+        self.test_run_conformance(caching=True)
+
+    @slow
+    @pytest.mark.timeout(2400)
+    def test_run_conformance(self, batchSystem=None, caching=False):
         try:
             cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
                    '--timeout=2400', '--basedir=' + self.workDir]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
+            if caching:
+                cmd.extend(['--', '--disableCaching="False"'])
             subprocess.check_output(cmd, cwd=self.workDir, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
@@ -201,38 +210,86 @@ class CWLTest(ToilTest):
     @slow
     @needs_lsf
     @unittest.skip
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail 
+    def test_lsf_cwl_conformance_with_caching(self):
+        return self.test_run_conformance(batchSystem="LSF", caching=True)
+
+    @slow
+    @needs_slurm
+    @unittest.skip
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail 
+    def test_slurm_cwl_conformance_with_caching(self):
+        return self.test_run_conformance(batchSystem="Slurm", caching=True)
+
+    @slow
+    @needs_torque
+    @unittest.skip
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail 
+    def test_torque_cwl_conformance_with_caching(self):
+        return self.test_run_conformance(batchSystem="Torque", caching=True)
+
+    @slow
+    @needs_gridengine
+    @unittest.skip
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail 
+    def test_gridengine_cwl_conformance_with_caching(self):
+        return self.test_run_conformance(batchSystem="gridEngine", caching=True)
+
+    @slow
+    @needs_mesos
+    @unittest.skip
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail 
+    def test_mesos_cwl_conformance_with_caching(self):
+        return self.test_run_conformance(batchSystem="mesos", caching=True)
+
+    @slow
+    @needs_parasol
+    @unittest.skip
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail 
+    def test_parasol_cwl_conformance_with_caching(self):
+        return self.test_run_conformance(batchSystem="parasol", caching=True)
+
+    @slow
+    @needs_lsf
+    @unittest.skip
     def test_lsf_cwl_conformance(self):
-        return self.test_run_conformance("LSF")
+        return self.test_run_conformance(batchSystem="LSF")
 
     @slow
     @needs_slurm
     @unittest.skip
     def test_slurm_cwl_conformance(self):
-        return self.test_run_conformance("Slurm")
+        return self.test_run_conformance(batchSystem="Slurm")
 
     @slow
     @needs_torque
     @unittest.skip
     def test_torque_cwl_conformance(self):
-        return self.test_run_conformance("Torque")
+        return self.test_run_conformance(batchSystem="Torque")
 
     @slow
     @needs_gridengine
     @unittest.skip
     def test_gridengine_cwl_conformance(self):
-        return self.test_run_conformance("gridEngine")
+        return self.test_run_conformance(batchSystem="gridEngine")
 
     @slow
     @needs_mesos
     @unittest.skip
     def test_mesos_cwl_conformance(self):
-        return self.test_run_conformance("mesos")
+        return self.test_run_conformance(batchSystem="mesos")
 
     @slow
     @needs_parasol
     @unittest.skip
     def test_parasol_cwl_conformance(self):
-        return self.test_run_conformance("parasol")
+        return self.test_run_conformance(batchSystem="parasol")
 
     @staticmethod
     def _expected_seqtk_output(outDir):
