@@ -102,6 +102,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         self.jobIds = set()
 
     def setUserScript(self, userScript):
+        logger.info('Setting user script for deployment: {}'.format(userScript))
         self.userScript = userScript
         
     # setEnv is provided by BatchSystemSupport, updates self.environment
