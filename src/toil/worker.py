@@ -165,8 +165,19 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     #First load the environment for the jobGraph.
     with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
         environment = safeUnpickleFromStream(fileHandle)
+    env_blacklist = {
+        "TMPDIR",
+        "TMP",
+        "HOSTNAME",
+        "HOSTTYPE",
+        "HOME",
+        "LOGNAME",
+        "USER",
+        "DISPLAY",
+        "JAVA_HOME"
+    }
     for i in environment:
-        if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
+        if i not in env_blacklist:
             os.environ[i] = environment[i]
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:

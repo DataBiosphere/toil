@@ -580,8 +580,9 @@ def _addOptions(addGroupFn, config):
                 help="Set an environment variable early on in the worker. If VALUE is omitted, "
                      "it will be looked up in the current environment. Independently of this "
                      "option, the worker will try to emulate the leader's environment before "
-                     "running a job. Using this option, a variable can be injected into the "
-                     "worker process itself before it is started.")
+                     "running a job, except for some variables known to vary across systems. "
+                     "Using this option, a variable can be injected into the worker process "
+                     "itself before it is started.")
     addOptionFn("--servicePollingInterval", dest="servicePollingInterval", default=None,
                 help="Interval of time service jobs wait between polling for the existence"
                 " of the keep-alive flag (defailt=%s)" % config.servicePollingInterval)
