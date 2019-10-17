@@ -482,10 +482,16 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     runtime = 0
                 
                 
-                # Delete the job and all dependents (pods)
-                self.batchApi.delete_namespaced_job(jobObject.metadata.name,
-                                                    self.namespace,
-                                                    propagation_policy='Foreground')
+                try:
+                    # Delete the job and all dependents (pods)
+                    self.batchApi.delete_namespaced_job(jobObject.metadata.name,
+                                                        self.namespace,
+                                                        propagation_policy='Foreground')
+                except kubernetes.client.rest.ApiException:
+                    # TODO: check to see if this is a 404 on the thing we tried to delete
+                    pass
+
+                # TODO: Make sure anything we tried to delete is fully gone before returning
                                                     
                
                 
