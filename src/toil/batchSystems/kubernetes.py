@@ -355,7 +355,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         return int(jobObject.metadata.name[len(self.jobPrefix):])
             
-            
     def getUpdatedBatchJob(self, maxWait):
         
         # See if a local batch job has updated and is available immediately
@@ -420,16 +419,24 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 if self.enableWatching:
 
-                    all_pods = []
                     # TODO: block and wait for the jobs to update, until maxWait is hit
-                    for j in self._ourJobObjects():
-                        all_pods.append(self._getPodForJob(j))
-                    for event in w.stream(all_pods, timeout_seconds=maxWait):
-                        print("Event: %s %s" % (event['type'], event['object'].metadata.name))
-                        if event['object'] is not None:
+                    # For now just say we couldn't get anythingi
+                    pod_list = (j for j in _ourJobObjects())
+                    for pod in w.stream(pod_list, timeout_seconds=maxwait):
+                        # if pod status is terminated then check exit code    
+                        if pod.status.container_statuses[0].state is 'terminated':
+                            if pod.status.container_statues[0].state.exit_code == 0:
+                                return (pod.metadata.name,\
+                                        pod.status.container_statues[0].state.exit_code, \
+                                        (pod.status.container_statuses[0].state.finished_at - \
+                                                pod.status.container_statues[0].state.started_at).total_seconds())
+                            # if job failed
+                            else:
+                                logger.warning(pod.status.container_status[0].state.reason,
+                                        pod.status.container_statuses[0].state.exit_code)
+                                return None
+                        else:
                             continue
-
-                 # For now just say we couldn't get anything
                 return None
             else:
                 # Work out what the job's ID was (whatever came after our name prefix)
