@@ -354,7 +354,12 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         """
 
         return int(jobObject.metadata.name[len(self.jobPrefix):])
-            
+    
+
+    def _genPods(self):
+        for j in _ourJobObjects:
+            yield self._getPodForJob(j)
+
     def getUpdatedBatchJob(self, maxWait):
         
         # See if a local batch job has updated and is available immediately
@@ -420,9 +425,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 if self.enableWatching:
 
                     # TODO: block and wait for the jobs to update, until maxWait is hit
-                    # For now just say we couldn't get anythingi
-                    pod_list = (j for j in _ourJobObjects())
-                    for pod in w.stream(pod_list, timeout_seconds=maxwait):
+                    # For now just say we couldn't get anything
+                    for pod in w.stream(self._genPods, timeout_seconds=maxwait):
                         # if pod status is terminated then check exit code    
                         if pod.status.container_statuses[0].state is 'terminated':
                             if pod.status.container_statues[0].state.exit_code == 0:
@@ -437,7 +441,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 return None
                         else:
                             continue
-                return None
+                    return None
             else:
                 # Work out what the job's ID was (whatever came after our name prefix)
                 jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
