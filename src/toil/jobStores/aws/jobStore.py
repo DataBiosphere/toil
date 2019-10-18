@@ -1101,7 +1101,8 @@ class AWSJobStore(AbstractJobStore):
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read()
-                    if allowInlining and len(buf) <= info.maxInlinedSize():
+                    dataLength = len(buf)
+                    if allowInlining and dataLength <= info.maxInlinedSize():
                         info.content = buf
                     else:
                         key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
@@ -1109,8 +1110,8 @@ class AWSJobStore(AbstractJobStore):
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
-                                assert buf.len == key.set_contents_from_file(fp=buf,
-                                                                             headers=headers)
+                                assert dataLength == key.set_contents_from_file(fp=buf,
+                                                                                headers=headers)
                         info.version = key.version_id
 
             with MultiPartPipe() if multipart else SinglePartPipe() as writable:

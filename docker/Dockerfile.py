@@ -34,7 +34,8 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'mesos=1.0.1-2.0.94.ubuntu1604',
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
-                         'screen'])
+                         'screen',
+                         'singularity-container'])
 
 
 def heredoc(s):
@@ -67,7 +68,10 @@ print(heredoc('''
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
         && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
         > /etc/apt/sources.list.d/nodesource.list \
-        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
+        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280 \
+        && echo "deb http://neurodeb.pirsquared.org data main contrib non-free" > /etc/apt/sources.list.d/neurodebian.sources.list \
+        && echo "deb http://neurodeb.pirsquared.org xenial main contrib non-free" >> /etc/apt/sources.list.d/neurodebian.sources.list \
+        && apt-key adv --recv-keys --keyserver hkp://pool.sks-keyservers.net:80 0xA5D32F012649A5A9
 
     RUN add-apt-repository -y ppa:jonathonf/python-3.6
     

@@ -4,7 +4,13 @@ from math import sqrt
 import errno
 import os
 import shutil
+import sys
 import time
+
+if sys.version_info[0] < 3:
+    # Define a usable FileNotFoundError as will be raised by os.remove on a
+    # nonexistent file.
+    FileNotFoundError = OSError
 
 
 def mkdir_p(path):
@@ -17,34 +23,61 @@ def mkdir_p(path):
         else:
             raise
 
-def robust_rmtree(path, max_retries=3):
-    """Robustly tries to delete paths.
-
-    Retries several times (with increasing delays) if an OSError
-    occurs.  If the final attempt fails, the Exception is propagated
-    to the caller.
-
-    Borrowing patterns from:
-    https://github.com/hashdist/hashdist
+def robust_rmtree(path):
     """
+    Robustly tries to delete paths.
+
+    Continues silently if the path to be removed is already gone, or if it
+    goes away while this function is executing.
+    
+    May raise an error if a path changes between file and directory while the
+    function is executing, or if a permission error is encountered.
+
+    path may be str, bytes, or unicode.
+    """
+
+    if not isinstance(path, bytes):
+        # Internally we must work in bytes, in case we find an undecodeable
+        # filename.
+        path = path.encode('utf-8')
     
     if not os.path.exists(path):
         # Nothing to do!
         return
-
-    delay = 1
-    for _ in range(max_retries):
+        
+    if not os.path.islink(path) and os.path.isdir(path):
+        # It is or has been a directory
+        
         try:
-            shutil.rmtree(path)
-            break
-        except OSError:
-            time.sleep(delay)
-            delay *= 2
-
-    if os.path.exists(path):
-        # Final attempt, pass any Exceptions up to caller.
-        shutil.rmtree(path)
-
+            children = os.listdir(path)
+        except FileNotFoundError:
+            # Directory went away
+            return
+            
+        # We assume the directory going away while we have it open won't upset
+        # the listdir iterator.
+        for child in children:
+            # Get the path for each child item in the directory
+            child_path = os.path.join(path, child)
+            
+            # Remove it if still present
+            robust_rmtree(child_path)
+            
+        try:
+            # Actually remove the directory once the children are gone
+            os.rmdir(path)
+        except FileNotFoundError:
+            # Directory went away
+            return
+            
+    else:
+        # It is not or was not a directory.
+        try:
+            # Unlink it as a normal file
+            os.unlink(path)
+        except FileNotFoundError:
+            # File went away
+            return
 
 def mean(xs):
     """
