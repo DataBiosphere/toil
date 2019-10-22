@@ -79,7 +79,11 @@ print(heredoc('''
 
     RUN add-apt-repository -y ppa:jonathonf/python-3.6
     
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
+    RUN apt-get -y update --fix-missing && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
     RUN wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz && \
         tar xvf go1.13.3.linux-amd64.tar.gz && \
