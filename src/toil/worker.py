@@ -177,7 +177,16 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         "JAVA_HOME"
     }
     for i in environment:
-        if i not in env_blacklist:
+        if i == "PATH":
+            # Handle path specially. Sometimes e.g. leader may not include
+            # /bin, but the Toil appliance needs it.
+            if i in os.environ and os.environ[i] != '':
+                # Use the provided PATH and then the local system's PATH
+                os.environ[i] = environment[i] + ':' + os.environ[i]
+            else:
+                # Use the provided PATH only
+                os.environ[i] = environment[i]
+        elif i not in env_blacklist:
             os.environ[i] = environment[i]
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:
