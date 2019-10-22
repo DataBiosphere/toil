@@ -564,7 +564,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 # The only time we have handy is when the pod got assigned to a
                 # kubelet, which is technically before it started running.
-                runtime = (datetime.datetime.utcnow() - pod.status.start_time).totalseconds()
+                utc_now = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
+                runtime = (utc_now - pod.status.start_time).totalseconds()
 
                 # Save it under the stringified job ID
                 secondsPerJob[str(self._getIDForOurJob(job))] = runtime
