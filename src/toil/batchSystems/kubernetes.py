@@ -63,14 +63,17 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
-        # Load ~/.kube/config
-        kubernetes.config.load_kube_config()
+        try:
+            # Load ~/.kube/config
+            kubernetes.config.load_kube_config()
+        except TypeError:
+            raise RuntimeError('Could not load Kubernetes configuration. Does ~/.kube/config or $KUBECONFIG exist?')
 
         # Find all contexts and the active context.
         # The active context gets us our namespace.
         contexts, active_context = kubernetes.config.list_kube_config_contexts()
         if not contexts:
-            raise RuntimeError("No Kubernetes contexts available in ~/.kube/config")
+            raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
             
         # Identify the namespace to work in
         self.namespace = active_context.get('context', {}).get('namespace', 'default')
