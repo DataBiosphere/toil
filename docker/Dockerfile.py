@@ -35,7 +35,14 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen',
-                         'singularity-container'])
+                         'build-essential', # We need a build environment to build Singularity 3.
+                         'uuid-dev',
+                         'libgpgme11-dev',
+                         'libseccomp-dev',
+                         'pkg-config',
+                         'squashfs-tools',
+                         'cryptsetup',
+                         'git'])
 
 
 def heredoc(s):
@@ -68,15 +75,31 @@ print(heredoc('''
         && apt-key adv --keyserver keyserver.ubuntu.com --recv E56151BF \
         && echo "deb http://deb.nodesource.com/node_6.x xenial main" \
         > /etc/apt/sources.list.d/nodesource.list \
-        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280 \
-        && echo "deb http://neurodeb.pirsquared.org data main contrib non-free" > /etc/apt/sources.list.d/neurodebian.sources.list \
-        && echo "deb http://neurodeb.pirsquared.org xenial main contrib non-free" >> /etc/apt/sources.list.d/neurodebian.sources.list \
-        && apt-key adv --recv-keys --keyserver hkp://pool.sks-keyservers.net:80 0xA5D32F012649A5A9
+        && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
 
     RUN add-apt-repository -y ppa:jonathonf/python-3.6
     
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
+    RUN apt-get -y update --fix-missing && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
+    RUN wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz && \
+        tar xvf go1.13.3.linux-amd64.tar.gz && \
+        mv go/bin/* /usr/bin/ && \
+        mv go /usr/local/
+        
+    RUN mkdir -p $(go env GOPATH)/src/github.com/sylabs && \
+        cd $(go env GOPATH)/src/github.com/sylabs && \
+        git clone https://github.com/sylabs/singularity.git && \
+        cd singularity && \
+        git checkout v3.4.2 && \
+        ./mconfig && \
+        cd ./builddir && \
+        make -j4 && \
+        make install
+    
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
 
