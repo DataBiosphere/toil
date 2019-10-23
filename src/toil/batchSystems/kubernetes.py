@@ -34,6 +34,7 @@ import kubernetes
 import logging
 import os
 import pickle
+import pytz
 import subprocess
 import sys
 import uuid
@@ -564,8 +565,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 # The only time we have handy is when the pod got assigned to a
                 # kubelet, which is technically before it started running.
-                utc_now = datetime.datetime.utcnow().replace(tzinfo=datetime.timezone.utc)
-                runtime = (utc_now - pod.status.start_time).totalseconds()
+                utc_now = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+                runtime = (utc_now - pod.status.start_time).total_seconds()
 
                 # Save it under the stringified job ID
                 secondsPerJob[str(self._getIDForOurJob(job))] = runtime

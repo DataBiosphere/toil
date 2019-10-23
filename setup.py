@@ -39,6 +39,7 @@ def runSetup():
     galaxyLib = 'galaxy-lib==18.9.2'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
+    pytx = 'pytz>=2012'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
     future = 'future'
