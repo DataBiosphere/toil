@@ -38,7 +38,6 @@ import pytz
 import subprocess
 import sys
 import uuid
-import threading
 import time
 
 from kubernetes.client.rest import ApiException
@@ -388,7 +387,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 # Look for succeeded jobs because that's the only filter Kubernetes has
                 jobObject = j
                 chosenFor = 'done'
-                logging.critical('Thread {} identified {} as {}'.format(threading.current_thread().ident, jobObject.metadata.name, chosenFor))
 
             if jobObject is None:
                 for j in self._ourJobObjects():
@@ -402,7 +400,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         # Take the first failed one you find
                         jobObject = j
                         chosenFor = 'failed'
-                        logging.critical('Thread {} identified {} as {}'.format(threading.current_thread().ident, jobObject.metadata.name, chosenFor))
                         break
 
             if jobObject is None:
@@ -502,7 +499,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 
                 try:
                     # Delete the job and all dependents (pods)
-                    logging.critical('Thread {} starting delete for {}'.format(threading.current_thread().ident, jobObject.metadata.name))
                     self.batchApi.delete_namespaced_job(jobObject.metadata.name,
                                                         self.namespace,
                                                         propagation_policy='Foreground')
@@ -517,7 +513,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         try:
                             # Look for the job
                             self.batchApi.read_namespaced_job(jobObject.metadata.name, self.namespace)
-                            logging.critical('Thread {} can still see {}; waiting for it to be gone.'.format(threading.current_thread().ident, jobObject.metadata.name))
                             # If we didn't 404, wait a bit with exponential backoff
                             time.sleep(backoffTime)
                             if backoffTime < maxBackoffTime:
@@ -526,7 +521,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                             # We finally got a failure!
                             break
                             
-                    logging.critical('Thread {} after delete for {}'.format(threading.current_thread().ident, jobObject.metadata.name))
                 except kubernetes.client.rest.ApiException:
                     # TODO: check to see if this is a 404 on the thing we tried to delete
                     # If so, it is gone already and we don't need to delete it again.
