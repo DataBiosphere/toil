@@ -40,7 +40,7 @@ class GCEProvisioner(AbstractProvisioner):
 
     NODE_BOTO_PATH = "/root/.boto" # boto file path on instances
     SOURCE_IMAGE = (b'https://www.googleapis.com/compute/v1/projects/coreos-cloud/global/'
-                    b'images/coreos-stable-1576-4-0-v20171206')
+                    b'images/coreos-stable-2247-5-0-v20191016')
 
     def __init__(self, clusterName, zone, nodeStorage, sseKey):
         super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage)
