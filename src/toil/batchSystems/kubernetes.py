@@ -38,6 +38,7 @@ import pytz
 import subprocess
 import sys
 import uuid
+import threading
 import time
 
 from kubernetes.client.rest import ApiException
@@ -366,7 +367,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             yield self._getPodForJob(j)
 
     def getUpdatedBatchJob(self, maxWait):
-        
+    
         # See if a local batch job has updated and is available immediately
         local_tuple = self.getUpdatedLocalJob(0)
         if local_tuple:
@@ -387,6 +388,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 # Look for succeeded jobs because that's the only filter Kubernetes has
                 jobObject = j
                 chosenFor = 'done'
+                logging.critical('Thread {} identified {} as {}'.format(threading.current_thread().ident, jobObject.metadata.name, chosenFor))
 
             if jobObject is None:
                 for j in self._ourJobObjects():
@@ -400,6 +402,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         # Take the first failed one you find
                         jobObject = j
                         chosenFor = 'failed'
+                        logging.critical('Thread {} identified {} as {}'.format(threading.current_thread().ident, jobObject.metadata.name, chosenFor))
                         break
 
             if jobObject is None:
@@ -499,17 +502,36 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 
                 try:
                     # Delete the job and all dependents (pods)
+                    logging.critical('Thread {} starting delete for {}'.format(threading.current_thread().ident, jobObject.metadata.name))
                     self.batchApi.delete_namespaced_job(jobObject.metadata.name,
                                                         self.namespace,
                                                         propagation_policy='Foreground')
+                                                        
+                    # That just kicks off the deletion process. Foreground doesn't actually block. See https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#foreground-cascading-deletion
+                    # We have to either wait until the deletion is done and we can't see the job anymore, or ban the job from being "updated" again if we see it.
+                    # If we don't block on deletion, we can't use limit=1 on our query for succeeded jobs.
+                    # So we poll for the job's non-existence.
+                    backoffTime = 0.1
+                    maxBackoffTime = 6.4
+                    while True:
+                        try:
+                            # Look for the job
+                            self.batchApi.read_namespaced_job(jobObject.metadata.name, self.namespace)
+                            logging.critical('Thread {} can still see {}; waiting for it to be gone.'.format(threading.current_thread().ident, jobObject.metadata.name))
+                            # If we didn't 404, wait a bit with exponential backoff
+                            time.sleep(backoffTime)
+                            if backoffTime < maxBackoffTime:
+                                backoffTime *= 2
+                        except kubernetes.client.rest.ApiException:
+                            # We finally got a failure!
+                            break
+                            
+                    logging.critical('Thread {} after delete for {}'.format(threading.current_thread().ident, jobObject.metadata.name))
                 except kubernetes.client.rest.ApiException:
                     # TODO: check to see if this is a 404 on the thing we tried to delete
+                    # If so, it is gone already and we don't need to delete it again.
                     pass
 
-                # TODO: Make sure anything we tried to delete is fully gone before returning
-                                                    
-               
-                
                 # Return the one finished job we found
                 return jobID, exitCode, runtime
             
@@ -595,7 +617,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             jobName = self.jobPrefix + str(jobID)
 
             # Delete the requested job in the foreground.
-            # TODO: are we supposed to support multiple deletes?
+            # This doesn't block, but it does delete expeditiously.
             response = self.batchApi.delete_namespaced_job(jobName, 
                                                            self.namespace, 
                                                            propagation_policy='Foreground')
