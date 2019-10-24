@@ -283,8 +283,12 @@ class ClusterScalerTest(ToilTest):
             # In Python 3 we can use a SimpleNamespace as a mock provisioner
             self.provisioner = types.SimpleNamespace()
         except:
-            # In Python 2 we can just tack fields onto an object
-            self.provisioner = object()
+            # In Python 2 we should just be able to tack fields onto an object.
+            # But this has been known to produce:
+            # AttributeError: 'newobject' object has no attribute 'nodeTypes'
+            # So we use an Argparse Namespace instead.
+            import argparse
+            self.provisioner = argparse.Namespace()
         setattr(self.provisioner, 'nodeTypes', ['r3.8xlarge', 'c4.8xlarge'])
         setattr(self.provisioner, 'nodeShapes', [r3_8xlarge,
                                                  c4_8xlarge_preemptable])
