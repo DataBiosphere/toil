@@ -68,7 +68,7 @@ def main():
     parser.add_argument('secondary_file', help='A secondary data file (json).')
     parser.add_argument("--jobStore", type=str, required=False, default=None)
     parser.add_argument('-o',
-                        '--outdir',
+                        '--out_dir',
                         required=False,
                         default=os.getcwd(),
                         help='Optionally specify the directory that outputs '
@@ -95,12 +95,12 @@ def main():
 
     wdl_file_path = os.path.abspath(args.wdl_file)
     args.secondary_file = os.path.abspath(args.secondary_file)
-    args.outdir = os.path.abspath(args.outdir)
+    args.out_dir = os.path.abspath(args.out_dir)
 
     if args.dev_mode:
-        write_AST(wdl_file_path, args.outdir)
+        write_AST(wdl_file_path, args.out_dir)
 
-    aWDL = AnalyzeWDL(wdl_file_path, args.secondary_file, args.outdir)
+    aWDL = AnalyzeWDL(wdl_file_path, args.secondary_file, args.out_dir)
 
     # read secondary file; create dictionary to hold variables
     if args.secondary_file.endswith('.json'):
@@ -119,7 +119,7 @@ def main():
 
     sWDL = SynthesizeWDL(aWDL.tasks_dictionary,
                          aWDL.workflows_dictionary,
-                         args.outdir,
+                         args.out_dir,
                          aWDL.json_dict,
                          args.docker_user,
                          args.jobStore,
