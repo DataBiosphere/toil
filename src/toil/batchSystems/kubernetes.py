@@ -162,11 +162,11 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/V1Job.md
 
             # Make a definition for the container's resource requirements.
-            # Don't let people request extremely tiny amounts of memory or disk or Kubernetes will immediately OOM us.
-            # Especially for disk; a very tiny disk will be immediately OOM from its directory.
+            # Don't let people request too-small amounts of memory or disk.
+            # Kubernetes needs some lower limit to run the pod at all without OOMing.
             requirements_dict = {'cpu': jobNode.cores,
-                                 'memory': max(jobNode.memory, 1024 * 1024 * 100),
-                                 'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 100)}
+                                 'memory': max(jobNode.memory, 1024 * 1024 * 512),
+                                 'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 512)}
             resources = kubernetes.client.V1ResourceRequirements(limits=requirements_dict,
                                                                  requests=requirements_dict)
             
@@ -591,6 +591,16 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # Clears jobs belonging to this run
         for job in self._ourJobObjects():
             jobName = job.metadata.name
+
+            try:
+                # Look at the pods and log why they failed, if they failed, for debugging.
+                pod = self._getPodForJob(job)
+                if pod.status.phase == 'Failed':
+                    logger.debug('Failed pod encountered at shutdown: %s', str(pod))
+            except:
+                # Don't get mad if that doesn't work.
+                pass
+
             # Kill jobs whether they succeeded or failed
             try:
                 # Delete with background poilicy so we can quickly issue lots of commands
@@ -638,7 +648,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 # Save it under the stringified job ID
                 secondsPerJob[str(self._getIDForOurJob(job))] = runtime
-
         # Mix in the local jobs
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
