@@ -43,6 +43,10 @@ def _torqueBatchSystemFactory():
 def _htcondorBatchSystemFactory():
     from toil.batchSystems.htcondor import HTCondorBatchSystem
     return HTCondorBatchSystem
+    
+def _kubernetesBatchSystemFactory():
+    from toil.batchSystems.kubernetes import KubernetesBatchSystem
+    return KubernetesBatchSystem
 
 
 _DEFAULT_REGISTRY = {
@@ -60,7 +64,10 @@ _DEFAULT_REGISTRY = {
     'torque'         : _torqueBatchSystemFactory,
     'Torque'         : _torqueBatchSystemFactory,
     'htcondor'       : _htcondorBatchSystemFactory,
-    'HTCondor'       : _htcondorBatchSystemFactory
+    'HTCondor'       : _htcondorBatchSystemFactory,
+    'kubernetes'     : _kubernetesBatchSystemFactory,
+    'Kubernetes'     : _kubernetesBatchSystemFactory,
+    'k8s'            : _kubernetesBatchSystemFactory
     }
 
 _UNIQUE_NAME = {
@@ -71,7 +78,8 @@ _UNIQUE_NAME = {
     'Mesos',
     'Slurm',
     'Torque',
-    'HTCondor'
+    'HTCondor',
+    'Kubernetes'
         }
 
 _batchSystemRegistry = _DEFAULT_REGISTRY.copy()

@@ -103,10 +103,10 @@ dist_version:=$(shell $(python) version_template.py distVersion)
 sdist_name:=toil-$(dist_version).tar.gz
 
 docker_tag:=$(shell $(python) version_template.py dockerTag)
-default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
+default_docker_registry:=quay.io/ucsc_cgl
 docker_path:=$(strip $(shell which docker))
 
-export TOIL_DOCKER_REGISTRY?=$(default_docker_registry)
+export TOIL_DOCKER_REGISTRY?=$(shell $(python) version_template.py dockerRegistry)
 export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 

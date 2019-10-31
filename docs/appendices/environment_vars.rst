@@ -5,6 +5,21 @@ Environment Variables
 There are several environment variables that affect the way Toil runs.
 
 +----------------------------------+----------------------------------------------------+
+| TOIL_CHECK_ENV                   | A flag that determines whether Toil will try to    |
+|                                  | refer back to a Python virtual environment in      |
+|                                  | which it is installed when composing commands that |
+|                                  | may be run on other hosts. If set to ``True``, if  |
+|                                  | Toil is installed in the current virtual           |
+|                                  | environment, it will use absolute paths to its own |
+|                                  | executables (and the virtual environment must thus |
+|                                  | be available on at the same path on all nodes).    |
+|                                  | Otherwise, Toil internal commands such as          |
+|                                  | ``_toil_worker`` will be resolved according to the |
+|                                  | ``PATH`` on the node where they are executed. This |
+|                                  | setting can be useful in a shared HPC environment, |
+|                                  | where users may have their own Toil installations  |
+|                                  | in virtual environments.                           |
++----------------------------------+----------------------------------------------------+
 | TOIL_WORKDIR                     | An absolute path to a directory where Toil will    |
 |                                  | write its temporary files. This directory must     |
 |                                  | exist on each worker node and may be set to a      |
@@ -35,6 +50,14 @@ There are several environment variables that affect the way Toil runs.
 |                                  | wish to use. Generally this is simply ``toil`` but |
 |                                  | this option is provided to override this,          |
 |                                  | since the image can be built with arbitrary names. |
++----------------------------------+----------------------------------------------------+
+| TOIL_AWS_SECRET_NAME             | For the Kubernetes batch system, the name of a     |
+|                                  | Kubernetes secret which contains a ``credentials`` |
+|                                  | file granting access to AWS resources. Will be     |
+|                                  | mounted as ``~/.aws`` inside Kubernetes-managed    |
+|                                  | Toil containers. Enables the AWSJobStore to be     |
+|                                  | used with the Kubernetes batch system, if the      |
+|                                  | credentials allow access to S3 and SimpleDB.       |
 +----------------------------------+----------------------------------------------------+
 | TOIL_AWS_ZONE                    | The EC2 zone to provision nodes in if using        |
 |                                  | Toil's provisioner.                                |

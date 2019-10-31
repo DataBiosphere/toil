@@ -165,8 +165,28 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     #First load the environment for the jobGraph.
     with jobStore.readSharedFileStream("environment.pickle") as fileHandle:
         environment = safeUnpickleFromStream(fileHandle)
+    env_blacklist = {
+        "TMPDIR",
+        "TMP",
+        "HOSTNAME",
+        "HOSTTYPE",
+        "HOME",
+        "LOGNAME",
+        "USER",
+        "DISPLAY",
+        "JAVA_HOME"
+    }
     for i in environment:
-        if i not in ("TMPDIR", "TMP", "HOSTNAME", "HOSTTYPE"):
+        if i == "PATH":
+            # Handle path specially. Sometimes e.g. leader may not include
+            # /bin, but the Toil appliance needs it.
+            if i in os.environ and os.environ[i] != '':
+                # Use the provided PATH and then the local system's PATH
+                os.environ[i] = environment[i] + ':' + os.environ[i]
+            else:
+                # Use the provided PATH only
+                os.environ[i] = environment[i]
+        elif i not in env_blacklist:
             os.environ[i] = environment[i]
     # sys.path is used by __import__ to find modules
     if "PYTHONPATH" in environment:

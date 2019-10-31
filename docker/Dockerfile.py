@@ -34,7 +34,15 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure'
                          'mesos=1.0.1-2.0.94.ubuntu1604',
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
-                         'screen'])
+                         'screen',
+                         'build-essential', # We need a build environment to build Singularity 3.
+                         'uuid-dev',
+                         'libgpgme11-dev',
+                         'libseccomp-dev',
+                         'pkg-config',
+                         'squashfs-tools',
+                         'cryptsetup',
+                         'git'])
 
 
 def heredoc(s):
@@ -71,8 +79,27 @@ print(heredoc('''
 
     RUN add-apt-repository -y ppa:jonathonf/python-3.6
     
-    RUN apt-get -y update --fix-missing && apt-get -y upgrade && apt-get -y install {dependencies} && apt-get clean && rm -rf /var/lib/apt/lists/*
+    RUN apt-get -y update --fix-missing && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
+        DEBIAN_FRONTEND=noninteractive apt-get -y install {dependencies} && \
+        apt-get clean && \
+        rm -rf /var/lib/apt/lists/*
 
+    RUN wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz && \
+        tar xvf go1.13.3.linux-amd64.tar.gz && \
+        mv go/bin/* /usr/bin/ && \
+        mv go /usr/local/
+        
+    RUN mkdir -p $(go env GOPATH)/src/github.com/sylabs && \
+        cd $(go env GOPATH)/src/github.com/sylabs && \
+        git clone https://github.com/sylabs/singularity.git && \
+        cd singularity && \
+        git checkout v3.4.2 && \
+        ./mconfig && \
+        cd ./builddir && \
+        make -j4 && \
+        make install
+    
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
 
