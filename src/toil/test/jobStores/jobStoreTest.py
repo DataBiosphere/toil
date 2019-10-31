@@ -59,7 +59,7 @@ from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
-                       needs_aws,
+                       needs_aws_ec2,
                        needs_azure,
                        needs_encryption,
                        make_tests,
@@ -1206,7 +1206,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             bucket.delete()
 
 
-@needs_aws
+@needs_aws_ec2
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1354,7 +1354,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         return AWSJobStore.itemsPerBatchDelete
 
 
-@needs_aws
+@needs_aws_ec2
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1460,7 +1460,7 @@ class InvalidAzureJobStoreTest(ToilTest):
                           'toiltest:a_b')
 
 
-@needs_aws
+@needs_aws_ec2
 @needs_encryption
 @slow
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):

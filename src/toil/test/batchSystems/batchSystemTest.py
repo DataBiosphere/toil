@@ -39,11 +39,14 @@ from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
+from toil.batchSystems.kubernetes import KubernetesBatchSystem
 from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    BatchSystemSupport)
 from toil.job import Job, JobNode
 from toil.test import (ToilTest,
+                       needs_aws_s3,
                        needs_lsf,
+                       needs_kubernetes,
                        needs_mesos,
                        needs_parasol,
                        needs_gridengine,
@@ -321,6 +324,20 @@ class hidden(object):
             # can't use _getTestJobStorePath since that method removes the directory
             config.jobStore = 'file:' + self._createTempDir('jobStore')
             return config
+
+@needs_kubernetes
+@needs_aws_s3
+class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the Kubernetes batch system
+    """
+
+    def supportsWallTime(self):
+        return True
+
+    def createBatchSystem(self):
+        return KubernetesBatchSystem(config=self.config,
+                                     maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
 @slow
 @needs_mesos

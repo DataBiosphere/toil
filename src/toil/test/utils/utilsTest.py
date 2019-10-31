@@ -34,7 +34,7 @@ from toil import resolveEntryPoint
 from toil.job import Job
 from toil.utils.toilStatus import ToilStatus
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
+from toil.test import ToilTest, needs_aws_ec2, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -102,7 +102,7 @@ class UtilsTest(ToilTest):
 
     @needs_rsync3
     @pytest.mark.timeout(1200)
-    @needs_aws
+    @needs_aws_ec2
     @integrative
     @slow
     def testAWSProvisionerUtils(self):
