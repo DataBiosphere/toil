@@ -79,7 +79,9 @@ class hidden(object):
 
     class AbstractBatchSystemTest(with_metaclass(ABCMeta, ToilTest)):
         """
-        A base test case with generic tests that every batch system should pass
+        A base test case with generic tests that every batch system should pass.
+
+        Cannot assume that the batch system actually executes commands on the local machine/filesystem.
         """
 
         @abstractmethod
@@ -137,7 +139,6 @@ class hidden(object):
         
         @travis_test
         def testRunJobs(self):
-            testPath = os.path.join(self.tempDir, "test.txt")
             jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
                                jobStoreID='1', requirements=defaultRequirements)
             jobNode2 = JobNode(command='sleep 1000', jobName='test2', unitName=None,
@@ -158,8 +159,11 @@ class hidden(object):
 
             # Issue a job and then allow it to finish by itself, causing it to be added to the
             # updated jobs queue.
-            self.assertFalse(os.path.exists(testPath))
-            jobNode3 = JobNode(command="touch %s" % testPath, jobName='test3', unitName=None,
+            # We would like to have this touch something on the filesystem and
+            # then check for it having happened, but we can't guarantee that
+            # the batch system will run against the same filesystem we are
+            # looking at.
+            jobNode3 = JobNode(command="mktemp -d", jobName='test3', unitName=None,
                                jobStoreID='3', requirements=defaultRequirements)
             job3 = self.batchSystem.issueBatchJob(jobNode3)
 
@@ -174,9 +178,8 @@ class hidden(object):
                 self.assertTrue(wallTime > 0)
             else:
                 self.assertIsNone(wallTime)
-            if not os.path.exists(testPath):
-                time.sleep(20)
-            self.assertTrue(os.path.exists(testPath))
+            # TODO: Work out a way to check if the job we asked to run actually ran.
+            # Don't just believe the batch system, but don't assume it ran on this machine either.
             self.assertFalse(self.batchSystem.getUpdatedBatchJob(0))
 
             # Make sure killBatchJobs can handle jobs that don't exist
@@ -193,10 +196,15 @@ class hidden(object):
                 import os, sys
                 sys.exit(23 if os.getenv('FOO') == 'bar' else 42)
 
+            # TODO: rewrite this test to not assume that temp files we write
+            # will be readable by the running job.  We may need to break
+            # Parasol support or run all Parasol commands through a Toil
+            # entrypoint that decodes them.
+
             script_body = dedent('\n'.join(getsource(assertEnv).split('\n')[1:]))
             with tempFileContaining(script_body, suffix='.py') as script_path:
                 # First, ensure that the test fails if the variable is *not* set
-                command = sys.executable + ' ' + script_path
+                command = 'python' + ' ' + script_path
                 jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
                                    jobStoreID='4', requirements=defaultRequirements)
                 job4 = self.batchSystem.issueBatchJob(jobNode4)
