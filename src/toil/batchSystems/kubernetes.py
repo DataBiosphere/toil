@@ -165,7 +165,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Don't let people request extremely tiny amounts of memory or disk or Kubernetes will immediately OOM us.
             # Especially for disk; a very tiny disk will be immediately OOM from its directory.
             requirements_dict = {'cpu': jobNode.cores,
-                                 'memory': max(jobNode.memory, 1024 * 1024 * 100)
+                                 'memory': max(jobNode.memory, 1024 * 1024 * 100),
                                  'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 100)}
             resources = kubernetes.client.V1ResourceRequirements(limits=requirements_dict,
                                                                  requests=requirements_dict)
