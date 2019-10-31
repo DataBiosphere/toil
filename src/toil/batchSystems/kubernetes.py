@@ -64,10 +64,12 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
-        # Turn down log level for Kubernetes modules. Otherwise if we are at
-        # debug log level, we dump every request/response to Kubernetes,
-        # including tokens which we shouldn't reveal on CI.
+        # Turn down log level for Kubernetes modules and dependencies.
+        # Otherwise if we are at debug log level, we dump every
+        # request/response to Kubernetes, including tokens which we shouldn't
+        # reveal on CI.
         logging.getLogger('kubernetes').setLevel(logging.ERROR)
+        logging.getLogger('requests_oauthlib').setLevel(logging.ERROR)
 
         try:
             # Load ~/.kube/config
@@ -159,10 +161,12 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # For docs, start at the root of the job hierarchy:
             # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/V1Job.md
 
-            # Make a definition for the container's resource requirements
+            # Make a definition for the container's resource requirements.
+            # Don't let people request extremely tiny amounts of memory or disk or Kubernetes will immediately OOM us.
+            # Especially for disk; a very tiny disk will be immediately OOM from its directory.
             requirements_dict = {'cpu': jobNode.cores,
-                                 'memory': jobNode.memory,
-                                 'ephemeral-storage': jobNode.disk}
+                                 'memory': max(jobNode.memory, 1024 * 1024 * 100)
+                                 'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 100)}
             resources = kubernetes.client.V1ResourceRequirements(limits=requirements_dict,
                                                                  requests=requirements_dict)
             
