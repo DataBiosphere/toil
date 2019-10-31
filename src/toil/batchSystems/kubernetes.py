@@ -290,7 +290,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     
                     # Don't go over the limit
                     seen += 1
-                    if limit is None or seen == limit:
+                    if limit is not None and seen >= limit:
                         return
                     
             # Remember the continuation token, if any
