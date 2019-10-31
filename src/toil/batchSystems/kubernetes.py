@@ -561,19 +561,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # we see it. If we don't block on deletion, we can't use limit=1
             # on our query for succeeded jobs. So we poll for the job's
             # non-existence.
-            backoffTime = 0.1
-            maxBackoffTime = 6.4
-            while True:
-                try:
-                    # Look for the job
-                    self.batchApi.read_namespaced_job(jobObject.metadata.name, self.namespace)
-                    # If we didn't 404, wait a bit with exponential backoff
-                    time.sleep(backoffTime)
-                    if backoffTime < maxBackoffTime:
-                        backoffTime *= 2
-                except kubernetes.client.rest.ApiException:
-                    # We finally got a failure!
-                    break
+            self._waitForJobDeath(jobObject.metadata.name)
                     
         except kubernetes.client.rest.ApiException:
             # TODO: check to see if this is a 404 on the thing we tried to delete
@@ -582,6 +570,27 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Return the one finished job we found
         return jobID, exitCode, runtime
+
+    def _waitForJobDeath(self, jobName):
+        """
+        Block until the job with the given name no longer exists.
+        """
+
+        # We do some exponential backoff on the polling
+        # TODO: use a wait instead of polling?
+        backoffTime = 0.1
+        maxBackoffTime = 6.4
+        while True:
+            try:
+                # Look for the job
+                self.batchApi.read_namespaced_job(jobName, self.namespace)
+                # If we didn't 404, wait a bit with exponential backoff
+                time.sleep(backoffTime)
+                if backoffTime < maxBackoffTime:
+                    backoffTime *= 2
+            except kubernetes.client.rest.ApiException:
+                # We finally got a failure!
+                break
             
     def shutdown(self):
         
@@ -677,6 +686,15 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                                            self.namespace, 
                                                            propagation_policy='Foreground')
             logger.debug('Killed job by request: %s', jobName)
+
+        for jobID in jobIDs:
+            # Now we need to wait for all the jobs we killed to be gone.
+
+            # Work out what the job would be named
+            jobName = self.jobPrefix + str(jobID)
+
+            # Block until it doesn't exist
+            self._waitForJobDeath(jobName)
 
 def executor():
     """

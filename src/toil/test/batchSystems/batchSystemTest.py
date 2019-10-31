@@ -168,8 +168,8 @@ class hidden(object):
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
             # fail with jobID being equal to job1 or job2.
-            self.assertEqual(exitStatus, 0)
             self.assertEqual(jobID, job3)
+            self.assertEqual(exitStatus, 0)
             if self.supportsWallTime():
                 self.assertTrue(wallTime > 0)
             else:
