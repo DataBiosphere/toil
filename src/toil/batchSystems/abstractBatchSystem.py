@@ -139,7 +139,7 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
 
         :return: dictionary with currently running jobID keys and how many seconds they have
                  been running as the value
-        :rtype: dict[str,float]
+        :rtype: dict[int,float]
         """
         raise NotImplementedError()
 

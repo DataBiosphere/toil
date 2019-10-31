@@ -628,7 +628,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
 
     def getRunningBatchJobIDs(self):
-        # We need a dict from jobID (string?) to seconds it has been running
+        # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
         for job in self._ourJobObjects():
             # Grab the pod for each job
@@ -647,7 +647,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 runtime = (utc_now - pod.status.start_time).total_seconds()
 
                 # Save it under the stringified job ID
-                secondsPerJob[str(self._getIDForOurJob(job))] = runtime
+                secondsPerJob[self._getIDForOurJob(job)] = runtime
         # Mix in the local jobs
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
