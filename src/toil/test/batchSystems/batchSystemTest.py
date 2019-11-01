@@ -35,11 +35,13 @@ from toil import subprocess
 from unittest import skipIf
 
 from toil.common import Config
+# Don't import any batch systems here that depend on extras
+# in order to import properly. Import them later, in tests 
+# protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
-from toil.batchSystems.kubernetes import KubernetesBatchSystem
 from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    BatchSystemSupport)
 from toil.job import Job, JobNode
@@ -338,6 +340,8 @@ class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
         return True
 
     def createBatchSystem(self):
+        # We know we have Kubernetes so we can import the batch system
+        from toil.batchSystems.kubernetes import KubernetesBatchSystem
         return KubernetesBatchSystem(config=self.config,
                                      maxCores=numCores, maxMemory=1e9, maxDisk=2001)
 
@@ -361,6 +365,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         return True
 
     def createBatchSystem(self):
+        # We know we have Mesos so we can import the batch system
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
         return MesosBatchSystem(config=self.config,
