@@ -35,6 +35,7 @@ import logging
 import os
 import pickle
 import pytz
+import string
 import subprocess
 import sys
 import uuid
@@ -72,15 +73,20 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Find all contexts and the active context.
         # The active context gets us our namespace.
-        contexts, active_context = kubernetes.config.list_kube_config_contexts()
+        contexts, activeContext = kubernetes.config.list_kube_config_contexts()
         if not contexts:
             raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
             
         # Identify the namespace to work in
-        self.namespace = active_context.get('context', {}).get('namespace', 'default')
+        self.namespace = activeContext.get('context', {}).get('namespace', 'default')
+
+        # Make a Kubernetes-acceptable version of our username: not too long,
+        # and all lowercase letters, numbers, or - or .
+        acceptableChars = set(string.ascii_lowercase + string.digits + '-.')
+        safeUsername = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
 
         # Create a prefix for jobs, starting with our username
-        self.jobPrefix = '{}-toil-{}-'.format(getpass.getuser(), uuid.uuid4())
+        self.jobPrefix = '{}-toil-{}-'.format(safeUsername, uuid.uuid4())
         
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
