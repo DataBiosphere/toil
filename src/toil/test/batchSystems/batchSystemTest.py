@@ -187,38 +187,32 @@ class hidden(object):
         
         @travis_test
         def testSetEnv(self):
-            # Parasol disobeys shell rules and stupidly splits the command at the space character
-            # before exec'ing it, whether the space is quoted, escaped or not. This means that we
-            # can't have escaped or quotes spaces in the command line. So we can't use bash -c
-            #  '...' or python -c '...'. The safest thing to do here is to script the test and
-            # invoke that script rather than inline the test via -c.
-            def assertEnv():
-                import os, sys
-                sys.exit(23 if os.getenv('FOO') == 'bar' else 42)
+            # Parasol disobeys shell rules and stupidly splits the command at
+            # the space character into arguments before exec'ing it, whether
+            # the space is quoted, escaped or not.
 
-            # TODO: rewrite this test to not assume that temp files we write
-            # will be readable by the running job.  We may need to break
-            # Parasol support or run all Parasol commands through a Toil
-            # entrypoint that decodes them.
+            script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
 
-            script_body = dedent('\n'.join(getsource(assertEnv).split('\n')[1:]))
-            with tempFileContaining(script_body, suffix='.py') as script_path:
-                # First, ensure that the test fails if the variable is *not* set
-                command = 'python' + ' ' + script_path
-                jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
-                                   jobStoreID='4', requirements=defaultRequirements)
-                job4 = self.batchSystem.issueBatchJob(jobNode4)
-                jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-                self.assertEqual(exitStatus, 42)
-                self.assertEqual(jobID, job4)
-                # Now set the variable and ensure that it is present
-                self.batchSystem.setEnv('FOO', 'bar')
-                jobNode5 = JobNode(command=command, jobName='test5', unitName=None,
-                                   jobStoreID='5', requirements=defaultRequirements)
-                job5 = self.batchSystem.issueBatchJob(jobNode5)
-                jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-                self.assertEqual(exitStatus, 23)
-                self.assertEqual(jobID, job5)
+            # Escape the semicolons
+            script_protected = script_shell.replace(';', '\;') 
+             
+            # Turn into a string which convinces bash to take all args and paste them back together and run them
+            command = "bash -c \"\\${@}\" bash eval " + script_protected
+            log.critical(command)
+            jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
+                               jobStoreID='4', requirements=defaultRequirements)
+            job4 = self.batchSystem.issueBatchJob(jobNode4)
+            jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            self.assertEqual(exitStatus, 42)
+            self.assertEqual(jobID, job4)
+            # Now set the variable and ensure that it is present
+            self.batchSystem.setEnv('FOO', 'bar')
+            jobNode5 = JobNode(command=command, jobName='test5', unitName=None,
+                               jobStoreID='5', requirements=defaultRequirements)
+            job5 = self.batchSystem.issueBatchJob(jobNode5)
+            jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            self.assertEqual(exitStatus, 23)
+            self.assertEqual(jobID, job5)
         
         @travis_test
         def testCheckResourceRequest(self):
