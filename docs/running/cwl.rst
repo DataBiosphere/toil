@@ -19,6 +19,25 @@ To run in local batch mode, provide the CWL file and the input object file::
 
 For a simple example of CWL with Toil see :ref:`cwlquickstart`.
 
+Note for macOS + Docker + Toil
+++++++++++++++++++++++++++++++
+
+When invoking CWL documents that make use of Docker containers if you see errors that
+look like
+::
+
+    docker: Error response from daemon: Mounts denied:
+    The paths /var/...tmp are not shared from OS X and are not known to Docker.
+
+you may need to add
+::
+
+    export TMPDIR=/tmp/docker_tmp
+
+either in your startup file (``.bashrc``) or add it manually in your shell before invoking
+toil.
+
+
 Detailed Usage Instructions
 ---------------------------
 
