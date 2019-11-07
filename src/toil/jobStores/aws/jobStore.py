@@ -46,6 +46,8 @@ import boto.s3
 import boto.sdb
 from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
+import botocore.session
+import botocore.credentials
 
 from toil.lib.compatibility import compat_bytes, compat_plain, USING_PYTHON2
 from toil.fileStores import FileID
@@ -68,8 +70,13 @@ from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
-s3_boto3_resource = boto3.resource('s3')
-s3_boto3_client = boto3.client('s3')
+# Make sure to use credential caching when talking to Amazon via boto3
+# See https://github.com/boto/botocore/pull/1338/
+botocore_session = botocore.session.get_session()
+botocore_session.get_component('credential_provider').get_provider('assume-role').cache = botocore.credentials.JSONFileCache()
+boto3_session = boto3.Session(botocore_session=botocore_session)
+s3_boto3_resource = boto3_session.resource('s3')
+s3_boto3_client = boto3_session.client('s3')
 log = logging.getLogger(__name__)
 
 
@@ -152,7 +159,7 @@ class AWSJobStore(AbstractJobStore):
         self._bind(create=False)
         super(AWSJobStore, self).resume()
 
-    def _bind(self, create=False, block=True):
+    def _bind(self, create=False, block=True, check_versioning_consistency=True):
         def qualify(name):
             assert len(name) <= self.maxNameLen
             return self.namePrefix + self.nameSeparator + name
@@ -168,7 +175,8 @@ class AWSJobStore(AbstractJobStore):
             self.filesBucket = self._bindBucket(qualify('files'),
                                                 create=create,
                                                 block=block,
-                                                versioning=True)
+                                                versioning=True,
+                                                check_versioning_consistency=check_versioning_consistency)
 
     @property
     def _registered(self):
@@ -593,6 +601,9 @@ class AWSJobStore(AbstractJobStore):
     def writeStatsAndLogging(self, statsAndLoggingString):
         info = self.FileInfo.create(str(self.statsFileOwnerID))
         with info.uploadStream(multipart=False) as writeable:
+            if isinstance(statsAndLoggingString, str):
+                # This stream is for binary data, so encode any non-encoded things
+                statsAndLoggingString = statsAndLoggingString.encode('utf-8', errors='ignore')
             writeable.write(statsAndLoggingString)
         info.save()
 
@@ -671,7 +682,8 @@ class AWSJobStore(AbstractJobStore):
             raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." % self.region)
         return s3
 
-    def _bindBucket(self, bucket_name, create=False, block=True, versioning=False):
+    def _bindBucket(self, bucket_name, create=False, block=True, versioning=False,
+                    check_versioning_consistency=True):
         """
         Return the Boto Bucket object representing the S3 bucket with the given name. If the
         bucket does not exist and `create` is True, it will be created.
@@ -737,7 +749,7 @@ class AWSJobStore(AbstractJobStore):
                 if versioning and not bucketExisted:
                     # only call this method on bucket creation
                     bucket.configure_versioning(True)
-                else:
+                elif check_versioning_consistency:
                     # now test for versioning consistency
                     # we should never see any of these errors since 'versioning' should always be true
                     bucket_versioning = self.__getBucketVersioning(bucket)
@@ -1038,6 +1050,10 @@ class AWSJobStore(AbstractJobStore):
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
+            """
+            Context manager that gives out a binary-mode upload stream to upload data.
+            """
+
             info = self
             store = self.outer
 
@@ -1087,16 +1103,17 @@ class AWSJobStore(AbstractJobStore):
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read()
-                    if allowInlining and len(buf) <= info.maxInlinedSize():
+                    dataLength = len(buf)
+                    if allowInlining and dataLength <= info.maxInlinedSize():
                         info.content = buf
                     else:
                         key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
-                        buf = StringIO(buf)
+                        buf = BytesIO(buf)
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
-                                assert buf.len == key.set_contents_from_file(fp=buf,
-                                                                             headers=headers)
+                                assert dataLength == key.set_contents_from_file(fp=buf,
+                                                                                headers=headers)
                         info.version = key.version_id
 
             with MultiPartPipe() if multipart else SinglePartPipe() as writable:
@@ -1264,7 +1281,7 @@ class AWSJobStore(AbstractJobStore):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
         # See https://github.com/BD2KGenomics/toil/issues/1041
         try:
-            self._bind(create=False, block=False)
+            self._bind(create=False, block=False, check_versioning_consistency=False)
         except BucketLocationConflictException:
             # If the unique jobstore bucket name existed, _bind would have raised a
             # BucketLocationConflictException before calling destroy.  Calling _bind here again

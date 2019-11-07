@@ -102,7 +102,7 @@ extras=
 sdist_name:=toil-$(shell $(python) version_template.py distVersion).tar.gz
 
 docker_tag:=$(shell $(python) version_template.py dockerTag)
-default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
+default_docker_registry:=quay.io/ucsc_cgl
 docker_path:=$(strip $(shell which docker))
 
 export TOIL_DOCKER_REGISTRY=quay.io/ucsc_cgl

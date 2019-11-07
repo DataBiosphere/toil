@@ -947,8 +947,10 @@ class CWLWorkflow(Job):
                                         jobobj[key] = DefaultWithSource(
                                             d, jobobj[key])
                                     else:
-                                        if jobobj[key][1][
-                                                jobobj[key][0]] is None:
+                                        if (isinstance(jobobj[key][1], tuple) and
+                                                jobobj[key][1][0][jobobj[key][0]]
+                                                is None) or (jobobj[key][1][
+                                                    jobobj[key][0]] is None):
                                             d = copy.copy(inp["default"])
                                             jobobj[key] = (
                                                 "default", {"default": d})

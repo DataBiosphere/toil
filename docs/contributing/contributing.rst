@@ -147,7 +147,7 @@ Test Environment Variables
 
 .. admonition:: Partial install and failing tests
 
-    Some tests may fail with an ImportError if the required extras are not installed. 
+    Some tests may fail with an ImportError if the required extras are not installed.
     Install Toil with all of the extras
     do prevent such errors.
 
@@ -322,7 +322,7 @@ In general, as developers and maintainers of the code, we adhere to the followin
 
 * Pull requests should be used for any and all changes (except truly trivial
   ones).
-  
+
 * Pull requests should be in response to issues. If you find yourself making a
   pull request without an issue, you should create the issue first.
 
@@ -331,28 +331,28 @@ Naming Conventions
 ~~~~~~~~~~~~~~~~~~
 
 * **Commit messages** *should* be `great`_. Most importantly, they *must*:
-  
+
   - Have a short subject line. If in need of more space, drop down **two** lines
     and write a body to explain what is changing and why it has to change.
-  
+
   - Write the subject line as a command: `Destroy all humans`,
     not `All humans destroyed`.
-  
+
   - Reference the issue being fixed in a Github-parseable format, such as
     `(resolves #1234)` at the end of the subject line, or `This will fix #1234.`
     somewhere in the body. If no single commit on its own fixes the issue, the
     cross-reference must appear in the pull request title or body instead.
-    
+
 * **Branches** in the main Toil repository *must* start with ``issues/``,
   followed by the issue number (or numbers, separated by a dash), followed by a
   short, lowercase, hyphenated description of the change. (There can be many open
   pull requests with their associated branches at any given point in time and
   this convention ensures that we can easily identify branches.)
-  
+
   Say there is an issue numbered #123 titled `Foo does not work`. The branch name
   would be ``issues/123-fix-foo`` and the title of the commit would be
   `Fix foo in case of bar (resolves #123).`
-  
+
 .. _great: https://chris.beams.io/posts/git-commit/#seven-rules
 
 Pull Requests
@@ -368,17 +368,30 @@ Pull Requests
   so it is the responsibility of the approving reviewer to make sure that pull
   requests from outside repositories are copied to branches in the main
   repository. This can be accomplished with (from a Toil clone):
-  
+
   .. code-block:: bash
-  
+
       ./contrib/admin/test-pr theirusername their-branch issues/123-fix-description-here
-     
+
   This must be repeated every time the PR submitter updates their PR, after
   checking to see that the update is not malicious.
-  
+
   If there is no issue corresponding to the PR, after which the branch can be
   named, the reviewer of the PR should first create the issue.
-  
+
   Developers who have push access to the main Toil repository are encouraged to
   make their pull requests from within the repository, to avoid this step.
 
+* Prefer using "Squash and marge" when merging pull requests to master especially
+  when the PR contains a "single unit" of work (i.e. if one were to rewrite the
+  PR from scratch with all the fixes included, they would have one commit for
+  the entire PR). This makes the commit history on master more readable
+  and easier to debug in case of a breakage.
+
+  When squashing a PR from multiple authors, please add
+  `Co-authored-by`_ to give credit to all contributing authors.
+
+  See `Issue #2816`_ for more details.
+
+  .. _Co-authored-by: https://github.blog/2018-01-29-commit-together-with-co-authors/
+  .. _Issue #2816: https://github.com/DataBiosphere/toil/issues/2816

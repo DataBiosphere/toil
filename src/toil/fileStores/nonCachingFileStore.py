@@ -248,10 +248,13 @@ class NonCachingFileStore(AbstractFileStore):
         :rtype: dict
         """
         jobStateFiles = []
-        for root, dirs, files in os.walk(workflowDir):
+        # Note that the directory tree may contain files whose names are not decodable to Unicode.
+        # So we need to work in bytes.
+        # We require that the job state files aren't in any of those directories.
+        for root, dirs, files in os.walk(workflowDir.encode('utf-8')):
             for filename in files:
-                if filename == '.jobState':
-                    jobStateFiles.append(os.path.join(root, filename))
+                if filename == '.jobState'.encode('utf-8'):
+                    jobStateFiles.append(os.path.join(root, filename).decode('utf-8'))
         for filename in jobStateFiles:
             try:
                 yield NonCachingFileStore._readJobState(filename)
