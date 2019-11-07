@@ -156,10 +156,7 @@ class DefaultWithSource(object):
     def resolve(self):
         """Determine the final input value."""
         if self.source:
-            if isinstance(self.source, tuple):
-                result = self.source[1][0][self.source[0]]
-            else:
-                result = self.source[1][self.source[0]]
+            result = self.source[1][self.source[0]]
             if result:
                 return result
         return self.default
@@ -173,21 +170,12 @@ def _resolve_indirect_inner(maybe_idict):
 
     if isinstance(maybe_idict, IndirectDict):
         result = {}
-        metadata = {}
         for key, value in list(maybe_idict.items()):
             if isinstance(value, (MergeInputs, DefaultWithSource)):
                 result[key] = value.resolve()
             else:
-                if isinstance(value[1], tuple):
-                    if isinstance(value[1][0], tuple):
-                        result[key] = value[1][0][0].get(value[0])
-                        metadata[key] = value[1][0][1]
-                    else:
-                        result[key] = value[1][0].get(value[0])
-                        metadata[key] = value[1][1]
-                else:
-                    result[key] = value[1].get(value[0])
-        return result, metadata
+                result[key] = value[1].get(value[0])
+        return result
     return maybe_idict
 
 
@@ -198,9 +186,6 @@ def resolve_indirect(pdict):
 
     inner = IndirectDict() if isinstance(pdict, IndirectDict) else {}
     needs_eval = False
-    if isinstance(pdict, tuple):
-        #TODO should this return metadata
-        return resolve_indirect(pdict[0])
     for k, value in iteritems(pdict):
         if isinstance(value, StepValueFrom):
             inner[k] = value.inner
@@ -210,21 +195,12 @@ def resolve_indirect(pdict):
     res = _resolve_indirect_inner(inner)
     if needs_eval:
         ev = {}
-        metadata = {}
         for k, value in iteritems(pdict):
             if isinstance(value, StepValueFrom):
-                if isinstance(res, tuple):
-                    ev[k] = value.do_eval(res[0], res[0][k])
-                    metadata[k] = res[1]
-                else:
-                    ev[k] = value.do_eval(res, res[k])
+                ev[k] = value.do_eval(res, res[k])
             else:
-                if isinstance(res, tuple):
-                    ev[k] = res[0][k]
-                    metadata[k] = res[1]
-                else:
-                    ev[k] = res[k]
-        return ev, metadata
+                ev[k] = res[k]
+        return ev
     return res
 
 
@@ -487,21 +463,14 @@ class CWLJobWrapper(Job):
         self.runtime_context = runtime_context
 
     def run(self, file_store):
-        resolved_cwljob = resolve_indirect(self.cwljob)
-        metadata = {}
-        if isinstance(resolved_cwljob, tuple):
-            cwljob = resolved_cwljob[0]
-            metadata = resolved_cwljob[1]
-        else:
-            cwljob = resolved_cwljob
+        cwljob = resolve_indirect(self.cwljob)
         fill_in_defaults(
             self.cwltool.tool['inputs'], cwljob,
             self.runtime_context.make_fs_access(
                 self.runtime_context.basedir or ""))
         realjob = CWLJob(self.cwltool, cwljob, self.runtime_context)
         self.addChild(realjob)
-        return realjob.rv(), metadata
-
+        return realjob.rv()
 
 class CWLJob(Job):
     """Execute a CWL tool using cwltool.executors.SingleJobExecutor"""
@@ -563,12 +532,7 @@ class CWLJob(Job):
         self.workdir = runtime_context.workdir
 
     def run(self, file_store):
-        resolved_cwljob = resolve_indirect(self.cwljob)
-        if isinstance(resolved_cwljob, tuple):
-            cwljob, metadata = resolved_cwljob
-        else:
-            cwljob = resolved_cwljob
-            metadata = {}
+        cwljob = resolve_indirect(self.cwljob)
         fill_in_defaults(
             self.step_inputs, cwljob,
             self.runtime_context.make_fs_access(""))
@@ -624,14 +588,14 @@ class CWLJob(Job):
             uploadFile, functools.partial(writeGlobalFileWrapper, file_store),
             index, existing))
 
-        metadata[process_uuid] = {
-            'started_at': started_at,
-            'ended_at': ended_at,
-            'job_order': cwljob,
-            'outputs': output,
-            'internal_name': self.jobName
-        }
-        return output, metadata
+        # metadata[process_uuid] = {
+        #     'started_at': started_at,
+        #     'ended_at': ended_at,
+        #     'job_order': cwljob,
+        #     'outputs': output,
+        #     'internal_name': self.jobName
+        # }
+        return output
 
 
 def makeJob(tool, jobobj, step_inputs, runtime_context):
@@ -709,11 +673,7 @@ class CWLScatter(Job):
         return outputs
 
     def run(self, file_store):
-        resolved_cwljob = resolve_indirect(self.cwljob)
-        if isinstance(resolved_cwljob, tuple):
-            cwljob, metadata = resolved_cwljob
-        else:
-            cwljob = resolved_cwljob
+        cwljob = resolve_indirect(self.cwljob)
 
         if isinstance(self.step.tool["scatter"], string_types):
             scatter = [self.step.tool["scatter"]]
@@ -768,7 +728,7 @@ class CWLScatter(Job):
                     "Must provide scatterMethod to scatter over multiple"
                     " inputs.")
 
-        return outputs, metadata
+        return outputs
 
 
 class CWLGather(Job):
@@ -795,27 +755,14 @@ class CWLGather(Job):
             return obj.get(k)
         elif isinstance(obj, MutableSequence):
             cp = []
-            metadata = []
             for l in obj:
-                if isinstance(l, tuple):
-                    cp.append(self.extract(l[0], k))
-                    metadata.append(self.extract(l[1], k))
-                else:
-                    result = self.extract(l, k)
-                    if isinstance(result, tuple):
-                        cp.append(result[0])
-                        metadata.append(result[1])
-                    else:
-                        cp.append(result)
-            return cp, metadata
-        elif isinstance(obj, tuple):
-            return self.extract(obj[0], k)
+                cp.append(self.extract(l, k))
+            return cp
         else:
             return []
 
     def run(self, file_store):
         outobj = {}
-        metadata = {}
 
         def sn(n):
             if isinstance(n, Mapping):
@@ -824,12 +771,9 @@ class CWLGather(Job):
                 return shortname(n)
 
         for k in [sn(i) for i in self.step.tool["out"]]:
-            result = self.extract(self.outputs, k)
-            if isinstance(result, tuple):
-                outobj[k], metadata[k] = result
-            else:
-                outobj[k] = result
-        return outobj, metadata
+            outobj[k] = self.extract(self.outputs, k)
+
+        return outobj
 
 
 class SelfJob(object):
@@ -872,7 +816,7 @@ def _link_merge_source(promises, in_out_obj, source_obj):
     else:
         raise validate.ValidationException(
             "Unsupported linkMerge '%s'" % link_merge)
-    return merged
+    return (merged)
 
 
 class CWLWorkflow(Job):
@@ -947,10 +891,8 @@ class CWLWorkflow(Job):
                                         jobobj[key] = DefaultWithSource(
                                             d, jobobj[key])
                                     else:
-                                        if (isinstance(jobobj[key][1], tuple) and
-                                                jobobj[key][1][0][jobobj[key][0]]
-                                                is None) or (jobobj[key][1][
-                                                    jobobj[key][0]] is None):
+                                        if jobobj[key][1][
+                                                jobobj[key][0]] is None:
                                             d = copy.copy(inp["default"])
                                             jobobj[key] = (
                                                 "default", {"default": d})
@@ -1128,7 +1070,7 @@ def main(args=None, stdout=sys.stdout):
         "--strict-memory-limit", action="store_true", help="When running with "
         "software containers and the Docker engine, pass either the "
         "calculated memory allocation from ResourceRequirements or the "
-        "default of 1 gigabyte to Docker's --memory option.")    
+        "default of 1 gigabyte to Docker's --memory option.")
     parser.add_argument(
         "--relax-path-checks", action="store_true",
         default=False, help="Relax requirements on path names to permit "
@@ -1179,7 +1121,7 @@ def main(args=None, stdout=sys.stdout):
     # Problem: we want to keep our job store somewhere auto-generated based on
     # our options, unless overridden by... an option. So we will need to parse
     # options twice, because we need to feed the parser the job store.
-    
+
     # Propose a local workdir, probably under /tmp.
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -1353,16 +1295,9 @@ def main(args=None, stdout=sys.stdout):
                 return 33
 
             wf1.cwljob = initialized_job_order
-
-            result = toil.start(wf1)
-            if isinstance(result, tuple):
-                outobj, metadata = result
-            else:
-                outobj = result
+            outobj = toil.start(wf1)
 
         outobj = resolve_indirect(outobj)
-        if isinstance(outobj, tuple):
-            outobj, metadata = outobj
 
         # Stage files. Specify destination bucket if specified in CLI
         # options. If destination bucket not passed in,
