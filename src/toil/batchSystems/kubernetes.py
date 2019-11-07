@@ -434,7 +434,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 return result
                             else:
                                 continue
-
         else:
             # Try polling instead
             while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:
