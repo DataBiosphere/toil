@@ -65,6 +65,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
+        # Turn down log level for Kubernetes modules and dependencies.
+        # Otherwise if we are at debug log level, we dump every
+        # request/response to Kubernetes, including tokens which we shouldn't
+        # reveal on CI.
+        logging.getLogger('kubernetes').setLevel(logging.ERROR)
+        logging.getLogger('requests_oauthlib').setLevel(logging.ERROR)
+
         try:
             # Load ~/.kube/config
             kubernetes.config.load_kube_config()
@@ -160,10 +167,12 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # For docs, start at the root of the job hierarchy:
             # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/V1Job.md
 
-            # Make a definition for the container's resource requirements
+            # Make a definition for the container's resource requirements.
+            # Don't let people request too-small amounts of memory or disk.
+            # Kubernetes needs some lower limit to run the pod at all without OOMing.
             requirements_dict = {'cpu': jobNode.cores,
-                                 'memory': jobNode.memory,
-                                 'ephemeral-storage': jobNode.disk}
+                                 'memory': max(jobNode.memory, 1024 * 1024 * 512),
+                                 'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 512)}
             resources = kubernetes.client.V1ResourceRequirements(limits=requirements_dict,
                                                                  requests=requirements_dict)
             
@@ -217,7 +226,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Make the job
             launched = self.batchApi.create_namespaced_job(self.namespace, job)
 
-            logger.debug('Launched job: %s', str(launched))
+            logger.debug('Launched job: %s', jobName)
             
             return jobID
             
@@ -287,7 +296,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     
                     # Don't go over the limit
                     seen += 1
-                    if limit is None or seen == limit:
+                    if limit is not None and seen >= limit:
                         return
                     
             # Remember the continuation token, if any
@@ -372,168 +381,222 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             yield self._getPodForJob(j)
 
     def getUpdatedBatchJob(self, maxWait):
-    
+
+        entry = datetime.datetime.now()
+
+        result = self._getUpdatedBatchJobImmediately()
+
+        if result is not None or maxWait == 0:
+            # We got something on the first try, or we only get one try
+            return result
+
+        # Otherwise we need to maybe wait.
+
+        if self.enableWatching:
+            # Try watching for something to happen and use that.
+
+            w = kubernetes.watch.Watch()
+            # TODO: block and wait for the jobs to update, until maxWait is hit
+            # For now just say we couldn't get anything
+            for pod in w.stream(self._genPods, timeout_seconds=maxwait):
+                # if pod status is terminated then check exit code    
+                if pod.status.container_statuses[0].state is 'terminated':
+                    if pod.status.container_statues[0].state.exit_code == 0:
+                        return (pod.metadata.name,\
+                                pod.status.container_statues[0].state.exit_code, \
+                                (pod.status.container_statuses[0].state.finished_at - \
+                                        pod.status.container_statues[0].state.started_at).total_seconds())
+                    # if job failed
+                    else:
+                        logger.warning(pod.status.container_status[0].state.reason,
+                                pod.status.container_statuses[0].state.exit_code)
+                        return None
+                else:
+                    continue
+            return None
+
+        else:
+            # Try polling instead
+            while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:
+                # We still have nothing and we haven't hit the timeout.
+                
+                # Poll
+                result = self._getUpdatedBatchJobImmediately()
+
+                if result is None:
+                    # Still nothing. Wait a second, or some fraction of our max wait time.
+                    time.sleep(min(maxWait/2, 1.0))
+
+            # When we get here, either we found something or we ran out of time
+            return result
+
+
+    def _getUpdatedBatchJobImmediately(self):
+        """
+        Return None if no updated (completed or failed) batch job is currently
+        available, and jobID, exitCode, runtime ifsuch a job can be found.
+        """
+
         # See if a local batch job has updated and is available immediately
         local_tuple = self.getUpdatedLocalJob(0)
         if local_tuple:
             # If so, use it
             return local_tuple
-        else:
-            # Otherwise, go looking for other jobs
+
+        # Otherwise we didn't get a local job.
+
+        # Go looking for other jobs
+        
+        # Everybody else does this with a queue and some other thread that
+        # is responsible for populating it.
+        # But we can just ask kubernetes now.
+        
+        # Find a job that is done, failed, or stuck
+        jobObject = None
+        # Put 'done', 'failed', or 'stuck' here
+        chosenFor = ''
+        for j in self._ourJobObjects(onlySucceeded=True, limit=1):
+            # Look for succeeded jobs because that's the only filter Kubernetes has
+            jobObject = j
+            chosenFor = 'done'
+
+        if jobObject is None:
+            for j in self._ourJobObjects():
+                # If there aren't any succeeded jobs, scan all jobs
+                # See how many times each failed
+                failCount = getattr(j.status, 'failed', 0)
+                if failCount is None:
+                    # Make sure it is an int
+                    failCount = 0
+                if failCount > 0:
+                    # Take the first failed one you find
+                    jobObject = j
+                    chosenFor = 'failed'
+                    break
+
+        if jobObject is None:
+            # If no jobs are failed, look for jobs with pods with
+            # containers stuck in Waiting with reason ImagePullBackOff
+            for j in self._ourJobObjects():
+                pod = self._getPodForJob(j)
+
+                if pod is None:
+                    # Skip jobs with no pod
+                    continue
+
+                waitingInfo = getattr(pod.status.container_statuses[0].state, 'waiting')
+                if waitingInfo is not None and waitingInfo.reason == 'ImagePullBackOff':
+                    # Assume it will never finish, even if the registry comes back or whatever.
+                    # We can get into this state when we send in a non-existent image.
+                    # See https://github.com/kubernetes/kubernetes/issues/58384
+                    jobObject = j
+                    chosenFor = 'stuck'
+                    logger.warning('Failing stuck job; did you try to run a non-existent Docker image?'
+                                   ' Check TOIL_APPLIANCE_SELF.')
+                    break
+       
             
-            # Everybody else does this with a queue and some other thread that
-            # is responsible for populating it.
-            # But we can just ask kubernetes now.
-            
-            # Find a job that is done, failed, or stuck
-            jobObject = None
-            # Put 'done', 'failed', or 'stuck' here
-            chosenFor = ''
-            for j in self._ourJobObjects(onlySucceeded=True, limit=1):
-                # Look for succeeded jobs because that's the only filter Kubernetes has
-                jobObject = j
-                chosenFor = 'done'
+        if jobObject is None:
+            # Say we couldn't find anything
+            return None
 
-            if jobObject is None:
-                for j in self._ourJobObjects():
-                    # If there aren't any succeeded jobs, scan all jobs
-                    # See how many times each failed
-                    failCount = getattr(j.status, 'failed', 0)
-                    if failCount is None:
-                        # Make sure it is an int
-                        failCount = 0
-                    if failCount > 0:
-                        # Take the first failed one you find
-                        jobObject = j
-                        chosenFor = 'failed'
-                        break
 
-            if jobObject is None:
-                # If no jobs are failed, look for jobs with pods with
-                # containers stuck in Waiting with reason ImagePullBackOff
-                for j in self._ourJobObjects():
-                    pod = self._getPodForJob(j)
+        # Otherwise we got something.
 
-                    if pod is None:
-                        # Skip jobs with no pod
-                        continue
+        # Work out what the job's ID was (whatever came after our name prefix)
+        jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
+        
+        # Grab the pod
+        pod = self._getPodForJob(jobObject)
 
-                    waitingInfo = getattr(pod.status.container_statuses[0].state, 'waiting')
-                    if waitingInfo is not None and waitingInfo.reason == 'ImagePullBackOff':
-                        # Assume it will never finish, even if the registry comes back or whatever.
-                        # We can get into this state when we send in a non-existent image.
-                        # See https://github.com/kubernetes/kubernetes/issues/58384
-                        jobObject = j
-                        chosenFor = 'stuck'
-                        logger.warning('Failing stuck job; did you try to run a non-existent Docker image?'
-                                       ' Check TOIL_APPLIANCE_SELF.')
-                        break
-           
-            w = kubernetes.watch.Watch()    
-            if jobObject is None:
-                # Nothing is ready yet.
+        if pod is not None:
+            if chosenFor == 'done' or chosenFor == 'failed':
+                # The job actually finished or failed
 
-                if self.enableWatching:
+                # Get the termination info from the pod
+                logger.debug(pod.status.container_statuses)
+                terminatedInfo = getattr(pod.status.container_statuses[0].state, 'terminated')
+                if terminatedInfo is not None:
+                    # Extract the exit code
+                    exitCode = terminatedInfo.exit_code
 
-                    # TODO: block and wait for the jobs to update, until maxWait is hit
-                    # For now just say we couldn't get anything
-                    for pod in w.stream(self._genPods, timeout_seconds=maxwait):
-                        # if pod status is terminated then check exit code    
-                        if pod.status.container_statuses[0].state is 'terminated':
-                            if pod.status.container_statues[0].state.exit_code == 0:
-                                return (pod.metadata.name,\
-                                        pod.status.container_statues[0].state.exit_code, \
-                                        (pod.status.container_statuses[0].state.finished_at - \
-                                                pod.status.container_statues[0].state.started_at).total_seconds())
-                            # if job failed
-                            else:
-                                logger.warning(pod.status.container_status[0].state.reason,
-                                        pod.status.container_statuses[0].state.exit_code)
-                                return None
-                        else:
-                            continue
-                    return None
-            else:
-                # Work out what the job's ID was (whatever came after our name prefix)
-                jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
-                
-                # Grab the pod
-                pod = self._getPodForJob(jobObject)
+                    # Compute how long the job ran for (subtract datetimes)
+                    # We need to look at the pod's start time because the job's
+                    # start time is just when the job is created.
+                    # And we need to look at the pod's end time because the
+                    # job only gets a completion time if successful.
+                    runtime = (terminatedInfo.finished_at - 
+                               pod.status.start_time).total_seconds()
 
-                if pod is not None:
-                    if chosenFor == 'done' or chosenFor == 'failed':
-                        # The job actually finished or failed
-
-                        # Get the termination info from the pod
-                        terminatedInfo = getattr(pod.status.container_statuses[0].state, 'terminated')
-                        if terminatedInfo is not None:
-                            # Extract the exit code
-                            exitCode = terminatedInfo.exit_code
-
-                            # Compute how long the job ran for (subtract datetimes)
-                            # We need to look at the pod's start time because the job's
-                            # start time is just when the job is created.
-                            # And we need to look at the pod's end time because the
-                            # job only gets a completion time if successful.
-                            runtime = (terminatedInfo.finished_at - 
-                                       pod.status.start_time).total_seconds()
-
-                            if chosenFor == 'failed':
-                                # Warn the user with the failed pod's log
-                                # TODO: cut this down somehow?
-                                logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
-                        else:
-                            logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
-                            exitCode = -1
-                            runtime = 0
-                            
-                    else:
-                        # The job has gotten stuck
-
-                        assert chosenFor == 'stuck'
-                        
-                        # Synthesize an exit code and runtime (since the job never
-                        # really could start running)
-                        exitCode = -1
-                        runtime = 0
+                    if chosenFor == 'failed':
+                        # Warn the user with the failed pod's log
+                        # TODO: cut this down somehow?
+                        logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
                 else:
-                    # The pod went away from under the job.
-                    logging.warning('Exit code and runtime unavailable; pod vanished')
+                    logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
                     exitCode = -1
                     runtime = 0
-                
-                
-                try:
-                    # Delete the job and all dependents (pods)
-                    self.batchApi.delete_namespaced_job(jobObject.metadata.name,
-                                                        self.namespace,
-                                                        propagation_policy='Foreground')
-                                                        
-                    # That just kicks off the deletion process. Foreground doesn't actually block. See https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#foreground-cascading-deletion
-                    # We have to either wait until the deletion is done and we can't see the job anymore, or ban the job from being "updated" again if we see it.
-                    # If we don't block on deletion, we can't use limit=1 on our query for succeeded jobs.
-                    # So we poll for the job's non-existence.
-                    backoffTime = 0.1
-                    maxBackoffTime = 6.4
-                    while True:
-                        try:
-                            # Look for the job
-                            self.batchApi.read_namespaced_job(jobObject.metadata.name, self.namespace)
-                            # If we didn't 404, wait a bit with exponential backoff
-                            time.sleep(backoffTime)
-                            if backoffTime < maxBackoffTime:
-                                backoffTime *= 2
-                        except kubernetes.client.rest.ApiException:
-                            # We finally got a failure!
-                            break
-                            
-                except kubernetes.client.rest.ApiException:
-                    # TODO: check to see if this is a 404 on the thing we tried to delete
-                    # If so, it is gone already and we don't need to delete it again.
-                    pass
+                    
+            else:
+                # The job has gotten stuck
 
-                # Return the one finished job we found
-                return jobID, exitCode, runtime
+                assert chosenFor == 'stuck'
+                
+                # Synthesize an exit code and runtime (since the job never
+                # really could start running)
+                exitCode = -1
+                runtime = 0
+        else:
+            # The pod went away from under the job.
+            logging.warning('Exit code and runtime unavailable; pod vanished')
+            exitCode = -1
+            runtime = 0
+        
+        
+        try:
+            # Delete the job and all dependents (pods)
+            self.batchApi.delete_namespaced_job(jobObject.metadata.name,
+                                                self.namespace,
+                                                propagation_policy='Foreground')
+                                                
+            # That just kicks off the deletion process. Foreground doesn't
+            # actually block. See
+            # https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#foreground-cascading-deletion
+            # We have to either wait until the deletion is done and we can't
+            # see the job anymore, or ban the job from being "updated" again if
+            # we see it. If we don't block on deletion, we can't use limit=1
+            # on our query for succeeded jobs. So we poll for the job's
+            # non-existence.
+            self._waitForJobDeath(jobObject.metadata.name)
+                    
+        except kubernetes.client.rest.ApiException:
+            # TODO: check to see if this is a 404 on the thing we tried to delete
+            # If so, it is gone already and we don't need to delete it again.
+            pass
+
+        # Return the one finished job we found
+        return jobID, exitCode, runtime
+
+    def _waitForJobDeath(self, jobName):
+        """
+        Block until the job with the given name no longer exists.
+        """
+
+        # We do some exponential backoff on the polling
+        # TODO: use a wait instead of polling?
+        backoffTime = 0.1
+        maxBackoffTime = 6.4
+        while True:
+            try:
+                # Look for the job
+                self.batchApi.read_namespaced_job(jobName, self.namespace)
+                # If we didn't 404, wait a bit with exponential backoff
+                time.sleep(backoffTime)
+                if backoffTime < maxBackoffTime:
+                    backoffTime *= 2
+            except kubernetes.client.rest.ApiException:
+                # We finally got a failure!
+                break
             
     def shutdown(self):
         
@@ -542,18 +605,26 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         # Clears jobs belonging to this run
         for job in self._ourJobObjects():
-            logger.debug(job)
-            jobname = job.metadata.name
-            jobstatus = job.status.conditions
+            jobName = job.metadata.name
+
+            try:
+                # Look at the pods and log why they failed, if they failed, for debugging.
+                pod = self._getPodForJob(job)
+                if pod.status.phase == 'Failed':
+                    logger.debug('Failed pod encountered at shutdown: %s', str(pod))
+            except:
+                # Don't get mad if that doesn't work.
+                pass
+
             # Kill jobs whether they succeeded or failed
             try:
                 # Delete with background poilicy so we can quickly issue lots of commands
-                response = self.batchApi.delete_namespaced_job(jobname, 
+                response = self.batchApi.delete_namespaced_job(jobName, 
                                                                self.namespace, 
                                                                propagation_policy='Background')
-                logger.debug(response)
+                logger.debug('Killed job for shutdown: %s', jobName)
             except ApiException as e:
-                print("Exception when calling BatchV1Api->delte_namespaced_job: %s\n" % e)
+                logger.error("Exception when calling BatchV1Api->delte_namespaced_job: %s" % e)
 
 
     def _getIssuedNonLocalBatchJobIDs(self):
@@ -572,7 +643,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
 
     def getRunningBatchJobIDs(self):
-        # We need a dict from jobID (string?) to seconds it has been running
+        # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
         for job in self._ourJobObjects():
             # Grab the pod for each job
@@ -591,8 +662,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 runtime = (utc_now - pod.status.start_time).total_seconds()
 
                 # Save it under the stringified job ID
-                secondsPerJob[str(self._getIDForOurJob(job))] = runtime
-
+                secondsPerJob[self._getIDForOurJob(job)] = runtime
         # Mix in the local jobs
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
@@ -621,7 +691,16 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             response = self.batchApi.delete_namespaced_job(jobName, 
                                                            self.namespace, 
                                                            propagation_policy='Foreground')
-            logger.debug(response)
+            logger.debug('Killed job by request: %s', jobName)
+
+        for jobID in jobIDs:
+            # Now we need to wait for all the jobs we killed to be gone.
+
+            # Work out what the job would be named
+            jobName = self.jobPrefix + str(jobID)
+
+            # Block until it doesn't exist
+            self._waitForJobDeath(jobName)
 
 def executor():
     """

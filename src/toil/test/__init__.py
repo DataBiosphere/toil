@@ -256,10 +256,10 @@ def needs_rsync3(test_item):
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
     return test_item
 
-
-def needs_aws(test_item):
-    """Use as a decorator before test classes or methods to run only if AWS is usable."""
-    test_item = _mark_test('aws', test_item)
+def needs_aws_s3(test_item):
+    """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
+    # TODO: we just check for generic access to the AWS account
+    test_item = _mark_test('aws-s3', test_item)
     try:
         from boto import config
         boto_credentials = config.get('Credentials', 'aws_access_key_id')
@@ -268,8 +268,16 @@ def needs_aws(test_item):
 
     if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2()):
         return unittest.skip("Configure AWS credentials to include this test.")(test_item)
-    elif not os.getenv('TOIL_AWS_KEYNAME'):
-        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+    return test_item
+
+def needs_aws_ec2(test_item):
+    """Use as a decorator before test classes or methods to run only if AWS EC2 is usable."""
+    # Assume we need S3 as well as EC2
+    test_item = _mark_test('aws-ec2', needs_aws_s3(test_item))
+    if not os.getenv('TOIL_AWS_KEYNAME'):
+        # In addition to S3 we also need an SSH key to deploy with.
+        # TODO: We assume that if this is set we have EC2 access.
+        return unittest.skip("Set TOIL_AWS_KEYNAME to an AWS-stored SSH key to include this test.")(test_item)
     return test_item
 
 
@@ -336,6 +344,17 @@ def needs_torque(test_item):
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
+def needs_kubernetes(test_item):
+    """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
+    test_item = _mark_test('kubernetes', test_item)
+    try:
+        import kubernetes
+        kubernetes.config.load_kube_config()
+    except ImportError:
+        return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
+    except TypeError:
+        return unittest.skip("Configure Kubernetes (~/.kube/config) to include this test.")(test_item)
+    return test_item
 
 def needs_mesos(test_item):
     """Use as a decorator before test classes or methods to run only if Mesos is installed."""

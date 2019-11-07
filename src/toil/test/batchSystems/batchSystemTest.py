@@ -35,6 +35,9 @@ from toil import subprocess
 from unittest import skipIf
 
 from toil.common import Config
+# Don't import any batch systems here that depend on extras
+# in order to import properly. Import them later, in tests 
+# protected by annotations.
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.batchSystems.parasol import ParasolBatchSystem
@@ -43,7 +46,9 @@ from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    BatchSystemSupport)
 from toil.job import Job, JobNode
 from toil.test import (ToilTest,
+                       needs_aws_s3,
                        needs_lsf,
+                       needs_kubernetes,
                        needs_mesos,
                        needs_parasol,
                        needs_gridengine,
@@ -76,7 +81,9 @@ class hidden(object):
 
     class AbstractBatchSystemTest(with_metaclass(ABCMeta, ToilTest)):
         """
-        A base test case with generic tests that every batch system should pass
+        A base test case with generic tests that every batch system should pass.
+
+        Cannot assume that the batch system actually executes commands on the local machine/filesystem.
         """
 
         @abstractmethod
@@ -134,7 +141,6 @@ class hidden(object):
         
         @travis_test
         def testRunJobs(self):
-            testPath = os.path.join(self.tempDir, "test.txt")
             jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
                                jobStoreID='1', requirements=defaultRequirements)
             jobNode2 = JobNode(command='sleep 1000', jobName='test2', unitName=None,
@@ -155,8 +161,11 @@ class hidden(object):
 
             # Issue a job and then allow it to finish by itself, causing it to be added to the
             # updated jobs queue.
-            self.assertFalse(os.path.exists(testPath))
-            jobNode3 = JobNode(command="touch %s" % testPath, jobName='test3', unitName=None,
+            # We would like to have this touch something on the filesystem and
+            # then check for it having happened, but we can't guarantee that
+            # the batch system will run against the same filesystem we are
+            # looking at.
+            jobNode3 = JobNode(command="mktemp -d", jobName='test3', unitName=None,
                                jobStoreID='3', requirements=defaultRequirements)
             job3 = self.batchSystem.issueBatchJob(jobNode3)
 
@@ -165,15 +174,14 @@ class hidden(object):
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
             # fail with jobID being equal to job1 or job2.
-            self.assertEqual(exitStatus, 0)
             self.assertEqual(jobID, job3)
+            self.assertEqual(exitStatus, 0)
             if self.supportsWallTime():
                 self.assertTrue(wallTime > 0)
             else:
                 self.assertIsNone(wallTime)
-            if not os.path.exists(testPath):
-                time.sleep(20)
-            self.assertTrue(os.path.exists(testPath))
+            # TODO: Work out a way to check if the job we asked to run actually ran.
+            # Don't just believe the batch system, but don't assume it ran on this machine either.
             self.assertFalse(self.batchSystem.getUpdatedBatchJob(0))
 
             # Make sure killBatchJobs can handle jobs that don't exist
@@ -181,33 +189,32 @@ class hidden(object):
         
         @travis_test
         def testSetEnv(self):
-            # Parasol disobeys shell rules and stupidly splits the command at the space character
-            # before exec'ing it, whether the space is quoted, escaped or not. This means that we
-            # can't have escaped or quotes spaces in the command line. So we can't use bash -c
-            #  '...' or python -c '...'. The safest thing to do here is to script the test and
-            # invoke that script rather than inline the test via -c.
-            def assertEnv():
-                import os, sys
-                sys.exit(23 if os.getenv('FOO') == 'bar' else 42)
+            # Parasol disobeys shell rules and stupidly splits the command at
+            # the space character into arguments before exec'ing it, whether
+            # the space is quoted, escaped or not.
 
-            script_body = dedent('\n'.join(getsource(assertEnv).split('\n')[1:]))
-            with tempFileContaining(script_body, suffix='.py') as script_path:
-                # First, ensure that the test fails if the variable is *not* set
-                command = sys.executable + ' ' + script_path
-                jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
-                                   jobStoreID='4', requirements=defaultRequirements)
-                job4 = self.batchSystem.issueBatchJob(jobNode4)
-                jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-                self.assertEqual(exitStatus, 42)
-                self.assertEqual(jobID, job4)
-                # Now set the variable and ensure that it is present
-                self.batchSystem.setEnv('FOO', 'bar')
-                jobNode5 = JobNode(command=command, jobName='test5', unitName=None,
-                                   jobStoreID='5', requirements=defaultRequirements)
-                job5 = self.batchSystem.issueBatchJob(jobNode5)
-                jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
-                self.assertEqual(exitStatus, 23)
-                self.assertEqual(jobID, job5)
+            script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
+
+            # Escape the semicolons
+            script_protected = script_shell.replace(';', '\;') 
+             
+            # Turn into a string which convinces bash to take all args and paste them back together and run them
+            command = "bash -c \"\\${@}\" bash eval " + script_protected
+            log.critical(command)
+            jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
+                               jobStoreID='4', requirements=defaultRequirements)
+            job4 = self.batchSystem.issueBatchJob(jobNode4)
+            jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            self.assertEqual(exitStatus, 42)
+            self.assertEqual(jobID, job4)
+            # Now set the variable and ensure that it is present
+            self.batchSystem.setEnv('FOO', 'bar')
+            jobNode5 = JobNode(command=command, jobName='test5', unitName=None,
+                               jobStoreID='5', requirements=defaultRequirements)
+            job5 = self.batchSystem.issueBatchJob(jobNode5)
+            jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            self.assertEqual(exitStatus, 23)
+            self.assertEqual(jobID, job5)
         
         @travis_test
         def testCheckResourceRequest(self):
@@ -322,6 +329,22 @@ class hidden(object):
             config.jobStore = 'file:' + self._createTempDir('jobStore')
             return config
 
+@needs_kubernetes
+@needs_aws_s3
+class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
+    """
+    Tests against the Kubernetes batch system
+    """
+
+    def supportsWallTime(self):
+        return True
+
+    def createBatchSystem(self):
+        # We know we have Kubernetes so we can import the batch system
+        from toil.batchSystems.kubernetes import KubernetesBatchSystem
+        return KubernetesBatchSystem(config=self.config,
+                                     maxCores=numCores, maxMemory=1e9, maxDisk=2001)
+
 @slow
 @needs_mesos
 class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
@@ -342,6 +365,7 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         return True
 
     def createBatchSystem(self):
+        # We know we have Mesos so we can import the batch system
         from toil.batchSystems.mesos.batchSystem import MesosBatchSystem
         self._startMesos(numCores)
         return MesosBatchSystem(config=self.config,
