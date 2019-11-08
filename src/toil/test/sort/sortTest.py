@@ -31,7 +31,7 @@ from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.sort import merge, sort, copySubRangeOfFile, getMidPoint, makeFileToSort, main
 from toil.test import (ToilTest,
-                       needs_aws,
+                       needs_aws_ec2,
                        needs_mesos,
                        needs_azure,
                        needs_parasol,
@@ -174,11 +174,11 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
 
 
-    @needs_aws
+    @needs_aws_ec2
     def testAwsSingle(self):
         self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='singleMachine')
 
-    @needs_aws
+    @needs_aws_ec2
     @needs_mesos
     def testAwsMesos(self):
         self._startMesos()

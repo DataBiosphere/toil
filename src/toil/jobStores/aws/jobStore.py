@@ -159,7 +159,7 @@ class AWSJobStore(AbstractJobStore):
         self._bind(create=False)
         super(AWSJobStore, self).resume()
 
-    def _bind(self, create=False, block=True):
+    def _bind(self, create=False, block=True, check_versioning_consistency=True):
         def qualify(name):
             assert len(name) <= self.maxNameLen
             return self.namePrefix + self.nameSeparator + name
@@ -175,7 +175,8 @@ class AWSJobStore(AbstractJobStore):
             self.filesBucket = self._bindBucket(qualify('files'),
                                                 create=create,
                                                 block=block,
-                                                versioning=True)
+                                                versioning=True,
+                                                check_versioning_consistency=check_versioning_consistency)
 
     @property
     def _registered(self):
@@ -681,7 +682,8 @@ class AWSJobStore(AbstractJobStore):
             raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." % self.region)
         return s3
 
-    def _bindBucket(self, bucket_name, create=False, block=True, versioning=False):
+    def _bindBucket(self, bucket_name, create=False, block=True, versioning=False,
+                    check_versioning_consistency=True):
         """
         Return the Boto Bucket object representing the S3 bucket with the given name. If the
         bucket does not exist and `create` is True, it will be created.
@@ -747,7 +749,7 @@ class AWSJobStore(AbstractJobStore):
                 if versioning and not bucketExisted:
                     # only call this method on bucket creation
                     bucket.configure_versioning(True)
-                else:
+                elif check_versioning_consistency:
                     # now test for versioning consistency
                     # we should never see any of these errors since 'versioning' should always be true
                     bucket_versioning = self.__getBucketVersioning(bucket)
@@ -1279,7 +1281,7 @@ class AWSJobStore(AbstractJobStore):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
         # See https://github.com/BD2KGenomics/toil/issues/1041
         try:
-            self._bind(create=False, block=False)
+            self._bind(create=False, block=False, check_versioning_consistency=False)
         except BucketLocationConflictException:
             # If the unique jobstore bucket name existed, _bind would have raised a
             # BucketLocationConflictException before calling destroy.  Calling _bind here again

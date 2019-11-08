@@ -26,7 +26,7 @@ from uuid import uuid4
 from toil.job import Job
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow, travis_test
+from toil.test import ToilTest, needs_aws_ec2, needs_azure, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.realtimeLogger import RealtimeLogger
@@ -1098,13 +1098,13 @@ class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
 
-@needs_aws
+@needs_aws_ec2
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
 @slow
-@needs_aws
+@needs_aws_ec2
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
