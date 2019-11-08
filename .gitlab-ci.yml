@@ -17,93 +17,16 @@ stages:
   - integration
 
 
-# Python2.7
-py2_batch_systems:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
-    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+# Python3.6
 
-py2_cwl:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/cwl/cwlTest.py
-
-py2_wdl:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/wdl/toilwdlTest.py
-
-py2_jobstore_and_provisioning:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/sort/sortTest.py
-    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
-    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
-    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
-    - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
-
-py2_main:
+py3_main:
   stage: main_tests
   script:
     - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 
-py2_integration_jobstore:
-  stage: integration
-  script:
-    - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
-    - export TOIL_TEST_INTEGRATIVE=True
-    - export TOIL_AWS_KEYNAME=id_rsa
-    - export TOIL_AWS_ZONE=us-west-2a
-    - python setup_gitlab_ssh.py
-    - mkdir ~/.aws
-    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
-    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
-
-py2_integration_sort:
-  stage: integration
-  script:
-    - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
-    - export TOIL_TEST_INTEGRATIVE=True
-    - export TOIL_AWS_KEYNAME=id_rsa
-    - export TOIL_AWS_ZONE=us-west-2a
-    - python setup_gitlab_ssh.py
-    - mkdir ~/.aws
-    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
-    - python -m pytest src/toil/test/sort/sortTest.py
-    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
-
-#py2_integration_provisioner:
-#  stage: integration
-#  script:
-#    - pwd
-#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-#    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
-#    - export TOIL_TEST_INTEGRATIVE=True
-#    - export TOIL_AWS_KEYNAME=id_rsa
-#    - export TOIL_AWS_ZONE=us-west-2a
-#    - python setup_gitlab_ssh.py
-#    - mkdir ~/.aws
-#    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
-#    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
-
-
-# Python3.6
 py3_batch_systems:
   stage: test
   script:
@@ -137,14 +60,6 @@ py3_jobstore_and_provisioning:
     # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
     - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
     - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
-
-py3_main:
-  stage: main_tests
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/src
-    - python -m pytest src/toil/test/utils
 
 #py3_integration:
 #  stage: integration

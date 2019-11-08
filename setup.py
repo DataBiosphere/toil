@@ -39,7 +39,6 @@ def runSetup():
     galaxyLib = 'galaxy-lib==18.9.2'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
-    pytx = 'pytz>=2012'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
     future = 'future'
@@ -130,8 +129,6 @@ def runSetup():
           'Operating System :: MacOS :: MacOS X',
           'Operating System :: POSIX',
           'Operating System :: POSIX :: Linux',
-          'Programming Language :: Python :: 2.7',
-          'Programming Language :: Python :: 3.5',
           'Programming Language :: Python :: 3.6',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Bio-Informatics',
@@ -206,7 +203,7 @@ def importVersion():
                 raise
 
         if old != new:
-            with NamedTemporaryFile(mode='w',dir='src/toil', prefix='version.py.', delete=False) as f:
+            with NamedTemporaryFile(mode='w', dir='src/toil', prefix='version.py.', delete=False) as f:
                 f.write(new)
             os.rename(f.name, 'src/toil/version.py')
     # Unfortunately, we can't use a straight import here because that would also load the stuff
