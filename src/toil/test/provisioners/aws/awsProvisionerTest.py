@@ -169,6 +169,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         assert len(self.getMatchingRoles()) == 0
 
 
+@integrative
 @pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
@@ -225,6 +226,7 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self._test(preemptableJobs=True)
 
 
+@integrative
 @pytest.mark.timeout(1200)
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
     """Runs the tests on a statically provisioned cluster with autoscaling enabled."""
@@ -260,6 +262,7 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         self.sshUtil(runCommand)
 
 
+@integrative
 @pytest.mark.timeout(1200)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
     def __init__(self, name):
@@ -295,6 +298,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         self._test()
 
 
+@integrative
 @pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
     """This test insures autoscaling works on a restarted Toil run."""
@@ -360,6 +364,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
         self._test()
 
 
+@integrative
 @pytest.mark.timeout(1200)
 class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
