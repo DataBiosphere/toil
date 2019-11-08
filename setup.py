@@ -44,7 +44,6 @@ def runSetup():
     future = 'future'
     requests = 'requests>=2, <3'
     docker = 'docker==2.5.1'
-    subprocess32 = 'subprocess32<=3.5.2'
     dateutil = 'python-dateutil'
     addict = 'addict<=2.2.0'
     sphinx = 'sphinx==1.7.5'
@@ -58,7 +57,6 @@ def runSetup():
         docker,
         dateutil,
         psutil,
-        subprocess32,
         addict,
         sphinx,
         pathlib2]
@@ -105,11 +103,7 @@ def runSetup():
         google_reqs + \
         kubernetes_reqs + \
         mesos_reqs
-        
 
-    # remove the subprocess32 backport if not python2
-    if not sys.version_info[0] == 2:
-        core_reqs.remove(subprocess32)
 
     setup(
         name='toil',

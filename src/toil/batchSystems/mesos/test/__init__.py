@@ -16,7 +16,7 @@ from contextlib import closing
 import time
 
 from toil.lib.retry import retry
-from toil import which  # replace with shutil.which() directly; python3 only
+from shutil import which
 from toil.lib.threading import ExceptionalThread
 from future.utils import with_metaclass
 

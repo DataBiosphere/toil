@@ -32,7 +32,7 @@ from six.moves.queue import Empty, Queue
 from six import itervalues
 
 from toil.lib.iterables import concat
-from toil import which
+from shutil import which
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.bioio import getTempFile
