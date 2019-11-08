@@ -543,7 +543,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 if self.enableWatching:
                     for j in self._ourJobObjects():
                         print(j.spec.template.metadata.labels[u'job-name'], type(j.spec.template.metadata.labels[u'job-name']))
-                        for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=10):
+                        for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
                             job = event['object']
                             if job.metadata.name.startswith(self.jobPrefix):
                                 logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
