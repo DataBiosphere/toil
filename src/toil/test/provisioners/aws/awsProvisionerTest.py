@@ -33,10 +33,27 @@ log = logging.getLogger(__name__)
 
 
 # @needs_aws_ec2
-# @integrative
 # @needs_appliance
 # @slow
+@integrative
 class AbstractAWSAutoscaleTest(ToilTest):
+    def __init__(self, methodName):
+        super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
+        self.keyName = os.environ.get('TOIL_AWS_KEYNAME') or 'id_rsa'
+        self.instanceTypes = ["m3.large"]
+        self.clusterName = 'aws-provisioner-test-' + str(uuid4())
+        self.numWorkers = ['2']
+        self.numSamples = 2
+        self.spotBid = 0.15
+
+    def setUp(self):
+        super(AbstractAWSAutoscaleTest, self).setUp()
+
+    def tearDown(self):
+        super(AbstractAWSAutoscaleTest, self).tearDown()
+        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
+        subprocess.check_call(['toil', 'clean', self.jobStore])
+
     def sshUtil(self, command):
         cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command
         log.debug("Running %s.", str(cmd))
@@ -53,25 +70,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def createClusterUtil(self, args=None):
         args = [] if args is None else args
-        subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a', '--keyPairName=%s' % self.keyName,
+        subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a', f'--keyPairName={self.keyName}',
                                '--leaderNodeType=t2.medium', self.clusterName] + args)
-
-    def __init__(self, methodName):
-        super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
-        self.keyName = os.getenv('TOIL_AWS_KEYNAME')
-        self.instanceTypes = ["m3.large"]
-        self.clusterName = 'aws-provisioner-test-' + str(uuid4())
-        self.numWorkers = ['2']
-        self.numSamples = 2
-        self.spotBid = 0.15
-
-    def setUp(self):
-        super(AbstractAWSAutoscaleTest, self).setUp()
-
-    def tearDown(self):
-        super(AbstractAWSAutoscaleTest, self).tearDown()
-        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
-        subprocess.check_call(['toil', 'clean', self.jobStore])
 
     def getMatchingRoles(self):
         return list(self.cluster._ctx.local_roles())
