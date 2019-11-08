@@ -473,12 +473,11 @@ def needs_appliance(test_item):
     image = applianceSelf()
     stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
                                       stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-    if image in stdout:
+    if image in stdout.decode("utf-8"):
         return test_item
 
-    return unittest.skip("Cannot find appliance {image}. Use 'make test' target to "
-                         "automatically build appliance, or just run 'make docker' "
-                         "prior to running this test.".format(image=image))(test_item)
+    return unittest.skip(f"Cannot find appliance {image}. Use 'make test' target to automatically build appliance, or "
+                         f"just run 'make docker' prior to running this test.")(test_item)
 
 
 def integrative(test_item):
