@@ -112,7 +112,13 @@ class MergeInputsNested(MergeInputs):
     based on the merge_nested behavior (as described in the CWL spec).
     """
     def resolve(self):
-        return [v[1][v[0]] for v in self.sources]
+        result = []
+        for v in self.sources:
+            if isinstance(v[1], tuple):
+                result.append(v[1][0][v[0]])
+            else:
+                result.append(v[1][v[0]])
+        return result
 
 
 class MergeInputsFlattened(MergeInputs):
