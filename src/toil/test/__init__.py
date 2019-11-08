@@ -25,6 +25,7 @@ import threading
 import time
 import unittest
 import uuid
+import subprocess
 from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
@@ -33,14 +34,13 @@ from textwrap import dedent
 from unittest.util import strclass
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
+from shutil import which
 
 from toil.lib.memoize import memoize
 from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread
 from toil.lib.misc import mkdir_p
 from toil.provisioners.aws import runningOnEC2
-from toil import subprocess
-from toil import which
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
 
