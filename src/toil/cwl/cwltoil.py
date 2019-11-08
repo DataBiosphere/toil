@@ -992,14 +992,9 @@ class CWLWorkflow(Job):
 
                             if "valueFrom" in inp \
                                     and "scatter" not in step.tool:
-                                if key in jobobj:
-                                    jobobj[key] = StepValueFrom(
-                                        inp["valueFrom"], jobobj[key],
-                                        self.cwlwf.requirements)
-                                else:
-                                    jobobj[key] = StepValueFrom(
-                                        inp["valueFrom"], JustAValue(None),
-                                        self.cwlwf.requirements)
+                                jobobj[key] = StepValueFrom(
+                                    inp["valueFrom"], jobobj.get(key, JustAValue(None)),
+                                    self.cwlwf.requirements)
 
                         conditional = Conditional(
                             expression=step.tool.get("when"),
