@@ -11,662 +11,868 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from __future__ import absolute_import
-
-import errno
+from builtins import next
+from builtins import str
 import logging
+import multiprocessing
 import os
-import requests
-import sys
+import re
+import shutil
+import signal
+import tempfile
+import threading
 import time
-from datetime import datetime
-from pytz import timezone
-from docker.errors import ImageNotFound
+import unittest
+import uuid
+from future.utils import with_metaclass
+from abc import ABCMeta, abstractmethod
+from contextlib import contextmanager
+from inspect import getsource
+from textwrap import dedent
+from unittest.util import strclass
+from six import iteritems, itervalues
+from six.moves.urllib.request import urlopen
+
 from toil.lib.memoize import memoize
+from toil.lib.iterables import concat
+from toil.lib.threading import ExceptionalThread
 from toil.lib.misc import mkdir_p
-from toil.lib.retry import retry
-from toil.version import currentCommit
+from toil.provisioners.aws import runningOnEC2
+from toil import subprocess
+from toil import which
+from toil import toilPackageDirPath, applianceSelf
+from toil.version import distVersion
 
-# subprocess32 is a backport of python3's subprocess module for use on Python2,
-# and includes many reliability bug fixes relevant on POSIX platforms.
-if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-try:
-    from urllib import urlretrieve
-except ImportError:
-    from urllib.request import urlretrieve
-
+logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger(__name__)
 
 
-def which(cmd, mode=os.F_OK | os.X_OK, path=None):
+class ToilTest(unittest.TestCase):
     """
-    Copy-pasted in from python3.6's shutil.which().
+    A common base class for Toil tests. Please have every test case directly or indirectly
+    inherit this one.
 
-    Given a command, mode, and a PATH string, return the path which
-    conforms to the given mode on the PATH, or None if there is no such
-    file.
-
-    `mode` defaults to os.F_OK | os.X_OK. `path` defaults to the result
-    of os.environ.get("PATH"), or can be overridden with a custom search
-    path.
-
+    When running tests you may optionally set the TOIL_TEST_TEMP environment variable to the path
+    of a directory where you want temporary test files be placed. The directory will be created
+    if it doesn't exist. The path may be relative in which case it will be assumed to be relative
+    to the project root. If TOIL_TEST_TEMP is not defined, temporary files and directories will
+    be created in the system's default location for such files and any temporary files or
+    directories left over from tests will be removed automatically removed during tear down.
+    Otherwise, left-over files will not be removed.
     """
-    # Check that a given file can be accessed with the correct mode.
-    # Additionally check that `file` is not a directory, as on Windows
-    # directories pass the os.access check.
-    def _access_check(fn, mode):
-        return (os.path.exists(fn) and os.access(fn, mode)
-                and not os.path.isdir(fn))
+    _tempBaseDir = None
+    _tempDirs = None
 
-    # If we're given a path with a directory part, look it up directly rather
-    # than referring to PATH directories. This includes checking relative to the
-    # current directory, e.g. ./script
-    if os.path.dirname(cmd):
-        if _access_check(cmd, mode):
-            return cmd
-        return None
+    @classmethod
+    def setUpClass(cls):
+        super(ToilTest, cls).setUpClass()
+        cls._tempDirs = []
+        tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
+        if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
+            tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
+            mkdir_p(tempBaseDir)
+        cls._tempBaseDir = tempBaseDir
 
-    if path is None:
-        path = os.environ.get("PATH", os.defpath)
-    if not path:
-        return None
-    path = path.split(os.pathsep)
-
-    if sys.platform == "win32":
-        # The current directory takes precedence on Windows.
-        if not os.curdir in path:
-            path.insert(0, os.curdir)
-
-        # PATHEXT is necessary to check on Windows.
-        pathext = os.environ.get("PATHEXT", "").split(os.pathsep)
-        # See if the given file matches any of the expected path extensions.
-        # This will allow us to short circuit when given "python.exe".
-        # If it does match, only test that one, otherwise we have to try
-        # others.
-        if any(cmd.lower().endswith(ext.lower()) for ext in pathext):
-            files = [cmd]
+    @classmethod
+    def tearDownClass(cls):
+        if cls._tempBaseDir is None:
+            while cls._tempDirs:
+                tempDir = cls._tempDirs.pop()
+                if os.path.exists(tempDir):
+                    shutil.rmtree(tempDir)
         else:
-            files = [cmd + ext for ext in pathext]
-    else:
-        # On other platforms you don't have things like PATHEXT to tell you
-        # what file suffixes are executable, so just pass on cmd as-is.
-        files = [cmd]
+            cls._tempDirs = []
+        super(ToilTest, cls).tearDownClass()
 
-    seen = set()
-    for dir in path:
-        normdir = os.path.normcase(dir)
-        if not normdir in seen:
-            seen.add(normdir)
-            for thefile in files:
-                name = os.path.join(dir, thefile)
-                if _access_check(name, mode):
-                    return name
-    return None
+    def setUp(self):
+        log.info("Setting up %s ...", self.id())
+        super(ToilTest, self).setUp()
 
+    def tearDown(self):
+        super(ToilTest, self).tearDown()
+        log.info("Tore down %s", self.id())
 
-def toilPackageDirPath():
-    """
-    Returns the absolute path of the directory that corresponds to the top-level toil package.
-    The return value is guaranteed to end in '/toil'.
-    """
-    result = os.path.dirname(os.path.realpath(__file__))
-    assert result.endswith('/toil')
-    return result
-
-
-def inVirtualEnv():
-    """
-    Returns whether we are inside a virtualenv or Conda virtual environment.
-    """
-    return hasattr(sys, 'real_prefix') or 'CONDA_DEFAULT_ENV' in os.environ
-
-
-def resolveEntryPoint(entryPoint):
-    """
-    Returns the path to the given entry point (see setup.py) that *should* work on a worker. The
-    return value may be an absolute or a relative path.
-    """
-
-    if os.environ.get("TOIL_CHECK_ENV", None) == 'True' and inVirtualEnv():
-        path = os.path.join(os.path.dirname(sys.executable), entryPoint)
-        # Inside a virtualenv we try to use absolute paths to the entrypoints.
-        if os.path.isfile(path):
-            # If the entrypoint is present, Toil must have been installed into the virtualenv (as
-            # opposed to being included via --system-site-packages). For clusters this means that
-            # if Toil is installed in a virtualenv on the leader, it must be installed in
-            # a virtualenv located at the same path on each worker as well.
-            assert os.access(path, os.X_OK)
-            return path
-    # Otherwise, we aren't in a virtualenv, or we're in a virtualenv but Toil
-    # came in via --system-site-packages, or we think the virtualenv might not
-    # exist on the workers.
-    return entryPoint
-
-
-@memoize
-def physicalMemory():
-    """
-    >>> n = physicalMemory()
-    >>> n > 0
-    True
-    >>> n == physicalMemory()
-    True
-    """
-    try:
-        return os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
-    except ValueError:
-        return int(subprocess.check_output(['sysctl', '-n', 'hw.memsize']).decode('utf-8').strip())
-
-
-def physicalDisk(config, toilWorkflowDir=None):
-    if toilWorkflowDir is None:
-        from toil.common import Toil
-        toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
-    diskStats = os.statvfs(toilWorkflowDir)
-    return diskStats.f_frsize * diskStats.f_bavail
-
-
-def applianceSelf(forceDockerAppliance=False):
-    """
-    Returns the fully qualified name of the Docker image to start Toil appliance containers from.
-    The result is determined by the current version of Toil and three environment variables:
-    ``TOIL_DOCKER_REGISTRY``, ``TOIL_DOCKER_NAME`` and ``TOIL_APPLIANCE_SELF``.
-
-    ``TOIL_DOCKER_REGISTRY`` specifies an account on a publicly hosted docker registry like Quay
-    or Docker Hub. The default is UCSC's CGL account on Quay.io where the Toil team publishes the
-    official appliance images. ``TOIL_DOCKER_NAME`` specifies the base name of the image. The
-    default of `toil` will be adequate in most cases. ``TOIL_APPLIANCE_SELF`` fully qualifies the
-    appliance image, complete with registry, image name and version tag, overriding both
-    ``TOIL_DOCKER_NAME`` and `TOIL_DOCKER_REGISTRY`` as well as the version tag of the image.
-    Setting TOIL_APPLIANCE_SELF will not be necessary in most cases.
-
-    :rtype: str
-    """
-    import toil.version
-    registry = lookupEnvVar(name='docker registry',
-                            envName='TOIL_DOCKER_REGISTRY',
-                            defaultValue=toil.version.dockerRegistry)
-    name = lookupEnvVar(name='docker name',
-                        envName='TOIL_DOCKER_NAME',
-                        defaultValue=toil.version.dockerName)
-    appliance = lookupEnvVar(name='docker appliance',
-                             envName='TOIL_APPLIANCE_SELF',
-                             defaultValue=registry + '/' + name + ':' + toil.version.dockerTag)
-
-    checkDockerSchema(appliance)
-
-    if forceDockerAppliance:
-        return appliance
-    else:
-        return checkDockerImageExists(appliance=appliance)
-
-
-def customDockerInitCmd():
-    """
-    Returns the custom command (if any) provided through the ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``
-    environment variable to run prior to running the workers and/or the primary node's services.
-    This can be useful for doing any custom initialization on instances (e.g. authenticating to
-    private docker registries). An empty string is returned if the environment variable is not
-    set.
-
-    :rtype: str
-    """
-    command = lookupEnvVar(name='user-defined custom docker init command',
-                           envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
-                           defaultValue='')
-    return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
-
-
-def lookupEnvVar(name, envName, defaultValue):
-    """
-    Use this for looking up environment variables that control Toil and are important enough to
-    log the result of that lookup.
-
-    :param str name: the human readable name of the variable
-    :param str envName: the name of the environment variable to lookup
-    :param str defaultValue: the fall-back value
-    :return: the value of the environment variable or the default value the variable is not set
-    :rtype: str
-    """
-    try:
-        value = os.environ[envName]
-    except KeyError:
-        log.info('Using default %s of %s as %s is not set.', name, defaultValue, envName)
-        return defaultValue
-    else:
-        log.info('Overriding %s of %s with %s from %s.', name, defaultValue, value, envName)
-        return value
-
-
-def checkDockerImageExists(appliance):
-    """
-    Attempts to check a url registryName for the existence of a docker image with a given tag.
-
-    :param str appliance: The url of a docker image's registry (with a tag) of the form:
-                          'quay.io/<repo_path>:<tag>' or '<repo_path>:<tag>'.
-                          Examples: 'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or
-                          'broadinstitute/genomes-in-the-cloud:2.0.0'.
-    :return: Raises an exception if the docker image cannot be found or is invalid.  Otherwise, it
-             will return the appliance string.
-    :rtype: str
-    """
-    if currentCommit in appliance:
-        return appliance
-    registryName, imageName, tag = parseDockerAppliance(appliance)
-
-    if registryName == 'docker.io':
-        return requestCheckDockerIo(origAppliance=appliance, imageName=imageName, tag=tag)
-    else:
-        return requestCheckRegularDocker(origAppliance=appliance, registryName=registryName, imageName=imageName, tag=tag)
-
-
-def parseDockerAppliance(appliance):
-    """
-    Takes string describing a docker image and returns the parsed
-    registry, image reference, and tag for that image.
-
-    Example: "quay.io/ucsc_cgl/toil:latest"
-    Should return: "quay.io", "ucsc_cgl/toil", "latest"
-
-    If a registry is not defined, the default is: "docker.io"
-    If a tag is not defined, the default is: "latest"
-
-    :param appliance: The full url of the docker image originally
-                      specified by the user (or the default).
-                      e.g. "quay.io/ucsc_cgl/toil:latest"
-    :return: registryName, imageName, tag
-    """
-    appliance = appliance.lower()
-
-    # get the tag
-    if ':' in appliance:
-        tag = appliance.split(':')[-1]
-        appliance = appliance[:-(len(':' + tag))] # remove only the tag
-    else:
-        # default to 'latest' if no tag is specified
-        tag = 'latest'
-
-    # get the registry and image
-    registryName = 'docker.io' # default if not specified
-    imageName = appliance # will be true if not specified
-    if '/' in appliance and '.' in appliance.split('/')[0]:
-        registryName = appliance.split('/')[0]
-        imageName = appliance[len(registryName):]
-    registryName = registryName.strip('/')
-    imageName = imageName.strip('/')
-
-    return registryName, imageName, tag
-
-
-def checkDockerSchema(appliance):
-    if not appliance:
-        raise ImageNotFound("No docker image specified.")
-    elif '://' in appliance:
-        raise ImageNotFound("Docker images cannot contain a schema (such as '://'): %s"
-                            "" % appliance)
-    elif len(appliance) > 256:
-        raise ImageNotFound("Docker image must be less than 256 chars: %s"
-                            "" % appliance)
-
-
-class ApplianceImageNotFound(ImageNotFound):
-    """
-    Compose an ApplianceImageNotFound error complaining that the given name and
-    tag for TOIL_APPLIANCE_SELF specify an image manifest which could not be
-    retrieved from the given URL, because it produced the given HTTP error
-    code.
-
-    :param str origAppliance: The full url of the docker image originally
-                              specified by the user (or the default).
-                              e.g. "quay.io/ucsc_cgl/toil:latest"
-    :param str url: The URL at which the image's manifest is supposed to appear
-    :param int statusCode: the failing HTTP status code returned by the URL
-    """
-    def __init__(self, origAppliance, url, statusCode):
-        msg = ("The docker image that TOIL_APPLIANCE_SELF specifies (%s) produced "
-               "a nonfunctional manifest URL (%s). The HTTP status returned was %s. "
-               "The specifier is most likely unsupported or malformed.  "
-               "Please supply a docker image with the format: "
-               "'<websitehost>.io/<repo_path>:<tag>' or '<repo_path>:<tag>' "
-               "(for official docker.io images).  Examples: "
-               "'quay.io/ucsc_cgl/toil:latest', 'ubuntu:latest', or "
-               "'broadinstitute/genomes-in-the-cloud:2.0.0'."
-               "" % (origAppliance, url, str(statusCode)))
-        super(ApplianceImageNotFound, self).__init__(msg)
-
-
-def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
-    """
-    Checks to see if an image exists using the requests library.
-
-    URL is based on the docker v2 schema described here:
-    https://docs.docker.com/registry/spec/manifest-v2-2/
-
-    This has the following format:
-    https://{websitehostname}.io/v2/{repo}/manifests/{tag}
-
-    Does not work with the official (docker.io) site, because they require an OAuth token, so a
-    separate check is done for docker.io images.
-
-    :param str origAppliance: The full url of the docker image originally
-                              specified by the user (or the default).
-                              e.g. "quay.io/ucsc_cgl/toil:latest"
-    :param str registryName: The url of a docker image's registry.  e.g. "quay.io"
-    :param str imageName: The image, including path and excluding the tag. e.g. "ucsc_cgl/toil"
-    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
-    :return: Return True if match found.  Raise otherwise.
-    """
-    ioURL = 'https://{webhost}/v2/{pathName}/manifests/{tag}' \
-              ''.format(webhost=registryName, pathName=imageName, tag=tag)
-    response = requests.head(ioURL)
-    if not response.ok:
-        raise ApplianceImageNotFound(origAppliance, ioURL, response.status_code)
-    else:
-        return origAppliance
-
-
-def requestCheckDockerIo(origAppliance, imageName, tag):
-    """
-    Checks docker.io to see if an image exists using the requests library.
-
-    URL is based on the docker v2 schema.  Requires that an access token be fetched first.
-
-    :param str origAppliance: The full url of the docker image originally
-                              specified by the user (or the default).  e.g. "ubuntu:latest"
-    :param str imageName: The image, including path and excluding the tag. e.g. "ubuntu"
-    :param str tag: The tag used at that docker image's registry.  e.g. "latest"
-    :return: Return True if match found.  Raise otherwise.
-    """
-    # only official images like 'busybox' or 'ubuntu'
-    if '/' not in imageName:
-        imageName = 'library/' + imageName
-
-    token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(repo=imageName)
-    requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=imageName, tag=tag)
-
-    token = requests.get(token_url)
-    jsonToken = token.json()
-    bearer = jsonToken["token"]
-    response = requests.head(requests_url, headers={'Authorization': 'Bearer {}'.format(bearer)})
-    if not response.ok:
-        raise ApplianceImageNotFound(origAppliance, requests_url, response.status_code)
-    else:
-        return origAppliance
-
-
-def logProcessContext(config):
-    # toil.version.version (string) cannot be imported at top level because it conflicts with
-    # toil.version (module) and Sphinx doesn't like that.
-    from toil.version import version
-    log.info("Running Toil version %s.", version)
-    log.debug("Configuration: %s", config.__dict__)
-    
-
-def _monkey_patch_boto():
-    """
-    Boto 2 can't automatically assume roles. We want to replace its Provider
-    class that manages credentials with one that uses the Boto 3 configuration
-    and can assume roles.
-    """
-    
-    from boto import provider
-    from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
-
-    # We cache the final credentials so that we don't send multiple processes to
-    # simultaneously bang on the EC2 metadata server or ask for MFA pins from the
-    # user.
-    cache_path = '~/.cache/aws/cached_temporary_credentials'
-    datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
-    log = logging.getLogger(__name__)
-
-    # But in addition to our manual cache, we also are going to turn on boto3's
-    # new built-in caching layer.
-
-    def datetime_to_str(dt):
+    @classmethod
+    def awsRegion(cls):
         """
-        Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
-
-        >>> datetime_to_str(datetime(1970, 1, 1, 0, 0, 0))
-        '1970-01-01T00:00:00Z'
+        Use us-west-2 unless running on EC2, in which case use the region in which
+        the instance is located
         """
-        return dt.strftime(datetime_format)
+        return cls._region() if runningOnEC2() else 'us-west-2'
 
-
-    def str_to_datetime(s):
+    @classmethod
+    def _availabilityZone(cls):
         """
-        Convert a string, explicitly UTC into a naive (implicitly UTC) datetime object.
-
-        >>> str_to_datetime( '1970-01-01T00:00:00Z' )
-        datetime.datetime(1970, 1, 1, 0, 0)
-
-        Just to show that the constructor args for seconds and microseconds are optional:
-        >>> datetime(1970, 1, 1, 0, 0, 0)
-        datetime.datetime(1970, 1, 1, 0, 0)
+        Used only when running on EC2. Query this instance's metadata to determine
+        in which availability zone it is running.
         """
-        return datetime.strptime(s, datetime_format)
+        zone = urlopen('http://169.254.169.254/latest/meta-data/placement/availability-zone').read()
+        return zone if not isinstance(zone, bytes) else zone.decode('utf-8')
 
-    class BotoCredentialAdapter(provider.Provider):
+    @classmethod
+    @memoize
+    def _region(cls):
         """
-        Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
-        credential finding logic. This allows for automatic role assumption
-        respecting the Boto 3 config files, even when parts of the app still use
-        Boto 2.
-        
-        This class also handles cacheing credentials in multi-process environments
-        to avoid loads of processes swamping the EC2 metadata service.
+        Used only when running on EC2. Determines in what region this instance is running.
+        The region will not change over the life of the instance so the result
+        is memoized to avoid unnecessary work.
         """
-        
-        def __init__(self, name, access_key=None, secret_key=None,
-            security_token=None, profile_name=None, **kwargs):
-            """
-            Create a new BotoCredentialAdapter.
-            """
-            # TODO: We take kwargs because new boto2 versions have an 'anon'
-            # argument and we want to be future proof
-            
-            if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
-                # We are on AWS and we don't have credentials passed along and we aren't anonymous.
-                # We will backend into a boto3 resolver for getting credentials.
-                # Make sure to enable boto3's own caching, so we can share that
-                # cash with pure boto3 code elsewhere in Toil.
-                self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
-            else:
-                # We will use the normal flow
-                self._boto3_resolver = None
-            
-            # Pass along all the arguments
-            super(BotoCredentialAdapter, self).__init__(name, access_key=access_key,
-                secret_key=secret_key, security_token=security_token,
-                profile_name=profile_name, **kwargs)
-            
-        def get_credentials(self, access_key=None, secret_key=None, security_token=None, profile_name=None):
-            """
-            Make sure our credential fields are populated. Called by the base class
-            constructor.
-            """
-            
-            if self._boto3_resolver is not None:
-                # Go get the credentials from the cache, or from boto3 if not cached.
-                # We need to be eager here; having the default None
-                # _credential_expiry_time makes the accessors never try to refresh.
-                self._obtain_credentials_from_cache_or_boto3()
-            else:
-                # We're not on AWS, or they passed a key, or we're anonymous.
-                # Use the normal route; our credentials shouldn't expire.
-                super(BotoCredentialAdapter, self).get_credentials(access_key=access_key,
-                    secret_key=secret_key, security_token=security_token, profile_name=profile_name)
-            
-        def _populate_keys_from_metadata_server(self):
-            """
-            This override is misnamed; it's actually the only hook we have to catch
-            _credential_expiry_time being too soon and refresh the credentials. We
-            actually just go back and poke the cache to see if it feels like
-            getting us new credentials.
-            
-            Boto 2 hardcodes a refresh within 5 minutes of expiry:
-            https://github.com/boto/boto/blob/591911db1029f2fbb8ba1842bfcc514159b37b32/boto/provider.py#L247
-            
-            Boto 3 wants to refresh 15 or 10 minutes before expiry:
-            https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L279
-            
-            So if we ever want to refresh, Boto 3 wants to refresh too.
-            """
-            
-            # This should only happen if we have expiring credentials, which we should only get from boto3
-            assert(self._boto3_resolver is not None)
-            
-            self._obtain_credentials_from_cache_or_boto3()
-        
-        def _obtain_credentials_from_boto3(self):
-            """
-            We know the current cached credentials are not good, and that we
-            need to get them from Boto 3. Fill in our credential fields
-            (_access_key, _secret_key, _security_token,
-            _credential_expiry_time) from Boto 3.
-            """
-            
-            # We get a Credentials object
-            # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
-            # or a RefreshableCredentials, or None on failure.
-            creds = None
-            for attempt in retry(timeout=10, predicate=lambda _: True):
-                with attempt:
-                    creds = self._boto3_resolver.load_credentials()
-                    
-                    if creds is None:
-                        try:
-                            resolvers = str(self._boto3_resolver.providers)
-                        except:
-                            resolvers = "(Resolvers unavailable)"
-                        raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
-            
-            # Make sure the credentials actually has some credentials if it is lazy
-            creds.get_frozen_credentials()
-            
-            # Get when the credentials will expire, if ever
-            if isinstance(creds, RefreshableCredentials):
-                # Credentials may expire.
-                # Get a naive UTC datetime like boto 2 uses from the boto 3 time.
-                self._credential_expiry_time = creds._expiry_time.astimezone(timezone('UTC')).replace(tzinfo=None)
-            else:
-                # Credentials never expire
-                self._credential_expiry_time = None
-            
-            # Then, atomically get all the credentials bits. They may be newer than we think they are, but never older.
-            frozen = creds.get_frozen_credentials()
-            
-            # Copy them into us
-            self._access_key = frozen.access_key
-            self._secret_key = frozen.secret_key
-            self._security_token = frozen.token
-        
-        def _obtain_credentials_from_cache_or_boto3(self):
-            """
-            Get the cached credentials, or retrieve them from Boto 3 and cache them
-            (or wait for another cooperating process to do so) if they are missing
-            or not fresh enough.
-            """
-            path = os.path.expanduser(cache_path)
-            tmp_path = path + '.tmp'
-            while True:
-                log.debug('Attempting to read cached credentials from %s.', path)
-                try:
-                    with open(path, 'r') as f:
-                        content = f.read()
-                        if content:
-                            record = content.split('\n')
-                            assert len(record) == 4
-                            self._access_key = record[0]
-                            self._secret_key = record[1]
-                            self._security_token = record[2]
-                            self._credential_expiry_time = str_to_datetime(record[3])
-                        else:
-                            log.debug('%s is empty. Credentials are not temporary.', path)
-                            self._obtain_credentials_from_boto3()
-                            return
-                except IOError as e:
-                    if e.errno == errno.ENOENT:
-                        log.debug('Cached credentials are missing.')
-                        dir_path = os.path.dirname(path)
-                        if not os.path.exists(dir_path):
-                            log.debug('Creating parent directory %s', dir_path)
-                            # A race would be ok at this point
-                            mkdir_p(dir_path)
-                    else:
-                        raise
-                else:
-                    if self._credentials_need_refresh():
-                        log.debug('Cached credentials are expired.')
-                    else:
-                        log.debug('Cached credentials exist and are still fresh.')
-                        return
-                # We get here if credentials are missing or expired
-                log.debug('Racing to create %s.', tmp_path)
-                # Only one process, the winner, will succeed
-                try:
-                    fd = os.open(tmp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                except OSError as e:
-                    if e.errno == errno.EEXIST:
-                        log.debug('Lost the race to create %s. Waiting on winner to remove it.', tmp_path)
-                        while os.path.exists(tmp_path):
-                            time.sleep(0.1)
-                        log.debug('Winner removed %s. Trying from the top.', tmp_path)
-                    else:
-                        raise
-                else:
-                    try:
-                        log.debug('Won the race to create %s.  Requesting credentials from backend.', tmp_path)
-                        self._obtain_credentials_from_boto3()
-                    except:
-                        os.close(fd)
-                        fd = None
-                        log.debug('Failed to obtain credentials, removing %s.', tmp_path)
-                        # This unblocks the loosers.
-                        os.unlink(tmp_path)
-                        # Bail out. It's too likely to happen repeatedly
-                        raise
-                    else:
-                        if self._credential_expiry_time is None:
-                            os.close(fd)
-                            fd = None
-                            log.debug('Credentials are not temporary.  Leaving %s empty and renaming it to %s.', tmp_path, path)
-                            # No need to actually cache permanent credentials,
-                            # because we hnow we aren't getting them from the
-                            # metadata server or by assuming a role. Those both
-                            # give temporary credentials.
-                        else:
-                            log.debug('Writing credentials to %s.', tmp_path)
-                            with os.fdopen(fd, 'w') as fh:
-                                fd = None
-                                fh.write('\n'.join([
-                                    self._access_key,
-                                    self._secret_key,
-                                    self._security_token,
-                                    datetime_to_str(self._credential_expiry_time)]))
-                            log.debug('Wrote credentials to %s. Renaming to %s.', tmp_path, path)
-                        os.rename(tmp_path, path)
-                        return
-                    finally:
-                        if fd is not None:
-                            os.close(fd)
-                            
-    
-    # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
-    provider.Provider = BotoCredentialAdapter
-    
-# If Boto is around, try monkey-patching it as soon as anything in Toil loads
+        region = re.match(r'^([a-z]{2}-[a-z]+-[1-9][0-9]*)([a-z])$', cls._availabilityZone())
+        assert region
+        return region.group(1)
+
+    @classmethod
+    def _getUtilScriptPath(cls, script_name):
+        return os.path.join(toilPackageDirPath(), 'utils', script_name + '.py')
+
+    @classmethod
+    def _projectRootPath(cls):
+        """
+        Returns the path to the project root, i.e. the directory that typically contains the .git
+        and src subdirectories. This method has limited utility. It only works if in "develop"
+        mode, since it assumes the existence of a src subdirectory which, in a regular install
+        wouldn't exist. Then again, in that mode project root has no meaning anyways.
+        """
+        assert re.search(r'__init__\.pyc?$', __file__)
+        projectRootPath = os.path.dirname(os.path.abspath(__file__))
+        packageComponents = __name__.split('.')
+        expectedSuffix = os.path.join('src', *packageComponents)
+        assert projectRootPath.endswith(expectedSuffix)
+        projectRootPath = projectRootPath[:-len(expectedSuffix)]
+        return projectRootPath
+
+    def _createTempDir(self, purpose=None):
+        return self._createTempDirEx(self._testMethodName, purpose)
+
+    @classmethod
+    def _createTempDirEx(cls, *names):
+        prefix = ['toil', 'test', strclass(cls)]
+        prefix.extend([_f for _f in names if _f])
+        prefix.append('')
+        temp_dir_path = os.path.realpath(tempfile.mkdtemp(dir=cls._tempBaseDir, prefix='-'.join(prefix)))
+        cls._tempDirs.append(temp_dir_path)
+        return temp_dir_path
+
+    def _getTestJobStorePath(self):
+        path = self._createTempDir(purpose='jobstore')
+        # We only need a unique path, directory shouldn't actually exist. This of course is racy
+        # and insecure because another thread could now allocate the same path as a temporary
+        # directory. However, the built-in tempfile module randomizes the name temp dir suffixes
+        # reasonably well (1 in 63 ^ 6 chance of collision), making this an unlikely scenario.
+        os.rmdir(path)
+        return path
+
+    @classmethod
+    def _getSourceDistribution(cls):
+        """
+        Find the sdist tarball for this project, check whether it is up-to date and return the
+        path to it.
+
+        :rtype: str
+        """
+        sdistPath = os.path.join(cls._projectRootPath(), 'dist', 'toil-%s.tar.gz' % distVersion)
+        assert os.path.isfile(sdistPath), "Can't find Toil source distribution at %s. Run 'make sdist'." % sdistPath
+        excluded = set(cls._run('git', 'ls-files', '--others', '-i', '--exclude-standard',
+                                capture=True,
+                                cwd=cls._projectRootPath()).splitlines())
+        dirty = cls._run('find', 'src', '-type', 'f', '-newer', sdistPath,
+                         capture=True,
+                         cwd=cls._projectRootPath()).splitlines()
+        assert all(path.startswith('src') for path in dirty)
+        dirty = set(dirty)
+        dirty.difference_update(excluded)
+        assert not dirty, "Run 'make clean_sdist sdist'. Files newer than %s: %r" % (sdistPath, list(dirty))
+        return sdistPath
+
+    @classmethod
+    def _run(cls, command, *args, **kwargs):
+        """
+        Run a command. Convenience wrapper for subprocess.check_call and subprocess.check_output.
+
+        :param str command: The command to be run.
+
+        :param str args: Any arguments to be passed to the command.
+
+        :param Any kwargs: keyword arguments for subprocess.Popen constructor. Pass capture=True
+               to have the process' stdout returned. Pass input='some string' to feed input to the
+               process' stdin.
+
+        :rtype: None|str
+
+        :return: The output of the process' stdout if capture=True was passed, None otherwise.
+        """
+        args = list(concat(command, args))
+        log.info('Running %r', args)
+        capture = kwargs.pop('capture', False)
+        _input = kwargs.pop('input', None)
+        if capture:
+            kwargs['stdout'] = subprocess.PIPE
+        if _input is not None:
+            kwargs['stdin'] = subprocess.PIPE
+        popen = subprocess.Popen(args, **kwargs)
+        stdout, stderr = popen.communicate(input=_input)
+        assert stderr is None
+        if popen.returncode != 0:
+            raise subprocess.CalledProcessError(popen.returncode, args)
+        if capture:
+            return stdout
+
+    def _getScriptSource(self, callable_):
+        """
+        Returns the source code of the body of given callable as a string, dedented. This is a
+        naught but incredibly useful trick that lets you embed user scripts as nested functions
+        and expose them to the syntax checker of your IDE.
+        """
+        return dedent('\n'.join(getsource(callable_).split('\n')[1:]))
+
+
 try:
-    _monkey_patch_boto()
+    # noinspection PyUnresolvedReferences
+    import pytest.mark
 except ImportError:
-    pass
+    # noinspection PyUnusedLocal
+    def _mark_test(name, test_item):
+        return test_item
+else:
+    def _mark_test(name, test_item):
+        return getattr(pytest.mark, name)(test_item)
+
+
+def needs_rsync3(test_item):
+    """
+    Use as a decorator before test classes or methods that depend on any features used in rsync
+    version 3.0.0+
+
+    Necessary because :meth:`utilsTest.testAWSProvisionerUtils` uses option `--protect-args` which is only
+    available in rsync 3
+    """
+    test_item = _mark_test('rsync', test_item)
+    try:
+        versionInfo = subprocess.check_output(['rsync', '--version']).decode('utf-8')
+        if int(versionInfo.split()[2].split('.')[0]) < 3:  # output looks like: 'rsync  version 2.6.9 ...'
+            return unittest.skip('This test depends on rsync version 3.0.0+.')(test_item)
+    except subprocess.CalledProcessError:
+        return unittest.skip('rsync needs to be installed to run this test.')(test_item)
+    return test_item
+
+
+def needs_aws(test_item):
+    """Use as a decorator before test classes or methods to run only if AWS is usable."""
+    test_item = _mark_test('aws', test_item)
+    try:
+        from boto import config
+        boto_credentials = config.get('Credentials', 'aws_access_key_id')
+    except ImportError:
+        return unittest.skip("Install Toil with the 'aws' extra to include this test.")(test_item)
+
+    if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2()):
+        return unittest.skip("Configure AWS credentials to include this test.")(test_item)
+    elif not os.getenv('TOIL_AWS_KEYNAME'):
+        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+    return test_item
+
+
+def travis_test(test_item):
+    test_item = _mark_test('travis', test_item)
+    if os.environ.get('TRAVIS') != 'true':
+        return unittest.skip("Set TRAVIS='true' to include this test.")(test_item)
+    return test_item
+
+
+def needs_google(test_item):
+    """Use as a decorator before test classes or methods to run only if Google is usable."""
+    test_item = _mark_test('google', test_item)
+    try:
+        from boto import config
+    except ImportError:
+        return unittest.skip("Install Toil with the 'google' extra to include this test.")(test_item)
+
+    if not os.getenv('TOIL_GOOGLE_PROJECTID'):
+        return unittest.skip("Set TOIL_GOOGLE_PROJECTID to include this test.")(test_item)
+    elif not config.get('Credentials'):  # TODO: Deprecate this check?  Needed by only by the ancients.
+        return unittest.skip("Configure ~/.boto with Google Cloud credentials to include this test.")(test_item)
+    return test_item
+
+
+def needs_azure(test_item):
+    """Use as a decorator before test classes or methods to run only if Azure is usable."""
+    test_item = _mark_test('azure', test_item)
+    keyName = os.getenv('TOIL_AZURE_KEYNAME')
+    if not keyName:
+        return unittest.skip("Set TOIL_AZURE_KEYNAME to include this test.")(test_item)
+
+    try:
+        # noinspection PyUnresolvedReferences
+        import azure.storage
+    except ImportError:
+        return unittest.skip("Install Toil with the 'azure' extra to include this test.")(test_item)
+    else:
+        # check for the credentials file
+        from toil.jobStores.azureJobStore import credential_file_path
+        if not os.path.exists(os.path.expanduser(credential_file_path)):
+            # no file, check for environment variables
+            try:
+                from toil.jobStores.azureJobStore import _fetchAzureAccountKey
+                _fetchAzureAccountKey(keyName)
+            except:
+                 return unittest.skip("Configure %s with the access key for the '%s' storage account." %
+                                      (credential_file_path, keyName))(test_item)
+        return test_item
+
+
+def needs_gridengine(test_item):
+    """Use as a decorator before test classes or methods to run only if GridEngine is installed."""
+    test_item = _mark_test('gridengine', test_item)
+    if which('qhost'):
+        return test_item
+    return unittest.skip("Install GridEngine to include this test.")(test_item)
+
+
+def needs_torque(test_item):
+    """Use as a decorator before test classes or methods to run only ifPBS/Torque is installed."""
+    test_item = _mark_test('torque', test_item)
+    if which('pbsnodes'):
+        return test_item
+    return unittest.skip("Install PBS/Torque to include this test.")(test_item)
+
+
+def needs_mesos(test_item):
+    """Use as a decorator before test classes or methods to run only if Mesos is installed."""
+    test_item = _mark_test('mesos', test_item)
+    if not (which('mesos-master') or which('mesos-slave')):
+        return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
+    try:
+        import pymesos
+        import psutil
+    except ImportError:
+        return unittest.skip("Install Mesos (and Toil with the 'mesos' extra) to include this test.")(test_item)
+    return test_item
+
+
+def needs_parasol(test_item):
+    """Use as decorator so tests are only run if Parasol is installed."""
+    test_item = _mark_test('parasol', test_item)
+    if which('parasol'):
+        return test_item
+    return unittest.skip("Install Parasol to include this test.")(test_item)
+
+
+def needs_slurm(test_item):
+    """Use as a decorator before test classes or methods to run only if Slurm is installed."""
+    test_item = _mark_test('slurm', test_item)
+    if which('squeue'):
+        return test_item
+    return unittest.skip("Install Slurm to include this test.")(test_item)
+
+
+def needs_htcondor(test_item):
+    """Use a decorator before test classes or methods to run only if the HTCondor is installed."""
+    test_item = _mark_test('htcondor', test_item)
+    try:
+        import htcondor
+        htcondor.Collector(os.getenv('TOIL_HTCONDOR_COLLECTOR')).query(constraint='False')
+    except ImportError:
+        return unittest.skip("Install the HTCondor Python bindings to include this test.")(test_item)
+    except IOError:
+        return unittest.skip("HTCondor must be running to include this test.")(test_item)
+    except RuntimeError:
+        return unittest.skip("HTCondor must be installed and configured to include this test.")(test_item)
+    else:
+        return test_item
+
+
+def needs_lsf(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if LSF
+    is installed.
+    """
+    test_item = _mark_test('lsf', test_item)
+    if which('bsub'):
+        return test_item
+    else:
+        return unittest.skip("Install LSF to include this test.")(test_item)
+
+
+def needs_docker(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    docker is installed and docker-based tests are enabled.
+    """
+    test_item = _mark_test('docker', test_item)
+    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
+        return unittest.skip('Skipping docker test.')(test_item)
+    if which('docker'):
+        return test_item
+    else:
+        return unittest.skip("Install docker to include this test.")(test_item)
+
+
+def needs_encryption(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if PyNaCl is installed
+    and configured.
+    """
+    test_item = _mark_test('encryption', test_item)
+    try:
+        # noinspection PyUnresolvedReferences
+        import nacl
+    except ImportError:
+        return unittest.skip(
+            "Install Toil with the 'encryption' extra to include this test.")(test_item)
+    else:
+        return test_item
+
+
+def needs_cwl(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if CWLTool is installed
+    and configured.
+    """
+    test_item = _mark_test('cwl', test_item)
+    try:
+        # noinspection PyUnresolvedReferences
+        import cwltool
+    except ImportError:
+        return unittest.skip("Install Toil with the 'cwl' extra to include this test.")(test_item)
+    else:
+        return test_item
+
+
+def needs_appliance(test_item):
+    test_item = _mark_test('appliance', test_item)
+    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
+        return unittest.skip('Skipping docker test.')(test_item)
+
+    if not which('docker'):
+        return unittest.skip('Install Docker to include this test.')(test_item)
+
+    image = applianceSelf()
+    stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+    if image in stdout:
+        return test_item
+
+    return unittest.skip("Cannot find appliance {image}. Use 'make test' target to "
+                         "automatically build appliance, or just run 'make docker' "
+                         "prior to running this test.".format(image=image))(test_item)
+
+
+def integrative(test_item):
+    """
+    Use this to decorate integration tests so as to skip them during regular builds. We define
+    integration tests as A) involving other, non-Toil software components that we develop and/or
+    B) having a higher cost (time or money). Note that brittleness does not qualify a test for
+    being integrative. Neither does involvement of external services such as AWS, since that
+    would cover most of Toil's test.
+    """
+    test_item = _mark_test('integrative', test_item)
+    if os.getenv('TOIL_TEST_INTEGRATIVE', '').lower() == 'true':
+        return test_item
+    else:
+        return unittest.skip('Set TOIL_TEST_INTEGRATIVE="True" to include this integration test, '
+                             'or run `make integration_test_local` to run all integration tests.')(test_item)
+
+
+def slow(test_item):
+    """
+    Use this decorator to identify tests that are slow and not critical.
+    Skip if TOIL_TEST_QUICK is true.
+    """
+    test_item = _mark_test('slow', test_item)
+    if os.environ.get('TOIL_TEST_QUICK', '').lower() != 'true':
+        return test_item
+    else:
+        return unittest.skip('Skipped because TOIL_TEST_QUICK is "True"')(test_item)
+
+
+methodNamePartRegex = re.compile('^[a-zA-Z_0-9]+$')
+
+
+@contextmanager
+def timeLimit(seconds):
+    """
+    http://stackoverflow.com/a/601168
+    Use to limit the execution time of a function. Raises an exception if the execution of the
+    function takes more than the specified amount of time.
+
+    :param seconds: maximum allowable time, in seconds
+    >>> import time
+    >>> with timeLimit(2):
+    ...    time.sleep(1)
+    >>> import time
+    >>> with timeLimit(1):
+    ...    time.sleep(2)
+    Traceback (most recent call last):
+        ...
+    RuntimeError: Timed out
+    """
+    # noinspection PyUnusedLocal
+    def signal_handler(signum, frame):
+        raise RuntimeError('Timed out')
+
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+
+
+def make_tests(generalMethod, targetClass, **kwargs):
+    """
+    This method dynamically generates test methods using the generalMethod as a template. Each
+    generated function is the result of a unique combination of parameters applied to the
+    generalMethod. Each of the parameters has a corresponding string that will be used to name
+    the method. These generated functions are named in the scheme: test_[generalMethodName]___[
+    firstParamaterName]_[someValueName]__[secondParamaterName]_...
+
+    The arguments following the generalMethodName should be a series of one or more dictionaries
+    of the form {str : type, ...} where the key represents the name of the value. The names will
+    be used to represent the permutation of values passed for each parameter in the generalMethod.
+
+    The generated method names will list the parameters in lexicographic order by parameter name.
+
+    :param generalMethod: A method that will be parameterized with values passed as kwargs. Note
+           that the generalMethod must be a regular method.
+
+    :param targetClass: This represents the class to which the generated test methods will be
+           bound. If no targetClass is specified the class of the generalMethod is assumed the
+           target.
+
+    :param kwargs: a series of dictionaries defining values, and their respective names where
+           each keyword is the name of a parameter in generalMethod.
+
+    >>> class Foo:
+    ...     def has(self, num, letter):
+    ...         return num, letter
+    ...
+    ...     def hasOne(self, num):
+    ...         return num
+
+    >>> class Bar(Foo):
+    ...     pass
+
+    >>> make_tests(Foo.has, Bar, num={'one':1, 'two':2}, letter={'a':'a', 'b':'b'})
+
+    >>> b = Bar()
+
+    Note that num comes lexicographically before letter and so appears first in
+    the generated method names.
+
+    >>> assert b.test_has__letter_a__num_one() == b.has(1, 'a')
+
+    >>> assert b.test_has__letter_b__num_one() == b.has(1, 'b')
+
+    >>> assert b.test_has__letter_a__num_two() == b.has(2, 'a')
+
+    >>> assert b.test_has__letter_b__num_two() == b.has(2, 'b')
+
+    >>> f = Foo()
+
+    >>> hasattr(f, 'test_has__num_one__letter_a')  # should be false because Foo has no test methods
+    False
+
+    """
+    def pop(d):
+        """
+        Pops an arbitrary key value pair from a given dict.
+
+        :param d: a dictionary
+
+        :return: the popped key, value tuple
+        """
+        k, v = next(iter(iteritems(kwargs)))
+        d.pop(k)
+        return k, v
+
+    def permuteIntoLeft(left, rParamName, right):
+        """
+        Permutes values in right dictionary into each parameter: value dict pair in the left
+        dictionary. Such that the left dictionary will contain a new set of keys each of which is
+        a combination of one of its original parameter-value names appended with some
+        parameter-value name from the right dictionary. Each original key in the left is deleted
+        from the left dictionary after the permutation of the key and every parameter-value name
+        from the right has been added to the left dictionary.
+
+        For example if left is  {'__PrmOne_ValName':{'ValName':Val}} and right is
+        {'rValName1':rVal1, 'rValName2':rVal2} then left will become
+        {'__PrmOne_ValName__rParamName_rValName1':{'ValName':Val. 'rValName1':rVal1},
+        '__PrmOne_ValName__rParamName_rValName2':{'ValName':Val. 'rValName2':rVal2}}
+
+        :param left: A dictionary pairing each paramNameValue to a nested dictionary that
+               contains each ValueName and value pair described in the outer dict's paramNameValue
+               key.
+
+        :param rParamName: The name of the parameter that each value in the right dict represents.
+
+        :param right: A dict that pairs 1 or more valueNames and values for the rParamName
+               parameter.
+        """
+        for prmValName, lDict in list(left.items()):
+            for rValName, rVal in list(right.items()):
+                nextPrmVal = ('__%s_%s' % (rParamName, rValName.lower()))
+                if methodNamePartRegex.match(nextPrmVal) is None:
+                    raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
+                aggDict = dict(lDict)
+                aggDict[rParamName] = rVal
+                left[prmValName + nextPrmVal] = aggDict
+            left.pop(prmValName)
+
+    def insertMethodToClass():
+        """Generate and insert test methods."""
+
+        def fx(self, prms=prms):
+            if prms is not None:
+                return generalMethod(self, **prms)
+            else:
+                return generalMethod(self)
+
+        methodName = 'test_%s%s' % (generalMethod.__name__, prmNames)
+
+        setattr(targetClass, methodName, fx)
+
+    if len(kwargs) > 0:
+        # Define order of kwargs.
+        # We keep them in reverse order of how we use them for efficient pop.
+        sortedKwargs = sorted(list(kwargs.items()), reverse=True)
+
+        # create first left dict
+        left = {}
+        prmName, vals = sortedKwargs.pop()
+        for valName, val in list(vals.items()):
+            pvName = '__%s_%s' % (prmName, valName.lower())
+            if methodNamePartRegex.match(pvName) is None:
+                raise RuntimeError("The name '%s' cannot be used in a method name" % pvName)
+            left[pvName] = {prmName: val}
+
+        # get cartesian product
+        while len(sortedKwargs) > 0:
+            permuteIntoLeft(left, *sortedKwargs.pop())
+
+        # set class attributes
+        targetClass = targetClass or generalMethod.__class__
+        for prmNames, prms in list(left.items()):
+            insertMethodToClass()
+    else:
+        prms = None
+        prmNames = ""
+        insertMethodToClass()
+
+
+@contextmanager
+def tempFileContaining(content, suffix=''):
+    """
+    Write a file with the given contents, and keep it on disk as long as the context is active.
+    :param str content: The contents of the file.
+    :param str suffix: The extension to use for the temporary file.
+    """
+    fd, path = tempfile.mkstemp(suffix=suffix)
+    try:
+        encoded = content.encode('utf-8')
+        assert os.write(fd, encoded) == len(encoded)
+    except:
+        os.close(fd)
+        raise
+    else:
+        os.close(fd)
+        yield path
+    finally:
+        os.unlink(path)
+
+
+class ApplianceTestSupport(ToilTest):
+    """
+    A Toil test that runs a user script on a minimal cluster of appliance containers,
+    i.e. one leader container and one worker container.
+    """
+    @contextmanager
+    def _applianceCluster(self, mounts=None, numCores=None):
+        """
+        A context manager for creating and tearing down an appliance cluster.
+
+        :param dict|None mounts: Dictionary mapping host paths to container paths. Both the leader
+               and the worker container will be started with one -v argument per dictionary entry,
+               as in -v KEY:VALUE.
+
+               Beware that if KEY is a path to a directory, its entire content will be deleted
+               when the cluster is torn down.
+
+        :param int numCores: The number of cores to be offered by the Mesos slave process running
+               in the worker container.
+
+        :rtype: (ApplianceTestSupport.Appliance, ApplianceTestSupport.Appliance)
+
+        :return: A tuple of the form `(leader, worker)` containing the Appliance instances
+                 representing the respective appliance containers
+        """
+        if numCores is None:
+            numCores = multiprocessing.cpu_count()
+        # The last container to stop (and the first to start) should clean the mounts.
+        with self.LeaderThread(self, mounts, cleanMounts=True) as leader:
+            with self.WorkerThread(self, mounts, numCores) as worker:
+                yield leader, worker
+
+    class Appliance(with_metaclass(ABCMeta, ExceptionalThread)):
+        @abstractmethod
+        def _getRole(self):
+            return 'leader'
+
+        @abstractmethod
+        def _containerCommand(self):
+            raise NotImplementedError()
+
+        @abstractmethod
+        def _entryPoint(self):
+            raise NotImplementedError()
+
+        # Lock is used because subprocess is NOT thread safe: http://tinyurl.com/pkp5pgq
+        lock = threading.Lock()
+
+        def __init__(self, outer, mounts, cleanMounts=False):
+            """
+            :param ApplianceTestSupport outer:
+            """
+            assert all(' ' not in v for v in itervalues(mounts)), 'No spaces allowed in mounts'
+            super(ApplianceTestSupport.Appliance, self).__init__()
+            self.outer = outer
+            self.mounts = mounts
+            self.cleanMounts = cleanMounts
+            self.containerName = str(uuid.uuid4())
+            self.popen = None
+
+        def __enter__(self):
+            with self.lock:
+                image = applianceSelf()
+                # Omitting --rm, it's unreliable, see https://github.com/docker/docker/issues/16575
+                args = list(concat('docker', 'run',
+                                   '--entrypoint=' + self._entryPoint(),
+                                   '--net=host',
+                                   '-i',
+                                   '--name=' + self.containerName,
+                                   ['--volume=%s:%s' % mount for mount in iteritems(self.mounts)],
+                                   image,
+                                   self._containerCommand()))
+                log.info('Running %r', args)
+                self.popen = subprocess.Popen(args)
+            self.start()
+            self.__wait_running()
+            return self
+
+        # noinspection PyUnusedLocal
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            try:
+                try:
+                    self.outer._run('docker', 'stop', self.containerName)
+                    self.join()
+                finally:
+                    if self.cleanMounts:
+                        self.__cleanMounts()
+            finally:
+                self.outer._run('docker', 'rm', '-f', self.containerName)
+            return False  # don't swallow exception
+
+        def __wait_running(self):
+            log.info("Waiting for %s container process to appear. "
+                     "Expect to see 'Error: No such image or container'.", self._getRole())
+            while self.isAlive():
+                try:
+                    running = self.outer._run('docker', 'inspect',
+                                              '--format={{ .State.Running }}',
+                                              self.containerName,
+                                              capture=True).strip()
+                except subprocess.CalledProcessError:
+                    pass
+                else:
+                    if 'true' == running:
+                        break
+                time.sleep(1)
+
+        def __cleanMounts(self):
+            """
+            Deletes all files in every mounted directory. Without this step, we risk leaking
+            files owned by root on the host. To avoid races, this method should be called after
+            the appliance container was stopped, otherwise the running container might still be
+            writing files.
+            """
+            # Delete all files within each mounted directory, but not the directory itself.
+            cmd = 'shopt -s dotglob && rm -rf ' + ' '.join(v + '/*'
+                                                           for k, v in iteritems(self.mounts)
+                                                           if os.path.isdir(k))
+            self.outer._run('docker', 'run',
+                            '--rm',
+                            '--entrypoint=/bin/bash',
+                            applianceSelf(),
+                            '-c',
+                            cmd)
+
+        def tryRun(self):
+            self.popen.wait()
+            log.info('Exiting %s', self.__class__.__name__)
+
+        def runOnAppliance(self, *args, **kwargs):
+            # Check if thread is still alive. Note that ExceptionalThread.join raises the
+            # exception that occurred in the thread.
+            self.join(timeout=0)
+            # noinspection PyProtectedMember
+            self.outer._run('docker', 'exec', '-i', self.containerName, *args, **kwargs)
+
+        def writeToAppliance(self, path, contents):
+            self.runOnAppliance('tee', path, input=contents)
+
+        def deployScript(self, path, packagePath, script):
+            """
+            Deploy a Python module on the appliance.
+
+            :param path: the path (absolute or relative to the WORDIR of the appliance container)
+                   to the root of the package hierarchy where the given module should be placed.
+                   The given directory should be on the Python path.
+
+            :param packagePath: the desired fully qualified module name (dotted form) of the module
+
+            :param str|callable script: the contents of the Python module. If a callable is given,
+                   its source code will be extracted. This is a convenience that lets you embed
+                   user scripts into test code as nested function.
+            """
+            if callable(script):
+                script = self.outer._getScriptSource(script)
+            packagePath = packagePath.split('.')
+            packages, module = packagePath[:-1], packagePath[-1]
+            for package in packages:
+                path += '/' + package
+                self.runOnAppliance('mkdir', '-p', path)
+                self.writeToAppliance(path + '/__init__.py', '')
+            self.writeToAppliance(path + '/' + module + '.py', script)
+
+    class LeaderThread(Appliance):
+        def _entryPoint(self):
+            return 'mesos-master'
+
+        def _getRole(self):
+            return 'leader'
+
+        def _containerCommand(self):
+            return ['--registry=in_memory',
+                    '--ip=127.0.0.1',
+                    '--port=5050',
+                    '--allocation_interval=500ms']
+
+    class WorkerThread(Appliance):
+        def __init__(self, outer, mounts, numCores):
+            self.numCores = numCores
+            super(ApplianceTestSupport.WorkerThread, self).__init__(outer, mounts)
+
+        def _entryPoint(self):
+            return 'mesos-slave'
+
+        def _getRole(self):
+            return 'worker'
+
+        def _containerCommand(self):
+            return ['--work_dir=/var/lib/mesos',
+                    '--ip=127.0.0.1',
+                    '--master=127.0.0.1:5050',
+                    '--attributes=preemptable:False',
+                    '--resources=cpus(*):%i' % self.numCores,
+                    '--no-hostname_lookup',
+                    '--no-systemd_enable_support']

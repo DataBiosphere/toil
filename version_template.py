@@ -54,35 +54,21 @@ def _version(shorten=False):
 
 
 def distVersion():
-    """
-    The distribution version identifying a published release on PyPI.
-    """
+    """The distribution version identifying a published release on PyPI."""
     from pkg_resources import parse_version
-    build_number = buildNumber()
-    parsedBaseVersion = parse_version(baseVersion)
-    if isinstance(parsedBaseVersion, tuple):
+    if isinstance(parse_version(baseVersion), tuple):
         raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
                            "'pip install setuptools --upgrade'")
-
-    if build_number is not None and parsedBaseVersion.is_prerelease:
-        return baseVersion + '.dev' + build_number
-    else:
-        return baseVersion
+    return baseVersion
 
 
 def dockerTag():
-    """
-    The primary tag of the Docker image for the appliance. This uniquely identifies the appliance
-    image.
-    """
+    """The primary tag of the Docker image for the appliance. This uniquely identifies the appliance image."""
     return version()
 
 
 def dockerShortTag():
-    """
-    A secondary, shortened form of :func:`dockerTag` with which to tag the appliance image for
-    convenience.
-    """
+    """A secondary, shortened form of :func:`dockerTag` with which to tag the appliance image for convenience."""
     return shortVersion()
 
 
@@ -92,14 +78,6 @@ def dockerMinimalTag():
     information about the git commit or working copy dirtyness.
     """
     return distVersion()
-
-
-def buildNumber():
-    """
-    The Jenkins build number, if defined, else None.
-    """
-    import os
-    return os.getenv('BUILD_NUMBER')
 
 
 def currentCommit():
@@ -122,10 +100,9 @@ def dockerRegistry():
 def dirty():
     from subprocess import call
     try:
-        return 0 != call('(git diff --exit-code '
-                         '&& git diff --cached --exit-code) > /dev/null', shell=True)
+        return 0 != call('(git diff --exit-code && git diff --cached --exit-code) > /dev/null', shell=True)
     except:
-        return False # In case the git call fails.
+        return False  # In case the git call fails.
 
 
 def expand_(name=None):
