@@ -94,41 +94,57 @@ class IndirectDict(dict):
     pass
 
 
-@six.add_metaclass(abc.ABCMeta)
-class MergeInputs(object):
-    """Base type for workflow step inputs that are connected to multiple upstream
-    inputs that must be merged into a single array.
-    """
-    def __init__(self, sources):
-        self.sources = sources
+class ResolveSource(object):
+    """Handle incoming values into a port (linkMerge and pickValue)"""
+    def __init__(self, name, input, source_key, promises):
+        self.name, self.input, self.source_key = name, input, source_key
 
-    @abc.abstractmethod
-    def resolve(self):
-        """Resolves the inputs."""
-
-
-class MergeInputsNested(MergeInputs):
-    """Merge workflow step inputs that are connected to multiple upstream inputs
-    based on the merge_nested behavior (as described in the CWL spec).
-    """
-    def resolve(self):
-        return [v[1][v[0]] for v in self.sources]
-
-
-class MergeInputsFlattened(MergeInputs):
-    """Merge workflow step inputs that are connected to multiple upstream inputs
-    based on the merge_flattened behavior (as described in the CWL spec).
-    """
+        source_names = aslist(self.input[self.source_key])
+        # Rule is that source: [foo] is just foo unless it also has linkMerge: merge_nested
+        if input.get("linkMerge") or len(source_names) > 1:
+            self.promise_tuples = [
+                (shortname(s), promises[s].rv())
+                for s in source_names
+            ]
+        else:
+            # KG: Cargo culting this logic and the reason given from original Toil code:
+            # It seems that an input source with a
+            # '#' in the name will be returned as a
+            # CommentedSeq list by the yaml parser.
+            s = str(source_names[0])
+            self.promise_tuples = (shortname(s), promises[s].rv())
 
     def resolve(self):
-        result = []
-        for promise in self.sources:
-            source = promise[1][promise[0]]
-            if isinstance(source, MutableSequence):
-                result.extend(source)
-            else:
-                result.append(source)
+        """First apply linkMerge then pickValue if either present"""
+        if isinstance(self.promise_tuples, list):
+            result = self.link_merge([v[1][v[0]] for v in self.promise_tuples])
+        else:
+            value = self.promise_tuples
+            result = value[1].get(value[0])
+            # result = v[1][v[0]]
+
+        # result = self.pick_value(result)
+        # result = filter_skip_null(self.name, result)
         return result
+
+    def link_merge(self, values):
+        link_merge_type = self.input.get("linkMerge", "merge_nested")
+
+        if link_merge_type == "merge_nested":
+            return values
+
+        elif link_merge_type == "merge_flattened":
+            result = []
+            for v in values:
+                if isinstance(v, MutableSequence):
+                    result.extend(v)
+                else:
+                    result.append(v)
+            return result
+
+        else:
+            raise validate.ValidationException(
+                "Unsupported linkMerge '%s' on %s." % (link_merge_type, self.name))
 
 
 class StepValueFrom(object):
@@ -156,10 +172,19 @@ class DefaultWithSource(object):
     def resolve(self):
         """Determine the final input value."""
         if self.source:
-            result = self.source[1][self.source[0]]
+            result = self.source.resolve()
             if result:
                 return result
         return self.default
+
+
+class JustAValue(object):
+
+    def __init__(self, val):
+        self.val = val
+
+    def resolve(self):
+        return self.val
 
 
 def _resolve_indirect_inner(maybe_idict):
@@ -171,10 +196,7 @@ def _resolve_indirect_inner(maybe_idict):
     if isinstance(maybe_idict, IndirectDict):
         result = {}
         for key, value in list(maybe_idict.items()):
-            if isinstance(value, (MergeInputs, DefaultWithSource)):
-                result[key] = value.resolve()
-            else:
-                result[key] = value[1].get(value[0])
+            result[key] = value.resolve()
         return result
     return maybe_idict
 
@@ -807,19 +829,6 @@ def remove_pickle_problems(obj):
     return obj
 
 
-def _link_merge_source(promises, in_out_obj, source_obj):
-    to_merge = [(shortname(s), promises[s].rv()) for s in aslist(source_obj)]
-    link_merge = in_out_obj.get("linkMerge", "merge_nested")
-    if link_merge == "merge_nested":
-        merged = MergeInputsNested(to_merge)
-    elif link_merge == "merge_flattened":
-        merged = MergeInputsFlattened(to_merge)
-    else:
-        raise validate.ValidationException(
-            "Unsupported linkMerge '%s'" % link_merge)
-    return (merged)
-
-
 class CWLWorkflow(Job):
     """Traverse a CWL workflow graph and create a Toil job graph with appropriate
     dependencies.
@@ -872,34 +881,16 @@ class CWLWorkflow(Job):
                         for inp in step.tool["inputs"]:
                             key = shortname(inp["id"])
                             if "source" in inp:
-                                inpSource = inp["source"]
-                                if inp.get("linkMerge") \
-                                        or len(aslist(inp["source"])) > 1:
-                                    jobobj[key] =\
-                                        _link_merge_source(promises, inp, inpSource)
-                                else:
-                                    if isinstance(inpSource, MutableSequence):
-                                        # It seems that an input source with a
-                                        # '#' in the name will be returned as a
-                                        # CommentedSeq list by the yaml parser.
-                                        inpSource = str(inpSource[0])
-                                    jobobj[key] = (shortname(inpSource),
-                                                   promises[inpSource].rv())
+                                jobobj[key] = \
+                                    ResolveSource(
+                                        name="%s/%s" % (step.tool["id"], key),
+                                        input=inp,
+                                        source_key="source",
+                                        promises=promises)
+
                             if "default" in inp:
-                                if key in jobobj:
-                                    if isinstance(jobobj[key][1], Promise):
-                                        d = copy.copy(inp["default"])
-                                        jobobj[key] = DefaultWithSource(
-                                            d, jobobj[key])
-                                    else:
-                                        if jobobj[key][1][
-                                                jobobj[key][0]] is None:
-                                            d = copy.copy(inp["default"])
-                                            jobobj[key] = (
-                                                "default", {"default": d})
-                                else:
-                                    d = copy.copy(inp["default"])
-                                    jobobj[key] = ("default", {"default": d})
+                                jobobj[key] = DefaultWithSource(
+                                    copy.copy(inp["default"]), jobobj.get(key))
 
                             if "valueFrom" in inp \
                                     and "scatter" not in step.tool:
@@ -909,8 +900,7 @@ class CWLWorkflow(Job):
                                         self.cwlwf.requirements)
                                 else:
                                     jobobj[key] = StepValueFrom(
-                                        inp["valueFrom"], (
-                                            "None", {"None": None}),
+                                        inp["valueFrom"], JustAValue(None),
                                         self.cwlwf.requirements)
 
                         if "scatter" in step.tool:
@@ -962,15 +952,12 @@ class CWLWorkflow(Job):
         outobj = {}
         for out in self.cwlwf.tool["outputs"]:
             key = shortname(out["id"])
-            if out.get("linkMerge") or len(aslist(out["outputSource"])) > 1:
-                outobj[key] = _link_merge_source(promises, out, out["outputSource"])
-            else:
-                # A CommentedSeq of length one still appears here rarely -
-                # not clear why from the CWL code. When it does, it breaks
-                # the execution by causing a non-hashable type exception.
-                # We simplify the list into its first (and only) element.
-                src = simplify_list(out["outputSource"])
-                outobj[key] = (shortname(src), promises[src].rv())
+            outobj[key] = (
+                ResolveSource(
+                    name="Workflow output '%s'" % key,
+                    input=out,
+                    source_key="outputSource",
+                    promises=promises))
 
         return IndirectDict(outobj)
 
