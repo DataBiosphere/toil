@@ -252,15 +252,20 @@ class StepValueFrom(object):
     is evaluated to produce the actual input object for the step.
     """
 
-    def __init__(self, expr, inner, req):
+    def __init__(self, expr, source, req):
         self.expr = expr
-        self.inner = inner
+        self.source = source
+        self.context = None
         self.req = req
 
-    def do_eval(self, inputs, ctx):
+    def resolve(self):
+        self.context = self.source.resolve()
+        return self.context
+
+    def do_eval(self, inputs):
         """Evalute ourselves."""
         return cwltool.expression.do_eval(
-            self.expr, inputs, self.req, None, None, {}, context=ctx)
+            self.expr, inputs, self.req, None, None, {}, context=self.context)
 
 
 class DefaultWithSource(object):
@@ -287,43 +292,22 @@ class JustAValue(object):
         return self.val
 
 
-def _resolve_indirect_inner(maybe_idict):
-    """Resolve the contents an indirect dictionary (containing promises) to produce
-    a dictionary actual values, including merging multiple sources into a
-    single input.
-    """
-
-    if isinstance(maybe_idict, IndirectDict):
-        result = {}
-        for key, value in list(maybe_idict.items()):
-            result[key] = value.resolve()
-        return result
-    return maybe_idict
-
-
 def resolve_indirect(pdict):
-    """Resolve the contents an indirect dictionary (containing promises) and
+    """Resolve the contents of an indirect dictionary (containing promises) and
     evaluate expressions to produce the dictionary of actual values.
     """
+    if isinstance(pdict, IndirectDict):
+        first_pass_results = {k: v.resolve() for k, v in pdict.items()}
+    else:
+        first_pass_results = {k: v for k, v in pdict.items()}
 
-    inner = IndirectDict() if isinstance(pdict, IndirectDict) else {}
-    needs_eval = False
-    for k, value in iteritems(pdict):
-        if isinstance(value, StepValueFrom):
-            inner[k] = value.inner
-            needs_eval = True
+    result = {}
+    for k, v in pdict.items():
+        if isinstance(v, StepValueFrom):
+            result[k] = v.do_eval(inputs=first_pass_results)
         else:
-            inner[k] = value
-    res = _resolve_indirect_inner(inner)
-    if needs_eval:
-        ev = {}
-        for k, value in iteritems(pdict):
-            if isinstance(value, StepValueFrom):
-                ev[k] = value.do_eval(res, res[k])
-            else:
-                ev[k] = res[k]
-        return ev
-    return res
+            result[k] = first_pass_results[k]
+    return result
 
 
 def simplify_list(maybe_list):
