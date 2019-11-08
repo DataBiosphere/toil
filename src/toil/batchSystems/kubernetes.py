@@ -97,7 +97,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
-        self.enableWatching = False
+        self.enableWatching = True
 
         # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()
@@ -361,10 +361,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         return int(jobObject.metadata.name[len(self.jobPrefix):])
     
 
-    def _genPods(self):
-        for j in _ourJobObjects:
-            yield self._getPodForJob(j)
-
     def getUpdatedBatchJob(self, maxWait):
     
         # See if a local batch job has updated and is available immediately
@@ -428,25 +424,33 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 # Nothing is ready yet.
 
                 if self.enableWatching:
-
+                    for j in self._ourJobObjects():
+                        print(j.spec.template.metadata.labels[u'job-name'], type(j.spec.template.metadata.labels[u'job-name']))
+                        for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=10):
+                            job = event['object']
+                            if job.metadata.name.startswith(self.jobPrefix):
+                                logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
+                                if job.status.phase == 'Failure':
+                                    logger.info("FAILED")
+                                    logger.warning(job.status.container_status[0].state.reason,
+                                        job.status.container_statuses[0].state.terminated.exit_code)
+                                    return None
+                                elif job.status.phase == 'Succeeded':
+                                    logger.info("SUCCEEDED NAME: %s EXIT CODE: %s TOTAL TIME: %s" % (job.metadata.name,\
+                                        job.status.container_statuses[0].state.terminated.exit_code, \
+                                        (job.status.container_statuses[0].state.terminated.finished_at - \
+                                        job.status.container_statuses[0].state.terminated.started_at).total_seconds()))
+                                    return (job.metadata.name,\
+                                        job.status.container_statuses[0].state.terminated.exit_code, \
+                                        (job.status.container_statuses[0].state.terminated.finished_at - \
+                                                job.status.container_statuses[0].state.terminated.started_at).total_seconds())
+                                else:
+                                    continue
+                            
                     # TODO: block and wait for the jobs to update, until maxWait is hit
                     # For now just say we couldn't get anything
-                    for pod in w.stream(self._genPods, timeout_seconds=maxwait):
-                        # if pod status is terminated then check exit code    
-                        if pod.status.container_statuses[0].state is 'terminated':
-                            if pod.status.container_statues[0].state.exit_code == 0:
-                                return (pod.metadata.name,\
-                                        pod.status.container_statues[0].state.exit_code, \
-                                        (pod.status.container_statuses[0].state.finished_at - \
-                                                pod.status.container_statues[0].state.started_at).total_seconds())
-                            # if job failed
-                            else:
-                                logger.warning(pod.status.container_status[0].state.reason,
-                                        pod.status.container_statuses[0].state.exit_code)
-                                return None
-                        else:
-                            continue
-                    return None
+                else:             
+                   return None
             else:
                 # Work out what the job's ID was (whatever came after our name prefix)
                 jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
