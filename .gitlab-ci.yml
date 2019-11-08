@@ -19,7 +19,7 @@ stages:
 
 # Python3.6
 
-py3_main:
+main:
   stage: main_tests
   script:
     - pwd
@@ -27,7 +27,7 @@ py3_main:
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 
-py3_batch_systems:
+batch_systems:
   stage: test
   script:
     - pwd
@@ -35,21 +35,21 @@ py3_batch_systems:
     - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
 
-py3_cwl:
+cwl:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest src/toil/test/cwl/cwlTest.py
 
-py3_wdl:
+wdl:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest src/toil/test/wdl/toilwdlTest.py
 
-py3_jobstore_and_provisioning:
+sort_and_jobstore:
   stage: test
   script:
     - pwd
@@ -58,7 +58,7 @@ py3_jobstore_and_provisioning:
     - python -m pytest src/toil/test/sort/sortTest.py
     - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
 
-py3_integration:
+jobstore_integration:
   stage: integration
   script:
     - pwd
@@ -72,7 +72,7 @@ py3_integration:
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
     - python -m pytest src/toil/test/jobStores/jobStoreTest.py
 
-py2_integration_provisioner:
+provisioner_integration:
   stage: integration
   script:
     - pwd

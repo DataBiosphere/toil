@@ -14,7 +14,6 @@
 import logging
 import os
 import time
-import tempfile
 from abc import abstractmethod
 from inspect import getsource
 from textwrap import dedent
@@ -359,7 +358,6 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
             command.extend(toilOptions)
             self.sshUtil(command)
 
-    # @integrative
     def testAutoScaledCluster(self):
         self._test()
 

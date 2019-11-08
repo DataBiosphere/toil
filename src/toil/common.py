@@ -949,7 +949,7 @@ class Toil(object):
                 else:
                     from toil.batchSystems.singleMachine import SingleMachineBatchSystem
                     if not isinstance(self._batchSystem, SingleMachineBatchSystem):
-                        logger.warn('Batch system does not support auto-deployment. The user '
+                        logger.warning('Batch system does not support auto-deployment. The user '
                                     'script %s will have to be present at the same location on '
                                     'every worker.', userScript)
                     userScript = None
@@ -1148,7 +1148,7 @@ class ToilMetrics:
                                                self.mtailImage],
                                               stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         except subprocess.CalledProcessError:
-            logger.warn("Could not start toil metrics server.")
+            logger.warning("Could not start toil metrics server.")
             self.mtailProc = None
         except KeyboardInterrupt:
             self.mtailProc.terminate()
@@ -1170,7 +1170,7 @@ class ToilMetrics:
                                                           "-collector.filesystem.ignored-mount-points",
                                                           "^/(sys|proc|dev|host|etc)($|/)"])
             except subprocess.CalledProcessError:
-                logger.warn(
+                logger.warning(
                     "Couldn't start node exporter, won't get RAM and CPU usage for dashboard.")
                 self.nodeExporterProc = None
             except KeyboardInterrupt:
@@ -1211,7 +1211,7 @@ class ToilMetrics:
                                        "-d", "-p=3000:3000",
                                        self.grafanaImage])
         except subprocess.CalledProcessError:
-            logger.warn("Could not start prometheus/grafana dashboard.")
+            logger.warning("Could not start prometheus/grafana dashboard.")
             return
 
         # Add prometheus data source

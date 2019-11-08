@@ -110,14 +110,14 @@ class JobGraph(JobNode):
         which is common).
         """
         self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
-        logger.warn("Due to failure we are reducing the remaining retry count of job %s with ID %s to %s",
+        logger.warning("Due to failure we are reducing the remaining retry count of job %s with ID %s to %s",
                     self, self.jobStoreID, self.remainingRetryCount)
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
         if self.memory < config.defaultMemory:
             self._memory = config.defaultMemory
-            logger.warn("We have increased the default memory of the failed job %s to %s bytes",
+            logger.warning("We have increased the default memory of the failed job %s to %s bytes",
                         self, self.memory)
 
     def restartCheckpoint(self, jobStore):

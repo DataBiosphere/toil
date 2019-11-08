@@ -73,7 +73,7 @@ def awsFilterImpairedNodes(nodes, ec2):
     statusMap = {status.id: status.instance_status for status in statuses}
     healthyNodes = [node for node in nodes if statusMap.get(node.id, None) != 'impaired']
     impairedNodes = [node.id for node in nodes if statusMap.get(node.id, None) == 'impaired']
-    logger.warn('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
+    logger.warning('TOIL_AWS_NODE_DEBUG is set and nodes %s have failed EC2 status checks so '
                 'will not be terminated.', ' '.join(impairedNodes))
     return healthyNodes
 

@@ -190,7 +190,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                         killList.remove(jobID)
                         self.forgetJob(jobID)
                 if len(killList) > 0:
-                    logger.warn("Some jobs weren't killed, trying again in %is.", self.boss.sleepSeconds())
+                    logger.warning("Some jobs weren't killed, trying again in %is.", self.boss.sleepSeconds())
 
             return True
 

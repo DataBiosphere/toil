@@ -57,7 +57,7 @@ class ParasolBatchSystem(BatchSystemSupport):
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(ParasolBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         if maxMemory != sys.maxsize:
-            logger.warn('The Parasol batch system does not support maxMemory.')
+            logger.warning('The Parasol batch system does not support maxMemory.')
         # Keep the name of the results file for the pstat2 command..
         command = config.parasolCommand
         if os.path.sep not in command:
@@ -118,16 +118,16 @@ class ParasolBatchSystem(BatchSystemSupport):
             stdout, stderr = process.communicate()
             status = process.wait()
             for line in stderr.decode('utf-8').split('\n'):
-                if line: logger.warn(line)
+                if line: logger.warning(line)
             if status == 0:
                 return 0, stdout.decode('utf-8').split('\n')
             message = 'Command %r failed with exit status %i' % (command, status)
             if autoRetry:
-                logger.warn(message)
+                logger.warning(message)
             else:
                 logger.error(message)
                 return status, None
-            logger.warn('Waiting for a 10s, before trying again')
+            logger.warning('Waiting for a 10s, before trying again')
             time.sleep(10)
 
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
@@ -213,7 +213,7 @@ class ParasolBatchSystem(BatchSystemSupport):
             runningJobs = self.getIssuedBatchJobIDs()
             if set(jobIDs).difference(set(runningJobs)) == set(jobIDs):
                 break
-            logger.warn( 'Tried to kill some jobs, but something happened and they are still '
+            logger.warning( 'Tried to kill some jobs, but something happened and they are still '
                          'going, will try againin 5s.')
             time.sleep(5)
         # Update the CPU usage, because killed jobs aren't written to the results file.
@@ -344,7 +344,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                         self.updatedJobsQueue.put((jobId, status, wallTime))
                 time.sleep(1)
         except:
-            logger.warn("Error occurred while parsing parasol results files.")
+            logger.warning("Error occurred while parsing parasol results files.")
             raise
         finally:
             for fileHandle in resultsFileHandles:
@@ -356,11 +356,11 @@ class ParasolBatchSystem(BatchSystemSupport):
             exitValue = self._runParasol(['-results=' + results, 'clear', 'sick'],
                                          autoRetry=False)[0]
             if exitValue is not None:
-                logger.warn("Could not clear sick status of the parasol batch %s" % results)
+                logger.warning("Could not clear sick status of the parasol batch %s" % results)
             exitValue = self._runParasol(['-results=' + results, 'flushResults'],
                                          autoRetry=False)[0]
             if exitValue is not None:
-                logger.warn("Could not flush the parasol batch %s" % results)
+                logger.warning("Could not flush the parasol batch %s" % results)
         self.running = False
         logger.debug('Joining worker thread...')
         self.worker.join()
