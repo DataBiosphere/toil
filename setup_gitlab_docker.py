@@ -7,7 +7,7 @@ stdout, stderr = p.communicate()
 
 try:
     keys = json.loads(json.loads(stdout)['SecretString'])
-    process = subprocess.Popen('docker login quay.io -u "{user}" --password-stdin'.format(user=keys['user']),
+    process = subprocess.Popen(f'docker login quay.io -u "{keys["user"]}" --password-stdin',
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE,
                                shell=True)
     stdout, stderr = process.communicate(input=keys['password'])

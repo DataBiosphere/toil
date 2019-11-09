@@ -12,65 +12,65 @@ after_script:
 
 
 stages:
-  - main_tests
-  - test
+#  - main_tests
+#  - test
   - integration
 
 
 # Python3.6
 
-main:
-  stage: main_tests
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/src
-    - python -m pytest src/toil/test/utils
-
-batch_systems:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
-    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
-
-cwl:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/cwl/cwlTest.py
-
-wdl:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/wdl/toilwdlTest.py
-
-sort_and_jobstore:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/jobStores/jobStoreTest.py  # delete and only run with integration=True?
-    - python -m pytest src/toil/test/sort/sortTest.py
-    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
-
-jobstore_integration:
-  stage: integration
-  script:
-    - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
-    - export TOIL_TEST_INTEGRATIVE=True
-    - export TOIL_AWS_KEYNAME=id_rsa
-    - export TOIL_AWS_ZONE=us-west-2a
-    - python setup_gitlab_ssh.py
-    - mkdir ~/.aws
-    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
-    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+#main:
+#  stage: main_tests
+#  script:
+#    - pwd
+#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+#    - python -m pytest src/toil/test/src
+#    - python -m pytest src/toil/test/utils
+#
+#batch_systems:
+#  stage: test
+#  script:
+#    - pwd
+#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+#    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
+#    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+#
+#cwl:
+#  stage: test
+#  script:
+#    - pwd
+#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+#    - python -m pytest src/toil/test/cwl/cwlTest.py
+#
+#wdl:
+#  stage: test
+#  script:
+#    - pwd
+#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+#    - python -m pytest src/toil/test/wdl/toilwdlTest.py
+#
+#sort_and_jobstore:
+#  stage: test
+#  script:
+#    - pwd
+#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+#    - python -m pytest src/toil/test/jobStores/jobStoreTest.py  # delete and only run with integration=True?
+#    - python -m pytest src/toil/test/sort/sortTest.py
+#    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
+#
+#jobstore_integration:
+#  stage: integration
+#  script:
+#    - pwd
+#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
+#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+#    - export TOIL_TEST_INTEGRATIVE=True
+#    - export TOIL_AWS_KEYNAME=id_rsa
+#    - export TOIL_AWS_ZONE=us-west-2a
+#    - python setup_gitlab_ssh.py
+#    - mkdir ~/.aws
+#    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+#    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
 
 provisioner_integration:
   stage: integration

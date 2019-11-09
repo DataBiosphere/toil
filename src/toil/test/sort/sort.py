@@ -223,7 +223,8 @@ def main(options=None):
     # do some input verification
     sortedFileName = options.outputFile or "sortedFile.txt"
     if not options.overwriteOutput and os.path.exists(sortedFileName):
-        print("the output file {} already exists. Delete it to run the sort example again or use --overwriteOutput=True".format(sortedFileName))
+        print(f'Output file {sortedFileName} already exists.  '
+              f'Delete it to run the sort example again or use --overwriteOutput=True')
         exit()
 
     fileName = options.fileToSort
@@ -231,9 +232,9 @@ def main(options=None):
         # make the file ourselves
         fileName = 'fileToSort.txt'
         if os.path.exists(fileName):
-            print("Sorting existing file: {}".format(fileName))
+            print(f'Sorting existing file: {fileName}')
         else:
-            print('No sort file specified. Generating one automatically called: {}.'.format(fileName))
+            print(f'No sort file specified. Generating one automatically called: {fileName}.')
             makeFileToSort(fileName=fileName, lines=options.numLines, lineLen=options.lineLength)
     else:
         if not os.path.exists(options.fileToSort):
@@ -248,8 +249,12 @@ def main(options=None):
         if not workflow.options.restart:
             sortFileURL = 'file://' + os.path.abspath(fileName)
             sortFileID = workflow.importFile(sortFileURL)
-            sortedFileID = workflow.start(Job.wrapJobFn(setup, sortFileID, int(options.N), options.downCheckpoints, options=options,
-                                                    memory=sortMemory))
+            sortedFileID = workflow.start(Job.wrapJobFn(setup,
+                                                        sortFileID,
+                                                        int(options.N),
+                                                        options.downCheckpoints,
+                                                        options=options,
+                                                        memory=sortMemory))
         else:
             sortedFileID = workflow.restart()
         workflow.exportFile(sortedFileID, sortedFileURL)
