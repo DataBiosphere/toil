@@ -17,7 +17,7 @@ p = subprocess.Popen('aws secretsmanager --region us-west-2 get-secret-value --s
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
 stdout, stderr = p.communicate()
 
-good_spot = os.path.expanduser('/home/quokka/git/py3-toil/toil/src/toil/test')
+good_spot = os.path.expanduser('~/.ssh')
 if not os.path.exists(good_spot):
     os.mkdir(good_spot)
 
