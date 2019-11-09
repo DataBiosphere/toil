@@ -391,25 +391,29 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         if self.enableWatching:
             # Try watching for something to happen and use that.
 
-            w = kubernetes.watch.Watch()
-            # TODO: block and wait for the jobs to update, until maxWait is hit
-            # For now just say we couldn't get anything
-            for pod in w.stream(self._genPods, timeout_seconds=maxwait):
-                # if pod status is terminated then check exit code    
-                if pod.status.container_statuses[0].state is 'terminated':
-                    if pod.status.container_statues[0].state.exit_code == 0:
-                        return (pod.metadata.name,\
-                                pod.status.container_statues[0].state.exit_code, \
-                                (pod.status.container_statuses[0].state.finished_at - \
-                                        pod.status.container_statues[0].state.started_at).total_seconds())
-                    # if job failed
-                    else:
-                        logger.warning(pod.status.container_status[0].state.reason,
-                                pod.status.container_statuses[0].state.exit_code)
-                        return None
-                else:
-                    continue
-            return None
+            w = kubernetes.watch.Watch()    
+
+            if self.enableWatching:
+                for j in self._ourJobObjects():
+                    logger.debug(j.spec.template.metadata.labels[u'job-name'], type(j.spec.template.metadata.labels[u'job-name']))
+                    for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=10):
+                        job = event['object']
+                        if job.metadata.name.startswith(self.jobPrefix):
+                            logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
+                            if job.status.phase == 'Failure':
+                                logger.info("FAILED")
+                                logger.warning(job.status.container_status[0].state.reason,
+                                    job.status.container_statuses[0].state.terminated.exit_code)
+                                return None
+                            elif job.status.phase == 'Succeeded':
+                                logger.info("Succeeded")
+                                jobID = job.metadata.name[len(self.jobPrefix):]
+                                terminated = job.status.container_statuses[0].state.terminated
+                                runtime = (terminated.finished_at - terminated.started_at).total_seconds()
+                                result = (jobID, terminated.exit_code, runtime)
+                                return result
+                            else:
+                                continue
 
         else:
             # Try polling instead
@@ -492,126 +496,47 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     break
        
             
-            # Find a job that is done, failed, or stuck
-            jobObject = None
-            # Put 'done', 'failed', or 'stuck' here
-            chosenFor = ''
-            for j in self._ourJobObjects(onlySucceeded=True, limit=1):
-                # Look for succeeded jobs because that's the only filter Kubernetes has
-                jobObject = j
-                chosenFor = 'done'
+        if jobObject is None:
+            # Say we couldn't find anything
+            return None
 
-            if jobObject is None:
-                for j in self._ourJobObjects():
-                    # If there aren't any succeeded jobs, scan all jobs
-                    # See how many times each failed
-                    failCount = getattr(j.status, 'failed', 0)
-                    if failCount is None:
-                        # Make sure it is an int
-                        failCount = 0
-                    if failCount > 0:
-                        # Take the first failed one you find
-                        jobObject = j
-                        chosenFor = 'failed'
-                        break
 
-            if jobObject is None:
-                # If no jobs are failed, look for jobs with pods with
-                # containers stuck in Waiting with reason ImagePullBackOff
-                for j in self._ourJobObjects():
-                    pod = self._getPodForJob(j)
+        # Otherwise we got something.
 
-                    if pod is None:
-                        # Skip jobs with no pod
-                        continue
+        # Work out what the job's ID was (whatever came after our name prefix)
+        jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
+        
+        # Grab the pod
+        pod = self._getPodForJob(jobObject)
 
-                    waitingInfo = getattr(pod.status.container_statuses[0].state, 'waiting')
-                    if waitingInfo is not None and waitingInfo.reason == 'ImagePullBackOff':
-                        # Assume it will never finish, even if the registry comes back or whatever.
-                        # We can get into this state when we send in a non-existent image.
-                        # See https://github.com/kubernetes/kubernetes/issues/58384
-                        jobObject = j
-                        chosenFor = 'stuck'
-                        logger.warning('Failing stuck job; did you try to run a non-existent Docker image?'
-                                       ' Check TOIL_APPLIANCE_SELF.')
-                        break
-           
-            w = kubernetes.watch.Watch()    
-            if jobObject is None:
-                # Nothing is ready yet.
+        if pod is not None:
+            if chosenFor == 'done' or chosenFor == 'failed':
+                # The job actually finished or failed
 
-                if self.enableWatching:
-                    for j in self._ourJobObjects():
-                        print(j.spec.template.metadata.labels[u'job-name'], type(j.spec.template.metadata.labels[u'job-name']))
-                        for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
-                            job = event['object']
-                            if job.metadata.name.startswith(self.jobPrefix):
-                                logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
-                                if job.status.phase == 'Failure':
-                                    logger.info("FAILED")
-                                    logger.warning(job.status.container_status[0].state.reason,
-                                        job.status.container_statuses[0].state.terminated.exit_code)
-                                    return None
-                                elif job.status.phase == 'Succeeded':
-                                    logger.info("SUCCEEDED NAME: %s EXIT CODE: %s TOTAL TIME: %s" % (job.metadata.name,\
-                                        job.status.container_statuses[0].state.terminated.exit_code, \
-                                        (job.status.container_statuses[0].state.terminated.finished_at - \
-                                        job.status.container_statuses[0].state.terminated.started_at).total_seconds()))
-                                    return (job.metadata.name,\
-                                        job.status.container_statuses[0].state.terminated.exit_code, \
-                                        (job.status.container_statuses[0].state.terminated.finished_at - \
-                                                job.status.container_statuses[0].state.terminated.started_at).total_seconds())
-                                else:
-                                    continue
-                            
-                    # TODO: block and wait for the jobs to update, until maxWait is hit
-                    # For now just say we couldn't get anything
-                else:             
-                   return None
-            else:
-                # Work out what the job's ID was (whatever came after our name prefix)
-                jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
-                
-                # Grab the pod
-                pod = self._getPodForJob(jobObject)
+                # Get the termination info from the pod
+                logger.debug(pod.status.container_statuses)
+                terminatedInfo = getattr(pod.status.container_statuses[0].state, 'terminated')
+                if terminatedInfo is not None:
+                    # Extract the exit code
+                    exitCode = terminatedInfo.exit_code
 
-                if pod is not None:
-                    if chosenFor == 'done' or chosenFor == 'failed':
-                        # The job actually finished or failed
+                    # Compute how long the job ran for (subtract datetimes)
+                    # We need to look at the pod's start time because the job's
+                    # start time is just when the job is created.
+                    # And we need to look at the pod's end time because the
+                    # job only gets a completion time if successful.
+                    runtime = (terminatedInfo.finished_at - 
+                               pod.status.start_time).total_seconds()
 
-                        # Get the termination info from the pod
-                        terminatedInfo = getattr(pod.status.container_statuses[0].state, 'terminated')
-                        if terminatedInfo is not None:
-                            # Extract the exit code
-                            exitCode = terminatedInfo.exit_code
-
-                            # Compute how long the job ran for (subtract datetimes)
-                            # We need to look at the pod's start time because the job's
-                            # start time is just when the job is created.
-                            # And we need to look at the pod's end time because the
-                            # job only gets a completion time if successful.
-                            runtime = (terminatedInfo.finished_at - 
-                                       pod.status.start_time).total_seconds()
-
-                            if chosenFor == 'failed':
-                                # Warn the user with the failed pod's log
-                                # TODO: cut this down somehow?
-                                logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
-                        else:
-                            logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
-                            exitCode = -1
-                            runtime = 0
-                            
-                    else:
-                        # The job has gotten stuck
-
-                        assert chosenFor == 'stuck'
-                        
-                        # Synthesize an exit code and runtime (since the job never
-                        # really could start running)
-                        exitCode = -1
-                        runtime = 0
-
+                    if chosenFor == 'failed':
+                        # Warn the user with the failed pod's log
+                        # TODO: cut this down somehow?
+                        logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
+                else:
+                    logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
+                    exitCode = -1
+                    runtime = 0
+                    
             else:
                 # The job has gotten stuck
 
