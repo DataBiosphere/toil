@@ -404,7 +404,11 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 logger.info("FAILED")
                                 logger.warning(job.status.container_status[0].state.reason,
                                     job.status.container_statuses[0].state.terminated.exit_code)
-
+                                jobID = job.metadata.name[len(self.jobPrefix):]
+                                terminated = job.status.container_statuses[0].state.terminated
+                                runtime = (terminated.finished_at - terminated.started_at).total_seconds()
+                                result = (jobID, terminated.exit_code, runtime)
+                                return result
                             elif job.status.phase == 'Succeeded':
                                 logger.info("Succeeded")
                                 jobID = job.metadata.name[len(self.jobPrefix):]
