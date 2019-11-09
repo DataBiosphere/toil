@@ -396,7 +396,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             if self.enableWatching:
                 for j in self._ourJobObjects():
                     logger.debug(j.spec.template.metadata.labels[u'job-name'], type(j.spec.template.metadata.labels[u'job-name']))
-                    for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=10):
+                    for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
                         job = event['object']
                         if job.metadata.name.startswith(self.jobPrefix):
                             logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
@@ -404,13 +404,19 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 logger.info("FAILED")
                                 logger.warning(job.status.container_status[0].state.reason,
                                     job.status.container_statuses[0].state.terminated.exit_code)
-                                return None
+
                             elif job.status.phase == 'Succeeded':
                                 logger.info("Succeeded")
                                 jobID = job.metadata.name[len(self.jobPrefix):]
                                 terminated = job.status.container_statuses[0].state.terminated
                                 runtime = (terminated.finished_at - terminated.started_at).total_seconds()
                                 result = (jobID, terminated.exit_code, runtime)
+                                # Deleting not Working 404 client.rest.ApiException
+                                self.batchApi.delete_namespaced_job(job.metadata.name,
+                                                                    self.namespace,
+                                                                    propagation_policy='Foreground')
+                                                                    
+                                self._waitForJobDeath(job.metadata.name)
                                 return result
                             else:
                                 continue
