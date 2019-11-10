@@ -6,12 +6,12 @@ p = subprocess.Popen('aws secretsmanager --region us-west-2 get-secret-value --s
 stdout, stderr = p.communicate()
 
 try:
+    # TODO: Go back to using "--password-stdin" which has stopped working but used to work?  >.<
     keys = json.loads(json.loads(stdout)['SecretString'])
-    process = subprocess.Popen(f'docker login quay.io -u "{keys["user"]}" --password-stdin',
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE,
-                               shell=True)
-    stdout, stderr = process.communicate(input=keys['password'])
-    if 'Login Succeeded' in stdout:
+    process = subprocess.Popen(f'docker login quay.io -u "{keys["user"]}" -p {keys["password"]}',
+                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+    stdout, stderr = process.communicate()
+    if b'Login Succeeded' in stdout:
         print('Login Succeeded')
     else:
         raise RuntimeError
