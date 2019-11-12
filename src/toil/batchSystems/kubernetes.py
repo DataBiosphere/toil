@@ -500,9 +500,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 # Get the statuses of the pod's containers
                 containerStatuses = pod.status.container_statuses
                 if containerStatuses is None or len(containerStatuses) == 0:
-                    # Pod exists but has no container statuses (containers creating or something?)
-                    logger.warning('Polled pod with no container statuses')
-                    logger.warning('Pod: %s', str(pod))
+                    # Pod exists but has no container statuses
+                    # This happens when the pod is just "Scheduled"
+                    # ("PodScheduled" status event) and isn't actually starting
+                    # to run yet.
                     # Can't be stuck in ImagePullBackOff
                     continue
 
@@ -539,7 +540,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 containerStatuses = pod.status.container_statuses
                 
                 if containerStatuses is None or len(containerStatuses) == 0:
-                    # No statuses available
+                    # No statuses available.
+                    # This happens when a pod is "Scheduled". But how could a
+                    # 'done' or 'failed' pod be merely "Scheduled"?
+                    # Complain so we can find out.
                     logger.warning('Exit code and runtime unavailable; pod has no container statuses')
                     logger.warning('Pod: %s', str(pod))
                     exitCode = -1
