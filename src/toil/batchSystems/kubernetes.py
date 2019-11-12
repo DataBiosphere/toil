@@ -496,8 +496,17 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 if pod is None:
                     # Skip jobs with no pod
                     continue
+                    
+                # Get the statuses of the pod's containers
+                containerStatuses = pod.status.container_statuses
+                if containerStatuses is None or len(containerStatuses) == 0:
+                    # Pod exists but has no container statuses (containers creating or something?)
+                    logger.warning('Polled pod with no container statuses')
+                    logger.warning('Pod: %s', str(pod))
+                    # Can't be stuck in ImagePullBackOff
+                    continue
 
-                waitingInfo = getattr(pod.status.container_statuses[0].state, 'waiting')
+                waitingInfo = getattr(getattr(pod.status.container_statuses[0], 'state', None), 'waiting', None)
                 if waitingInfo is not None and waitingInfo.reason == 'ImagePullBackOff':
                     # Assume it will never finish, even if the registry comes back or whatever.
                     # We can get into this state when we send in a non-existent image.
