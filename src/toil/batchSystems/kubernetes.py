@@ -730,7 +730,7 @@ def executor():
     logger.debug("Starting executor")
 
     if len(sys.argv) != 2:
-        log.error('Executor requires exactly one base64-encoded argument')
+        logger.error('Executor requires exactly one base64-encoded argument')
         sys.exit(1)
 
     # Take in a base64-encoded pickled dict as our first argument and decode it
