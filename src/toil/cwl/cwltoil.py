@@ -132,15 +132,20 @@ class Conditional:
         if self.expression is None:
             return False
 
-        return not cwltool.expression.do_eval(
+        expr_is_true = cwltool.expression.do_eval(
             self.expression,
             {shortname(k): v for k, v in iteritems(
                 resolve_indirect(job))},
             self.requirements,
             None,
             None,
-            {}
-        )
+            {})
+
+        if isinstance(expr_is_true, bool):
+            return not expr_is_true
+
+        raise cwltool.errors.WorkflowException(
+                "'%s' evaluated to a non-boolean value" % self.expression)
 
     def skipped_outputs(self):
 
