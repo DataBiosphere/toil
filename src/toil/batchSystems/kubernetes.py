@@ -397,22 +397,22 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 for j in self._ourJobObjects():
                     logger.debug(j.spec.template.metadata.labels[u'job-name'], type(j.spec.template.metadata.labels[u'job-name']))
                     for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
-                        job = event['object']
-                        if job.metadata.name.startswith(self.jobPrefix):
+                        pod = event['object']
+                        if pod.metadata.name.startswith(self.jobPrefix):
                             logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
-                            if job.status.phase == 'Failure' or job.status.phase == 'Succeeded':
+                            if pod.status.phase == 'Failure' or pod.status.phase == 'Succeeded':
                                 logger.info("FINISHED")
-                                logger.info(job.status.container_statuses[0].state.terminated.reason,
-                                    job.status.container_statuses[0].state.terminated.exit_code)
-                                jobID = int(job.metadata.owner_references[0].name[len(self.jobPrefix):])
-                                terminated = job.status.container_statuses[0].state.terminated
+                                logger.info("REASON: %s Eixt Code: %s" % (pod.status.container_statuses[0].state.terminated.reason,
+                                    pod.status.container_statuses[0].state.terminated.exit_code))
+                                jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
+                                terminated = pod.status.container_statuses[0].state.terminated
                                 runtime = (terminated.finished_at - terminated.started_at).total_seconds()
                                 result = (jobID, terminated.exit_code, runtime)
-                                # Deleting not Working 404 client.rest.ApiException
-                                self.batchApi.delete_namespaced_job(job.metadata.owner_references[0].name,
+                                self.batchApi.delete_namespaced_job(pod.metadata.owner_references[0].name,
                                                                     self.namespace,
                                                                     propagation_policy='Foreground')
-                                                                    
+
+                                self._waitForJobDeath(pod.metadata.owner_references[0].name)
                                 return result
                             else:
                                 continue
