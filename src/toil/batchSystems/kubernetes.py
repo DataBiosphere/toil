@@ -400,27 +400,19 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         job = event['object']
                         if job.metadata.name.startswith(self.jobPrefix):
                             logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
-                            if job.status.phase == 'Failure':
-                                logger.info("FAILED")
-                                logger.warning(job.status.container_status[0].state.reason,
+                            if job.status.phase == 'Failure' or job.status.phase == 'Succeeded':
+                                logger.info("FINISHED")
+                                logger.info(job.status.container_statuses[0].state.terminated.reason,
                                     job.status.container_statuses[0].state.terminated.exit_code)
-                                jobID = job.metadata.name[len(self.jobPrefix):]
-                                terminated = job.status.container_statuses[0].state.terminated
-                                runtime = (terminated.finished_at - terminated.started_at).total_seconds()
-                                result = (jobID, terminated.exit_code, runtime)
-                                return result
-                            elif job.status.phase == 'Succeeded':
-                                logger.info("Succeeded")
-                                jobID = job.metadata.name[len(self.jobPrefix):]
+                                jobID = int(job.metadata.owner_references[0].name[len(self.jobPrefix):])
                                 terminated = job.status.container_statuses[0].state.terminated
                                 runtime = (terminated.finished_at - terminated.started_at).total_seconds()
                                 result = (jobID, terminated.exit_code, runtime)
                                 # Deleting not Working 404 client.rest.ApiException
-                                self.batchApi.delete_namespaced_job(job.metadata.name,
+                                self.batchApi.delete_namespaced_job(job.metadata.owner_references[0].name,
                                                                     self.namespace,
                                                                     propagation_policy='Foreground')
                                                                     
-                                self._waitForJobDeath(job.metadata.name)
                                 return result
                             else:
                                 continue
