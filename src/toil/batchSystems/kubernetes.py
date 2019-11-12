@@ -73,19 +73,32 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         logging.getLogger('requests_oauthlib').setLevel(logging.ERROR)
 
         try:
-            # Load ~/.kube/config
+            # Load ~/.kube/config or KUBECONFIG
             kubernetes.config.load_kube_config()
-        except TypeError:
-            raise RuntimeError('Could not load Kubernetes configuration. Does ~/.kube/config or $KUBECONFIG exist?')
-
-        # Find all contexts and the active context.
-        # The active context gets us our namespace.
-        contexts, activeContext = kubernetes.config.list_kube_config_contexts()
-        if not contexts:
-            raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
             
-        # Identify the namespace to work in
-        self.namespace = activeContext.get('context', {}).get('namespace', 'default')
+            # We loaded it; we need to figure out our namespace the config-file way
+            
+            # Find all contexts and the active context.
+            # The active context gets us our namespace.
+            contexts, activeContext = kubernetes.config.list_kube_config_contexts()
+            if not contexts:
+                raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
+                
+            # Identify the namespace to work in
+            self.namespace = activeContext.get('context', {}).get('namespace', 'default')
+            
+        except TypeError:
+            # Didn't work. Try pod-based credentials in case we are in a pod.
+            try:
+                kubernetes.config.load_incluster_config()
+                
+                # We got pod-based credentials. Our namespace comes from a particular file.
+                self.namespace = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r').read().strip()
+                
+            except kubernetes.config.ConfigException:
+                raise RuntimeError('Could not load Kubernetes configuration from ~/.kube/config, $KUBECONFIG, or current pod.')
+
+        
 
         # Make a Kubernetes-acceptable version of our username: not too long,
         # and all lowercase letters, numbers, or - or .
