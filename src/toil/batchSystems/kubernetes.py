@@ -526,30 +526,40 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             if chosenFor == 'done' or chosenFor == 'failed':
                 # The job actually finished or failed
 
-                # Get the termination info from the pod
-                logger.debug(pod.status.container_statuses)
-                terminatedInfo = getattr(pod.status.container_statuses[0].state, 'terminated')
-                if terminatedInfo is not None:
-                    # Extract the exit code
-                    exitCode = terminatedInfo.exit_code
-
-                    # Compute how long the job ran for (subtract datetimes)
-                    # We need to look at the pod's start time because the job's
-                    # start time is just when the job is created.
-                    # And we need to look at the pod's end time because the
-                    # job only gets a completion time if successful.
-                    runtime = (terminatedInfo.finished_at - 
-                               pod.status.start_time).total_seconds()
-
-                    if chosenFor == 'failed':
-                        # Warn the user with the failed pod's log
-                        # TODO: cut this down somehow?
-                        logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
-                else:
-                    logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
+                # Get the statuses of the pod's containers
+                containerStatuses = pod.status.container_statuses
+                
+                if containerStatuses is None or len(containerStatuses) == 0:
+                    # No statuses available
+                    logger.warning('Exit code and runtime unavailable; pod has no container statuses')
+                    logger.warning('Pod: %s', str(pod))
                     exitCode = -1
                     runtime = 0
-                    
+                else:
+                    # Get the termination info from the pod's main (only) container
+                    terminatedInfo = getattr(getattr(containerStatuses[0], 'state', None), 'terminated', None)
+                    if terminatedInfo is None:
+                        logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
+                        logger.warning('Pod: %s', str(pod))
+                        exitCode = -1
+                        runtime = 0
+                    else:
+                        # Extract the exit code
+                        exitCode = terminatedInfo.exit_code
+
+                        # Compute how long the job ran for (subtract datetimes)
+                        # We need to look at the pod's start time because the job's
+                        # start time is just when the job is created.
+                        # And we need to look at the pod's end time because the
+                        # job only gets a completion time if successful.
+                        runtime = (terminatedInfo.finished_at - 
+                                   pod.status.start_time).total_seconds()
+
+                        if chosenFor == 'failed':
+                            # Warn the user with the failed pod's log
+                            # TODO: cut this down somehow?
+                            logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
+            
             else:
                 # The job has gotten stuck
 
