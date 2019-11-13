@@ -297,6 +297,10 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
 
     dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
 
+    # Wait until the object exists before calling head_object
+    object_summary = s3.ObjectSummary(dstObject.bucket_name, dstObject.key)
+    object_summary.wait_until_exists(**destEncryptionArgs)
+
     # Unfortunately, boto3's managed copy doesn't return the version
     # that it actually copied to. So we have to check immediately
     # after, leaving open the possibility that it may have been
