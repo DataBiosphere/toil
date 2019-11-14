@@ -26,6 +26,7 @@ import logging
 import math
 from toil import subprocess
 import os
+import re
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
