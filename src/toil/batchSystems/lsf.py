@@ -98,8 +98,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 if meminfo:
                     logger.info("Maximum memory used: {} {}".format(
                         meminfo.group(1), meminfo.group(2)))
-            except subprocess.CalledProcessError:
-                pass
+            except subprocess.CalledProcessError as err:
+                logger.warning("Unable to collect maximum memory usage: %s", str(err))
 
             # first try bjobs to find out job state
             args = ["bjobs", "-l", str(job)]
