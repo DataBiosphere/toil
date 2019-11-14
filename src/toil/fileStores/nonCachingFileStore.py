@@ -104,8 +104,8 @@ class NonCachingFileStore(AbstractFileStore):
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
         if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
+            # Complain if the user forges File IDs.
+            logger.warning('Workflow will not work with caching! Received file ID not of type FileID: %s', str(fileStoreID))
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
@@ -120,8 +120,8 @@ class NonCachingFileStore(AbstractFileStore):
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
         if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
+            # Complain if the user forges File IDs.
+            logger.warning('Workflow will not work with caching! Received file ID not of type FileID: %s', str(fileStoreID))
         with self.jobStore.readFileStream(fileStoreID) as f:
             yield f
 
@@ -130,8 +130,8 @@ class NonCachingFileStore(AbstractFileStore):
 
     def deleteLocalFile(self, fileStoreID):
         if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
+            # Complain if the user forges File IDs.
+            logger.warning('Workflow will not work with caching! Received file ID not of type FileID: %s', str(fileStoreID))
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
@@ -142,8 +142,8 @@ class NonCachingFileStore(AbstractFileStore):
 
     def deleteGlobalFile(self, fileStoreID):
         if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
+            # Complain if the user forges File IDs.
+            logger.warning('Workflow will not work with caching! Received file ID not of type FileID: %s', str(fileStoreID))
         try:
             self.deleteLocalFile(fileStoreID)
         except OSError as e:
