@@ -94,11 +94,13 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             try:
                 memprocess = subprocess.check_output(
                     memargs, universal_newlines=True)
-                memregex = r".*MAX MEM:\s*(\S*) (\S*)\n.*"
+                memregex = r".*MAX MEM:\s*(\S*) (\S*).*\n.*"
                 meminfo = re.search(memregex, memprocess)
                 if meminfo:
                     logger.info("Maximum memory used: {} {}".format(
                         meminfo.group(1), meminfo.group(2)))
+                else:
+                    logger.info("Unable to collect maximum memory usage: %s", memprocess)
             except subprocess.CalledProcessError as err:
                 logger.warning("Unable to collect maximum memory usage: %s", str(err))
 
