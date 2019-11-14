@@ -87,6 +87,19 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             if '.' in lsfJobID:
                 job, task = lsfJobID.split('.', 1)
 
+
+            # report the memory used (tested with LSF 10.1.0.0)
+            memargs = ["bhist", "-l", "-UF", str(job)]
+            try:
+                memprocess = subprocess.check_output(
+                    memargs, universal_newlines=True)
+                memregex = r".*MEMLIMIT\s*(\S).*"
+                meminfo = re.search(memregex, memprocess)
+                if meminfo:
+                    logger.info("Maximum memory used: {}". format(meminfo.group[0]))
+            except subprocess.CalledProcessError:
+                pass
+
             # first try bjobs to find out job state
             args = ["bjobs", "-l", str(job)]
             logger.debug("Checking job exit code for job via bjobs: "
