@@ -98,12 +98,15 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 meminfo = re.search(memregex, bhist)
                 command = re.search(r".*Command <(\S*)>.*\n", bhist)
                 if meminfo:
-                    logger.info("[job ID %s, Command %s] The maximum memory used was: %s %s",
-                        command.group(1), str(job), meminfo.group(1), meminfo.group(2))
+                    if not command:
+                        logger.info("Missing Command: %s", bhist)
+                    else:
+                        logger.info("[job ID %s, Command %s] The maximum memory used was: %s %s",
+                            command.group(1), str(job), meminfo.group(1), meminfo.group(2))
                 else:
                     logger.debug(
                         "[job ID %s] Unable to collect maximum memory usage: %s",
-                        str(job), memprocess)
+                        str(job), bhist)
             except subprocess.CalledProcessError as err:
                 logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
                         str(job), str(err))
