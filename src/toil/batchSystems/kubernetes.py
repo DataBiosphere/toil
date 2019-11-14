@@ -73,19 +73,32 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         logging.getLogger('requests_oauthlib').setLevel(logging.ERROR)
 
         try:
-            # Load ~/.kube/config
+            # Load ~/.kube/config or KUBECONFIG
             kubernetes.config.load_kube_config()
-        except TypeError:
-            raise RuntimeError('Could not load Kubernetes configuration. Does ~/.kube/config or $KUBECONFIG exist?')
-
-        # Find all contexts and the active context.
-        # The active context gets us our namespace.
-        contexts, activeContext = kubernetes.config.list_kube_config_contexts()
-        if not contexts:
-            raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
             
-        # Identify the namespace to work in
-        self.namespace = activeContext.get('context', {}).get('namespace', 'default')
+            # We loaded it; we need to figure out our namespace the config-file way
+            
+            # Find all contexts and the active context.
+            # The active context gets us our namespace.
+            contexts, activeContext = kubernetes.config.list_kube_config_contexts()
+            if not contexts:
+                raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
+                
+            # Identify the namespace to work in
+            self.namespace = activeContext.get('context', {}).get('namespace', 'default')
+            
+        except TypeError:
+            # Didn't work. Try pod-based credentials in case we are in a pod.
+            try:
+                kubernetes.config.load_incluster_config()
+                
+                # We got pod-based credentials. Our namespace comes from a particular file.
+                self.namespace = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r').read().strip()
+                
+            except kubernetes.config.ConfigException:
+                raise RuntimeError('Could not load Kubernetes configuration from ~/.kube/config, $KUBECONFIG, or current pod.')
+
+        
 
         # Make a Kubernetes-acceptable version of our username: not too long,
         # and all lowercase letters, numbers, or - or .
@@ -110,7 +123,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
-        self.enableWatching = False
+        self.enableWatching = True
 
         # Required APIs needed from kubernetes
         self.batchApi = kubernetes.client.BatchV1Api()
@@ -376,10 +389,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         return int(jobObject.metadata.name[len(self.jobPrefix):])
     
 
-    def _genPods(self):
-        for j in _ourJobObjects:
-            yield self._getPodForJob(j)
-
     def getUpdatedBatchJob(self, maxWait):
 
         entry = datetime.datetime.now()
@@ -395,25 +404,35 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         if self.enableWatching:
             # Try watching for something to happen and use that.
 
-            w = kubernetes.watch.Watch()
-            # TODO: block and wait for the jobs to update, until maxWait is hit
-            # For now just say we couldn't get anything
-            for pod in w.stream(self._genPods, timeout_seconds=maxwait):
-                # if pod status is terminated then check exit code    
-                if pod.status.container_statuses[0].state is 'terminated':
-                    if pod.status.container_statues[0].state.exit_code == 0:
-                        return (pod.metadata.name,\
-                                pod.status.container_statues[0].state.exit_code, \
-                                (pod.status.container_statuses[0].state.finished_at - \
-                                        pod.status.container_statues[0].state.started_at).total_seconds())
-                    # if job failed
-                    else:
-                        logger.warning(pod.status.container_status[0].state.reason,
-                                pod.status.container_statuses[0].state.exit_code)
-                        return None
-                else:
-                    continue
-            return None
+            w = kubernetes.watch.Watch()    
+
+            if self.enableWatching:
+                for j in self._ourJobObjects():
+                    logger.debug(j.spec.template.metadata.labels[u'job-name'], type(j.spec.template.metadata.labels[u'job-name']))
+                    for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
+                        pod = event['object']
+                        if pod.metadata.name.startswith(self.jobPrefix):
+                            logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
+                            if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
+                                containerStatuses =  pod.status.container_statuses
+                                logger.info("FINISHED")
+                                if containerStatuses is None or len(containerStatuses) == 0: 
+                                    logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
+                                    return (int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), -1, 0)
+                                logger.info("REASON: %s Eixt Code: %s" % (pod.status.container_statuses[0].state.terminated.reason,
+                                    pod.status.container_statuses[0].state.terminated.exit_code))
+                                jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
+                                terminated = pod.status.container_statuses[0].state.terminated
+                                runtime = (terminated.finished_at - terminated.started_at).total_seconds()
+                                result = (jobID, terminated.exit_code, runtime)
+                                self.batchApi.delete_namespaced_job(pod.metadata.owner_references[0].name,
+                                                                    self.namespace,
+                                                                    propagation_policy='Foreground')
+
+                                self._waitForJobDeath(pod.metadata.owner_references[0].name)
+                                return result
+                            else:
+                                continue
 
         else:
             # Try polling instead
@@ -483,8 +502,18 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 if pod is None:
                     # Skip jobs with no pod
                     continue
+                    
+                # Get the statuses of the pod's containers
+                containerStatuses = pod.status.container_statuses
+                if containerStatuses is None or len(containerStatuses) == 0:
+                    # Pod exists but has no container statuses
+                    # This happens when the pod is just "Scheduled"
+                    # ("PodScheduled" status event) and isn't actually starting
+                    # to run yet.
+                    # Can't be stuck in ImagePullBackOff
+                    continue
 
-                waitingInfo = getattr(pod.status.container_statuses[0].state, 'waiting')
+                waitingInfo = getattr(getattr(pod.status.container_statuses[0], 'state', None), 'waiting', None)
                 if waitingInfo is not None and waitingInfo.reason == 'ImagePullBackOff':
                     # Assume it will never finish, even if the registry comes back or whatever.
                     # We can get into this state when we send in a non-existent image.
@@ -513,30 +542,43 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             if chosenFor == 'done' or chosenFor == 'failed':
                 # The job actually finished or failed
 
-                # Get the termination info from the pod
-                logger.debug(pod.status.container_statuses)
-                terminatedInfo = getattr(pod.status.container_statuses[0].state, 'terminated')
-                if terminatedInfo is not None:
-                    # Extract the exit code
-                    exitCode = terminatedInfo.exit_code
-
-                    # Compute how long the job ran for (subtract datetimes)
-                    # We need to look at the pod's start time because the job's
-                    # start time is just when the job is created.
-                    # And we need to look at the pod's end time because the
-                    # job only gets a completion time if successful.
-                    runtime = (terminatedInfo.finished_at - 
-                               pod.status.start_time).total_seconds()
-
-                    if chosenFor == 'failed':
-                        # Warn the user with the failed pod's log
-                        # TODO: cut this down somehow?
-                        logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
-                else:
-                    logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
+                # Get the statuses of the pod's containers
+                containerStatuses = pod.status.container_statuses
+                
+                if containerStatuses is None or len(containerStatuses) == 0:
+                    # No statuses available.
+                    # This happens when a pod is "Scheduled". But how could a
+                    # 'done' or 'failed' pod be merely "Scheduled"?
+                    # Complain so we can find out.
+                    logger.warning('Exit code and runtime unavailable; pod has no container statuses')
+                    logger.warning('Pod: %s', str(pod))
                     exitCode = -1
                     runtime = 0
-                    
+                else:
+                    # Get the termination info from the pod's main (only) container
+                    terminatedInfo = getattr(getattr(containerStatuses[0], 'state', None), 'terminated', None)
+                    if terminatedInfo is None:
+                        logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
+                        logger.warning('Pod: %s', str(pod))
+                        exitCode = -1
+                        runtime = 0
+                    else:
+                        # Extract the exit code
+                        exitCode = terminatedInfo.exit_code
+
+                        # Compute how long the job ran for (subtract datetimes)
+                        # We need to look at the pod's start time because the job's
+                        # start time is just when the job is created.
+                        # And we need to look at the pod's end time because the
+                        # job only gets a completion time if successful.
+                        runtime = (terminatedInfo.finished_at - 
+                                   pod.status.start_time).total_seconds()
+
+                        if chosenFor == 'failed':
+                            # Warn the user with the failed pod's log
+                            # TODO: cut this down somehow?
+                            logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
+            
             else:
                 # The job has gotten stuck
 
@@ -717,7 +759,7 @@ def executor():
     logger.debug("Starting executor")
 
     if len(sys.argv) != 2:
-        log.error('Executor requires exactly one base64-encoded argument')
+        logger.error('Executor requires exactly one base64-encoded argument')
         sys.exit(1)
 
     # Take in a base64-encoded pickled dict as our first argument and decode it
