@@ -26,7 +26,7 @@ from uuid import uuid4
 from toil.job import Job
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, needs_aws_ec2, needs_azure, needs_google, slow, travis_test
+from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.realtimeLogger import RealtimeLogger
@@ -51,7 +51,7 @@ if sys.version_info[0] < 3:
     # nonexistent file.
     FileNotFoundError = OSError
 
-# Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
+# Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
 testingIsAutomatic = True
 
@@ -76,9 +76,6 @@ class hidden(object):
                 return self._getTestJobStorePath()
             elif self.jobStoreType == 'aws':
                 return 'aws:%s:cache-tests-%s' % (self.awsRegion(), str(uuid4()))
-            elif self.jobStoreType == 'azure':
-                accountName = os.getenv('TOIL_AZURE_KEYNAME')
-                return 'azure:%s:cache-tests-%s' % (accountName, str(uuid4()))
             elif self.jobStoreType == 'google':
                 projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
                 return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))
@@ -298,7 +295,7 @@ class hidden(object):
             # If the job store and cache are on the same file system, file
             # sizes are accounted for by the job store and are not reflected in
             # the cache hence this test is redundant (caching will be free).
-            if not self.options.jobStore.startswith(('aws', 'azure', 'google')):
+            if not self.options.jobStore.startswith(('aws', 'google')):
                 workDirDev = os.stat(self.options.workDir).st_dev
                 jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
                 if workDirDev == jobStoreDev:
@@ -1108,18 +1105,6 @@ class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreT
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
-
-
-@needs_azure
-class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStoreTest):
-    jobStoreType = 'azure'
-
-
-@slow
-@needs_azure
-@pytest.mark.timeout(1000)
-class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest):
-    jobStoreType = 'azure'
 
 
 @needs_google

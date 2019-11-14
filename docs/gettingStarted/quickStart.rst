@@ -508,21 +508,21 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Launch a leader node using the :ref:`launchCluster` command::
 
-        (venv) $ toil launch-cluster <cluster-name> --provisioner <aws, gce, azure> --keyPairName <key-pair-name> --leaderNodeType <type> --zone <zone>
+        (venv) $ toil launch-cluster <cluster-name> --provisioner <aws, gce> --keyPairName <key-pair-name> --leaderNodeType <type> --zone <zone>
 
 
    .. note::
 
         **A Helpful Tip**
 
-        When using AWS or Azure, setting the environment variable eliminates having to specify the ``--zone`` option
+        When using AWS, setting the environment variable eliminates having to specify the ``--zone`` option
         for each command. This will be supported for GCE in the future. ::
 
             (venv) $ export TOIL_AWS_ZONE=us-west-2c
 
 #. Create appropriate directory for uploading files::
 
-        (venv) $ toil ssh-cluster --provisioner <aws, gce, azure> <cluster-name>
+        (venv) $ toil ssh-cluster --provisioner <aws, gce> <cluster-name>
         $ mkdir /root/cact_ex
         $ exit
 
@@ -531,18 +531,18 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
    `here <https://github.com/ComparativeGenomicsToolkit/cactus#seqfile-the-input-file>`__), organisms' genome sequence
    files in FASTA format, and configuration files (e.g. blockTrim1.xml, if desired), up to the leader node::
 
-      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> pestis-short-aws-seqFile.txt :/root/cact_ex
-      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/root/cact_ex
-      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/root/cact_ex
-      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/root/cact_ex
-      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/root/cact_ex
-      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> setup_leaderNode.sh :/root/cact_ex
-      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> blockTrim1.xml :/root/cact_ex
-      (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name> blockTrim3.xml :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name> pestis-short-aws-seqFile.txt :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name> GCF_000169655.1_ASM16965v1_genomic.fna :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name> GCF_000006645.1_ASM664v1_genomic.fna :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name> GCF_000182485.1_ASM18248v1_genomic.fna :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name> GCF_000013805.1_ASM1380v1_genomic.fna :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name> setup_leaderNode.sh :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name> blockTrim1.xml :/root/cact_ex
+      (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name> blockTrim3.xml :/root/cact_ex
 
 #. Log in to the leader node::
 
-        (venv) $ toil ssh-cluster --provisioner <aws, gce, azure> <cluster-name>
+        (venv) $ toil ssh-cluster --provisioner <aws, gce> <cluster-name>
 
 #. Set up the environment of the leader node to run Cactus::
 
@@ -553,7 +553,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow::
 
-       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0 cactus --provisioner <aws, gce, azure> --nodeType <type> --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /root/cact_ex/blockTrim3.xml <aws, google, azure>:<zone>:cactus-pestis /root/cact_ex/pestis-short-aws-seqFile.txt /root/cact_ex/pestis_output3.hal
+       (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0 cactus --provisioner <aws, gce> --nodeType <type> --maxNodes 2 --minNodes 0 --retry 10 --batchSystem mesos --disableCaching --logDebug --logFile /logFile_pestis3 --configFile /root/cact_ex/blockTrim3.xml <aws, google>:<zone>:cactus-pestis /root/cact_ex/pestis-short-aws-seqFile.txt /root/cact_ex/pestis_output3.hal
 
    .. note::
 
@@ -575,7 +575,7 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
       ``--configFile`` --- this is not required depending on whether a specific configuration file is intended to run
       the alignment.
 
-      ``<aws, google, azure>:<zone>:cactus-pestis`` --- creates a bucket, named ``cactus-pestis``, with the specified cloud provider to store intermediate job files and metadata.
+      ``<aws, google>:<zone>:cactus-pestis`` --- creates a bucket, named ``cactus-pestis``, with the specified cloud provider to store intermediate job files and metadata.
       **NOTE**: If you want to use a GCE-based jobstore, specify ``google`` here, not ``gce``.
 
       The result file, named ``pestis_output3.hal``, is stored under ``/root/cact_ex`` folder of the leader node.
@@ -588,8 +588,8 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 
 #. Download the resulted output to local machine::
 
-        (venv) $ toil rsync-cluster --provisioner <aws, gce, azure> <cluster-name>  :/root/cact_ex/pestis_output3.hal <path-of-folder-on-local-machine>
+        (venv) $ toil rsync-cluster --provisioner <aws, gce> <cluster-name>  :/root/cact_ex/pestis_output3.hal <path-of-folder-on-local-machine>
 
 #. Destroy the cluster::
 
-        (venv) $ toil destroy-cluster --provisioner <aws, gce, azure> <cluster-name>
+        (venv) $ toil destroy-cluster --provisioner <aws, gce> <cluster-name>

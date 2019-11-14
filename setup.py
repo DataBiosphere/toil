@@ -26,10 +26,6 @@ def runSetup():
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'pymesos==0.3.7'
     psutil = 'psutil >= 3.0.1, <6'
-    azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
-    azureAnsible = 'ansible[azure]==2.5.0a1'
-    azureStorage = 'azure-storage==0.35.1'
-    secretstorage = 'secretstorage<3'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
@@ -69,11 +65,6 @@ def runSetup():
         boto3,
         futures,
         pycryptodome]
-    azure_reqs = [
-        azureCosmosdbTable,
-        secretstorage,
-        azureAnsible,
-        azureStorage]
     cwl_reqs = [
         cwltool,
         schemaSalad,
@@ -100,13 +91,11 @@ def runSetup():
     # must be explicitly installed as an extra
     all_reqs = \
         aws_reqs + \
-        azure_reqs + \
         cwl_reqs + \
         encryption_reqs + \
         google_reqs + \
         kubernetes_reqs + \
         mesos_reqs
-        
 
     # remove the subprocess32 backport if not python2
     if not sys.version_info[0] == 2:
@@ -145,7 +134,6 @@ def runSetup():
         install_requires=core_reqs,
         extras_require={
             'aws': aws_reqs,
-            'azure': azure_reqs,
             'cwl': cwl_reqs,
             'encryption': encryption_reqs,
             'google': google_reqs,
@@ -160,7 +148,7 @@ def runSetup():
                                # functionality like the @experimental and @integrative decoratorss:
                                exclude=['*.test.*']),
         package_data = {
-            '': ['*.yml', 'contrib/azure_rm.py', 'cloud-config'],
+            '': ['*.yml', 'cloud-config'],
         },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus

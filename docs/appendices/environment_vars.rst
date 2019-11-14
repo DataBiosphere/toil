@@ -75,8 +75,6 @@ There are several environment variables that affect the way Toil runs.
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
 +----------------------------------+----------------------------------------------------+
-| TOIL_AZURE_ZONE                  | A specified region for provisioning instances.     |
-+----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_ARGS                  | Arguments for sbatch for the slurm batch system.   |
 |                                  | Do not pass CPU or memory specifications here.     |
 |                                  | Instead, define resource requirements for the job. |

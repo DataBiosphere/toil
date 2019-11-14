@@ -41,7 +41,7 @@ import pytest
 from six.moves import xrange
 from future.utils import with_metaclass
 
-# Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
+# Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
 testingIsAutomatic = True
 
@@ -57,9 +57,6 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
             return self._getTestJobStorePath()
         elif self.jobStoreType == 'aws':
             return 'aws:%s:cache-tests-%s' % (self.awsRegion(), uuid4())
-        elif self.jobStoreType == 'azure':
-            accountName = os.getenv('TOIL_AZURE_KEYNAME')
-            return 'azure:%s:cache-tests-%s' % (accountName, str(uuid4()))
         elif self.jobStoreType == 'google':
             projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
             return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))

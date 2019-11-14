@@ -4,7 +4,8 @@ Introduction
 ============
 
 Toil runs in various environments, including :ref:`locally <fileJobStore>` and :ref:`in the cloud <cloudOverview>`
-(Amazon Web Services, Google Compute Engine, and Microsoft Azure).  Toil also supports two DSLs: :ref:`CWL <cwl>` and
+(Amazon Web Services and Google Compute Engine).  Toil also supports two DSLs: :ref:`CWL <cwl>` and
+(Amazon Web Services and Google Compute Engine).  Toil also supports two DSLs: :ref:`CWL <cwl>` and
 :ref:`WDL <wdl>` (experimental).
 
 Toil is built in a modular way so that it can be used on lots of different systems, and with different configurations.
@@ -70,7 +71,3 @@ The :ref:`clusterRef` are command line tools used to provision nodes in your des
 They allows you to launch nodes, ssh to the leader, and rsync files back and forth.
 
 For detailed instructions for using the provisioner see :ref:`runningAWS` or :ref:`runningGCE`.
-Azure provisioner has limited support. For more details see the `Azure provisioner github ticket`_.
-
-.. _Azure provisioner github ticket: https://github.com/BD2KGenomics/toil/pull/1912
-

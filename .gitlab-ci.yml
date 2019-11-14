@@ -47,7 +47,6 @@ py2_jobstore_and_provisioning:
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest src/toil/test/sort/sortTest.py
     - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
-    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
     - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
     - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
 
@@ -134,7 +133,6 @@ py3_jobstore_and_provisioning:
     - python -m pytest src/toil/test/jobStores/jobStoreTest.py
     - python -m pytest src/toil/test/sort/sortTest.py
     - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
-    # - python -m pytest src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained
     - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
     - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
 

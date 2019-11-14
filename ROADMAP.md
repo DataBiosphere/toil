@@ -1,12 +1,7 @@
 # Near Term (In Progress, Estimated Completion Date?)
-* Ansible provisioning.
-   - [ ] Azure
-   - [ ] AWS
-   - [ ] Google
 *  Libcloud provisioning
    - [ ] Google
    - [ ] AWS
-   - [ ] Azure
 - [ ] Fix flaky tests
 - [ ] Run massive workflows
 - [ ] Better feedback (error messages, logging).
@@ -14,7 +9,6 @@
 # Medium Term (~ 6-month goals, by ~June 2018?)
 * Batch systems
    - [ ] Google Pipelines
-   - [ ] Azure Batch
    - [ ] AWS Batch
 - [ ] Containerize leader (work with Consonance)
 - [ ] Change the thread pool model to improve single machine usage.
@@ -40,5 +34,4 @@
 - [x] Travis CI for commits.
  - [x] Run Toil within Popper (https://cross.ucsc.edu/tag/popper/).
  - [x] Grafana for workflow monitoring
-- [x]  Update the Azure jobStore.
  - [x] Finish Google jobStore (GCP)

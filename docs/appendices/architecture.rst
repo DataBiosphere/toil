@@ -27,7 +27,7 @@ These components are described below:
         between jobs. The job-store is defined by the
         :class:`~toil.jobStores.abstractJobStore.AbstractJobStore` class.
         Multiple implementations of this class allow Toil to support different
-        back-end file stores, e.g.: S3, network file systems, Azure file store, etc.
+        back-end file stores, e.g.: S3, network file systems, Google file store, etc.
     * workers:
         The workers are temporary processes responsible for running jobs,
         one at a time per worker. Each worker process is invoked with a job argument

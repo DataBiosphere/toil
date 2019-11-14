@@ -303,32 +303,6 @@ def needs_google(test_item):
     return test_item
 
 
-def needs_azure(test_item):
-    """Use as a decorator before test classes or methods to run only if Azure is usable."""
-    test_item = _mark_test('azure', test_item)
-    keyName = os.getenv('TOIL_AZURE_KEYNAME')
-    if not keyName:
-        return unittest.skip("Set TOIL_AZURE_KEYNAME to include this test.")(test_item)
-
-    try:
-        # noinspection PyUnresolvedReferences
-        import azure.storage
-    except ImportError:
-        return unittest.skip("Install Toil with the 'azure' extra to include this test.")(test_item)
-    else:
-        # check for the credentials file
-        from toil.jobStores.azureJobStore import credential_file_path
-        if not os.path.exists(os.path.expanduser(credential_file_path)):
-            # no file, check for environment variables
-            try:
-                from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-                _fetchAzureAccountKey(keyName)
-            except:
-                 return unittest.skip("Configure %s with the access key for the '%s' storage account." %
-                                      (credential_file_path, keyName))(test_item)
-        return test_item
-
-
 def needs_gridengine(test_item):
     """Use as a decorator before test classes or methods to run only if GridEngine is installed."""
     test_item = _mark_test('gridengine', test_item)
