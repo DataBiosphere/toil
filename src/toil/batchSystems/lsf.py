@@ -244,7 +244,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 MemoryString(items[mem_index]) > maxMEM):
                 maxMEM = MemoryString(items[mem_index])
 
-        if maxCPU == 0 or maxMEM == 0:
+        if maxCPU is 0 or maxMEM is 0:
                 RuntimeError("lshosts returns null ncpus or maxmem info")
         logger.debug("Got the maxMEM: {}".format(maxMEM))
         logger.debug("Got the maxCPU: {}".format(maxCPU))
