@@ -96,7 +96,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     memargs, universal_newlines=True)
                 memregex = r".*MAX MEM:\s*(\S*) (\S*).*\n.*"
                 meminfo = re.search(memregex, bhist)
-                command = re.search(r".*Command <(\S*)>.*\n", bhist)
+                command = re.search(r".*Command <(.*)>.*\n", bhist)
                 if meminfo:
                     if not command:
                         logger.info("Missing Command: %s", bhist)
