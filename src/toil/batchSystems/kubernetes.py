@@ -400,7 +400,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         pod = event['object']
                         if pod.metadata.name.startswith(self.jobPrefix):
                             logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
-                            if pod.status.phase == 'Failure' or pod.status.phase == 'Succeeded':
+                            if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
                                 logger.info("FINISHED")
                                 logger.info("REASON: %s Eixt Code: %s" % (pod.status.container_statuses[0].state.terminated.reason,
                                     pod.status.container_statuses[0].state.terminated.exit_code))
