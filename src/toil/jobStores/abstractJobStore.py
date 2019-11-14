@@ -909,6 +909,22 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
+    def getFileSize(self, jobStoreFileID):
+        """
+        Get the size of the given file in bytes, or 0 if it does not exist when queried.
+
+        Note that job stores which encrypt files might return overestimates of
+        file sizes, since the encrypted file may have been padded to the
+        nearest block, augmented with an initialization vector, etc.
+
+        :param str jobStoreFileID: an ID referencing the file to be checked
+
+        :rtype: int
+        """
+        raise NotImplementedError()
+        
+
+    @abstractmethod
     def updateFile(self, jobStoreFileID, localFilePath):
         """
         Replaces the existing version of a file in the job store. Throws an exception if the file

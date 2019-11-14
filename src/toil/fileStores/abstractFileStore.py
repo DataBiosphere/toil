@@ -104,6 +104,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         # Records file IDs of files deleted during the current job. Doesn't get
         # committed back until the job is completely successful, because if the
         # job is re-run it will need to be able to re-delete these files.
+        # This is a set of str objects, not FileIDs.
         self.filesToDelete = set()
         # Records IDs of jobs that need to be deleted when the currently
         # running job is cleaned up.
@@ -259,7 +260,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         The destination file must not be deleted by the user; it can only be
         deleted through deleteLocalFile.
 
-        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param toil.fileStores.FileID or str fileStoreID: job store id for the file
         :param string userPath: a path to the name of file to which the global file will be copied
                or hard-linked (see below).
         :param bool cache: Described in :func:`toil.fileStores.CachingFileStore.readGlobalFile`
@@ -279,6 +280,33 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError()
 
+    def getGlobalFileSize(self, fileStoreID):
+        """
+        Get the size of the file pointed to by the given ID, in bytes.
+
+        If a FileID or something else with a non-None 'size' field, gets that.
+
+        Otherwise, asks the job store to poll the file's size.
+
+        Note that the job store may overestimate the file's size, for example
+        if it is encrypted and had to be augmented with an IV or other
+        encryption framing.
+
+        :param toil.fileStores.FileID or str fileStoreID: File ID for the file
+        :return: File's size in bytes, as stored in the job store
+        :rtype: int
+        """
+
+        # First try and see if the size is still attached
+        size = getattr(fileStoreID, 'size', None)
+
+        if size is None:
+            # It fell off
+            # Someone is mixing FileStore and JobStore file APIs, or serializing FileIDs as strings.
+            size = self.jobStore.getGlobalFileSize(fileStoreID)
+
+        return size
+
     @abstractmethod
     def deleteLocalFile(self, fileStoreID):
         """
@@ -290,7 +318,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         ID, if it was written by the current job from the job's
         file-store-provided temp directory.
 
-        :param str fileStoreID: File Store ID of the file to be deleted.
+        :param toil.fileStores.FileID or str fileStoreID: File Store ID of the file to be deleted.
         """
         raise NotImplementedError()
 
@@ -301,7 +329,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         the job store. To ensure that the job can be restarted if necessary, the delete will not
         happen until after the job's run method has completed.
 
-        :param fileStoreID: the job store ID of the file to be deleted.
+        :param toil.fileStores.FileID or str fileStoreID: the File Store ID of the file to be deleted.
         """
         raise NotImplementedError()
 
