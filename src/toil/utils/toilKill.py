@@ -37,7 +37,7 @@ def main():
     config.setOptions(options)
     config.jobStore = config.jobStore[5:] if config.jobStore.startswith('file:') else config.jobStore
 
-    # ':' means an aws/google/azure jobstore; use the old (broken?) method
+    # ':' means an aws/google jobstore; use the old (broken?) method
     if ':' in config.jobStore:
         jobStore = Toil.resumeJobStore(config.jobStore)
         logger.info("Starting routine to kill running jobs in the toil workflow: %s", config.jobStore)

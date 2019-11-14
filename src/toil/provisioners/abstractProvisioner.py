@@ -32,8 +32,8 @@ class Shape(object):
     Represents a job or a node's "shape", in terms of the dimensions of memory, cores, disk and
     wall-time allocation.
 
-    The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS,
-    or 60 for Azure. FIXME: and for jobs?
+    The wallTime attribute stores the number of seconds of a node allocation, e.g. 3600 for AWS.
+    FIXME: and for jobs?
 
     The memory and disk attributes store the number of bytes required by a job (or provided by a
     node) in RAM or on disk (SSD or HDD), respectively.

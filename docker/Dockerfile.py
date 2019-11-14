@@ -20,7 +20,7 @@ applianceSelf = os.environ['TOIL_APPLIANCE_SELF']
 sdistName = os.environ['_TOIL_SDIST_NAME']
 
 
-dependencies = ' '.join(['libffi-dev',  # For client side encryption for 'azure' extra with PyNACL
+dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
                          'python3.6',
                          'python3.6-dev',
                          'python-dev',  # For installing Python packages with native code

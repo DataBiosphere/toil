@@ -60,7 +60,6 @@ from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        needs_aws_ec2,
-                       needs_azure,
                        needs_encryption,
                        make_tests,
                        needs_google,
@@ -1059,14 +1058,11 @@ class AbstractEncryptedJobStoreTest(object):
         def setUp(self):
             # noinspection PyAttributeOutsideInit
             self.sseKeyDir = tempfile.mkdtemp()
-            # noinspection PyAttributeOutsideInit
-            self.cseKeyDir = tempfile.mkdtemp()
             super(AbstractEncryptedJobStoreTest.Test, self).setUp()
 
         def tearDown(self):
             super(AbstractEncryptedJobStoreTest.Test, self).tearDown()
             shutil.rmtree(self.sseKeyDir)
-            shutil.rmtree(self.cseKeyDir)
 
         def _createConfig(self):
             config = super(AbstractEncryptedJobStoreTest.Test, self)._createConfig()
@@ -1075,11 +1071,6 @@ class AbstractEncryptedJobStoreTest(object):
                 f.write('01234567890123456789012345678901')
             config.sseKey = sseKeyFile
             # config.attrib['sse_key'] = sseKeyFile
-
-            cseKeyFile = os.path.join(self.cseKeyDir, 'keyFile')
-            with open(cseKeyFile, 'w') as f:
-                f.write("i am a fake key, so don't use me")
-            config.cseKey = cseKeyFile
             return config
 
         def testEncrypted(self):
@@ -1096,7 +1087,6 @@ class AbstractEncryptedJobStoreTest(object):
 
             # disable encryption
             self.jobstore_initialized.config.sseKey = None
-            self.jobstore_initialized.config.cseKey = None
             try:
                 with self.jobstore_initialized.readSharedFileStream(fileName) as f:
                     self.assertEqual(phrase, f.read())
@@ -1367,97 +1357,6 @@ class InvalidAWSJobStoreTest(ToilTest):
         self.assertRaises(ValueError,
                           AWSJobStore,
                           'us-west-2:a_b')
-
-
-@needs_azure
-class AzureJobStoreTest(AbstractJobStoreTest.Test):
-    accountName = os.getenv('TOIL_AZURE_KEYNAME')
-
-    def _createJobStore(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore(self.accountName + ':' + self.namePrefix)
-
-    def _corruptJobStore(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        assert isinstance(self.jobstore_initialized, AzureJobStore)  # type hinting
-        self.jobstore_initialized.tableService.delete_table(self.jobstore_initialized.jobFileIDs)
-
-    def _partSize(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore._maxAzureBlockBytes
-
-    def testLargeJob(self):
-        from toil.jobStores.azureJobStore import maxAzureTablePropertySize
-        command = os.urandom(maxAzureTablePropertySize * 2)
-        jobNode1 = self.arbitraryJob
-        jobNode1.command = command
-        job1 = self.jobstore_initialized.create(jobNode1)
-        self.assertEqual(job1.command, command)
-        job2 = self.jobstore_initialized.load(job1.jobStoreID)
-        self.assertIsNot(job1, job2)
-        self.assertEqual(job2.command, command)
-
-    def testJobStoreExists(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        assert isinstance(self.jobstore_initialized, AzureJobStore)  # mostly for type hinting
-        self.assertTrue(self.jobstore_initialized._jobStoreExists())
-        self.jobstore_initialized.destroy()
-        self.assertFalse(self.jobstore_initialized._jobStoreExists())
-
-    def _prepareTestFile(self, containerName, size=None):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-
-        fileName = 'testfile_%s' % uuid.uuid4()
-        url = 'wasb://%s@%s.blob.core.windows.net/%s' % (containerName, self.accountName, fileName)
-        if size is None:
-            return url
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        content = os.urandom(size)
-        blobService.create_blob_from_text(containerName, fileName, content)
-        return url, hashlib.md5(content).hexdigest()
-
-    def _hashTestFile(self, url):
-        from toil.jobStores.azureJobStore import AzureJobStore, retry_azure
-        url = urlparse.urlparse(url)
-        blob = AzureJobStore._parseWasbUrl(url)
-        for attempt in retry_azure():
-            with attempt:
-                blob = blob.service.get_blob_to_bytes(blob.container, blob.name)
-                return hashlib.md5(blob.content).hexdigest()
-
-    def _createExternalStore(self):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        containerName = 'import-export-test-%s' % uuid.uuid4()
-        blobService.create_container(containerName)
-        return containerName
-
-    def _cleanUpExternalStore(self, containerName):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        blobService.delete_container(containerName)
-
-
-@needs_azure
-class InvalidAzureJobStoreTest(ToilTest):
-    def testInvalidJobStoreName(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:a--b')
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:' + ('a' * 100))
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:a_b')
 
 
 @needs_aws_ec2
