@@ -92,17 +92,21 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             # report the memory used (tested with LSF 10.1.0.0)
             memargs = ["bhist", "-l", "-UF", str(job)]
             try:
-                memprocess = subprocess.check_output(
+                bhist = subprocess.check_output(
                     memargs, universal_newlines=True)
                 memregex = r".*MAX MEM:\s*(\S*) (\S*).*\n.*"
-                meminfo = re.search(memregex, memprocess)
+                meminfo = re.search(memregex, bhist)
+                command = re.search(r".*Command <(\S*)>.*\n", bhist)
                 if meminfo:
-                    logger.info("Maximum memory used: {} {}".format(
-                        meminfo.group(1), meminfo.group(2)))
+                    logger.info("[job ID %s, Command %s] The maximum memory used was: %s %s",
+                        command.group(1), str(job), meminfo.group(1), meminfo.group(2))
                 else:
-                    logger.info("Unable to collect maximum memory usage: %s", memprocess)
+                    logger.debug(
+                        "[job ID %s] Unable to collect maximum memory usage: %s",
+                        str(job), memprocess)
             except subprocess.CalledProcessError as err:
-                logger.warning("Unable to collect maximum memory usage: %s", str(err))
+                logger.debug("[job ID %s] Unable to collect maximum memory usage: %s",
+                        str(job), str(err))
 
             # first try bjobs to find out job state
             args = ["bjobs", "-l", str(job)]
