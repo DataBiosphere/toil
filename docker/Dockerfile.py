@@ -136,7 +136,7 @@ print(heredoc('''
 
     # Fix for `screen` (https://github.com/BD2KGenomics/toil/pull/1386#issuecomment-267424561)
     ENV TERM linux
-    
+
     # Run bash instead of sh inside of screen
     ENV SHELL /bin/bash
     RUN echo "defshell -bash" > ~/.screenrc
@@ -150,8 +150,7 @@ print(heredoc('''
     ENV TOIL_WORKDIR /var/lib/toil
     
     # https://stackoverflow.com/questions/31858937/transport-endpoint-not-connected-mesos-slave-master/31977045#31977045
-    RUN echo 2 > /etc/mesos-master/quorum
-    RUN echo MESOS_QUORUM=2 >> /etc/default/mesos-master
+    RUN echo MESOS_QUORUM=1 >> /etc/default/mesos-master
     
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
