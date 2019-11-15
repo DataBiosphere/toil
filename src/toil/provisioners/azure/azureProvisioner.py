@@ -23,7 +23,7 @@ import uuid
 import urllib
 import json
 import re
-from toil import subprocess
+import subprocess
 
 from toil.provisioners.node import Node
 from toil.provisioners.abstractProvisioner import Shape

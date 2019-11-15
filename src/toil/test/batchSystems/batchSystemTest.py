@@ -31,7 +31,7 @@ from textwrap import dedent
 import time
 import multiprocessing
 import sys
-from toil import subprocess
+import subprocess
 from unittest import skipIf
 
 from toil.common import Config

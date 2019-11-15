@@ -14,7 +14,7 @@
 from builtins import str
 import logging
 import os
-from toil import subprocess
+import subprocess
 from abc import abstractmethod
 
 import pytest

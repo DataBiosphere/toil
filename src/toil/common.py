@@ -33,7 +33,7 @@ from six import iteritems
 
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
-from toil import subprocess
+import subprocess
 from toil import pickle
 from toil import logProcessContext
 from toil.lib.bioio import addLoggingOptions, getLogLevelString, setLoggingFromOptions

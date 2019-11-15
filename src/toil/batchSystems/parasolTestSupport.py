@@ -18,7 +18,7 @@ import logging
 import tempfile
 import threading
 import time
-from toil import subprocess
+import subprocess
 import multiprocessing
 import signal
 import os

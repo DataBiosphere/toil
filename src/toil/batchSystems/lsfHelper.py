@@ -27,7 +27,7 @@ from __future__ import division
 from past.utils import old_div
 import math
 import os
-from toil import subprocess
+import subprocess
 import fnmatch
 
 LSB_PARAMS_FILENAME = "lsb.params"

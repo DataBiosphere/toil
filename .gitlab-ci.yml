@@ -81,7 +81,7 @@ provisioner_integration:
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
-    - export LIBPROCESS_IP=127.0.0.1; export PUBLIC_KEY_FILE=/root/.ssh/id_rsa.pub
+    - export LIBPROCESS_IP=127.0.0.1
     - mkdir ~/.aws
     - python setup_gitlab_docker.py
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials

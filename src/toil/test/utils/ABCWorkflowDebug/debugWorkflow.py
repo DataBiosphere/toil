@@ -1,6 +1,6 @@
 from toil.job import Job
 from toil.common import Toil
-from toil import subprocess
+import subprocess
 import os
 import logging
 

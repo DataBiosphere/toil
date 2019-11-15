@@ -25,7 +25,7 @@ from abc import ABCMeta, abstractmethod
 from six.moves.queue import Empty, Queue
 from future.utils import with_metaclass
 
-from toil import subprocess
+import subprocess
 from toil.lib.objects import abstractclassmethod
 
 from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport

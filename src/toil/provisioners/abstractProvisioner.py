@@ -18,7 +18,7 @@ from functools import total_ordering
 import logging
 import os.path
 
-from toil import subprocess
+import subprocess
 from toil import applianceSelf, customDockerInitCmd
 from toil.lib.retry import never
 

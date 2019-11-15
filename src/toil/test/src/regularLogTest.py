@@ -17,7 +17,7 @@ import mimetypes
 import sys
 import os
 
-from toil import subprocess
+import subprocess
 from toil.test import ToilTest, slow, travis_test
 from toil.test.mesos import helloWorld
 

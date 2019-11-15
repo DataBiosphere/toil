@@ -30,7 +30,7 @@ from six import text_type
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
-from toil import subprocess
+import subprocess
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
                        needs_torque)

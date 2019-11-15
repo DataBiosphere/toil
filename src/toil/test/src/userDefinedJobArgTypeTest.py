@@ -16,7 +16,7 @@ from __future__ import absolute_import
 from builtins import object
 import sys
 
-from toil import subprocess
+import subprocess
 from toil.job import Job
 from toil.test import ToilTest, slow, travis_test
 

@@ -24,7 +24,7 @@ from builtins import next
 from builtins import range
 from builtins import str
 
-from toil import subprocess
+import subprocess
 from toil.provisioners import clusterFactory
 from toil.test import needs_aws_ec2, integrative, ToilTest, needs_appliance, timeLimit, slow
 
@@ -59,10 +59,8 @@ class AbstractAWSAutoscaleTest(ToilTest):
         p = subprocess.Popen(['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command,
                              stderr=-1, stdout=-1)
         o, e = p.communicate()
-        log.debug('\n\nSTDOUT:\n')
-        log.debug(o)
-        log.debug('\n\nSTDERR:\n')
-        log.debug(e)
+        log.debug('\n\nSTDOUT: ' + o.decode("utf-8"))
+        log.debug('\n\nSTDERR: ' + e.decode("utf-8"))
 
     def rsyncUtil(self, src, dest):
         subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName] + [src, dest])
@@ -111,17 +109,15 @@ class AbstractAWSAutoscaleTest(ToilTest):
         # already insures the leader is running
         self.cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
         self.leader = self.cluster.getLeader()
+        self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
 
         assert len(self.getMatchingRoles()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = ['virtualenv', '--system-site-packages', '--never-download', '/home/venv']
         self.sshUtil(venv_command)
 
-        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
+        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1', 'pyyaml==3.12']
         self.sshUtil(upgrade_command)
-
-        yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
-        self.sshUtil(yaml_command)
 
         self._getScript()
 
@@ -130,9 +126,9 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--workDir=/var/lib/toil',
                        '--clean=always',
                        '--retryCount=2',
-                       '--clusterStats=/home/',
+                       '--clusterStats=/tmp/t/',
                        '--logDebug',
-                       '--logFile=/home/sort.log',
+                       '--logFile=/tmp/t/sort.log',
                        '--provisioner=aws']
 
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
@@ -146,7 +142,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         # check stats
         self.sshUtil(['/home/venv/bin/python', '-c', 'import json; import os; '
-                      'json.load(open("/home/" + [f for f in os.listdir("/home/") if f.endswith(".json")].pop()))'])
+                      'json.load(open("/home/" + [f for f in os.listdir("/tmp/t/") if f.endswith(".json")].pop()))'])
 
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
@@ -307,9 +303,10 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
 
     def setUp(self):
         super(AWSRestartTest, self).setUp()
-        self.instanceTypes = ['t2.micro']
+        self.instanceTypes = ['t2.small']
         self.numWorkers = ['1']
-        self.scriptName = "/home/restartScript.py"
+        self.scriptDir = '/tmp/t/'
+        self.scriptName = self.scriptDir + 'restartScript.py'
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
@@ -336,6 +333,7 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
             f.write(script)
         cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
         leader = cluster.getLeader()
+        self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
         leader.injectFile(tempfile_path, self.scriptName, 'toil_leader')
         if os.path.exists(tempfile_path):
             os.remove(tempfile_path)

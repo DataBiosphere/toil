@@ -20,7 +20,7 @@ import os
 import logging
 import sys
 
-from toil import subprocess
+import subprocess
 from toil.wdl.wdl_analysis import AnalyzeWDL
 from toil.wdl.wdl_synthesis import SynthesizeWDL, write_AST
 import toil.wdl.wdl_parser as wdl_parser

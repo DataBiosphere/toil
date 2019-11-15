@@ -19,7 +19,7 @@ import pipes
 import socket
 import datetime
 import time
-from toil import subprocess
+import subprocess
 from toil.lib.memoize import parse_iso_utc
 
 a_short_time = 5

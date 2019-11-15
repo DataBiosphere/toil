@@ -29,7 +29,7 @@ import psutil
 
 import toil
 import toil.test.sort.sort
-from toil import subprocess
+import subprocess
 from toil import resolveEntryPoint
 from toil.job import Job
 from toil.utils.toilStatus import ToilStatus

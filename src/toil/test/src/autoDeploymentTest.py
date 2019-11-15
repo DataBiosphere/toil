@@ -6,7 +6,7 @@ from contextlib import contextmanager
 
 from toil.lib.iterables import concat
 
-from toil import subprocess
+import subprocess
 from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow
 
 log = logging.getLogger(__name__)

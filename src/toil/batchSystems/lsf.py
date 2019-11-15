@@ -24,7 +24,7 @@ from builtins import range
 from past.utils import old_div
 import logging
 import math
-from toil import subprocess
+import subprocess
 import os
 
 from dateutil.parser import parse

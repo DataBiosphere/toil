@@ -8,7 +8,7 @@ from abc import ABCMeta, abstractmethod
 import logging
 import shutil
 import threading
-from toil import subprocess
+import subprocess
 import multiprocessing
 from past.builtins import basestring
 from six.moves.urllib.request import urlopen
