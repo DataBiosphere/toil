@@ -74,3 +74,4 @@ py3_jobstore_and_provisioning:
 #    - mkdir ~/.aws
 #    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
 #    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+

@@ -88,7 +88,7 @@ default options for the workflow. The only argument is a description of how to
 store the workflow's state in what we call a *job-store*. Here the job-store is
 contained in a directory within the current working directory called
 "toilWorkflowRun". Alternatively this string can encode other ways to store the
-necessary state, e.g. an S3 bucket or Azure object store location. By default
+necessary state, e.g. an S3 bucket object store location. By default
 the job-store is deleted if the workflow completes successfully.
 
 The workflow is executed in the final line, which creates an instance of

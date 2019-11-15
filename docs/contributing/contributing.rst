@@ -44,15 +44,15 @@ depend on a currently installed *feature*, use
 
 ::
 
-    $ make test tests="-m 'not azure' src"
+    $ make test tests="-m 'not aws' src"
 
-This will run only the tests that don't depend on the ``azure`` extra, even if
+This will run only the tests that don't depend on the ``aws`` extra, even if
 that extra is currently installed. Note the distinction between the terms
 *feature* and *extra*. Every extra is a feature but there are features that are
 not extras, such as the ``gridengine`` and ``parasol`` features.  To skip tests
-involving both the Parasol feature and the Azure extra, use the following::
+involving both the ``parasol`` feature and the ``aws`` extra, use the following::
 
-    $ make test tests="-m 'not azure and not parasol' src"
+    $ make test tests="-m 'not aws and not parasol' src"
 
 
 
@@ -93,13 +93,7 @@ can be made available for local testing:
         $ export TOIL_X_KEYNAME=[Your Keyname]
         $ export TOIL_X_ZONE=[Desired Zone]
 
-   Where ``X`` is one of our currently supported cloud providers (``AZURE (limited support)``, ``GCE``, ``AWS``).
-
- - For example, to prepare for running Azure related integration tests in the ``westus`` region::
-
-       $ export TOIL_TEST_INTEGRATIVE=True
-       $ export TOIL_AZURE_KEYNAME=[Your keyname]
-       $ export TOIL_AZURE_ZONE=westus
+   Where ``X`` is one of our currently supported cloud providers (``GCE``, ``AWS``).
 
  - See the above sections for guidance on running tests.
 
@@ -116,25 +110,10 @@ Test Environment Variables
 |                        | source directory via ``make test`` or              |
 |                        | ``make test_parallel``.                            |
 +------------------------+----------------------------------------------------+
-| TOIL_TEST_EXPERIMENTAL | If ``True``, this allows tests on experimental     |
-|                        | features to run (such as the Google and Azure) job |
-|                        | stores. Only valid when running tests from the     |
-|                        | source directory via ``make test`` or              |
-|                        | ``make test_parallel``.                            |
-+------------------------+----------------------------------------------------+
 | TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepareAWS`), which      |
 |                        | is required to run the AWS tests.                  |
 +------------------------+----------------------------------------------------+
-| TOIL_AZURE_KEYNAME     | An Azure storage account keyname (see              |
-|                        | :ref:`prepareAzure`),                              |
-|                        | which is required to run the Azure tests.          |
-+------------------------+----------------------------------------------------+
-| TOIL_AZURE_ZONE        | The region in which to run the Azure tests.        |
-+------------------------+----------------------------------------------------+
 | TOIL_SSH_KEYNAME       | The SSH key to use for tests.                      |
-+------------------------+----------------------------------------------------+
-| PUBLIC_KEY_FILE        | For Azure provisioner tests, the path to the       |
-|                        | public key file if not ~/.ssh/id_rsa.pub           |
 +------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |
 |                        | (see :ref:`runningGCE`), which is required to      |

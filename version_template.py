@@ -26,7 +26,7 @@ import the expand_ function and invoke it directly with either no or exactly one
 #  - only import from the Python standard run-time library (you can't have any dependencies)
 
 
-baseVersion = '3.21.0a1'
+baseVersion = '3.22.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
 dockerName = 'toil'
 
