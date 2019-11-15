@@ -235,7 +235,6 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :rtype: list[AbstractJobStore]
         """
         jobStoreClassNames = (
-            "toil.jobStores.azureJobStore.AzureJobStore",
             "toil.jobStores.fileJobStore.FileJobStore",
             "toil.jobStores.googleJobStore.GoogleJobStore",
             "toil.jobStores.aws.jobStore.AWSJobStore",
@@ -279,9 +278,6 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             - 's3' for objects in Amazon S3
                 e.g. s3://bucket/key
 
-            - 'wasb' for blobs in Azure Blob Storage
-                e.g. wasb://container/blob
-
             - 'file' for local files
                 e.g. file:///local/file/path
 
@@ -292,7 +288,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 e.g. gs://bucket/file
 
         :param str srcUrl: URL that points to a file or object in the storage mechanism of a
-                supported URL scheme e.g. a blob in an Azure Blob Storage container.
+                supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
@@ -346,7 +342,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         :param str jobStoreFileID: The id of the file in the job store that should be exported.
         :param str dstUrl: URL that points to a file or object in the storage mechanism of a
-                supported URL scheme e.g. a blob in an Azure Blob Storage container.
+                supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
         dstUrl = urlparse.urlparse(dstUrl)
         otherCls = self._findJobStoreForUrl(dstUrl, export=True)
@@ -374,7 +370,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         returns the size in bytes of the file at the given URL
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an Azure Blob Storage container.
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
         raise NotImplementedError
 
@@ -387,7 +383,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an Azure Blob Storage container.
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param writable: a writable stream
         """
@@ -402,7 +398,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an Azure Blob Storage container.
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param readable: a readable stream
         """

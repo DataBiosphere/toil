@@ -23,7 +23,6 @@ If using Toil for your research, please cite
 .. _GitHub: https://github.com/BD2KGenomics/toil
 .. _Gitter: https://gitter.im/bd2k-genomics-toil/Lobby
 .. _paper: http://biorxiv.org/content/early/2016/07/07/062497
-.. _Microsoft Azure: https://azure.microsoft.com/
 
 .. todolist::
 
@@ -75,7 +74,6 @@ If using Toil for your research, please cite
    appendices/aws_min_permissions
    appendices/deploy
    appendices/environment_vars
-   appendices/staticAzure
 
 * :ref:`genindex`
 * :ref:`search`

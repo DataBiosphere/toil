@@ -218,12 +218,13 @@ iamFullPolicy = dict(Version="2012-10-17", Statement=[
 
 def checkValidNodeTypes(provisioner, nodeTypes):
     """
-    Raises if an invalid nodeType is specified for aws, azure, or gce.
+    Raises if an invalid nodeType is specified for aws or gce.
 
-    :param str provisioner: 'aws', 'gce', or 'azure' to specify which cloud provisioner used.
+    :param str provisioner: 'aws' or 'gce' to specify which cloud provisioner used.
     :param nodeTypes: A list of node types.  Example: ['t2.micro', 't2.medium']
     :return: Nothing.  Raises if invalid nodeType.
     """
+    # TODO: Move out of "aws.__init__.py"  >.>
     if not nodeTypes:
         return
     if not isinstance(nodeTypes, list):
@@ -252,8 +253,7 @@ def checkValidNodeTypes(provisioner, nodeTypes):
                     helpText = ''
                 raise RuntimeError('Invalid nodeType (%s) specified for AWS in region: %s.%s'
                                    '' % (nodeType, currentZone, helpText))
-    # Only checks if aws nodeType specified for gce/azure atm.
-    if provisioner == 'gce' or provisioner == 'azure':
+    elif provisioner == 'gce':
         for nodeType in nodeTypes:
             if nodeType and ':' in nodeType:
                 nodeType = nodeType.split(':')[0]
@@ -264,3 +264,6 @@ def checkValidNodeTypes(provisioner, nodeTypes):
                                    "".format(provisioner, provisioner))
             except KeyError:
                 pass
+    else:
+        raise RuntimeError("Invalid provisioner: {}".format(provisioner))
+

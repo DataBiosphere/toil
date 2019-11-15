@@ -33,7 +33,6 @@ from toil.test.sort.sort import merge, sort, copySubRangeOfFile, getMidPoint, ma
 from toil.test import (ToilTest,
                        needs_aws_ec2,
                        needs_mesos,
-                       needs_azure,
                        needs_parasol,
                        needs_gridengine,
                        needs_torque,
@@ -195,19 +194,6 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         finally:
             self._stopMesos()
 
-    @needs_azure
-    def testAzureSingle(self):
-        self._toilSort(jobStoreLocator=self._azureJobStore(), batchSystem='singleMachine')
-
-    @needs_azure
-    @needs_mesos
-    def testAzureMesos(self):
-        self._startMesos()
-        try:
-            self._toilSort(jobStoreLocator=self._azureJobStore(), batchSystem="mesos")
-        finally:
-            self._stopMesos()
-
     @needs_google
     def testGoogleSingle(self):
         self._toilSort(jobStoreLocator=self._googleJobStore(), batchSystem="singleMachine")
@@ -322,10 +308,6 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     def _awsJobStore(self):
         return 'aws:%s:sort-test-%s' % (self.awsRegion(), uuid4())
-
-    def _azureJobStore(self):
-        accountName = os.getenv('TOIL_AZURE_KEYNAME')
-        return "azure:%s:sort-test-%s" % (accountName, uuid4())
 
     def _googleJobStore(self):
         projectID = os.getenv('TOIL_GOOGLE_PROJECTID')

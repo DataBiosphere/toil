@@ -1,7 +1,0 @@
-{
-  "itemDisplayName": "Create a Toil enabled Mesos cluster",
-  "description": "This template creates a Docker capable Apache Mesos cluster with Toil, on a configurable number of nodes.",
-  "summary": "Create a Toil capable Apache Mesos cluster on Microsoft Azure with Docker.",
-  "githubUsername": "adamnovak",
-  "dateUpdated": "2015-09-29"
-}

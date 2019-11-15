@@ -91,4 +91,3 @@ provisioner_integration:
     - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster
     # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
-    # - python -m pytest -s src/toil/test/provisioners/azureProvisionerTest.py  # disabled and no longer maintained

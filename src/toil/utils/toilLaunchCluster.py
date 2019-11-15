@@ -21,8 +21,6 @@ from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes
 from toil import applianceSelf
 
-from toil.jobStores import azure_credential_file_path as credential_file_path
-
 logger = logging.getLogger(__name__)
 
 
@@ -41,14 +39,10 @@ def main():
                         help="Non-preemptable node type to use for the cluster leader.")
     parser.add_argument("--keyPairName", dest='keyPairName',
                         help="On AWS, the name of the AWS key pair to include on the instance."
-                        " On Google/GCE, this is the ssh key pair."
-                        " Not needed for Azure.")
+                        " On Google/GCE, this is the ssh key pair.")
     parser.add_argument("--owner", dest='owner',
                         help="The owner tag for all instances. If not given, the value in"
                         " --keyPairName will be used if given.")
-    parser.add_argument("--publicKeyFile", dest='publicKeyFile', default="~/.ssh/id_rsa.pub",
-                        help="On Azure, the file"
-                        " containing the key pairs (the first key pair will be used).")
     parser.add_argument("--boto", dest='botoPath',
                         help="The path to the boto credentials directory. This is transferred "
                         "to all nodes in order to access the AWS jobStore from non-AWS instances.")
@@ -90,11 +84,6 @@ def main():
                         help="Disables sanity checking the existence of the docker image specified "
                              "by TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for "
                              "autoscaling.")
-    parser.add_argument("--azureStorageCredentials", dest='azureStorageCredentials', type=str,
-                        default=credential_file_path,
-                        help="The location of the file containing the Azure storage credentials. If not specified,"
-                             " the default file is used with Azure provisioning. Use 'None' to disable"
-                             " the transfer of credentials.")
     parser.add_argument('--awsEc2ProfileArn', dest='awsEc2ProfileArn', default=None, type=str,
                         help="If provided, the specified ARN is used as the instance profile for EC2 instances."
                              "Useful for setting custom IAM profiles. If not specified, a new IAM role is created "
@@ -157,8 +146,6 @@ def main():
                           botoPath=config.botoPath,
                           userTags=tagsDict,
                           vpcSubnet=config.vpcSubnet,
-                          publicKeyFile=config.publicKeyFile,
-                          azureStorageCredentials=config.azureStorageCredentials,
                           awsEc2ProfileArn=config.awsEc2ProfileArn)
 
     for nodeType, workers in zip(nodeTypes, numNodes):
