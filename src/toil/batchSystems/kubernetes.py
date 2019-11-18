@@ -186,7 +186,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             requirements_dict = {'cpu': jobNode.cores,
                                  'memory': max(jobNode.memory, 1024 * 1024 * 512),
                                  'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 512)}
-            resources = kubernetes.client.V1ResourceRequirements(limits=requirements_dict,
+            # Set a higher limit to give jobs some room to go over what they
+            # think they need, as is the Kubernetes way.
+            limits_dict = {k: int(v * 1.5) for k, v in requirements_dict.items()}
+            resources = kubernetes.client.V1ResourceRequirements(limits=limits_dict,
                                                                  requests=requirements_dict)
             
             # Collect volumes and mounts
