@@ -429,6 +429,7 @@ def _monkey_patch_boto():
     # But in addition to our manual cache, we also are going to turn on boto3's
     # new built-in caching layer.
 
+      
     def datetime_to_str(dt):
         """
         Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
@@ -452,10 +453,17 @@ def _monkey_patch_boto():
         """
         return datetime.strptime(s, datetime_format)
 
+    # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
+    provider.Provider = BotoCredentialAdapter
 
-from boto import provider
+try:
+    from boto import provider
+    base_class = provider.Provider
+except ImportError:
+    base_class = object
 
-class BotoCredentialAdapter():
+
+class BotoCredentialAdapter(base_class):
     """
     Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
     credential finding logic. This allows for automatic role assumption
@@ -667,9 +675,7 @@ class BotoCredentialAdapter():
                         os.close(fd)
                         
 
-# Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
-provider.Provider = BotoCredentialAdapter
-    
+   
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
 try:
     _monkey_patch_boto()
