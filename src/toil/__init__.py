@@ -455,8 +455,7 @@ def _monkey_patch_boto():
 
 from boto import provider
 
-class BotoCredentialAdapter(self, name=None, access_key=None, secret_key=None,
-        security_token=None, profile_name=None, **kwargs):
+class BotoCredentialAdapter():
     """
     Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
     credential finding logic. This allows for automatic role assumption
@@ -476,15 +475,25 @@ class BotoCredentialAdapter(self, name=None, access_key=None, secret_key=None,
     # TODO: We take kwargs because new boto2 versions have an 'anon'
     # argument and we want to be future proof
     
-    if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
-        # We are on AWS and we don't have credentials passed along and we aren't anonymous.
-        # We will backend into a boto3 resolver for getting credentials.
-        # Make sure to enable boto3's own caching, so we can share that
-        # cash with pure boto3 code elsewhere in Toil.
-        self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
-    else:
-        # We will use the normal flow
-        self._boto3_resolver = None
+    def __init__(self, name=None, access_key=None, secret_key=None,
+            security_token=None, profile_name=None, **kwargs):
+        
+        self.name = name
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.security_token = securit_token
+        self.profile_name = profile_name
+
+
+        if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
+            # We are on AWS and we don't have credentials passed along and we aren't anonymous.
+            # We will backend into a boto3 resolver for getting credentials.
+            # Make sure to enable boto3's own caching, so we can share that
+            # cash with pure boto3 code elsewhere in Toil.
+            self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
+        else:
+            # We will use the normal flow
+            self._boto3_resolver = None
     
     def get_credentials(self, access_key=None, secret_key=None, security_token=None, profile_name=None):
         """
