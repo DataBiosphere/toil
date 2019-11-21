@@ -105,7 +105,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         acceptableChars = set(string.ascii_lowercase + string.digits + '-.')
         
         # Use TOIL_KUBERNETES_OWNER if present in env var
-        if os.environ.get("TOIL_KUBERNETES_OWNER", None) not None:
+        if os.environ.get("TOIL_KUBERNETES_OWNER", None) is not None:
             username = os.environ.get("TOIL_KUBERNETES_OWNER")
         else:    
             username = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
