@@ -1129,6 +1129,9 @@ class AWSJobStore(AbstractJobStore):
             with MultiPartPipe() if multipart else SinglePartPipe() as writable:
                 yield writable
 
+            # We check our work to make sure we have exactly one of embedded
+            # content or a real object version.
+
             if self.content is None:
                 if not bool(self.version):
                     raise RuntimeError('No content added and no version created')
