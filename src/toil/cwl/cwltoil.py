@@ -961,14 +961,14 @@ class CWLWorkflow(Job):
         for inp in self.cwlwf.tool["inputs"]:
             promises[inp["id"]] = SelfJob(self, cwljob)
 
-        alloutputs_fufilled = False
-        while not alloutputs_fufilled:
+        all_outputs_fulfilled = False
+        while not all_outputs_fulfilled:
             # Iteratively go over the workflow steps, scheduling jobs as their
             # dependencies can be fufilled by upstream workflow inputs or
             # step outputs. Loop exits when the workflow outputs
             # are satisfied.
 
-            alloutputs_fufilled = True
+            all_outputs_fulfilled = True
 
             for step in self.cwlwf.steps:
                 if step.tool["id"] not in jobs:
@@ -1046,13 +1046,13 @@ class CWLWorkflow(Job):
                 for inp in step.tool["inputs"]:
                     for source in aslist(inp.get("source", [])):
                         if source not in promises:
-                            alloutputs_fufilled = False
+                            all_outputs_fulfilled = False
 
             # may need a test
             for out in self.cwlwf.tool["outputs"]:
                 if "source" in out:
                     if out["source"] not in promises:
-                        alloutputs_fufilled = False
+                        all_outputs_fulfilled = False
 
         outobj = {}
         for out in self.cwlwf.tool["outputs"]:
