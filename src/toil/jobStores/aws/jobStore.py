@@ -1060,6 +1060,10 @@ class AWSJobStore(AbstractJobStore):
             Context manager that gives out a binary-mode upload stream to upload data.
             """
 
+            # Only works if we are empty to start with
+            assert self.content is None
+            assert self.version is None
+
             info = self
             store = self.outer
 
@@ -1125,7 +1129,13 @@ class AWSJobStore(AbstractJobStore):
             with MultiPartPipe() if multipart else SinglePartPipe() as writable:
                 yield writable
 
-            assert bool(self.version) == (self.content is None)
+            if self.content is None:
+                if not bool(self.version):
+                    raise RuntimeError('No content added and no version created')
+            else:
+                if bool(self.version):
+                    log.debug('Version: {} Content: {}'.format(self.version, self.content))
+                    raise RuntimeError('Content added and version created')
 
         def copyFrom(self, srcKey):
             """
