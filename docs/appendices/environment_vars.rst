@@ -30,6 +30,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | it defaults to ``/var/lib/mesos``. In all other    |
 |                                  | cases, the system's `standard temporary directory`_|
 |                                  | is used.                                           |
+++----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_OWNER            | A name that can be set for easy identification of  |
+|                                  | a kubernetes job. If not set, ``toil`` will use    |
+|                                  | the "root" name of the device.                     |
 +----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
 |                                  | Appliance you wish to use, in the form             |
