@@ -1078,7 +1078,7 @@ class AbstractEncryptedJobStoreTest(object):
             Create an encrypted file. Read it in encrypted mode then try with encryption off
             to ensure that it fails.
             """
-            phrase = 'This file is encrypted.'
+            phrase = 'This file is encrypted.'.encode('utf-8')
             fileName = 'foo'
             with self.jobstore_initialized.writeSharedFileStream(fileName, isProtected=True) as f:
                 f.write(phrase)

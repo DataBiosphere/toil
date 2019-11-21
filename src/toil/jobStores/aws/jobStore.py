@@ -893,6 +893,7 @@ class AWSJobStore(AbstractJobStore):
 
         @content.setter
         def content(self, content):
+            assert content is None or isinstance(content, bytes)
             self._content = content
             if content is not None:
                 self.version = ''
@@ -992,11 +993,13 @@ class AWSJobStore(AbstractJobStore):
                      attributes in the dictionary that are used for storing inlined content.
             """
             content = self.content
+            assert content is None or instanceof(content, bytes)
             if self.encrypted and content is not None:
                 sseKeyPath = self.outer.sseKeyPath
                 if sseKeyPath is None:
                     raise AssertionError('Encryption requested but no key was provided.')
                 content = encryption.encrypt(content, sseKeyPath)
+            assert content is None or instanceof(content, bytes)
             attributes = self.binaryToAttributes(content)
             numChunks = attributes['numChunks']
             attributes.update(dict(ownerID=self.ownerID,
@@ -1046,7 +1049,7 @@ class AWSJobStore(AbstractJobStore):
         def upload(self, localFilePath):
             file_size, file_time = fileSizeAndTime(localFilePath)
             if file_size <= self.maxInlinedSize():
-                with open(localFilePath) as f:
+                with open(localFilePath, 'rb') as f:
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
@@ -1062,7 +1065,7 @@ class AWSJobStore(AbstractJobStore):
 
             # Only works if we are empty to start with
             assert self.content is None
-            assert self.version is None
+            assert not bool(self.version)
 
             info = self
             store = self.outer
@@ -1070,6 +1073,7 @@ class AWSJobStore(AbstractJobStore):
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read(store.partSize)
+                    assert isinstance(buf, bytes)
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         info.content = buf
                     else:
@@ -1100,6 +1104,7 @@ class AWSJobStore(AbstractJobStore):
                                 if len(buf) == 0:
                                     break
                                 buf = readable.read(info.outer.partSize)
+                                assert isinstance(buf, bytes)
                         except:
                             with panic(log=log):
                                 for attempt in retry_s3():
@@ -1113,6 +1118,7 @@ class AWSJobStore(AbstractJobStore):
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read()
+                    assert isinstance(buf, bytes)
                     dataLength = len(buf)
                     if allowInlining and dataLength <= info.maxInlinedSize():
                         info.content = buf
@@ -1189,7 +1195,7 @@ class AWSJobStore(AbstractJobStore):
 
         def download(self, localFilePath):
             if self.content is not None:
-                with open(localFilePath, 'w') as f:
+                with open(localFilePath, 'wb') as f:
                     f.write(self.content)
             elif self.version:
                 headers = self._s3EncryptionHeaders()
@@ -1257,7 +1263,7 @@ class AWSJobStore(AbstractJobStore):
             if sseKeyPath is None:
                 return None
             else:
-                with open(sseKeyPath) as f:
+                with open(sseKeyPath, 'rb') as f:
                     sseKey = f.read()
                     return sseKey
 
@@ -1266,8 +1272,8 @@ class AWSJobStore(AbstractJobStore):
                 sseKey = self._getSSEKey()
                 assert sseKey is not None, 'Content is encrypted but no key was provided.'
                 assert len(sseKey) == 32
-                encodedSseKey = base64.b64encode(sseKey)
-                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest())
+                encodedSseKey = base64.b64encode(sseKey).encode('utf-8')
+                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest()).encode('utf-8')
                 return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
                         'x-amz-server-side-encryption-customer-key': encodedSseKey,
                         'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
