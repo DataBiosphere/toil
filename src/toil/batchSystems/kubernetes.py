@@ -186,7 +186,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             requirements_dict = {'cpu': jobNode.cores,
                                  'memory': max(jobNode.memory, 1024 * 1024 * 512),
                                  'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 512)}
-            resources = kubernetes.client.V1ResourceRequirements(limits=requirements_dict,
+            # Set a higher limit to give jobs some room to go over what they
+            # think they need, as is the Kubernetes way.
+            limits_dict = {k: int(v * 1.5) for k, v in requirements_dict.items()}
+            resources = kubernetes.client.V1ResourceRequirements(limits=limits_dict,
                                                                  requests=requirements_dict)
             
             # Collect volumes and mounts
@@ -408,18 +411,16 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
             if self.enableWatching:
                 for j in self._ourJobObjects():
-                    logger.debug(j.spec.template.metadata.labels[u'job-name'], type(j.spec.template.metadata.labels[u'job-name']))
                     for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
                         pod = event['object']
                         if pod.metadata.name.startswith(self.jobPrefix):
-                            logger.info("Event: %s %s %s" % (event['type'],event['object'].kind, event['object'].metadata.name))
                             if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
                                 containerStatuses =  pod.status.container_statuses
-                                logger.info("FINISHED")
+                                logger.debug("FINISHED")
                                 if containerStatuses is None or len(containerStatuses) == 0: 
                                     logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
                                     return (int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), -1, 0)
-                                logger.info("REASON: %s Eixt Code: %s" % (pod.status.container_statuses[0].state.terminated.reason,
+                                logger.info("REASON: %s Exit Code: %s" % (pod.status.container_statuses[0].state.terminated.reason,
                                     pod.status.container_statuses[0].state.terminated.exit_code))
                                 jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
                                 terminated = pod.status.container_statuses[0].state.terminated
