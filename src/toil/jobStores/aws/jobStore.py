@@ -570,6 +570,12 @@ class AWSJobStore(AbstractJobStore):
     def fileExists(self, jobStoreFileID):
         return self.FileInfo.exists(jobStoreFileID)
 
+    def getFileSize(self, jobStoreFileID):
+        if not self.fileExists(jobStoreFileID):
+            return 0
+        info = self.FileInfo.loadOrFail(jobStoreFileID)
+        return info.getSize()
+
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         log.debug("Reading %r into %r.", info, localFilePath)
@@ -1218,6 +1224,20 @@ class AWSJobStore(AbstractJobStore):
                         with attempt:
                             store.filesBucket.delete_key(key_name=compat_bytes(self.fileID),
                                                          version_id=self.previousVersion)
+
+        def getSize(self):
+            """
+            Return the size of the referenced item in bytes.
+            """
+            if self.content is not None:
+                return len(self.content)
+            elif self.version:
+                for attempt in retry_s3():
+                    with attempt:
+                        key = self.outer.filesBucket.get_key(compat_bytes(self.fileID), validate=False)
+                        return key.size
+            else:
+                return 0
 
         def _getSSEKey(self):
             sseKeyPath = self.outer.sseKeyPath
