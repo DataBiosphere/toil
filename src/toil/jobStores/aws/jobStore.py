@@ -1063,9 +1063,11 @@ class AWSJobStore(AbstractJobStore):
             Context manager that gives out a binary-mode upload stream to upload data.
             """
 
-            # Only works if we are empty to start with
-            assert self.content is None
-            assert not bool(self.version)
+            # Note that we have to handle already having a content or a version
+            # if we are overwriting something.
+
+            # But make sure we don't have both.
+            assert not (bool(self.version) and self.content is not None)
 
             info = self
             store = self.outer
@@ -1132,14 +1134,20 @@ class AWSJobStore(AbstractJobStore):
                                                                                 headers=headers)
                         info.version = key.version_id
 
-            with MultiPartPipe() if multipart else SinglePartPipe() as writable:
+            pipe = MultiPartPipe() if multipart else SinglePartPipe()
+            with pipe as writable:
                 yield writable
+
+            if not pipe.reader_done:
+                log.debug('Version: {} Content: {}'.format(self.version, self.content))
+                raise RuntimeError('Escaped context manager without written data being read!')
 
             # We check our work to make sure we have exactly one of embedded
             # content or a real object version.
 
             if self.content is None:
                 if not bool(self.version):
+                    log.debug('Version: {} Content: {}'.format(self.version, self.content))
                     raise RuntimeError('No content added and no version created')
             else:
                 if bool(self.version):

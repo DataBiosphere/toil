@@ -85,15 +85,19 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
 
     def _reader(self):
         with os.fdopen(self.readable_fh, 'rb') as readable:
-            # FIXME: another race here, causing a redundant attempt to close in the main thread
+            # TODO: If the reader somehow crashes here, both threads might try
+            # to close readable_fh.  Fortunately we don't do anything that
+            # should be able to fail here.
             self.readable_fh = None  # signal to parent thread that we've taken over
             self.readFrom(readable)
+            self.reader_done = True
 
     def __init__(self):
         super(WritablePipe, self).__init__()
         self.readable_fh = None
         self.writable = None
         self.thread = None
+        self.reader_done = False
 
     def __enter__(self):
         self.readable_fh, writable_fh = os.pipe()
@@ -103,25 +107,27 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
         return self.writable
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # Closeing the writable end will send EOF to the readable and cause the reader thread
+        # to finish.
+        # TODO: Can close() fail? If so, whould we try and clean up after the reader?
+        self.writable.close()
         try:
-            self.writable.close()
-            # Closeing the writable end will send EOF to the readable and cause the reader thread
-            # to finish.
             if self.thread is not None:
                 # reraises any exception that was raised in the thread
                 self.thread.join()
-        except:
+        except Exception as e:
             if exc_type is None:
                 # Only raise the child exception if there wasn't
                 # already an exception in the main thread
                 raise
+            else:
+                log.error('Swallowing additional exception in reader thread: %s', str(e))
         finally:
             # The responsibility for closing the readable end is generally that of the reader
             # thread. To cover the small window before the reader takes over we also close it here.
             readable_fh = self.readable_fh
             if readable_fh is not None:
-                # FIXME: This is still racy. The reader thread could close it now, and someone
-                # else may immediately open a new file, reusing the file handle.
+                # Close the file handle. The reader thread must be dead now. 
                 os.close(readable_fh)
 
 
