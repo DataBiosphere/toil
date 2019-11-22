@@ -458,6 +458,9 @@ def _monkey_patch_boto():
 
 try:
     from boto import provider
+    from botocore.session import Session
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
+ 
     base_class = provider.Provider
 except ImportError:
     base_class = object
@@ -474,9 +477,7 @@ class BotoCredentialAdapter(base_class):
     to avoid loads of processes swamping the EC2 metadata service.
     """
     
-    from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
-    
+   
     """
     Create a new BotoCredentialAdapter.
     """
@@ -489,7 +490,7 @@ class BotoCredentialAdapter(base_class):
         self.name = name
         self.access_key = access_key
         self.secret_key = secret_key
-        self.security_token = securit_token
+        self.security_token = security_token
         self.profile_name = profile_name
 
 
