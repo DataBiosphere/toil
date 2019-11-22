@@ -1117,6 +1117,9 @@ class AWSJobStore(AbstractJobStore):
                                 with attempt:
                                     info.version = upload.complete_upload().version_id
 
+                    # Make sure we actually wrote something, even if an empty file
+                    assert (bool(info.version) or info.content is not None)
+
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read()
@@ -1133,6 +1136,9 @@ class AWSJobStore(AbstractJobStore):
                                 assert dataLength == key.set_contents_from_file(fp=buf,
                                                                                 headers=headers)
                         info.version = key.version_id
+
+                    # Make sure we actually wrote something, even if an empty file
+                    assert (bool(info.version) or info.content is not None)
 
             pipe = MultiPartPipe() if multipart else SinglePartPipe()
             with pipe as writable:
