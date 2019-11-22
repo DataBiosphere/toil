@@ -62,8 +62,8 @@ py2_integration_jobstore:
   stage: integration
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
@@ -76,8 +76,8 @@ py2_integration_sort:
   stage: integration
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
@@ -91,8 +91,8 @@ py2_integration_sort:
 #  stage: integration
 #  script:
 #    - pwd
-#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-#    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+#    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
 #    - export TOIL_TEST_INTEGRATIVE=True
 #    - export TOIL_AWS_KEYNAME=id_rsa
 #    - export TOIL_AWS_ZONE=us-west-2a
@@ -148,8 +148,8 @@ py3_main:
 #  stage: integration
 #  script:
 #    - pwd
-#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y awscli jq
-#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli
+#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
 #    - export TOIL_TEST_INTEGRATIVE=True
 #    - export TOIL_AWS_KEYNAME=id_rsa
 #    - export TOIL_AWS_ZONE=us-west-2a
