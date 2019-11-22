@@ -993,13 +993,13 @@ class AWSJobStore(AbstractJobStore):
                      attributes in the dictionary that are used for storing inlined content.
             """
             content = self.content
-            assert content is None or instanceof(content, bytes)
+            assert content is None or isinstance(content, bytes)
             if self.encrypted and content is not None:
                 sseKeyPath = self.outer.sseKeyPath
                 if sseKeyPath is None:
                     raise AssertionError('Encryption requested but no key was provided.')
                 content = encryption.encrypt(content, sseKeyPath)
-            assert content is None or instanceof(content, bytes)
+            assert content is None or isinstance(content, bytes)
             attributes = self.binaryToAttributes(content)
             numChunks = attributes['numChunks']
             attributes.update(dict(ownerID=self.ownerID,
