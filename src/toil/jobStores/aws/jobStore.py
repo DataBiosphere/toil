@@ -1272,8 +1272,8 @@ class AWSJobStore(AbstractJobStore):
                 sseKey = self._getSSEKey()
                 assert sseKey is not None, 'Content is encrypted but no key was provided.'
                 assert len(sseKey) == 32
-                encodedSseKey = base64.b64encode(sseKey).encode('utf-8')
-                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest()).encode('utf-8')
+                encodedSseKey = base64.b64encode(sseKey).decode('utf-8')
+                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest()).decode('utf-8')
                 return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
                         'x-amz-server-side-encryption-customer-key': encodedSseKey,
                         'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
