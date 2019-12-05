@@ -1091,7 +1091,7 @@ class AbstractEncryptedJobStoreTest(object):
                 with self.jobstore_initialized.readSharedFileStream(fileName) as f:
                     self.assertEqual(phrase, f.read())
             except AssertionError as e:
-                self.assertEqual("Content is encrypted but no key was provided.", e.message)
+                self.assertEqual("Content is encrypted but no key was provided.", e.args[0])
             else:
                 self.fail("Read encryption content with encryption off.")
 
