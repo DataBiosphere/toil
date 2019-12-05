@@ -141,7 +141,6 @@ py3_main:
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/jobStores/jobStoreTest.py::AWSJobStoreTest::test_testImportSharedFile__otherCls_filejobstoretest
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 

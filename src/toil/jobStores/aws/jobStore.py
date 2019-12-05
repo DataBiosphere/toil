@@ -766,7 +766,7 @@ class AWSJobStore(AbstractJobStore):
                 if bucketExisted:
                     log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
                 else:
-                    log.debug("Created new job store bucket '%s'.", bucket_name)
+                    log.debug("Created new job store bucket '%s' with versioning state %s.", bucket_name, str(versioning))
 
                 return bucket
 
@@ -1128,7 +1128,7 @@ class AWSJobStore(AbstractJobStore):
                                 # Somehow we don't know the version. Try and get it.
                                 for attempt in retry_s3():
                                     with attempt:
-                                        key = store.filesBucket.get_key(compat_bytes(self.fileID), headers=headers)
+                                        key = store.filesBucket.get_key(compat_bytes(info.fileID), headers=headers)
                                         log.warning('Loaded key for upload with no version and got version %s', str(key.version_id))
                                         info.version = key.version_id
                                         assert info.version is not None
