@@ -77,8 +77,7 @@ provisioner_integration:
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq
-    - virtualenv -p python3.6 --system-site-packages --never-download venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor && pip install awscli==1.16.278
-    - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
+    - virtualenv -p python3.6 setup-venv && . setup-venv/bin/activate && pip install awscli==1.16.278
     - python setup_gitlab_ssh.py
     - chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
@@ -86,6 +85,8 @@ provisioner_integration:
     - mkdir ~/.aws
     - python setup_gitlab_docker.py
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+    - virtualenv -p python3.6 --system-site-packages --never-download venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
+    - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     - export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:$(python version_template.py dockerTag)
     - echo $TOIL_APPLIANCE_SELF
     - make push_docker
