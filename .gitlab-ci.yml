@@ -12,9 +12,9 @@ after_script:
 
 
 stages:
+  - integration
   - main_tests
   - test
-  - integration
 
 
 # Python2.7

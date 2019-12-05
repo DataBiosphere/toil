@@ -28,6 +28,7 @@ except ImportError:
     import pickle
 
 import re
+import time
 import uuid
 import base64
 import hashlib
@@ -63,6 +64,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       sdb_unavailable,
                                       monkeyPatchSdbConnection,
                                       retry_s3,
+                                      retryable_s3_errors,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
                                       uploadFromPath, chunkedFileUpload, fileSizeAndTime)
@@ -755,10 +757,18 @@ class AWSJobStore(AbstractJobStore):
                 if versioning and not bucketExisted:
                     # only call this method on bucket creation
                     bucket.configure_versioning(True)
+                    # Now wait until versioning is actually on. Some uploads
+                    # would come back with no versions; maybe they were
+                    # happening too fast and this setting isn't sufficiently
+                    # consistent?
+                    time.sleep(1)
+                    while self._getBucketVersioning(bucket) != True:
+                        log.warning("Waiting for versioning activation on bucket '%s'...", bucket_name)
+                        time.sleep(1)
                 elif check_versioning_consistency:
                     # now test for versioning consistency
                     # we should never see any of these errors since 'versioning' should always be true
-                    bucket_versioning = self.__getBucketVersioning(bucket)
+                    bucket_versioning = self._getBucketVersioning(bucket)
                     if bucket_versioning != versioning:
                         assert False, 'Cannot modify versioning on existing bucket'
                     elif bucket_versioning is None:
@@ -1116,6 +1126,11 @@ class AWSJobStore(AbstractJobStore):
                                     with attempt:
                                         upload.cancel_upload()
                         else:
+
+                            while store._getBucketVersioning(store.filesBucket) != True:
+                                log.warning('Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
+                                time.sleep(1)
+
                             for attempt in retry_s3():
                                 with attempt:
                                     log.debug('Attempting to complete upload...')
@@ -1126,7 +1141,7 @@ class AWSJobStore(AbstractJobStore):
 
                             if info.version is None:
                                 # Somehow we don't know the version. Try and get it.
-                                for attempt in retry_s3():
+                                for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
                                     with attempt:
                                         key = store.filesBucket.get_key(compat_bytes(info.fileID), headers=headers)
                                         log.warning('Loaded key for upload with no version and got version %s', str(key.version_id))
@@ -1148,6 +1163,11 @@ class AWSJobStore(AbstractJobStore):
                         key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
                         buf = BytesIO(buf)
                         headers = info._s3EncryptionHeaders()
+
+                        while store._getBucketVersioning(store.filesBucket) != True:
+                            log.warning('Versioning does not appear to be enabled yet. Deferring single part upload...')
+                            time.sleep(1)
+
                         for attempt in retry_s3():
                             with attempt:
                                 log.debug('Uploading single part of %d bytes', len(buf))
@@ -1158,7 +1178,7 @@ class AWSJobStore(AbstractJobStore):
 
                         if info.version is None:
                             # Somehow we don't know the version
-                            for attempt in retry_s3():
+                            for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
                                 with attempt:
                                     key.reload()
                                     log.warning('Reloaded key with no version and got version %s', str(key.version_id))
@@ -1336,7 +1356,7 @@ class AWSJobStore(AbstractJobStore):
 
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
 
-    def __getBucketVersioning(self, bucket):
+    def _getBucketVersioning(self, bucket):
         """
         For newly created buckets get_versioning_status returns an empty dict. In the past we've
         seen None in this case. We map both to a return value of False.
