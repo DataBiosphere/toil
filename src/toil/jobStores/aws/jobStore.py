@@ -1077,11 +1077,13 @@ class AWSJobStore(AbstractJobStore):
                     buf = readable.read(store.partSize)
                     assert isinstance(buf, bytes)
                     if allowInlining and len(buf) <= info.maxInlinedSize():
+                        log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
                     else:
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
+                                log.debug('Starting multipart upload')
                                 upload = store.filesBucket.initiate_multipart_upload(
                                     key_name=compat_bytes(info.fileID),
                                     headers=headers)
@@ -1092,6 +1094,7 @@ class AWSJobStore(AbstractJobStore):
                                     break
                                 for attempt in retry_s3():
                                     with attempt:
+                                        log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
                                         if USING_PYTHON2:
                                             upload.upload_part_from_file(fp=StringIO(buf),
                                                                          # part numbers are 1-based
@@ -1115,7 +1118,20 @@ class AWSJobStore(AbstractJobStore):
                         else:
                             for attempt in retry_s3():
                                 with attempt:
-                                    info.version = upload.complete_upload().version_id
+                                    log.debug('Attempting to complete upload...')
+                                    completed = upload.complete_upload()
+                                    log.debug('Completed upload object of type %s: %s', str(type(completed)), repr(completed))
+                                    info.version = completed.version_id
+                                    log.debug('Completed upload with version %s', str(info.version))
+
+                            if info.version is None:
+                                # Somehow we don't know the version. Try and get it.
+                                for attempt in retry_s3():
+                                    with attempt:
+                                        key = store.filesBucket.get_key(compat_bytes(self.fileID), headers=headers)
+                                        log.warning('Loaded key for upload with no version and got version %s', str(key.version_id))
+                                        info.version = key.version_id
+                                        assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
                     assert (bool(info.version) or info.content is not None)
@@ -1126,6 +1142,7 @@ class AWSJobStore(AbstractJobStore):
                     assert isinstance(buf, bytes)
                     dataLength = len(buf)
                     if allowInlining and dataLength <= info.maxInlinedSize():
+                        log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
                     else:
                         key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
@@ -1133,9 +1150,20 @@ class AWSJobStore(AbstractJobStore):
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
+                                log.debug('Uploading single part of %d bytes', len(buf))
                                 assert dataLength == key.set_contents_from_file(fp=buf,
                                                                                 headers=headers)
+                                log.debug('Upload received version %s', str(key.version_id))
                         info.version = key.version_id
+
+                        if info.version is None:
+                            # Somehow we don't know the version
+                            for attempt in retry_s3():
+                                with attempt:
+                                    key.reload()
+                                    log.warning('Reloaded key with no version and got version %s', str(key.version_id))
+                                    info.version = key.version_id
+                                    assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
                     assert (bool(info.version) or info.content is not None)
