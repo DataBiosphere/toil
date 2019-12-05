@@ -59,7 +59,7 @@ from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
-                       needs_aws_ec2,
+                       needs_aws_s3,
                        needs_encryption,
                        make_tests,
                        needs_google,
@@ -1078,7 +1078,7 @@ class AbstractEncryptedJobStoreTest(object):
             Create an encrypted file. Read it in encrypted mode then try with encryption off
             to ensure that it fails.
             """
-            phrase = 'This file is encrypted.'
+            phrase = 'This file is encrypted.'.encode('utf-8')
             fileName = 'foo'
             with self.jobstore_initialized.writeSharedFileStream(fileName, isProtected=True) as f:
                 f.write(phrase)
@@ -1091,7 +1091,7 @@ class AbstractEncryptedJobStoreTest(object):
                 with self.jobstore_initialized.readSharedFileStream(fileName) as f:
                     self.assertEqual(phrase, f.read())
             except AssertionError as e:
-                self.assertEqual("Content is encrypted but no key was provided.", e.message)
+                self.assertEqual("Content is encrypted but no key was provided.", e.args[0])
             else:
                 self.fail("Read encryption content with encryption off.")
 
@@ -1196,7 +1196,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             bucket.delete()
 
 
-@needs_aws_ec2
+@needs_aws_s3
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1344,7 +1344,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         return AWSJobStore.itemsPerBatchDelete
 
 
-@needs_aws_ec2
+@needs_aws_s3
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1359,7 +1359,7 @@ class InvalidAWSJobStoreTest(ToilTest):
                           'us-west-2:a_b')
 
 
-@needs_aws_ec2
+@needs_aws_s3
 @needs_encryption
 @slow
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):
