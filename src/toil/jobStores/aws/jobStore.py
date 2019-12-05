@@ -1170,7 +1170,7 @@ class AWSJobStore(AbstractJobStore):
 
                         for attempt in retry_s3():
                             with attempt:
-                                log.debug('Uploading single part of %d bytes', len(buf))
+                                log.debug('Uploading single part of %d bytes', dataLength)
                                 assert dataLength == key.set_contents_from_file(fp=buf,
                                                                                 headers=headers)
                                 log.debug('Upload received version %s', str(key.version_id))
