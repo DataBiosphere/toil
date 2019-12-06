@@ -103,10 +103,15 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # Make a Kubernetes-acceptable version of our username: not too long,
         # and all lowercase letters, numbers, or - or .
         acceptableChars = set(string.ascii_lowercase + string.digits + '-.')
-        safeUsername = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
-
+        
+        # Use TOIL_KUBERNETES_OWNER if present in env var
+        if os.environ.get("TOIL_KUBERNETES_OWNER", None) is not None:
+            username = os.environ.get("TOIL_KUBERNETES_OWNER")
+        else:    
+            username = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
+        
         # Create a prefix for jobs, starting with our username
-        self.jobPrefix = '{}-toil-{}-'.format(safeUsername, uuid.uuid4())
+        self.jobPrefix = '{}-toil-{}-'.format(username, uuid.uuid4())
         
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
