@@ -446,7 +446,7 @@ class BotoCredentialAdapter(base_class):
         self.secret_key = secret_key
         self.security_token = security_token
         self.profile_name = profile_name
-
+        
 
         if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
             # We are on AWS and we don't have credentials passed along and we aren't anonymous.
@@ -545,6 +545,7 @@ class BotoCredentialAdapter(base_class):
         (or wait for another cooperating process to do so) if they are missing
         or not fresh enough.
         """
+        cache_path = '~/.cache/aws/cached_temporary_credentials'
         path = os.path.expanduser(cache_path)
         tmp_path = path + '.tmp'
         while True:
