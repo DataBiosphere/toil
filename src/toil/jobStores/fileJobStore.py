@@ -486,6 +486,22 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchFileException(jobStoreFileID)
         return True
 
+    def getFileSize(self, jobStoreFileID):
+        # Duplicate a bunch of fileExists to save on stat calls
+        absPath = self._getFilePathFromId(jobStoreFileID)
+
+        if (not absPath.startswith(self.jobsDir) and
+            not absPath.startswith(self.filesDir) and
+            not absPath.startswith(self.jobFilesDir)):
+            # Don't even look for it, it is out of bounds.
+            raise NoSuchFileException(jobStoreFileID)
+            
+        try:
+            st = os.stat(absPath)
+        except os.error:
+            return 0
+        return st.st_size
+
     @contextmanager
     def updateFileStream(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)

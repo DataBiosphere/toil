@@ -1032,7 +1032,7 @@ class CachingFileStore(AbstractFileStore):
             # Don't let the user forge File IDs.
             raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
 
-        if fileStoreID in self.filesToDelete:
+        if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
             
@@ -1178,7 +1178,7 @@ class CachingFileStore(AbstractFileStore):
             # Try and create a downloading entry if no entry exists
             logger.debug('Trying to make file record for id %s', fileStoreID)
             self.cur.execute('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
-                (fileStoreID, cachedPath, fileStoreID.size, 'downloading', pid))
+                (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', pid))
             self.con.commit()
 
             # See if we won the race
@@ -1297,7 +1297,7 @@ class CachingFileStore(AbstractFileStore):
         to 'cached', if space can be found, or gives away the cached copy if
         space cannot be found.
 
-        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param toil.fileStores.FileID or str fileStoreID: job store id for the file
         :param str cachedPath: absolute source path in the cache.
         :param str localFilePath: absolute destination path. Already known not to exist.
         """
@@ -1339,7 +1339,7 @@ class CachingFileStore(AbstractFileStore):
 
         Returns true if the file was moved, and false if the file was not owned by us in 'downloading' state.
 
-        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param toil.fileStores.FileID or str fileStoreID: job store id for the file
         :param str cachedPath: absolute source path in the cache.
         :param str localFilePath: absolute destination path. Already known not to exist.
         :return: True if the file is successfully moved. False if the file is not owned by us in 'downloading' state.
@@ -1403,7 +1403,7 @@ class CachingFileStore(AbstractFileStore):
         """
         Read a file, putting it into the cache if possible.
 
-        :param toil.fileStores.FileID fileStoreID: job store id for the file
+        :param toil.fileStores.FileID or str fileStoreID: job store id for the file
         :param str localFilePath: absolute destination path. Already known not to exist.
         :param bool symlink: Whether a symlink is acceptable.
         :param str readerID: Job ID of the job reading the file.
@@ -1424,7 +1424,7 @@ class CachingFileStore(AbstractFileStore):
             # Try and create a downloading entry if no entry exists
             logger.debug('Trying to make file record for id %s', fileStoreID)
             self.cur.execute('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
-                (fileStoreID, cachedPath, fileStoreID.size, 'downloading', pid))
+                (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', pid))
             # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
             # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
             logger.debug('Trying to make file reference to %s', fileStoreID)
@@ -1518,11 +1518,7 @@ class CachingFileStore(AbstractFileStore):
                     self._executePendingDeletions(self.con, self.cur)
 
     def readGlobalFileStream(self, fileStoreID):
-        if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
-
-        if fileStoreID in self.filesToDelete:
+        if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
 
@@ -1531,10 +1527,6 @@ class CachingFileStore(AbstractFileStore):
         return self.jobStore.readFileStream(fileStoreID)
 
     def deleteLocalFile(self, fileStoreID):
-        if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
-
         # What job are we operating as?
         jobID = self.jobID
 
@@ -1579,10 +1571,6 @@ class CachingFileStore(AbstractFileStore):
             raise IllegalDeletionCacheError(missingFile)
 
     def deleteGlobalFile(self, fileStoreID):
-        if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
-
         # Delete local copies for this job
         self.deleteLocalFile(fileStoreID)
 
@@ -1604,7 +1592,7 @@ class CachingFileStore(AbstractFileStore):
 
         # Add the file to the list of files to be deleted from the job store
         # once the run method completes.
-        self.filesToDelete.add(fileStoreID)
+        self.filesToDelete.add(str(fileStoreID))
         self.logToMaster('Added file with ID \'%s\' to the list of files to be' % fileStoreID +
                          ' globally deleted.', level=logging.DEBUG)
 

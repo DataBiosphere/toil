@@ -280,6 +280,12 @@ class GoogleJobStore(AbstractJobStore):
     def fileExists(self, jobStoreFileID):
         return self.bucket.blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey).exists()
 
+    @googleRetry
+    def getFileSize(self, jobStoreFileID):
+        if not self.fileExists(jobStoreFileID):
+            return 0
+        return self.bucket.get_blob(compat_bytes(jobStoreFileID), encryption_key=self.sseKey).size
+
     def updateFile(self, jobStoreFileID, localFilePath):
         with open(localFilePath) as f:
             self._writeFile(jobStoreFileID, f, update=True)
