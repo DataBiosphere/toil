@@ -186,14 +186,16 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/V1Job.md
 
             # Make a definition for the container's resource requirements.
-            # Don't let people request too-small amounts of memory or disk.
-            # Kubernetes needs some lower limit to run the pod at all without OOMing.
+            # Add on a bit for Kubernetes overhead (Toil worker's memory, hot deployed
+            # user scripts).
+            # Kubernetes needs some lower limit of memory to run the pod at all without
+            # OOMing.
             requirements_dict = {'cpu': jobNode.cores,
-                                 'memory': max(jobNode.memory, 1024 * 1024 * 512),
-                                 'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 512)}
-            # Set a higher limit to give jobs some room to go over what they
-            # think they need, as is the Kubernetes way.
-            limits_dict = {k: int(v * 1.5) for k, v in requirements_dict.items()}
+                                 'memory': jobNode.memory + 1024 * 1024 * 512,
+                                 'ephemeral-storage': jobNode.disk + 1024 * 1024 * 512}
+            # Use the requirements as the limits, for predictable behavior, and because
+            # the UCSC Kubernetes admins want it that way.
+            limits_dict = requirements_dict
             resources = kubernetes.client.V1ResourceRequirements(limits=limits_dict,
                                                                  requests=requirements_dict)
             
