@@ -418,6 +418,10 @@ def _monkey_patch_boto():
     class that manages credentials with one that uses the Boto 3 configuration
     and can assume roles.
     """
+    
+#    from boto import provider
+#    from botocore.session import Session
+#    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     # We cache the final credentials so that we don't send multiple processes to
     # simultaneously bang on the EC2 metadata server or ask for MFA pins from the
@@ -452,11 +456,6 @@ def _monkey_patch_boto():
         """
         return datetime.strptime(s, datetime_format)
 
-from boto import provider
-from botocore.session import Session
-from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
-
-
 class BotoCredentialAdapter(provider.Provider):
     """
     Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
@@ -467,6 +466,10 @@ class BotoCredentialAdapter(provider.Provider):
     This class also handles cacheing credentials in multi-process environments
     to avoid loads of processes swamping the EC2 metadata service.
     """
+    from boto import provider
+    from botocore.session import Session
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
+
   
     def __init__(self, name, access_key=None, secret_key=None,
         security_token=None, profile_name=None, **kwargs):
