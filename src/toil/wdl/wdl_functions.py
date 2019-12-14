@@ -562,3 +562,45 @@ def read_csv(f):
     '''
     return read_tsv(f, delimiter=",")
 
+def floor(i):
+    return int(i)
+
+def ceil(i):
+    return int(i + 1)
+
+def roun(i)
+    return round(i,1)
+
+def select_all(arr1,arr2):
+    valid = []
+    for x in arr1:
+        if x in arr2:
+            valid.append(x)
+    return valid
+
+
+def defined(x):
+    # This function will return false if the argument is 
+    # an unset optional value. It will return true in all other cases.
+    if x == None:
+        return False
+    return True
+
+def length(i):
+    return len(i)
+
+def transpose(arr):
+    return [[arr[j][i] for j in range(len(arr))] for i in range(len(arr[0]))] 
+
+def zipp(arr1, arr2):
+    li = [] 
+    for i in zip(arr1, arr2):
+        li.append(i)
+    return li
+
+def cross(arr1, arr2):
+    li = []
+    for i in arr1:
+        for z in arr2:
+            li.append((i,z))
+    return li 
