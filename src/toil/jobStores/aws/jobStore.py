@@ -1293,7 +1293,7 @@ class AWSJobStore(AbstractJobStore):
                                                      version_id=self.version,
                                                      headers=headers)
                 if verifyChecksum and self.checksum:
-                    downloadedChecksum = self.get_checksum(localFilePath)
+                    downloadedChecksum = self._get_file_checksum(localFilePath)
                     if self.checksum != downloadedChecksum:
                         raise AssertionError(
                             'Checksums do not match for file %s. Expected: %s Actual: %s' % (
