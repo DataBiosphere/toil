@@ -84,10 +84,15 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # Make a Kubernetes-acceptable version of our username: not too long,
         # and all lowercase letters, numbers, or - or .
         acceptableChars = set(string.ascii_lowercase + string.digits + '-.')
-        safeUsername = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
-
+        
+        # Use TOIL_KUBERNETES_OWNER if present in env var
+        if os.environ.get("TOIL_KUBERNETES_OWNER", None) is not None:
+            username = os.environ.get("TOIL_KUBERNETES_OWNER")
+        else:    
+            username = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
+        
         # Create a prefix for jobs, starting with our username
-        self.jobPrefix = '{}-toil-{}-'.format(safeUsername, uuid.uuid4())
+        self.jobPrefix = '{}-toil-{}-'.format(username, uuid.uuid4())
         
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
@@ -231,14 +236,16 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/V1Job.md
 
             # Make a definition for the container's resource requirements.
-            # Don't let people request too-small amounts of memory or disk.
-            # Kubernetes needs some lower limit to run the pod at all without OOMing.
+            # Add on a bit for Kubernetes overhead (Toil worker's memory, hot deployed
+            # user scripts).
+            # Kubernetes needs some lower limit of memory to run the pod at all without
+            # OOMing.
             requirements_dict = {'cpu': jobNode.cores,
-                                 'memory': max(jobNode.memory, 1024 * 1024 * 512),
-                                 'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 512)}
-            # Set a higher limit to give jobs some room to go over what they
-            # think they need, as is the Kubernetes way.
-            limits_dict = {k: int(v * 1.5) for k, v in requirements_dict.items()}
+                                 'memory': jobNode.memory + 1024 * 1024 * 512,
+                                 'ephemeral-storage': jobNode.disk + 1024 * 1024 * 512}
+            # Use the requirements as the limits, for predictable behavior, and because
+            # the UCSC Kubernetes admins want it that way.
+            limits_dict = requirements_dict
             resources = kubernetes.client.V1ResourceRequirements(limits=limits_dict,
                                                                  requests=requirements_dict)
             
