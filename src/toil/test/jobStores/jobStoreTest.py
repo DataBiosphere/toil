@@ -1253,9 +1253,16 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail()
             finally:
-                for attempt in retry_s3():
-                    with attempt:
-                        s3.delete_bucket(bucket=bucket)
+                try:
+                    for attempt in retry_s3():
+                        with attempt:
+                            s3.delete_bucket(bucket=bucket)
+                except boto.exception.S3ResponseError as e:
+                    if e.error_code == 404:
+                        # The bucket doesn't exist; maybe a failed delete actually succeeded.
+                        pass
+                    else:
+                        raise
 
     @slow
     def testInlinedFiles(self):
