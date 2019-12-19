@@ -531,7 +531,7 @@ class AWSJobStore(AbstractJobStore):
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
-        info.upload(localFilePath)
+        info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
         log.debug("Wrote %r of from %r", info, localFilePath)
         return info.fileID
@@ -557,7 +557,7 @@ class AWSJobStore(AbstractJobStore):
 
     def updateFile(self, jobStoreFileID, localFilePath):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
-        info.upload(localFilePath)
+        info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
         log.debug("Wrote %r from path %r.", info, localFilePath)
 
@@ -581,7 +581,7 @@ class AWSJobStore(AbstractJobStore):
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         log.debug("Reading %r into %r.", info, localFilePath)
-        info.download(localFilePath)
+        info.download(localFilePath, not self.config.disableJobStoreChecksumVerification)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
@@ -841,7 +841,7 @@ class AWSJobStore(AbstractJobStore):
         """
 
         def __init__(self, fileID, ownerID, encrypted,
-                     version=None, content=None, numContentChunks=0):
+                     version=None, content=None, numContentChunks=0,  checksum=None):
             """
             :type fileID: str
             :param fileID: the file's ID
@@ -862,6 +862,10 @@ class AWSJobStore(AbstractJobStore):
 
             :type numContentChunks: int
             :param numContentChunks: the number of SDB domain attributes occupied by this files
+
+            :type checksum: str|None
+            :param checksum: the sha1 checksum of the file, if available.
+
             inlined content. Note that an inlined empty string still occupies one chunk.
             """
             super(AWSJobStore.FileInfo, self).__init__()
@@ -871,6 +875,7 @@ class AWSJobStore(AbstractJobStore):
             self._version = version
             self._previousVersion = version
             self._content = content
+            self._checksum = checksum
             self._numContentChunks = numContentChunks
 
         @property
@@ -900,6 +905,14 @@ class AWSJobStore(AbstractJobStore):
         @property
         def content(self):
             return self._content
+
+        @property
+        def checksum(self):
+            return self._checksum
+
+        @checksum.setter
+        def checksum(self, checksum):
+            self._checksum = checksum
 
         @content.setter
         def content(self, content):
@@ -981,6 +994,7 @@ class AWSJobStore(AbstractJobStore):
                 return None
             else:
                 version = strOrNone(item['version'])
+                checksum = strOrNone(item.get('checksum'))
                 encrypted = strict_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item)
                 if encrypted:
@@ -990,7 +1004,7 @@ class AWSJobStore(AbstractJobStore):
                     if content is not None:
                         content = encryption.decrypt(content, sseKeyPath)
                 self = cls(fileID=item.name, ownerID=ownerID, encrypted=encrypted, version=version,
-                           content=content, numContentChunks=numContentChunks)
+                           content=content, numContentChunks=numContentChunks, checksum=checksum)
                 return self
 
         def toItem(self):
@@ -1014,7 +1028,8 @@ class AWSJobStore(AbstractJobStore):
             numChunks = attributes['numChunks']
             attributes.update(dict(ownerID=self.ownerID,
                                    encrypted=self.encrypted,
-                                   version=self.version or ''))
+                                   version=self.version or '',
+                                   checksum=self.checksum or ''))
             return attributes, numChunks
 
         @classmethod
@@ -1056,16 +1071,26 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     raise
 
-        def upload(self, localFilePath):
+        def upload(self, localFilePath, calculateChecksum=True):
             file_size, file_time = fileSizeAndTime(localFilePath)
             if file_size <= self.maxInlinedSize():
                 with open(localFilePath, 'rb') as f:
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
+                self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
                 self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
                                               bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
                                               headers=headers)
+
+        def _get_file_checksum(self, localFilePath):
+            with open(localFilePath, 'rb') as f:
+                checksum = hashlib.sha1()
+                contents = f.read(1024 * 1024)
+                while contents != b'':
+                    checksum.update(contents)
+                    contents = f.read(1024 * 1024)
+                return 'sha1$%s' % checksum.hexdigest()
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
@@ -1255,7 +1280,7 @@ class AWSJobStore(AbstractJobStore):
             else:
                 assert False
 
-        def download(self, localFilePath):
+        def download(self, localFilePath, verifyChecksum=True):
             if self.content is not None:
                 with open(localFilePath, 'wb') as f:
                     f.write(self.content)
@@ -1267,6 +1292,12 @@ class AWSJobStore(AbstractJobStore):
                         key.get_contents_to_filename(localFilePath,
                                                      version_id=self.version,
                                                      headers=headers)
+                if verifyChecksum and self.checksum:
+                    downloadedChecksum = self._get_file_checksum(localFilePath)
+                    if self.checksum != downloadedChecksum:
+                        raise AssertionError(
+                            'Checksums do not match for file %s. Expected: %s Actual: %s' % (
+                                localFilePath, self.checksum, downloadedChecksum))
             else:
                 assert False
 
@@ -1350,6 +1381,7 @@ class AWSJobStore(AbstractJobStore):
                  ('version', r(self.version)),
                  ('previousVersion', r(self.previousVersion)),
                  ('content', r(self.content)),
+                 ('checksum', r(self.checksum)),
                  ('_numContentChunks', r(self._numContentChunks)))
             return "{}({})".format(type(self).__name__,
                                    ', '.join('%s=%s' % (k, v) for k, v in d))
