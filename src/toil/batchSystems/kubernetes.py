@@ -239,7 +239,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Add on a bit for Kubernetes overhead (Toil worker's memory, hot deployed
             # user scripts).
             # Kubernetes needs some lower limit of memory to run the pod at all without
-            # OOMing.
+            # OOMing. We also want to provision some extra space so that when
+            # we test _isPodStuckOOM we never get True unless the job has
+            # exceeded jobNode.memory.
             requirements_dict = {'cpu': jobNode.cores,
                                  'memory': jobNode.memory + 1024 * 1024 * 512,
                                  'ephemeral-storage': jobNode.disk + 1024 * 1024 * 512}
