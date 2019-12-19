@@ -47,6 +47,7 @@ from toil.lib.memoize import strict_bool
 from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchSystemLocalSupport,
+                                                   LOST_JOB_EXIT_STATUS,
                                                    NodeInfo)
 from toil.batchSystems.mesos import ToilJob, MesosShape, TaskData, JobQueue
 
@@ -648,11 +649,14 @@ class MesosBatchSystem(BatchSystemLocalSupport,
                             update.executor_id, update.agent_id)
             
             jobEnded(exitStatus)
-        elif update.state in ('TASK_LOST', 'TASK_KILLED', 'TASK_ERROR'):
+        elif update.state == 'TASK_LOST':
+            log.warning("Job %i is lost. Retrying.", jobID)
+            jobEnded(LOST_JOB_EXIT_STATUS)
+        elif update.state in ('TASK_KILLED', 'TASK_ERROR'):
             log.warning("Job %i is in unexpected state %s with message '%s' due to reason '%s'.",
                         jobID, update.state, update.message, update.reason)
             jobEnded(255)
-            
+
         if 'limitation' in update:
             log.warning("Job limit info: %s" % update.limitation)
             

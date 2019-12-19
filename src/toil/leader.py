@@ -35,6 +35,7 @@ try:
 except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
+from toil.batchSystems.abstractBatchSystem import LOST_JOB_EXIT_STATUS
 from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
@@ -833,7 +834,9 @@ class Leader(object):
                             else:
                                 logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
-                jobGraph.setupJobAfterFailure(self.config)
+                # Do not decrement retry count for lost jobs (i.e. due to preemptable failures).
+                decrementRetryCount = not self.config.enableUnlimitedPreemptableRetries or resultStatus != LOST_JOB_EXIT_STATUS
+                jobGraph.setupJobAfterFailure(self.config, decrementRetryCount=decrementRetryCount)
                 self.jobStore.update(jobGraph)
             elif jobStoreID in self.toilState.hasFailedSuccessors:
                 # If the job has completed okay, we can remove it from the list of jobs with failed successors
