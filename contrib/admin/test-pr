@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+
+# test-pr: submit a PR from an external contributor for Gitlab testing
+
+set -e
+
+# Check arguments
+if [[ "${#}" -ne 3 ]] ; then
+    printf >&2 "test-pr: submit a PR from an external contributor for Gitlab testing\n\n"
+    printf >&2 "\tusage: test-pr GH_USER SOURCE_BRANCH DEST_BRANCH\n\n"
+    printf >&2 "\texample: test-pr arostamianfar defaultcaching issues/2586-allow-enabling-caching\n\n"
+    exit 1
+fi
+
+# Parse arguments
+GH_USER="${1}"
+shift
+SOURCE_BRANCH="${1}"
+shift
+DEST_BRANCH="${1}"
+shift
+
+echo "Fetch ${SOURCE_BRANCH} from ${GH_USER}"
+git fetch "git@github.com:${GH_USER}/toil.git" "${SOURCE_BRANCH}"
+echo "Push to Toil ${DEST_BRANCH}"
+git push git@github.com:DataBiosphere/toil.git "FETCH_HEAD:refs/heads/${DEST_BRANCH}"
+
