@@ -478,9 +478,16 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Assume the first result is the right one, because of the selector
         # Assume it has exactly one pod, because we made it
+        containers = items[0].get('containers', [{}])
+        
+        if len(containers) == 0:
+            # If there are no containers (because none have started yet?), we can't say we're stuck OOM
+            return False
+        
+        # Otherwise, assume it just has one container.
         # Grab the memory usage string, like 123Ki, and convert to bytes.
         # If anything is missing, assume 0 bytes used.
-        bytesUsed = human2bytes(items[0].get('containers', [{}])[0].get('usage', {}).get('memory', '0'))
+        bytesUsed = human2bytes(containers[0].get('usage', {}).get('memory', '0'))
 
         # Also get the limit out of the pod object's spec
         bytesAllowed = human2bytes(podObject.spec.containers[0].resources.limits['memory'])
