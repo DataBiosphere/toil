@@ -167,7 +167,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # We just need the namespace string
             if config_source == 'in_cluster':
                 # Our namespace comes from a particular file.
-                return open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r').read().strip()
+                with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r') as fh
+                    return fh.read().strip()
             else:
                 # Find all contexts and the active context.
                 # The active context gets us our namespace.
