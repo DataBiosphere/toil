@@ -416,8 +416,9 @@ try:
     from botocore.session import Session
     from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
     base_class = provider.Provider
+    _monkey_patch_boto()
 except ImportError:
-    pass
+    base_class = object
 
 
 class BotoCredentialAdapter(base_class):
@@ -674,10 +675,9 @@ def _monkey_patch_boto():
 
     # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
     provider.Provider = BotoCredentialAdapter
-
   
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
-try:
-    _monkey_patch_boto()
-except ImportError:
-    pass
+#try:
+#    _monkey_patch_boto()
+#except ImportError:
+#    pass
