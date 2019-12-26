@@ -414,10 +414,10 @@ def logProcessContext(config):
 try:
     from boto import provider
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache 
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
     base_class = provider.Provider
 except ImportError:
-    base_class = object
+    pass
 
 
 class BotoCredentialAdapter(base_class):
