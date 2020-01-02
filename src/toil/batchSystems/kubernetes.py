@@ -47,6 +47,7 @@ from six.moves.queue import Empty, Queue
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
+from toil.lib.humanize import human2bytes
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -127,8 +128,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         goes on longer than our credentials last, though.
         
         This method is the Right Way to get any Kubernetes API. You call it
-        with the API you want ('batch' or 'core') and it returns an API object
-        with guaranteed fresh credentials.
+        with the API you want ('batch', 'core', or 'customObjects') and it
+        returns an API object with guaranteed fresh credentials.
         
         It also recognizes 'namespace' and returns our namespace as a string.
         
@@ -157,6 +158,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # Now fill in the API objects with these credentials
         self._apis['batch'] = kubernetes.client.BatchV1Api()
         self._apis['core'] = kubernetes.client.CoreV1Api()
+        self._apis['customObjects'] = kubernetes.client.CustomObjectsApi()
         
         # And save the time
         self.credential_time = now
@@ -238,7 +240,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Add on a bit for Kubernetes overhead (Toil worker's memory, hot deployed
             # user scripts).
             # Kubernetes needs some lower limit of memory to run the pod at all without
-            # OOMing.
+            # OOMing. We also want to provision some extra space so that when
+            # we test _isPodStuckOOM we never get True unless the job has
+            # exceeded jobNode.memory.
             requirements_dict = {'cpu': jobNode.cores,
                                  'memory': jobNode.memory + 1024 * 1024 * 512,
                                  'ephemeral-storage': jobNode.disk + 1024 * 1024 * 512}
@@ -434,7 +438,71 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         return self._api('core').read_namespaced_pod_log(podObject.metadata.name,
                                                          namespace=self.namespace)
-   
+
+    def _isPodStuckOOM(self, podObject, minFreeBytes=1024 * 1024 * 2):
+        """
+        Poll the current memory usage for the pod from the cluster.
+
+        Return True if the pod looks to be in a soft/stuck out of memory (OOM)
+        state, where it is using too much memory to actually make progress, but
+        not enough to actually trigger the OOM killer to kill it. For some
+        large memory limits, on some Kubernetes clusters, pods can get stuck in
+        this state when their memory limits are high (approx. 200 Gi).
+
+        We operationalize "OOM" as having fewer than minFreeBytes bytes free.
+
+        We assume the pod has only one container, as Toil's pods do.
+
+        :param kubernetes.client.V1Pod podObject: a Kubernetes pod with one
+                                       container to check up on.
+        :param int minFreeBytes: Minimum free bytes to not be OOM.
+
+        :return: True if the pod is OOM, false otherwise.
+        :rtype: bool
+        """
+
+        # Compose a query to get just the pod we care about
+        query = 'metadata.name=' + podObject.metadata.name
+
+        # Look for it
+        # TODO: When the Kubernetes Python API actually wraps the metrics API, switch to that
+        response = self._api('customObjects').list_namespaced_custom_object('metrics.k8s.io', 'v1beta1',
+                                                                            self.namespace, 'pods',
+                                                                            field_selector=query)
+
+        # Pull out the items
+        items = response.get('items', [])
+
+        if len(items) == 0:
+            # If there's no statistics we can't say we're stuck OOM
+            return False
+
+        # Assume the first result is the right one, because of the selector
+        # Assume it has exactly one pod, because we made it
+        containers = items[0].get('containers', [{}])
+        
+        if len(containers) == 0:
+            # If there are no containers (because none have started yet?), we can't say we're stuck OOM
+            return False
+        
+        # Otherwise, assume it just has one container.
+        # Grab the memory usage string, like 123Ki, and convert to bytes.
+        # If anything is missing, assume 0 bytes used.
+        bytesUsed = human2bytes(containers[0].get('usage', {}).get('memory', '0'))
+
+        # Also get the limit out of the pod object's spec
+        bytesAllowed = human2bytes(podObject.spec.containers[0].resources.limits['memory'])
+
+        if bytesAllowed - bytesUsed < minFreeBytes:
+            # This is too much!
+            logger.warning('Pod %s has used %d of %d bytes of memory; reporting as stuck due to OOM.',
+                           podObject.metadata.name, bytesUsed, bytesAllowed)
+
+            return True
+
+
+
+
     def _getIDForOurJob(self, jobObject):
         """
         Get the JobID number that belongs to the given job that we own.
@@ -551,8 +619,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     break
 
         if jobObject is None:
-            # If no jobs are failed, look for jobs with pods with
-            # containers stuck in Waiting with reason ImagePullBackOff
+            # If no jobs are failed, look for jobs with pods that are stuck for various reasons.
             for j in self._ourJobObjects():
                 pod = self._getPodForJob(j)
 
@@ -560,6 +627,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     # Skip jobs with no pod
                     continue
                     
+                # Containers can get stuck in Waiting with reason ImagePullBackOff
+
                 # Get the statuses of the pod's containers
                 containerStatuses = pod.status.container_statuses
                 if containerStatuses is None or len(containerStatuses) == 0:
@@ -580,8 +649,17 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     logger.warning('Failing stuck job; did you try to run a non-existent Docker image?'
                                    ' Check TOIL_APPLIANCE_SELF.')
                     break
-       
-            
+
+                # Pods can also get stuck nearly but not quite out of memory,
+                # if their memory limits are high and they try to exhaust them.
+
+                if self._isPodStuckOOM(pod):
+                    # We found a job that probably should be OOM! Report it as stuck.
+                    # Polling function takes care of the logging.
+                    jobObject = j
+                    chosenFor = 'stuck'
+                    break
+
         if jobObject is None:
             # Say we couldn't find anything
             return None
