@@ -28,6 +28,7 @@ except ImportError:
     import pickle
 
 import re
+import time
 import uuid
 import base64
 import hashlib
@@ -63,6 +64,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       sdb_unavailable,
                                       monkeyPatchSdbConnection,
                                       retry_s3,
+                                      retryable_s3_errors,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
                                       uploadFromPath, chunkedFileUpload, fileSizeAndTime)
@@ -529,7 +531,7 @@ class AWSJobStore(AbstractJobStore):
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
-        info.upload(localFilePath)
+        info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
         log.debug("Wrote %r of from %r", info, localFilePath)
         return info.fileID
@@ -555,7 +557,7 @@ class AWSJobStore(AbstractJobStore):
 
     def updateFile(self, jobStoreFileID, localFilePath):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
-        info.upload(localFilePath)
+        info.upload(localFilePath, not self.config.disableJobStoreChecksumVerification)
         info.save()
         log.debug("Wrote %r from path %r.", info, localFilePath)
 
@@ -579,7 +581,7 @@ class AWSJobStore(AbstractJobStore):
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         info = self.FileInfo.loadOrFail(jobStoreFileID)
         log.debug("Reading %r into %r.", info, localFilePath)
-        info.download(localFilePath)
+        info.download(localFilePath, not self.config.disableJobStoreChecksumVerification)
 
     @contextmanager
     def readFileStream(self, jobStoreFileID):
@@ -755,10 +757,18 @@ class AWSJobStore(AbstractJobStore):
                 if versioning and not bucketExisted:
                     # only call this method on bucket creation
                     bucket.configure_versioning(True)
+                    # Now wait until versioning is actually on. Some uploads
+                    # would come back with no versions; maybe they were
+                    # happening too fast and this setting isn't sufficiently
+                    # consistent?
+                    time.sleep(1)
+                    while self._getBucketVersioning(bucket) != True:
+                        log.warning("Waiting for versioning activation on bucket '%s'...", bucket_name)
+                        time.sleep(1)
                 elif check_versioning_consistency:
                     # now test for versioning consistency
                     # we should never see any of these errors since 'versioning' should always be true
-                    bucket_versioning = self.__getBucketVersioning(bucket)
+                    bucket_versioning = self._getBucketVersioning(bucket)
                     if bucket_versioning != versioning:
                         assert False, 'Cannot modify versioning on existing bucket'
                     elif bucket_versioning is None:
@@ -766,7 +776,7 @@ class AWSJobStore(AbstractJobStore):
                 if bucketExisted:
                     log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
                 else:
-                    log.debug("Created new job store bucket '%s'.", bucket_name)
+                    log.debug("Created new job store bucket '%s' with versioning state %s.", bucket_name, str(versioning))
 
                 return bucket
 
@@ -831,7 +841,7 @@ class AWSJobStore(AbstractJobStore):
         """
 
         def __init__(self, fileID, ownerID, encrypted,
-                     version=None, content=None, numContentChunks=0):
+                     version=None, content=None, numContentChunks=0,  checksum=None):
             """
             :type fileID: str
             :param fileID: the file's ID
@@ -852,6 +862,10 @@ class AWSJobStore(AbstractJobStore):
 
             :type numContentChunks: int
             :param numContentChunks: the number of SDB domain attributes occupied by this files
+
+            :type checksum: str|None
+            :param checksum: the sha1 checksum of the file, if available.
+
             inlined content. Note that an inlined empty string still occupies one chunk.
             """
             super(AWSJobStore.FileInfo, self).__init__()
@@ -861,6 +875,7 @@ class AWSJobStore(AbstractJobStore):
             self._version = version
             self._previousVersion = version
             self._content = content
+            self._checksum = checksum
             self._numContentChunks = numContentChunks
 
         @property
@@ -891,8 +906,17 @@ class AWSJobStore(AbstractJobStore):
         def content(self):
             return self._content
 
+        @property
+        def checksum(self):
+            return self._checksum
+
+        @checksum.setter
+        def checksum(self, checksum):
+            self._checksum = checksum
+
         @content.setter
         def content(self, content):
+            assert content is None or isinstance(content, bytes)
             self._content = content
             if content is not None:
                 self.version = ''
@@ -970,6 +994,7 @@ class AWSJobStore(AbstractJobStore):
                 return None
             else:
                 version = strOrNone(item['version'])
+                checksum = strOrNone(item.get('checksum'))
                 encrypted = strict_bool(encrypted)
                 content, numContentChunks = cls.attributesToBinary(item)
                 if encrypted:
@@ -979,7 +1004,7 @@ class AWSJobStore(AbstractJobStore):
                     if content is not None:
                         content = encryption.decrypt(content, sseKeyPath)
                 self = cls(fileID=item.name, ownerID=ownerID, encrypted=encrypted, version=version,
-                           content=content, numContentChunks=numContentChunks)
+                           content=content, numContentChunks=numContentChunks, checksum=checksum)
                 return self
 
         def toItem(self):
@@ -992,16 +1017,19 @@ class AWSJobStore(AbstractJobStore):
                      attributes in the dictionary that are used for storing inlined content.
             """
             content = self.content
+            assert content is None or isinstance(content, bytes)
             if self.encrypted and content is not None:
                 sseKeyPath = self.outer.sseKeyPath
                 if sseKeyPath is None:
                     raise AssertionError('Encryption requested but no key was provided.')
                 content = encryption.encrypt(content, sseKeyPath)
+            assert content is None or isinstance(content, bytes)
             attributes = self.binaryToAttributes(content)
             numChunks = attributes['numChunks']
             attributes.update(dict(ownerID=self.ownerID,
                                    encrypted=self.encrypted,
-                                   version=self.version or ''))
+                                   version=self.version or '',
+                                   checksum=self.checksum or ''))
             return attributes, numChunks
 
         @classmethod
@@ -1043,16 +1071,26 @@ class AWSJobStore(AbstractJobStore):
                 else:
                     raise
 
-        def upload(self, localFilePath):
+        def upload(self, localFilePath, calculateChecksum=True):
             file_size, file_time = fileSizeAndTime(localFilePath)
             if file_size <= self.maxInlinedSize():
-                with open(localFilePath) as f:
+                with open(localFilePath, 'rb') as f:
                     self.content = f.read()
             else:
                 headers = self._s3EncryptionHeaders()
+                self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
                 self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
                                               bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
                                               headers=headers)
+
+        def _get_file_checksum(self, localFilePath):
+            with open(localFilePath, 'rb') as f:
+                checksum = hashlib.sha1()
+                contents = f.read(1024 * 1024)
+                while contents != b'':
+                    checksum.update(contents)
+                    contents = f.read(1024 * 1024)
+                return 'sha1$%s' % checksum.hexdigest()
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
@@ -1060,18 +1098,27 @@ class AWSJobStore(AbstractJobStore):
             Context manager that gives out a binary-mode upload stream to upload data.
             """
 
+            # Note that we have to handle already having a content or a version
+            # if we are overwriting something.
+
+            # But make sure we don't have both.
+            assert not (bool(self.version) and self.content is not None)
+
             info = self
             store = self.outer
 
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read(store.partSize)
+                    assert isinstance(buf, bytes)
                     if allowInlining and len(buf) <= info.maxInlinedSize():
+                        log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
                     else:
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
+                                log.debug('Starting multipart upload')
                                 upload = store.filesBucket.initiate_multipart_upload(
                                     key_name=compat_bytes(info.fileID),
                                     headers=headers)
@@ -1082,6 +1129,7 @@ class AWSJobStore(AbstractJobStore):
                                     break
                                 for attempt in retry_s3():
                                     with attempt:
+                                        log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
                                         if USING_PYTHON2:
                                             upload.upload_part_from_file(fp=StringIO(buf),
                                                                          # part numbers are 1-based
@@ -1096,36 +1144,94 @@ class AWSJobStore(AbstractJobStore):
                                 if len(buf) == 0:
                                     break
                                 buf = readable.read(info.outer.partSize)
+                                assert isinstance(buf, bytes)
                         except:
                             with panic(log=log):
                                 for attempt in retry_s3():
                                     with attempt:
                                         upload.cancel_upload()
                         else:
+
+                            while store._getBucketVersioning(store.filesBucket) != True:
+                                log.warning('Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
+                                time.sleep(1)
+
                             for attempt in retry_s3():
                                 with attempt:
-                                    info.version = upload.complete_upload().version_id
+                                    log.debug('Attempting to complete upload...')
+                                    completed = upload.complete_upload()
+                                    log.debug('Completed upload object of type %s: %s', str(type(completed)), repr(completed))
+                                    info.version = completed.version_id
+                                    log.debug('Completed upload with version %s', str(info.version))
+
+                            if info.version is None:
+                                # Somehow we don't know the version. Try and get it.
+                                for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
+                                    with attempt:
+                                        key = store.filesBucket.get_key(compat_bytes(info.fileID), headers=headers)
+                                        log.warning('Loaded key for upload with no version and got version %s', str(key.version_id))
+                                        info.version = key.version_id
+                                        assert info.version is not None
+
+                    # Make sure we actually wrote something, even if an empty file
+                    assert (bool(info.version) or info.content is not None)
 
             class SinglePartPipe(WritablePipe):
                 def readFrom(self, readable):
                     buf = readable.read()
+                    assert isinstance(buf, bytes)
                     dataLength = len(buf)
                     if allowInlining and dataLength <= info.maxInlinedSize():
+                        log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
                     else:
                         key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
                         buf = BytesIO(buf)
                         headers = info._s3EncryptionHeaders()
+
+                        while store._getBucketVersioning(store.filesBucket) != True:
+                            log.warning('Versioning does not appear to be enabled yet. Deferring single part upload...')
+                            time.sleep(1)
+
                         for attempt in retry_s3():
                             with attempt:
+                                log.debug('Uploading single part of %d bytes', dataLength)
                                 assert dataLength == key.set_contents_from_file(fp=buf,
                                                                                 headers=headers)
+                                log.debug('Upload received version %s', str(key.version_id))
                         info.version = key.version_id
 
-            with MultiPartPipe() if multipart else SinglePartPipe() as writable:
+                        if info.version is None:
+                            # Somehow we don't know the version
+                            for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
+                                with attempt:
+                                    key.reload()
+                                    log.warning('Reloaded key with no version and got version %s', str(key.version_id))
+                                    info.version = key.version_id
+                                    assert info.version is not None
+
+                    # Make sure we actually wrote something, even if an empty file
+                    assert (bool(info.version) or info.content is not None)
+
+            pipe = MultiPartPipe() if multipart else SinglePartPipe()
+            with pipe as writable:
                 yield writable
 
-            assert bool(self.version) == (self.content is None)
+            if not pipe.reader_done:
+                log.debug('Version: {} Content: {}'.format(self.version, self.content))
+                raise RuntimeError('Escaped context manager without written data being read!')
+
+            # We check our work to make sure we have exactly one of embedded
+            # content or a real object version.
+
+            if self.content is None:
+                if not bool(self.version):
+                    log.debug('Version: {} Content: {}'.format(self.version, self.content))
+                    raise RuntimeError('No content added and no version created')
+            else:
+                if bool(self.version):
+                    log.debug('Version: {} Content: {}'.format(self.version, self.content))
+                    raise RuntimeError('Content added and version created')
 
         def copyFrom(self, srcKey):
             """
@@ -1174,9 +1280,9 @@ class AWSJobStore(AbstractJobStore):
             else:
                 assert False
 
-        def download(self, localFilePath):
+        def download(self, localFilePath, verifyChecksum=True):
             if self.content is not None:
-                with open(localFilePath, 'w') as f:
+                with open(localFilePath, 'wb') as f:
                     f.write(self.content)
             elif self.version:
                 headers = self._s3EncryptionHeaders()
@@ -1186,6 +1292,12 @@ class AWSJobStore(AbstractJobStore):
                         key.get_contents_to_filename(localFilePath,
                                                      version_id=self.version,
                                                      headers=headers)
+                if verifyChecksum and self.checksum:
+                    downloadedChecksum = self._get_file_checksum(localFilePath)
+                    if self.checksum != downloadedChecksum:
+                        raise AssertionError(
+                            'Checksums do not match for file %s. Expected: %s Actual: %s' % (
+                                localFilePath, self.checksum, downloadedChecksum))
             else:
                 assert False
 
@@ -1244,7 +1356,7 @@ class AWSJobStore(AbstractJobStore):
             if sseKeyPath is None:
                 return None
             else:
-                with open(sseKeyPath) as f:
+                with open(sseKeyPath, 'rb') as f:
                     sseKey = f.read()
                     return sseKey
 
@@ -1253,8 +1365,8 @@ class AWSJobStore(AbstractJobStore):
                 sseKey = self._getSSEKey()
                 assert sseKey is not None, 'Content is encrypted but no key was provided.'
                 assert len(sseKey) == 32
-                encodedSseKey = base64.b64encode(sseKey)
-                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest())
+                encodedSseKey = base64.b64encode(sseKey).decode('utf-8')
+                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest()).decode('utf-8')
                 return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
                         'x-amz-server-side-encryption-customer-key': encodedSseKey,
                         'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
@@ -1269,13 +1381,14 @@ class AWSJobStore(AbstractJobStore):
                  ('version', r(self.version)),
                  ('previousVersion', r(self.previousVersion)),
                  ('content', r(self.content)),
+                 ('checksum', r(self.checksum)),
                  ('_numContentChunks', r(self._numContentChunks)))
             return "{}({})".format(type(self).__name__,
                                    ', '.join('%s=%s' % (k, v) for k, v in d))
 
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
 
-    def __getBucketVersioning(self, bucket):
+    def _getBucketVersioning(self, bucket):
         """
         For newly created buckets get_versioning_status returns an empty dict. In the past we've
         seen None in this case. We map both to a return value of False.

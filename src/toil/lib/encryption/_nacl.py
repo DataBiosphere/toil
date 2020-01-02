@@ -15,7 +15,6 @@
 from builtins import str
 import nacl
 from nacl.secret import SecretBox
-from toil.lib.compatibility import USING_PYTHON2
 
 # 16-byte MAC plus a nonce is added to every message.
 overhead = 16 + SecretBox.NONCE_SIZE
@@ -56,10 +55,7 @@ def encrypt(message, keyPath):
     # recommended in the libsodium documentation.)
     nonce = nacl.utils.random(SecretBox.NONCE_SIZE)
     assert len(nonce) == SecretBox.NONCE_SIZE
-    if USING_PYTHON2:
-        return bytes(sb.encrypt(message, nonce))
-    else:
-        return str(sb.encrypt(message, nonce))
+    return bytes(sb.encrypt(message, nonce))
 
 
 def decrypt(ciphertext, keyPath):

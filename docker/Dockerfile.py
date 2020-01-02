@@ -77,7 +77,7 @@ print(heredoc('''
         > /etc/apt/sources.list.d/nodesource.list \
         && apt-key adv --keyserver keyserver.ubuntu.com --recv 68576280
 
-    RUN add-apt-repository -y ppa:jonathonf/python-3.6
+    RUN add-apt-repository -y ppa:deadsnakes/ppa
     
     RUN apt-get -y update --fix-missing && \
         DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
