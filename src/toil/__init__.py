@@ -414,10 +414,13 @@ def logProcessContext(config):
 <<<<<<< HEAD
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 >>>>>>> parent of 22a6997d... Revert "updated try except"
 try:
 =======
+=======
+>>>>>>> parent of 1420f122... Revert "moved monkey patch def"
 def _monkey_patch_boto():
     """
     Boto 2 can't automatically assume roles. We want to replace its Provider
@@ -462,6 +465,9 @@ def _monkey_patch_boto():
     # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
     provider.Provider = BotoCredentialAdapter
  try:
+<<<<<<< HEAD
+>>>>>>> parent of 1420f122... Revert "moved monkey patch def"
+=======
 >>>>>>> parent of 1420f122... Revert "moved monkey patch def"
     from boto import provider
     from botocore.session import Session
@@ -682,6 +688,7 @@ class BotoCredentialAdapter(base_class):
                         os.close(fd)
                         
 <<<<<<< HEAD
+<<<<<<< HEAD
 
 def _monkey_patch_boto():
     """
@@ -748,6 +755,9 @@ except ImportError:
 >>>>>>> parent of 1420f122... Revert "moved monkey patch def"
 =======
 >>>>>>> parent of 22a6997d... Revert "updated try except"
+=======
+ 
+>>>>>>> parent of 1420f122... Revert "moved monkey patch def"
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
 #try:
 #    _monkey_patch_boto()
