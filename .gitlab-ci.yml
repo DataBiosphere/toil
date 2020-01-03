@@ -1,4 +1,8 @@
+image: quay.io/vgteam/vg_ci_prebake:latest
+# Note that we must run in a priviliged container for our internal Docker daemon to come up.
+
 before_script:
+  - startdocker || true
   - docker info
   - cat /etc/hosts
   - export PYTHONIOENCODING=utf-8
@@ -9,6 +13,7 @@ after_script:
   # that next job.
   - pwd
   - sudo rm -rf tmp
+  - stopdocker || true
 
 
 stages:
