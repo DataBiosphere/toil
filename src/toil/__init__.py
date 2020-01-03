@@ -1,3 +1,4 @@
+
 # Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -410,7 +411,226 @@ def logProcessContext(config):
     from toil.version import version
     log.info("Running Toil version %s.", version)
     log.debug("Configuration: %s", config.__dict__)
+
+try:
+    from boto import provider
+    from botocore.session import Session
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache 
+    base_class = provider.Provider
+except ImportError:
+    base_class = object
+
+
+class BotoCredentialAdapter(base_class):
+    """
+    Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
+    credential finding logic. This allows for automatic role assumption
+    respecting the Boto 3 config files, even when parts of the app still use
+    Boto 2.
     
+    This class also handles cacheing credentials in multi-process environments
+    to avoid loads of processes swamping the EC2 metadata service.
+    """
+    
+   
+    """
+    Create a new BotoCredentialAdapter.
+    """
+    # TODO: We take kwargs because new boto2 versions have an 'anon'
+    # argument and we want to be future proof
+    
+    def __init__(self, name=None, access_key=None, secret_key=None,
+            security_token=None, profile_name=None, **kwargs):
+        
+        self.name = name
+        self.access_key = access_key
+        self.secret_key = secret_key
+        self.security_token = security_token
+        self.profile_name = profile_name
+        
+
+        if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
+            # We are on AWS and we don't have credentials passed along and we aren't anonymous.
+            # We will backend into a boto3 resolver for getting credentials.
+            # Make sure to enable boto3's own caching, so we can share that
+            # cash with pure boto3 code elsewhere in Toil.
+            self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
+        else:
+            # We will use the normal flow
+            self._boto3_resolver = None
+    
+    def get_credentials(self, access_key=None, secret_key=None, security_token=None, profile_name=None):
+        """
+        Make sure our credential fields are populated. Called by the base class
+        constructor.
+        """
+        
+        if self._boto3_resolver is not None:
+            # Go get the credentials from the cache, or from boto3 if not cached.
+            # We need to be eager here; having the default None
+            # _credential_expiry_time makes the accessors never try to refresh.
+            self._obtain_credentials_from_cache_or_boto3()
+        else:
+            # We're not on AWS, or they passed a key, or we're anonymous.
+            # Use the normal route; our credentials shouldn't expire.
+            super(BotoCredentialAdapter, self).get_credentials(access_key=access_key,
+                secret_key=secret_key, security_token=security_token, profile_name=profile_name)
+        
+    def _populate_keys_from_metadata_server(self):
+        """
+        This override is misnamed; it's actually the only hook we have to catch
+        _credential_expiry_time being too soon and refresh the credentials. We
+        actually just go back and poke the cache to see if it feels like
+        getting us new credentials.
+        
+        Boto 2 hardcodes a refresh within 5 minutes of expiry:
+        https://github.com/boto/boto/blob/591911db1029f2fbb8ba1842bfcc514159b37b32/boto/provider.py#L247
+        
+        Boto 3 wants to refresh 15 or 10 minutes before expiry:
+        https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L279
+        
+        So if we ever want to refresh, Boto 3 wants to refresh too.
+        """
+        
+        # This should only happen if we have expiring credentials, which we should only get from boto3
+        assert(self._boto3_resolver is not None)
+        
+        self._obtain_credentials_from_cache_or_boto3()
+    
+    def _obtain_credentials_from_boto3(self):
+        """
+        We know the current cached credentials are not good, and that we
+        need to get them from Boto 3. Fill in our credential fields
+        (_access_key, _secret_key, _security_token,
+        _credential_expiry_time) from Boto 3.
+        """
+        
+        # We get a Credentials object
+        # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
+        # or a RefreshableCredentials, or None on failure.
+        creds = None
+        for attempt in retry(timeout=10, predicate=lambda _: True):
+            with attempt:
+                creds = self._boto3_resolver.load_credentials()
+                
+                if creds is None:
+                    try:
+                        resolvers = str(self._boto3_resolver.providers)
+                    except:
+                        resolvers = "(Resolvers unavailable)"
+                    raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
+        
+        # Make sure the credentials actually has some credentials if it is lazy
+        creds.get_frozen_credentials()
+        
+        # Get when the credentials will expire, if ever
+        if isinstance(creds, RefreshableCredentials):
+            # Credentials may expire.
+            # Get a naive UTC datetime like boto 2 uses from the boto 3 time.
+            self._credential_expiry_time = creds._expiry_time.astimezone(timezone('UTC')).replace(tzinfo=None)
+        else:
+            # Credentials never expire
+            self._credential_expiry_time = None
+        
+        # Then, atomically get all the credentials bits. They may be newer than we think they are, but never older.
+        frozen = creds.get_frozen_credentials()
+        
+        # Copy them into us
+        self._access_key = frozen.access_key
+        self._secret_key = frozen.secret_key
+        self._security_token = frozen.token
+    
+    def _obtain_credentials_from_cache_or_boto3(self):
+        """
+        Get the cached credentials, or retrieve them from Boto 3 and cache them
+        (or wait for another cooperating process to do so) if they are missing
+        or not fresh enough.
+        """
+        cache_path = '~/.cache/aws/cached_temporary_credentials'
+        path = os.path.expanduser(cache_path)
+        tmp_path = path + '.tmp'
+        while True:
+            log.debug('Attempting to read cached credentials from %s.', path)
+            try:
+                with open(path, 'r') as f:
+                    content = f.read()
+                    if content:
+                        record = content.split('\n')
+                        assert len(record) == 4
+                        self._access_key = record[0]
+                        self._secret_key = record[1]
+                        self._security_token = record[2]
+                        self._credential_expiry_time = str_to_datetime(record[3])
+                    else:
+                        log.debug('%s is empty. Credentials are not temporary.', path)
+                        self._obtain_credentials_from_boto3()
+                        return
+            except IOError as e:
+                if e.errno == errno.ENOENT:
+                    log.debug('Cached credentials are missing.')
+                    dir_path = os.path.dirname(path)
+                    if not os.path.exists(dir_path):
+                        log.debug('Creating parent directory %s', dir_path)
+                        # A race would be ok at this point
+                        mkdir_p(dir_path)
+                else:
+                    raise
+            else:
+                if self._credentials_need_refresh():
+                    log.debug('Cached credentials are expired.')
+                else:
+                    log.debug('Cached credentials exist and are still fresh.')
+                    return
+            # We get here if credentials are missing or expired
+            log.debug('Racing to create %s.', tmp_path)
+            # Only one process, the winner, will succeed
+            try:
+                fd = os.open(tmp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except OSError as e:
+                if e.errno == errno.EEXIST:
+                    log.debug('Lost the race to create %s. Waiting on winner to remove it.', tmp_path)
+                    while os.path.exists(tmp_path):
+                        time.sleep(0.1)
+                    log.debug('Winner removed %s. Trying from the top.', tmp_path)
+                else:
+                    raise
+            else:
+                try:
+                    log.debug('Won the race to create %s.  Requesting credentials from backend.', tmp_path)
+                    self._obtain_credentials_from_boto3()
+                except:
+                    os.close(fd)
+                    fd = None
+                    log.debug('Failed to obtain credentials, removing %s.', tmp_path)
+                    # This unblocks the loosers.
+                    os.unlink(tmp_path)
+                    # Bail out. It's too likely to happen repeatedly
+                    raise
+                else:
+                    if self._credential_expiry_time is None:
+                        os.close(fd)
+                        fd = None
+                        log.debug('Credentials are not temporary.  Leaving %s empty and renaming it to %s.', tmp_path, path)
+                        # No need to actually cache permanent credentials,
+                        # because we hnow we aren't getting them from the
+                        # metadata server or by assuming a role. Those both
+                        # give temporary credentials.
+                    else:
+                        log.debug('Writing credentials to %s.', tmp_path)
+                        with os.fdopen(fd, 'w') as fh:
+                            fd = None
+                            fh.write('\n'.join([
+                                self._access_key,
+                                self._secret_key,
+                                self._security_token,
+                                datetime_to_str(self._credential_expiry_time)]))
+                        log.debug('Wrote credentials to %s. Renaming to %s.', tmp_path, path)
+                    os.rename(tmp_path, path)
+                    return
+                finally:
+                    if fd is not None:
+                        os.close(fd)
+                        
 
 def _monkey_patch_boto():
     """
@@ -418,10 +638,6 @@ def _monkey_patch_boto():
     class that manages credentials with one that uses the Boto 3 configuration
     and can assume roles.
     """
-    
-    from boto import provider
-    from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     # We cache the final credentials so that we don't send multiple processes to
     # simultaneously bang on the EC2 metadata server or ask for MFA pins from the
@@ -433,6 +649,7 @@ def _monkey_patch_boto():
     # But in addition to our manual cache, we also are going to turn on boto3's
     # new built-in caching layer.
 
+      
     def datetime_to_str(dt):
         """
         Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
@@ -456,215 +673,10 @@ def _monkey_patch_boto():
         """
         return datetime.strptime(s, datetime_format)
 
-    class BotoCredentialAdapter(provider.Provider):
-        """
-        Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
-        credential finding logic. This allows for automatic role assumption
-        respecting the Boto 3 config files, even when parts of the app still use
-        Boto 2.
-        
-        This class also handles cacheing credentials in multi-process environments
-        to avoid loads of processes swamping the EC2 metadata service.
-        """
-        
-        def __init__(self, name, access_key=None, secret_key=None,
-            security_token=None, profile_name=None, **kwargs):
-            """
-            Create a new BotoCredentialAdapter.
-            """
-            # TODO: We take kwargs because new boto2 versions have an 'anon'
-            # argument and we want to be future proof
-            
-            if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
-                # We are on AWS and we don't have credentials passed along and we aren't anonymous.
-                # We will backend into a boto3 resolver for getting credentials.
-                # Make sure to enable boto3's own caching, so we can share that
-                # cash with pure boto3 code elsewhere in Toil.
-                self._boto3_resolver = create_credential_resolver(Session(profile=profile_name), cache=JSONFileCache())
-            else:
-                # We will use the normal flow
-                self._boto3_resolver = None
-            
-            # Pass along all the arguments
-            super(BotoCredentialAdapter, self).__init__(name, access_key=access_key,
-                secret_key=secret_key, security_token=security_token,
-                profile_name=profile_name, **kwargs)
-            
-        def get_credentials(self, access_key=None, secret_key=None, security_token=None, profile_name=None):
-            """
-            Make sure our credential fields are populated. Called by the base class
-            constructor.
-            """
-            
-            if self._boto3_resolver is not None:
-                # Go get the credentials from the cache, or from boto3 if not cached.
-                # We need to be eager here; having the default None
-                # _credential_expiry_time makes the accessors never try to refresh.
-                self._obtain_credentials_from_cache_or_boto3()
-            else:
-                # We're not on AWS, or they passed a key, or we're anonymous.
-                # Use the normal route; our credentials shouldn't expire.
-                super(BotoCredentialAdapter, self).get_credentials(access_key=access_key,
-                    secret_key=secret_key, security_token=security_token, profile_name=profile_name)
-            
-        def _populate_keys_from_metadata_server(self):
-            """
-            This override is misnamed; it's actually the only hook we have to catch
-            _credential_expiry_time being too soon and refresh the credentials. We
-            actually just go back and poke the cache to see if it feels like
-            getting us new credentials.
-            
-            Boto 2 hardcodes a refresh within 5 minutes of expiry:
-            https://github.com/boto/boto/blob/591911db1029f2fbb8ba1842bfcc514159b37b32/boto/provider.py#L247
-            
-            Boto 3 wants to refresh 15 or 10 minutes before expiry:
-            https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L279
-            
-            So if we ever want to refresh, Boto 3 wants to refresh too.
-            """
-            
-            # This should only happen if we have expiring credentials, which we should only get from boto3
-            assert(self._boto3_resolver is not None)
-            
-            self._obtain_credentials_from_cache_or_boto3()
-        
-        def _obtain_credentials_from_boto3(self):
-            """
-            We know the current cached credentials are not good, and that we
-            need to get them from Boto 3. Fill in our credential fields
-            (_access_key, _secret_key, _security_token,
-            _credential_expiry_time) from Boto 3.
-            """
-            
-            # We get a Credentials object
-            # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
-            # or a RefreshableCredentials, or None on failure.
-            creds = None
-            for attempt in retry(timeout=10, predicate=lambda _: True):
-                with attempt:
-                    creds = self._boto3_resolver.load_credentials()
-                    
-                    if creds is None:
-                        try:
-                            resolvers = str(self._boto3_resolver.providers)
-                        except:
-                            resolvers = "(Resolvers unavailable)"
-                        raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
-            
-            # Make sure the credentials actually has some credentials if it is lazy
-            creds.get_frozen_credentials()
-            
-            # Get when the credentials will expire, if ever
-            if isinstance(creds, RefreshableCredentials):
-                # Credentials may expire.
-                # Get a naive UTC datetime like boto 2 uses from the boto 3 time.
-                self._credential_expiry_time = creds._expiry_time.astimezone(timezone('UTC')).replace(tzinfo=None)
-            else:
-                # Credentials never expire
-                self._credential_expiry_time = None
-            
-            # Then, atomically get all the credentials bits. They may be newer than we think they are, but never older.
-            frozen = creds.get_frozen_credentials()
-            
-            # Copy them into us
-            self._access_key = frozen.access_key
-            self._secret_key = frozen.secret_key
-            self._security_token = frozen.token
-        
-        def _obtain_credentials_from_cache_or_boto3(self):
-            """
-            Get the cached credentials, or retrieve them from Boto 3 and cache them
-            (or wait for another cooperating process to do so) if they are missing
-            or not fresh enough.
-            """
-            path = os.path.expanduser(cache_path)
-            tmp_path = path + '.tmp'
-            while True:
-                log.debug('Attempting to read cached credentials from %s.', path)
-                try:
-                    with open(path, 'r') as f:
-                        content = f.read()
-                        if content:
-                            record = content.split('\n')
-                            assert len(record) == 4
-                            self._access_key = record[0]
-                            self._secret_key = record[1]
-                            self._security_token = record[2]
-                            self._credential_expiry_time = str_to_datetime(record[3])
-                        else:
-                            log.debug('%s is empty. Credentials are not temporary.', path)
-                            self._obtain_credentials_from_boto3()
-                            return
-                except IOError as e:
-                    if e.errno == errno.ENOENT:
-                        log.debug('Cached credentials are missing.')
-                        dir_path = os.path.dirname(path)
-                        if not os.path.exists(dir_path):
-                            log.debug('Creating parent directory %s', dir_path)
-                            # A race would be ok at this point
-                            mkdir_p(dir_path)
-                    else:
-                        raise
-                else:
-                    if self._credentials_need_refresh():
-                        log.debug('Cached credentials are expired.')
-                    else:
-                        log.debug('Cached credentials exist and are still fresh.')
-                        return
-                # We get here if credentials are missing or expired
-                log.debug('Racing to create %s.', tmp_path)
-                # Only one process, the winner, will succeed
-                try:
-                    fd = os.open(tmp_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                except OSError as e:
-                    if e.errno == errno.EEXIST:
-                        log.debug('Lost the race to create %s. Waiting on winner to remove it.', tmp_path)
-                        while os.path.exists(tmp_path):
-                            time.sleep(0.1)
-                        log.debug('Winner removed %s. Trying from the top.', tmp_path)
-                    else:
-                        raise
-                else:
-                    try:
-                        log.debug('Won the race to create %s.  Requesting credentials from backend.', tmp_path)
-                        self._obtain_credentials_from_boto3()
-                    except:
-                        os.close(fd)
-                        fd = None
-                        log.debug('Failed to obtain credentials, removing %s.', tmp_path)
-                        # This unblocks the loosers.
-                        os.unlink(tmp_path)
-                        # Bail out. It's too likely to happen repeatedly
-                        raise
-                    else:
-                        if self._credential_expiry_time is None:
-                            os.close(fd)
-                            fd = None
-                            log.debug('Credentials are not temporary.  Leaving %s empty and renaming it to %s.', tmp_path, path)
-                            # No need to actually cache permanent credentials,
-                            # because we hnow we aren't getting them from the
-                            # metadata server or by assuming a role. Those both
-                            # give temporary credentials.
-                        else:
-                            log.debug('Writing credentials to %s.', tmp_path)
-                            with os.fdopen(fd, 'w') as fh:
-                                fd = None
-                                fh.write('\n'.join([
-                                    self._access_key,
-                                    self._secret_key,
-                                    self._security_token,
-                                    datetime_to_str(self._credential_expiry_time)]))
-                            log.debug('Wrote credentials to %s. Renaming to %s.', tmp_path, path)
-                        os.rename(tmp_path, path)
-                        return
-                    finally:
-                        if fd is not None:
-                            os.close(fd)
-                            
-    
     # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
     provider.Provider = BotoCredentialAdapter
-    
+
+  
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
 try:
     _monkey_patch_boto()
