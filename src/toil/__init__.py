@@ -413,6 +413,9 @@ def logProcessContext(config):
 
 <<<<<<< HEAD
 <<<<<<< HEAD
+<<<<<<< HEAD
+=======
+>>>>>>> parent of 22a6997d... Revert "updated try except"
 try:
 =======
 def _monkey_patch_boto():
@@ -469,52 +472,6 @@ except ImportError:
     base_class = object
 
 
-=======
-def _monkey_patch_boto():
-    """
-    Boto 2 can't automatically assume roles. We want to replace its Provider
-    class that manages credentials with one that uses the Boto 3 configuration
-    and can assume roles.
-    """
-
-    # We cache the final credentials so that we don't send multiple processes to
-    # simultaneously bang on the EC2 metadata server or ask for MFA pins from the
-    # user.
-    cache_path = '~/.cache/aws/cached_temporary_credentials'
-    datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
-    log = logging.getLogger(__name__)
-
-    # But in addition to our manual cache, we also are going to turn on boto3's
-    # new built-in caching layer.
-
-      
-    def datetime_to_str(dt):
-        """
-        Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
-
-        >>> datetime_to_str(datetime(1970, 1, 1, 0, 0, 0))
-        '1970-01-01T00:00:00Z'
-        """
-        return dt.strftime(datetime_format)
-
-
-    def str_to_datetime(s):
-        """
-        Convert a string, explicitly UTC into a naive (implicitly UTC) datetime object.
-
-        >>> str_to_datetime( '1970-01-01T00:00:00Z' )
-        datetime.datetime(1970, 1, 1, 0, 0)
-
-        Just to show that the constructor args for seconds and microseconds are optional:
-        >>> datetime(1970, 1, 1, 0, 0, 0)
-        datetime.datetime(1970, 1, 1, 0, 0)
-        """
-        return datetime.strptime(s, datetime_format)
-
-    # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
-    provider.Provider = BotoCredentialAdapter
- 
->>>>>>> parent of f5db54d1... updated try except
 class BotoCredentialAdapter(base_class):
     """
     Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
@@ -726,7 +683,6 @@ class BotoCredentialAdapter(base_class):
                         
 <<<<<<< HEAD
 
-<<<<<<< HEAD
 def _monkey_patch_boto():
     """
     Boto 2 can't automatically assume roles. We want to replace its Provider
@@ -771,6 +727,7 @@ def _monkey_patch_boto():
     # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
     provider.Provider = BotoCredentialAdapter
   
+<<<<<<< HEAD
 =======
 
 
@@ -789,6 +746,8 @@ except ImportError:
 =======
  
 >>>>>>> parent of 1420f122... Revert "moved monkey patch def"
+=======
+>>>>>>> parent of 22a6997d... Revert "updated try except"
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
 #try:
 #    _monkey_patch_boto()
