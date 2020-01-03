@@ -99,23 +99,20 @@ tests_local=src/toil/test
 pytest_args_local=-vv --timeout=530
 extras=
 
-dist_version:=$(shell $(python) version_template.py distVersion)
-sdist_name:=toil-$(dist_version).tar.gz
+sdist_name:=toil-$(shell $(python) version_template.py distVersion).tar.gz
 
 docker_tag:=$(shell $(python) version_template.py dockerTag)
-default_docker_registry:=quay.io/ucsc_cgl
+default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
 docker_path:=$(strip $(shell which docker))
 
-export TOIL_DOCKER_REGISTRY?=$(shell $(python) version_template.py dockerRegistry)
-export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
+export TOIL_DOCKER_REGISTRY=quay.io/ucsc_cgl
+export TOIL_DOCKER_NAME=toil
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
-ifndef BUILD_NUMBER
 green=\033[0;32m
 normal=\033[0m
 red=\033[0;31m
 cyan=\033[0;36m
-endif
 
 develop: check_venv
 	$(pip) install -e .$(extras)
@@ -200,11 +197,6 @@ docker: docker/Dockerfile
 	; cd dashboard/mtail \
 	; docker build --tag=$(mtail_image):$(docker_tag) -f Dockerfile .
 
-ifdef BUILD_NUMBER
-	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_short_tag))
-	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_minimal_tag))
-endif
-
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
 
@@ -215,7 +207,7 @@ clean_docker:
 	-rm docker/Dockerfile docker/$(sdist_name)
 	-docker rmi $(docker_image):$(docker_tag)
 
-push_docker: docker check_docker_registry
+push_docker: docker
 	for i in $$(seq 1 5); do docker push $(docker_image):$(docker_tag) && break || sleep 60; done
 	for i in $$(seq 1 5); do docker push $(grafana_image):$(docker_tag) && break || sleep 60; done
 	for i in $$(seq 1 5); do docker push $(prometheus_image):$(docker_tag) && break || sleep 60; done
@@ -259,12 +251,6 @@ check_clean_working_copy:
 		|| ( printf "$(red)You have untracked files:$(normal)\n" \
 			; git ls-files --other --exclude-standard --directory \
 			; false )
-
-check_docker_registry:
-	@test "$(default_docker_registry)" != "$(TOIL_DOCKER_REGISTRY)" || test -n "$$BUILD_NUMBER" \
-		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY to a value other than \
-	$(default_docker_registry) and ensure that you have permissions to push \
-	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)\n' ; false )
 
 check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
