@@ -454,7 +454,16 @@ def _monkey_patch_boto():
 
     # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
     provider.Provider = BotoCredentialAdapter
- 
+ try:
+    from boto import provider
+    from botocore.session import Session
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
+    base_class = provider.Provider
+    _monkey_patch_boto()
+except ImportError:
+    base_class = object
+
+
 class BotoCredentialAdapter(base_class):
     """
     Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
@@ -665,19 +674,6 @@ class BotoCredentialAdapter(base_class):
                     if fd is not None:
                         os.close(fd)
                         
-
-
-
-try:
-    from boto import provider
-    from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
-    base_class = provider.Provider
-    _monkey_patch_boto()
-except ImportError:
-    base_class = object
-
-
  
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
 #try:
