@@ -35,7 +35,7 @@ except ImportError:
 # toil dependencies
 from toil.fileStores import FileID
 from toil.lib.bioio import absSymPath
-from toil.lib.misc import mkdir_p, robust_rmtree, atomic_copy
+from toil.lib.misc import mkdir_p, robust_rmtree, atomic_copy, atomic_copyobj
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchFileException,
