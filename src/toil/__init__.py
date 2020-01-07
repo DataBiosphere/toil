@@ -438,8 +438,6 @@ class BotoCredentialAdapter(base_class):
     """
     # TODO: We take kwargs because new boto2 versions have an 'anon'
     # argument and we want to be future proof
-    if base_class is None:
-        return
 
     def __init__(self, name=None, access_key=None, secret_key=None,
             security_token=None, profile_name=None, **kwargs):
@@ -674,9 +672,11 @@ def _monkey_patch_boto():
         datetime.datetime(1970, 1, 1, 0, 0)
         """
         return datetime.strptime(s, datetime_format)
-
-    # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
-    provider.Provider = BotoCredentialAdapter
+    if base_class is None:
+        pass
+    else:
+        # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
+        provider.Provider = BotoCredentialAdapter
 
   
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
