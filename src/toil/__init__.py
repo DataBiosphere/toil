@@ -418,7 +418,7 @@ try:
     from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache 
     base_class = provider.Provider
 except ImportError:
-    base_class = object
+    base_class = None
 
 
 class BotoCredentialAdapter(base_class):
@@ -438,7 +438,9 @@ class BotoCredentialAdapter(base_class):
     """
     # TODO: We take kwargs because new boto2 versions have an 'anon'
     # argument and we want to be future proof
-    
+    if base_class is None:
+        pass
+
     def __init__(self, name=None, access_key=None, secret_key=None,
             security_token=None, profile_name=None, **kwargs):
         
