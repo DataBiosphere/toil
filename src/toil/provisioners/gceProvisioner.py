@@ -135,7 +135,8 @@ class GCEProvisioner(AbstractProvisioner):
             tags.update(kwargs['userTags'])
         self._tags = json.dumps(tags)
 
-        userData =  self._getCloudConfigUserData('leader')
+        name = 'l' + str(uuid.uuid4())
+        userData =  self._getCloudConfigUserData('leader', hostname=name)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
         imageType = 'coreos-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
@@ -145,7 +146,6 @@ class GCEProvisioner(AbstractProvisioner):
             'diskSizeGb' : leaderStorage }
         disk.update({'boot': True,
              'autoDelete': True })
-        name= 'l' + str(uuid.uuid4())
         leader = self._gceDriver.create_node(name, leaderNodeType, imageType,
                                             location=self._zone,
                                             ex_service_accounts=sa_scopes,

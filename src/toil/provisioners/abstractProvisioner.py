@@ -336,6 +336,7 @@ coreos:
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
+            --hostname={hostname} \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v /var/lib/mesos:/var/lib/mesos \
             -v /var/lib/docker:/var/lib/docker \
@@ -384,8 +385,7 @@ coreos:
     # Mesos attempts to contact systemd but can't find its run file)
     WORKER_DOCKER_ARGS = '--work_dir=/var/lib/mesos --master={ip}:5050 --attributes=preemptable:{preemptable} --no-hostname_lookup --no-systemd_enable_support'
 
-
-    def _getCloudConfigUserData(self, role, masterPublicKey=None, keyPath=None, preemptable=False):
+    def _getCloudConfigUserData(self, role, masterPublicKey=None, keyPath=None, preemptable=False, hostname=''):
         if role == 'leader':
             entryPoint = 'mesos-master'
             mesosArgs = self.MESOS_LOG_DIR + self.LEADER_DOCKER_ARGS.format(name=self.clusterName)
@@ -410,6 +410,7 @@ coreos:
                             dockerImage=applianceSelf(),
                             entrypoint=entryPoint,
                             sshKey=masterPublicKey,   # ignored if None
-                            mesosArgs=mesosArgs)
+                            mesosArgs=mesosArgs,
+                            hostname=hostname)
         userData = template.format(**templateArgs)
         return userData
