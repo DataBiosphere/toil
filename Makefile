@@ -208,10 +208,11 @@ clean_docker:
 	-docker rmi $(docker_image):$(docker_tag)
 
 push_docker: docker
-	for i in $$(seq 1 5); do docker push $(docker_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(grafana_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(prometheus_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(mtail_image):$(docker_tag) && break || sleep 60; done
+	# Weird if logic is so we fail if all the pushes fail
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(docker_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(grafana_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(prometheus_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(mtail_image):$(docker_tag) && break || sleep 60; done
 
 else
 
