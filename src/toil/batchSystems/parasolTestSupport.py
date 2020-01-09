@@ -19,11 +19,11 @@ import tempfile
 import threading
 import time
 from toil import subprocess
-import multiprocessing
 import signal
 import os
 import errno
 from toil.lib.objects import InnerClass
+from toil.lib.threading import cpu_count
 
 from toil import physicalMemory
 
@@ -46,7 +46,7 @@ class ParasolTestSupport(object):
 
     def _startParasol(self, numCores=None, memory=None):
         if numCores is None:
-            numCores = multiprocessing.cpu_count()
+            numCores = cpu_count()
         if memory is None:
             memory = physicalMemory()
         self.numCores = numCores
