@@ -1104,7 +1104,7 @@ class CachingFileStore(AbstractFileStore):
             if cachedPath is None:
                 raise RuntimeError('File %s went away while we had a reference to it!' % fileStoreID)
 
-            atomic_copy(localFilePath, cachedPath)
+            atomic_copy(cachedPath, localFilePath)
 
             # Change the reference to mutable
             self.cur.execute('UPDATE refs SET state = ? WHERE path = ? and file_id = ?', ('mutable', localFilePath, fileStoreID))

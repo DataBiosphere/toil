@@ -22,9 +22,15 @@ py2_batch_systems:
   stage: test
   script:
     - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
-    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    # Get Kubernetes credentials before switching over to another AWS account
+    - mkdir -p ~/.kube
+    - aws secretsmanager get-secret-value --secret-id allspark/runner/kubeconfig --region us-west-2 | jq -r .SecretString > ~/.kube/config
+    - mkdir -p ~/.aws
+    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+    - python -m pytest -r s src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
 py2_cwl:
   stage: test
@@ -58,6 +64,17 @@ py2_main:
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 
+py2_appliance_build:
+  stage: main_tests
+  script:
+    - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - python setup_gitlab_docker.py
+    - export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:$(python version_template.py dockerTag)
+    - echo $TOIL_APPLIANCE_SELF
+    - make push_docker
+
 py2_integration_jobstore:
   stage: integration
   script:
@@ -68,7 +85,7 @@ py2_integration_jobstore:
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
     - python setup_gitlab_ssh.py
-    - mkdir ~/.aws
+    - mkdir -p ~/.aws
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
     - python -m pytest src/toil/test/jobStores/jobStoreTest.py
 
@@ -82,7 +99,7 @@ py2_integration_sort:
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
     - python setup_gitlab_ssh.py
-    - mkdir ~/.aws
+    - mkdir -p ~/.aws
     - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
     - python -m pytest src/toil/test/sort/sortTest.py
     - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
@@ -97,7 +114,7 @@ py2_integration_sort:
 #    - export TOIL_AWS_KEYNAME=id_rsa
 #    - export TOIL_AWS_ZONE=us-west-2a
 #    - python setup_gitlab_ssh.py
-#    - mkdir ~/.aws
+#    - mkdir -p ~/.aws
 #    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
 #    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
 
@@ -107,9 +124,10 @@ py3_batch_systems:
   stage: test
   script:
     - pwd
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/batchSystems/batchSystemTest.py
-    - python -m pytest src/toil/test/mesos/MesosDataStructuresTest.py
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - python -m pytest -r s src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
 py3_cwl:
   stage: test
@@ -154,6 +172,6 @@ py3_main:
 #    - export TOIL_AWS_KEYNAME=id_rsa
 #    - export TOIL_AWS_ZONE=us-west-2a
 #    - python setup_gitlab_ssh.py
-#    - mkdir ~/.aws
+#    - mkdir -p ~/.aws
 #    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
 #    - python -m pytest src/toil/test/jobStores/jobStoreTest.py

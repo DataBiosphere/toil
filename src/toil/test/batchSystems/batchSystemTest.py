@@ -135,11 +135,9 @@ class hidden(object):
             self.batchSystem.shutdown()
             super(hidden.AbstractBatchSystemTest, self).tearDown()
         
-        @travis_test
         def testAvailableCores(self):
             self.assertTrue(multiprocessing.cpu_count() >= numCores)
         
-        @travis_test
         def testRunJobs(self):
             jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
                                jobStoreID='1', requirements=defaultRequirements)
@@ -151,7 +149,17 @@ class hidden(object):
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
 
-            runningJobIDs = self._waitForJobsToStart(2)
+            # Now at some point we want these jobs to become running
+            # But since we may be testing against a live cluster (Kubernetes)
+            # we want to handle weird cases and high cluster load as much as we can.
+
+            # Wait a bit for any Dockers to download and for the
+            # jobs to have a chance to start.
+            # TODO: We insist on neither of these ever finishing when we test
+            # getUpdatedBatchJob, and the sleep time is longer than the time we
+            # should spend waiting for both to start, so if our cluster can
+            # only run one job at a time, we will fail the test.
+            runningJobIDs = self._waitForJobsToStart(2, tries=120)
             self.assertEqual(set(runningJobIDs), {job1, job2})
 
             # Killing the jobs instead of allowing them to complete means this test can run very
@@ -187,7 +195,6 @@ class hidden(object):
             # Make sure killBatchJobs can handle jobs that don't exist
             self.batchSystem.killBatchJobs([10])
         
-        @travis_test
         def testSetEnv(self):
             # Parasol disobeys shell rules and stupidly splits the command at
             # the space character into arguments before exec'ing it, whether
@@ -200,7 +207,6 @@ class hidden(object):
              
             # Turn into a string which convinces bash to take all args and paste them back together and run them
             command = "bash -c \"\\${@}\" bash eval " + script_protected
-            log.critical(command)
             jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
                                jobStoreID='4', requirements=defaultRequirements)
             job4 = self.batchSystem.issueBatchJob(jobNode4)
@@ -216,7 +222,6 @@ class hidden(object):
             self.assertEqual(exitStatus, 23)
             self.assertEqual(jobID, job5)
         
-        @travis_test
         def testCheckResourceRequest(self):
             if isinstance(self.batchSystem, BatchSystemSupport):
                 checkResourceRequest = self.batchSystem.checkResourceRequest
@@ -234,7 +239,6 @@ class hidden(object):
                                   memory=10, cores=None, disk=1000)
                 checkResourceRequest(memory=10, cores=1, disk=100)
        
-        @travis_test
         def testScalableBatchSystem(self):
             # If instance of scalable batch system
             pass
@@ -248,11 +252,20 @@ class hidden(object):
                 time.sleep(1)
             return issuedIDs
 
-        def _waitForJobsToStart(self, numJobs):
+        def _waitForJobsToStart(self, numJobs, tries=20):
+            """
+            Loop until the given number of distinct jobs are in the
+            running state, or until the given number of tries is exhausted
+            (with 1 second polling period).
+
+            Returns the list of IDs that are running.
+            """
             runningIDs = []
-            # prevent an endless loop, give it 20 tries
-            for it in range(20):
-                runningIDs = list(self.batchSystem.getRunningBatchJobIDs().keys())
+            # prevent an endless loop, give it a few tries
+            for it in range(tries):
+                running = self.batchSystem.getRunningBatchJobIDs()
+                log.info('Running jobs now: {}'.format(running))
+                runningIDs = list(running.keys())
                 if len(runningIDs) == numJobs:
                     break
                 time.sleep(1)
@@ -384,11 +397,12 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
         issuedID = self._waitForJobsToIssue(1)
         self.assertEqual(set(issuedID), {job})
 
-        runningJobIDs = self._waitForJobsToStart(1)
+        # Wait until a job starts or we go a while without that happening
+        runningJobIDs = self._waitForJobsToStart(1, tries=20)
         # Make sure job is NOT running
         self.assertEqual(set(runningJobIDs), set({}))
 
-
+@travis_test
 class SingleMachineBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the single-machine batch system
@@ -744,6 +758,7 @@ class HTCondorBatchSystemTest(hidden.AbstractGridEngineBatchSystemTest):
     def tearDown(self):
         super(HTCondorBatchSystemTest, self).tearDown()
 
+@travis_test
 class SingleMachineBatchSystemJobTest(hidden.AbstractBatchSystemJobTest):
     """
     Tests Toil workflow against the SingleMachine batch system

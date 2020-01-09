@@ -93,11 +93,11 @@ class NoSuchFileException(Exception):
             message = "File '%s' does not exist." % jobStoreFileID
         else:
             message = "File '%s' (%s) does not exist." % (customName, jobStoreFileID)
-        
+
         if extra:
             # Append extra data.
             message += " Extra info: " + " ".join((str(x) for x in extra))
-        
+
         super().__init__(message)
 
 
@@ -782,13 +782,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         """
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
-        to retrieve the file at a later time.
+        to retrieve the file at a later time.  The file is written in a atomic manner.  The file
+        will not appear in the jobStore until the write has successfully completed.
 
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
-               
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
@@ -813,11 +814,13 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
         file in the job store. The yielded file handle does not need to and
-        should not be closed explicitly.
+        should not be closed explicitly.  The file is written in a atomic manner.
+        The file will not appear in the jobStore until the write has successfully
+        completed.
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
-               
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
@@ -843,7 +846,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
-               
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
@@ -922,7 +925,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :rtype: int
         """
         raise NotImplementedError()
-        
+
 
     @abstractmethod
     def updateFile(self, jobStoreFileID, localFilePath):
