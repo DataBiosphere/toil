@@ -105,8 +105,8 @@ docker_tag:=$(shell $(python) version_template.py dockerTag)
 default_docker_registry:=$(shell $(python) version_template.py dockerRegistry)
 docker_path:=$(strip $(shell which docker))
 
-export TOIL_DOCKER_REGISTRY=quay.io/ucsc_cgl
-export TOIL_DOCKER_NAME=toil
+export TOIL_DOCKER_REGISTRY?=quay.io/ucsc_cgl
+export TOIL_DOCKER_NAME?=toil
 export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
 
 green=\033[0;32m
