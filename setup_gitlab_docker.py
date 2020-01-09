@@ -1,5 +1,6 @@
 import subprocess
 import json
+import sys
 
 p = subprocess.Popen('aws secretsmanager --region us-west-2 get-secret-value --secret-id /toil/gitlab/quay',
                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
@@ -17,3 +18,4 @@ try:
         raise RuntimeError
 except:
     print('While attempting to log into quay.io:\n' + str(stderr))
+    sys.exit(1)
