@@ -51,6 +51,7 @@ import botocore.session
 import botocore.credentials
 
 from toil.lib.compatibility import compat_bytes, compat_plain, USING_PYTHON2
+from toil.lib.misc import AtomicFileCreate
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
@@ -716,10 +717,10 @@ class AWSJobStore(AbstractJobStore):
             # https://github.com/BD2KGenomics/toil/issues/995
             # https://github.com/BD2KGenomics/toil/issues/1093
             return (isinstance(e, (S3CreateError, S3ResponseError))
-                    and e.error_code in ('BucketAlreadyOwnedByYou', 
+                    and e.error_code in ('BucketAlreadyOwnedByYou',
                                          'OperationAborted',
                                          'NoSuchBucket'))
-                    
+
         bucketExisted = True
         for attempt in retry_s3(predicate=bucket_creation_pending):
             with attempt:
@@ -1282,16 +1283,18 @@ class AWSJobStore(AbstractJobStore):
 
         def download(self, localFilePath, verifyChecksum=True):
             if self.content is not None:
-                with open(localFilePath, 'wb') as f:
-                    f.write(self.content)
+                with AtomicFileCreate(localFilePath) as tmpPath:
+                    with open(tmpPath, 'wb') as f:
+                        f.write(self.content)
             elif self.version:
                 headers = self._s3EncryptionHeaders()
                 key = self.outer.filesBucket.get_key(compat_bytes(self.fileID), validate=False)
                 for attempt in retry_s3():
                     with attempt:
-                        key.get_contents_to_filename(localFilePath,
-                                                     version_id=self.version,
-                                                     headers=headers)
+                        with AtomicFileCreate(localFilePath) as tmpPath:
+                            key.get_contents_to_filename(tmpPath,
+                                                         version_id=self.version,
+                                                         headers=headers)
                 if verifyChecksum and self.checksum:
                     downloadedChecksum = self._get_file_checksum(localFilePath)
                     if self.checksum != downloadedChecksum:
