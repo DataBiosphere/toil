@@ -66,8 +66,8 @@ py2_main:
   script:
     - pwd
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/src
-    - python -m pytest src/toil/test/utils
+    - python -m pytest -vv --timeout=1500 src/toil/test/src
+    - python -m pytest -vv --timeout=1500 src/toil/test/utils
 
 py2_appliance_build:
   stage: main_tests
@@ -168,8 +168,8 @@ py3_main:
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/src
-    - python -m pytest src/toil/test/utils
+    - python -m pytest -vv --timeout=1500 src/toil/test/src
+    - python -m pytest -vv --timeout=1500 src/toil/test/utils
 
 #py3_integration:
 #  stage: integration

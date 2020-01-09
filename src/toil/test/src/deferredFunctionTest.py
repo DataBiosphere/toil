@@ -74,6 +74,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
 
     # Tests for the various defer possibilities
     @travis_test
+    @pytest.mark.timeout(60)
     def testDeferredFunctionRunsWithMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -82,6 +83,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         self._testDeferredFunctionRuns(_writeNonLocalFilesMethod)
 
     @travis_test
+    @pytest.mark.timeout(60)
     def testDeferredFunctionRunsWithClassMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -90,6 +92,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         self._testDeferredFunctionRuns(_writeNonLocalFilesClassMethod)
 
     @travis_test
+    @pytest.mark.timeout(60)
     def testDeferredFunctionRunsWithLambda(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -119,6 +122,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         assert not os.path.exists(nonLocalFile2)
 
     @slow
+    @pytest.mark.timeout(60)
     def testDeferredFunctionRunsWithFailures(self):
         """
         Create 2 non local filesto use as flags.  Create a job that registers a function that
@@ -150,6 +154,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         assert not os.path.exists(nonLocalFile2)
 
     @slow
+    @pytest.mark.timeout(60)
     def testNewJobsCanHandleOtherJobDeaths(self):
         """
         Create 2 non-local files and then create 2 jobs. The first job registers a deferred job
@@ -184,6 +189,7 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
             pass
 
     @travis_test
+    @pytest.mark.timeout(60)
     def testBatchSystemCleanupCanHandleWorkerDeaths(self):
         """
         Create a non-local files. Create a job that registers a deferred job to delete the file
