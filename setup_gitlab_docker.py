@@ -19,7 +19,7 @@ try:
         sys.exit(1)
         
     print('Opening key file...')
-    with open(env_var, 'r') as cred_json_file:
+    with open(filename, 'r') as cred_json_file:
         print('Reading keys...')
         keys = json.loads(cred_json_file.read())
         print('Read and decoded keys')
