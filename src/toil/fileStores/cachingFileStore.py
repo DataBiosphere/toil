@@ -217,7 +217,7 @@ class CachingFileStore(AbstractFileStore):
         # Connect to the cache database in there, or create it if not present
         self.dbPath = os.path.join(self.localCacheDir, 'cache-{}.db'.format(self.workflowAttemptNumber))
         # We need to hold onto both a connection (to commit) and a cursor (to actually use the database)
-        self.con = sqlite3.connect(self.dbPath)
+        self.con = sqlite3.connect(self.dbPath, timeout=60)
         self.cur = self.con.cursor()
         
         # Note that sqlite3 automatically starts a transaction when we go to
