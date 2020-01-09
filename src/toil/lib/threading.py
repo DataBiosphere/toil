@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from future.utils import raise_
 from builtins import range
+import math
 import sys
 import threading
 if sys.version_info >= (3, 0):
@@ -24,6 +25,7 @@ if sys.version_info >= (3, 0):
 else:
     from threading import _BoundedSemaphore as BoundedSemaphore
 
+import psutil
 
 class BoundedEmptySemaphore( BoundedSemaphore ):
     """
@@ -102,3 +104,30 @@ class defaultlocal(threading.local):
     def __init__( self, **kwargs ):
         super( defaultlocal, self ).__init__( )
         self.__dict__.update( kwargs )
+
+
+def cpu_count():
+    """
+    Get the rounded-up integer number of whole CPUs available.
+
+    Counts hyperthreads as CPUs.
+
+    Uses the system's actual CPU count, or the current v1 cgroup's CPU limit
+    (for things like Kubernetes).
+
+    :return: Integer count of available CPUs, minimum 1.
+    :rtype: int
+    """
+
+    # See if we can get an answer from cgroups
+    
+    try:
+        with open('/sys/fs/cgroup/cpu/cpu.shares', 'r') as stream:
+            # Parse, divide by 1024, cieling, and convert to integer.
+            cgroup_cpus =int(math.ceil(float(stream.read())/1024))
+    except:
+        cgroup_cpus = float('inf')
+
+    # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
+    return max(1, min(psutil.cpu_count(logical=True), cgroup_cpus))
+    
