@@ -782,8 +782,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         """
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
-        to retrieve the file at a later time.  The file is written in a atomic manner.  The file
-        will not appear in the jobStore until the write has successfully completed.
+        to retrieve the file at a later time.  The file is written in a atomic manner.  It will
+        not appear in the jobStore until the write has successfully completed.
 
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
 
@@ -815,7 +815,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         1) a file handle which can be written to and 2) the ID of the resulting
         file in the job store. The yielded file handle does not need to and
         should not be closed explicitly.  The file is written in a atomic manner.
-        The file will not appear in the jobStore until the write has successfully
+        It will not appear in the jobStore until the write has successfully
         completed.
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
@@ -865,7 +865,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         the file written/updated. If the file in the job store is later
         modified via updateFile or updateFileStream, it is
         implementation-defined whether those writes will be visible at
-        localFilePath.
+        localFilePath.  The file is copied in an atomic manner.  It will not
+        appear in the local file system until the copy has completed.
 
         The file at the given local path may not be modified after this method returns!
 
