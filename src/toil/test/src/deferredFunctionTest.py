@@ -27,6 +27,7 @@ from toil.job import Job
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
 from toil.test import ToilTest, slow, travis_test
 from toil.leader import FailedJobsException
+from toil.lib.threading import cpu_count 
 from toil.jobStores.abstractJobStore import NoSuchFileException
 
 import collections
@@ -35,11 +36,16 @@ import os
 import random
 import signal
 import time
+import logging
+import multiprocessing
+import psutil
 import pytest
 
 # Python 3 compatibility imports
 from six.moves import xrange
 from future.utils import with_metaclass
+
+log = logging.getLogger(__name__)
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -165,6 +171,17 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         function that deletes the first file.  We assert the absence of the two files at the
         end of the run.
         """
+
+        # Check to make sure we can run two jobs in parallel
+        cpus = cpu_count()
+        mp_cpus = multiprocessing.cpu_count()
+        ps_cpus = psutil.cpu_count()
+
+        log.critical('CPU counts: {} {} {}'.format(cpus))
+        print('CPU counts: {} {} {}'.format(cpus))
+
+        assert cpus >= 2, "Not enough CPUs to run two tasks at once"
+
         # There can be no retries
         self.options.retryCount = 0
         workdir = self._createTempDir(purpose='nonLocalDir')
@@ -176,10 +193,11 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         assert os.path.exists(nonLocalFile2)
         files = [nonLocalFile1, nonLocalFile2]
         root = Job()
-        A = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_A, files=files)
-        B = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_B, files=files)
+        # A and B here must run in parallel for this to work
+        A = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_A, files=files, cores=0.1)
+        B = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_B, files=files, cores=0.1)
         C = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_C, files=files,
-                          expectedResult=False)
+                          expectedResult=False, cores=0.1)
         root.addChild(A)
         root.addChild(B)
         B.addChild(C)
