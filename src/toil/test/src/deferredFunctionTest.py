@@ -36,16 +36,11 @@ import os
 import random
 import signal
 import time
-import logging
-import multiprocessing
-import psutil
 import pytest
 
 # Python 3 compatibility imports
 from six.moves import xrange
 from future.utils import with_metaclass
-
-log = logging.getLogger(__name__)
 
 # Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
@@ -80,7 +75,6 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
 
     # Tests for the various defer possibilities
     @travis_test
-    @pytest.mark.timeout(60)
     def testDeferredFunctionRunsWithMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -89,7 +83,6 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         self._testDeferredFunctionRuns(_writeNonLocalFilesMethod)
 
     @travis_test
-    @pytest.mark.timeout(60)
     def testDeferredFunctionRunsWithClassMethod(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -98,7 +91,6 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         self._testDeferredFunctionRuns(_writeNonLocalFilesClassMethod)
 
     @travis_test
-    @pytest.mark.timeout(60)
     def testDeferredFunctionRunsWithLambda(self):
         """
         Refer docstring in _testDeferredFunctionRuns.
@@ -128,7 +120,6 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         assert not os.path.exists(nonLocalFile2)
 
     @slow
-    @pytest.mark.timeout(60)
     def testDeferredFunctionRunsWithFailures(self):
         """
         Create 2 non local filesto use as flags.  Create a job that registers a function that
@@ -160,7 +151,6 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         assert not os.path.exists(nonLocalFile2)
 
     @slow
-    @pytest.mark.timeout(60)
     def testNewJobsCanHandleOtherJobDeaths(self):
         """
         Create 2 non-local files and then create 2 jobs. The first job registers a deferred job
@@ -174,12 +164,6 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
 
         # Check to make sure we can run two jobs in parallel
         cpus = cpu_count()
-        mp_cpus = multiprocessing.cpu_count()
-        ps_cpus = psutil.cpu_count()
-
-        log.critical('CPU counts: {} {} {}'.format(cpus, mp_cpus, ps_cpus))
-        print('CPU counts: {} {} {}'.format(cpus, mp_cpus, ps_cpus))
-
         assert cpus >= 2, "Not enough CPUs to run two tasks at once"
 
         # There can be no retries
@@ -207,7 +191,6 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
             pass
 
     @travis_test
-    @pytest.mark.timeout(60)
     def testBatchSystemCleanupCanHandleWorkerDeaths(self):
         """
         Create a non-local files. Create a job that registers a deferred job to delete the file
