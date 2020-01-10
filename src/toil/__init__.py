@@ -418,7 +418,7 @@ try:
     from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache 
     base_class = provider.Provider
 except ImportError:
-    base_class = None
+    base_class = object 
 
 
 class BotoCredentialAdapter(base_class):
@@ -438,6 +438,7 @@ class BotoCredentialAdapter(base_class):
     """
     # TODO: We take kwargs because new boto2 versions have an 'anon'
     # argument and we want to be future proof
+    
 
     def __init__(self, name=None, access_key=None, secret_key=None,
             security_token=None, profile_name=None, **kwargs):
@@ -448,6 +449,7 @@ class BotoCredentialAdapter(base_class):
         self.security_token = security_token
         self.profile_name = profile_name
         
+
 
         if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
             # We are on AWS and we don't have credentials passed along and we aren't anonymous.
@@ -682,5 +684,5 @@ def _monkey_patch_boto():
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
 try:
     _monkey_patch_boto()
-except ImportError:
+except AttributeError:
     pass
