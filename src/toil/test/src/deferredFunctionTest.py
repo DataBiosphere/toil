@@ -194,10 +194,10 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         files = [nonLocalFile1, nonLocalFile2]
         root = Job()
         # A and B here must run in parallel for this to work
-        A = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_A, files=files, cores=0.1)
-        B = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_B, files=files, cores=0.1)
+        A = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_A, files=files, cores=1)
+        B = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_B, files=files, cores=1)
         C = Job.wrapJobFn(_testNewJobsCanHandleOtherJobDeaths_C, files=files,
-                          expectedResult=False, cores=0.1)
+                          expectedResult=False, cores=1)
         root.addChild(A)
         root.addChild(B)
         B.addChild(C)
