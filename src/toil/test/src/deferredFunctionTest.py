@@ -177,8 +177,8 @@ class DeferredFunctionTest(with_metaclass(ABCMeta, ToilTest)):
         mp_cpus = multiprocessing.cpu_count()
         ps_cpus = psutil.cpu_count()
 
-        log.critical('CPU counts: {} {} {}'.format(cpus))
-        print('CPU counts: {} {} {}'.format(cpus))
+        log.critical('CPU counts: {} {} {}'.format(cpus, mp_cpus, ps_cpus))
+        print('CPU counts: {} {} {}'.format(cpus, mp_cpus, ps_cpus))
 
         assert cpus >= 2, "Not enough CPUs to run two tasks at once"
 
