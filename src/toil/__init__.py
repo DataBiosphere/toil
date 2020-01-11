@@ -443,14 +443,6 @@ class BotoCredentialAdapter(base_class):
     def __init__(self, name=None, access_key=None, secret_key=None,
             security_token=None, profile_name=None, **kwargs):
         
-        self.name = name
-        self.access_key = access_key
-        self.secret_key = secret_key
-        self.security_token = security_token
-        self.profile_name = profile_name
-        
-
-
         if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
             # We are on AWS and we don't have credentials passed along and we aren't anonymous.
             # We will backend into a boto3 resolver for getting credentials.
@@ -674,15 +666,13 @@ def _monkey_patch_boto():
         datetime.datetime(1970, 1, 1, 0, 0)
         """
         return datetime.strptime(s, datetime_format)
-    if base_class is None:
-        pass
-    else:
-        # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
-        provider.Provider = BotoCredentialAdapter
+   
+    # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
+    provider.Provider = BotoCredentialAdapter(base_class)
 
   
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
 try:
     _monkey_patch_boto()
-except AttributeError:
+except ImportError:
     pass
