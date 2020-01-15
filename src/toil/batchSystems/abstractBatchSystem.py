@@ -379,6 +379,51 @@ class BatchSystemLocalSupport(BatchSystemSupport):
         self.localBatch.shutdown()
 
 
+class LocalizedBatchSystem(AbstractBatchSystem):
+    """
+    Wraps an existing batch system to allow for local jobs that run on the leader.
+
+    Intended to replace inheriting from BatchSystemLocalSupport in every batch system.
+    """
+
+    def __init__(self, wrapped):
+        """
+        :param toil.abstractBatchSystem.AbstractBatchSystem wrapped: The batch system to add local job support to.
+        """
+
+        # Record the batch system we are wrapping
+        self.wrapped = wrapped
+
+    def supportsAutoDeployment():
+        return self.wrapped.supportsAutoDeployment()
+
+    def supportsWorkerCleanup():
+        return self.wrapped.supportsWorkerCleanup()
+
+    def setUserScript(self, userScript):
+        return self.wraped.setUserScript(userScript)
+
+    def issueBatchJob(self, jobNode):
+        return self.wrapped.issueBatchJob(jobNode)
+
+    def killBatchJobs(self, jobIDs):
+        return self.wrapped.killBatchJobs(jobIDs)
+
+    def getIssuedBatchJobIDs(self):
+        return self.wrapped.getIssuedBatchJobIds()
+
+    def getRunningBatchJobIDs(self):
+        return self.wrapped.getRunningBatchJobIDs()
+
+    def getUpdatedBatchJob(self, maxWait):
+        return self.wrapped.getUpdatedBatchJob(maxWait)
+
+    def shutdown(self):
+        return self.wrapped.shutdown()
+
+    def setEnv(self, name, value=None):
+        return self.wrapped.setEnv(name, value)
+
 class NodeInfo(object):
     """
     The coresUsed attribute  is a floating point value between 0 (all cores idle) and 1 (all cores
