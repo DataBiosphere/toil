@@ -914,14 +914,18 @@ class Toil(object):
         except:
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
-        if not config.disableCaching and not batchSystemClass.supportsWorkerCleanup():
-            raise RuntimeError('%s currently does not support shared caching.  Set the '
-                               '--disableCaching flag if you want to '
-                               'use this batch system.' % config.batchSystem)
         logger.debug('Using the %s' %
                     re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
 
-        return batchSystemClass(**kwargs)
+        batchSystem = batchSystemClass(**kwargs)
+
+        if not config.disableCaching and not batchSystem.supportsWorkerCleanup():
+            raise RuntimeError('%s currently does not support shared caching.  Set the '
+                               '--disableCaching flag if you want to '
+                               'use this batch system.' % config.batchSystem)
+
+        return batchSystem
+        
 
     def _setupAutoDeployment(self, userScript=None):
         """

@@ -46,12 +46,10 @@ class ParasolBatchSystem(BatchSystemSupport):
     The interface for Parasol.
     """
 
-    @classmethod
-    def supportsWorkerCleanup(cls):
+    def supportsWorkerCleanup():
         return False
 
-    @classmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment():
         return False
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):

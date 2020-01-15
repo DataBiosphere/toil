@@ -79,12 +79,10 @@ def utc_now():
 
 class KubernetesBatchSystem(BatchSystemLocalSupport):
 
-    @classmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment():
         return True
 
-    @classmethod
-    def supportsWorkerCleanup(cls):
+    def supportsWorkerCleanup():
         return False
    
     def __init__(self, config, maxCores, maxMemory, maxDisk):

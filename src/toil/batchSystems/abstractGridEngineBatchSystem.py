@@ -317,12 +317,10 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
         self._getRunningBatchJobIDsTimestamp = None
         self._getRunningBatchJobIDsCache = {}
 
-    @classmethod
-    def supportsWorkerCleanup(cls):
+    def supportsWorkerCleanup():
         return False
 
-    @classmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment():
         return False
 
     def issueBatchJob(self, jobNode):

@@ -54,9 +54,7 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
     system must provide to Toil.
     """
 
-    # noinspection PyMethodParameters
-    @abstractclassmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment():
         """
         Whether this batch system supports auto-deployment of the user script itself. If it does,
         the :meth:`.setUserScript` can be invoked to set the resource object representing the user
@@ -68,9 +66,7 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError()
 
-    # noinspection PyMethodParameters
-    @abstractclassmethod
-    def supportsWorkerCleanup(cls):
+    def supportsWorkerCleanup():
         """
         Indicates whether this batch system invokes :meth:`workerCleanup` after the last job for
         a particular workflow invocation finishes. Note that the term *worker* refers to an

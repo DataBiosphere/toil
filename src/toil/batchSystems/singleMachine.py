@@ -45,12 +45,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     come in, but in parallel.
     """
 
-    @classmethod
-    def supportsAutoDeployment(cls):
+    def supportsAutoDeployment():
         return False
 
-    @classmethod
-    def supportsWorkerCleanup(cls):
+    def supportsWorkerCleanup():
         return True
 
     numCores = cpu_count()
