@@ -178,6 +178,7 @@ class hidden(object):
             job3 = self.batchSystem.issueBatchJob(jobNode3)
 
             jobID, exitStatus, wallTime = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
+            log.info('Third job completed: {} {} {}'.format(jobID, exitStatus, wallTime))
 
             # Since the first two jobs were killed, the only job in the updated jobs queue should
             # be job 3. If the first two jobs were (incorrectly) added to the queue, this will
