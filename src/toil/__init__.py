@@ -664,27 +664,8 @@ try:
                     finally:
                         if fd is not None:
                             os.close(fd)
+    provider.Provider = BotoCredentialAdapter
 
 except ImportError:
     pass
 
-def _monkey_patch_boto():
-    """
-    Boto 2 can't automatically assume roles. We want to replace its Provider
-    class that manages credentials with one that uses the Boto 3 configuration
-    and can assume roles.
-    """
-
-    # We cache the final credentials so that we don't send multiple processes to
-    # simultaneously bang on the EC2 metadata server or ask for MFA pins from the
-    # user.
-
-    # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
-    provider.Provider = BotoCredentialAdapter
-
- 
-# If Boto is around, try monkey-patching it as soon as anything in Toil loads
-try:
-   _monkey_patch_boto()
-except:
-   pass
