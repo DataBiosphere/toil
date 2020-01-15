@@ -1,4 +1,8 @@
+image: quay.io/vgteam/vg_ci_prebake:latest
+# Note that we must run in a priviliged container for our internal Docker daemon to come up.
+
 before_script:
+  - startdocker || true
   - docker info
   - cat /etc/hosts
   - export PYTHONIOENCODING=utf-8
@@ -9,6 +13,7 @@ after_script:
   # that next job.
   - pwd
   - sudo rm -rf tmp
+  - stopdocker || true
 
 
 stages:
@@ -24,11 +29,11 @@ py2_batch_systems:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-    # Get Kubernetes credentials before switching over to another AWS account
+    # Get Kubernetes credentials
     - mkdir -p ~/.kube
-    - aws secretsmanager get-secret-value --secret-id allspark/runner/kubeconfig --region us-west-2 | jq -r .SecretString > ~/.kube/config
+    - cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
     - mkdir -p ~/.aws
-    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
     - python -m pytest -r s src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
@@ -70,6 +75,7 @@ py2_appliance_build:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:$(python version_template.py dockerTag)
     - echo $TOIL_APPLIANCE_SELF
@@ -84,9 +90,10 @@ py2_integration_jobstore:
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - mkdir -p ~/.aws
-    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
     - python -m pytest src/toil/test/jobStores/jobStoreTest.py
 
 py2_integration_sort:
@@ -98,9 +105,10 @@ py2_integration_sort:
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
     - export TOIL_AWS_ZONE=us-west-2a
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - mkdir -p ~/.aws
-    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
     - python -m pytest src/toil/test/sort/sortTest.py
     - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
 
@@ -113,9 +121,10 @@ py2_integration_sort:
 #    - export TOIL_TEST_INTEGRATIVE=True
 #    - export TOIL_AWS_KEYNAME=id_rsa
 #    - export TOIL_AWS_ZONE=us-west-2a
+#    # This reads GITLAB_SECRET_FILE_SSH_KEYS
 #    - python setup_gitlab_ssh.py
 #    - mkdir -p ~/.aws
-#    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+#    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
 #    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
 
 
@@ -171,7 +180,8 @@ py3_main:
 #    - export TOIL_TEST_INTEGRATIVE=True
 #    - export TOIL_AWS_KEYNAME=id_rsa
 #    - export TOIL_AWS_ZONE=us-west-2a
+#    # This reads GITLAB_SECRET_FILE_SSH_KEYS
 #    - python setup_gitlab_ssh.py
 #    - mkdir -p ~/.aws
-#    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
+#    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
 #    - python -m pytest src/toil/test/jobStores/jobStoreTest.py

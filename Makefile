@@ -181,18 +181,24 @@ define tag_docker
 endef
 
 docker: docker/Dockerfile
+	# Pre-pull everything
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:16.04 && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.0.0 && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull grafana/grafana && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
+
 	@set -ex \
 	; cd docker \
 	; docker build --tag=$(docker_image):$(docker_tag) -f Dockerfile .
-
+	
 	@set -ex \
 	; cd dashboard/prometheus \
 	; docker build --tag=$(prometheus_image):$(docker_tag) -f Dockerfile .
-
+	
 	@set -ex \
 	; cd dashboard/grafana \
 	; docker build --tag=$(grafana_image):$(docker_tag) -f Dockerfile .
-
+	
 	@set -ex \
 	; cd dashboard/mtail \
 	; docker build --tag=$(mtail_image):$(docker_tag) -f Dockerfile .
@@ -208,10 +214,11 @@ clean_docker:
 	-docker rmi $(docker_image):$(docker_tag)
 
 push_docker: docker
-	for i in $$(seq 1 5); do docker push $(docker_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(grafana_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(prometheus_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(mtail_image):$(docker_tag) && break || sleep 60; done
+	# Weird if logic is so we fail if all the pushes fail
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(docker_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(grafana_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(prometheus_image):$(docker_tag) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(mtail_image):$(docker_tag) && break || sleep 60; done
 
 else
 

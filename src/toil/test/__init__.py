@@ -15,7 +15,6 @@ from __future__ import absolute_import
 from builtins import next
 from builtins import str
 import logging
-import multiprocessing
 import os
 import re
 import shutil
@@ -36,7 +35,7 @@ from six.moves.urllib.request import urlopen
 
 from toil.lib.memoize import memoize
 from toil.lib.iterables import concat
-from toil.lib.threading import ExceptionalThread
+from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.lib.misc import mkdir_p
 from toil.provisioners.aws import runningOnEC2
 from toil import subprocess
@@ -706,7 +705,7 @@ class ApplianceTestSupport(ToilTest):
                  representing the respective appliance containers
         """
         if numCores is None:
-            numCores = multiprocessing.cpu_count()
+            numCores = cpu_count()
         # The last container to stop (and the first to start) should clean the mounts.
         with self.LeaderThread(self, mounts, cleanMounts=True) as leader:
             with self.WorkerThread(self, mounts, numCores) as worker:

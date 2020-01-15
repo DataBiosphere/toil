@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from future.utils import raise_
 from builtins import range
+import math
 import sys
 import threading
 if sys.version_info >= (3, 0):
@@ -24,6 +25,7 @@ if sys.version_info >= (3, 0):
 else:
     from threading import _BoundedSemaphore as BoundedSemaphore
 
+import psutil
 
 class BoundedEmptySemaphore( BoundedSemaphore ):
     """
@@ -102,3 +104,46 @@ class defaultlocal(threading.local):
     def __init__( self, **kwargs ):
         super( defaultlocal, self ).__init__( )
         self.__dict__.update( kwargs )
+
+
+def cpu_count():
+    """
+    Get the rounded-up integer number of whole CPUs available.
+
+    Counts hyperthreads as CPUs.
+
+    Uses the system's actual CPU count, or the current v1 cgroup's quota per
+    period, if the quota is set.
+
+    Ignores the cgroup's cpu shares value, because it's extremely difficult to
+    interpret. See https://github.com/kubernetes/kubernetes/issues/81021.
+
+    :return: Integer count of available CPUs, minimum 1.
+    :rtype: int
+    """
+
+    # Get the fallback answer of all the CPUs on the machine
+    total_machine_size = psutil.cpu_count(logical=True)
+
+    try:
+        with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us', 'r') as stream:
+            # Read the quota
+            quota = int(stream.read)
+
+        if quota == -1:
+            # Assume we can use the whole machine
+            return total_machine_size
+
+        with open('/sys/fs/cgroup/cpu/cpu.cfs_period_us', 'r') as stream:
+            # Read the period in which we are allowed to burn the quota
+            period = int(stream.read)
+
+        # The thread count is how many multiples of a wall clcok period we can burn in that period.
+        cgroup_size = int(math.ceil(float(quota)/float(period)))
+    except:
+        # We can't actually read these cgroup fields. Maybe we are a mac or something.
+        cgroup_size = float('inf')
+
+    # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
+    return max(1, min(cgroup_size, total_machine_size))
+    

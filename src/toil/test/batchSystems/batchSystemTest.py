@@ -29,7 +29,6 @@ import itertools
 import tempfile
 from textwrap import dedent
 import time
-import multiprocessing
 import sys
 from toil import subprocess
 from unittest import skipIf
@@ -45,6 +44,7 @@ from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    BatchSystemSupport)
 from toil.job import Job, JobNode
+from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_lsf,
@@ -136,7 +136,7 @@ class hidden(object):
             super(hidden.AbstractBatchSystemTest, self).tearDown()
         
         def testAvailableCores(self):
-            self.assertTrue(multiprocessing.cpu_count() >= numCores)
+            self.assertTrue(cpu_count() >= numCores)
         
         def testRunJobs(self):
             jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
@@ -278,7 +278,7 @@ class hidden(object):
         than using the batch system directly.
         """
 
-        cpuCount = multiprocessing.cpu_count()
+        cpuCount = cpu_count()
         allocatedCores = sorted({1, 2, cpuCount})
         sleepTime = 5
 

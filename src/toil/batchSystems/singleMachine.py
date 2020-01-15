@@ -22,7 +22,6 @@ from builtins import object
 from past.utils import old_div
 from contextlib import contextmanager
 import logging
-import multiprocessing
 import os
 import time
 import math
@@ -33,6 +32,7 @@ from six.moves.queue import Empty, Queue
 import toil
 from toil import subprocess
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.lib.threading import cpu_count
 from toil import worker as toil_worker
 from toil.common import Toil
 
@@ -53,7 +53,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     def supportsWorkerCleanup(cls):
         return True
 
-    numCores = multiprocessing.cpu_count()
+    numCores = cpu_count()
 
     minCores = 0.1
     """
