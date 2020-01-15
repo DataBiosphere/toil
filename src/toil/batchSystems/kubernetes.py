@@ -53,6 +53,30 @@ from toil.resource import Resource
 logger = logging.getLogger(__name__)
 
 
+def slow_down(seconds):
+    """
+    Toil jobs that have completed are not allowed to have taken 0 seconds, but
+    Kubernetes timestamps things to the second. It is possible in Kubernetes for
+    a pod to have identical start and end timestamps.
+
+    This function takes a possibly 0 job length in seconds an enforces a minimum length to satisfy Toil.
+
+    :param float seconds: Kubernetes timestamp difference
+
+    :return: seconds, or a small positive number if seconds is 0
+    :rtype: float
+    """
+
+    return max(seconds, sys.float_info.epsilon)
+
+def utc_now():
+    """
+    Return a datetime in the UTC timezone corresponding to right now.
+    """
+
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
+
+
 class KubernetesBatchSystem(BatchSystemLocalSupport):
 
     @classmethod
@@ -548,7 +572,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                     pod.status.container_statuses[0].state.terminated.exit_code))
                                 jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
                                 terminated = pod.status.container_statuses[0].state.terminated
-                                runtime = (terminated.finished_at - terminated.started_at).total_seconds()
+                                runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
                                 result = (jobID, terminated.exit_code, runtime)
                                 self._api('batch').delete_namespaced_job(pod.metadata.owner_references[0].name,
                                                                          self.namespace,
@@ -577,7 +601,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
     def _getUpdatedBatchJobImmediately(self):
         """
         Return None if no updated (completed or failed) batch job is currently
-        available, and jobID, exitCode, runtime ifsuch a job can be found.
+        available, and jobID, exitCode, runtime if such a job can be found.
         """
 
         # See if a local batch job has updated and is available immediately
@@ -668,7 +692,14 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Work out what the job's ID was (whatever came after our name prefix)
         jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
-        
+
+        # Work out when the job was submitted. If the pod fails before actually
+        # running, this is the basis for our runtime.
+        jobSubmitTime = getattr(jobObject.status, 'start_time', None)
+        if jobSubmitTime is None:
+            # If somehow this is unset, say it was just now.
+            jobSubmitTime = utc_now() 
+
         # Grab the pod
         pod = self._getPodForJob(jobObject)
 
@@ -678,6 +709,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 # Get the statuses of the pod's containers
                 containerStatuses = pod.status.container_statuses
+
+                # Get when the pod started (reached the Kubelet) as a datetime
+                startTime = getattr(pod.status, 'start_time', None)
+                if startTime is None:
+                    # If the pod never made it to the kubelet to get a
+                    # start_time, say it was when the job was submitted.
+                    startTime = jobSubmitTime 
                 
                 if containerStatuses is None or len(containerStatuses) == 0:
                     # No statuses available.
@@ -687,7 +725,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     logger.warning('Exit code and runtime unavailable; pod has no container statuses')
                     logger.warning('Pod: %s', str(pod))
                     exitCode = -1
-                    runtime = 0
+                    # Say it stopped now and started when it was scheduled/submitted.
+                    # We still need a strictly positive runtime.
+                    runtime = slow_down((utc_now() - startTime).totalSeconds())
                 else:
                     # Get the termination info from the pod's main (only) container
                     terminatedInfo = getattr(getattr(containerStatuses[0], 'state', None), 'terminated', None)
@@ -695,18 +735,21 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
                         logger.warning('Pod: %s', str(pod))
                         exitCode = -1
-                        runtime = 0
+                        # Say it stopped now and started when it was scheduled/submitted.
+                        # We still need a strictly positive runtime.
+                        runtime = slow_down((utc_now() - startTime).totalSeconds())
                     else:
                         # Extract the exit code
                         exitCode = terminatedInfo.exit_code
 
-                        # Compute how long the job ran for (subtract datetimes)
-                        # We need to look at the pod's start time because the job's
-                        # start time is just when the job is created.
-                        # And we need to look at the pod's end time because the
-                        # job only gets a completion time if successful.
-                        runtime = (terminatedInfo.finished_at - 
-                                   pod.status.start_time).total_seconds()
+                        # Compute how long the job actually ran for (subtract
+                        # datetimes). We need to look at the pod's start time
+                        # because the job's start time is just when the job is
+                        # created. And we need to look at the pod's end time
+                        # because the job only gets a completion time if
+                        # successful.
+                        runtime = slow_down((terminatedInfo.finished_at - 
+                                             pod.status.start_time).total_seconds())
 
                         if chosenFor == 'failed':
                             # Warn the user with the failed pod's log
@@ -718,15 +761,16 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 assert chosenFor == 'stuck'
                 
-                # Synthesize an exit code and runtime (since the job never
-                # really could start running)
+                # Synthesize an exit code
                 exitCode = -1
-                runtime = 0
+                # Say it ran from when the job was submitted to when the pod got stuck
+                runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
         else:
             # The pod went away from under the job.
             logging.warning('Exit code and runtime unavailable; pod vanished')
             exitCode = -1
-            runtime = 0
+            # Say it ran from when the job was submitted to when the pod vanished
+            runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
         
         
         try:
@@ -834,8 +878,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 # The only time we have handy is when the pod got assigned to a
                 # kubelet, which is technically before it started running.
-                utc_now = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
-                runtime = (utc_now - pod.status.start_time).total_seconds()
+                runtime = (utc_now() - pod.status.start_time).total_seconds()
 
                 # Save it under the stringified job ID
                 secondsPerJob[self._getIDForOurJob(job)] = runtime
