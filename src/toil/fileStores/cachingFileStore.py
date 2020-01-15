@@ -1360,6 +1360,7 @@ class CachingFileStore(AbstractFileStore):
             # Record that.
             self.cur.execute('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID))
             self.cur.execute('DELETE FROM files WHERE id = ?', (fileStoreID,))
+            self.con.commit()
 
             # Now we're done
             return True
