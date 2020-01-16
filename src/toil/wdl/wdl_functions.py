@@ -592,7 +592,7 @@ def length(i):
 def transpose(arr):
     return [[arr[j][i] for j in range(len(arr))] for i in range(len(arr[0]))] 
 
-def zipp(arr1, arr2):
+def zip_(arr1, arr2):
     li = [] 
     for i in zip(arr1, arr2):
         li.append(i)
@@ -604,3 +604,35 @@ def cross(arr1, arr2):
         for z in arr2:
             li.append((i,z))
     return li 
+
+def write_tsv(input_arr):
+    with open('array.tsv', 'w') as tsv_out:
+        tsv_writer = csv.writer(tsv_out, delimiter='\t')
+        for row in input_arr:
+            tsv_writer.writerow(row)
+
+def write_lines(input_arr):
+    with open('array.txt', 'w') as write_out:
+        for i in input_arr:
+            write_out.write("{} \n".format(i))
+
+def write_map(input_dict):
+    with open('map.txt', 'w') as map_out:
+        for key, val in input_dict.items():
+            map_out.write("{}\{}".format(key, val)) 
+
+def range_(val):
+    return [i for i in range(val)]
+
+def prefix(array, prefix):
+    li = []
+    for i in array:
+        li.append("{} {}".format(prefix, i))
+    return prefix
+
+def flatten(array):
+    li = []
+    for sublist in array:
+        for item in sublist:
+            li.append(item)
+    return li
