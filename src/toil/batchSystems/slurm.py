@@ -28,13 +28,50 @@ from six.moves.queue import Empty, Queue
 from six import iteritems
 
 from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem, with_retries
 
 logger = logging.getLogger(__name__)
 
 class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
     class Worker(AbstractGridEngineBatchSystem.Worker):
+
+        # Override the issueBatchJob method so we can provide a descriptive slurm job name
+        def createJobs(self, newJob):
+            """
+            Create a new job with the Toil job ID.
+
+            Implementation-specific; called by AbstractGridEngineWorker.run()
+
+            :param string newJob: Toil job ID
+            """
+            activity = False
+            # Load new job id if present:
+            if newJob is not None:
+                self.waitingJobs.append(newJob)
+            # Launch jobs as necessary:
+            while len(self.waitingJobs) > 0 and \
+                    len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
+                activity = True
+                jobID, cpu, memory, command, jobName = self.waitingJobs.pop(0)
+
+                # prepare job submission command
+                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName)
+                logger.debug("Running %r", subLine)
+                batchJobID = with_retries(self.submitJob, subLine)
+                logger.debug("Submitted job %s", str(batchJobID))
+
+                # Store dict for mapping Toil job ID to batch job ID
+                # TODO: Note that this currently stores a tuple of (batch system
+                # ID, Task), but the second value is None by default and doesn't
+                # seem to be used
+                self.batchJobIDs[jobID] = (batchJobID, None)
+
+                # Add to queue of running jobs
+                with self.runningJobsLock:
+                    self.runningJobs.add(jobID)
+
+            return activity
 
         def getRunningJobIDs(self):
             # Should return a dictionary of Job IDs and number of seconds
@@ -58,11 +95,25 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             return times
 
+        # Override the issueBatchJob method so we can provide a descriptive slurm job name
+        def issueBatchJob(self, jobNode):
+            # Avoid submitting internal jobs to the batch queue, handle locally
+            localID = self.handleLocalJob(jobNode)
+            if localID:
+                return localID
+            else:
+                self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+                jobID = self.getNextJobID()
+                self.currentJobs.add(jobID)
+                self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command, jobNode.jobName))
+                logger.debug("Issued the job command: %s with job id: %s and job name %s", jobNode.command, str(jobID), jobNode.jobName)
+            return jobID
+
         def killJob(self, jobID):
             subprocess.check_call(['scancel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command):
-            return self.prepareSbatch(cpu, memory, jobID) + ['--wrap={}'.format(command)]
+        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
+            return self.prepareSbatch(cpu, memory, jobID, jobName) + ['--wrap={}'.format(command)]
 
         def submitJob(self, subLine):
             try:
@@ -168,9 +219,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         Implementation-specific helper methods
         """
 
-        def prepareSbatch(self, cpu, mem, jobID):
+        def prepareSbatch(self, cpu, mem, jobID, jobName):
             #  Returns the sbatch command line before the script to run
-            sbatch_line = ['sbatch', '-J', 'toil_job_{}'.format(jobID)]
+            sbatch_line = ['sbatch', '-J', 'toil_job_{}_{}'.format(jobID, jobName)]
 
             if self.boss.environment:
                 argList = []
