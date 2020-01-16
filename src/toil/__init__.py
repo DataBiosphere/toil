@@ -449,10 +449,8 @@ try:
         """
         return datetime.strptime(s, datetime_format)
 
-    base_class = provider.Provider
 
-
-    class BotoCredentialAdapter(base_class):
+    class BotoCredentialAdapter(provider.Provider):
         """
         Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
         credential finding logic. This allows for automatic role assumption
