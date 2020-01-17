@@ -412,7 +412,6 @@ def logProcessContext(config):
     log.info("Running Toil version %s.", version)
     log.debug("Configuration: %s", config.__dict__)
 
-
 try:
     from boto import provider
     from botocore.session import Session
