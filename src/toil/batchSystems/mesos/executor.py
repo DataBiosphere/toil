@@ -40,6 +40,7 @@ from pymesos import MesosExecutorDriver, Executor, decode_data, encode_data
 
 from toil import subprocess, pickle
 from toil.lib.expando import Expando
+from toil.lib.threading import cpu_count
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.resource import Resource
 
@@ -132,7 +133,7 @@ class MesosExecutor(Executor):
             else:
                 message.nodeInfo = dict(coresUsed=float(psutil.cpu_percent()) * .01,
                                         memoryUsed=float(psutil.virtual_memory().percent) * .01,
-                                        coresTotal=psutil.cpu_count(),
+                                        coresTotal=cpu_count(),
                                         memoryTotal=psutil.virtual_memory().total,
                                         workers=len(self.runningTasks))
             log.debug("Send framework message: %s", message)

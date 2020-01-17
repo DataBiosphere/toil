@@ -1216,6 +1216,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         """
         from boto.sdb import connect_to_region
         from boto.s3.connection import Location, S3Connection
+        from boto.exception import S3ResponseError
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
         from toil.jobStores.aws.utils import retry_s3
         externalAWSLocation = Location.USWest
@@ -1257,7 +1258,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                     for attempt in retry_s3():
                         with attempt:
                             s3.delete_bucket(bucket=bucket)
-                except boto.exception.S3ResponseError as e:
+                except S3ResponseError as e:
                     if e.error_code == 404:
                         # The bucket doesn't exist; maybe a failed delete actually succeeded.
                         pass
