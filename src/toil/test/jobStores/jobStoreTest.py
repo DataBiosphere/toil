@@ -55,7 +55,6 @@ from toil.fileStores import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
-from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
@@ -66,6 +65,16 @@ from toil.test import (ToilTest,
                        travis_test,
                        slow)
 from future.utils import with_metaclass
+
+# Need googleRetry decorator even if google is not available, so make one up.
+# Unconventional use of decorator to determine if google is enabled by seeing if
+# it returns the parameter passed in.
+if needs_google(needs_google) is needs_google:
+    from toil.jobStores.googleJobStore import googleRetry
+else:
+    def googleRetry(x):
+        return x
+
 
 logger = logging.getLogger(__name__)
 
@@ -1142,7 +1151,6 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             self.assertTrue(fileID.endswith(os.path.basename(path)))
         finally:
             os.unlink(path)
-
 
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
