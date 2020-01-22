@@ -162,7 +162,7 @@ class JobServiceTest(ToilTest):
             finally:
                 list(map(os.remove, outFiles))
 
-    def runToil(self, rootJob, retryCount=1, badWorker=0.5, badWorkedFailInterval=0.05, maxServiceJobs=sys.maxsize, deadlockWait=60):
+    def runToil(self, rootJob, retryCount=1, badWorker=0.5, badWorkedFailInterval=0.1, maxServiceJobs=sys.maxsize, deadlockWait=60):
         # Create the runner for the workflow.
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "DEBUG"
@@ -182,7 +182,7 @@ class JobServiceTest(ToilTest):
                 break
             except FailedJobsException as e:
                 i = e.numberOfFailedJobs
-                if totalTrys > 40: #p(fail after this many restarts) = 0.5**32
+                if totalTrys > 50: #p(fail after this many restarts) = 0.5**32
                     self.fail() #Exceeded a reasonable number of restarts
                 totalTrys += 1
                 options.restart = True
