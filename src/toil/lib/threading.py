@@ -21,6 +21,7 @@ import logging
 import math
 import sys
 import threading
+import traceback
 if sys.version_info >= (3, 0):
     from threading import BoundedSemaphore
 else:
@@ -121,9 +122,16 @@ def cpu_count():
     Ignores the cgroup's cpu shares value, because it's extremely difficult to
     interpret. See https://github.com/kubernetes/kubernetes/issues/81021.
 
+    Caches result for efficiency.
+
     :return: Integer count of available CPUs, minimum 1.
     :rtype: int
     """
+
+    cached = getattr(cpu_count, 'result', None)
+    if cached is not None:
+        # We already got a CPU count.    
+        return cached
 
     # Get the fallback answer of all the CPUs on the machine
     total_machine_size = psutil.cpu_count(logical=True)
@@ -133,7 +141,7 @@ def cpu_count():
     try:
         with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us', 'r') as stream:
             # Read the quota
-            quota = int(stream.read)
+            quota = int(stream.read())
 
         log.debug('CPU quota: %d', quota)
 
@@ -143,7 +151,7 @@ def cpu_count():
 
         with open('/sys/fs/cgroup/cpu/cpu.cfs_period_us', 'r') as stream:
             # Read the period in which we are allowed to burn the quota
-            period = int(stream.read)
+            period = int(stream.read())
 
         log.debug('CPU quota period: %d', period)
 
@@ -154,10 +162,13 @@ def cpu_count():
 
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
+        log.debug('Could not inspect cgroup: %s', traceback.format_exc())
         cgroup_size = float('inf')
 
     # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
     result = max(1, min(cgroup_size, total_machine_size))
     log.debug('cpu_count: %s', str(result))
+    # Make sure to remember it for the next call
+    setattr(cpu_count, 'result', result)
     return result
     
