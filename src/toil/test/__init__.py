@@ -19,6 +19,7 @@ import os
 import re
 import shutil
 import signal
+import sys
 import tempfile
 import threading
 import time
@@ -398,6 +399,22 @@ def needs_docker(test_item):
         return test_item
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
+
+def needs_appliance(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    the Toil appliance Docker image ought to be available.
+
+    For now, this just skips if running on Python 3.
+    TODO: When the appliance build is set up for Python 3 (when
+    https://github.com/DataBiosphere/toil/issues/2742 is fixed), this behavior
+    should be changed.
+    """
+
+    if sys.version_info[0] == 2:
+        return test_item
+    else:
+        return unittest.skip("Skipping test that needs Toil Appliance, available only for Python 2")(test_item)
 
 
 def needs_encryption(test_item):
