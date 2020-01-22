@@ -1267,7 +1267,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                         with attempt:
                             s3.delete_bucket(bucket=bucket)
                 except S3ResponseError as e:
-                    if e.error_code == 404:
+                    # The actual HTTP code of the error is in status.
+                    # See https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L77-L80
+                    # See also: https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L154-L156
+                    if e.status == 404:
                         # The bucket doesn't exist; maybe a failed delete actually succeeded.
                         pass
                     else:
