@@ -568,8 +568,15 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 if containerStatuses is None or len(containerStatuses) == 0: 
                                     logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
                                     return (int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), -1, 0)
-                                logger.info("REASON: %s Exit Code: %s" % (pod.status.container_statuses[0].state.terminated.reason,
-                                    pod.status.container_statuses[0].state.terminated.exit_code))
+
+                                # Get termination onformation from the pod
+                                termination = pod.status.container_statuses[0].state.terminated
+                                logger.info("REASON: %s Exit Code: %s", termination.reason, termination.exit_code)
+                                
+                                if termination.exit_code != 0:
+                                    # The pod failed. Dump information about it.
+                                    logger.debug('Failed pod information: %s', str(pod))
+                                    logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
                                 jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
                                 terminated = pod.status.container_statuses[0].state.terminated
                                 runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
