@@ -17,6 +17,7 @@
 from __future__ import absolute_import
 from future.utils import raise_
 from builtins import range
+import logging
 import math
 import sys
 import threading
@@ -26,6 +27,8 @@ else:
     from threading import _BoundedSemaphore as BoundedSemaphore
 
 import psutil
+
+log = logging.getLogger(__name__)
 
 class BoundedEmptySemaphore( BoundedSemaphore ):
     """
@@ -125,10 +128,14 @@ def cpu_count():
     # Get the fallback answer of all the CPUs on the machine
     total_machine_size = psutil.cpu_count(logical=True)
 
+    log.debug('Total machine size: %d cores', total_machine_size) 
+
     try:
         with open('/sys/fs/cgroup/cpu/cpu.cfs_quota_us', 'r') as stream:
             # Read the quota
             quota = int(stream.read)
+
+        log.debug('CPU quota: %d', quota)
 
         if quota == -1:
             # Assume we can use the whole machine
@@ -138,12 +145,19 @@ def cpu_count():
             # Read the period in which we are allowed to burn the quota
             period = int(stream.read)
 
+        log.debug('CPU quota period: %d', period)
+
         # The thread count is how many multiples of a wall clcok period we can burn in that period.
         cgroup_size = int(math.ceil(float(quota)/float(period)))
+
+        log.debug('Cgroup size in cores: %d', cgroup_size)
+
     except:
         # We can't actually read these cgroup fields. Maybe we are a mac or something.
         cgroup_size = float('inf')
 
     # Return the smaller of the actual thread count and the cgroup's limit, minimum 1.
-    return max(1, min(cgroup_size, total_machine_size))
+    result = max(1, min(cgroup_size, total_machine_size))
+    log.debug('cpu_count: %s', str(result))
+    return result
     
