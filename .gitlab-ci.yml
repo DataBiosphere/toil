@@ -6,6 +6,8 @@ before_script:
   - docker info
   - cat /etc/hosts
   - export PYTHONIOENCODING=utf-8
+  - mkdir -p ~/.kube && cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
+  - mkdir -p ~/.aws && cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
 after_script:
   # We need to clean up any files that Toil may have made via Docker that
   # aren't deletable by the Gitlab user. If we don't do this, Gitlab will try
@@ -29,11 +31,6 @@ py2_batch_systems:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-    # Get Kubernetes credentials
-    - mkdir -p ~/.kube
-    - cp "$GITLAB_SECRET_FILE_KUBE_CONFIG" ~/.kube/config
-    - mkdir -p ~/.aws
-    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
     - python -m pytest -r s src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
@@ -92,8 +89,6 @@ py2_integration_jobstore:
     - export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - mkdir -p ~/.aws
-    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
     - python -m pytest src/toil/test/jobStores/jobStoreTest.py
 
 py2_integration_sort:
@@ -107,8 +102,6 @@ py2_integration_sort:
     - export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - mkdir -p ~/.aws
-    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
     - python -m pytest src/toil/test/sort/sortTest.py
     - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
 
@@ -123,8 +116,6 @@ py2_integration_sort:
 #    - export TOIL_AWS_ZONE=us-west-2a
 #    # This reads GITLAB_SECRET_FILE_SSH_KEYS
 #    - python setup_gitlab_ssh.py
-#    - mkdir -p ~/.aws
-#    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
 #    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
 
 
@@ -182,6 +173,4 @@ py3_main:
 #    - export TOIL_AWS_ZONE=us-west-2a
 #    # This reads GITLAB_SECRET_FILE_SSH_KEYS
 #    - python setup_gitlab_ssh.py
-#    - mkdir -p ~/.aws
-#    - cp "$GITLAB_SECRET_FILE_AWS_CREDENTIALS" ~/.aws/credentials
 #    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
