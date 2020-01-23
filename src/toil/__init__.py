@@ -48,7 +48,6 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
-
 def which(cmd, mode=os.F_OK | os.X_OK, path=None):
     """
     Copy-pasted in from python3.6's shutil.which().

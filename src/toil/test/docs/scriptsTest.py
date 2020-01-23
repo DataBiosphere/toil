@@ -11,6 +11,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil import subprocess
 from toil.test import ToilTest
 from toil.test import needs_cwl
+from toil.version import python
 
 
 class ToilDocumentationTest(ToilTest):
@@ -37,7 +38,7 @@ class ToilDocumentationTest(ToilTest):
     """Just check the exit code"""
     def checkExitCode(self, script):
         program = os.path.join(self.directory, "scripts", script)
-        process = subprocess.Popen(["python", program, "file:my-jobstore", "--clean=always"],
+        process = subprocess.Popen([python, program, "file:my-jobstore", "--clean=always"],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         assert process.returncode == 0, stderr

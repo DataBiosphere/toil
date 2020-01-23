@@ -26,6 +26,7 @@ from builtins import str
 
 from toil import subprocess
 from toil.provisioners import clusterFactory
+from toil.version import exactPython
 from toil.test import needs_aws_ec2, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)
@@ -113,7 +114,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         assert len(self.getMatchingRoles()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = ['virtualenv', '--system-site-packages', '--never-download', '/home/venv']
+        venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', '/home/venv']
         self.sshUtil(venv_command)
 
         upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
