@@ -51,7 +51,7 @@ class ToilDocumentationTest(ToilTest):
 
         # Check that the expected output is there
         index = outerr.find(expectedOutput)
-        self.assertGreater(index, -1, index)
+        self.assertGreater(index, -1, "Expected:\n{}\nOutput:\n{}".format(expectedOutput, outerr))
 
     """Check the exit code and look for a pattern"""
     def checkExpectedPattern(self, script, expectedPattern):
@@ -60,7 +60,7 @@ class ToilDocumentationTest(ToilTest):
         # Check that the expected output pattern is there
         pattern = re.compile(expectedPattern, re.DOTALL)
         n = re.search(pattern, outerr)
-        self.assertNotEqual(n, None, n)
+        self.assertNotEqual(n, None, "Pattern:\n{}\nOutput:\n{}".format(expectedPattern, outerr))
 
     @needs_cwl
     def testCwlexample(self):
