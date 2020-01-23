@@ -22,9 +22,12 @@ import the expand_ function and invoke it directly with either no or exactly one
 
 # Note to maintainers:
 #
-#  - don't import at module level unless you want the imported value to be included in the output
-#  - only import from the Python standard run-time library (you can't have any dependencies)
-
+#  - don't import at module level unless you want the imported value to be
+#    included in the output
+#  - only import from the Python standard run-time library (you can't have any
+#    dependencies)
+#  - don't import even standard modules at global scope without renaming them
+#    to have leading/trailing underscores
 
 baseVersion = '3.22.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
@@ -61,15 +64,30 @@ def distVersion():
                            "'pip install setuptools --upgrade'")
     return baseVersion
 
+def _pythonVersionSuffix():
+    """
+    Returns a short string identifying the running version of Python. Toil
+    appliances running the same Toil version but on different versions of
+    Python as returned by this function are not compatible.
+    """
+
+    import sys
+
+    # For now, we assume all Python 3 releases are intercompatible.
+    # We also only tag the Python 2 releases specially, since Python 2 is old and busted.
+    if sys.version_info[0] == 3:
+        return ''
+    else:
+        return '-py{}'.format(sys.version_info[0])
 
 def dockerTag():
     """The primary tag of the Docker image for the appliance. This uniquely identifies the appliance image."""
-    return version()
+    return version() + _pythonVersionSuffix()
 
 
 def dockerShortTag():
     """A secondary, shortened form of :func:`dockerTag` with which to tag the appliance image for convenience."""
-    return shortVersion()
+    return shortVersion() + _pythonVersionSuffix()
 
 
 def dockerMinimalTag():
@@ -77,7 +95,7 @@ def dockerMinimalTag():
     A minimal tag with which to tag the appliance image for convenience. Does not include
     information about the git commit or working copy dirtyness.
     """
-    return distVersion()
+    return distVersion() + _pythonVersionSuffix()
 
 
 def currentCommit():
