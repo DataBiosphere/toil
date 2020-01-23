@@ -55,7 +55,7 @@ from toil.test import (ToilTest,
                        needs_slurm,
                        needs_torque,
                        needs_htcondor,
-                       needs_appliance,
+                       needs_downloadable_appliance,
                        slow,
                        tempFileContaining,
                        travis_test)
@@ -346,7 +346,7 @@ class hidden(object):
 
 @needs_kubernetes
 @needs_aws_s3
-@needs_appliance
+@needs_downloadable_appliance
 class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the Kubernetes batch system
