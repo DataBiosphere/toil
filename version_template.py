@@ -64,6 +64,35 @@ def distVersion():
                            "'pip install setuptools --upgrade'")
     return baseVersion
 
+def exactPython():
+    """
+    Returns the Python command for the exact version of Python we are installed
+    for. Something like 'python2.7' or 'python3.6'.
+    """
+    
+    import sys
+
+    return 'python{}.{}'.format(sys.version_info[0], sys.version_info[1])
+
+def python():
+    """
+    Returns the Python command for the general version of Python we are
+    installed for.  Something like 'python2.7' or 'python3'.
+
+    We assume all Python 3s are sufficiently intercompatible that we can just
+    use 'python3' here for all of them. This is useful because the Toil Docker
+    appliance is only built for particular Python versions, and we would like
+    workflows to work with a variety of leader Python versions.
+    """
+
+    import sys
+    
+    if sys.version_info[0] == 3:
+        # Ignore minor version
+        return 'python3'
+    else:
+        return exactPython() 
+
 def _pythonVersionSuffix():
     """
     Returns a short string identifying the running version of Python. Toil
