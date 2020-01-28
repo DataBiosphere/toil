@@ -11,9 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from setuptools import find_packages, setup
 import sys
+import os
+import copy
+
+# setting the 'CPPFLAGS' flag specifies the necessary cython dependency for "http-parser", for more info:
+# toil issue: https://github.com/DataBiosphere/toil/issues/2924
+# very similar to this issue: https://github.com/mcfletch/pyopengl/issues/11
+# the "right way" is waiting for a fix from "http-parser", but this fixes things in the meantime since that might take a while
+cppflags = os.environ.get('CPPFLAGS')
+if cppflags:
+    # note, duplicate options don't affect things here so we don't check - Mark D
+    os.environ['CPPFLAGS'] = ' '.join([cppflags, '-DPYPY_VERSION'])
+else:
+    os.environ['CPPFLAGS'] = '-DPYPY_VERSION'
+
 
 def runSetup():
     """
