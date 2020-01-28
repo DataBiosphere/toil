@@ -90,7 +90,7 @@ def runSetup():
         htcondor]
     kubernetes_reqs = [
         kubernetes]
-    mesos_reqs = [\
+    mesos_reqs = [
         pymesos,
         psutil]
     wdl_reqs = []
