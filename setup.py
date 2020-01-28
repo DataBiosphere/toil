@@ -11,9 +11,20 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from setuptools import find_packages, setup
 import sys
+import os
+import copy
+
+remember_this_environment = copy.deepcopy(os.environ)
+
+cppflags = os.environ.get('CPPFLAGS')
+if cppflags:
+    if '-DPYPY_VERSION' not in cppflags:
+        os.environ['CPPFLAGS'] = ' '.join([cppflags, '-DPYPY_VERSION'])
+else:
+    os.environ['CPPFLAGS'] = '-DPYPY_VERSION'
+
 
 def runSetup():
     """
@@ -79,7 +90,7 @@ def runSetup():
         htcondor]
     kubernetes_reqs = [
         kubernetes]
-    mesos_reqs = [
+    mesos_reqs = [\
         pymesos,
         psutil]
     wdl_reqs = []
@@ -205,3 +216,4 @@ def importVersion():
 
 version = importVersion()
 runSetup()
+os.environ = remember_this_environment
