@@ -25,11 +25,6 @@ def runSetup():
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'pymesos==0.3.7'
-    # We need this specific http-parser that still claims to be version 0.8.3
-    # but which builds on Python 3.7+, to satisfy pymesos
-    http_parser = 'http-parser' + \
-                  '@https://github.com/adamnovak/http-parser/archive/190a17839ba229c635b59d960579451a81fe73f3.zip' + \
-                  '#sha256=3d30c84a426627e468657c44de199daee9d3210a48e392d4ad2e7497c5010949'
     psutil = 'psutil >= 3.0.1, <6'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
@@ -85,7 +80,6 @@ def runSetup():
     kubernetes_reqs = [
         kubernetes]
     mesos_reqs = [
-        http_parser,
         pymesos,
         psutil]
     wdl_reqs = []
