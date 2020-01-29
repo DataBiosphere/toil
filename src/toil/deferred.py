@@ -99,6 +99,15 @@ class DeferredFunctionManager(object):
     be locked, and will take them over.
     """
 
+    # Define what directory the state directory should actaully be, under the base
+    STATE_DIR_STEM = 'deferred'
+    # Have a prefix to distinguish our deferred functions from e.g. NFS
+    # "silly rename" files, or other garbage that people put in our
+    # directory
+    PREFIX = 'func'
+    # And a suffix to distingusidh in-progress from completed files
+    WIP_SUFFIX = '.tmp'
+
     def __init__(self, stateDirBase):
         """
         Create a new DeferredFunctionManager, sharing state with other
@@ -115,12 +124,14 @@ class DeferredFunctionManager(object):
         """
 
         # Work out where state files live
-        self.stateDir = os.path.join(stateDirBase, "deferred")
+        self.stateDir = os.path.join(stateDirBase, self.STATE_DIR_STEM)
         mkdir_p(self.stateDir)
 
         # We need to get a state file, locked by us and not somebody scanning for abandoned state files.
-        # So we suffix not-yet-ready ones with .tmp
-        self.stateFD, self.stateFileName = tempfile.mkstemp(dir=self.stateDir, suffix='.tmp')
+        # So we suffix not-yet-ready ones with our suffix
+        self.stateFD, self.stateFileName = tempfile.mkstemp(dir=self.stateDir,
+                                                            prefix=self.PREFIX,
+                                                            suffix=self.WIP_SUFFIX)
 
         # Lock the state file. The lock will automatically go away if our process does.
         try:
@@ -129,9 +140,9 @@ class DeferredFunctionManager(object):
             # Someone else might have locked it even though they should not have.
             raise RuntimeError("Could not lock deferred function state file %s: %s" % (self.stateFileName, str(e)))
 
-        # Rename it to remove the ".tmp"
-        os.rename(self.stateFileName, self.stateFileName[:-4])
-        self.stateFileName = self.stateFileName[:-4]
+        # Rename it to remove the suffix
+        os.rename(self.stateFileName, self.stateFileName[:-len(self.WIP_SUFFIX)])
+        self.stateFileName = self.stateFileName[:-len(self.WIP_SUFFIX)]
 
         # Wrap the FD in a Python file object, which we will use to actually use it.
         # Problem: we can't be readable and writable at the same time. So we need two file objects.
@@ -208,7 +219,7 @@ class DeferredFunctionManager(object):
         # Clean up the directory we have been using.
         # It might not be empty if .tmp files escaped: nobody can tell they
         # aren't just waiting to be locked.
-        shutil.rmtree(os.path.join(stateDirBase, "deferred"))
+        shutil.rmtree(os.path.join(stateDirBase, cls.STATE_DIR_STEM))
 
 
 
@@ -280,8 +291,12 @@ class DeferredFunctionManager(object):
             for filename in os.listdir(self.stateDir):
                 # Scan the whole directory for work nobody else owns.
 
-                if filename.endswith(".tmp"):
+                if filename.endswith(self.WIP_SUFFIX):
                     # Skip files from instances that are still being set up
+                    continue
+
+                if not filename.startswith(self.PREFIX):
+                    # Skip NFS deleted files and any other contaminants
                     continue
 
                 fullFilename = os.path.join(self.stateDir, filename)
@@ -332,7 +347,8 @@ class DeferredFunctionManager(object):
                 # Unlock it
                 fcntl.lockf(fd, fcntl.LOCK_UN)
 
-                # Now close it.
+                # Now close it. This closes the backing file descriptor. See
+                # <https://stackoverflow.com/a/24984929>
                 fileObj.close()
 
                 
