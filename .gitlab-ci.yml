@@ -162,6 +162,18 @@ py3_main:
     - python -m pytest src/toil/test/src
     - python -m pytest src/toil/test/utils
 
+py3_appliance_build:
+  stage: main_tests
+  script:
+    - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
+    - python2.7 setup_gitlab_docker.py
+    - export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:$(python version_template.py dockerTag)
+    - echo $TOIL_APPLIANCE_SELF
+    - make push_docker
+
 #py3_integration:
 #  stage: integration
 #  script:
