@@ -20,12 +20,12 @@ import os
 # toil issue: https://github.com/DataBiosphere/toil/issues/2924
 # very similar to this issue: https://github.com/mcfletch/pyopengl/issues/11
 # the "right way" is waiting for a fix from "http-parser", but this fixes things in the meantime since that might take a while
-cppflags_args = [i.strip() for i in os.environ.get('CPPFLAGS', '').split(' ') if i.strip()]
-python_version = float('{}.{}'.format(str(sys.version_info.major), str(sys.version_info.minor)))
-if python_version >= 3.7 and '-DPYPY_VERSION' not in cppflags_args:
-    raise RuntimeError('Toil requires the environment variable "CPPFLAGS" to contain "-DPYPY_VERSION" when installed '
-                       'on python3.7 or higher.  This can be set with:\n\n'
-                       '    export CPPFLAGS=$CPPFLAGS" -DPYPY_VERSION"\n\n')
+cppflags = os.environ.get('CPPFLAGS')
+if cppflags:
+    # note, duplicate options don't affect things here so we don't check - Mark D
+    os.environ['CPPFLAGS'] = ' '.join([cppflags, '-DPYPY_VERSION'])
+else:
+    os.environ['CPPFLAGS'] = '-DPYPY_VERSION'
 
 
 def runSetup():
@@ -98,7 +98,6 @@ def runSetup():
     kubernetes_reqs = [
         kubernetes]
     mesos_reqs = [
-        http_parser,
         pymesos,
         psutil]
     wdl_reqs = []

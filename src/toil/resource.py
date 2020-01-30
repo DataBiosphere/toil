@@ -40,6 +40,8 @@ from six.moves.urllib.request import urlopen
 from toil.lib.memoize import strict_bool
 from toil.lib.iterables import concat
 
+from toil.version import exactPython
+
 from toil import inVirtualEnv
 
 log = logging.getLogger(__name__)
@@ -565,8 +567,8 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                 raise ResourceException(
                     "Toil does not support loading a user script from a package directory. You "
                     "may want to remove %s from %s or invoke the user script as a module via "
-                    "'PYTHONPATH=\"%s\" python -m %s.%s'." %
-                    tuple(concat(initName, self.dirPath, os.path.split(self.dirPath), self.name)))
+                    "'PYTHONPATH=\"%s\" %s -m %s.%s'." %
+                    tuple(concat(initName, self.dirPath, exactPython, os.path.split(self.dirPath), self.name)))
             return self.dirPath
 
     moduleExtensions = ('.py', '.pyc', '.pyo')

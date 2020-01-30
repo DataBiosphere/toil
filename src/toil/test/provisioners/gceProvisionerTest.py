@@ -15,6 +15,7 @@ from builtins import str
 import logging
 import os
 from toil import subprocess
+from toil.version import exactPython
 from abc import abstractmethod
 
 import pytest
@@ -127,7 +128,7 @@ class AbstractGCEAutoscaleTest(ToilTest):
 
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = ['virtualenv', '--system-site-packages', '--never-download',
-                        '/home/venv']
+                        '--python', exactPython, '/home/venv']
         self.sshUtil(venv_command)
 
         upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
