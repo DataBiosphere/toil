@@ -95,20 +95,6 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             return times
 
-        # Override the issueBatchJob method so we can provide a descriptive slurm job name
-        def issueBatchJob(self, jobNode):
-            # Avoid submitting internal jobs to the batch queue, handle locally
-            localID = self.handleLocalJob(jobNode)
-            if localID:
-                return localID
-            else:
-                self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
-                jobID = self.getNextJobID()
-                self.currentJobs.add(jobID)
-                self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command, jobNode.jobName))
-                logger.debug("Issued the job command: %s with job id: %s and job name %s", jobNode.command, str(jobID), jobNode.jobName)
-            return jobID
-
         def killJob(self, jobID):
             subprocess.check_call(['scancel', self.getBatchSystemID(jobID)])
 
@@ -273,6 +259,21 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     """
     The interface for SLURM
     """
+
+    # Override the issueBatchJob method so we can provide a descriptive slurm job name
+    def issueBatchJob(self, jobNode):
+        # Avoid submitting internal jobs to the batch queue, handle locally
+        localID = self.handleLocalJob(jobNode)
+        if localID:
+            return localID
+        else:
+            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+            jobID = self.getNextJobID()
+            self.currentJobs.add(jobID)
+            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command, jobNode.jobName))
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobNode.command, str(jobID),
+                         jobNode.jobName)
+        return jobID
 
     @classmethod
     def getWaitDuration(cls):
