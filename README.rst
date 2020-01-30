@@ -7,13 +7,14 @@ programming.
 * Check the `website`_ for a description of Toil and its features.
 * Full documentation for the latest stable release can be found at
   `Read the Docs`_.
+* Please subscribe to low-volume `announce`_ mailing list so we keep you informed
+* Google Groups discussion `forum`_
 * See our occasional `blog`_ for tutorials. 
-* Google Groups discussion `forum`_ and videochat `invite list`_.
 
 .. _website: http://toil.ucsc-cgl.org/
 .. _Read the Docs: https://toil.readthedocs.io/en/latest
+.. _announce: https://groups.google.com/forum/#!forum/toil-announce
 .. _forum: https://groups.google.com/forum/#!forum/toil-community
-.. _invite list: https://groups.google.com/forum/#!forum/toil-community-videochats
 .. _blog: https://toilpipelines.wordpress.com/
 
 .. image:: https://badges.gitter.im/bd2k-genomics-toil/Lobby.svg

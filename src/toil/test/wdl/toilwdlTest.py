@@ -3,6 +3,7 @@ from six import iteritems
 import unittest
 import os
 from toil import subprocess
+from toil.version import exactPython
 import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_analysis import AnalyzeWDL
 from toil.wdl.wdl_synthesis import SynthesizeWDL
@@ -121,7 +122,7 @@ class ToilWdlIntegrationTest(ToilTest):
         inputfile = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.input')
         json = os.path.abspath('src/toil/test/wdl/md5sum/md5sum.json')
 
-        subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+        subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
         md5sum_output = os.path.join(self.output_dir, 'md5sum.txt')
         assert os.path.exists(md5sum_output)
         os.unlink(md5sum_output)
@@ -274,7 +275,7 @@ class ToilWdlIntegrationTest(ToilTest):
             json = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/helloHaplotypeCaller_inputs.json")
             ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t01/output/")
 
-            subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+            subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
 
             compare_runs(self.output_dir, ref_dir)
 
@@ -288,7 +289,7 @@ class ToilWdlIntegrationTest(ToilTest):
             json = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/simpleVariantSelection_inputs.json")
             ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t02/output/")
 
-            subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+            subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
 
             compare_runs(self.output_dir, ref_dir)
 
@@ -302,7 +303,7 @@ class ToilWdlIntegrationTest(ToilTest):
             json = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/simpleVariantDiscovery_inputs.json")
             ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t03/output/")
 
-            subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+            subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
 
             compare_runs(self.output_dir, ref_dir)
 
@@ -316,7 +317,7 @@ class ToilWdlIntegrationTest(ToilTest):
             json = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/jointCallingGenotypes_inputs.json")
             ref_dir = os.path.abspath("src/toil/test/wdl/wdl_templates/t04/output/")
 
-            subprocess.check_call(['python', self.program, wdl, json, '-o', self.output_dir])
+            subprocess.check_call([exactPython, self.program, wdl, json, '-o', self.output_dir])
 
             compare_runs(self.output_dir, ref_dir)
 
@@ -334,7 +335,7 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testENCODE/output/")
 
         subprocess.check_call(
-            ['python', self.program, wdl, json, '--docker_user=None', '--out_dir', self.output_dir])
+            [exactPython, self.program, wdl, json, '--docker_user=None', '--out_dir', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 
@@ -349,7 +350,7 @@ class ToilWdlIntegrationTest(ToilTest):
             "src/toil/test/wdl/wdl_templates/testPipe/output/")
 
         subprocess.check_call(
-            ['python', self.program, wdl, json, '--out_dir', self.output_dir])
+            [exactPython, self.program, wdl, json, '--out_dir', self.output_dir])
 
         compare_runs(self.output_dir, ref_dir)
 

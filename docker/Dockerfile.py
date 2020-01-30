@@ -14,10 +14,15 @@
 
 from __future__ import print_function
 import os
+import sys
 import textwrap
 
 applianceSelf = os.environ['TOIL_APPLIANCE_SELF']
 sdistName = os.environ['_TOIL_SDIST_NAME']
+
+# Make sure to install packages into the pip for the version of Python we are
+# building for.
+pip = 'pip{}'.format(sys.version_info[0])
 
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
@@ -56,7 +61,7 @@ motd = heredoc('''
     Run toil <workflow>.py --help to see all options for running your workflow.
     For more information see http://toil.readthedocs.io/en/latest/
 
-    Copyright (C) 2015-2018 Regents of the University of California
+    Copyright (C) 2015-2020 Regents of the University of California
 
     Version: {applianceSelf}
 
@@ -85,8 +90,9 @@ print(heredoc('''
         apt-get clean && \
         rm -rf /var/lib/apt/lists/*
 
-    RUN wget https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz && \
-        tar xvf go1.13.3.linux-amd64.tar.gz && \
+    RUN wget -q https://dl.google.com/go/go1.13.3.linux-amd64.tar.gz && \
+        tar xf go1.13.3.linux-amd64.tar.gz && \
+        rm go1.13.3.linux-amd64.tar.gz && \
         mv go/bin/* /usr/bin/ && \
         mv go /usr/local/
         
@@ -110,16 +116,16 @@ print(heredoc('''
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh
     
     # The stock pip is too old and can't install from sdist with extras
-    RUN pip install --upgrade pip==9.0.1
+    RUN {pip} install --upgrade pip==9.0.1
 
     # Default setuptools is too old
-    RUN pip install --upgrade setuptools==36.5.0
+    RUN {pip} install --upgrade setuptools==36.5.0
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
-    RUN pip install --upgrade virtualenv==15.0.3
+    RUN {pip} install --upgrade virtualenv==15.0.3
 
     # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
-    RUN virtualenv --never-download /home/s3am \
+    RUN virtualenv --python python3 --never-download /home/s3am \
         && /home/s3am/bin/pip install s3am==2.0 \
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
@@ -129,7 +135,7 @@ print(heredoc('''
          && chmod u+x /usr/local/bin/docker
 
     # Fix for Mesos interface dependency missing on ubuntu
-    RUN pip install protobuf==3.0.0
+    RUN {pip} install protobuf==3.0.0
 
     # Fix for https://issues.apache.org/jira/browse/MESOS-3793
     ENV MESOS_LAUNCHER=posix
@@ -151,7 +157,7 @@ print(heredoc('''
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
-    RUN pip install {sdistName}[all]
+    RUN {pip} install {sdistName}[all]
     RUN rm {sdistName}
 
     # We intentionally inherit the default ENTRYPOINT and CMD from the base image, to the effect

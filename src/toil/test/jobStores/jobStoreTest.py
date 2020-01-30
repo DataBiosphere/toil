@@ -55,7 +55,6 @@ from toil.fileStores import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
-from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
@@ -66,6 +65,16 @@ from toil.test import (ToilTest,
                        travis_test,
                        slow)
 from future.utils import with_metaclass
+
+# Need googleRetry decorator even if google is not available, so make one up.
+# Unconventional use of decorator to determine if google is enabled by seeing if
+# it returns the parameter passed in.
+if needs_google(needs_google) is needs_google:
+    from toil.jobStores.googleJobStore import googleRetry
+else:
+    def googleRetry(x):
+        return x
+
 
 logger = logging.getLogger(__name__)
 
@@ -1143,7 +1152,6 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         finally:
             os.unlink(path)
 
-
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
     projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
@@ -1259,7 +1267,10 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
                         with attempt:
                             s3.delete_bucket(bucket=bucket)
                 except S3ResponseError as e:
-                    if e.error_code == 404:
+                    # The actual HTTP code of the error is in status.
+                    # See https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L77-L80
+                    # See also: https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L154-L156
+                    if e.status == 404:
                         # The bucket doesn't exist; maybe a failed delete actually succeeded.
                         pass
                     else:
