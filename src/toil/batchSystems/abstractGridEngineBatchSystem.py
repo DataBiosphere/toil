@@ -130,10 +130,10 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             while len(self.waitingJobs) > 0 and \
                     len(self.runningJobs) < int(self.boss.config.maxLocalJobs):
                 activity = True
-                jobID, cpu, memory, command = self.waitingJobs.pop(0)
+                jobID, cpu, memory, command, jobName = self.waitingJobs.pop(0)
 
                 # prepare job submission command
-                subLine = self.prepareSubmission(cpu, memory, jobID, command)
+                subLine = self.prepareSubmission(cpu, memory, jobID, command, jobName)
                 logger.debug("Running %r", subLine)
                 batchJobID = with_retries(self.submitJob, subLine)
                 logger.debug("Submitted job %s", str(batchJobID))
@@ -237,7 +237,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                     logger.debug('No activity, sleeping for %is', self.boss.sleepSeconds())
 
         @abstractmethod
-        def prepareSubmission(self, cpu, memory, jobID, command):
+        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             """
             Preparation in putting together a command-line string
             for submitting to batch system (via submitJob().)
@@ -246,6 +246,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             :param: string memory
             :param: string jobID  : Toil job ID
             :param: string subLine: the command line string to be called
+            :param: string jobName: the name of the Toil job, to provide metadata to batch systems if desired
 
             :rtype: string
             """
@@ -334,8 +335,9 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
             jobID = self.getNextJobID()
             self.currentJobs.add(jobID)
-            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command))
-            logger.debug("Issued the job command: %s with job id: %s ", jobNode.command, str(jobID))
+            self.newJobsQueue.put((jobID, jobNode.cores, jobNode.memory, jobNode.command, jobNode.jobName))
+            logger.debug("Issued the job command: %s with job id: %s and job name %s", jobNode.command, str(jobID),
+                         jobNode.jobName)
         return jobID
 
     def killBatchJobs(self, jobIDs):
