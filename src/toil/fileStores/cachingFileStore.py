@@ -1676,7 +1676,7 @@ class CachingFileStore(AbstractFileStore):
                in the database.
         """
 
-        if os.path.exists(dir_) and os.path.isdir(dir_):
+        if os.path.isdir(dir_):
             # There is a caching directory to clean up
        
        
