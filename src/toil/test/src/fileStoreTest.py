@@ -32,6 +32,7 @@ from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.realtimeLogger import RealtimeLogger
 
 import collections
+import datetime
 import inspect
 import logging
 import os
@@ -1087,6 +1088,130 @@ class hidden(object):
                 pass
             else:
                 raise RuntimeError("Managed to read a non-existent file")
+
+        @travis_test
+        def testSimultaneousReadsUncachedStream(self):
+            """
+            Test many simultaneous read attempts on a file created via a stream directly to the job store.
+            """
+            self.options.retryCount = 0
+            self.options.disableChaining = True
+            
+            # Make a file
+            parent = Job.wrapJobFn(self._createUncachedFileStream)
+            # Now make a bunch of children fight over it
+            for i in range(30):
+                parent.addChildJobFn(self._readFileWithDelay, parent.rv())
+
+            Job.Runner.startToil(parent, self.options)
+
+        @travis_test
+        def testSimultaneousReadsStream(self):
+            """
+            Test many simultaneous read attempts on a file created via a stream.
+            """
+            self.options.retryCount = 0
+            self.options.disableChaining = True
+            
+            # Make a file
+            parent = Job.wrapJobFn(self._createFileStream)
+            # Now make a bunch of children fight over it
+            for i in range(30):
+                parent.addChildJobFn(self._readFileWithDelay, parent.rv())
+
+            Job.Runner.startToil(parent, self.options)
+
+        @travis_test
+        def testSimultaneousReads(self):
+            """
+            Test many simultaneous read attempts on a file.
+            """
+            self.options.retryCount = 0
+            self.options.disableChaining = True
+            
+            # Make a file
+            parent = Job.wrapJobFn(self._createFile)
+            # Now make a bunch of children fight over it
+            for i in range(3):
+                parent.addChildJobFn(self._readFileWithDelay, parent.rv())
+
+            Job.Runner.startToil(parent, self.options)
+
+        @staticmethod
+        def _createUncachedFileStream(job):
+            """
+            Create and return a FileID for a non-cached file written via a stream.
+            """
+
+            messageBytes = 'This is a test file\n'.encode('utf-8')
+
+            with job.fileStore.jobStore.writeFileStream() as (out, idString):
+                # Write directly to the job store so the caching file store doesn't even see it.
+                # TODO: If we ever change how the caching file store does its IDs we will have to change this.
+                out.write(messageBytes)
+
+            # Now make a file ID
+            fileID = FileID(idString, len(messageBytes))
+
+            return fileID
+
+        @staticmethod
+        def _createFileStream(job):
+            """
+            Create and return a FileID for a file written via the file store via a stream.
+            """
+
+            messageBytes = 'This is a test file\n'.encode('utf-8')
+
+            with job.fileStore.writeGlobalFileStream() as (out, fileID):
+                out.write(messageBytes)
+
+            return fileID
+
+        @staticmethod
+        def _createFile(job):
+            """
+            Create and return a FileID for a file written via the file store.
+            """
+
+            messageBytes = 'This is a test file\n'.encode('utf-8')
+
+            fileName = os.path.join(job.fileStore.getLocalTempDir(), 'file.txt')
+
+            with open(fileName, 'wb') as out:
+                out.write(messageBytes)
+
+            fileID = job.fileStore.writeGlobalFile(fileName)
+
+            logger.debug('Created file %s', str(fileID))
+
+            return fileID
+
+        @staticmethod
+        def _readFileWithDelay(job, fileID, cores=0.1, memory=50 * 1024 * 1024, disk=50 * 1024 * 1024):
+            """
+            Read a file from the CachingFileStore with a delay imposed on the download.
+            Should create contention.
+
+            Has low requirements so we can run a lot of copies at once.
+            """
+
+            # Make sure the file store delays
+            # Delay needs to be longer than the timeout for sqlite locking in the file store.
+            job.fileStore.forceDownloadDelay = 120
+
+            readStart = datetime.datetime.now()
+            logger.debug('Begin read at %s', str(readStart))
+            
+            localPath = job.fileStore.readGlobalFile(fileID, cache=True, mutable=True)
+
+            readEnd = datetime.datetime.now()
+            logger.debug('End read at %s: took %f seconds', str(readEnd), (readEnd - readStart).total_seconds())
+
+            with open(localPath, encoding='utf-8') as fh:
+                text = fh.read().strip()
+            logger.debug('Got file contents: %s', text)
+                
 
 
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
