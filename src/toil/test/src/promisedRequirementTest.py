@@ -48,6 +48,7 @@ class hidden(object):
             Asserts that promised core resources are allocated properly using a dynamic Toil workflow
             """
             for coresPerJob in self.allocatedCores:
+                log.debug('Testing %d cores per job with CPU count %d', coresPerJob, self.cpuCount)
                 tempDir = self._createTempDir('testFiles')
                 counterPath = self.getCounterPath(tempDir)
 
@@ -63,6 +64,7 @@ class hidden(object):
             Asserts that promised core resources are allocated properly using a static DAG
             """
             for coresPerJob in self.allocatedCores:
+                log.debug('Testing %d cores per job with CPU count %d', coresPerJob, self.cpuCount)
                 tempDir = self._createTempDir('testFiles')
                 counterPath = self.getCounterPath(tempDir)
 

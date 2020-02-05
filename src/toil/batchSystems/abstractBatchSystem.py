@@ -154,9 +154,10 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
 
         :rtype: tuple(str, int, float) or None
         :return: If a result is available, returns a tuple (jobID, exitValue, wallTime).
-                 Otherwise it returns None. wallTime is the number of seconds (a float) in
-                 wall-clock time the job ran for or None if this batch system does not support
-                 tracking wall time. Returns None for jobs that were killed.
+                 Otherwise it returns None. wallTime is the number of seconds (a strictly 
+                 positive float) in wall-clock time the job ran for, or None if this
+                 batch system does not support tracking wall time. Returns None for jobs
+                 that were killed.
         """
         raise NotImplementedError()
 

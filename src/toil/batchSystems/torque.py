@@ -122,7 +122,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command):
+        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             return self.prepareQsub(cpu, memory, jobID) + [self.generateTorqueWrapper(command, jobID)]
 
         def submitJob(self, subLine):

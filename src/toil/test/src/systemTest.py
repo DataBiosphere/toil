@@ -5,6 +5,7 @@ import os
 import tempfile
 from functools import partial
 
+from toil.lib.threading import cpu_count
 from toil.test import ToilTest, travis_test
 
 
@@ -21,7 +22,7 @@ class SystemTest(ToilTest):
             # Use processes (as opposed to threads) to prevent GIL from ordering things artificially
             pool = multiprocessing.Pool()
             try:
-                numTasks = multiprocessing.cpu_count() * 10
+                numTasks = cpu_count() * 10
                 grandChildIds = pool.map_async(
                     func=partial(_testAtomicityOfNonEmptyDirectoryRenamesTask, parent, child),
                     iterable=list(range(numTasks)))

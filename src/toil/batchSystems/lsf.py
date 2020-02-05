@@ -67,7 +67,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             subprocess.check_call(['bkill', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command):
+        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             return self.prepareBsub(cpu, memory, jobID) + [command]
 
         def submitJob(self, subLine):
@@ -109,7 +109,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                     logger.debug("bjobs detected job pending for job: "
                                  "{}".format(job))
                     return None
-                elif "Exited with exit code" in line or "Status <EXIT>" in line:
+                elif "Exited with exit code" in line:
                     exit = int(line[line.find("Exited with exit code ")+22:]
                                .split('.')[0])
                     logger.error("bjobs detected job exit code "

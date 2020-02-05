@@ -1,3 +1,4 @@
+
 # Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -339,6 +340,7 @@ def logProcessContext(config):
     from toil.version import version
     log.info("Running Toil version %s.", version)
     log.debug("Configuration: %s", config.__dict__)
+<<<<<<< HEAD
 
 
 def _monkey_patch_boto():
@@ -348,20 +350,22 @@ def _monkey_patch_boto():
     and can assume roles.
     """
 
+=======
+
+try:
+>>>>>>> d07f003a2847455c11d564fad7fdaf321c7ffc4b
     from boto import provider
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache 
 
-    # We cache the final credentials so that we don't send multiple processes to
-    # simultaneously bang on the EC2 metadata server or ask for MFA pins from the
-    # user.
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
     log = logging.getLogger(__name__)
 
-    # But in addition to our manual cache, we also are going to turn on boto3's
-    # new built-in caching layer.
+   # But in addition to our manual cache, we also are going to turn on boto3's
+   # new built-in caching layer.
 
+     
     def datetime_to_str(dt):
         """
         Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
@@ -385,6 +389,7 @@ def _monkey_patch_boto():
         """
         return datetime.strptime(s, datetime_format)
 
+
     class BotoCredentialAdapter(provider.Provider):
         """
         Adapter to allow Boto 2 to use AWS credentials obtained via Boto 3's
@@ -396,6 +401,16 @@ def _monkey_patch_boto():
         to avoid loads of processes swamping the EC2 metadata service.
         """
 
+<<<<<<< HEAD
+=======
+
+        """
+        Create a new BotoCredentialAdapter.
+        """
+        # TODO: We take kwargs because new boto2 versions have an 'anon'
+        # argument and we want to be future proof
+
+>>>>>>> d07f003a2847455c11d564fad7fdaf321c7ffc4b
         def __init__(self, name, access_key=None, secret_key=None,
             security_token=None, profile_name=None, **kwargs):
             """
@@ -506,6 +521,7 @@ def _monkey_patch_boto():
             (or wait for another cooperating process to do so) if they are missing
             or not fresh enough.
             """
+            cache_path = '~/.cache/aws/cached_temporary_credentials'
             path = os.path.expanduser(cache_path)
             tmp_path = path + '.tmp'
             while True:
@@ -589,6 +605,7 @@ def _monkey_patch_boto():
                     finally:
                         if fd is not None:
                             os.close(fd)
+<<<<<<< HEAD
 
 
     # Now we have defined the adapter class. Patch the Boto module so it replaces the default Provider when Boto makes Providers.
@@ -597,5 +614,10 @@ def _monkey_patch_boto():
 # If Boto is around, try monkey-patching it as soon as anything in Toil loads
 try:
     _monkey_patch_boto()
+=======
+    provider.Provider = BotoCredentialAdapter
+
+>>>>>>> d07f003a2847455c11d564fad7fdaf321c7ffc4b
 except ImportError:
     pass
+

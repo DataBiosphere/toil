@@ -120,6 +120,7 @@ class Config(object):
         # Misc
         self.disableCaching = True
         self.disableChaining = False
+        self.disableJobStoreChecksumVerification = False
         self.maxLogFileSize = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
@@ -268,6 +269,7 @@ class Config(object):
         setOption("maxLocalJobs", int)
         setOption("disableCaching")
         setOption("disableChaining")
+        setOption("disableJobStoreChecksumVerification")
         setOption("maxLogFileSize", h2b, iC(1))
         setOption("writeLogs")
         setOption("writeLogsGzip")
@@ -539,6 +541,11 @@ def _addOptions(addGroupFn, config):
     addOptionFn('--disableChaining', dest='disableChaining', action='store_true', default=False,
                 help="Disables chaining of jobs (chaining uses one job's resource allocation "
                 "for its successor job if possible).")
+    addOptionFn("--disableJobStoreChecksumVerification", dest="disableJobStoreChecksumVerification",
+                default=False, action="store_true",
+                help=("Disables checksum verification for files transferred to/from the job store. "
+                      "Checksum verification is a safety check to ensure the data is not corrupted "
+                      "during transfer. Currently only supported for non-streaming AWS files."))
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
                 help=("The maximum size of a job log file to keep (in bytes), log files "
                       "larger than this will be truncated to the last X bytes. Setting "

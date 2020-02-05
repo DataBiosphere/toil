@@ -15,11 +15,11 @@ from __future__ import absolute_import
 from builtins import next
 from builtins import str
 import logging
-import multiprocessing
 import os
 import re
 import shutil
 import signal
+import sys
 import tempfile
 import threading
 import time
@@ -38,7 +38,7 @@ from shutil import which
 
 from toil.lib.memoize import memoize
 from toil.lib.iterables import concat
-from toil.lib.threading import ExceptionalThread
+from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.lib.misc import mkdir_p
 from toil.provisioners.aws import runningOnEC2
 from toil import toilPackageDirPath, applianceSelf
@@ -404,7 +404,6 @@ def needs_docker(test_item):
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
 
-
 def needs_encryption(test_item):
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
@@ -437,12 +436,33 @@ def needs_cwl(test_item):
 
 
 def needs_appliance(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    the Toil appliance Docker image is downloaded.
+    """
     test_item = _mark_test('appliance', test_item)
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
 
     if not which('docker'):
         return unittest.skip('Install Docker to include this test.')(test_item)
+    
+def needs_downloadable_appliance(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    the Toil appliance Docker image ought to be available for download.
+
+    For now, this just skips if running on Python 3.
+    TODO: When the appliance build is set up for Python 3 (when
+    https://github.com/DataBiosphere/toil/issues/2742 is fixed), this behavior
+    should be changed.
+    """
+
+    if sys.version_info[0] == 2:
+        return test_item
+    else:
+        return unittest.skip("Skipping test that needs Toil Appliance, available only for Python 2")(test_item)
+
 
     image = applianceSelf()
     stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
@@ -703,7 +723,7 @@ class ApplianceTestSupport(ToilTest):
                  representing the respective appliance containers
         """
         if numCores is None:
-            numCores = multiprocessing.cpu_count()
+            numCores = cpu_count()
         # The last container to stop (and the first to start) should clean the mounts.
         with self.LeaderThread(self, mounts, cleanMounts=True) as leader:
             with self.WorkerThread(self, mounts, numCores) as worker:

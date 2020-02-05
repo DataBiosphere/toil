@@ -39,6 +39,7 @@ from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
+from toil.version import python
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,7 @@ class UtilsTest(ToilTest):
             self.correctSort = fileHandle.readlines()
             self.correctSort.sort()
 
-        self.sort_workflow_cmd = ['python', '-m', 'toil.test.sort.sort',
+        self.sort_workflow_cmd = [python, '-m', 'toil.test.sort.sort',
                                   'file:' + self.toilDir,
                                   '--clean=never',
                                   '--numLines=1', '--lineLength=1']
@@ -168,7 +169,7 @@ class UtilsTest(ToilTest):
             for test in testStrings:
                 logger.debug('Testing SSH with special string: %s', test)
                 compareTo = "import sys; assert sys.argv[1]==%r" % test
-                leader.sshAppliance('python', '-', test, input=compareTo)
+                leader.sshAppliance(python, '-', test, input=compareTo)
 
             try:
                 leader.sshAppliance('nonsenseShouldFail')
@@ -177,7 +178,7 @@ class UtilsTest(ToilTest):
             else:
                 self.fail('The remote command failed silently where it should have raised an error')
 
-            leader.sshAppliance('python', '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'")
+            leader.sshAppliance(python, '-c', "import os; assert os.environ['TOIL_WORKDIR']=='/var/lib/toil'")
 
             # `toil rsync-cluster`
             # Testing special characters - string.punctuation

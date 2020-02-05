@@ -61,8 +61,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         def killJob(self, jobID):
             subprocess.check_call(['scancel', self.getBatchSystemID(jobID)])
 
-        def prepareSubmission(self, cpu, memory, jobID, command):
-            return self.prepareSbatch(cpu, memory, jobID) + ['--wrap={}'.format(command)]
+        def prepareSubmission(self, cpu, memory, jobID, command, jobName):
+            return self.prepareSbatch(cpu, memory, jobID, jobName) + ['--wrap={}'.format(command)]
 
         def submitJob(self, subLine):
             try:
@@ -168,9 +168,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         Implementation-specific helper methods
         """
 
-        def prepareSbatch(self, cpu, mem, jobID):
+        def prepareSbatch(self, cpu, mem, jobID, jobName):
             #  Returns the sbatch command line before the script to run
-            sbatch_line = ['sbatch', '-J', 'toil_job_{}'.format(jobID)]
+            sbatch_line = ['sbatch', '-J', 'toil_job_{}_{}'.format(jobID, jobName)]
 
             if self.boss.environment:
                 argList = []
