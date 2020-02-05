@@ -32,6 +32,7 @@ import errno
 import hashlib
 import logging
 import os
+import re
 import shutil
 import sqlite3
 import stat
@@ -214,7 +215,11 @@ class CachingFileStore(AbstractFileStore):
         # Make sure the cache directory exists
         mkdir_p(self.localCacheDir)
 
-        # Connect to the cache database in there, or create it if not present
+        # Connect to the cache database in there, or create it if not present.
+        # We name it by workflow attempt number in case a previous attempt of
+        # the workflow left one behind without cleaning up properly; we need to
+        # be able to tell that from showing up on a machine where a cache has
+        # already been created.
         self.dbPath = os.path.join(self.localCacheDir, 'cache-{}.db'.format(self.workflowAttemptNumber))
         # We need to hold onto both a connection (to commit) and a cursor (to actually use the database)
         self.con = sqlite3.connect(self.dbPath, timeout=60)
@@ -225,19 +230,6 @@ class CachingFileStore(AbstractFileStore):
         # To finish this transaction and let other people read our writes (or
         # write themselves), we need to COMMIT after every coherent set of
         # writes.
-
-        # Make sure to register this as the current database, clobbering any previous attempts.
-        # We need this for shutdown to be able to find the database from the most recent execution and clean up all its files.
-        linkDir = tempfile.mkdtemp(dir=self.localCacheDir)
-        linkName = os.path.join(linkDir, 'cache.db')
-        os.link(self.dbPath, linkName)
-        os.rename(linkName, os.path.join(self.localCacheDir, 'cache.db'))
-        if os.path.exists(linkName):
-            # TODO: How can this file exist if it got renamed away?
-            os.unlink(linkName)
-        os.rmdir(linkDir)
-        assert(os.path.exists(os.path.join(self.localCacheDir, 'cache.db')))
-        assert(os.stat(os.path.join(self.localCacheDir, 'cache.db')).st_ino == os.stat(self.dbPath).st_ino)
 
         # Set up the tables
         self._ensureTables(self.con)
@@ -1684,33 +1676,65 @@ class CachingFileStore(AbstractFileStore):
                in the database.
         """
 
-        # We don't have access to a class instance, nor do we have access to
-        # the workflow attempt number that we would need in order to find the
-        # right database. So we rely on this hard link to the most recent
-        # database.
-        dbPath = os.path.join(dir_, 'cache.db')
+        if os.path.isdir(dir_):
+            # There is a caching directory to clean up
+       
+       
+            # We need the database for the most recent workflow attempt so we
+            # can clean up job temp directories.
+            
+            # We don't have access to a class instance, nor do we have access
+            # to the workflow attempt number that we would need in order to
+            # find the right database by just going to it. We can't have a link
+            # to the current database because opening SQLite databases under
+            # multiple names breaks SQLite's atomicity guarantees (because you
+            # can't find the journal).
+            
+            # So we just go and find the cache-n.db with the largest n value,
+            # and use that.
+            dbFilename = None
+            dbAttempt = float('-inf')
+            
+            for dbCandidate in os.listdir(dir_):
+                # For each thing in the directory
+                match = re.match('cache-([0-9]+).db', dbCandidate)
+                if match and int(match.group(1)) > dbAttempt:
+                    # If it looks like a caching database and it has a higher
+                    # number than any other one we have seen, use it.
+                    dbFilename = dbCandidate
+                    dbAttempt = int(match.group(1))
+            
+            if dbFilename is not None:
+                # We found a caching database
+                
+                logger.debug('Connecting to latest caching database %s for cleanup', dbFilename)
+            
+                dbPath = os.path.join(dir_, dbFilename)
+                
+                if os.path.exists(dbPath):
+                    try:
+                        # The database exists, see if we can open it
+                        con = sqlite3.connect(dbPath)
+                    except:
+                        # Probably someone deleted it.
+                        pass
+                    else:
+                        # We got a database connection
 
-        if os.path.exists(dbPath):
-            try:
-                # The database exists, see if we can open it
-                con = sqlite3.connect(dbPath)
-            except:
-                # Probably someone deleted it.
-                pass
+                        # Create the tables if they don't exist so deletion of dead
+                        # jobs won't fail.
+                        cls._ensureTables(con)
+
+                        # Remove dead jobs and their job directories (not under the
+                        # cache)
+                        cls._removeDeadJobs(con)
+
+                        con.close()
             else:
-                # We got a database connection
-
-                # Create the tables if they don't exist so deletion of dead
-                # jobs won't fail.
-                cls._ensureTables(con)
-
-                # Remove dead jobs
-                cls._removeDeadJobs(con)
-
-                con.close()
-
-        if os.path.exists(dir_) and os.path.isdir(dir_):
-            # Delete the state DB and everything cached.
+                logger.debug('No caching database found in %s', dir_)
+            
+            # Whether or not we found a database, we need to clean up the cache
+            # directory. Delete the state DB if any and everything cached.
             robust_rmtree(dir_)
 
     def __del__(self):
