@@ -1092,7 +1092,8 @@ class hidden(object):
         @travis_test
         def testSimultaneousReadsUncachedStream(self):
             """
-            Test many simultaneous read attempts on a file created via a stream directly to the job store.
+            Test many simultaneous read attempts on a file created via a stream
+            directly to the job store.
             """
             self.options.retryCount = 0
             self.options.disableChaining = True
@@ -1101,38 +1102,6 @@ class hidden(object):
             parent = Job.wrapJobFn(self._createUncachedFileStream)
             # Now make a bunch of children fight over it
             for i in range(30):
-                parent.addChildJobFn(self._readFileWithDelay, parent.rv())
-
-            Job.Runner.startToil(parent, self.options)
-
-        @travis_test
-        def testSimultaneousReadsStream(self):
-            """
-            Test many simultaneous read attempts on a file created via a stream.
-            """
-            self.options.retryCount = 0
-            self.options.disableChaining = True
-            
-            # Make a file
-            parent = Job.wrapJobFn(self._createFileStream)
-            # Now make a bunch of children fight over it
-            for i in range(30):
-                parent.addChildJobFn(self._readFileWithDelay, parent.rv())
-
-            Job.Runner.startToil(parent, self.options)
-
-        @travis_test
-        def testSimultaneousReads(self):
-            """
-            Test many simultaneous read attempts on a file.
-            """
-            self.options.retryCount = 0
-            self.options.disableChaining = True
-            
-            # Make a file
-            parent = Job.wrapJobFn(self._createFile)
-            # Now make a bunch of children fight over it
-            for i in range(3):
                 parent.addChildJobFn(self._readFileWithDelay, parent.rv())
 
             Job.Runner.startToil(parent, self.options)
@@ -1152,38 +1121,6 @@ class hidden(object):
 
             # Now make a file ID
             fileID = FileID(idString, len(messageBytes))
-
-            return fileID
-
-        @staticmethod
-        def _createFileStream(job):
-            """
-            Create and return a FileID for a file written via the file store via a stream.
-            """
-
-            messageBytes = 'This is a test file\n'.encode('utf-8')
-
-            with job.fileStore.writeGlobalFileStream() as (out, fileID):
-                out.write(messageBytes)
-
-            return fileID
-
-        @staticmethod
-        def _createFile(job):
-            """
-            Create and return a FileID for a file written via the file store.
-            """
-
-            messageBytes = 'This is a test file\n'.encode('utf-8')
-
-            fileName = os.path.join(job.fileStore.getLocalTempDir(), 'file.txt')
-
-            with open(fileName, 'wb') as out:
-                out.write(messageBytes)
-
-            fileID = job.fileStore.writeGlobalFile(fileName)
-
-            logger.debug('Created file %s', str(fileID))
 
             return fileID
 
