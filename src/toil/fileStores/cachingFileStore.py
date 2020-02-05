@@ -185,11 +185,15 @@ class CachingFileStore(AbstractFileStore):
 
     """
 
-    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit, forceNonFreeCaching=False):
+    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
         super(CachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
 
         # For testing, we have the ability to force caching to be non-free, by never linking from the file store
-        self.forceNonFreeCaching = forceNonFreeCaching
+        self.forceNonFreeCaching = False
+        # Also for testing, we have the ability to force a delay (in seconds)
+        # during file download from the job store, in order to easily test the
+        # behavior of the system when a download is in progress.
+        self.forceDownloadDelay = None
 
         # Variables related to caching
         # Decide where the cache directory will be. We put it next to the
@@ -1101,6 +1105,10 @@ class CachingFileStore(AbstractFileStore):
             if cachedPath is None:
                 raise RuntimeError('File %s went away while we had a reference to it!' % fileStoreID)
 
+            if self.forceDownloadDelay is not None:
+                # Wait around to simulate a big file for testing
+                time.sleep(self.forceDownloadDelay)
+            
             atomic_copy(cachedPath, localFilePath)
 
             # Change the reference to mutable
@@ -1118,6 +1126,10 @@ class CachingFileStore(AbstractFileStore):
             self.cur.execute('INSERT INTO refs VALUES (?, ?, ?, ?)',
                 (localFilePath, fileStoreID, readerID, 'mutable'))
             self.con.commit()
+
+            if self.forceDownloadDelay is not None:
+                # Wait around to simulate a big file for testing
+                time.sleep(self.forceDownloadDelay)
 
             # Just read directly
             if mutable or self.forceNonFreeCaching:
@@ -1140,6 +1152,11 @@ class CachingFileStore(AbstractFileStore):
         :param toil.fileStores.FileID fileStoreID: job store id for the file
         :param str cachedPath: absolute destination path in the cache. Already known not to exist.
         """
+
+        if self.forceDownloadDelay is not None:
+            # Wait around to simulate a big file for testing
+            time.sleep(self.forceDownloadDelay)
+
         if self.forceNonFreeCaching:
             # Always copy
             with self.jobStore.readFileStream(fileStoreID) as inStream:
@@ -1256,7 +1273,13 @@ class CachingFileStore(AbstractFileStore):
                         # to finish and give it up.
                         # TODO: work out if that will never happen somehow.
 
-                    # OK, now we have space to make a copy. Do it
+                    # OK, now we have space to make a copy.
+                    
+                    if self.forceDownloadDelay is not None:
+                        # Wait around to simulate a big file for testing
+                        time.sleep(self.forceDownloadDelay)
+                    
+                    # Make the copy
                     atomic_copy(cachedPath, localFilePath)
 
                     # Change the reference to mutable
@@ -1312,6 +1335,10 @@ class CachingFileStore(AbstractFileStore):
             ('cached', fileStoreID))
         self.con.commit()
 
+        if self.forceDownloadDelay is not None:
+            # Wait around to simulate a big file for testing
+            time.sleep(self.forceDownloadDelay)
+
         # Make our copy
         atomic_copy(cachedPath, localFilePath)
 
@@ -1346,6 +1373,8 @@ class CachingFileStore(AbstractFileStore):
             (fileStoreID, 'downloading', pid))
         if self.cur.fetchone()[0] > 0:
             # Now we have exclusive control of the cached copy of the file, so we can give it away.
+
+            # Don't fake a delay here; this should be a rename always.
 
             # We are giving it away
             shutil.move(cachedPath, localFilePath)
