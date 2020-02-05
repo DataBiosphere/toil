@@ -664,13 +664,9 @@ class CachingFileStore(AbstractFileStore):
         for owner in deadOwners:
             # Try and adopt all the files that any dead owner had
 
-            # If they were deleting, we delete
-            self.cur.execute('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
-                (pid, 'deleting', owner, 'deleting'))
+            # If they were deleting, we delete.
             # If they were downloading, we delete. Any outstanding references
             # can't be in use since they are from the dead downloader.
-            self.cur.execute('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
-                (pid, 'deleting', owner, 'downloading'))
             # If they were uploading or uploadable, we mark as cached even
             # though it never made it to the job store (and leave it unowned).
             #
@@ -682,7 +678,11 @@ class CachingFileStore(AbstractFileStore):
             #
             # TODO: if we ever let other PIDs be responsible for writing our
             # files asynchronously, this will need to change.
-            self._write([('UPDATE files SET owner = NULL, state = ? WHERE owner = ? AND (state = ? OR state = ?)',
+            self._write([('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
+                (pid, 'deleting', owner, 'deleting')),
+                ('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
+                (pid, 'deleting', owner, 'downloading')),
+                ('UPDATE files SET owner = NULL, state = ? WHERE owner = ? AND (state = ? OR state = ?)',
                 ('cached', owner, 'uploadable', 'uploading'))])
 
             logger.debug('Tried to adopt file operations from dead worker %d', owner)
