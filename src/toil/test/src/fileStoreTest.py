@@ -1071,10 +1071,12 @@ class hidden(object):
             job.fileStore.deleteLocalFile(localFsID)
             assert not os.path.exists(readBackFile1)
             assert not os.path.exists(readBackFile2)
-            # Try to get a non-FileID
+            # Try to get a non-FileID that doesn't exist.
             try:
                 job.fileStore.readGlobalFile('bogus')
-            except TypeError:
+            except NoSuchFileException:
+                # TODO: We would like to require TypeError, but for Cactus
+                # support we have to accept non-FileIDs.
                 pass
             else:
                 raise RuntimeError("Managed to get a file from a non-FileID")
