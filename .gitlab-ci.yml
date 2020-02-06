@@ -57,7 +57,9 @@ py3_jobstore_and_provisioning:
     - python -m pytest -s -r s src/toil/test/sort/sortTest.py
     - python -m pytest -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py
     - python -m pytest -s -r s src/toil/test/provisioners/clusterScalerTest.py
-    - python -m pytest -s -r s src/toil/test/provisioners/gceProvisionerTest.py
+#    - python -m pytest -s -r s src/toil/test/provisioners/gceProvisionerTest.py
+# https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
+# guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
 
 py3_main:
   stage: main_tests
