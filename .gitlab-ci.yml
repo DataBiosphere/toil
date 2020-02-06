@@ -23,20 +23,6 @@ stages:
   - test
   - integration
 
-main:
-  stage: main_tests
-  script:
-    - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-    - export TOIL_TEST_INTEGRATIVE=True
-    - export TOIL_AWS_KEYNAME=id_rsa
-    - export TOIL_AWS_ZONE=us-west-2a
-    # This reads GITLAB_SECRET_FILE_SSH_KEYS
-    - python setup_gitlab_ssh.py
-    - chmod 400 /root/.ssh/id_rsa
-    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
-
 
 # Python3.6
 py3_batch_systems:
@@ -45,41 +31,41 @@ py3_batch_systems:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-    - python -m pytest -r s src/toil/test/batchSystems/batchSystemTest.py
-    - python -m pytest -r s src/toil/test/mesos/MesosDataStructuresTest.py
+    - python -m pytest -s -r s src/toil/test/batchSystems/batchSystemTest.py
+    - python -m pytest -s -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
 py3_cwl:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/cwl/cwlTest.py
+    - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py
 
 py3_wdl:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/wdl/toilwdlTest.py
+    - python -m pytest -s -r s src/toil/test/wdl/toilwdlTest.py
 
 py3_jobstore_and_provisioning:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
-    - python -m pytest src/toil/test/sort/sortTest.py
-    - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
-    - python -m pytest src/toil/test/provisioners/clusterScalerTest.py
-    - python -m pytest src/toil/test/provisioners/gceProvisionerTest.py
+    - python -m pytest -s -r s src/toil/test/jobStores/jobStoreTest.py
+    - python -m pytest -s -r s src/toil/test/sort/sortTest.py
+    - python -m pytest -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py
+    - python -m pytest -s -r s src/toil/test/provisioners/clusterScalerTest.py
+    - python -m pytest -s -r s src/toil/test/provisioners/gceProvisionerTest.py
 
 py3_main:
   stage: main_tests
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest src/toil/test/src
-    - python -m pytest src/toil/test/utils
+    - python -m pytest -s -r s src/toil/test/src
+    - python -m pytest -s -r s src/toil/test/utils
 
 py3_appliance_build:
   stage: main_tests
@@ -93,38 +79,34 @@ py3_appliance_build:
     - echo $TOIL_APPLIANCE_SELF
     - make push_docker
 
-#py3_integration:
-#  stage: integration
-#  script:
-#    - pwd
-#    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
-#    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-#    - export TOIL_TEST_INTEGRATIVE=True
-#    - export TOIL_AWS_KEYNAME=id_rsa
-#    - export TOIL_AWS_ZONE=us-west-2a
-#    # This reads GITLAB_SECRET_FILE_SSH_KEYS
-#    - python setup_gitlab_ssh.py
-#    - chmod 400 /root/.ssh/id_rsa
-#    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
+py3_integration:
+  stage: integration
+  script:
+    - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_AWS_KEYNAME=id_rsa
+    - export TOIL_AWS_ZONE=us-west-2a
+    # This reads GITLAB_SECRET_FILE_SSH_KEYS
+    - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
+    - python -m pytest -s -r s src/toil/test/jobStores/jobStoreTest.py
 
 provisioner_integration:
   stage: integration
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq
-    - virtualenv -p python3.6 setup-venv && . setup-venv/bin/activate && pip install awscli==1.16.278
-    - python setup_gitlab_ssh.py
-    - chmod 400 /root/.ssh/id_rsa
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
     - export LIBPROCESS_IP=127.0.0.1
-    - mkdir ~/.aws
     - python setup_gitlab_docker.py
-    - echo -e $(aws secretsmanager get-secret-value --secret-id allspark/runner/credentials --region us-west-2 | jq -r .SecretString) > ~/.aws/credentials
-    - virtualenv -p python3.6 --system-site-packages --never-download venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     - export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:$(python version_template.py dockerTag)
     - echo $TOIL_APPLIANCE_SELF
     - make push_docker
-    - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster
+    - python -m pytest -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py::AWSRestartTest::testAutoScaledCluster
     # - python -m pytest -s src/toil/test/provisioners/aws/awsProvisionerTest.py
     # - python -m pytest -s src/toil/test/provisioners/gceProvisionerTest.py  # needs env vars set to run
