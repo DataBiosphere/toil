@@ -34,6 +34,7 @@ main:
     - export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
+    - chmod 400 /root/.ssh/id_rsa
     - python -m pytest src/toil/test/provisioners/aws/awsProvisionerTest.py
 
 
@@ -103,6 +104,7 @@ py3_appliance_build:
 #    - export TOIL_AWS_ZONE=us-west-2a
 #    # This reads GITLAB_SECRET_FILE_SSH_KEYS
 #    - python setup_gitlab_ssh.py
+#    - chmod 400 /root/.ssh/id_rsa
 #    - python -m pytest src/toil/test/jobStores/jobStoreTest.py
 
 provisioner_integration:

@@ -9,7 +9,6 @@ if env_var not in os.environ:
     print('Error: could not find environment variable ' + env_var)
     sys.exit(1)
 
-print(' YOLO: ' + str(os.environ[env_var]))
 print('Starting quay.io login process...')
 with open(os.environ[env_var], 'r') as f:
     keys = json.load(f)
