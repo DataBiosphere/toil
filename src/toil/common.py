@@ -1038,6 +1038,9 @@ class Toil(object):
                                "exist." % workDir)
         # Create the workflow dir, per workflow but shared across hosts.
         workflowDir = os.path.join(workDir, 'toil-%s' % workflowID)
+        # TODO: should the leader delete it?
+        # TODO: shouldn't we worry about the security problems of using
+        # predicatbly-named things in /tmp?
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
