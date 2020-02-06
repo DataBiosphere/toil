@@ -1145,8 +1145,8 @@ class hidden(object):
             readEnd = datetime.datetime.now()
             logger.debug('End read at %s: took %f seconds', str(readEnd), (readEnd - readStart).total_seconds())
 
-            with open(localPath, encoding='utf-8') as fh:
-                text = fh.read().strip()
+            with open(localPath, 'rb') as fh:
+                text = fh.read().decode('utf-8').strip()
             logger.debug('Got file contents: %s', text)
                 
 
