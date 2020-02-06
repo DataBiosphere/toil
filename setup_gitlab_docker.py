@@ -22,3 +22,4 @@ if 'Login Succeeded' in str(stdout):
     print('Login Succeeded.')
 else:
     print('Error while attempting to log into quay.io:\n' + str(stderr))
+    sys.exit(1)
