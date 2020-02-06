@@ -1,7 +1,7 @@
 import json
 import os
 
-good_spot = os.path.expanduser('/home/quokka/Desktop/test')
+good_spot = os.path.expanduser('~/.ssh')
 if not os.path.exists(good_spot):
     os.mkdir(good_spot)
 
