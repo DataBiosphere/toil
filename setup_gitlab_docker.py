@@ -11,7 +11,7 @@ if env_var not in os.environ:
 
 print(' YOLO: ' + str(os.environ[env_var]))
 print('Starting quay.io login process...')
-keys = json.loads(os.environ[env_var])
+keys = json.loads(str(os.environ[env_var]))
 process = subprocess.Popen('docker login quay.io -u "{user}" --password-stdin'.format(user=keys['user']),
                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE,
                            shell=True)
