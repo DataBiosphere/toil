@@ -1,6 +1,5 @@
 import json
 import os
-import subprocess
 import sys
 
 good_spot = os.path.expanduser('~/.ssh')
@@ -13,6 +12,7 @@ try:
         f.write(keys['public'])
     with open(os.path.join(good_spot, 'id_rsa'), 'w') as f:
         f.write(keys['private'])
+    os.chmod(os.path.join(good_spot, 'id_rsa'), 400)
 except:
     print('While attempting to set up the ssh keys.')
     sys.exit(1)
