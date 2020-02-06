@@ -1022,14 +1022,14 @@ class Toil(object):
         self._jobCache[job.jobStoreID] = job
 
     @staticmethod
-    def getWorkflowDir(workflowID, configWorkDir=None):
+    def getLocalWorkflowDir(workflowID, configWorkDir=None):
         """
         Returns a path to the directory where worker directories and the cache will be located
-        for this workflow.
+        for this workflow on this machine.
 
         :param str workflowID: Unique identifier for the workflow
         :param str configWorkDir: Value passed to the program using the --workDir flag
-        :return: Path to the workflow directory
+        :return: Path to the workflow directory on this machine
         :rtype: str
         """
         workDir = configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
@@ -1047,7 +1047,7 @@ class Toil(object):
                 # The directory exists if a previous worker set it up.
                 raise
         else:
-            logger.debug('Created the workflow directory at %s' % workflowDir)
+            logger.debug('Created the workflow directory for this machine at %s' % workflowDir)
         return workflowDir
 
     def _runMainLoop(self, rootJob):

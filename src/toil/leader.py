@@ -802,7 +802,7 @@ class Leader(object):
                     logger.warn("No log file is present, despite job failing: %s", jobNode)
 
                 # Look for any standard output/error files created by the batch system
-                workflowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
+                workflowDir = Toil.getLocalWorkflowDir(self.config.workflowID, self.config.workDir)
                 batchSystemFilePrefix = 'toil_job_{}_batch_'.format(batchSystemID)
                 batchSystemFileGlob = os.path.join(workflowDir, batchSystemFilePrefix + '*.log')
                 batchSystemFiles = glob.glob(batchSystemFileGlob)

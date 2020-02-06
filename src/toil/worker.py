@@ -194,7 +194,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             if e != '':
                 sys.path.append(e)
                 
-    toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
+    toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
 
     ##########################################
     #Setup the temporary directories.

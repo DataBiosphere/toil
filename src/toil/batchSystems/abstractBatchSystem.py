@@ -300,7 +300,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         if self.config.noStdOutErr:
             return os.devnull
 
-        workflowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
+        workflowDir = Toil.getLocalWorkflowDir(self.config.workflowID, self.config.workDir)
         fileName = 'toil_job_{jobID}_batch_{batchSystem}_{batchJobIDfmt}_{fileDesc}.log'.format(
             jobID=jobID, batchSystem=batchSystem, batchJobIDfmt=batchJobIDfmt, fileDesc=fileDesc)
         return os.path.join(workflowDir, fileName)
@@ -314,7 +314,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                for cleaning up the worker.
         """
         assert isinstance(info, WorkerCleanupInfo)
-        workflowDir = Toil.getWorkflowDir(info.workflowID, info.workDir)
+        workflowDir = Toil.getLocalWorkflowDir(info.workflowID, info.workDir)
         DeferredFunctionManager.cleanupWorker(workflowDir)
         workflowDirContents = os.listdir(workflowDir)
         AbstractFileStore.shutdownFileStore(workflowDir, info.workflowID)
