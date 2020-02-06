@@ -805,9 +805,12 @@ class Leader(object):
                 # They will only appear if the batch system actually supports
                 # returning logs to the machine that submitted jobs, or if
                 # --workDir / TOIL_WORKDIR is on a shared file system.
-                workflowDir = Toil.getGlobalWorkflowDir(self.config.workflowID, self.config.workDir)
-                batchSystemFilePrefix = 'toil_job_{}_batch_'.format(batchSystemID)
-                batchSystemFileGlob = os.path.join(workflowDir, batchSystemFilePrefix + '*.log')
+                # They live directly in the Toil work directory because that is
+                # guaranteed to exist on the leader and workers.
+                workDir = Toil.getToilWorkDir(self.config.workDir)
+                # This must match the format in AbstractBatchSystem.formatStdOutErrPath()
+                batchSystemFilePrefix = 'toil_workflow_{}_job_{}_batch_'.format(self.config.workflowID, batchSystemID)
+                batchSystemFileGlob = os.path.join(workDir, batchSystemFilePrefix + '*.log')
                 batchSystemFiles = glob.glob(batchSystemFileGlob)
                 for batchSystemFile in batchSystemFiles:
                     try:
