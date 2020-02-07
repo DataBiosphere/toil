@@ -2,7 +2,7 @@
 #
 # Configure how toil runs in different environments
 #
-# Source this file in your bash shell using "source environment".
+# Source this file in your bash shell using "source environment.sh".
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ] ; do SOURCE="$(readlink "$SOURCE")"; done

@@ -2,7 +2,7 @@
 #
 # Configures how toil runs tests
 #
-# Source this file in your bash shell using "source environment.dev".
+# Source this file in your bash shell using "source environment-dev.sh".
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ] ; do SOURCE="$(readlink "$SOURCE")"; done
