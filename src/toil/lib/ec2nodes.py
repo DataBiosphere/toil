@@ -108,6 +108,7 @@ def parseStorage(storageData):
         "EBS only"
         "1 x 410"
         "8 x 1.9 NVMe SSD"
+        "900 GB NVMe SSD"
 
     :param str storageData: EC2 JSON storage param string.
     :return: Two floats representing: (# of disks), and (disk_capacity in GiB of each disk).
@@ -118,6 +119,8 @@ def parseStorage(storageData):
         specs = storageData.strip().split()
         if isNumber(specs[0]) and specs[1] == 'x' and isNumber(specs[2]):
             return float(specs[0].replace(',', '')), float(specs[2].replace(',', ''))
+        elif isNumber(specs[0]) and specs[1] == 'GB' and specs[2] == 'NVMe' and specs[3] == 'SSD':
+            return 1, float(specs[0].replace(',', ''))
         else:
             raise RuntimeError('EC2 JSON format has likely changed.  Error parsing disk specs.')
 
