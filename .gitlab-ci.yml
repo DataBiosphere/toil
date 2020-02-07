@@ -3,7 +3,7 @@ image: quay.io/vgteam/vg_ci_prebake:latest
 
 before_script:
   - startdocker || true
-  - . environment.dev
+  - . environment-dev.sh
   - docker info
   - cat /etc/hosts
   - export PYTHONIOENCODING=utf-8
