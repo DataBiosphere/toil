@@ -1,3 +1,4 @@
+from  __future__ import print_function
 import random
 import six
 from six.moves import xrange
@@ -343,6 +344,7 @@ def popen_communicate(cmd, input=None, timeout=None, **kwargs):
         for k in ("encoding", "error"):
             if k in args:
                 del args[k]
+    print("after clean:", six.PY2, args, file=sys.stderr)
 
     proc = subprocess.Popen(cmd, **args)
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
