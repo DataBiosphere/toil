@@ -86,8 +86,7 @@ tests_local=src/toil/test
 pytest_args_local=-vv --timeout=530
 extras=
 
-dist_version:=$(shell $(python) version_template.py distVersion)
-sdist_name:=toil-$(dist_version).tar.gz
+sdist_name:=toil-$(shell $(python) version_template.py distVersion).tar.gz
 
 green=\033[0;32m
 normal=\033[0m
@@ -142,6 +141,12 @@ define tag_docker
 endef
 
 docker: docker/Dockerfile
+	# Pre-pull everything
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull ubuntu:16.04 && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull prom/prometheus:v2.0.0 && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull grafana/grafana && break || sleep 60; done
+	for i in $$(seq 1 11); do if [[ $$i == "11" ]] ; then exit 1 ; fi ; docker pull sscaling/mtail && break || sleep 60; done
+
 	@set -ex \
 	; cd docker \
 	; docker build --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
@@ -170,10 +175,11 @@ clean_docker:
 	-docker rmi $(docker_image):$(TOIL_DOCKER_TAG)
 
 push_docker: docker
-	for i in $$(seq 1 5); do docker push $(docker_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(grafana_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(prometheus_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(mtail_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	# Weird if logic is so we fail if all the pushes fail
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(docker_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(grafana_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(prometheus_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	for i in $$(seq 1 6); do if [[ $$i == "6" ]] ; then exit 1 ; fi ; docker push $(mtail_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
 
 else
 

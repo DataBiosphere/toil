@@ -35,7 +35,7 @@ except ImportError:
 # toil dependencies
 from toil.fileStores import FileID
 from toil.lib.bioio import absSymPath
-from toil.lib.misc import mkdir_p, robust_rmtree
+from toil.lib.misc import mkdir_p, robust_rmtree, AtomicFileCreate, atomic_copy, atomic_copyobj
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchFileException,
@@ -94,7 +94,7 @@ class FileJobStore(AbstractJobStore):
         self.fanOut = fanOut
 
         self.linkImports = None
-        
+
     def __repr__(self):
         return 'FileJobStore({})'.format(self.jobStoreDir)
 
@@ -159,15 +159,15 @@ class FileJobStore(AbstractJobStore):
 
     def waitForExists(self, jobStoreID, maxTries=35, sleepTime=1):
         """Spin-wait and block for a file to appear before returning False if it does not.
-        
+
         The total max wait time is maxTries * sleepTime. The current default is
         tuned to match Linux NFS defaults where the client's cache of the directory
         listing on the server is supposed to become coherent within 30 sec.
         Delayes beyond that would probably indicate a pathologically slow file system
         that just should not be used for the jobStore.
-        
+
         The warning will be sent to the log only on the first retry.
-        
+
         In practice, the need for retries happens rarely, but it does happen
         over the course of large workflows with a jobStore on a busy NFS."""
         for iTry in range(1,maxTries+1):
@@ -184,7 +184,7 @@ class FileJobStore(AbstractJobStore):
 
     def exists(self, jobStoreID):
         return os.path.exists(self._getJobFileName(jobStoreID))
-    
+
     def getPublicUrl(self, jobStoreFileID):
         self._checkJobStoreFileID(jobStoreFileID)
         jobStorePath = self._getFilePathFromId(jobStoreFileID)
@@ -243,7 +243,7 @@ class FileJobStore(AbstractJobStore):
             for i in os.listdir(tempDir):
                 logger.warning('Job Dir: %s' % i)
                 if i.startswith(self.JOB_DIR_PREFIX):
-                    # This is a job instance directory 
+                    # This is a job instance directory
                     try:
                         yield self.load(self._getJobIdFromDir(os.path.join(tempDir, i)))
                     except NoSuchJobException:
@@ -269,7 +269,7 @@ class FileJobStore(AbstractJobStore):
         if self.linkImports:
             os.symlink(os.path.realpath(srcPath), destPath)
         else:
-            shutil.copyfile(srcPath, destPath)
+            atomic_copy(srcPath, destPath)
 
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         if issubclass(otherCls, FileJobStore):
@@ -292,7 +292,7 @@ class FileJobStore(AbstractJobStore):
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, FileJobStore):
-            shutil.copyfile(self._getFilePathFromId(jobStoreFileID), self._extractPathFromUrl(url))
+            atomic_copy(self._getFilePathFromId(jobStoreFileID), self._extractPathFromUrl(url))
         else:
             super(FileJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
 
@@ -323,8 +323,7 @@ class FileJobStore(AbstractJobStore):
         :param object readable: An open file object to read from.
         """
         # we use a ~10Mb buffer to improve speed
-        with open(cls._extractPathFromUrl(url), 'wb') as writable:
-            shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
+        atomic_copyobj(readable, cls._extractPathFromUrl(url), length=cls.BUFFER_SIZE)
 
     @staticmethod
     def _extractPathFromUrl(url):
@@ -368,7 +367,7 @@ class FileJobStore(AbstractJobStore):
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         absPath = self._getUniqueFilePath(localFilePath, jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
-        shutil.copyfile(localFilePath, absPath)
+        atomic_copy(localFilePath, absPath)
         return relPath
 
     @contextmanager
@@ -393,7 +392,7 @@ class FileJobStore(AbstractJobStore):
             # The files are already the same file. We can't copy on eover the other.
             return
 
-        shutil.copyfile(localFilePath, jobStoreFilePath)
+        atomic_copy(localFilePath, jobStoreFilePath)
 
     def readFile(self, jobStoreFileID, localFilePath, symlink=False):
         self._checkJobStoreFileID(jobStoreFileID)
@@ -462,7 +461,7 @@ class FileJobStore(AbstractJobStore):
 
         # If we get here, neither a symlink nor a hardlink will work.
         # Make a complete copy.
-        shutil.copyfile(jobStoreFilePath, localFilePath)
+        atomic_copy(jobStoreFilePath, localFilePath)
 
     def deleteFile(self, jobStoreFileID):
         if not self.fileExists(jobStoreFileID):
@@ -477,7 +476,7 @@ class FileJobStore(AbstractJobStore):
             not absPath.startswith(self.jobFilesDir)):
             # Don't even look for it, it is out of bounds.
             raise NoSuchFileException(jobStoreFileID)
-            
+
         try:
             st = os.stat(absPath)
         except os.error:
@@ -495,7 +494,7 @@ class FileJobStore(AbstractJobStore):
             not absPath.startswith(self.jobFilesDir)):
             # Don't even look for it, it is out of bounds.
             raise NoSuchFileException(jobStoreFileID)
-            
+
         try:
             st = os.stat(absPath)
         except os.error:
@@ -528,13 +527,14 @@ class FileJobStore(AbstractJobStore):
     @contextmanager
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         # the isProtected parameter has no effect on the fileStore
-        assert self._validateSharedFileName( sharedFileName )
-        with open(self._getSharedFilePath(sharedFileName), 'wb') as f:
-            yield f
+        self._requireValidSharedFileName(sharedFileName)
+        with AtomicFileCreate(self._getSharedFilePath(sharedFileName)) as tmpSharedFilePath:
+            with open(tmpSharedFilePath, 'wb') as f:
+                yield f
 
     @contextmanager
     def readSharedFileStream(self, sharedFileName):
-        assert self._validateSharedFileName( sharedFileName )
+        self._requireValidSharedFileName(sharedFileName)
         try:
             with open(self._getSharedFilePath(sharedFileName), 'rb') as f:
                 yield f
@@ -545,7 +545,7 @@ class FileJobStore(AbstractJobStore):
                 raise
 
     def writeStatsAndLogging(self, statsAndLoggingString):
-        # Temporary files are placed in the stats directory tree 
+        # Temporary files are placed in the stats directory tree
         fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getArbitraryStatsDir())
         writeFormat = 'w' if isinstance(statsAndLoggingString, str) else 'wb'
         with open(tempStatsFile, writeFormat) as f:
@@ -607,7 +607,7 @@ class FileJobStore(AbstractJobStore):
 
         This directory will only be created if files are to be put in it.
 
-        :rtype : string, string is the absolute path to the job's files 
+        :rtype : string, string is the absolute path to the job's files
                  directory
         """
 
@@ -653,7 +653,7 @@ class FileJobStore(AbstractJobStore):
 
     def _getFileIdFromPath(self, absPath):
         """
-        :param str absPath: The absolute path of a file. 
+        :param str absPath: The absolute path of a file.
 
         :rtype : string, string is the file ID.
         """
@@ -682,10 +682,10 @@ class FileJobStore(AbstractJobStore):
 
         :rtype : string, path to temporary directory in which to place files/directories.
 
-        
+
         """
 
-        
+
         if len(os.listdir(self.jobsDir)) > self.fanOut:
             # Make sure that we don't over-fill the root with too many unique job names.
             # Go in a subdirectory tree, and then go by job name and make another tree.
@@ -702,7 +702,7 @@ class FileJobStore(AbstractJobStore):
 
         :rtype : string, path to temporary directory in which to place files/directories.
 
-        
+
         """
 
         return self._getDynamicSprayDir(self.statsDir)
@@ -714,11 +714,11 @@ class FileJobStore(AbstractJobStore):
 
         :rtype : string, path to temporary directory in which to place files/directories.
 
-        
+
         """
 
         return self._getDynamicSprayDir(self.filesDir)
-    
+
     def _getDynamicSprayDir(self, root):
         """
         Gets a temporary directory in a possibly multi-level hierarchy of
@@ -738,7 +738,7 @@ class FileJobStore(AbstractJobStore):
         The caller may not create any files or directories in the returned
         directory with single-character names that are in self.validDirs.
 
-        :param str root : directory to put the hierarchy under, which will 
+        :param str root : directory to put the hierarchy under, which will
                           fill first.
 
         :rtype : string, path to temporary directory in which to place
@@ -753,7 +753,7 @@ class FileJobStore(AbstractJobStore):
             # We need to use a layer of directories under here to avoid over-packing the directory
             tempDir = os.path.join(tempDir, random.choice(self.validDirs))
             mkdir_p(tempDir)
-        
+
         # When we get here, we found a sufficiently empty directory
         return tempDir
 
@@ -790,7 +790,7 @@ class FileJobStore(AbstractJobStore):
             if child not in self.validDirsSet:
                 # Only look at our reserved names we use for fan-out
                 continue
-            
+
             # We made this directory, so go look in it
             childPath = os.path.join(root, child)
 
@@ -819,7 +819,7 @@ class FileJobStore(AbstractJobStore):
                 children = os.listdir(jobHoldingDir)
             except:
                 pass
-            
+
             for jobNameDir in children:
                 if not jobNameDir.startswith(self.JOB_NAME_DIR_PREFIX):
                     continue
@@ -827,7 +827,7 @@ class FileJobStore(AbstractJobStore):
                 # Now we have only the directories that are named after jobs. Look inside them.
                 for inner in self._walkDynamicSprayDir(os.path.join(jobHoldingDir, jobNameDir)):
                     yield inner
-                
+
 
     def _statsDirectories(self):
         """
@@ -860,11 +860,11 @@ class FileJobStore(AbstractJobStore):
     def _getFileDirectory(self, jobStoreID=None, cleanup=False):
         """
         Get a new empty directory path for a file to be stored at.
-        
-        
+
+
         :param str jobStoreID: If the jobStoreID is not None, the file wil
                be associated with the job with that ID.
-        
+
         :param bool cleanup: If cleanup is also True, this directory
                will be cleaned up when the job is deleted.
 
@@ -879,11 +879,11 @@ class FileJobStore(AbstractJobStore):
             # they need to go away when the job is deleted or not.
             jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup \
                 else self._getJobFilesCleanupDir(jobStoreID)
-            
+
             # Lazily create the parent directory.
             # We don't want our tree filled with confusingly empty directories.
             mkdir_p(jobFilesDir)
-            
+
             # Then make a temp directory inside it
             return tempfile.mkdtemp(prefix='file-', dir=jobFilesDir)
         else:

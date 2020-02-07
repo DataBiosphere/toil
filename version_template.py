@@ -22,11 +22,14 @@ import the expand_ function and invoke it directly with either no or exactly one
 
 # Note to maintainers:
 #
-#  - don't import at module level unless you want the imported value to be included in the output
-#  - only import from the Python standard run-time library (you can't have any dependencies)
+#  - don't import at module level unless you want the imported value to be
+#    included in the output
+#  - only import from the Python standard run-time library (you can't have any
+#    dependencies)
+#  - don't import even standard modules at global scope without renaming them
+#    to have leading/trailing underscores
 
-
-baseVersion = '3.22.0a1'
+baseVersion = '3.24.1a1'
 cgcloudVersion = '1.6.0a1.dev393'
 
 
@@ -39,25 +42,61 @@ def version():
 
 
 def distVersion():
-    """
-    The distribution version identifying a published release on PyPI.
-    """
+    """The distribution version identifying a published release on PyPI."""
     from pkg_resources import parse_version
-    parsedBaseVersion = parse_version(baseVersion)
-    if isinstance(parsedBaseVersion, tuple):
+    if isinstance(parse_version(baseVersion), tuple):
         raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
                            "'pip install setuptools --upgrade'")
     return baseVersion
 
+def exactPython():
+    """
+    Returns the Python command for the exact version of Python we are installed
+    for. Something like 'python2.7' or 'python3.6'.
+    """
+    import sys
+    return 'python{}.{}'.format(sys.version_info[0], sys.version_info[1])
 
+def python():
+    """
+    Returns the Python command for the general version of Python we are
+    installed for.  Something like 'python2.7' or 'python3'.
+
+    We assume all Python 3s are sufficiently intercompatible that we can just
+    use 'python3' here for all of them. This is useful because the Toil Docker
+    appliance is only built for particular Python versions, and we would like
+    workflows to work with a variety of leader Python versions.
+    """
+    import sys
+    
+    if sys.version_info[0] == 3:
+        # Ignore minor version
+        return 'python3'
+    else:
+        return exactPython() 
+
+
+def _pythonVersionSuffix():
+    """
+    Returns a short string identifying the running version of Python. Toil
+    appliances running the same Toil version but on different versions of
+    Python as returned by this function are not compatible.
+    """
+    import sys
+
+    # For now, we assume all Python 3 releases are intercompatible.
+    # We also only tag the Python 2 releases specially, since Python 2 is old and busted.
+    if sys.version_info[0] == 3:
+        return ''
+    else:
+        return '-py{}'.format(sys.version_info[0])
+
+      
 def dockerTag():
-    """
-    The primary tag of the Docker image for the appliance. This uniquely identifies the appliance
-    image.
-    """
-    return version()
+    """The primary tag of the Docker image for the appliance. This uniquely identifies the appliance image."""
+    return version() + _pythonVersionSuffix()
 
-
+  
 def currentCommit():
     import os
     from subprocess import check_output
@@ -84,8 +123,7 @@ def dirty():
     from subprocess import call
     try:
         git_root_dir = os.path.dirname(os.path.abspath(__file__))
-        return 0 != call('(git diff --exit-code '
-                         '&& git diff --cached --exit-code) > /dev/null',
+        return 0 != call('(git diff --exit-code && git diff --cached --exit-code) > /dev/null',
                          shell=True,
                          cwd=git_root_dir)
     except:
