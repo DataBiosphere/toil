@@ -48,4 +48,4 @@ TOIL_BOTO_DIR=''
 
 set a+
 
-source $TOIL_HOME/environment
+source $TOIL_HOME/environment.sh
