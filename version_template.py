@@ -28,7 +28,6 @@ import the expand_ function and invoke it directly with either no or exactly one
 
 baseVersion = '3.22.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
-dockerName = 'toil'
 
 
 def version():
@@ -103,11 +102,15 @@ def buildNumber():
 
 
 def currentCommit():
+    import os
     from subprocess import check_output
     try:
-        output = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).decode('utf-8').split()[0]
+        git_root_dir = os.path.dirname(os.path.abspath(__file__))
+        output = check_output('git log --pretty=oneline -n 1 -- {}'.format(git_root_dir),
+                              shell=True,
+                              cwd=git_root_dir).decode('utf-8').split()[0]
     except:
-        # Return this we are not in a git environment.
+        # Return this if we are not in a git environment.
         return '000'
     if isinstance(output, bytes):
         return output.decode('utf-8')
@@ -120,12 +123,16 @@ def dockerRegistry():
 
 
 def dirty():
+    import os
     from subprocess import call
     try:
+        git_root_dir = os.path.dirname(os.path.abspath(__file__))
         return 0 != call('(git diff --exit-code '
-                         '&& git diff --cached --exit-code) > /dev/null', shell=True)
+                         '&& git diff --cached --exit-code) > /dev/null',
+                         shell=True,
+                         cwd=git_root_dir)
     except:
-        return False # In case the git call fails.
+        return False  # In case the git call fails.
 
 
 def expand_(name=None):

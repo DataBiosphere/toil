@@ -20,7 +20,7 @@ export LIBPROCESS_IP=127.0.0.1
 # Needed for integrative provisioner tests
 export CGCLOUD_ME=jenkins@jenkins-master
 export TOIL_AWS_KEYNAME=jenkins@jenkins-master
-export TOIL_SSH_KEYNAME=jenkins
+# export TOIL_SSH_KEYNAME=jenkins
 export TOIL_GOOGLE_PROJECTID=toil-dev
 export GOOGLE_APPLICATION_CREDENTIALS=/home/jenkins/builds/toil-dev-41fd0135b44d.json
 export TOIL_BOTO_DIR=/home/jenkins/.boto
