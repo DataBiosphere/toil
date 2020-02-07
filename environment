@@ -7,10 +7,10 @@
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ] ; do SOURCE="$(readlink "$SOURCE")"; done
 
-# the directory this file is in
-export TOIL_HOME="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-
 set -a
+
+# the directory this file is in
+TOIL_HOME="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 
 ############
 ### MAIN ###
