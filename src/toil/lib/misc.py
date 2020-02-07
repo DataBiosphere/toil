@@ -320,36 +320,43 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
         if (self.returncode and (self.returncode < 0)) or (self.stderr is None):
             return str(super())
         else:
-            return "Command '%s' exit status %d: %s" % (
-                    self.cmd, self.returncode, self.stderr)
+            err = self.stderr if isinstance(self.stderr, str) else self.stderr.decode("ascii", errors="replace")
+            return "Command '%s' exit status %d: %s" % (self.cmd, self.returncode, err)
 
 
 def popen_communicate(cmd, input=None, timeout=None, **kwargs):
     """Start a process with subprocess.Popen, run the process and return
     (stdout, stderr). Raise an exception if the process exits non-zero. Kwargs
     are as passed to subprocess.Popen, with input and timeout being passed to
-    communicate.  The PY3 encode and error arguments are allowed pY22
-    but ignored.  Generally, Toil should used encoding='latin1' and the behavior
-    will by consistent between PY3 and PY2.
+    communicate.  The PY3.6 Popen encode and error arguments are allowed and
+    implemented.  Generally, Toil should used encoding='latin1'.
 
     This is similar to check_call, although it both allows one to get back
     stderr and also includes stderr in the exception that is raised in the
     process fails.
     """
+    no_encode_arg = six.PY2 or (sys.version_info.major < 6)
+    def do_decoding(s):
+        # FIXME: remove when < 3.6 is no longer supported
+        if (not no_encode_arg) or isinstance(s, str) or (s is None):
+            return s
+        else:
+            dargs = [kwargs["encoding"]]
+            if "error" in dargs:
+                dargs.append(kwargs["error"])
+            return s.decode(*dargs)
 
     args = {"stdout": subprocess.PIPE,
             "stderr": subprocess.PIPE}
     args.update(kwargs)
-    if six.PY2:
+    if no_encode_arg:
+        # remove unsupported arguments
         for k in ("encoding", "error"):
             if k in args:
                 del args[k]
-    print("after clean:", six.PY2, args, file=sys.stderr)
 
     proc = subprocess.Popen(cmd, **args)
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
     if proc.returncode != 0:
-        if six.PY3 and isinstance(stderr, bytes):
-            stderr = stderr.decode("ascii", errors="replace")
         raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
-    return stdout, stderr
+    return do_decoding(stdout), do_decoding(stderr)
