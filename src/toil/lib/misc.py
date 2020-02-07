@@ -1,4 +1,5 @@
 import random
+import six
 from six.moves import xrange
 from math import sqrt
 import errno
@@ -9,6 +10,12 @@ import time
 import uuid
 import socket
 from contextlib import contextmanager
+
+# can't do from 'toil import subprocess' as __init__.py import this module!
+if os.name == 'posix' and six.PY2:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 if sys.version_info[0] < 3:
     # Define a usable FileNotFoundError as will be raised by os.remove on a
@@ -248,58 +255,99 @@ def atomic_copyobj(src_fh, dest_path, length=16384):
 class WriteWatchingStream(object):
     """
     A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
-    
+
     Not seekable.
     """
-    
+
     def __init__(self, backingStream):
         """
         Wrap the given backing stream.
         """
-        
+
         self.backingStream = backingStream
         # We have no write listeners yet
         self.writeListeners = []
-        
+
     def onWrite(self, listener):
         """
         Call the given listener with the number of bytes written on every write.
         """
-        
+
         self.writeListeners.append(listener)
-        
+
     # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
-        
+
     def write(self, data):
         """
         Write the given data to the file.
         """
-        
+
         # Do the write
         self.backingStream.write(data)
-        
+
         for listener in self.writeListeners:
             # Send out notifications
             listener(len(data))
-            
+
     def writelines(self, datas):
         """
         Write each string from the given iterable, without newlines.
         """
-        
+
         for data in datas:
             self.write(data)
-            
+
     def flush(self):
         """
         Flush the backing stream.
         """
-        
+
         self.backingStream.flush()
-        
+
     def close(self):
         """
         Close the backing stream.
         """
-        
+
         self.backingStream.close()
+
+
+class CalledProcessErrorStderr(subprocess.CalledProcessError):
+    """Version of CalledProcessError that include stderr in the error message if it is set"""
+
+    def __str__(self):
+        if (self.returncode and (self.returncode < 0)) or (self.stderr is None):
+            return str(super())
+        else:
+            return "Command '%s' exit status %d: %s" % (
+                    self.cmd, self.returncode, self.stderr)
+
+
+def popen_communicate(cmd, input=None, timeout=None, **kwargs):
+    """Start a process with subprocess.Popen, run the process and return
+    (stdout, stderr). Raise an exception if the process exits non-zero. Kwargs
+    are as passed to subprocess.Popen, with input and timeout being passed to
+    communicate.  The PY3 encode and error arguments are allowed pY22
+    but ignored.  Generally, Toil should used encoding='latin1' and the behavior
+    will by consistent between PY3 and PY2.
+
+    This is similar to check_call, although it both allows one to get back
+    stderr and also includes stderr in the exception that is raised in the
+    process fails.
+    """
+
+    args = {"stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE}
+    args.update(kwargs)
+    if six.PY2:
+        for k in ("encoding", "error"):
+            if k in args:
+                del args[k]
+
+    proc = subprocess.Popen(cmd, **args)
+    stdout, stderr = proc.communicate(input=input, timeout=timeout)
+    if proc.returncode != 0:
+        if six.PY3 and isinstance(stderr, bytes):
+            stderr = stderr.decode("ascii", errors="replace")
+        raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
+    return stdout, stderr

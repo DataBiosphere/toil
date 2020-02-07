@@ -24,7 +24,8 @@ from builtins import range
 from past.utils import old_div
 import logging
 import math
-import subprocess
+from toil import subprocess
+from toil.lib.misc import popen_communicate
 import os
 
 from dateutil.parser import parse
@@ -51,12 +52,10 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             with self.runningJobsLock:
                 currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in
                                    self.runningJobs)
-            process = subprocess.Popen(
-                    ["bjobs", "-o", "jobid stat start_time delimiter='|'"],
-                    stdout=subprocess.PIPE)
-            stdout, _ = process.communicate()
 
-            for curline in stdout.decode('utf-8').split('\n'):
+            stdout, _ = popen_communicate(["bjobs", "-o", "jobid stat start_time delimiter='|'"], encoding='latin1')
+            for curline in stdout.split('\n'):
+                logger.debug("bjobs output %s", curline)
                 items = curline.strip().split('|')
                 if items[0] in currentjobs and items[1] == 'RUN':
                     jobstart = parse(items[2], default=datetime.now(tzlocal()))
@@ -73,10 +72,9 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         def submitJob(self, subLine):
             combinedEnv = self.boss.environment
             combinedEnv.update(os.environ)
-            process = subprocess.Popen(subLine, stdout=subprocess.PIPE,
-                                       env=combinedEnv)
-            line = process.stdout.readline().decode('utf-8')
-            logger.debug("BSUB: " + line)
+            stdout, stderr = popen_communicate(subLine, encoding='latin1', env=combinedEnv)
+            line = stdout.split('\n')[0]
+            logger.debug("%s output %s", subLine[0], line)
             result = int(line.strip().split()[1].strip('<>'))
             logger.debug("Got the job id: {}".format(result))
             return result
@@ -91,12 +89,12 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             args = ["bjobs", "-l", str(job)]
             logger.debug("Checking job exit code for job via bjobs: "
                          "{}".format(job))
-            process = subprocess.Popen(args, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT)
-            output = process.stdout.read().decode('utf-8').replace("\n                     ", "")
+            stdout, stderr = popen_communicate(args, encoding='latin1')
+            output = stdout.replace("\n                     ", "")
             process_output = output.split('\n')
             started = 0
             for line in process_output:
+                logger.debug("%s output %s", args[0], line)
                 if "Done successfully" in line or "Status <DONE>" in line:
                     logger.debug("bjobs detected job completed for job: "
                                  "{}".format(job))
@@ -131,11 +129,10 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                          "{}".format(job))
 
             args = ["bacct", "-l", str(job)]
-            process = subprocess.Popen(args, stdout=subprocess.PIPE,
-                                       stderr=subprocess.STDOUT)
-            output = process.stdout.read().decode('utf-8')
-            process_output = output.split('\n')
+            stdout, stderr = popen_communicate(args, encoding='latin1')
+            process_output = stdout.split('\n')
             for line in process_output:
+                logger.debug("%s output %s", args[0], line)
                 if line.find("Completed <done>") > -1 or line.find("<DONE>") > -1:
                     logger.debug("Detected job completed for job: "
                                  "{}".format(job))
@@ -193,10 +190,9 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def obtainSystemConstants(cls):
-        p = subprocess.Popen(["lshosts"], stdout=subprocess.PIPE,
-                             stderr=subprocess.STDOUT)
-
-        line = p.stdout.readline().decode('utf-8')
+        stdout, stderr = popen_communicate(["lshosts"], encoding='latin1')
+        line = stdout.split('\n')[0]
+        logger.debug("lshosts output %s", line)
         items = line.strip().split()
         num_columns = len(items)
         cpu_index = None

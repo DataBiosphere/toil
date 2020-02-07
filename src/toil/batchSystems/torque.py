@@ -49,7 +49,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             """
             try:
                 out = subprocess.check_output(["pbsnodes", "--version"]).decode('utf-8')
-
+                logger.debug("pbsnodes output %s", out)
                 if "PBSPro" in out:
                      logger.debug("PBS Pro proprietary Torque version detected")
                      self._version = "pro"
@@ -61,7 +61,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     logger.error("Could not determine PBS/Torque version")
 
             return self._version
-        
+
         """
         Torque-specific AbstractGridEngineWorker methods
         """
@@ -84,7 +84,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             stdout, stderr = process.communicate()
 
-            # qstat supports XML output which is more comprehensive, but PBSPro does not support it 
+            # qstat supports XML output which is more comprehensive, but PBSPro does not support it
             # so instead we stick with plain commandline qstat tabular outputs
             for currline in stdout.decode('utf-8').split('\n'):
                 items = currline.strip().split()
@@ -128,6 +128,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def submitJob(self, subLine):
             process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
             so, se = process.communicate()
+            logger.debug("%s output %s", subLine[0], so)
             return so
 
         def getJobExitCode(self, torqueJobID):
@@ -138,6 +139,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
 
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             for line in process.stdout:
+                logger.debug("%s output %s", args[0], line)
                 line = line.strip()
                 #logger.debug("getJobExitCode exit status: " + line)
                 # Case differences due to PBSPro vs OSS Torque qstat outputs
@@ -187,10 +189,10 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                     raise ValueError("Incompatible resource arguments ('mem=', 'nodes=', 'ppn='): {}".format(reqlineEnv))
 
                 reqline.append(reqlineEnv)
-            
+
             if reqline:
                 qsubline += ['-l',','.join(reqline)]
-            
+
             # All other qsub parameters can be passed through the environment (see man qsub).
             # No attempt is made to parse them out here and check that they do not conflict
             # with those that we already constructed above
@@ -221,7 +223,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             fh.write(command + "\n")
 
             fh.close
-            
+
             return tmpFile
 
 

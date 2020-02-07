@@ -25,6 +25,7 @@ import sys
 from toil.lib.exceptions import panic
 from toil.common import getNodeID
 from toil.lib.misc import atomic_tmp_file, atomic_install, AtomicFileCreate
+from toil.lib.misc import CalledProcessErrorStderr, popen_communicate
 from toil.test import ToilTest, slow, travis_test
 
 log = logging.getLogger(__name__)
@@ -132,6 +133,15 @@ class MiscTests(ToilTest):
             self.assertEqual(str(ex), "stop!")
         self.assertFalse(os.path.exists(outf))
 
+    def test_popen_comm_ok(self):
+        o, e = popen_communicate(["echo", "Fred"], encoding="latin1")
+        self.assertEqual("Fred\n", o)
+        self.assertTrue(isinstance(o, str), str(type(o)))
+
+    def test_popen_comm_err(self):
+        with self.assertRaisesRegexp(CalledProcessErrorStderr,
+                                     "^Command '\\['cat', '/dev/Frankenheimer']' exit status 1: cat: /dev/Frankenheimer: No such file or directory\n$"):
+            popen_communicate(["cat", "/dev/Frankenheimer"], encoding="latin1")
 
 class TestPanic(ToilTest):
 

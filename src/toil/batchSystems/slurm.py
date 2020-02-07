@@ -48,6 +48,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).decode('utf-8').split('\n')
             for line in lines:
+                logger.debug("squeue output %s", line)
                 values = line.split()
                 if len(values) < 3:
                     continue
@@ -67,6 +68,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         def submitJob(self, subLine):
             try:
                 output = subprocess.check_output(subLine, stderr=subprocess.STDOUT).decode('utf-8')
+                logger.debug("%s output %s", subLine[0], output)
                 # sbatch prints a line like 'Submitted batch job 2954103'
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)
@@ -77,19 +79,19 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def getJobExitCode(self, slurmJobID):
             logger.debug("Getting exit code for slurm job %d", int(slurmJobID))
-            
+
             state, rc = self._getJobDetailsFromSacct(slurmJobID)
-            
+
             if rc == -999:
                 state, rc = self._getJobDetailsFromScontrol(slurmJobID)
-            
+
             logger.debug("s job state is %s", state)
-            # If Job is in a running state, return None to indicate we don't have an update                                 
+            # If Job is in a running state, return None to indicate we don't have an update
             if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
                 return None
-            
+
             return rc
-            
+
         def _getJobDetailsFromSacct(self, slurmJobID):
             # SLURM job exit codes are obtained by running sacct.
             args = ['sacct',
@@ -98,15 +100,16 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     '--format', 'State,ExitCode', # specify output columns
                     '-P', # separate columns with pipes
                     '-S', '1970-01-01'] # override start time limit
-            
+
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            rc = process.returncode
-            
+            rc = process.wait()
+
             if rc != 0:
                 # no accounting system or some other error
                 return (None, -999)
-            
+
             for line in process.stdout:
+                logger.debug("%s output %s", args[0], line)
                 values = line.decode('utf-8').strip().split('|')
                 if len(values) < 2:
                     continue
@@ -127,26 +130,32 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     'show',
                     'job',
                     str(slurmJobID)]
-    
+
             process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    
+            rc = process.wait()
+
+            if rc != 0:
+                # no accounting system or some other error
+                return (None, -999)
+
             job = dict()
             for line in process.stdout:
+                logger.debug("%s output %s", args[0], line)
                 values = line.decode('utf-8').strip().split()
-    
+
                 # If job information is not available an error is issued:
                 # slurm_load_jobs error: Invalid job id specified
                 # There is no job information, so exit.
                 if len(values)>0 and values[0] == 'slurm_load_jobs':
                     return (None, None)
-                
+
                 # Output is in the form of many key=value pairs, multiple pairs on each line
                 # and multiple lines in the output. Each pair is pulled out of each line and
                 # added to a dictionary
                 for v in values:
                     bits = v.split('=')
                     job[bits[0]] = bits[1]
-    
+
             state = job['JobState']
             try:
                 exitcode = job['ExitCode']
@@ -161,7 +170,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     rc = None
             except KeyError:
                 rc = None
-            
+
             return (state, rc)
 
         """
@@ -174,13 +183,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             if self.boss.environment:
                 argList = []
-                
+
                 for k, v in self.boss.environment.items():
                     quoted_value = quote(os.environ[k] if v is None else v)
                     argList.append('{}={}'.format(k, quoted_value))
-                    
+
                 sbatch_line.append('--export=' + ','.join(argList))
-            
+
             if mem is not None:
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append('--mem={}'.format(old_div(int(mem), 2 ** 20)))
@@ -252,6 +261,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         max_mem = MemoryString('0')
         lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).decode('utf-8').split('\n')
         for line in lines:
+            logger.debug("sinfo output %s", line)
             values = line.split()
             if len(values) < 2:
                 continue

@@ -21,7 +21,8 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import subprocess
+from toil import subprocess
+from toil.lib.misc import popen_communicate
 import time
 import math
 
@@ -44,10 +45,10 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             times = {}
             with self.runningJobsLock:
                 currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
-            process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+            stdout, stderr = popen_communicate(["qstat"], encoding='latin1')
 
-            for currline in stdout.decode('utf-8').split('\n'):
+            for currline in stdout.split('\n'):
+                logger.debug("qstat output %s", currline)
                 items = currline.strip().split()
                 if items:
                     if items[0] in currentjobs and items[4] == 'r':
@@ -64,8 +65,10 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             return self.prepareQsub(cpu, memory, jobID) + [command]
 
         def submitJob(self, subLine):
-            process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
-            result = int(process.stdout.readline().decode('utf-8').strip())
+            stdout, stderr = popen_communicate(subLine, encoding='latin1')
+            output = stdout.split('\n')[0].strip()
+            logger.debug("%s output %s", subLine[0], output)
+            result = int(output)
             return result
 
         def getJobExitCode(self, sgeJobID):
@@ -80,8 +83,9 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                 args.extend(["-t", str(task)])
 
             logger.debug("Running %r", args)
-            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            for line in process.stdout:
+            stdout, stderr = popen_communicate(args, encoding='latin1')
+            for line in stdout.split('\n'):
+                logger.debug("%s output %s", args[0], line)
                 if line.startswith("failed") and int(line.split()[1]) == 1:
                     return 1
                 elif line.startswith("exit_status"):
@@ -143,7 +147,9 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
     def obtainSystemConstants(cls):
         def byteStrip(s):
             return s.encode('utf-8').strip()
-        lines = [_f for _f in map(byteStrip, subprocess.check_output(["qhost"]).decode('utf-8').split('\n')) if _f]
+        output = subprocess.check_output(["qhost"]).decode('utf-8')
+        logger.debug("qhost output %s", line)
+        lines = [_f for _f in map(byteStrip, output.split('\n')) if _f]
         line = lines[0]
         items = line.strip().split()
         num_columns = len(items)
