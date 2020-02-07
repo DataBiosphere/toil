@@ -97,8 +97,8 @@ py2_integration_sort:
     - export TOIL_TEST_INTEGRATIVE=True
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
-    - python -m pytest -s -r s  src/toil/test/sort/sortTest.py
-    - python -m pytest -s -r s  src/toil/test/provisioners/clusterScalerTest.py
+    - python -m pytest -s -r s src/toil/test/sort/sortTest.py
+    - python -m pytest -s -r s src/toil/test/provisioners/clusterScalerTest.py
 
 #py2_integration_provisioner:
 #  stage: integration
@@ -109,7 +109,7 @@ py2_integration_sort:
 #    - export TOIL_TEST_INTEGRATIVE=True
 #    # This reads GITLAB_SECRET_FILE_SSH_KEYS
 #    - python setup_gitlab_ssh.py
-#    - python -m pytest -s -r s  src/toil/test/provisioners/aws/awsProvisionerTest.py
+#    - python -m pytest -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py
 
 
 # Python3.6
