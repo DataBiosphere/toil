@@ -23,6 +23,12 @@ TOIL_TEST_INTEGRATIVE=False
 # If ``True``, long running tests are skipped.
 TOIL_TEST_QUICK=False
 
+# Skip docker dependent tests
+TOIL_SKIP_DOCKER=False
+
+# Run tests for travis (usually shorter unit tests)
+TRAVIS=True
+
 # SSH key to use for tests in AWS.
 TOIL_AWS_KEYNAME=id_rsa
 

@@ -7,10 +7,10 @@
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ] ; do SOURCE="$(readlink "$SOURCE")"; done
 
-set a-
-
 # the directory this file is in
-TOIL_HOME="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+export TOIL_HOME="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
+set -a
 
 ############
 ### MAIN ###
@@ -19,7 +19,8 @@ TOIL_HOME="$(cd -P "$(dirname "$SOURCE")" && pwd)"
 # specifies the docker image used for all toil autoscaling runs
 TOIL_DOCKER_REGISTRY=quay.io/ucsc_cgl
 TOIL_DOCKER_NAME=toil
-TOIL_APPLIANCE_SELF=$TOIL_DOCKER_REGISTRY/$TOIL_DOCKER_NAME:$(python $TOIL_HOME/version_template.py dockerTag)
+TOIL_DOCKER_TAG=$(python $TOIL_HOME/version_template.py dockerTag)
+TOIL_APPLIANCE_SELF=$TOIL_DOCKER_REGISTRY/$TOIL_DOCKER_NAME:$TOIL_DOCKER_TAG
 
 # An absolute path to a directory where Toil will write its temporary files. This directory
 # must exist on each worker node and may be set to a different value on each worker. The
@@ -90,4 +91,4 @@ TOIL_HTCONDOR_PARAMS=''  # unset unless filled in
 #     ``pip install awscli && eval $(aws ecr get-login --no-include-email --region us-east-1)``
 TOIL_CUSTOM_DOCKER_INIT_COMMAND=''  # unset unless filled in
 
-set a+
+set +a

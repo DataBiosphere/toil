@@ -11,10 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+include common.mk
 
 define help
 
-Supported targets: prepare, develop, docs, sdist, clean, test, pypi, docker and push_docker.
+Supported targets: prepare, develop, docs, sdist, clean, test, docker and push_docker.
 
 Please note that all build targets require a virtualenv to be active.
 
@@ -31,7 +32,7 @@ list of supported extras. To install Toil in develop mode with all extras, run
 The 'sdist' target creates a source distribution of Toil. It is used for some unit tests and for
 installing the currently checked out version of Toil into the appliance image.
 
-The 'clean' target cleans up the side effects of 'develop', 'sdist', 'docs', 'pypi' and 'docker'
+The 'clean' target cleans up the side effects of 'develop', 'sdist', 'docs', and 'docker'
 on this machine. It does not undo externally visible effects like removing packages already
 uploaded to PyPI.
 
@@ -41,26 +42,15 @@ Targets are provided to run Toil's tests. Note that these targets do *not* autom
 Toil's dependencies; it is recommended to 'make develop' before running any of them.
 
 The 'test' target runs Toil's unit tests serially with pytest. It will run some docker tests and
-setup. If you wish to avoid this, use the 'test_offline' target instead. Note: this target does not
-capture output from the terminal. For any of the test targets, set the 'tests' variable to run a
-particular test, e.g.
+setup. Note: this target does not capture output from the terminal. For any of the test targets,
+set the 'tests' variable to run a particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
 
-The 'test_offline' target is similar to 'test' but it skips the docker dependent tests and their
-setup. It can also be used to invoke individual tests, e.g.
-
-    make test_offline tests_local=src/toil/test/sort/sortTest.py::SortTest::testSort
-
-The 'integration_test_local' target runs toil's integration tests. These are more thorough but also
+The 'integration_test' target runs toil's integration tests. These are more thorough but also
 more costly than the regular unit tests. For the AWS integration tests to run, the environment
-variable 'TOIL_AWS_KEYNAME' must be set. This user will be charged for expenses acrued during the
-test. This test does not capture terminal output.
-
-The 'integration_test' target is the same as the previous except that it does capture output.
-
-The 'pypi' target publishes the current commit of Toil to PyPI after enforcing that the working
-copy and the index are clean.
+variable 'TOIL_AWS_KEYNAME' must be set. This user will be charged for expenses accrued during the
+test.
 
 The 'docker' target builds the Docker images that make up the Toil appliance. You may set the
 TOIL_DOCKER_REGISTRY variable to override the default registry that the 'push_docker' target pushes
@@ -86,9 +76,6 @@ help:
 	@printf "$$help"
 
 
-
-
-
 # This Makefile uses bash features like printf and <()
 SHELL=bash
 python=python
@@ -102,20 +89,10 @@ extras=
 dist_version:=$(shell $(python) version_template.py distVersion)
 sdist_name:=toil-$(dist_version).tar.gz
 
-docker_tag:=$(shell $(python) version_template.py dockerTag)
-default_docker_registry:=quay.io/ucsc_cgl
-docker_path:=$(strip $(shell which docker))
-
-export TOIL_DOCKER_REGISTRY?=$(shell $(python) version_template.py dockerRegistry)
-export TOIL_DOCKER_NAME?=$(shell $(python) version_template.py dockerName)
-export TOIL_APPLIANCE_SELF:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME):$(docker_tag)
-
-ifndef BUILD_NUMBER
 green=\033[0;32m
 normal=\033[0m
 red=\033[0;31m
 cyan=\033[0;36m
-endif
 
 develop: check_venv
 	$(pip) install -e .$(extras)
@@ -141,26 +118,13 @@ clean_sdist:
 	- rm -rf dist
 	- rm src/toil/version.py
 
-
 # We always claim to be Travis, so that local test runs will not skip Travis tests.
 # Gitlab doesn't run tests via the Makefile.
-
-# This target will skip building docker and all docker based tests
-test_offline: check_venv check_build_reqs
-	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
-	TOIL_SKIP_DOCKER=True \
-	TRAVIS=true \
-	    $(python) -m pytest $(pytest_args_local) $(tests_local)
 
 # The auto-deployment test needs the docker appliance
 test: check_venv check_build_reqs docker
 	TRAVIS=true \
 	    $(python) -m pytest --cov=toil $(pytest_args_local) $(tests)
-
-# For running integration tests locally in series (uses the -s argument for pyTest)
-integration_test_local: check_venv check_build_reqs sdist push_docker
-	TRAVIS=true \
-	    $(python) run_tests.py --local integration-test $(tests)
 
 test_integration: check_venv check_build_reqs docker
 	TRAVIS=true \
@@ -169,8 +133,6 @@ test_integration: check_venv check_build_reqs docker
 ifdef TOIL_DOCKER_REGISTRY
 
 docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
-docker_short_tag:=$(shell $(python) version_template.py dockerShortTag)
-docker_minimal_tag:=$(shell $(python) version_template.py dockerMinimalTag)
 
 grafana_image:=$(TOIL_DOCKER_REGISTRY)/toil-grafana
 prometheus_image:=$(TOIL_DOCKER_REGISTRY)/toil-prometheus
@@ -186,24 +148,20 @@ endef
 docker: docker/Dockerfile
 	@set -ex \
 	; cd docker \
-	; docker build --tag=$(docker_image):$(docker_tag) -f Dockerfile .
+	; docker build --tag=$(docker_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
 	@set -ex \
 	; cd dashboard/prometheus \
-	; docker build --tag=$(prometheus_image):$(docker_tag) -f Dockerfile .
+	; docker build --tag=$(prometheus_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
 	@set -ex \
 	; cd dashboard/grafana \
-	; docker build --tag=$(grafana_image):$(docker_tag) -f Dockerfile .
+	; docker build --tag=$(grafana_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
 	@set -ex \
 	; cd dashboard/mtail \
-	; docker build --tag=$(mtail_image):$(docker_tag) -f Dockerfile .
+	; docker build --tag=$(mtail_image):$(TOIL_DOCKER_TAG) -f Dockerfile .
 
-ifdef BUILD_NUMBER
-	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_short_tag))
-	$(call tag_docker,$(docker_image):$(docker_tag),$(docker_image):$(docker_minimal_tag))
-endif
 
 docker/$(sdist_name): dist/$(sdist_name)
 	cp $< $@
@@ -213,13 +171,13 @@ docker/Dockerfile: docker/Dockerfile.py docker/$(sdist_name)
 
 clean_docker:
 	-rm docker/Dockerfile docker/$(sdist_name)
-	-docker rmi $(docker_image):$(docker_tag)
+	-docker rmi $(docker_image):$(TOIL_DOCKER_TAG)
 
-push_docker: docker check_docker_registry
-	for i in $$(seq 1 5); do docker push $(docker_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(grafana_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(prometheus_image):$(docker_tag) && break || sleep 60; done
-	for i in $$(seq 1 5); do docker push $(mtail_image):$(docker_tag) && break || sleep 60; done
+push_docker: docker
+	for i in $$(seq 1 5); do docker push $(docker_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	for i in $$(seq 1 5); do docker push $(grafana_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	for i in $$(seq 1 5); do docker push $(prometheus_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
+	for i in $$(seq 1 5); do docker push $(mtail_image):$(TOIL_DOCKER_TAG) && break || sleep 60; done
 
 else
 
@@ -236,7 +194,7 @@ docs: check_venv check_build_reqs
 clean_docs: check_venv
 	- cd docs && make clean
 
-clean: clean_develop clean_sdist clean_pypi clean_docs
+clean: clean_develop clean_sdist clean_docs
 
 check_build_reqs:
 	@$(python) -c 'import mock; import pytest' \
@@ -260,12 +218,6 @@ check_clean_working_copy:
 			; git ls-files --other --exclude-standard --directory \
 			; false )
 
-check_docker_registry:
-	@test "$(default_docker_registry)" != "$(TOIL_DOCKER_REGISTRY)" || test -n "$$BUILD_NUMBER" \
-		|| ( printf '$(red)Please set TOIL_DOCKER_REGISTRY to a value other than \
-	$(default_docker_registry) and ensure that you have permissions to push \
-	to that registry. Only CI builds should push to $(default_docker_registry).$(normal)\n' ; false )
-
 check_cpickle:
 	# fail if cPickle.dump(s) called without HIGHEST_PROTOCOL
 	# https://github.com/BD2KGenomics/toil/issues/1503
@@ -276,12 +228,10 @@ check_cpickle:
 		check_cpickle \
 		develop clean_develop \
 		sdist clean_sdist \
-		test test_offline test_parallel integration_test \
-		pypi clean_pypi \
+		test test_parallel integration_test \
 		docs clean_docs \
 		clean \
 		check_venv \
 		check_clean_working_copy \
-		check_running_on_jenkins \
 		check_build_reqs \
 		docker clean_docker push_docker

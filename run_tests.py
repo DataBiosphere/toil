@@ -17,6 +17,8 @@ log = logging.getLogger(__name__)
 # will match Foo, FooBar and BarFoo.
 #
 
+# TODO: Delete this file; this was created for generating XML specific for jenkins
+
 test_suites = {
     'test': [
         'SortTest',
