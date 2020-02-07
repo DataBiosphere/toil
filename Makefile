@@ -126,10 +126,6 @@ test: check_venv check_build_reqs docker
 	TRAVIS=true \
 	    $(python) -m pytest --cov=toil $(pytest_args_local) $(tests)
 
-test_integration: check_venv check_build_reqs docker
-	TRAVIS=true \
-	    $(python) run_tests.py integration-test $(tests)
-
 ifdef TOIL_DOCKER_REGISTRY
 
 docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
@@ -228,7 +224,7 @@ check_cpickle:
 		check_cpickle \
 		develop clean_develop \
 		sdist clean_sdist \
-		test test_parallel integration_test \
+		test \
 		docs clean_docs \
 		clean \
 		check_venv \
