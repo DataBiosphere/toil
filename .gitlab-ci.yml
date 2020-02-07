@@ -3,6 +3,7 @@ image: quay.io/vgteam/vg_ci_prebake:latest
 
 before_script:
   - startdocker || true
+  - . environment.dev
   - docker info
   - cat /etc/hosts
   - export PYTHONIOENCODING=utf-8
@@ -74,8 +75,6 @@ py2_appliance_build:
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
-    - export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:$(python version_template.py dockerTag)
-    - echo $TOIL_APPLIANCE_SELF
     - make push_docker
 
 py2_integration_jobstore:
@@ -85,8 +84,6 @@ py2_integration_jobstore:
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - export TOIL_TEST_INTEGRATIVE=True
-    - export TOIL_AWS_KEYNAME=id_rsa
-    - export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - python -m pytest -s -r s src/toil/test/jobStores/jobStoreTest.py
@@ -98,8 +95,6 @@ py2_integration_sort:
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - export TOIL_TEST_INTEGRATIVE=True
-    - export TOIL_AWS_KEYNAME=id_rsa
-    - export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - python -m pytest -s -r s  src/toil/test/sort/sortTest.py
@@ -112,8 +107,6 @@ py2_integration_sort:
 #    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
 #    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
 #    - export TOIL_TEST_INTEGRATIVE=True
-#    - export TOIL_AWS_KEYNAME=id_rsa
-#    - export TOIL_AWS_ZONE=us-west-2a
 #    # This reads GITLAB_SECRET_FILE_SSH_KEYS
 #    - python setup_gitlab_ssh.py
 #    - python -m pytest -s -r s  src/toil/test/provisioners/aws/awsProvisionerTest.py
@@ -170,8 +163,6 @@ py3_appliance_build:
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python3.6 setup_gitlab_docker.py
-    - export TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:$(python version_template.py dockerTag)
-    - echo $TOIL_APPLIANCE_SELF
     - make push_docker
 
 #py3_integration:
