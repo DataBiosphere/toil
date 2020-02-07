@@ -125,6 +125,15 @@ test: check_venv check_build_reqs docker
 	TRAVIS=true \
 	    $(python) -m pytest --cov=toil $(pytest_args_local) $(tests)
 
+
+# This target will skip building docker and all docker based tests
+# these are our travis tests; rename?
+test_offline: check_venv check_build_reqs
+	@printf "$(cyan)All docker related tests will be skipped.$(normal)\n"
+	TOIL_SKIP_DOCKER=True \
+	TRAVIS=true \
+	    $(python) -m pytest $(pytest_args_local) $(tests_local)
+
 ifdef TOIL_DOCKER_REGISTRY
 
 docker_image:=$(TOIL_DOCKER_REGISTRY)/$(TOIL_DOCKER_NAME)
@@ -230,7 +239,7 @@ check_cpickle:
 		check_cpickle \
 		develop clean_develop \
 		sdist clean_sdist \
-		test \
+		test test_offline \
 		docs clean_docs \
 		clean \
 		check_venv \
