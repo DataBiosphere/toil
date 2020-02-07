@@ -303,7 +303,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         if size is None:
             # It fell off
             # Someone is mixing FileStore and JobStore file APIs, or serializing FileIDs as strings.
-            size = self.jobStore.getGlobalFileSize(fileStoreID)
+            size = self.jobStore.getFileSize(fileStoreID)
 
         return size
 

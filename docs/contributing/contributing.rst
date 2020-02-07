@@ -24,6 +24,9 @@ environment variables are set (see :ref:`test_env_vars`).
 |                         | the terminal as expected.                         |
 +-------------------------+---------------------------------------------------+
 
+Before running tests for the first time, initialize your virtual environment
+following the steps in :ref:`buildFromSource`.
+
 Run all tests (including slow tests)::
 
     $ make test

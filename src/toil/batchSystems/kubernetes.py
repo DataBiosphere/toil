@@ -47,9 +47,34 @@ from six.moves.queue import Empty, Queue
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
+from toil.lib.humanize import human2bytes
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
+
+
+def slow_down(seconds):
+    """
+    Toil jobs that have completed are not allowed to have taken 0 seconds, but
+    Kubernetes timestamps things to the second. It is possible in Kubernetes for
+    a pod to have identical start and end timestamps.
+
+    This function takes a possibly 0 job length in seconds an enforces a minimum length to satisfy Toil.
+
+    :param float seconds: Kubernetes timestamp difference
+
+    :return: seconds, or a small positive number if seconds is 0
+    :rtype: float
+    """
+
+    return max(seconds, sys.float_info.epsilon)
+
+def utc_now():
+    """
+    Return a datetime in the UTC timezone corresponding to right now.
+    """
+
+    return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
 
 
 class KubernetesBatchSystem(BatchSystemLocalSupport):
@@ -71,42 +96,27 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # reveal on CI.
         logging.getLogger('kubernetes').setLevel(logging.ERROR)
         logging.getLogger('requests_oauthlib').setLevel(logging.ERROR)
-
-        try:
-            # Load ~/.kube/config or KUBECONFIG
-            kubernetes.config.load_kube_config()
-            
-            # We loaded it; we need to figure out our namespace the config-file way
-            
-            # Find all contexts and the active context.
-            # The active context gets us our namespace.
-            contexts, activeContext = kubernetes.config.list_kube_config_contexts()
-            if not contexts:
-                raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
-                
-            # Identify the namespace to work in
-            self.namespace = activeContext.get('context', {}).get('namespace', 'default')
-            
-        except TypeError:
-            # Didn't work. Try pod-based credentials in case we are in a pod.
-            try:
-                kubernetes.config.load_incluster_config()
-                
-                # We got pod-based credentials. Our namespace comes from a particular file.
-                self.namespace = open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r').read().strip()
-                
-            except kubernetes.config.ConfigException:
-                raise RuntimeError('Could not load Kubernetes configuration from ~/.kube/config, $KUBECONFIG, or current pod.')
-
         
+        # This will hold the last time our Kubernetes credentials were refreshed
+        self.credential_time = None
+        # And this will hold our cache of API objects
+        self._apis = {}
+        
+        # Get our namespace (and our Kubernetes credentials to make sure they exist)
+        self.namespace = self._api('namespace')
 
         # Make a Kubernetes-acceptable version of our username: not too long,
         # and all lowercase letters, numbers, or - or .
         acceptableChars = set(string.ascii_lowercase + string.digits + '-.')
-        safeUsername = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
-
+        
+        # Use TOIL_KUBERNETES_OWNER if present in env var
+        if os.environ.get("TOIL_KUBERNETES_OWNER", None) is not None:
+            username = os.environ.get("TOIL_KUBERNETES_OWNER")
+        else:    
+            username = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
+        
         # Create a prefix for jobs, starting with our username
-        self.jobPrefix = '{}-toil-{}-'.format(safeUsername, uuid.uuid4())
+        self.jobPrefix = '{}-toil-{}-'.format(username, uuid.uuid4())
         
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
@@ -125,11 +135,81 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         # Set this to True to enable the experimental wait-for-job-update code
         self.enableWatching = True
 
-        # Required APIs needed from kubernetes
-        self.batchApi = kubernetes.client.BatchV1Api()
-        self.coreApi = kubernetes.client.CoreV1Api()
-    
         self.jobIds = set()
+        
+    def _api(self, kind, max_age_seconds = 5 * 60):
+        """
+        The Kubernetes module isn't clever enough to renew its credentials when
+        they are about to expire. See
+        https://github.com/kubernetes-client/python/issues/741.
+        
+        We work around this by making sure that every time we are about to talk
+        to Kubernetes, we have fresh credentials. And we do that by reloading
+        the config and replacing our Kubernetes API objects before we do any
+        Kubernetes things.
+        
+        TODO: We can still get in trouble if a single watch or listing loop
+        goes on longer than our credentials last, though.
+        
+        This method is the Right Way to get any Kubernetes API. You call it
+        with the API you want ('batch', 'core', or 'customObjects') and it
+        returns an API object with guaranteed fresh credentials.
+        
+        It also recognizes 'namespace' and returns our namespace as a string.
+        
+        max_age_seconds needs to be << your cluster's credential expiry time.
+        """
+        
+        now = datetime.datetime.now()
+        
+        if self.credential_time is None or (now - self.credential_time).total_seconds() > max_age_seconds:
+            # Credentials need a refresh
+            try:
+                # Load ~/.kube/config or KUBECONFIG
+                kubernetes.config.load_kube_config()
+                # Worked. We're using kube config
+                config_source = 'kube'
+            except TypeError:
+                # Didn't work. Try pod-based credentials in case we are in a pod.
+                try:
+                    kubernetes.config.load_incluster_config()
+                    # Worked. We're using in_cluster config
+                    config_source = 'in_cluster'
+                except kubernetes.config.ConfigException:
+                    raise RuntimeError('Could not load Kubernetes configuration from ~/.kube/config, $KUBECONFIG, or current pod.')
+                  
+        
+        # Now fill in the API objects with these credentials
+        self._apis['batch'] = kubernetes.client.BatchV1Api()
+        self._apis['core'] = kubernetes.client.CoreV1Api()
+        self._apis['customObjects'] = kubernetes.client.CustomObjectsApi()
+        
+        # And save the time
+        self.credential_time = now
+        
+        if kind == 'namespace':
+            # We just need the namespace string
+            if config_source == 'in_cluster':
+                # Our namespace comes from a particular file.
+                with open("/var/run/secrets/kubernetes.io/serviceaccount/namespace", 'r') as fh:
+                    return fh.read().strip()
+            else:
+                # Find all contexts and the active context.
+                # The active context gets us our namespace.
+                contexts, activeContext = kubernetes.config.list_kube_config_contexts()
+                if not contexts:
+                    raise RuntimeError("No Kubernetes contexts available in ~/.kube/config or $KUBECONFIG")
+                    
+                # Identify the namespace to work in
+                return activeContext.get('context', {}).get('namespace', 'default')
+                
+        else:
+            # We need an API object
+            try:
+                return self._apis[kind]
+            except KeyError: 
+                raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
+        
 
     def setUserScript(self, userScript):
         logger.info('Setting user script for deployment: {}'.format(userScript))
@@ -181,14 +261,18 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # https://github.com/kubernetes-client/python/blob/master/kubernetes/docs/V1Job.md
 
             # Make a definition for the container's resource requirements.
-            # Don't let people request too-small amounts of memory or disk.
-            # Kubernetes needs some lower limit to run the pod at all without OOMing.
+            # Add on a bit for Kubernetes overhead (Toil worker's memory, hot deployed
+            # user scripts).
+            # Kubernetes needs some lower limit of memory to run the pod at all without
+            # OOMing. We also want to provision some extra space so that when
+            # we test _isPodStuckOOM we never get True unless the job has
+            # exceeded jobNode.memory.
             requirements_dict = {'cpu': jobNode.cores,
-                                 'memory': max(jobNode.memory, 1024 * 1024 * 512),
-                                 'ephemeral-storage': max(jobNode.disk, 1024 * 1024 * 512)}
-            # Set a higher limit to give jobs some room to go over what they
-            # think they need, as is the Kubernetes way.
-            limits_dict = {k: int(v * 1.5) for k, v in requirements_dict.items()}
+                                 'memory': jobNode.memory + 1024 * 1024 * 512,
+                                 'ephemeral-storage': jobNode.disk + 1024 * 1024 * 512}
+            # Use the requirements as the limits, for predictable behavior, and because
+            # the UCSC Kubernetes admins want it that way.
+            limits_dict = requirements_dict
             resources = kubernetes.client.V1ResourceRequirements(limits=limits_dict,
                                                                  requests=requirements_dict)
             
@@ -240,7 +324,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                           kind="Job")
             
             # Make the job
-            launched = self.batchApi.create_namespaced_job(self.namespace, job)
+            launched = self._api('batch').create_namespaced_job(self.namespace, job)
 
             logger.debug('Launched job: %s', jobName)
             
@@ -303,7 +387,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 kwargs['field_selector'] = 'status.successful==1'
             if token is not None:
                 kwargs['_continue'] = token
-            results = self.batchApi.list_namespaced_job(self.namespace, **kwargs)
+            results = self._api('batch').list_namespaced_job(self.namespace, **kwargs)
             
             for job in results.items:
                 if self._isJobOurs(job):
@@ -348,7 +432,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             kwargs = {'label_selector': query}
             if token is not None:
                 kwargs['_continue'] = token
-            results = self.coreApi.list_namespaced_pod(self.namespace, **kwargs)
+            results = self._api('core').list_namespaced_pod(self.namespace, **kwargs)
             
             for pod in results.items:
                 # Return the first pod we find
@@ -376,9 +460,73 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         """
 
-        return self.coreApi.read_namespaced_pod_log(podObject.metadata.name,
-                                                    namespace=self.namespace)
-   
+        return self._api('core').read_namespaced_pod_log(podObject.metadata.name,
+                                                         namespace=self.namespace)
+
+    def _isPodStuckOOM(self, podObject, minFreeBytes=1024 * 1024 * 2):
+        """
+        Poll the current memory usage for the pod from the cluster.
+
+        Return True if the pod looks to be in a soft/stuck out of memory (OOM)
+        state, where it is using too much memory to actually make progress, but
+        not enough to actually trigger the OOM killer to kill it. For some
+        large memory limits, on some Kubernetes clusters, pods can get stuck in
+        this state when their memory limits are high (approx. 200 Gi).
+
+        We operationalize "OOM" as having fewer than minFreeBytes bytes free.
+
+        We assume the pod has only one container, as Toil's pods do.
+
+        :param kubernetes.client.V1Pod podObject: a Kubernetes pod with one
+                                       container to check up on.
+        :param int minFreeBytes: Minimum free bytes to not be OOM.
+
+        :return: True if the pod is OOM, false otherwise.
+        :rtype: bool
+        """
+
+        # Compose a query to get just the pod we care about
+        query = 'metadata.name=' + podObject.metadata.name
+
+        # Look for it
+        # TODO: When the Kubernetes Python API actually wraps the metrics API, switch to that
+        response = self._api('customObjects').list_namespaced_custom_object('metrics.k8s.io', 'v1beta1',
+                                                                            self.namespace, 'pods',
+                                                                            field_selector=query)
+
+        # Pull out the items
+        items = response.get('items', [])
+
+        if len(items) == 0:
+            # If there's no statistics we can't say we're stuck OOM
+            return False
+
+        # Assume the first result is the right one, because of the selector
+        # Assume it has exactly one pod, because we made it
+        containers = items[0].get('containers', [{}])
+        
+        if len(containers) == 0:
+            # If there are no containers (because none have started yet?), we can't say we're stuck OOM
+            return False
+        
+        # Otherwise, assume it just has one container.
+        # Grab the memory usage string, like 123Ki, and convert to bytes.
+        # If anything is missing, assume 0 bytes used.
+        bytesUsed = human2bytes(containers[0].get('usage', {}).get('memory', '0'))
+
+        # Also get the limit out of the pod object's spec
+        bytesAllowed = human2bytes(podObject.spec.containers[0].resources.limits['memory'])
+
+        if bytesAllowed - bytesUsed < minFreeBytes:
+            # This is too much!
+            logger.warning('Pod %s has used %d of %d bytes of memory; reporting as stuck due to OOM.',
+                           podObject.metadata.name, bytesUsed, bytesAllowed)
+
+            return True
+
+
+
+
     def _getIDForOurJob(self, jobObject):
         """
         Get the JobID number that belongs to the given job that we own.
@@ -411,7 +559,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
             if self.enableWatching:
                 for j in self._ourJobObjects():
-                    for event in w.stream(self.coreApi.list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
+                    for event in w.stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
                         pod = event['object']
                         if pod.metadata.name.startswith(self.jobPrefix):
                             if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
@@ -420,21 +568,27 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 if containerStatuses is None or len(containerStatuses) == 0: 
                                     logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
                                     return (int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), -1, 0)
-                                logger.info("REASON: %s Exit Code: %s" % (pod.status.container_statuses[0].state.terminated.reason,
-                                    pod.status.container_statuses[0].state.terminated.exit_code))
+
+                                # Get termination onformation from the pod
+                                termination = pod.status.container_statuses[0].state.terminated
+                                logger.info("REASON: %s Exit Code: %s", termination.reason, termination.exit_code)
+                                
+                                if termination.exit_code != 0:
+                                    # The pod failed. Dump information about it.
+                                    logger.debug('Failed pod information: %s', str(pod))
+                                    logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
                                 jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
                                 terminated = pod.status.container_statuses[0].state.terminated
-                                runtime = (terminated.finished_at - terminated.started_at).total_seconds()
+                                runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
                                 result = (jobID, terminated.exit_code, runtime)
-                                self.batchApi.delete_namespaced_job(pod.metadata.owner_references[0].name,
-                                                                    self.namespace,
-                                                                    propagation_policy='Foreground')
+                                self._api('batch').delete_namespaced_job(pod.metadata.owner_references[0].name,
+                                                                         self.namespace,
+                                                                         propagation_policy='Foreground')
 
                                 self._waitForJobDeath(pod.metadata.owner_references[0].name)
                                 return result
                             else:
                                 continue
-
         else:
             # Try polling instead
             while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:
@@ -454,7 +608,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
     def _getUpdatedBatchJobImmediately(self):
         """
         Return None if no updated (completed or failed) batch job is currently
-        available, and jobID, exitCode, runtime ifsuch a job can be found.
+        available, and jobID, exitCode, runtime if such a job can be found.
         """
 
         # See if a local batch job has updated and is available immediately
@@ -495,8 +649,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     break
 
         if jobObject is None:
-            # If no jobs are failed, look for jobs with pods with
-            # containers stuck in Waiting with reason ImagePullBackOff
+            # If no jobs are failed, look for jobs with pods that are stuck for various reasons.
             for j in self._ourJobObjects():
                 pod = self._getPodForJob(j)
 
@@ -504,6 +657,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     # Skip jobs with no pod
                     continue
                     
+                # Containers can get stuck in Waiting with reason ImagePullBackOff
+
                 # Get the statuses of the pod's containers
                 containerStatuses = pod.status.container_statuses
                 if containerStatuses is None or len(containerStatuses) == 0:
@@ -524,8 +679,17 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     logger.warning('Failing stuck job; did you try to run a non-existent Docker image?'
                                    ' Check TOIL_APPLIANCE_SELF.')
                     break
-       
-            
+
+                # Pods can also get stuck nearly but not quite out of memory,
+                # if their memory limits are high and they try to exhaust them.
+
+                if self._isPodStuckOOM(pod):
+                    # We found a job that probably should be OOM! Report it as stuck.
+                    # Polling function takes care of the logging.
+                    jobObject = j
+                    chosenFor = 'stuck'
+                    break
+
         if jobObject is None:
             # Say we couldn't find anything
             return None
@@ -535,7 +699,14 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Work out what the job's ID was (whatever came after our name prefix)
         jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
-        
+
+        # Work out when the job was submitted. If the pod fails before actually
+        # running, this is the basis for our runtime.
+        jobSubmitTime = getattr(jobObject.status, 'start_time', None)
+        if jobSubmitTime is None:
+            # If somehow this is unset, say it was just now.
+            jobSubmitTime = utc_now() 
+
         # Grab the pod
         pod = self._getPodForJob(jobObject)
 
@@ -545,6 +716,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 # Get the statuses of the pod's containers
                 containerStatuses = pod.status.container_statuses
+
+                # Get when the pod started (reached the Kubelet) as a datetime
+                startTime = getattr(pod.status, 'start_time', None)
+                if startTime is None:
+                    # If the pod never made it to the kubelet to get a
+                    # start_time, say it was when the job was submitted.
+                    startTime = jobSubmitTime 
                 
                 if containerStatuses is None or len(containerStatuses) == 0:
                     # No statuses available.
@@ -554,7 +732,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     logger.warning('Exit code and runtime unavailable; pod has no container statuses')
                     logger.warning('Pod: %s', str(pod))
                     exitCode = -1
-                    runtime = 0
+                    # Say it stopped now and started when it was scheduled/submitted.
+                    # We still need a strictly positive runtime.
+                    runtime = slow_down((utc_now() - startTime).totalSeconds())
                 else:
                     # Get the termination info from the pod's main (only) container
                     terminatedInfo = getattr(getattr(containerStatuses[0], 'state', None), 'terminated', None)
@@ -562,18 +742,21 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
                         logger.warning('Pod: %s', str(pod))
                         exitCode = -1
-                        runtime = 0
+                        # Say it stopped now and started when it was scheduled/submitted.
+                        # We still need a strictly positive runtime.
+                        runtime = slow_down((utc_now() - startTime).totalSeconds())
                     else:
                         # Extract the exit code
                         exitCode = terminatedInfo.exit_code
 
-                        # Compute how long the job ran for (subtract datetimes)
-                        # We need to look at the pod's start time because the job's
-                        # start time is just when the job is created.
-                        # And we need to look at the pod's end time because the
-                        # job only gets a completion time if successful.
-                        runtime = (terminatedInfo.finished_at - 
-                                   pod.status.start_time).total_seconds()
+                        # Compute how long the job actually ran for (subtract
+                        # datetimes). We need to look at the pod's start time
+                        # because the job's start time is just when the job is
+                        # created. And we need to look at the pod's end time
+                        # because the job only gets a completion time if
+                        # successful.
+                        runtime = slow_down((terminatedInfo.finished_at - 
+                                             pod.status.start_time).total_seconds())
 
                         if chosenFor == 'failed':
                             # Warn the user with the failed pod's log
@@ -585,22 +768,23 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 assert chosenFor == 'stuck'
                 
-                # Synthesize an exit code and runtime (since the job never
-                # really could start running)
+                # Synthesize an exit code
                 exitCode = -1
-                runtime = 0
+                # Say it ran from when the job was submitted to when the pod got stuck
+                runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
         else:
             # The pod went away from under the job.
             logging.warning('Exit code and runtime unavailable; pod vanished')
             exitCode = -1
-            runtime = 0
+            # Say it ran from when the job was submitted to when the pod vanished
+            runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
         
         
         try:
             # Delete the job and all dependents (pods)
-            self.batchApi.delete_namespaced_job(jobObject.metadata.name,
-                                                self.namespace,
-                                                propagation_policy='Foreground')
+            self._api('batch').delete_namespaced_job(jobObject.metadata.name,
+                                                     self.namespace,
+                                                     propagation_policy='Foreground')
                                                 
             # That just kicks off the deletion process. Foreground doesn't
             # actually block. See
@@ -632,7 +816,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         while True:
             try:
                 # Look for the job
-                self.batchApi.read_namespaced_job(jobName, self.namespace)
+                self._api('batch').read_namespaced_job(jobName, self.namespace)
                 # If we didn't 404, wait a bit with exponential backoff
                 time.sleep(backoffTime)
                 if backoffTime < maxBackoffTime:
@@ -662,9 +846,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Kill jobs whether they succeeded or failed
             try:
                 # Delete with background poilicy so we can quickly issue lots of commands
-                response = self.batchApi.delete_namespaced_job(jobName, 
-                                                               self.namespace, 
-                                                               propagation_policy='Background')
+                response = self._api('batch').delete_namespaced_job(jobName, 
+                                                                    self.namespace, 
+                                                                    propagation_policy='Background')
                 logger.debug('Killed job for shutdown: %s', jobName)
             except ApiException as e:
                 logger.error("Exception when calling BatchV1Api->delte_namespaced_job: %s" % e)
@@ -701,8 +885,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
                 # The only time we have handy is when the pod got assigned to a
                 # kubelet, which is technically before it started running.
-                utc_now = datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
-                runtime = (utc_now - pod.status.start_time).total_seconds()
+                runtime = (utc_now() - pod.status.start_time).total_seconds()
 
                 # Save it under the stringified job ID
                 secondsPerJob[self._getIDForOurJob(job)] = runtime
@@ -731,9 +914,9 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
             # Delete the requested job in the foreground.
             # This doesn't block, but it does delete expeditiously.
-            response = self.batchApi.delete_namespaced_job(jobName, 
-                                                           self.namespace, 
-                                                           propagation_policy='Foreground')
+            response = self._api('batch').delete_namespaced_job(jobName, 
+                                                                self.namespace, 
+                                                                propagation_policy='Foreground')
             logger.debug('Killed job by request: %s', jobName)
 
         for jobID in jobIDs:

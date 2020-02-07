@@ -18,6 +18,7 @@ from builtins import range
 import codecs
 import os
 import random
+import traceback
 import unittest
 
 # Python 3 compatibility imports
@@ -161,7 +162,7 @@ class JobServiceTest(ToilTest):
             finally:
                 list(map(os.remove, outFiles))
 
-    def runToil(self, rootJob, retryCount=1, badWorker=0.5, badWorkedFailInterval=0.05, maxServiceJobs=sys.maxsize, deadlockWait=60):
+    def runToil(self, rootJob, retryCount=1, badWorker=0.5, badWorkedFailInterval=0.1, maxServiceJobs=sys.maxsize, deadlockWait=60):
         # Create the runner for the workflow.
         options = Job.Runner.getDefaultOptions(self._getTestJobStorePath())
         options.logLevel = "DEBUG"
@@ -181,7 +182,7 @@ class JobServiceTest(ToilTest):
                 break
             except FailedJobsException as e:
                 i = e.numberOfFailedJobs
-                if totalTrys > 40: #p(fail after this many restarts) = 0.5**32
+                if totalTrys > 50: #p(fail after this many restarts) = 0.5**32
                     self.fail() #Exceeded a reasonable number of restarts
                 totalTrys += 1
                 options.restart = True
@@ -277,7 +278,7 @@ class ToyService(Job.Service):
         try:
             while True:
                 if terminate.isSet(): # Quit if we've got the terminate signal
-                    logger.debug("Demo service worker being told to quit")
+                    logger.debug("Service worker being told to quit")
                     return
 
                 time.sleep(0.2) # Sleep to avoid thrashing
@@ -288,20 +289,27 @@ class ToyService(Job.Service):
                         fH = codecs.getreader('utf-8')(fH)
                         line = fH.readline()
                 except:
-                    logger.debug("Something went wrong reading a line")
+                    logger.debug("Something went wrong reading a line: %s", traceback.format_exc())
                     raise
 
+                if len(line.strip()) == 0:
+                    # Don't try and make an integer out of nothing
+                    continue
+                    
                 # Try converting the input line into an integer
                 try:
                     inputInt = int(line)
                 except ValueError:
-                    logger.debug("Tried casting input line to integer but got error: %s" % line)
+                    logger.debug("Tried casting input line '%s' to integer but got error: %s", line, traceback.format_exc())
                     continue
 
                 # Write out the resulting read integer and the message              
                 with jobStore.updateFileStream(outJobStoreID) as fH:
                     fH.write(("%s %s\n" % (inputInt, messageInt)).encode('utf-8'))
+                    
+                logger.debug("Service worker did useful work")
         except:
+            logger.debug("Error in service worker: %s", traceback.format_exc())
             error.set()
             raise
 

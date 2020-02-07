@@ -11,6 +11,7 @@ sys.path.insert(0, pkg_root)  # noqa
 from toil import subprocess
 from toil.test import ToilTest
 from toil.test import needs_cwl
+from toil.version import python
 
 
 class ToilDocumentationTest(ToilTest):
@@ -37,7 +38,7 @@ class ToilDocumentationTest(ToilTest):
     """Just check the exit code"""
     def checkExitCode(self, script):
         program = os.path.join(self.directory, "scripts", script)
-        process = subprocess.Popen(["python", program, "file:my-jobstore", "--clean=always"],
+        process = subprocess.Popen([python, program, "file:my-jobstore", "--clean=always"],
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         assert process.returncode == 0, stderr
@@ -51,7 +52,7 @@ class ToilDocumentationTest(ToilTest):
 
         # Check that the expected output is there
         index = outerr.find(expectedOutput)
-        self.assertGreater(index, -1, index)
+        self.assertGreater(index, -1, "Expected:\n{}\nOutput:\n{}".format(expectedOutput, outerr))
 
     """Check the exit code and look for a pattern"""
     def checkExpectedPattern(self, script, expectedPattern):
@@ -60,7 +61,7 @@ class ToilDocumentationTest(ToilTest):
         # Check that the expected output pattern is there
         pattern = re.compile(expectedPattern, re.DOTALL)
         n = re.search(pattern, outerr)
-        self.assertNotEqual(n, None, n)
+        self.assertNotEqual(n, None, "Pattern:\n{}\nOutput:\n{}".format(expectedPattern, outerr))
 
     @needs_cwl
     def testCwlexample(self):

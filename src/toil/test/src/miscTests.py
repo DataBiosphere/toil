@@ -24,6 +24,7 @@ import sys
 
 from toil.lib.exceptions import panic
 from toil.common import getNodeID
+from toil.lib.misc import atomic_tmp_file, atomic_install, AtomicFileCreate
 from toil.test import ToilTest, slow, travis_test
 
 log = logging.getLogger(__name__)
@@ -38,7 +39,7 @@ class MiscTests(ToilTest):
     def setUp(self):
         super(MiscTests, self).setUp()
         self.testDir = self._createTempDir()
-    
+
     @travis_test
     def testIDStability(self):
         prevNodeID = None
@@ -92,30 +93,69 @@ class MiscTests(ToilTest):
     def _getRandomName():
         return uuid4().hex
 
+    def _get_test_out_file(self, tail):
+        outf = os.path.join(self.testDir, self.id() + "." + tail)
+        if os.path.exists(outf):
+            os.unlink(outf)
+        return outf
+
+    def _write_test_file(self, outf_tmp):
+        with open(outf_tmp, "w") as fh:
+            fh.write(self.id() + '\n')
+
+    def test_atomic_install(self):
+        outf = self._get_test_out_file(".foo.gz")
+        outf_tmp = atomic_tmp_file(outf)
+        self._write_test_file(outf_tmp)
+        atomic_install(outf_tmp, outf)
+        self.assertTrue(os.path.exists(outf))
+
+    def test_atomic_install_dev(self):
+        devn = '/dev/null'
+        tmp = atomic_tmp_file(devn)
+        self.assertEqual(tmp, devn)
+        atomic_install(tmp, devn)
+
+    def test_atomic_context_ok(self):
+        outf = self._get_test_out_file(".tar")
+        with AtomicFileCreate(outf) as outf_tmp:
+            self._write_test_file(outf_tmp)
+        self.assertTrue(os.path.exists(outf))
+
+    def test_atomic_context_error(self):
+        outf = self._get_test_out_file(".tar")
+        try:
+            with AtomicFileCreate(outf) as outf_tmp:
+                self._write_test_file(outf_tmp)
+                raise Exception("stop!")
+        except Exception as ex:
+            self.assertEqual(str(ex), "stop!")
+        self.assertFalse(os.path.exists(outf))
+
 
 class TestPanic(ToilTest):
-    
+
     @travis_test
     def test_panic_by_hand(self):
         try:
             self.try_and_panic_by_hand()
         except:
             self.__assert_raised_exception_is_primary()
-    
+
     @travis_test
     def test_panic(self):
         try:
             self.try_and_panic()
         except:
             self.__assert_raised_exception_is_primary()
-    
+
     @travis_test
     def test_panic_with_secondary(self):
         try:
             self.try_and_panic_with_secondary()
         except:
             self.__assert_raised_exception_is_primary()
-    
+
     @travis_test
     def test_nested_panic(self):
         try:

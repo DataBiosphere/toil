@@ -117,8 +117,13 @@ class JobGraph(JobNode):
         # batch system)
         if self.memory < config.defaultMemory:
             self._memory = config.defaultMemory
-            logger.warn("We have increased the default memory of the failed job %s to %s bytes",
+            logger.warn("We have increased the memory of the failed job %s to the default of %s bytes",
                         self, self.memory)
+            
+        if self.disk < config.defaultDisk:
+            self._disk = config.defaultDisk
+            logger.warn("We have increased the disk of the failed job %s to the default of %s bytes",
+                        self, self.disk)
 
     def restartCheckpoint(self, jobStore):
         """Restart a checkpoint after the total failure of jobs in its subtree.

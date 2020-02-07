@@ -1,5 +1,6 @@
 from toil.job import Job
 from toil.common import Toil
+from toil.version import python
 from toil import subprocess
 import os
 import logging
@@ -34,7 +35,7 @@ def writeA(job, mkFile):
 
     # make a file (A.txt) and writes a string 'A' into it using 'mkFile.py'
     content = 'A'
-    cmd = 'python' + ' ' + mkFile_fs + ' ' + 'A.txt' + ' ' + content
+    cmd = python + ' ' + mkFile_fs + ' ' + 'A.txt' + ' ' + content
     this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     this_process.wait()
 
@@ -71,7 +72,7 @@ def writeB(job, mkFile, B_file):
         for line in f:
             file_contents = file_contents + line
 
-    cmd = 'python' + ' ' + mkFile_fs + ' ' + 'B.txt' + ' ' + file_contents
+    cmd = python + ' ' + mkFile_fs + ' ' + 'B.txt' + ' ' + file_contents
     this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     this_process.wait()
 
