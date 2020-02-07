@@ -1,5 +1,5 @@
 SHELL=bash
 
 ifndef TOIL_HOME
-$(error Please run "source environment" or "source environment.dev" in the toil repo root directory before running make commands.)
+$(error Please run "source environment.sh" or "source environment-dev.sh" in the toil repo root directory before running make commands.)
 endif
