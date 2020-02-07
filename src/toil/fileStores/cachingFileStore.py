@@ -308,7 +308,7 @@ class CachingFileStore(AbstractFileStore):
                             args = item[1]
                         # Do it
                         cur.execute(command, args)
-                except e:
+                except Exception as e:
                     logging.error('Error talking to caching database: %s', str(e))
 
                     # Try to make sure we don't somehow leave anything part-done if a
