@@ -77,30 +77,6 @@ def dockerTag():
     return version()
 
 
-def dockerShortTag():
-    """
-    A secondary, shortened form of :func:`dockerTag` with which to tag the appliance image for
-    convenience.
-    """
-    return shortVersion()
-
-
-def dockerMinimalTag():
-    """
-    A minimal tag with which to tag the appliance image for convenience. Does not include
-    information about the git commit or working copy dirtyness.
-    """
-    return distVersion()
-
-
-def buildNumber():
-    """
-    The Jenkins build number, if defined, else None.
-    """
-    import os
-    return os.getenv('BUILD_NUMBER')
-
-
 def currentCommit():
     import os
     from subprocess import check_output
