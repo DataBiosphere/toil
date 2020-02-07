@@ -118,6 +118,11 @@ def dockerRegistry():
     return os.getenv('TOIL_DOCKER_REGISTRY', 'quay.io/ucsc_cgl')
 
 
+def dockerName():
+    import os
+    return os.getenv('TOIL_DOCKER_NAME', 'toil')
+
+
 def dirty():
     import os
     from subprocess import call
