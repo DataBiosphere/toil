@@ -35,21 +35,7 @@ def version():
     A version identifier that includes the full-legth commit SHA1 and an optional suffix to
     indicate that the working copy is dirty.
     """
-    return _version()
-
-
-def shortVersion():
-    """
-    A version identifier that includes the abbreviated commit SHA1 and an optional suffix to
-    indicate that the working copy is dirty.
-    """
-    return _version(shorten=True)
-
-
-def _version(shorten=False):
-    return '-'.join(filter(None, [distVersion(),
-                                  currentCommit()[:7 if shorten else None],
-                                  ('dirty' if dirty() else None)]))
+    return '-'.join(filter(None, [distVersion(), currentCommit(), ('dirty' if dirty() else None)]))
 
 
 def distVersion():
@@ -57,16 +43,11 @@ def distVersion():
     The distribution version identifying a published release on PyPI.
     """
     from pkg_resources import parse_version
-    build_number = buildNumber()
     parsedBaseVersion = parse_version(baseVersion)
     if isinstance(parsedBaseVersion, tuple):
         raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
                            "'pip install setuptools --upgrade'")
-
-    if build_number is not None and parsedBaseVersion.is_prerelease:
-        return baseVersion + '.dev' + build_number
-    else:
-        return baseVersion
+    return baseVersion
 
 
 def dockerTag():
