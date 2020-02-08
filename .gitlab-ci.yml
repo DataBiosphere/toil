@@ -29,7 +29,6 @@ py2_batch_systems:
   stage: test
   script:
     - pwd
-    - . environment-dev.sh
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - python -m pytest -s -r s src/toil/test/batchSystems/batchSystemTest.py
@@ -39,7 +38,6 @@ py2_cwl:
   stage: test
   script:
     - pwd
-    - . environment-dev.sh
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py
 
@@ -47,7 +45,6 @@ py2_wdl:
   stage: test
   script:
     - pwd
-    - . environment-dev.sh
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/wdl/toilwdlTest.py
 
@@ -55,7 +52,6 @@ py2_jobstore_and_provisioning:
   stage: test
   script:
     - pwd
-    - . environment-dev.sh
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/sort/sortTest.py
     - python -m pytest -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py
@@ -66,7 +62,6 @@ py2_main:
   stage: main_tests
   script:
     - pwd
-    - . environment-dev.sh
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/src
     - python -m pytest -s -r s src/toil/test/utils
@@ -75,7 +70,6 @@ py2_appliance_build:
   stage: main_tests
   script:
     - pwd
-    - . environment-dev.sh
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
@@ -86,10 +80,9 @@ py2_integration_jobstore:
   stage: integration
   script:
     - pwd
-    - . environment-dev.sh
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - python -m pytest -s -r s src/toil/test/jobStores/jobStoreTest.py
@@ -98,10 +91,9 @@ py2_integration_sort:
   stage: integration
   script:
     - pwd
-    - . environment-dev.sh
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-    - export TOIL_TEST_INTEGRATIVE=True
+    - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
     # This reads GITLAB_SECRET_FILE_SSH_KEYS
     - python setup_gitlab_ssh.py
     - python -m pytest -s -r s src/toil/test/sort/sortTest.py
@@ -113,7 +105,7 @@ py2_integration_sort:
 #    - pwd
 #    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
 #    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
-#    - export TOIL_TEST_INTEGRATIVE=True
+#    - export TOIL_TEST_INTEGRATIVE=True; export TOIL_AWS_KEYNAME=id_rsa; export TOIL_AWS_ZONE=us-west-2a
 #    # This reads GITLAB_SECRET_FILE_SSH_KEYS
 #    - python setup_gitlab_ssh.py
 #    - python -m pytest -s -r s src/toil/test/provisioners/aws/awsProvisionerTest.py
@@ -124,7 +116,6 @@ py3_batch_systems:
   stage: test
   script:
     - pwd
-    - . environment-dev.sh
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - python -m pytest -s -r s src/toil/test/batchSystems/batchSystemTest.py
@@ -134,7 +125,6 @@ py3_cwl:
   stage: test
   script:
     - pwd
-    - . environment-dev.sh
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py
 
@@ -142,7 +132,6 @@ py3_wdl:
   stage: test
   script:
     - pwd
-    - . environment-dev.sh
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/wdl/toilwdlTest.py
 
@@ -150,7 +139,6 @@ py3_jobstore_and_provisioning:
   stage: test
   script:
     - pwd
-    - . environment-dev.sh
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/jobStores/jobStoreTest.py
     - python -m pytest -s -r s src/toil/test/sort/sortTest.py
@@ -162,7 +150,6 @@ py3_main:
   stage: main_tests
   script:
     - pwd
-    - . environment-dev.sh
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/src
     - python -m pytest -s -r s src/toil/test/utils
@@ -171,7 +158,6 @@ py3_appliance_build:
   stage: main_tests
   script:
     - pwd
-    - . environment-dev.sh
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS

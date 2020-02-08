@@ -4,7 +4,6 @@ python:
   - "3.6"
   - "2.7"
 install:
-  - . environment-dev.sh
   - make prepare
   - make develop extras=[aws,google] # adding extras to avoid import errors
 script:
