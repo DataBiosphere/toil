@@ -3,6 +3,7 @@ import random
 import six
 from six.moves import xrange
 from math import sqrt
+import logging
 import errno
 import os
 import shutil
@@ -22,6 +23,8 @@ if sys.version_info[0] < 3:
     # Define a usable FileNotFoundError as will be raised by os.remove on a
     # nonexistent file.
     FileNotFoundError = OSError
+
+logger = logging.getLogger(__name__)
 
 
 def mkdir_p(path):
@@ -355,6 +358,7 @@ def popen_communicate(cmd, input=None, timeout=None, **kwargs):
             if k in args:
                 del args[k]
 
+    logger.debug("run command: {}".format(" ".join(line)))
     proc = subprocess.Popen(cmd, **args)
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
     if proc.returncode != 0:
