@@ -358,7 +358,7 @@ def popen_communicate(cmd, input=None, timeout=None, **kwargs):
             if k in args:
                 del args[k]
 
-    logger.debug("run command: {}".format(" ".join(line)))
+    logger.debug("run command: {}".format(" ".join(cmd)))
     proc = subprocess.Popen(cmd, **args)
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
     if proc.returncode != 0:
