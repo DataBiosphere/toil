@@ -123,7 +123,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 logger.debug("sacct exit code is %s, returning status %d", exitcode, status)
                 return (state, status)
             logger.debug("Did not find exit code for job in sacct output")
-            return None
+            return (None, None)
 
         def _getJobDetailsFromScontrol(self, slurmJobID):
             args = ['scontrol',
@@ -136,7 +136,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             if rc != 0:
                 # no accounting system or some other error
-                return (None, -999)
+                return (None, None)
 
             job = dict()
             for line in process.stdout:
