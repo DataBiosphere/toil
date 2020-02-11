@@ -67,13 +67,7 @@ def python():
     appliance is only built for particular Python versions, and we would like
     workflows to work with a variety of leader Python versions.
     """
-    import sys
-    
-    if sys.version_info[0] == 3:
-        # Ignore minor version
-        return 'python3'
-    else:
-        return exactPython() 
+    return exactPython()
 
 
 def _pythonVersionSuffix():
@@ -86,10 +80,7 @@ def _pythonVersionSuffix():
 
     # For now, we assume all Python 3 releases are intercompatible.
     # We also only tag the Python 2 releases specially, since Python 2 is old and busted.
-    if sys.version_info[0] == 3:
-        return ''
-    else:
-        return '-py{}'.format(sys.version_info[0])
+    return '-py{}.{}'.format(sys.version_info[0], sys.version_info[1])
 
       
 def dockerTag():
