@@ -31,7 +31,6 @@ pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noq
 sys.path.insert(0, pkg_root)  # noqa
 
 from toil import subprocess
-from toil.lib.compatibility import USING_PYTHON2
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
                        needs_torque)
@@ -50,10 +49,6 @@ class CWLTest(ToilTest):
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
         testhash = '9ddfa5bd2c432fb426087ad938113d4b32a0b36a'
-
-        if USING_PYTHON2:
-            testhash = 'a062055fddcc7d7d9dbc53d28288e3ccb9a800d8'
-
         url = 'https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip' % testhash
         if not os.path.exists(self.cwlSpec):
             urlretrieve(url, 'spec.zip')
