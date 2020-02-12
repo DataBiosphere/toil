@@ -47,6 +47,7 @@ def runSetup():
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
+    pytz = 'pytz>=2012'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
     future = 'future'
@@ -69,7 +70,8 @@ def runSetup():
         subprocess32,
         addict,
         sphinx,
-        pathlib2]
+        pathlib2,
+        pytz]
 
     aws_reqs = [
         boto,
