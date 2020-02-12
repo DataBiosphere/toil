@@ -20,7 +20,7 @@ import string
 
 # Python 3 compatibility imports
 from _ssl import SSLError
-from six import iteritems
+from six import iteritems, text_type
 from toil.lib.memoize import memoize
 import boto.ec2
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
@@ -150,7 +150,11 @@ class AWSProvisioner(AbstractProvisioner):
         bdm = self._getBlockDeviceMapping(E2Instances[leaderNodeType], rootVolSize=leaderStorage)
 
         self._masterPublicKey = 'AAAAB3NzaC1yc2Enoauthorizedkeyneeded' # dummy key
-        userData =  self._getCloudConfigUserData('leader', self._masterPublicKey)
+        userData = self._getCloudConfigUserData('leader', self._masterPublicKey)
+        if isinstance(userData, text_type):
+            # Spot-market provisioning requires bytes for user data.
+            # We probably won't have a spot-market leader, but who knows!
+            userData = userData.encode('utf-8')
         specKwargs = {'key_name': self._keyName, 'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': leaderNodeType,
                   'user_data': userData, 'block_device_map': bdm,
@@ -281,7 +285,10 @@ class AWSProvisioner(AbstractProvisioner):
         bdm = self._getBlockDeviceMapping(instanceType, rootVolSize=self._nodeStorage)
 
         keyPath = self._sseKey if self._sseKey else None
-        userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
+        userData = self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
+        if isinstance(userData, text_type):
+            # Spot-market provisioning requires bytes for user data.
+            userData = userData.encode('utf-8')
         sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if sg.name == self.clusterName]
         kwargs = {'key_name': self._keyName,
                   'security_group_ids': [sg.id for sg in sgs],
