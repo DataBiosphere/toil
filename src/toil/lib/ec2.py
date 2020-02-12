@@ -184,7 +184,7 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
     :rtype: Iterator[list[Instance]]
     """
     def spotRequestNotFound(e):
-        return e.error_code == "InvalidSpotInstanceRequestID.NotFound"
+        return getattr(e, 'error_code', None) == "InvalidSpotInstanceRequestID.NotFound"
 
     for attempt in retry_ec2(retry_for=a_long_time,
                              retry_while=inconsistencies_detected):
@@ -231,9 +231,9 @@ def create_spot_instances(ec2, price, image_id, spec, num_instances=1, timeout=N
 
 
 def inconsistencies_detected(e):
-    if e.code == 'InvalidGroup.NotFound':
+    if getattr(e, 'code', None) == 'InvalidGroup.NotFound':
         return True
-    m = e.error_message.lower()
+    m = getattr(e, 'error_message', '').lower()
     return 'invalid iam instance profile' in m or 'no associated iam roles' in m
 
 
