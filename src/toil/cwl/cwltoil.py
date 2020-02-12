@@ -96,10 +96,24 @@ class IndirectDict(dict):
 
 
 class SkipNull:
+    """
+    Internal sentinel object that indicates a null value produced by each port of a skipped
+    conditional step. The CWL 1.2 specification calls for treating this the exact same
+    as a null value.
+    """
     pass
 
 
 def filter_skip_null(name, value):
+    """
+    Recursively filter out SkipNull objects from 'value'.
+
+    :param name: Name of port producing this value.
+                 Only used when we find an unhandled null from a conditional step
+                 and we print out a warning. The name allows the user to better
+                 localize which step/port was responsible for the unhandled null.
+    :param value: port output value object
+    """
     err_flag = [False]
     value = _filter_skip_null(name, value, err_flag)
     if err_flag[0]:
@@ -111,6 +125,18 @@ def filter_skip_null(name, value):
 
 
 def _filter_skip_null(name, value, err_flag):
+    """
+    Private implementation for recursively filtering out SkipNull objects from 'value'.
+
+    :param name: Name of port producing this value.
+                 Only used when we find an unhandled null from a conditional step
+                 and we print out a warning. The name allows the user to better
+                 localize which step/port was responsible for the unhandled null.
+    :param value: port output value object
+    :param err_flag: A pass by reference boolean (passed by enclosing in a list) that
+                     allows us to flag, at any level of recursion, that we have encountered
+                     a SkipNull.
+    """
     if isinstance(value, SkipNull):
         err_flag[0] = True
         value = None
@@ -122,13 +148,32 @@ def _filter_skip_null(name, value, err_flag):
 
 
 class Conditional:
-
+    """
+    Object holding conditional expression until we are ready to evaluate it.
+    Evaluation occurs at the moment the encloses step is ready to run.
+    """
     def __init__(self, expression=None, outputs=None, requirements=None):
+        """
+        Instantiate a conditional expression.
+
+        :param expression: A string with the expression from the 'when' field of the step
+        :param outputs: The output dictionary for the step. This is needed because if the
+                        step is skipped, all the outputs need to be populated with SkipNull
+                        values
+        :param requirements: The requirements object that is needed for the context the
+                             expression will evaluate in.
+        """
         self.expression = expression
         self.outputs = outputs
         self.requirements = requirements
 
     def is_false(self, job):
+        """
+        Determine if expression evaluates to False given completed step inputs
+
+        :param job: job output object
+        :return: bool
+        """
         if self.expression is None:
             return False
 
@@ -148,7 +193,12 @@ class Conditional:
                 "'%s' evaluated to a non-boolean value" % self.expression)
 
     def skipped_outputs(self):
+        """
+        Generate a dictionary of SkipNull objects corresponding to the output
+        structure of the step.
 
+        :return: dict
+        """
         outobj = {}
 
         def sn(n):
@@ -164,8 +214,19 @@ class Conditional:
 
 
 class ResolveSource(object):
-    """Handle incoming values into a port (linkMerge and pickValue)"""
+    """
+    Apply linkMerge and pickValue operators to values coming into a port.
+    """
     def __init__(self, name, input, source_key, promises):
+        """
+        Construct a container object that carries what information it can about the input
+        sources and the current promises, ready for evaluation when the time comes.
+
+        :param name: human readable name of step/port that this value refers to
+        :param input: CWL input object complete with linkMerge and pickValue fields
+        :param source_key: "source" or "outputSource" depending on what it is
+        :param promises: incident values packed as promises
+        """
         self.name, self.input, self.source_key = name, input, source_key
 
         source_names = aslist(self.input[self.source_key])
@@ -184,7 +245,11 @@ class ResolveSource(object):
             self.promise_tuples = (shortname(s), promises[s].rv())
 
     def resolve(self):
-        """First apply linkMerge then pickValue if either present"""
+        """
+        First apply linkMerge then pickValue if either present
+
+        :return: dict
+        """
         if isinstance(self.promise_tuples, list):
             result = self.link_merge([v[1][v[0]] for v in self.promise_tuples])
         else:
@@ -196,6 +261,12 @@ class ResolveSource(object):
         return result
 
     def link_merge(self, values):
+        """
+        Apply linkMerge operator to `values` object
+
+        :param values: dict: result of step
+        :return: dict
+        """
         link_merge_type = self.input.get("linkMerge", "merge_nested")
 
         if link_merge_type == "merge_nested":
@@ -215,6 +286,12 @@ class ResolveSource(object):
                 "Unsupported linkMerge '%s' on %s." % (link_merge_type, self.name))
 
     def pick_value(self, values):
+        """
+        Apply pickValue operator to `values` object
+
+        :param values: dict
+        :return:
+        """
         pick_value_type = self.input.get("pickValue")
 
         if pick_value_type is None:
@@ -253,34 +330,64 @@ class ResolveSource(object):
 
 
 class StepValueFrom(object):
-    """A workflow step input which has a valueFrom expression attached to it, which
+    """
+    A workflow step input which has a valueFrom expression attached to it, which
     is evaluated to produce the actual input object for the step.
     """
-
     def __init__(self, expr, source, req):
+        """
+        Instantiate an object to carry as much information as we have access to right now
+        about this valueFrom expression
+
+        :param expr: str: expression as a string
+        :param source: the source promise of this step
+        :param req: requirements object that is consumed by CWLtool expression evaluator
+        """
         self.expr = expr
         self.source = source
         self.context = None
         self.req = req
 
     def resolve(self):
+        """
+        The valueFrom expression's context is the value for this input. Resolve the promise.
+
+        :return: object that will serve as expression context
+        """
         self.context = self.source.resolve()
         return self.context
 
     def do_eval(self, inputs):
-        """Evalute ourselves."""
+        """
+        Evaluate the valueFrom expression with the given input object
+
+        :param inputs:
+        :return: object
+        """
         return cwltool.expression.do_eval(
             self.expr, inputs, self.req, None, None, {}, context=self.context)
 
 
 class DefaultWithSource(object):
-    """A workflow step input that has both a source and a default value."""
+    """
+    A workflow step input that has both a source and a default value.
+    """
     def __init__(self, default, source):
+        """
+        Instantiate an object to handle a source that has a default value
+
+        :param default: the default value
+        :param source: the source object
+        """
         self.default = default
         self.source = source
 
     def resolve(self):
-        """Determine the final input value."""
+        """
+        Determine the final input value when the time is right (when the source can be resolved)
+
+        :return: dict
+        """
         if self.source:
             result = self.source.resolve()
             if result:
@@ -289,6 +396,9 @@ class DefaultWithSource(object):
 
 
 class JustAValue(object):
+    """
+    A simple value masquerading as a 'resolve'-able object
+    """
 
     def __init__(self, val):
         self.val = val
@@ -298,8 +408,12 @@ class JustAValue(object):
 
 
 def resolve_indirect(pdict):
-    """Resolve the contents of an indirect dictionary (containing promises) and
+    """
+    Resolve the contents of an indirect dictionary (containing promises) and
     evaluate expressions to produce the dictionary of actual values.
+
+    :param pdict: input pdict for these values
+    :return:
     """
     if isinstance(pdict, IndirectDict):
         first_pass_results = {k: v.resolve() for k, v in pdict.items()}
@@ -1097,7 +1211,8 @@ def main(args=None, stdout=sys.stdout):
     # user to select jobStore or get a default from logic one below.
     parser.add_argument("--jobStore", type=str)
     parser.add_argument("--not-strict", action="store_true")
-    parser.add_argument("--enable-dev", action="store_true")
+    parser.add_argument("--enable-dev", action="store_true",
+                        help="Enable loading and running development versions of CWL")
     parser.add_argument("--quiet", dest="logLevel", action="store_const",
                         const="ERROR")
     parser.add_argument("--basedir", type=str)
