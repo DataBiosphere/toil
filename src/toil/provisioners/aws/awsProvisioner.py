@@ -532,8 +532,9 @@ class AWSProvisioner(AbstractProvisioner):
         root_vol = BlockDeviceType(delete_on_termination=True)
         root_vol.size = rootVolSize
         bdm["/dev/xvda"] = root_vol
-        # the first disk is already attached for us so start with 2nd.
-        for disk in range(1, instanceType.disks + 1):
+        # The first disk is already attached for us so start with 2nd.
+        # Disk count is weirdly a float in our instance database, so make it an int here.
+        for disk in range(1, int(instanceType.disks) + 1):
             bdm[bdtKeys[disk]] = BlockDeviceType(
                 ephemeral_name='ephemeral{}'.format(disk - 1))  # ephemeral counts start at 0
 
