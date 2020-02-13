@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from setuptools import find_packages, setup
-import sys
 import os
-import copy
 
 # setting the 'CPPFLAGS' flag specifies the necessary cython dependency for "http-parser", for more info:
 # toil issue: https://github.com/DataBiosphere/toil/issues/2924
@@ -43,11 +41,11 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20190906054215'
-    schemaSalad = 'schema-salad<5,>=4.5.20190815125611'
-    galaxyLib = 'galaxy-lib==18.9.2'
+    cwltool = 'cwltool<=2.0.20200126090152'
+    galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
+    pytz = 'pytz>=2012'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
     future = 'future'
@@ -68,7 +66,8 @@ def runSetup():
         psutil,
         addict,
         sphinx,
-        pathlib2]
+        pathlib2,
+        pytz]
 
     aws_reqs = [
         boto,
@@ -77,8 +76,7 @@ def runSetup():
         pycryptodome]
     cwl_reqs = [
         cwltool,
-        schemaSalad,
-        galaxyLib]
+        galaxyToolUtil]
     encryption_reqs = [
         pynacl]
     google_reqs = [
@@ -114,7 +112,7 @@ def runSetup():
         description='Pipeline management software for clusters.',
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
-        url="https://github.com/BD2KGenomics/toil",
+        url="https://github.com/DataBiosphere/toil",
         classifiers=[
           'Development Status :: 5 - Production/Stable',
           'Environment :: Console',
@@ -162,7 +160,6 @@ def runSetup():
             'console_scripts': [
                 'toil = toil.utils.toilMain:main',
                 '_toil_worker = toil.worker:main',
-                'cwltoil = toil.cwl.cwltoil:main [cwl]',
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',

@@ -116,8 +116,6 @@ Test Environment Variables
 | TOIL_AWS_KEYNAME       | An AWS keyname (see :ref:`prepareAWS`), which      |
 |                        | is required to run the AWS tests.                  |
 +------------------------+----------------------------------------------------+
-| TOIL_SSH_KEYNAME       | The SSH key to use for tests.                      |
-+------------------------+----------------------------------------------------+
 | TOIL_GOOGLE_PROJECTID  | A Google Cloud account projectID                   |
 |                        | (see :ref:`runningGCE`), which is required to      |
 |                        | to run the Google Cloud tests.                     |
