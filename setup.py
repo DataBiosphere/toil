@@ -119,7 +119,7 @@ def runSetup():
         description='Pipeline management software for clusters.',
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
-        url="https://github.com/BD2KGenomics/toil",
+        url="https://github.com/DataBiosphere/toil",
         classifiers=[
           'Development Status :: 5 - Production/Stable',
           'Environment :: Console',
