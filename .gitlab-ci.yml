@@ -25,7 +25,7 @@ stages:
 
 
 # Python3.6
-py3_batch_systems:
+batch_systems:
   stage: test
   script:
     - pwd
@@ -34,21 +34,21 @@ py3_batch_systems:
     - python -m pytest -s -r s src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest -s -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
-py3_cwl:
+cwl:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py
 
-py3_wdl:
+wdl:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - python -m pytest -s -r s src/toil/test/wdl/toilwdlTest.py
 
-py3_jobstore_and_provisioning:
+jobstore_and_provisioning:
   stage: test
   script:
     - pwd
@@ -61,7 +61,7 @@ py3_jobstore_and_provisioning:
 # https://ucsc-ci.com/databiosphere/toil/-/jobs/38672
 # guessing decorators are masking class as function?  ^  also, abstract class is run as normal test?  should hide.
 
-py3_main:
+main:
   stage: main_tests
   script:
     - pwd
@@ -69,7 +69,7 @@ py3_main:
     - python -m pytest -s -r s src/toil/test/src
     - python -m pytest -s -r s src/toil/test/utils
 
-py3_appliance_build:
+appliance_build:
   stage: main_tests
   script:
     - pwd
@@ -79,7 +79,7 @@ py3_appliance_build:
     - python setup_gitlab_docker.py
     - make push_docker
 
-py3_integration:
+integration:
   stage: integration
   script:
     - pwd

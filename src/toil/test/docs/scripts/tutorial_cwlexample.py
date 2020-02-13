@@ -15,7 +15,7 @@ def runQC(job, cwl_file, cwl_filename, yml_file, yml_filename, outputs_dir, outp
     cwl = job.fileStore.readGlobalFile(cwl_file, userPath=os.path.join(tempDir, cwl_filename))
     yml = job.fileStore.readGlobalFile(yml_file, userPath=os.path.join(tempDir, yml_filename))
 
-    subprocess.check_call(["cwltoil", cwl, yml])
+    subprocess.check_call(["toil-cwl-runner", cwl, yml])
 
     output_filename = "output.txt"
     output_file = job.fileStore.writeGlobalFile(output_filename)

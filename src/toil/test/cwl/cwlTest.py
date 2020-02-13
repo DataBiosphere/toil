@@ -138,7 +138,7 @@ class CWLTest(ToilTest):
 
     @slow
     def test_restart(self):
-        """Enable restarts with CWLtoil -- run failing test, re-run correct test.
+        """Enable restarts with toil-cwl-runner -- run failing test, re-run correct test.
         """
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException
