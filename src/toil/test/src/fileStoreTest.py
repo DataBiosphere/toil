@@ -26,12 +26,13 @@ from uuid import uuid4
 from toil.job import Job
 from toil.fileStores import FileID
 from toil.fileStores.cachingFileStore import IllegalDeletionCacheError, CacheUnbalancedError, CachingFileStore
-from toil.test import ToilTest, needs_aws, needs_azure, needs_google, slow, travis_test
+from toil.test import ToilTest, needs_aws_ec2, needs_google, slow, travis_test
 from toil.leader import FailedJobsException
 from toil.jobStores.abstractJobStore import NoSuchFileException
 from toil.realtimeLogger import RealtimeLogger
 
 import collections
+import datetime
 import inspect
 import logging
 import os
@@ -51,7 +52,7 @@ if sys.version_info[0] < 3:
     # nonexistent file.
     FileNotFoundError = OSError
 
-# Some tests take too long on the AWS and Azure Job stores and are unquitable for CI.  They can be
+# Some tests take too long on the AWS jobstore and are unquitable for CI.  They can be
 # be run during manual tests by setting this to False.
 testingIsAutomatic = True
 
@@ -76,9 +77,6 @@ class hidden(object):
                 return self._getTestJobStorePath()
             elif self.jobStoreType == 'aws':
                 return 'aws:%s:cache-tests-%s' % (self.awsRegion(), str(uuid4()))
-            elif self.jobStoreType == 'azure':
-                accountName = os.getenv('TOIL_AZURE_KEYNAME')
-                return 'azure:%s:cache-tests-%s' % (accountName, str(uuid4()))
             elif self.jobStoreType == 'google':
                 projectID = os.getenv('TOIL_GOOGLE_PROJECTID')
                 return 'google:%s:cache-tests-%s' % (projectID, str(uuid4()))
@@ -298,7 +296,7 @@ class hidden(object):
             # If the job store and cache are on the same file system, file
             # sizes are accounted for by the job store and are not reflected in
             # the cache hence this test is redundant (caching will be free).
-            if not self.options.jobStore.startswith(('aws', 'azure', 'google')):
+            if not self.options.jobStore.startswith(('aws', 'google')):
                 workDirDev = os.stat(self.options.workDir).st_dev
                 jobStoreDev = os.stat(os.path.dirname(self.options.jobStore)).st_dev
                 if workDirDev == jobStoreDev:
@@ -1074,10 +1072,12 @@ class hidden(object):
             job.fileStore.deleteLocalFile(localFsID)
             assert not os.path.exists(readBackFile1)
             assert not os.path.exists(readBackFile2)
-            # Try to get a non-FileID
+            # Try to get a non-FileID that doesn't exist.
             try:
                 job.fileStore.readGlobalFile('bogus')
-            except TypeError:
+            except NoSuchFileException:
+                # TODO: We would like to require TypeError, but for Cactus
+                # support we have to accept non-FileIDs.
                 pass
             else:
                 raise RuntimeError("Managed to get a file from a non-FileID")
@@ -1089,6 +1089,67 @@ class hidden(object):
             else:
                 raise RuntimeError("Managed to read a non-existent file")
 
+        @travis_test
+        def testSimultaneousReadsUncachedStream(self):
+            """
+            Test many simultaneous read attempts on a file created via a stream
+            directly to the job store.
+            """
+            self.options.retryCount = 0
+            self.options.disableChaining = True
+            
+            # Make a file
+            parent = Job.wrapJobFn(self._createUncachedFileStream)
+            # Now make a bunch of children fight over it
+            for i in range(30):
+                parent.addChildJobFn(self._readFileWithDelay, parent.rv())
+
+            Job.Runner.startToil(parent, self.options)
+
+        @staticmethod
+        def _createUncachedFileStream(job):
+            """
+            Create and return a FileID for a non-cached file written via a stream.
+            """
+
+            messageBytes = 'This is a test file\n'.encode('utf-8')
+
+            with job.fileStore.jobStore.writeFileStream() as (out, idString):
+                # Write directly to the job store so the caching file store doesn't even see it.
+                # TODO: If we ever change how the caching file store does its IDs we will have to change this.
+                out.write(messageBytes)
+
+            # Now make a file ID
+            fileID = FileID(idString, len(messageBytes))
+
+            return fileID
+
+        @staticmethod
+        def _readFileWithDelay(job, fileID, cores=0.1, memory=50 * 1024 * 1024, disk=50 * 1024 * 1024):
+            """
+            Read a file from the CachingFileStore with a delay imposed on the download.
+            Should create contention.
+
+            Has low requirements so we can run a lot of copies at once.
+            """
+
+            # Make sure the file store delays
+            # Delay needs to be longer than the timeout for sqlite locking in the file store.
+            job.fileStore.forceDownloadDelay = 120
+
+            readStart = datetime.datetime.now()
+            logger.debug('Begin read at %s', str(readStart))
+            
+            localPath = job.fileStore.readGlobalFile(fileID, cache=True, mutable=True)
+
+            readEnd = datetime.datetime.now()
+            logger.debug('End read at %s: took %f seconds', str(readEnd), (readEnd - readStart).total_seconds())
+
+            with open(localPath, 'rb') as fh:
+                text = fh.read().decode('utf-8').strip()
+            logger.debug('Got file contents: %s', text)
+                
+
 
 class NonCachingFileStoreTestWithFileJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'file'
@@ -1098,28 +1159,16 @@ class CachingFileStoreTestWithFileJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'file'
 
 
-@needs_aws
+@needs_aws_ec2
 class NonCachingFileStoreTestWithAwsJobStore(hidden.AbstractNonCachingFileStoreTest):
     jobStoreType = 'aws'
 
 
 @slow
-@needs_aws
+@needs_aws_ec2
 @pytest.mark.timeout(1000)
 class CachingFileStoreTestWithAwsJobStore(hidden.AbstractCachingFileStoreTest):
     jobStoreType = 'aws'
-
-
-@needs_azure
-class NonCachingFileStoreTestWithAzureJobStore(hidden.AbstractNonCachingFileStoreTest):
-    jobStoreType = 'azure'
-
-
-@slow
-@needs_azure
-@pytest.mark.timeout(1000)
-class CachingFileStoreTestWithAzureJobStore(hidden.AbstractCachingFileStoreTest):
-    jobStoreType = 'azure'
 
 
 @needs_google

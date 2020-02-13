@@ -55,18 +55,26 @@ from toil.fileStores import FileID
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
-from toil.jobStores.googleJobStore import googleRetry
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
-                       needs_aws,
-                       needs_azure,
+                       needs_aws_s3,
                        needs_encryption,
                        make_tests,
                        needs_google,
                        travis_test,
                        slow)
 from future.utils import with_metaclass
+
+# Need googleRetry decorator even if google is not available, so make one up.
+# Unconventional use of decorator to determine if google is enabled by seeing if
+# it returns the parameter passed in.
+if needs_google(needs_google) is needs_google:
+    from toil.jobStores.googleJobStore import googleRetry
+else:
+    def googleRetry(x):
+        return x
+
 
 logger = logging.getLogger(__name__)
 
@@ -1059,14 +1067,11 @@ class AbstractEncryptedJobStoreTest(object):
         def setUp(self):
             # noinspection PyAttributeOutsideInit
             self.sseKeyDir = tempfile.mkdtemp()
-            # noinspection PyAttributeOutsideInit
-            self.cseKeyDir = tempfile.mkdtemp()
             super(AbstractEncryptedJobStoreTest.Test, self).setUp()
 
         def tearDown(self):
             super(AbstractEncryptedJobStoreTest.Test, self).tearDown()
             shutil.rmtree(self.sseKeyDir)
-            shutil.rmtree(self.cseKeyDir)
 
         def _createConfig(self):
             config = super(AbstractEncryptedJobStoreTest.Test, self)._createConfig()
@@ -1075,11 +1080,6 @@ class AbstractEncryptedJobStoreTest(object):
                 f.write('01234567890123456789012345678901')
             config.sseKey = sseKeyFile
             # config.attrib['sse_key'] = sseKeyFile
-
-            cseKeyFile = os.path.join(self.cseKeyDir, 'keyFile')
-            with open(cseKeyFile, 'w') as f:
-                f.write("i am a fake key, so don't use me")
-            config.cseKey = cseKeyFile
             return config
 
         def testEncrypted(self):
@@ -1087,7 +1087,7 @@ class AbstractEncryptedJobStoreTest(object):
             Create an encrypted file. Read it in encrypted mode then try with encryption off
             to ensure that it fails.
             """
-            phrase = 'This file is encrypted.'
+            phrase = 'This file is encrypted.'.encode('utf-8')
             fileName = 'foo'
             with self.jobstore_initialized.writeSharedFileStream(fileName, isProtected=True) as f:
                 f.write(phrase)
@@ -1096,12 +1096,11 @@ class AbstractEncryptedJobStoreTest(object):
 
             # disable encryption
             self.jobstore_initialized.config.sseKey = None
-            self.jobstore_initialized.config.cseKey = None
             try:
                 with self.jobstore_initialized.readSharedFileStream(fileName) as f:
                     self.assertEqual(phrase, f.read())
             except AssertionError as e:
-                self.assertEqual("Content is encrypted but no key was provided.", e.message)
+                self.assertEqual("Content is encrypted but no key was provided.", e.args[0])
             else:
                 self.fail("Read encryption content with encryption off.")
 
@@ -1152,7 +1151,6 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
             self.assertTrue(fileID.endswith(os.path.basename(path)))
         finally:
             os.unlink(path)
-
 
 @needs_google
 class GoogleJobStoreTest(AbstractJobStoreTest.Test):
@@ -1206,7 +1204,7 @@ class GoogleJobStoreTest(AbstractJobStoreTest.Test):
             bucket.delete()
 
 
-@needs_aws
+@needs_aws_s3
 class AWSJobStoreTest(AbstractJobStoreTest.Test):
     def _createJobStore(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1226,6 +1224,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         """
         from boto.sdb import connect_to_region
         from boto.s3.connection import Location, S3Connection
+        from boto.exception import S3ResponseError
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
         from toil.jobStores.aws.utils import retry_s3
         externalAWSLocation = Location.USWest
@@ -1263,9 +1262,19 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail()
             finally:
-                for attempt in retry_s3():
-                    with attempt:
-                        s3.delete_bucket(bucket=bucket)
+                try:
+                    for attempt in retry_s3():
+                        with attempt:
+                            s3.delete_bucket(bucket=bucket)
+                except S3ResponseError as e:
+                    # The actual HTTP code of the error is in status.
+                    # See https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L77-L80
+                    # See also: https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L154-L156
+                    if e.status == 404:
+                        # The bucket doesn't exist; maybe a failed delete actually succeeded.
+                        pass
+                    else:
+                        raise
 
     @slow
     def testInlinedFiles(self):
@@ -1354,7 +1363,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         return AWSJobStore.itemsPerBatchDelete
 
 
-@needs_aws
+@needs_aws_s3
 class InvalidAWSJobStoreTest(ToilTest):
     def testInvalidJobStoreName(self):
         from toil.jobStores.aws.jobStore import AWSJobStore
@@ -1369,98 +1378,7 @@ class InvalidAWSJobStoreTest(ToilTest):
                           'us-west-2:a_b')
 
 
-@needs_azure
-class AzureJobStoreTest(AbstractJobStoreTest.Test):
-    accountName = os.getenv('TOIL_AZURE_KEYNAME')
-
-    def _createJobStore(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore(self.accountName + ':' + self.namePrefix)
-
-    def _corruptJobStore(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        assert isinstance(self.jobstore_initialized, AzureJobStore)  # type hinting
-        self.jobstore_initialized.tableService.delete_table(self.jobstore_initialized.jobFileIDs)
-
-    def _partSize(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        return AzureJobStore._maxAzureBlockBytes
-
-    def testLargeJob(self):
-        from toil.jobStores.azureJobStore import maxAzureTablePropertySize
-        command = os.urandom(maxAzureTablePropertySize * 2)
-        jobNode1 = self.arbitraryJob
-        jobNode1.command = command
-        job1 = self.jobstore_initialized.create(jobNode1)
-        self.assertEqual(job1.command, command)
-        job2 = self.jobstore_initialized.load(job1.jobStoreID)
-        self.assertIsNot(job1, job2)
-        self.assertEqual(job2.command, command)
-
-    def testJobStoreExists(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        assert isinstance(self.jobstore_initialized, AzureJobStore)  # mostly for type hinting
-        self.assertTrue(self.jobstore_initialized._jobStoreExists())
-        self.jobstore_initialized.destroy()
-        self.assertFalse(self.jobstore_initialized._jobStoreExists())
-
-    def _prepareTestFile(self, containerName, size=None):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-
-        fileName = 'testfile_%s' % uuid.uuid4()
-        url = 'wasb://%s@%s.blob.core.windows.net/%s' % (containerName, self.accountName, fileName)
-        if size is None:
-            return url
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        content = os.urandom(size)
-        blobService.create_blob_from_text(containerName, fileName, content)
-        return url, hashlib.md5(content).hexdigest()
-
-    def _hashTestFile(self, url):
-        from toil.jobStores.azureJobStore import AzureJobStore, retry_azure
-        url = urlparse.urlparse(url)
-        blob = AzureJobStore._parseWasbUrl(url)
-        for attempt in retry_azure():
-            with attempt:
-                blob = blob.service.get_blob_to_bytes(blob.container, blob.name)
-                return hashlib.md5(blob.content).hexdigest()
-
-    def _createExternalStore(self):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        containerName = 'import-export-test-%s' % uuid.uuid4()
-        blobService.create_container(containerName)
-        return containerName
-
-    def _cleanUpExternalStore(self, containerName):
-        from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-        from azure.storage.blob.blockblobservice import BlockBlobService
-        blobService = BlockBlobService(account_key=_fetchAzureAccountKey(self.accountName),
-                                       account_name=self.accountName)
-        blobService.delete_container(containerName)
-
-
-@needs_azure
-class InvalidAzureJobStoreTest(ToilTest):
-    def testInvalidJobStoreName(self):
-        from toil.jobStores.azureJobStore import AzureJobStore
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:a--b')
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:' + ('a' * 100))
-        self.assertRaises(ValueError,
-                          AzureJobStore,
-                          'toiltest:a_b')
-
-
-@needs_aws
+@needs_aws_s3
 @needs_encryption
 @slow
 class EncryptedAWSJobStoreTest(AWSJobStoreTest, AbstractEncryptedJobStoreTest.Test):

@@ -9,7 +9,6 @@ import logging
 import shutil
 import threading
 from toil import subprocess
-import multiprocessing
 from past.builtins import basestring
 from six.moves.urllib.request import urlopen
 from contextlib import closing
@@ -17,7 +16,7 @@ import time
 
 from toil.lib.retry import retry
 from toil import which  # replace with shutil.which() directly; python3 only
-from toil.lib.threading import ExceptionalThread
+from toil.lib.threading import ExceptionalThread, cpu_count
 from future.utils import with_metaclass
 
 log = logging.getLogger(__name__)
@@ -30,7 +29,7 @@ class MesosTestSupport(object):
 
     def _startMesos(self, numCores=None):
         if numCores is None:
-            numCores = multiprocessing.cpu_count()
+            numCores = cpu_count()
         shutil.rmtree('/tmp/mesos', ignore_errors=True)
         self.master = self.MesosMasterThread(numCores)
         self.master.start()

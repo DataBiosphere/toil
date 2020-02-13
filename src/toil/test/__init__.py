@@ -15,11 +15,11 @@ from __future__ import absolute_import
 from builtins import next
 from builtins import str
 import logging
-import multiprocessing
 import os
 import re
 import shutil
 import signal
+import sys
 import tempfile
 import threading
 import time
@@ -36,7 +36,7 @@ from six.moves.urllib.request import urlopen
 
 from toil.lib.memoize import memoize
 from toil.lib.iterables import concat
-from toil.lib.threading import ExceptionalThread
+from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.lib.misc import mkdir_p
 from toil.provisioners.aws import runningOnEC2
 from toil import subprocess
@@ -256,10 +256,10 @@ def needs_rsync3(test_item):
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
     return test_item
 
-
-def needs_aws(test_item):
-    """Use as a decorator before test classes or methods to run only if AWS is usable."""
-    test_item = _mark_test('aws', test_item)
+def needs_aws_s3(test_item):
+    """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
+    # TODO: we just check for generic access to the AWS account
+    test_item = _mark_test('aws-s3', test_item)
     try:
         from boto import config
         boto_credentials = config.get('Credentials', 'aws_access_key_id')
@@ -268,8 +268,16 @@ def needs_aws(test_item):
 
     if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2()):
         return unittest.skip("Configure AWS credentials to include this test.")(test_item)
-    elif not os.getenv('TOIL_AWS_KEYNAME'):
-        return unittest.skip("Set TOIL_AWS_KEYNAME to include this test.")(test_item)
+    return test_item
+
+def needs_aws_ec2(test_item):
+    """Use as a decorator before test classes or methods to run only if AWS EC2 is usable."""
+    # Assume we need S3 as well as EC2
+    test_item = _mark_test('aws-ec2', needs_aws_s3(test_item))
+    if not os.getenv('TOIL_AWS_KEYNAME'):
+        # In addition to S3 we also need an SSH key to deploy with.
+        # TODO: We assume that if this is set we have EC2 access.
+        return unittest.skip("Set TOIL_AWS_KEYNAME to an AWS-stored SSH key to include this test.")(test_item)
     return test_item
 
 
@@ -295,32 +303,6 @@ def needs_google(test_item):
     return test_item
 
 
-def needs_azure(test_item):
-    """Use as a decorator before test classes or methods to run only if Azure is usable."""
-    test_item = _mark_test('azure', test_item)
-    keyName = os.getenv('TOIL_AZURE_KEYNAME')
-    if not keyName:
-        return unittest.skip("Set TOIL_AZURE_KEYNAME to include this test.")(test_item)
-
-    try:
-        # noinspection PyUnresolvedReferences
-        import azure.storage
-    except ImportError:
-        return unittest.skip("Install Toil with the 'azure' extra to include this test.")(test_item)
-    else:
-        # check for the credentials file
-        from toil.jobStores.azureJobStore import credential_file_path
-        if not os.path.exists(os.path.expanduser(credential_file_path)):
-            # no file, check for environment variables
-            try:
-                from toil.jobStores.azureJobStore import _fetchAzureAccountKey
-                _fetchAzureAccountKey(keyName)
-            except:
-                 return unittest.skip("Configure %s with the access key for the '%s' storage account." %
-                                      (credential_file_path, keyName))(test_item)
-        return test_item
-
-
 def needs_gridengine(test_item):
     """Use as a decorator before test classes or methods to run only if GridEngine is installed."""
     test_item = _mark_test('gridengine', test_item)
@@ -336,6 +318,17 @@ def needs_torque(test_item):
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
+def needs_kubernetes(test_item):
+    """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
+    test_item = _mark_test('kubernetes', test_item)
+    try:
+        import kubernetes
+        kubernetes.config.load_kube_config()
+    except ImportError:
+        return unittest.skip("Install Toil with the 'kubernetes' extra to include this test.")(test_item)
+    except TypeError:
+        return unittest.skip("Configure Kubernetes (~/.kube/config) to include this test.")(test_item)
+    return test_item
 
 def needs_mesos(test_item):
     """Use as a decorator before test classes or methods to run only if Mesos is installed."""
@@ -407,7 +400,6 @@ def needs_docker(test_item):
     else:
         return unittest.skip("Install docker to include this test.")(test_item)
 
-
 def needs_encryption(test_item):
     """
     Use as a decorator before test classes or methods to only run them if PyNaCl is installed
@@ -440,6 +432,10 @@ def needs_cwl(test_item):
 
 
 def needs_appliance(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    the Toil appliance Docker image is downloaded.
+    """
     import json
     test_item = _mark_test('appliance', test_item)
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
@@ -462,6 +458,23 @@ def needs_appliance(test_item):
             assert False, 'Expected `docker inspect` to return zero or one image.'
     else:
         return unittest.skip('Install Docker to include this test.')(test_item)
+    
+def needs_downloadable_appliance(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    the Toil appliance Docker image ought to be available for download.
+
+    For now, this just skips if running on Python 3.
+    TODO: When the appliance build is set up for Python 3 (when
+    https://github.com/DataBiosphere/toil/issues/2742 is fixed), this behavior
+    should be changed.
+    """
+
+    if sys.version_info[0] == 2:
+        return test_item
+    else:
+        return unittest.skip("Skipping test that needs Toil Appliance, available only for Python 2")(test_item)
+
 
 
 def integrative(test_item):
@@ -713,7 +726,7 @@ class ApplianceTestSupport(ToilTest):
                  representing the respective appliance containers
         """
         if numCores is None:
-            numCores = multiprocessing.cpu_count()
+            numCores = cpu_count()
         # The last container to stop (and the first to start) should clean the mounts.
         with self.LeaderThread(self, mounts, cleanMounts=True) as leader:
             with self.WorkerThread(self, mounts, numCores) as worker:

@@ -103,9 +103,6 @@ class NonCachingFileStore(AbstractFileStore):
         return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
-        if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
@@ -119,9 +116,6 @@ class NonCachingFileStore(AbstractFileStore):
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
-        if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         with self.jobStore.readFileStream(fileStoreID) as f:
             yield f
 
@@ -129,9 +123,6 @@ class NonCachingFileStore(AbstractFileStore):
         self.jobStore.exportFile(jobStoreFileID, dstUrl)
 
     def deleteLocalFile(self, fileStoreID):
-        if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
@@ -141,9 +132,6 @@ class NonCachingFileStore(AbstractFileStore):
                 os.remove(localFilePath)
 
     def deleteGlobalFile(self, fileStoreID):
-        if not isinstance(fileStoreID, FileID):
-            # Don't let the user forge File IDs.
-            raise TypeError('Received file ID not of type FileID: {}'.format(fileStoreID))
         try:
             self.deleteLocalFile(fileStoreID)
         except OSError as e:
@@ -152,7 +140,7 @@ class NonCachingFileStore(AbstractFileStore):
                 pass
             else:
                 raise
-        self.filesToDelete.add(fileStoreID)
+        self.filesToDelete.add(str(fileStoreID))
 
     def waitForCommit(self):
         # there is no asynchronicity in this file store so no need to block at all

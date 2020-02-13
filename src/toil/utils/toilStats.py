@@ -452,9 +452,11 @@ def buildElement(element, items, itemName):
     itemClocks = []
     itemMemory = []
     for item in items:
-        itemTimes.append(assertNonnegative(float(item["time"]), "time"))
-        itemClocks.append(assertNonnegative(float(item["clock"]), "clock"))
-        itemMemory.append(assertNonnegative(float(item["memory"]), "memory"))
+        # If something lacks an entry, assume it used none of that thing.
+        # This avoids crashing when jobs e.g. aren't done.
+        itemTimes.append(assertNonnegative(float(item.get("time", 0)), "time"))
+        itemClocks.append(assertNonnegative(float(item.get("clock", 0)), "clock"))
+        itemMemory.append(assertNonnegative(float(item.get("memory", 0)), "memory"))
     assert len(itemClocks) == len(itemTimes) == len(itemMemory)
 
     itemWaits=[]

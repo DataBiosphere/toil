@@ -120,12 +120,12 @@ class Config(object):
         # Misc
         self.disableCaching = True
         self.disableChaining = False
+        self.disableJobStoreChecksumVerification = False
         self.maxLogFileSize = 64000
         self.writeLogs = None
         self.writeLogsGzip = None
         self.writeLogsFromAllJobs = False
         self.sseKey = None
-        self.cseKey = None
         self.servicePollingInterval = 60
         self.useAsync = True
         self.forceDockerAppliance = False
@@ -269,6 +269,7 @@ class Config(object):
         setOption("maxLocalJobs", int)
         setOption("disableCaching")
         setOption("disableChaining")
+        setOption("disableJobStoreChecksumVerification")
         setOption("maxLogFileSize", h2b, iC(1))
         setOption("writeLogs")
         setOption("writeLogsGzip")
@@ -285,7 +286,6 @@ class Config(object):
                 assert (len(f.readline().rstrip()) == 32)
 
         setOption("sseKey", checkFn=checkSse)
-        setOption("cseKey", checkFn=checkSse)
         setOption("servicePollingInterval", float, fC(0.0))
         setOption("forceDockerAppliance")
 
@@ -311,7 +311,6 @@ jobStoreLocatorHelp = ("A job store holds persistent information about the jobs 
                        "aws:<region>:<prefix> where <region> is the name of an AWS region like "
                        "us-west-2 and <prefix> will be prepended to the names of any top-level "
                        "AWS resources in use by job store, e.g. S3 buckets.\n\n "
-                       "azure:<account>:<prefix>\n\n"
                        "google:<project_id>:<prefix> TODO: explain\n\n"
                        "For backwards compatibility, you may also specify ./foo (equivalent to "
                        "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
@@ -386,9 +385,9 @@ def _addOptions(addGroupFn, config):
                              "in an autoscaled cluster, as well as parameters to control the "
                              "level of provisioning.")
 
-    addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'azure', 'gce'],
+    addOptionFn("--provisioner", dest="provisioner", choices=['aws', 'gce'],
                 help="The provisioner for cluster auto-scaling. The currently supported choices are"
-                     "'azure', 'gce', or 'aws'. The default is %s." % config.provisioner)
+                     "'gce', or 'aws'. The default is %s." % config.provisioner)
 
     addOptionFn('--nodeTypes', default=None,
                 help="List of node types separated by commas. The syntax for each node type "
@@ -542,6 +541,11 @@ def _addOptions(addGroupFn, config):
     addOptionFn('--disableChaining', dest='disableChaining', action='store_true', default=False,
                 help="Disables chaining of jobs (chaining uses one job's resource allocation "
                 "for its successor job if possible).")
+    addOptionFn("--disableJobStoreChecksumVerification", dest="disableJobStoreChecksumVerification",
+                default=False, action="store_true",
+                help=("Disables checksum verification for files transferred to/from the job store. "
+                      "Checksum verification is a safety check to ensure the data is not corrupted "
+                      "during transfer. Currently only supported for non-streaming AWS files."))
     addOptionFn("--maxLogFileSize", dest="maxLogFileSize", default=None,
                 help=("The maximum size of a job log file to keep (in bytes), log files "
                       "larger than this will be truncated to the last X bytes. Setting "
@@ -572,9 +576,6 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--sseKey", dest="sseKey", default=None,
                 help="Path to file containing 32 character key to be used for server-side encryption on "
                      "awsJobStore or googleJobStore. SSE will not be used if this flag is not passed.")
-    addOptionFn("--cseKey", dest="cseKey", default=None,
-                help="Path to file containing 256-bit key to be used for client-side encryption on "
-                     "azureJobStore. By default, no encryption is used.")
     addOptionFn("--setEnv", '-e', metavar='NAME=VALUE or NAME',
                 dest="environment", default=[], action="append",
                 help="Set an environment variable early on in the worker. If VALUE is omitted, "
@@ -860,9 +861,6 @@ class Toil(object):
         elif name == 'aws':
             from toil.jobStores.aws.jobStore import AWSJobStore
             return AWSJobStore(rest)
-        elif name == 'azure':
-            from toil.jobStores.azureJobStore import AzureJobStore
-            return AzureJobStore(rest)
         elif name == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
             return GoogleJobStore(rest)

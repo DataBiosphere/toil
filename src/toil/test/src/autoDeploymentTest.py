@@ -2,11 +2,13 @@
 from builtins import str
 from builtins import object
 import logging
+import sys
 from contextlib import contextmanager
 
 from toil.lib.iterables import concat
 
 from toil import subprocess
+from toil.version import exactPython
 from toil.test import needs_mesos, ApplianceTestSupport, needs_appliance, slow
 
 log = logging.getLogger(__name__)
@@ -38,11 +40,14 @@ class AutoDeploymentTest(ApplianceTestSupport):
             leader.runOnAppliance('virtualenv',
                                   '--system-site-packages',
                                   '--never-download',  # prevent silent upgrades to pip etc
+                                  '--python', exactPython,
                                   'venv')
             leader.runOnAppliance('venv/bin/pip', 'list')  # For diagnostic purposes
             yield leader, worker
 
-    sitePackages = 'venv/lib/python2.7/site-packages'
+    # TODO: Are we sure the python in the appliance we are testing is the same
+    # as the one we are testing from? If not, how can we get the version it is?
+    sitePackages = 'venv/lib/{}/site-packages'.format(exactPython)
 
     def testRestart(self):
         """

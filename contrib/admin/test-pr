@@ -24,3 +24,4 @@ echo "Fetch ${SOURCE_BRANCH} from ${GH_USER}"
 git fetch "git@github.com:${GH_USER}/toil.git" "${SOURCE_BRANCH}"
 echo "Push to Toil ${DEST_BRANCH}"
 git push git@github.com:DataBiosphere/toil.git "FETCH_HEAD:refs/heads/${DEST_BRANCH}"
+

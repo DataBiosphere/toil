@@ -93,11 +93,11 @@ class NoSuchFileException(Exception):
             message = "File '%s' does not exist." % jobStoreFileID
         else:
             message = "File '%s' (%s) does not exist." % (customName, jobStoreFileID)
-        
+
         if extra:
             # Append extra data.
             message += " Extra info: " + " ".join((str(x) for x in extra))
-        
+
         super().__init__(message)
 
 
@@ -235,7 +235,6 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :rtype: list[AbstractJobStore]
         """
         jobStoreClassNames = (
-            "toil.jobStores.azureJobStore.AzureJobStore",
             "toil.jobStores.fileJobStore.FileJobStore",
             "toil.jobStores.googleJobStore.GoogleJobStore",
             "toil.jobStores.aws.jobStore.AWSJobStore",
@@ -279,9 +278,6 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             - 's3' for objects in Amazon S3
                 e.g. s3://bucket/key
 
-            - 'wasb' for blobs in Azure Blob Storage
-                e.g. wasb://container/blob
-
             - 'file' for local files
                 e.g. file:///local/file/path
 
@@ -292,7 +288,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 e.g. gs://bucket/file
 
         :param str srcUrl: URL that points to a file or object in the storage mechanism of a
-                supported URL scheme e.g. a blob in an Azure Blob Storage container.
+                supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param str sharedFileName: Optional name to assign to the imported file within the job store
 
@@ -346,7 +342,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         :param str jobStoreFileID: The id of the file in the job store that should be exported.
         :param str dstUrl: URL that points to a file or object in the storage mechanism of a
-                supported URL scheme e.g. a blob in an Azure Blob Storage container.
+                supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
         dstUrl = urlparse.urlparse(dstUrl)
         otherCls = self._findJobStoreForUrl(dstUrl, export=True)
@@ -374,7 +370,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         returns the size in bytes of the file at the given URL
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an Azure Blob Storage container.
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
         """
         raise NotImplementedError
 
@@ -387,7 +383,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Refer to :func:`~AbstractJobStore.importFile` documentation for currently supported URL schemes.
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an Azure Blob Storage container.
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param writable: a writable stream
         """
@@ -402,7 +398,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Refer to AbstractJobStore.importFile documentation for currently supported URL schemes.
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
-               mechanism of a supported URL scheme e.g. a blob in an Azure Blob Storage container.
+               mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param readable: a readable stream
         """
@@ -786,13 +782,14 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         """
         Takes a file (as a path) and places it in this job store. Returns an ID that can be used
-        to retrieve the file at a later time.
+        to retrieve the file at a later time.  The file is written in a atomic manner.  It will
+        not appear in the jobStore until the write has successfully completed.
 
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
-               
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
@@ -817,11 +814,13 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
         file in the job store. The yielded file handle does not need to and
-        should not be closed explicitly.
+        should not be closed explicitly.  The file is written in a atomic manner.
+        It will not appear in the jobStore until the write has successfully
+        completed.
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
-               
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
@@ -847,7 +846,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
-               
+
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
@@ -866,7 +865,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         the file written/updated. If the file in the job store is later
         modified via updateFile or updateFileStream, it is
         implementation-defined whether those writes will be visible at
-        localFilePath.
+        localFilePath.  The file is copied in an atomic manner.  It will not
+        appear in the local file system until the copy has completed.
 
         The file at the given local path may not be modified after this method returns!
 
@@ -913,6 +913,22 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
+    def getFileSize(self, jobStoreFileID):
+        """
+        Get the size of the given file in bytes, or 0 if it does not exist when queried.
+
+        Note that job stores which encrypt files might return overestimates of
+        file sizes, since the encrypted file may have been padded to the
+        nearest block, augmented with an initialization vector, etc.
+
+        :param str jobStoreFileID: an ID referencing the file to be checked
+
+        :rtype: int
+        """
+        raise NotImplementedError()
+
+
+    @abstractmethod
     def updateFile(self, jobStoreFileID, localFilePath):
         """
         Replaces the existing version of a file in the job store. Throws an exception if the file
@@ -925,7 +941,6 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
-
         :raise NoSuchFileException: if the specified file does not exist
         """
         raise NotImplementedError()
@@ -960,7 +975,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     def writeSharedFileStream(self, sharedFileName, isProtected=None):
         """
         Returns a context manager yielding a writable file handle to the global file referenced
-        by the given name.
+        by the given name.  File will be created in an atomic manner.
 
         :param str sharedFileName: A file name matching AbstractJobStore.fileNameRegex, unique within
                this job store

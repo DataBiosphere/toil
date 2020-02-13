@@ -31,9 +31,8 @@ from toil.lib.bioio import getLogLevelString
 from toil.batchSystems.mesos.test import MesosTestSupport
 from toil.test.sort.sort import merge, sort, copySubRangeOfFile, getMidPoint, makeFileToSort, main
 from toil.test import (ToilTest,
-                       needs_aws,
+                       needs_aws_ec2,
                        needs_mesos,
-                       needs_azure,
                        needs_parasol,
                        needs_gridengine,
                        needs_torque,
@@ -174,11 +173,11 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
 
 
-    @needs_aws
+    @needs_aws_ec2
     def testAwsSingle(self):
         self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='singleMachine')
 
-    @needs_aws
+    @needs_aws_ec2
     @needs_mesos
     def testAwsMesos(self):
         self._startMesos()
@@ -192,19 +191,6 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
         self._startMesos()
         try:
             self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem="mesos")
-        finally:
-            self._stopMesos()
-
-    @needs_azure
-    def testAzureSingle(self):
-        self._toilSort(jobStoreLocator=self._azureJobStore(), batchSystem='singleMachine')
-
-    @needs_azure
-    @needs_mesos
-    def testAzureMesos(self):
-        self._startMesos()
-        try:
-            self._toilSort(jobStoreLocator=self._azureJobStore(), batchSystem="mesos")
         finally:
             self._stopMesos()
 
@@ -322,10 +308,6 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     def _awsJobStore(self):
         return 'aws:%s:sort-test-%s' % (self.awsRegion(), uuid4())
-
-    def _azureJobStore(self):
-        accountName = os.getenv('TOIL_AZURE_KEYNAME')
-        return "azure:%s:sort-test-%s" % (accountName, uuid4())
 
     def _googleJobStore(self):
         projectID = os.getenv('TOIL_GOOGLE_PROJECTID')

@@ -31,6 +31,10 @@ There are several environment variables that affect the way Toil runs.
 |                                  | cases, the system's `standard temporary directory`_|
 |                                  | is used.                                           |
 +----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_OWNER            | A name prefix for easy identification of           |
+|                                  | Kubernetes jobs. If not set, Toil will use the     |
+|                                  | current user name.                                 |
++----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
 |                                  | Appliance you wish to use, in the form             |
 |                                  | ``REPO/IMAGE:TAG``.                                |
@@ -74,8 +78,6 @@ There are several environment variables that affect the way Toil runs.
 |                                  | also be left behind by necessity as it cannot be   |
 |                                  | deleted until all associated nodes have been       |
 |                                  | terminated.                                        |
-+----------------------------------+----------------------------------------------------+
-| TOIL_AZURE_ZONE                  | A specified region for provisioning instances.     |
 +----------------------------------+----------------------------------------------------+
 | TOIL_SLURM_ARGS                  | Arguments for sbatch for the slurm batch system.   |
 |                                  | Do not pass CPU or memory specifications here.     |

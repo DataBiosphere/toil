@@ -22,13 +22,15 @@ import the expand_ function and invoke it directly with either no or exactly one
 
 # Note to maintainers:
 #
-#  - don't import at module level unless you want the imported value to be included in the output
-#  - only import from the Python standard run-time library (you can't have any dependencies)
+#  - don't import at module level unless you want the imported value to be
+#    included in the output
+#  - only import from the Python standard run-time library (you can't have any
+#    dependencies)
+#  - don't import even standard modules at global scope without renaming them
+#    to have leading/trailing underscores
 
-
-baseVersion = '3.21.0a1'
+baseVersion = '4.0.0a1'
 cgcloudVersion = '1.6.0a1.dev393'
-dockerName = 'toil'
 
 
 def version():
@@ -36,78 +38,66 @@ def version():
     A version identifier that includes the full-legth commit SHA1 and an optional suffix to
     indicate that the working copy is dirty.
     """
-    return _version()
-
-
-def shortVersion():
-    """
-    A version identifier that includes the abbreviated commit SHA1 and an optional suffix to
-    indicate that the working copy is dirty.
-    """
-    return _version(shorten=True)
-
-
-def _version(shorten=False):
-    return '-'.join(filter(None, [distVersion(),
-                                  currentCommit()[:7 if shorten else None],
-                                  ('dirty' if dirty() else None)]))
+    return '-'.join(filter(None, [distVersion(), currentCommit(), ('dirty' if dirty() else None)]))
 
 
 def distVersion():
-    """
-    The distribution version identifying a published release on PyPI.
-    """
+    """The distribution version identifying a published release on PyPI."""
     from pkg_resources import parse_version
-    build_number = buildNumber()
-    parsedBaseVersion = parse_version(baseVersion)
-    if isinstance(parsedBaseVersion, tuple):
+    if isinstance(parse_version(baseVersion), tuple):
         raise RuntimeError("Setuptools version 8.0 or newer required. Update by running "
                            "'pip install setuptools --upgrade'")
+    return baseVersion
 
-    if build_number is not None and parsedBaseVersion.is_prerelease:
-        return baseVersion + '.dev' + build_number
-    else:
-        return baseVersion
+def exactPython():
+    """
+    Returns the Python command for the exact version of Python we are installed
+    for. Something like 'python2.7' or 'python3.6'.
+    """
+    import sys
+    return 'python{}.{}'.format(sys.version_info[0], sys.version_info[1])
+
+def python():
+    """
+    Returns the Python command for the general version of Python we are
+    installed for.  Something like 'python2.7' or 'python3'.
+
+    We assume all Python 3s are sufficiently intercompatible that we can just
+    use 'python3' here for all of them. This is useful because the Toil Docker
+    appliance is only built for particular Python versions, and we would like
+    workflows to work with a variety of leader Python versions.
+    """
+    return exactPython()
 
 
+def _pythonVersionSuffix():
+    """
+    Returns a short string identifying the running version of Python. Toil
+    appliances running the same Toil version but on different versions of
+    Python as returned by this function are not compatible.
+    """
+    import sys
+
+    # For now, we assume all Python 3 releases are intercompatible.
+    # We also only tag the Python 2 releases specially, since Python 2 is old and busted.
+    return '-py{}.{}'.format(sys.version_info[0], sys.version_info[1])
+
+      
 def dockerTag():
-    """
-    The primary tag of the Docker image for the appliance. This uniquely identifies the appliance
-    image.
-    """
-    return version()
+    """The primary tag of the Docker image for the appliance. This uniquely identifies the appliance image."""
+    return version() + _pythonVersionSuffix()
 
-
-def dockerShortTag():
-    """
-    A secondary, shortened form of :func:`dockerTag` with which to tag the appliance image for
-    convenience.
-    """
-    return shortVersion()
-
-
-def dockerMinimalTag():
-    """
-    A minimal tag with which to tag the appliance image for convenience. Does not include
-    information about the git commit or working copy dirtyness.
-    """
-    return distVersion()
-
-
-def buildNumber():
-    """
-    The Jenkins build number, if defined, else None.
-    """
-    import os
-    return os.getenv('BUILD_NUMBER')
-
-
+  
 def currentCommit():
+    import os
     from subprocess import check_output
     try:
-        output = check_output('git log --pretty=oneline -n 1 -- $(pwd)', shell=True).decode('utf-8').split()[0]
+        git_root_dir = os.path.dirname(os.path.abspath(__file__))
+        output = check_output('git log --pretty=oneline -n 1 -- {}'.format(git_root_dir),
+                              shell=True,
+                              cwd=git_root_dir).decode('utf-8').split()[0]
     except:
-        # Return this we are not in a git environment.
+        # Return this if we are not in a git environment.
         return '000'
     if isinstance(output, bytes):
         return output.decode('utf-8')
@@ -119,13 +109,21 @@ def dockerRegistry():
     return os.getenv('TOIL_DOCKER_REGISTRY', 'quay.io/ucsc_cgl')
 
 
+def dockerName():
+    import os
+    return os.getenv('TOIL_DOCKER_NAME', 'toil')
+
+
 def dirty():
+    import os
     from subprocess import call
     try:
-        return 0 != call('(git diff --exit-code '
-                         '&& git diff --cached --exit-code) > /dev/null', shell=True)
+        git_root_dir = os.path.dirname(os.path.abspath(__file__))
+        return 0 != call('(git diff --exit-code && git diff --cached --exit-code) > /dev/null',
+                         shell=True,
+                         cwd=git_root_dir)
     except:
-        return False # In case the git call fails.
+        return False  # In case the git call fails.
 
 
 def expand_(name=None):

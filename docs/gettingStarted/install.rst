@@ -60,7 +60,7 @@ Installing Toil with Extra Features
 .. _python-dev:
 .. topic:: Python headers and static libraries
 
-   Needed for the ``mesos``, ``aws``, ``google``, ``azure``, and ``encryption`` extras.
+   Needed for the ``mesos``, ``aws``, ``google``, and ``encryption`` extras.
 
    On Ubuntu::
 
@@ -89,7 +89,7 @@ Some optional features, called *extras*, are not included in the basic
 installation of Toil. To install Toil with all its bells and whistles, first
 install any necessary headers and libraries (`python-dev`_, `libffi-dev`_). Then run ::
 
-    $ pip install toil[aws,mesos,azure,google,encryption,cwl]
+    $ pip install toil[aws,mesos,google,encryption,cwl]
 
 or ::
 
@@ -110,8 +110,6 @@ Here's what each extra provides:
 +----------------+------------------------------------------------------------+
 | ``google``     | Experimental. Stores workflow state in `Google Cloud       |
 |                | Storage`_.                                                 |
-+----------------+------------------------------------------------------------+
-| ``azure``      | Stores workflow state in `Microsoft Azure`_.               |
 +----------------+------------------------------------------------------------+
 | ``mesos``      | Provides support for running Toil on an `Apache Mesos`_    |
 |                | cluster. Note that running Toil on other batch systems     |
@@ -140,7 +138,7 @@ Here's what each extra provides:
 |                | a linux only extra.                                        |
 +----------------+------------------------------------------------------------+
 | ``encryption`` | Provides client-side encryption for files stored in the    |
-|                | Azure and AWS job stores. This extra requires the          |
+|                | AWS job store. This extra requires the                     |
 |                | following native dependencies:                             |
 |                |                                                            |
 |                | * :ref:`Python headers and static libraries <python-dev>`  |
@@ -157,7 +155,6 @@ Here's what each extra provides:
 .. _AWS: https://aws.amazon.com/
 .. _Apache Mesos: https://mesos.apache.org/gettingstarted/
 .. _Google Cloud Storage: https://cloud.google.com/storage/
-.. _Microsoft Azure: https://azure.microsoft.com/
 .. _Workflow Description Language: https://software.broadinstitute.org/wdl/
 .. _Cryptography: https://cryptography.io/en/latest/installation/
 .. _Homebrew: http://brew.sh/
@@ -193,7 +190,7 @@ source code will immediately affect the virtualenv)::
 
 Or, to install with support for all optional :ref:`extras`::
 
-    $ make develop extras=[aws,mesos,azure,google,encryption,cwl]
+    $ make develop extras=[aws,mesos,google,encryption,cwl]
 
 Or::
 

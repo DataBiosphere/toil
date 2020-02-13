@@ -26,8 +26,6 @@ Syntax for specifying different job stores:
 
     AWS: ``aws:region-here:job-store-name``
 
-    Azure: ``azure:account-name-here:job-store-name``
-
     Google: ``google:projectID-here:job-store-name``
 
 Different types of job store options can be found below.
@@ -279,9 +277,6 @@ the logging module:
                         for server-side encryption on awsJobStore or
                         googleJobStore. SSE will not be used if this flag is
                         not passed.
-  --cseKey CSEKEY       Path to file containing 256-bit key to be used for
-                        client-side encryption on azureJobStore. By default,
-                        no encryption is used.
   --setEnv NAME
                         NAME=VALUE or NAME, -e NAME=VALUE or NAME are also valid.
                         Set an environment variable early on in the worker. If

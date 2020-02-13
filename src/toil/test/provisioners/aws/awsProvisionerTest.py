@@ -26,12 +26,13 @@ from builtins import str
 
 from toil import subprocess
 from toil.provisioners import clusterFactory
-from toil.test import needs_aws, integrative, ToilTest, needs_appliance, timeLimit, slow
+from toil.version import exactPython
+from toil.test import needs_aws_ec2, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)
 
 
-@needs_aws
+@needs_aws_ec2
 @integrative
 @needs_appliance
 @slow
@@ -113,7 +114,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         assert len(self.getMatchingRoles()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
-        venv_command = ['virtualenv', '--system-site-packages', '--never-download', '/home/venv']
+        venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', '/home/venv']
         self.sshUtil(venv_command)
 
         upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
@@ -209,14 +210,14 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         return volumeID
 
     @integrative
-    @needs_aws
+    @needs_aws_ec2
     def testAutoScale(self):
         self.instanceTypes = ["m3.large"]
         self.numWorkers = ['2']
         self._test()
 
     @integrative
-    @needs_aws
+    @needs_aws_ec2
     def testSpotAutoScale(self):
         self.instanceTypes = ["m3.large:%f" % self.spotBid]
         self.numWorkers = ['2']
@@ -288,7 +289,7 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         self.sshUtil(runCommand)
 
     @integrative
-    @needs_aws
+    @needs_aws_ec2
     def testAutoScale(self):
         self.instanceTypes = ["t2.small", "m3.large"]
         self.numWorkers = ['2', '1']

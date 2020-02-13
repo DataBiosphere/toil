@@ -121,7 +121,11 @@ class SDBHelper(object):
 
     @classmethod
     def binaryToAttributes(cls, binary):
+        """
+        Turn a bytestring, or None, into SimpleDB attributes.
+        """
         if binary is None: return {u'numChunks': 0}
+        assert isinstance(binary, bytes)
         assert len(binary) <= cls.maxBinarySize()
         # The use of compression is just an optimization. We can't include it in the maxValueSize
         # computation because the compression ratio depends on the input.
@@ -296,6 +300,10 @@ def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, ds
     copyEncryptionArgs.update(destEncryptionArgs)
 
     dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
+
+    # Wait until the object exists before calling head_object
+    object_summary = s3.ObjectSummary(dstObject.bucket_name, dstObject.key)
+    object_summary.wait_until_exists(**destEncryptionArgs)
 
     # Unfortunately, boto3's managed copy doesn't return the version
     # that it actually copied to. So we have to check immediately

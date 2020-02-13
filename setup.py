@@ -11,9 +11,22 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 from setuptools import find_packages, setup
 import sys
+import os
+import copy
+
+# setting the 'CPPFLAGS' flag specifies the necessary cython dependency for "http-parser", for more info:
+# toil issue: https://github.com/DataBiosphere/toil/issues/2924
+# very similar to this issue: https://github.com/mcfletch/pyopengl/issues/11
+# the "right way" is waiting for a fix from "http-parser", but this fixes things in the meantime since that might take a while
+cppflags = os.environ.get('CPPFLAGS')
+if cppflags:
+    # note, duplicate options don't affect things here so we don't check - Mark D
+    os.environ['CPPFLAGS'] = ' '.join([cppflags, '-DPYPY_VERSION'])
+else:
+    os.environ['CPPFLAGS'] = '-DPYPY_VERSION'
+
 
 def runSetup():
     """
@@ -26,20 +39,15 @@ def runSetup():
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'pymesos==0.3.7'
     psutil = 'psutil >= 3.0.1, <6'
-    azureCosmosdbTable = 'azure-cosmosdb-table==0.37.1'
-    azureAnsible = 'ansible[azure]==2.5.0a1'
-    azureStorage = 'azure-storage==0.35.1'
-    secretstorage = 'secretstorage<3'
     pynacl = 'pynacl==1.1.2'
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
     cwltool = 'cwltool<=2.0.20200126090152'
-    schemaSalad = 'schema-salad<6,>=5.0.20200126033820'
-    galaxyLib = 'galaxy-lib==18.9.2'
+    galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
-    pytx = 'pytz>=2012'
+    pytz = 'pytz>=2012'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
     future = 'future'
@@ -62,22 +70,17 @@ def runSetup():
         subprocess32,
         addict,
         sphinx,
-        pathlib2]
+        pathlib2,
+        pytz]
 
     aws_reqs = [
         boto,
         boto3,
         futures,
         pycryptodome]
-    azure_reqs = [
-        azureCosmosdbTable,
-        secretstorage,
-        azureAnsible,
-        azureStorage]
     cwl_reqs = [
         cwltool,
-        schemaSalad,
-        galaxyLib]
+        galaxyToolUtil]
     encryption_reqs = [
         pynacl]
     google_reqs = [
@@ -100,13 +103,11 @@ def runSetup():
     # must be explicitly installed as an extra
     all_reqs = \
         aws_reqs + \
-        azure_reqs + \
         cwl_reqs + \
         encryption_reqs + \
         google_reqs + \
         kubernetes_reqs + \
         mesos_reqs
-        
 
     # remove the subprocess32 backport if not python2
     if not sys.version_info[0] == 2:
@@ -118,7 +119,7 @@ def runSetup():
         description='Pipeline management software for clusters.',
         author='Benedict Paten',
         author_email='benedict@soe.usc.edu',
-        url="https://github.com/BD2KGenomics/toil",
+        url="https://github.com/DataBiosphere/toil",
         classifiers=[
           'Development Status :: 5 - Production/Stable',
           'Environment :: Console',
@@ -145,7 +146,6 @@ def runSetup():
         install_requires=core_reqs,
         extras_require={
             'aws': aws_reqs,
-            'azure': azure_reqs,
             'cwl': cwl_reqs,
             'encryption': encryption_reqs,
             'google': google_reqs,
@@ -160,7 +160,7 @@ def runSetup():
                                # functionality like the @experimental and @integrative decoratorss:
                                exclude=['*.test.*']),
         package_data = {
-            '': ['*.yml', 'contrib/azure_rm.py', 'cloud-config'],
+            '': ['*.yml', 'cloud-config'],
         },
         # Unfortunately, the names of the entry points are hard-coded elsewhere in the code base so
         # you can't just change them here. Luckily, most of them are pretty unique strings, and thus
@@ -169,7 +169,6 @@ def runSetup():
             'console_scripts': [
                 'toil = toil.utils.toilMain:main',
                 '_toil_worker = toil.worker:main',
-                'cwltoil = toil.cwl.cwltoil:main [cwl]',
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',

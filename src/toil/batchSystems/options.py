@@ -13,11 +13,12 @@ from __future__ import absolute_import
 # See the License for the specific language governing permissions and
 #
 
+from toil.lib.threading import cpu_count
+
 from .registry import batchSystemFactoryFor, defaultBatchSystem, uniqueNames
 
 import socket
 from contextlib import closing
-import multiprocessing
 
 def getPublicIP():
     """Get the IP that this machine uses to contact the internet.
@@ -114,7 +115,7 @@ def addOptions(addOptionFn, config):
                 help=("Should auto-deployment of the user script be deactivated? If True, the user "
                       "script/package should be present at the same location on all workers. "
                       "default=false"))
-    localCores = multiprocessing.cpu_count()
+    localCores = cpu_count()
     addOptionFn("--maxLocalJobs", default=localCores,
                 help="For batch systems that support a local queue for "
                 "housekeeping jobs (Mesos, GridEngine, htcondor, lsf, slurm, "
@@ -146,7 +147,7 @@ def setDefaultOptions(config):
     config.disableAutoDeployment = False
     config.environment = {}
     config.statePollingWait = None  # if not set, will default to seconds in getWaitDuration()
-    config.maxLocalJobs = multiprocessing.cpu_count()
+    config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
 
     # single machine
