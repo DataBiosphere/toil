@@ -340,7 +340,12 @@ class ClusterScaler(object):
             minNodes = [0 for node in self.nodeTypes]
         maxNodes = config.maxNodes
         while len(maxNodes) < len(self.nodeTypes):
+            # Pad out the max node counts if we didn't get one per type.
             maxNodes.append(maxNodes[0])
+        while len(minNodes) < len(self.nodeTypes):
+            # Pad out the min node counts with 0s, so we can have fewer than
+            # the node types without crashing.
+            minNodes.append(0)
         self.minNodes = dict(zip(self.nodeShapes, minNodes))
         self.maxNodes = dict(zip(self.nodeShapes, maxNodes))
 
