@@ -17,9 +17,13 @@
 from __future__ import absolute_import
 from future.utils import raise_
 from builtins import range
+import atexit
+import fcntl
 import logging
 import math
+import os
 import sys
+import tempfile
 import threading
 import traceback
 if sys.version_info >= (3, 0):
@@ -28,6 +32,8 @@ else:
     from threading import _BoundedSemaphore as BoundedSemaphore
 
 import psutil
+
+from toil.lib.misc import mkdir_p
 
 log = logging.getLogger(__name__)
 
@@ -172,3 +178,132 @@ def cpu_count():
     setattr(cpu_count, 'result', result)
     return result
     
+
+# PIDs are a bad identifier, because they are not shared between containers
+# and also may be reused.
+# So instead we have another system for file store implementations to
+# coordinate among themselves, based on file locks.
+# TODO: deduplicate with DeferredFunctionManager?
+
+# Define what directory the name files should be in, under the local
+# workflow directory.
+NAME_DIR_STEM = 'workers'
+
+# Note that we don't offer a way to enumerate these names. You can only get
+# your name and poll others' names (or your own). So we don't have
+# distinguishing prefixes or WIP suffixes to allow for enumeration.
+
+# If the process has a name already, it is a string here. Otherwise this is None.
+current_process_name = None
+# And we need this lock to control access to it
+current_process_name_lock = threading.Lock()
+
+def get_process_name(workflowDir):
+    """
+    Return the name of the current process. Like a PID but visible between
+    containers on what to Toil appears to be a node.
+
+    :param str workflowDir: The Toil workflow directory on the current
+    node. Defines the shared namespace.
+    :return: Process's assigned name
+    :rtype: str
+    """
+
+    global current_process_name_lock
+    global current_process_name
+
+    with current_process_name_lock:
+
+        if current_process_name is not None:
+            # If we already gave ourselves a name, return that.
+            return current_process_name
+
+        # Make sure the name directory exists
+        nameDir = os.path.join(workflowDir, NAME_DIR_STEM)
+        mkdir_p(nameDir)
+
+        # We need to get a name file.
+        nameFD, nameFileName = tempfile.mkstemp(dir=nameDir)
+
+        # Lock the file. The lock will automatically go away if our process does.
+        try:
+            fcntl.lockf(nameFD, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except IOError as e:
+            # Someone else might have locked it even though they should not have.
+            raise RuntimeError("Could not lock process name file %s: %s" % (nameFileName, str(e)))
+
+        # Save the name
+        current_process_name = nameFileName
+
+        # Remember to delete it when we die, if we can.
+        atexit.register(lambda: os.remove(nameFileName))
+
+        # Return the basename
+        return os.path.basename(nameFileName)
+
+        # TODO: we leave the file open forever. We might need that in order for
+        # it to stay locked while we are alive.
+
+def process_name_exists(workflowDir, name):
+    """
+    Return true if the process named by the given name (from process_name) exists, and false otherwise.
+
+    Can see across container boundaries using the given node workflow directory.
+
+    :param str workflowDir: The Toil workflow directory on the current
+    node. Defines the shared namespace.
+    :param str name: Process's name to poll
+    :return: True if the named process is still alive, and False otherwise.
+    :rtype: bool
+    """
+
+    global current_process_name_lock
+    global current_process_name
+
+    with current_process_name_lock:
+        if current_process_name == name:
+            # We are asking about ourselves. We are alive.
+            return True
+
+    # Work out what the corresponding file name is
+    nameFileName = os.path.join(workflowDir, NAME_DIR_STEM, name)
+    if not os.path.exists(nameFileName):
+        # If the file is gone, the process can't exist.
+        return False
+
+    
+    nameFD = None
+    try:
+        # Otherwise see if we can lock it shared
+        nameFD = os.open(nameFileName)
+        try:
+            fcntl.lockf(nameFD, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        except IOError as e:
+            # Could not lock. Process is alive.
+            return True
+        else:
+            # Could lock. Process is dead.
+            # Remove the file. We race to be the first to do so.
+            try:
+                os.remove(nameFileName)
+            except:
+                pass
+            # Unlock
+            fcntl.lockf(nameFD, fcntl.LOCK_UN)
+            # Report process death
+            return False
+    finally:
+        if nameFD is not None:
+            try:
+                os.close(nameFD)
+            except:
+                pass
+    
+
+
+
+
+
+        
+        
+

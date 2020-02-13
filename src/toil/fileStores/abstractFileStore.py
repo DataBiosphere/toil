@@ -85,7 +85,8 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         :param toil.jobGraph.JobGraph jobGraph: the job graph object for the currently
                running job.
         :param str localTempDir: the per-worker local temporary directory, under which
-               per-job directories will be created.
+               per-job directories will be created. Assumed to be inside the
+               workflow directory.
 
         :param waitForPreviousCommit: the waitForCommit method of the previous job's file
                store, when jobs are running in sequence on the same worker. Used to
@@ -446,29 +447,6 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         :rtype: bool
         """
         raise NotImplementedError()
-
-    # Utility function used to identify if a pid is still running on the node.
-    @staticmethod
-    def _pidExists(pid):
-        """
-        This will return True if the process associated with pid is still running on the machine.
-        This is based on stackoverflow question 568271.
-
-        :param int pid: ID of the process to check for
-        :return: True/False
-        :rtype: bool
-        """
-        assert pid > 0
-        try:
-            os.kill(pid, 0)
-        except OSError as err:
-            if err.errno == errno.ESRCH:
-                # ESRCH == No such process
-                return False
-            else:
-                raise
-        else:
-            return True
 
     @abstractclassmethod
     def shutdown(cls, dir_):
