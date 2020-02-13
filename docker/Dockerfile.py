@@ -154,10 +154,6 @@ print(heredoc('''
     RUN mkdir /var/lib/toil
 
     ENV TOIL_WORKDIR /var/lib/toil
-    
-    # https://stackoverflow.com/questions/31858937/transport-endpoint-not-connected-mesos-slave-master/31977045#31977045
-    RUN echo MESOS_QUORUM=1 >> /etc/default/mesos-master
-    
 
     # This component changes most frequently and keeping it last maximizes Docker cache hits.
     COPY {sdistName} .
