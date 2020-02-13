@@ -34,13 +34,6 @@ py2_batch_systems:
     - python -m pytest -s -r s src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest -s -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
-py2_cwl:
-  stage: test
-  script:
-    - pwd
-    - virtualenv -p python2.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
-    - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py
-
 py2_wdl:
   stage: test
   script:

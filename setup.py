@@ -43,12 +43,11 @@ def runSetup():
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool==1.0.20190906054215'
-    schemaSalad = 'schema-salad<5,>=4.5.20190815125611'
-    galaxyLib = 'galaxy-lib==18.9.2'
+    cwltool = 'cwltool<=2.0.20200126090152'
+    galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
-    pytx = 'pytz>=2012'
+    pytz = 'pytz>=2012'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
     future = 'future'
@@ -71,7 +70,8 @@ def runSetup():
         subprocess32,
         addict,
         sphinx,
-        pathlib2]
+        pathlib2,
+        pytz]
 
     aws_reqs = [
         boto,
@@ -80,8 +80,7 @@ def runSetup():
         pycryptodome]
     cwl_reqs = [
         cwltool,
-        schemaSalad,
-        galaxyLib]
+        galaxyToolUtil]
     encryption_reqs = [
         pynacl]
     google_reqs = [
