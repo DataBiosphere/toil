@@ -122,7 +122,7 @@ class JobGraph(JobNode):
             
         if self.disk < config.defaultDisk:
             self._disk = config.defaultDisk
-            logger.warn("We have increased the disk of the failed job %s to the default of %s bytes",
+            logger.warning("We have increased the disk of the failed job %s to the default of %s bytes",
                         self, self.disk)
 
     def restartCheckpoint(self, jobStore):

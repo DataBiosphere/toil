@@ -32,14 +32,14 @@ from toil.test import needs_aws_ec2, integrative, ToilTest, needs_appliance, tim
 log = logging.getLogger(__name__)
 
 
-# @needs_aws_ec2
-# @needs_appliance
-# @slow
+@needs_aws_ec2
+@needs_appliance
+@slow
 @integrative
 class AbstractAWSAutoscaleTest(ToilTest):
     def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
-        self.keyName = os.environ.get('TOIL_AWS_KEYNAME') or 'id_rsa'
+        self.keyName = os.environ.get('TOIL_AWS_KEYNAME', 'id_rsa')
         self.instanceTypes = ["m3.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.numWorkers = ['2']
@@ -57,8 +57,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
     def sshUtil(self, command):
         cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command
         log.debug("Running %s.", str(cmd))
-        p = subprocess.Popen(['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command,
-                             stderr=-1, stdout=-1)
+        p = subprocess.Popen(cmd, stderr=-1, stdout=-1)
         o, e = p.communicate()
         log.debug('\n\nSTDOUT: ' + o.decode("utf-8"))
         log.debug('\n\nSTDERR: ' + e.decode("utf-8"))

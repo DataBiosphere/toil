@@ -69,7 +69,6 @@ def python():
     appliance is only built for particular Python versions, and we would like
     workflows to work with a variety of leader Python versions.
     """
-    import sys
     return exactPython()
 
 

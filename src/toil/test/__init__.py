@@ -443,35 +443,20 @@ def needs_appliance(test_item):
     test_item = _mark_test('appliance', test_item)
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
-
     if not which('docker'):
-        return unittest.skip('Install Docker to include this test.')(test_item)
-    
-def needs_downloadable_appliance(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if
-    the Toil appliance Docker image ought to be available for download.
+        return unittest.skip("Install docker to include this test.")(test_item)
 
-    For now, this just skips if running on Python 3.
-    TODO: When the appliance build is set up for Python 3 (when
-    https://github.com/DataBiosphere/toil/issues/2742 is fixed), this behavior
-    should be changed.
-    """
-
-    if sys.version_info[0] == 2:
-        return test_item
-    else:
-        return unittest.skip("Skipping test that needs Toil Appliance, available only for Python 2")(test_item)
-
-
-    image = applianceSelf()
-    stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
-    if image in stdout.decode("utf-8"):
-        return test_item
+    try:
+        image = applianceSelf()
+        stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+        if image in stdout.decode("utf-8"):
+            return test_item
+    except:
+        pass
 
     return unittest.skip(f"Cannot find appliance {image}. Use 'make test' target to automatically build appliance, or "
-                         f"just run 'make docker' prior to running this test.")(test_item)
+                         f"just run 'make push_docker' prior to running this test.")(test_item)
 
 
 def integrative(test_item):
