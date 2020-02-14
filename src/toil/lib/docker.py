@@ -239,7 +239,7 @@ def apiDockerCall(job,
             return out
         else:
             if (stdout or stderr) and log_config is None:
-                logger.warn('stdout or stderr specified, but log_config is not set.  '
+                logger.warning('stdout or stderr specified, but log_config is not set.  '
                             'Defaulting to "journald".')
                 log_config = dict(type='journald')
 

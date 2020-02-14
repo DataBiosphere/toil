@@ -19,7 +19,7 @@ import pipes
 import socket
 import datetime
 import time
-from toil import subprocess
+import subprocess
 from toil.lib.memoize import parse_iso_utc
 
 a_short_time = 5
@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 class Node(object):
-    maxWaitTime = 5*60
+    maxWaitTime = 5 * 60
 
     def __init__(self, publicIP, privateIP, name, launchTime, nodeType, preemptable, tags=None):
         self.publicIP = publicIP
@@ -78,7 +78,7 @@ class Node(object):
     def copySshKeys(self, keyName):
         """ Copy authorized_keys file to the core user from the keyName user."""
         if keyName == 'core':
-            return # No point.
+            return  # No point.
 
         # Make sure that keys are there.
         self._waitForSSHKeys(keyName=keyName)
@@ -88,8 +88,7 @@ class Node(object):
         # - even so, the key wasn't copied correctly to the core account
         keyFile = '/home/%s/.ssh/authorized_keys' % keyName
         self.sshInstance('/usr/bin/sudo', '/usr/bin/cp', keyFile, '/home/core/.ssh', user=keyName)
-        self.sshInstance('/usr/bin/sudo', '/usr/bin/chown', 'core',
-                         '/home/core/.ssh/authorized_keys', user=keyName)
+        self.sshInstance('/usr/bin/sudo', '/usr/bin/chown', 'core', '/home/core/.ssh/authorized_keys', user=keyName)
 
     def injectFile(self, fromFile, toFile, role):
         """
@@ -102,8 +101,8 @@ class Node(object):
                 return True
             except Exception as e:
                 logger.debug("Rsync to new node failed, trying again. Error message: %s" % e)
-                time.sleep(10*retry)
-        raise RuntimeError("Failed to inject file %s to %s with ip %s" % (fromFile, role, self.effectiveIP) )
+                time.sleep(10 * retry)
+        raise RuntimeError("Failed to inject file %s to %s with ip %s" % (fromFile, role, self.effectiveIP))
 
     def _waitForSSHKeys(self, keyName='core'):
         # the propagation of public ssh keys vs. opening the SSH port is racey, so this method blocks until
@@ -120,7 +119,6 @@ class Node(object):
                 time.sleep(10)
             else:
                 logger.info('...SSH connection established.')
-                # ssh succeeded
                 return
 
     def _waitForDockerDaemon(self, keyName='core'):
@@ -149,22 +147,20 @@ class Node(object):
         startTime = time.time()
         while True:
             if time.time() - startTime > self.maxWaitTime:
-                raise RuntimeError("Appliance failed to start on machine with ip %s"
-                                   " Check if the appliance is valid, e.g. check if the environment variable"
-                                    " TOIL_APPLIANCE_SELF is set correctly and the container exists." % self.effectiveIP)
+                raise RuntimeError("Appliance failed to start on machine with IP: " + self.effectiveIP +
+                                   "\nCheck if TOIL_APPLIANCE_SELF is set correctly and the container exists.")
             try:
-                output = self.sshInstance('/usr/bin/docker', 'ps',
-                                          sshOptions=['-oBatchMode=yes'], user=keyName)
-                
-                if type(role) != type(output):
-                    # We need to encode the role as bytes
-                    role = bytes(role, encoding='utf-8')
-                
+                output = self.sshInstance('/usr/bin/docker', 'ps', sshOptions=['-oBatchMode=yes'], user=keyName)
+
+                role = bytes(role, encoding='utf-8') if type(role) != type(output) else role
+
                 if role in output:
                     logger.info('...Toil appliance started')
                     break
                 else:
                     logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
+                    logger.debug(f'Role: {role}\n'
+                                 f'Output: {output}\n\n')
                     time.sleep(sleepTime)
             except RuntimeError:
                 # ignore exceptions, keep trying
@@ -219,11 +215,10 @@ class Node(object):
 
         kwargs: input, tty, appliance, collectStdout, sshOptions, strict
         """
-        commandTokens = ['ssh', '-t']
-        strict = kwargs.pop('strict', False)
-        if not strict:
-            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] \
-                                 + kwargs.get('sshOptions', [])
+        commandTokens = ['ssh', '-tt']
+        if not kwargs.pop('strict', False):
+            kwargs['sshOptions'] = ['-oUserKnownHostsFile=/dev/null', '-oStrictHostKeyChecking=no'] + kwargs.get(
+                'sshOptions', [])
         sshOptions = kwargs.pop('sshOptions', None)
         # Forward ports:
         # 3000 for Grafana dashboard
@@ -237,51 +232,51 @@ class Node(object):
             assert isinstance(sshOptions, list)
             commandTokens.extend(sshOptions)
         # specify host
-        user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
-        commandTokens.append('%s@%s' % (user,str(self.effectiveIP)))
-        appliance = kwargs.pop('appliance', None)
-        if appliance:
-            # run the args in the appliance
-            tty = kwargs.pop('tty', None)
-            ttyFlag = '-t' if tty else ''
-            commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
+        user = kwargs.pop('user', 'core')  # CHANGED: Is this needed?
+        commandTokens.append('%s@%s' % (user, str(self.effectiveIP)))
 
         inputString = kwargs.pop('input', None)
         if inputString is not None:
             kwargs['stdin'] = subprocess.PIPE
-        collectStdout = kwargs.pop('collectStdout', None)
-        if collectStdout:
+
+        if kwargs.pop('collectStdout', None):
             kwargs['stdout'] = subprocess.PIPE
         kwargs['stderr'] = subprocess.PIPE
+
+        tty = kwargs.pop('tty', None)
+        if kwargs.pop('appliance', None):
+            ttyFlag = '-t' if tty else ''
+            commandTokens += ['docker', 'exec', '-i', ttyFlag, 'toil_leader']
 
         logger.debug('Node %s: %s', self.effectiveIP, ' '.join(args))
         args = list(map(pipes.quote, args))
         commandTokens += args
         logger.debug('Full command %s', ' '.join(commandTokens))
-        popen = subprocess.Popen(commandTokens, **kwargs)
-        stdout, stderr = popen.communicate(input=inputString)
+        process = subprocess.Popen(commandTokens, **kwargs)
+        stdout, stderr = process.communicate(input=inputString)
         # at this point the process has already exited, no need for a timeout
-        resultValue = popen.wait()
+        exit_code = process.returncode
         # ssh has been throwing random 255 errors - why?
-        if resultValue != 0:
-            logger.debug('SSH Error (%s) %s' % (resultValue, stderr))
+        if exit_code != 0:
+            logger.info('Executing the command "%s" on the appliance returned a non-zero '
+                        'exit code %s with stdout %s and stderr %s'
+                        % (' '.join(args), exit_code, stdout, stderr))
             raise RuntimeError('Executing the command "%s" on the appliance returned a non-zero '
                                'exit code %s with stdout %s and stderr %s'
-                               % (' '.join(args), resultValue, stdout, stderr))
+                               % (' '.join(args), exit_code, stdout, stderr))
         return stdout
 
     def coreRsync(self, args, applianceName='toil_leader', **kwargs):
-        remoteRsync = "docker exec -i %s rsync" % applianceName  # Access rsync inside appliance
+        remoteRsync = "docker exec -i %s rsync -v" % applianceName  # Access rsync inside appliance
         parsedArgs = []
         sshCommand = "ssh"
-        strict = kwargs.pop('strict', False)
-        if not strict:
+        if not kwargs.pop('strict', False):
             sshCommand = "ssh -oUserKnownHostsFile=/dev/null -oStrictHostKeyChecking=no"
         hostInserted = False
         # Insert remote host address
         for i in args:
             if i.startswith(":") and not hostInserted:
-                user = kwargs.pop('user', 'core')   # CHANGED: Is this needed?
+                user = kwargs.pop('user', 'core')  # CHANGED: Is this needed?
                 i = ("%s@%s" % (user, self.effectiveIP)) + i
                 hostInserted = True
             elif i.startswith(":") and hostInserted:

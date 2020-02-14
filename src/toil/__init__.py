@@ -1,4 +1,3 @@
-
 # Copyright (C) 2015-2018 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -48,6 +47,7 @@ except ImportError:
 
 log = logging.getLogger(__name__)
 
+
 def which(cmd, mode=os.F_OK | os.X_OK, path=None):
     """
     Copy-pasted in from python3.6's shutil.which().
@@ -61,6 +61,7 @@ def which(cmd, mode=os.F_OK | os.X_OK, path=None):
     path.
 
     """
+
     # Check that a given file can be accessed with the correct mode.
     # Additionally check that `file` is not a directory, as on Windows
     # directories pass the os.access check.
@@ -267,7 +268,8 @@ def checkDockerImageExists(appliance):
     if registryName == 'docker.io':
         return requestCheckDockerIo(origAppliance=appliance, imageName=imageName, tag=tag)
     else:
-        return requestCheckRegularDocker(origAppliance=appliance, registryName=registryName, imageName=imageName, tag=tag)
+        return requestCheckRegularDocker(origAppliance=appliance, registryName=registryName, imageName=imageName,
+                                         tag=tag)
 
 
 def parseDockerAppliance(appliance):
@@ -291,14 +293,14 @@ def parseDockerAppliance(appliance):
     # get the tag
     if ':' in appliance:
         tag = appliance.split(':')[-1]
-        appliance = appliance[:-(len(':' + tag))] # remove only the tag
+        appliance = appliance[:-(len(':' + tag))]  # remove only the tag
     else:
         # default to 'latest' if no tag is specified
         tag = 'latest'
 
     # get the registry and image
-    registryName = 'docker.io' # default if not specified
-    imageName = appliance # will be true if not specified
+    registryName = 'docker.io'  # default if not specified
+    imageName = appliance  # will be true if not specified
     if '/' in appliance and '.' in appliance.split('/')[0]:
         registryName = appliance.split('/')[0]
         imageName = appliance[len(registryName):]
@@ -332,6 +334,7 @@ class ApplianceImageNotFound(ImageNotFound):
     :param str url: The URL at which the image's manifest is supposed to appear
     :param int statusCode: the failing HTTP status code returned by the URL
     """
+
     def __init__(self, origAppliance, url, statusCode):
         msg = ("The docker image that TOIL_APPLIANCE_SELF specifies (%s) produced "
                "a nonfunctional manifest URL (%s). The HTTP status returned was %s. "
@@ -367,7 +370,7 @@ def requestCheckRegularDocker(origAppliance, registryName, imageName, tag):
     :return: Return True if match found.  Raise otherwise.
     """
     ioURL = 'https://{webhost}/v2/{pathName}/manifests/{tag}' \
-              ''.format(webhost=registryName, pathName=imageName, tag=tag)
+            ''.format(webhost=registryName, pathName=imageName, tag=tag)
     response = requests.head(ioURL)
     if not response.ok:
         raise ApplianceImageNotFound(origAppliance, ioURL, response.status_code)
@@ -391,7 +394,8 @@ def requestCheckDockerIo(origAppliance, imageName, tag):
     if '/' not in imageName:
         imageName = 'library/' + imageName
 
-    token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(repo=imageName)
+    token_url = 'https://auth.docker.io/token?service=registry.docker.io&scope=repository:{repo}:pull'.format(
+        repo=imageName)
     requests_url = 'https://registry-1.docker.io/v2/{repo}/manifests/{tag}'.format(repo=imageName, tag=tag)
 
     token = requests.get(token_url)
@@ -411,19 +415,20 @@ def logProcessContext(config):
     log.info("Running Toil version %s.", version)
     log.debug("Configuration: %s", config.__dict__)
 
+
 try:
     from boto import provider
     from botocore.session import Session
-    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache 
+    from botocore.credentials import create_credential_resolver, RefreshableCredentials, JSONFileCache
 
     cache_path = '~/.cache/aws/cached_temporary_credentials'
     datetime_format = "%Y-%m-%dT%H:%M:%SZ"  # incidentally the same as the format used by AWS
     log = logging.getLogger(__name__)
 
-   # But in addition to our manual cache, we also are going to turn on boto3's
-   # new built-in caching layer.
 
-     
+    # But in addition to our manual cache, we also are going to turn on boto3's
+    # new built-in caching layer.
+
     def datetime_to_str(dt):
         """
         Convert a naive (implicitly UTC) datetime object into a string, explicitly UTC.
@@ -459,21 +464,21 @@ try:
         to avoid loads of processes swamping the EC2 metadata service.
         """
 
-
         """
         Create a new BotoCredentialAdapter.
         """
+
         # TODO: We take kwargs because new boto2 versions have an 'anon'
         # argument and we want to be future proof
 
         def __init__(self, name, access_key=None, secret_key=None,
-            security_token=None, profile_name=None, **kwargs):
+                     security_token=None, profile_name=None, **kwargs):
             """
             Create a new BotoCredentialAdapter.
             """
             # TODO: We take kwargs because new boto2 versions have an 'anon'
             # argument and we want to be future proof
-            
+
             if (name == 'aws' or name is None) and access_key is None and not kwargs.get('anon', False):
                 # We are on AWS and we don't have credentials passed along and we aren't anonymous.
                 # We will backend into a boto3 resolver for getting credentials.
@@ -483,11 +488,11 @@ try:
             else:
                 # We will use the normal flow
                 self._boto3_resolver = None
-            
+
             # Pass along all the arguments
             super(BotoCredentialAdapter, self).__init__(name, access_key=access_key,
-                secret_key=secret_key, security_token=security_token,
-                profile_name=profile_name, **kwargs)
+                                                        secret_key=secret_key, security_token=security_token,
+                                                        profile_name=profile_name, **kwargs)
 
         def get_credentials(self, access_key=None, secret_key=None, security_token=None, profile_name=None):
             """
@@ -504,7 +509,8 @@ try:
                 # We're not on AWS, or they passed a key, or we're anonymous.
                 # Use the normal route; our credentials shouldn't expire.
                 super(BotoCredentialAdapter, self).get_credentials(access_key=access_key,
-                    secret_key=secret_key, security_token=security_token, profile_name=profile_name)
+                                                                   secret_key=secret_key, security_token=security_token,
+                                                                   profile_name=profile_name)
 
         def _populate_keys_from_metadata_server(self):
             """
@@ -523,7 +529,7 @@ try:
             """
 
             # This should only happen if we have expiring credentials, which we should only get from boto3
-            assert(self._boto3_resolver is not None)
+            assert (self._boto3_resolver is not None)
 
             self._obtain_credentials_from_cache_or_boto3()
 
@@ -542,7 +548,7 @@ try:
             for attempt in retry(timeout=10, predicate=lambda _: True):
                 with attempt:
                     creds = self._boto3_resolver.load_credentials()
-                    
+
                     if creds is None:
                         try:
                             resolvers = str(self._boto3_resolver.providers)
@@ -640,7 +646,8 @@ try:
                         if self._credential_expiry_time is None:
                             os.close(fd)
                             fd = None
-                            log.debug('Credentials are not temporary.  Leaving %s empty and renaming it to %s.', tmp_path, path)
+                            log.debug('Credentials are not temporary.  Leaving %s empty and renaming it to %s.',
+                                      tmp_path, path)
                             # No need to actually cache permanent credentials,
                             # because we hnow we aren't getting them from the
                             # metadata server or by assuming a role. Those both
@@ -660,6 +667,8 @@ try:
                     finally:
                         if fd is not None:
                             os.close(fd)
+
+
     provider.Provider = BotoCredentialAdapter
 
 except ImportError:

@@ -49,6 +49,7 @@ def distVersion():
                            "'pip install setuptools --upgrade'")
     return baseVersion
 
+
 def exactPython():
     """
     Returns the Python command for the exact version of Python we are installed
@@ -56,6 +57,7 @@ def exactPython():
     """
     import sys
     return 'python{}.{}'.format(sys.version_info[0], sys.version_info[1])
+
 
 def python():
     """
@@ -82,7 +84,7 @@ def _pythonVersionSuffix():
     # We also only tag the Python 2 releases specially, since Python 2 is old and busted.
     return '-py{}.{}'.format(sys.version_info[0], sys.version_info[1])
 
-      
+
 def dockerTag():
     """The primary tag of the Docker image for the appliance. This uniquely identifies the appliance image."""
     return version() + _pythonVersionSuffix()

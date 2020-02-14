@@ -22,7 +22,7 @@ import logging
 import textwrap
 import csv
 
-from toil import subprocess
+import subprocess
 
 wdllogger = logging.getLogger(__name__)
 

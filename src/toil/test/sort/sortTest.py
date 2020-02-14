@@ -22,7 +22,7 @@ from contextlib import contextmanager
 from uuid import uuid4
 import logging
 
-from toil import subprocess
+import subprocess
 from toil import resolveEntryPoint
 from toil.batchSystems.parasolTestSupport import ParasolTestSupport
 from toil.common import Toil

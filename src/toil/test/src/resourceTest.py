@@ -25,7 +25,7 @@ from zipfile import ZipFile
 from toil.test import mkdir_p
 from mock import MagicMock, patch
 
-from toil import subprocess
+import subprocess
 from toil import inVirtualEnv
 from toil.resource import ModuleDescriptor, Resource, ResourceException
 from toil.test import ToilTest, tempFileContaining, travis_test

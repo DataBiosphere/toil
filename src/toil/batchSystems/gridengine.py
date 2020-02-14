@@ -21,7 +21,7 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-from toil import subprocess
+import subprocess
 import time
 import math
 

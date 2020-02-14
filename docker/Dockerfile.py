@@ -142,7 +142,7 @@ print(heredoc('''
 
     # Fix for `screen` (https://github.com/BD2KGenomics/toil/pull/1386#issuecomment-267424561)
     ENV TERM linux
-    
+
     # Run bash instead of sh inside of screen
     ENV SHELL /bin/bash
     RUN echo "defshell -bash" > ~/.screenrc

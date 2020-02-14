@@ -514,7 +514,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             # clean up any associated files before deletion
             for fileID in jobGraph.filesToDelete:
                 # Delete any files that should already be deleted
-                logger.warn("Deleting file '%s'. It is marked for deletion but has not yet been "
+                logger.warning("Deleting file '%s'. It is marked for deletion but has not yet been "
                             "removed.", fileID)
                 self.deleteFile(fileID)
             # Delete the job

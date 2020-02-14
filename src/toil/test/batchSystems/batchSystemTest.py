@@ -30,7 +30,7 @@ import tempfile
 from textwrap import dedent
 import time
 import sys
-from toil import subprocess
+import subprocess
 from unittest import skipIf
 
 from toil.common import Config
@@ -55,7 +55,6 @@ from toil.test import (ToilTest,
                        needs_slurm,
                        needs_torque,
                        needs_htcondor,
-                       needs_downloadable_appliance,
                        slow,
                        tempFileContaining,
                        travis_test)
@@ -346,7 +345,6 @@ class hidden(object):
 
 @needs_kubernetes
 @needs_aws_s3
-@needs_downloadable_appliance
 class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the Kubernetes batch system

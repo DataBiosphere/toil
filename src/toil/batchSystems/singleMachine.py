@@ -30,7 +30,7 @@ from threading import Lock, Condition
 from six.moves.queue import Empty, Queue
 
 import toil
-from toil import subprocess
+import subprocess
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
 from toil.lib.threading import cpu_count
 from toil import worker as toil_worker

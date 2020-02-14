@@ -2,7 +2,7 @@ from __future__ import absolute_import
 from six import iteritems
 import unittest
 import os
-from toil import subprocess
+import subprocess
 from toil.version import exactPython
 import toil.wdl.wdl_parser as wdl_parser
 from toil.wdl.wdl_analysis import AnalyzeWDL

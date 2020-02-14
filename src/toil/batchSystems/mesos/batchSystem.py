@@ -27,6 +27,7 @@ import getpass
 import json
 import traceback
 import addict
+import subprocess
 
 try:
     from urllib2 import urlopen

@@ -369,7 +369,7 @@ class Leader(object):
             # been tried once (without decreasing its retry count as the job
             # itself was successful), and its subtree failed, it shouldn't be retried
             # unless it has more than 1 try.
-            logger.warn('Job: %s is being restarted as a checkpoint after the total '
+            logger.warning('Job: %s is being restarted as a checkpoint after the total '
                         'failure of jobs in its subtree.', jobGraph.jobStoreID)
             self.issueJob(JobNode.fromJobGraph(jobGraph))
         else:
@@ -401,7 +401,7 @@ class Leader(object):
             if (jobGraph.remainingRetryCount == 0
                 or isServiceJob and not self.jobStore.fileExists(jobGraph.errorJobStoreID)):
                 self.processTotallyFailedJob(jobGraph)
-                logger.warn("Job %s with ID %s is completely failed",
+                logger.warning("Job %s with ID %s is completely failed",
                             jobGraph, jobGraph.jobStoreID)
             else:
                 # Otherwise try the job again
@@ -444,7 +444,7 @@ class Leader(object):
                 logger.debug("Job: %s is empty, we are scheduling to clean it up", jobGraph.jobStoreID)
             else:
                 self.processTotallyFailedJob(jobGraph)
-                logger.warn("Job: %s is empty but completely failed - something is very wrong", jobGraph.jobStoreID)
+                logger.warning("Job: %s is empty but completely failed - something is very wrong", jobGraph.jobStoreID)
 
     def _processReadyJobs(self):
         """Process jobs that are ready to be scheduled/have successors to schedule"""
@@ -485,7 +485,7 @@ class Leader(object):
         try:
             updatedJob = self.jobBatchSystemIDToIssuedJob[jobID]
         except KeyError:
-            logger.warn("A result seems to already have been processed "
+            logger.warning("A result seems to already have been processed "
                         "for job %s", jobID)
         else:
             if result == 0:
@@ -495,7 +495,7 @@ class Leader(object):
                 if self.toilMetrics:
                     self.toilMetrics.logCompletedJob(updatedJob)
             else:
-                logger.warn('Job failed with exit value %i: %s',
+                logger.warning('Job failed with exit value %i: %s',
                             result, updatedJob)
             self.processFinishedJob(jobID, result, wallTime=wallTime)
 
@@ -710,7 +710,7 @@ class Leader(object):
             runningJobs = self.batchSystem.getRunningBatchJobIDs()
             for jobBatchSystemID in list(runningJobs.keys()):
                 if runningJobs[jobBatchSystemID] > maxJobDuration:
-                    logger.warn("The job: %s has been running for: %s seconds, more than the "
+                    logger.warning("The job: %s has been running for: %s seconds, more than the "
                                 "max job duration: %s, we'll kill it",
                                 str(self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID),
                                 str(runningJobs[jobBatchSystemID]),
@@ -731,7 +731,7 @@ class Leader(object):
         missingJobIDsSet = set(list(self.reissueMissingJobs_missingHash.keys()))
         for jobBatchSystemID in missingJobIDsSet.difference(jobBatchSystemIDsSet):
             self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
-            logger.warn("Batch system id: %s is no longer missing", str(jobBatchSystemID))
+            logger.warning("Batch system id: %s is no longer missing", str(jobBatchSystemID))
         assert runningJobs.issubset(jobBatchSystemIDsSet) #Assert checks we have
         #no unexpected jobs running
         jobsToKill = []
@@ -742,7 +742,7 @@ class Leader(object):
             else:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] = 1
             timesMissing = self.reissueMissingJobs_missingHash[jobBatchSystemID]
-            logger.warn("Job store ID %s with batch system id %s is missing for the %i time",
+            logger.warning("Job store ID %s with batch system id %s is missing for the %i time",
                         jobStoreID, str(jobBatchSystemID), timesMissing)
             if self.toilMetrics:
                 self.toilMetrics.logMissingJob()
@@ -755,7 +755,7 @@ class Leader(object):
 
     def processRemovedJob(self, issuedJob, resultStatus):
         if resultStatus != 0:
-            logger.warn("Despite the batch system claiming failure the "
+            logger.warning("Despite the batch system claiming failure the "
                         "job %s seems to have finished and been removed", issuedJob)
         self._updatePredecessorStatus(issuedJob.jobStoreID)
 
@@ -779,7 +779,7 @@ class Leader(object):
                     # Process the job from here as any other job removed from the job store.
                     # This is a temporary work around until https://github.com/BD2KGenomics/toil/issues/1091
                     # is completed
-                    logger.warn('Got a stale read from SDB for job %s', jobNode)
+                    logger.warning('Got a stale read from SDB for job %s', jobNode)
                     self.processRemovedJob(jobNode, resultStatus)
                     return
                 else:
@@ -789,7 +789,7 @@ class Leader(object):
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
                     # http://stackoverflow.com/a/15233739
-                    StatsAndLogging.logWithFormatting(jobStoreID, logFileStream, method=logger.warn,
+                    StatsAndLogging.logWithFormatting(jobStoreID, logFileStream, method=logger.warning,
                                                       message='The job seems to have left a log file, indicating failure: %s' % jobGraph)
                 if self.config.writeLogs or self.config.writeLogsGzip:
                     with jobGraph.getLogFileHandle(self.jobStore) as logFileStream:
@@ -799,7 +799,7 @@ class Leader(object):
                 # is assumed not to have captured the failure of the job, so we
                 # reduce the retry count here.
                 if jobGraph.logJobStoreFileID is None:
-                    logger.warn("No log file is present, despite job failing: %s", jobNode)
+                    logger.warning("No log file is present, despite job failing: %s", jobNode)
 
                 # Look for any standard output/error files created by the batch system
                 workflowDir = Toil.getWorkflowDir(self.config.workflowID, self.config.workDir)
@@ -810,11 +810,11 @@ class Leader(object):
                     try:
                         batchSystemFileStream = open(batchSystemFile, 'rb')
                     except:
-                        logger.warn('The batch system left a file %s, but it could not be opened' % batchSystemFile)
+                        logger.warning('The batch system left a file %s, but it could not be opened' % batchSystemFile)
                     else:
                         with batchSystemFileStream:
                             if os.path.getsize(batchSystemFile) > 0:
-                                StatsAndLogging.logWithFormatting(jobStoreID, batchSystemFileStream, method=logger.warn,
+                                StatsAndLogging.logWithFormatting(jobStoreID, batchSystemFileStream, method=logger.warning,
                                                                   message='The batch system left a non-empty file %s:' % batchSystemFile)
                                 if self.config.writeLogs or self.config.writeLogsGzip:
                                     batchSystemFileRoot, _ = os.path.splitext(os.path.basename(batchSystemFile))
@@ -825,7 +825,7 @@ class Leader(object):
                                     batchSystemFileStream.seek(0)
                                     StatsAndLogging.writeLogFiles(jobNames, batchSystemFileStream, self.config, failed=True)
                             else:
-                                logger.warn('The batch system left an empty file %s' % batchSystemFile)
+                                logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
                 jobGraph.setupJobAfterFailure(self.config)
                 self.jobStore.update(jobGraph)

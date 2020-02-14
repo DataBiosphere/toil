@@ -55,7 +55,7 @@ Running CWL workflows using Toil is easy.
 
        (venv) $ pip install 'toil[cwl]'
 
-   This installs the ``toil-cwl-runner`` and ``cwltoil`` executables.
+   This installs the ``toil-cwl-runner`` executable.
 
 #. Copy and paste the following code block into ``example.cwl``:
 

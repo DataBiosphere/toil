@@ -12,9 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from setuptools import find_packages, setup
-import sys
 import os
-import copy
 
 # setting the 'CPPFLAGS' flag specifies the necessary cython dependency for "http-parser", for more info:
 # toil issue: https://github.com/DataBiosphere/toil/issues/2924
@@ -53,7 +51,6 @@ def runSetup():
     future = 'future'
     requests = 'requests>=2, <3'
     docker = 'docker==2.5.1'
-    subprocess32 = 'subprocess32<=3.5.2'
     dateutil = 'python-dateutil'
     addict = 'addict<=2.2.0'
     sphinx = 'sphinx==1.7.5'
@@ -67,7 +64,6 @@ def runSetup():
         docker,
         dateutil,
         psutil,
-        subprocess32,
         addict,
         sphinx,
         pathlib2,
@@ -109,9 +105,6 @@ def runSetup():
         kubernetes_reqs + \
         mesos_reqs
 
-    # remove the subprocess32 backport if not python2
-    if not sys.version_info[0] == 2:
-        core_reqs.remove(subprocess32)
 
     setup(
         name='toil',
@@ -131,8 +124,6 @@ def runSetup():
           'Operating System :: MacOS :: MacOS X',
           'Operating System :: POSIX',
           'Operating System :: POSIX :: Linux',
-          'Programming Language :: Python :: 2.7',
-          'Programming Language :: Python :: 3.5',
           'Programming Language :: Python :: 3.6',
           'Topic :: Scientific/Engineering',
           'Topic :: Scientific/Engineering :: Bio-Informatics',
@@ -205,7 +196,7 @@ def importVersion():
                 raise
 
         if old != new:
-            with NamedTemporaryFile(mode='w',dir='src/toil', prefix='version.py.', delete=False) as f:
+            with NamedTemporaryFile(mode='w', dir='src/toil', prefix='version.py.', delete=False) as f:
                 f.write(new)
             os.rename(f.name, 'src/toil/version.py')
     # Unfortunately, we can't use a straight import here because that would also load the stuff

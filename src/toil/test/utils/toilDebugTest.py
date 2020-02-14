@@ -17,7 +17,7 @@ import os
 import shutil
 import logging
 
-from toil import subprocess
+import subprocess
 from toil.test import ToilTest, slow, travis_test
 from toil.utils.toilDebugFile import recursiveGlob
 

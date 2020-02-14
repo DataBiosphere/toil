@@ -38,7 +38,7 @@ except ImportError:
 import addict
 from pymesos import MesosExecutorDriver, Executor, decode_data, encode_data
 
-from toil import subprocess, pickle
+from toil import pickle
 from toil.lib.expando import Expando
 from toil.lib.threading import cpu_count
 from toil.batchSystems.abstractBatchSystem import BatchSystemSupport

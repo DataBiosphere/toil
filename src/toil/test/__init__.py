@@ -25,6 +25,7 @@ import threading
 import time
 import unittest
 import uuid
+import subprocess
 from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
@@ -33,14 +34,13 @@ from textwrap import dedent
 from unittest.util import strclass
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
+from shutil import which
 
 from toil.lib.memoize import memoize
 from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.lib.misc import mkdir_p
 from toil.provisioners.aws import runningOnEC2
-from toil import subprocess
-from toil import which
 from toil import toilPackageDirPath, applianceSelf
 from toil.version import distVersion
 
@@ -256,6 +256,7 @@ def needs_rsync3(test_item):
         return unittest.skip('rsync needs to be installed to run this test.')(test_item)
     return test_item
 
+
 def needs_aws_s3(test_item):
     """Use as a decorator before test classes or methods to run only if AWS S3 is usable."""
     # TODO: we just check for generic access to the AWS account
@@ -269,6 +270,7 @@ def needs_aws_s3(test_item):
     if not (boto_credentials or os.path.exists(os.path.expanduser('~/.aws/credentials')) or runningOnEC2()):
         return unittest.skip("Configure AWS credentials to include this test.")(test_item)
     return test_item
+
 
 def needs_aws_ec2(test_item):
     """Use as a decorator before test classes or methods to run only if AWS EC2 is usable."""
@@ -318,6 +320,7 @@ def needs_torque(test_item):
         return test_item
     return unittest.skip("Install PBS/Torque to include this test.")(test_item)
 
+
 def needs_kubernetes(test_item):
     """Use as a decorator before test classes or methods to run only if Kubernetes is installed."""
     test_item = _mark_test('kubernetes', test_item)
@@ -329,6 +332,7 @@ def needs_kubernetes(test_item):
     except TypeError:
         return unittest.skip("Configure Kubernetes (~/.kube/config) to include this test.")(test_item)
     return test_item
+
 
 def needs_mesos(test_item):
     """Use as a decorator before test classes or methods to run only if Mesos is installed."""
@@ -436,45 +440,23 @@ def needs_appliance(test_item):
     Use as a decorator before test classes or methods to only run them if
     the Toil appliance Docker image is downloaded.
     """
-    import json
     test_item = _mark_test('appliance', test_item)
     if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
         return unittest.skip('Skipping docker test.')(test_item)
-    if which('docker'):
+    if not which('docker'):
+        return unittest.skip("Install docker to include this test.")(test_item)
+
+    try:
         image = applianceSelf()
-        try:
-            images = subprocess.check_output(['docker', 'inspect', image]).decode('utf-8')
-        except subprocess.CalledProcessError:
-            images = []
-        else:
-            images = {i['Id'] for i in json.loads(images) if image in i['RepoTags']}
-        if len(images) == 0:
-            return unittest.skip("Cannot find appliance image %s. Use 'make test' target to "
-                                 "automatically build appliance, or just run 'make docker' "
-                                 "prior to running this test." % image)(test_item)
-        elif len(images) == 1:
+        stdout, stderr = subprocess.Popen(['docker', 'inspect', '--format="{{json .RepoTags}}"', image],
+                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE).communicate()
+        if image in stdout.decode("utf-8"):
             return test_item
-        else:
-            assert False, 'Expected `docker inspect` to return zero or one image.'
-    else:
-        return unittest.skip('Install Docker to include this test.')(test_item)
-    
-def needs_downloadable_appliance(test_item):
-    """
-    Use as a decorator before test classes or methods to only run them if
-    the Toil appliance Docker image ought to be available for download.
+    except:
+        pass
 
-    For now, this just skips if running on Python 3.
-    TODO: When the appliance build is set up for Python 3 (when
-    https://github.com/DataBiosphere/toil/issues/2742 is fixed), this behavior
-    should be changed.
-    """
-
-    if sys.version_info[0] == 2:
-        return test_item
-    else:
-        return unittest.skip("Skipping test that needs Toil Appliance, available only for Python 2")(test_item)
-
+    return unittest.skip(f"Cannot find appliance {image}. Use 'make test' target to automatically build appliance, or "
+                         f"just run 'make push_docker' prior to running this test.")(test_item)
 
 
 def integrative(test_item):

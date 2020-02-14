@@ -8,13 +8,16 @@ from abc import ABCMeta, abstractmethod
 import logging
 import shutil
 import threading
-from toil import subprocess
+import subprocess
+import multiprocessing
 from past.builtins import basestring
 from six.moves.urllib.request import urlopen
 from contextlib import closing
 import time
 
 from toil.lib.retry import retry
+from shutil import which
+from toil.lib.threading import ExceptionalThread
 from toil import which  # replace with shutil.which() directly; python3 only
 from toil.lib.threading import ExceptionalThread, cpu_count
 from future.utils import with_metaclass

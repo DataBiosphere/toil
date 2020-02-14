@@ -24,7 +24,7 @@ from builtins import next
 from builtins import range
 from builtins import str
 
-from toil import subprocess
+import subprocess
 from toil.provisioners import clusterFactory
 from toil.version import exactPython
 from toil.test import needs_aws_ec2, integrative, ToilTest, needs_appliance, timeLimit, slow
@@ -33,30 +33,13 @@ log = logging.getLogger(__name__)
 
 
 @needs_aws_ec2
-@integrative
 @needs_appliance
 @slow
+@integrative
 class AbstractAWSAutoscaleTest(ToilTest):
-    def sshUtil(self, command):
-        subprocess.check_call(['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command)
-
-    def rsyncUtil(self, src, dest):
-        subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName] + [src, dest])
-
-    def destroyClusterUtil(self):
-        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
-
-    def createClusterUtil(self, args=None):
-        args = [] if args is None else args
-        subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a', '--keyPairName=%s' % self.keyName,
-                               '--leaderNodeType=t2.medium', self.clusterName] + args)
-
-    def cleanJobStoreUtil(self):
-        subprocess.check_call(['toil', 'clean', self.jobStore])
-
     def __init__(self, methodName):
         super(AbstractAWSAutoscaleTest, self).__init__(methodName=methodName)
-        self.keyName = os.getenv('TOIL_AWS_KEYNAME')
+        self.keyName = os.environ.get('TOIL_AWS_KEYNAME', 'id_rsa')
         self.instanceTypes = ["m3.large"]
         self.clusterName = 'aws-provisioner-test-' + str(uuid4())
         self.numWorkers = ['2']
@@ -68,8 +51,24 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
     def tearDown(self):
         super(AbstractAWSAutoscaleTest, self).tearDown()
-        self.destroyClusterUtil()
-        self.cleanJobStoreUtil()
+        subprocess.check_call(['toil', 'destroy-cluster', '-p=aws', self.clusterName])
+        subprocess.check_call(['toil', 'clean', self.jobStore])
+
+    def sshUtil(self, command):
+        cmd = ['toil', 'ssh-cluster', '--insecure', '-p=aws', self.clusterName] + command
+        log.debug("Running %s.", str(cmd))
+        p = subprocess.Popen(cmd, stderr=-1, stdout=-1)
+        o, e = p.communicate()
+        log.debug('\n\nSTDOUT: ' + o.decode("utf-8"))
+        log.debug('\n\nSTDERR: ' + e.decode("utf-8"))
+
+    def rsyncUtil(self, src, dest):
+        subprocess.check_call(['toil', 'rsync-cluster', '--insecure', '-p=aws', self.clusterName] + [src, dest])
+
+    def createClusterUtil(self, args=None):
+        args = [] if args is None else args
+        subprocess.check_call(['toil', 'launch-cluster', '-p=aws', '-z=us-west-2a', f'--keyPairName={self.keyName}',
+                               '--leaderNodeType=t2.medium', self.clusterName] + args)
 
     def getMatchingRoles(self):
         return list(self.cluster._ctx.local_roles())
@@ -92,7 +91,6 @@ class AbstractAWSAutoscaleTest(ToilTest):
         """Download the test script needed by the inheriting unit test class."""
         raise NotImplementedError()
 
-
     @abstractmethod
     def _runScript(self, toilOptions):
         """
@@ -111,17 +109,15 @@ class AbstractAWSAutoscaleTest(ToilTest):
         # already insures the leader is running
         self.cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
         self.leader = self.cluster.getLeader()
+        self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
 
         assert len(self.getMatchingRoles()) == 1
         # --never-download prevents silent upgrades to pip, wheel and setuptools
         venv_command = ['virtualenv', '--system-site-packages', '--python', exactPython, '--never-download', '/home/venv']
         self.sshUtil(venv_command)
 
-        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1']
+        upgrade_command = ['/home/venv/bin/pip', 'install', 'setuptools==28.7.1', 'pyyaml==3.12']
         self.sshUtil(upgrade_command)
-
-        yaml_command = ['/home/venv/bin/pip', 'install', 'pyyaml==3.12']
-        self.sshUtil(yaml_command)
 
         self._getScript()
 
@@ -130,13 +126,13 @@ class AbstractAWSAutoscaleTest(ToilTest):
                        '--workDir=/var/lib/toil',
                        '--clean=always',
                        '--retryCount=2',
-                       '--clusterStats=/home/',
+                       '--clusterStats=/tmp/t/',
                        '--logDebug',
-                       '--logFile=/home/sort.log',
+                       '--logFile=/tmp/t/sort.log',
                        '--provisioner=aws']
 
         toilOptions.extend(['--nodeTypes=' + ",".join(self.instanceTypes),
-                            '--maxNodes=%s' % ",".join(self.numWorkers)])
+                            '--maxNodes=' + ",".join(self.numWorkers)])
         if preemptableJobs:
             toilOptions.extend(['--defaultPreemptable'])
 
@@ -146,7 +142,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
 
         # check stats
         self.sshUtil(['/home/venv/bin/python', '-c', 'import json; import os; '
-                      'json.load(open("/home/" + [f for f in os.listdir("/home/") if f.endswith(".json")].pop()))'])
+                      'json.load(open("/home/" + [f for f in os.listdir("/tmp/t/") if f.endswith(".json")].pop()))'])
 
         from boto.exception import EC2ResponseError
         volumeID = self.getRootVolID()
@@ -168,6 +164,7 @@ class AbstractAWSAutoscaleTest(ToilTest):
         assert len(self.getMatchingRoles()) == 0
 
 
+@integrative
 @pytest.mark.timeout(1800)
 class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
     def __init__(self, name):
@@ -224,11 +221,10 @@ class AWSAutoscaleTest(AbstractAWSAutoscaleTest):
         self._test(preemptableJobs=True)
 
 
+@integrative
 @pytest.mark.timeout(1200)
 class AWSStaticAutoscaleTest(AWSAutoscaleTest):
-    """
-    Runs the tests on a statically provisioned cluster with autoscaling enabled.
-    """
+    """Runs the tests on a statically provisioned cluster with autoscaling enabled."""
     def __init__(self, name):
         super(AWSStaticAutoscaleTest, self).__init__(name)
         self.requestedNodeStorage = 20
@@ -260,9 +256,10 @@ class AWSStaticAutoscaleTest(AWSAutoscaleTest):
         runCommand.extend(toilOptions)
         self.sshUtil(runCommand)
 
+
+@integrative
 @pytest.mark.timeout(1200)
 class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
-
     def __init__(self, name):
         super(AWSAutoscaleTestMultipleNodeTypes, self).__init__(name)
         self.clusterName = 'provisioner-test-' + str(uuid4())
@@ -295,21 +292,21 @@ class AWSAutoscaleTestMultipleNodeTypes(AbstractAWSAutoscaleTest):
         self.numWorkers = ['2', '1']
         self._test()
 
+
+@integrative
 @pytest.mark.timeout(1200)
 class AWSRestartTest(AbstractAWSAutoscaleTest):
-    """
-    This test insures autoscaling works on a restarted Toil run
-    """
-
+    """This test insures autoscaling works on a restarted Toil run."""
     def __init__(self, name):
         super(AWSRestartTest, self).__init__(name)
         self.clusterName = 'restart-test-' + str(uuid4())
 
     def setUp(self):
         super(AWSRestartTest, self).setUp()
-        self.instanceTypes = ['t2.micro']
+        self.instanceTypes = ['t2.small']
         self.numWorkers = ['1']
-        self.scriptName = "/home/restartScript.py"
+        self.scriptDir = '/tmp/t/'
+        self.scriptName = self.scriptDir + 'restartScript.py'
         self.jobStore = 'aws:%s:restart-%s' % (self.awsRegion(), uuid4())
 
     def _getScript(self):
@@ -330,10 +327,16 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
                 Job.Runner.startToil(rootJob, options)
 
         script = dedent('\n'.join(getsource(restartScript).split('\n')[1:]))
-        # use appliance ssh method instead of sshutil so we can specify input param
+        tempfile_path = '/tmp/temp-or-ary.txt'
+        with open(tempfile_path, 'w') as f:
+            # use appliance ssh method instead of sshutil so we can specify input param
+            f.write(script)
         cluster = clusterFactory(provisioner='aws', clusterName=self.clusterName)
         leader = cluster.getLeader()
-        leader.sshAppliance('tee', self.scriptName, input=script)
+        self.sshUtil(['mkdir', '-p', self.scriptDir])  # hot deploy doesn't seem permitted to work in normal /tmp or /home
+        leader.injectFile(tempfile_path, self.scriptName, 'toil_leader')
+        if os.path.exists(tempfile_path):
+            os.remove(tempfile_path)
 
     def _runScript(self, toilOptions):
         # clean = onSuccess
@@ -353,21 +356,21 @@ class AWSRestartTest(AbstractAWSAutoscaleTest):
             command.extend(toilOptions)
             self.sshUtil(command)
 
-    @integrative
     def testAutoScaledCluster(self):
         self._test()
 
+
+@integrative
 @pytest.mark.timeout(1200)
 class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
-
     def __init__(self, name):
         super(PreemptableDeficitCompensationTest, self).__init__(name)
         self.clusterName = 'deficit-test-' + str(uuid4())
 
     def setUp(self):
         super(PreemptableDeficitCompensationTest, self).setUp()
-        self.instanceTypes = ['m3.large:0.01', "m3.large"] # instance needs to be available on the spot market
-        self.numWorkers = ['1','1']
+        self.instanceTypes = ['m3.large:0.01', "m3.large"]  # instance needs to be available on the spot market
+        self.numWorkers = ['1', '1']
         self.jobStore = 'aws:%s:deficit-%s' % (self.awsRegion(), uuid4())
 
     def test(self):
