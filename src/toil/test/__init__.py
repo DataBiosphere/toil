@@ -19,13 +19,14 @@ import os
 import re
 import shutil
 import signal
-import sys
 import tempfile
 import threading
 import time
 import unittest
 import uuid
 import subprocess
+import datetime
+import pytz
 from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
@@ -63,6 +64,12 @@ class ToilTest(unittest.TestCase):
     """
     _tempBaseDir = None
     _tempDirs = None
+
+    def setup_method(self, method):
+        western = pytz.timezone('America/Los_Angeles')
+        california_time = western.localize(datetime.datetime.now())
+        timestamp = california_time.strftime("%b %d %Y %H:%M:%S:%f %Z")
+        print(f"\n\n[TEST] {type(self).__name__}:{method.__name__} ({timestamp})\n\n")
 
     @classmethod
     def setUpClass(cls):
