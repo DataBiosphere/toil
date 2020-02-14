@@ -2,6 +2,7 @@
 #
 # Copyright (C) 2015 Curoverse, Inc
 # Copyright (C) 2016 UCSC Computational Genomics Lab
+# Copyright (C) 2019 Seven Bridges
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -94,138 +95,338 @@ class IndirectDict(dict):
     pass
 
 
-@six.add_metaclass(abc.ABCMeta)
-class MergeInputs(object):
-    """Base type for workflow step inputs that are connected to multiple upstream
-    inputs that must be merged into a single array.
+class SkipNull:
     """
-    def __init__(self, sources):
-        self.sources = sources
-
-    @abc.abstractmethod
-    def resolve(self):
-        """Resolves the inputs."""
-
-
-class MergeInputsNested(MergeInputs):
-    """Merge workflow step inputs that are connected to multiple upstream inputs
-    based on the merge_nested behavior (as described in the CWL spec).
+    Internal sentinel object that indicates a null value produced by each port of a skipped
+    conditional step. The CWL 1.2 specification calls for treating this the exact same
+    as a null value.
     """
-    def resolve(self):
-        return [v[1][v[0]] for v in self.sources]
+    pass
 
 
-class MergeInputsFlattened(MergeInputs):
-    """Merge workflow step inputs that are connected to multiple upstream inputs
-    based on the merge_flattened behavior (as described in the CWL spec).
+def filter_skip_null(name, value):
     """
+    Recursively filter out SkipNull objects from 'value'.
+
+    :param name: Name of port producing this value.
+                 Only used when we find an unhandled null from a conditional step
+                 and we print out a warning. The name allows the user to better
+                 localize which step/port was responsible for the unhandled null.
+    :param value: port output value object
+    """
+    err_flag = [False]
+    value = _filter_skip_null(name, value, err_flag)
+    if err_flag[0]:
+        cwllogger.warning(
+            "In %s, SkipNull result found and cast to None. \n"
+            "You had a conditional step that did not run, "
+            "but you did not use pickValue to handle the skipped input." % name)
+    return value
+
+
+def _filter_skip_null(name, value, err_flag):
+    """
+    Private implementation for recursively filtering out SkipNull objects from 'value'.
+
+    :param name: Name of port producing this value.
+                 Only used when we find an unhandled null from a conditional step
+                 and we print out a warning. The name allows the user to better
+                 localize which step/port was responsible for the unhandled null.
+    :param value: port output value object
+    :param err_flag: A pass by reference boolean (passed by enclosing in a list) that
+                     allows us to flag, at any level of recursion, that we have encountered
+                     a SkipNull.
+    """
+    if isinstance(value, SkipNull):
+        err_flag[0] = True
+        value = None
+    elif isinstance(value, list):
+        return [_filter_skip_null(name, v, err_flag) for v in value]
+    elif isinstance(value, dict):
+        return {k: _filter_skip_null(name, v, err_flag) for k, v in value.items()}
+    return value
+
+
+class Conditional:
+    """
+    Object holding conditional expression until we are ready to evaluate it.
+    Evaluation occurs at the moment the encloses step is ready to run.
+    """
+    def __init__(self, expression=None, outputs=None, requirements=None):
+        """
+        Instantiate a conditional expression.
+
+        :param expression: A string with the expression from the 'when' field of the step
+        :param outputs: The output dictionary for the step. This is needed because if the
+                        step is skipped, all the outputs need to be populated with SkipNull
+                        values
+        :param requirements: The requirements object that is needed for the context the
+                             expression will evaluate in.
+        """
+        self.expression = expression
+        self.outputs = outputs
+        self.requirements = requirements
+
+    def is_false(self, job):
+        """
+        Determine if expression evaluates to False given completed step inputs
+
+        :param job: job output object
+        :return: bool
+        """
+        if self.expression is None:
+            return False
+
+        expr_is_true = cwltool.expression.do_eval(
+            self.expression,
+            {shortname(k): v for k, v in iteritems(
+                resolve_indirect(job))},
+            self.requirements,
+            None,
+            None,
+            {})
+
+        if isinstance(expr_is_true, bool):
+            return not expr_is_true
+
+        raise cwltool.errors.WorkflowException(
+                "'%s' evaluated to a non-boolean value" % self.expression)
+
+    def skipped_outputs(self):
+        """
+        Generate a dictionary of SkipNull objects corresponding to the output
+        structure of the step.
+
+        :return: dict
+        """
+        outobj = {}
+
+        def sn(n):
+            if isinstance(n, Mapping):
+                return shortname(n["id"])
+            if isinstance(n, string_types):
+                return shortname(n)
+
+        for k in [sn(o) for o in self.outputs]:
+            outobj[k] = SkipNull()
+
+        return outobj
+
+
+class ResolveSource(object):
+    """
+    Apply linkMerge and pickValue operators to values coming into a port.
+    """
+    def __init__(self, name, input, source_key, promises):
+        """
+        Construct a container object that carries what information it can about the input
+        sources and the current promises, ready for evaluation when the time comes.
+
+        :param name: human readable name of step/port that this value refers to
+        :param input: CWL input object complete with linkMerge and pickValue fields
+        :param source_key: "source" or "outputSource" depending on what it is
+        :param promises: incident values packed as promises
+        """
+        self.name, self.input, self.source_key = name, input, source_key
+
+        source_names = aslist(self.input[self.source_key])
+        # Rule is that source: [foo] is just foo unless it also has linkMerge: merge_nested
+        if input.get("linkMerge") or len(source_names) > 1:
+            self.promise_tuples = [
+                (shortname(s), promises[s].rv())
+                for s in source_names
+            ]
+        else:
+            # KG: Cargo culting this logic and the reason given from original Toil code:
+            # It seems that an input source with a
+            # '#' in the name will be returned as a
+            # CommentedSeq list by the yaml parser.
+            s = str(source_names[0])
+            self.promise_tuples = (shortname(s), promises[s].rv())
 
     def resolve(self):
-        result = []
-        for promise in self.sources:
-            source = promise[1][promise[0]]
-            if isinstance(source, MutableSequence):
-                result.extend(source)
-            else:
-                result.append(source)
+        """
+        First apply linkMerge then pickValue if either present
+
+        :return: dict
+        """
+        if isinstance(self.promise_tuples, list):
+            result = self.link_merge([v[1][v[0]] for v in self.promise_tuples])
+        else:
+            value = self.promise_tuples
+            result = value[1].get(value[0])
+
+        result = self.pick_value(result)
+        result = filter_skip_null(self.name, result)
         return result
+
+    def link_merge(self, values):
+        """
+        Apply linkMerge operator to `values` object
+
+        :param values: dict: result of step
+        :return: dict
+        """
+        link_merge_type = self.input.get("linkMerge", "merge_nested")
+
+        if link_merge_type == "merge_nested":
+            return values
+
+        elif link_merge_type == "merge_flattened":
+            result = []
+            for v in values:
+                if isinstance(v, MutableSequence):
+                    result.extend(v)
+                else:
+                    result.append(v)
+            return result
+
+        else:
+            raise validate.ValidationException(
+                "Unsupported linkMerge '%s' on %s." % (link_merge_type, self.name))
+
+    def pick_value(self, values):
+        """
+        Apply pickValue operator to `values` object
+
+        :param values: dict
+        :return:
+        """
+        pick_value_type = self.input.get("pickValue")
+
+        if pick_value_type is None:
+            return values
+
+        if not isinstance(values, list):
+            cwllogger.warning(
+                "pickValue used but input %s is not a list." % self.name)
+            return values
+
+        result = [v for v in values if not isinstance(v, SkipNull) and v is not None]
+
+        if pick_value_type == "first_non_null":
+            if len(result) < 1:
+                raise cwltool.errors.WorkflowException(
+                    "%s: first_non_null operator found no non-null values" % self.name)
+            else:
+                return result[0]
+
+        elif pick_value_type == "only_non_null":
+            if len(result) == 0:
+                raise cwltool.errors.WorkflowException(
+                    "%s: only_non_null operator found no non-null values" % self.name)
+            elif len(result) > 1:
+                raise cwltool.errors.WorkflowException(
+                    "%s: only_non_null operator found more than one non-null values" % self.name)
+            else:
+                return result[0]
+
+        elif pick_value_type == "all_non_null":
+            return result
+
+        else:
+            raise cwltool.errors.WorkflowException(
+                "Unsupported pickValue '%s' on %s" % (pick_value_type, self.name))
 
 
 class StepValueFrom(object):
-    """A workflow step input which has a valueFrom expression attached to it, which
+    """
+    A workflow step input which has a valueFrom expression attached to it, which
     is evaluated to produce the actual input object for the step.
     """
+    def __init__(self, expr, source, req):
+        """
+        Instantiate an object to carry as much information as we have access to right now
+        about this valueFrom expression
 
-    def __init__(self, expr, inner, req):
+        :param expr: str: expression as a string
+        :param source: the source promise of this step
+        :param req: requirements object that is consumed by CWLtool expression evaluator
+        """
         self.expr = expr
-        self.inner = inner
+        self.source = source
+        self.context = None
         self.req = req
 
-    def do_eval(self, inputs, ctx):
-        """Evalute ourselves."""
+    def resolve(self):
+        """
+        The valueFrom expression's context is the value for this input. Resolve the promise.
+
+        :return: object that will serve as expression context
+        """
+        self.context = self.source.resolve()
+        return self.context
+
+    def do_eval(self, inputs):
+        """
+        Evaluate the valueFrom expression with the given input object
+
+        :param inputs:
+        :return: object
+        """
         return cwltool.expression.do_eval(
-            self.expr, inputs, self.req, None, None, {}, context=ctx)
+            self.expr, inputs, self.req, None, None, {}, context=self.context)
 
 
 class DefaultWithSource(object):
-    """A workflow step input that has both a source and a default value."""
+    """
+    A workflow step input that has both a source and a default value.
+    """
     def __init__(self, default, source):
+        """
+        Instantiate an object to handle a source that has a default value
+
+        :param default: the default value
+        :param source: the source object
+        """
         self.default = default
         self.source = source
 
     def resolve(self):
-        """Determine the final input value."""
+        """
+        Determine the final input value when the time is right (when the source can be resolved)
+
+        :return: dict
+        """
         if self.source:
-            if isinstance(self.source, tuple):
-                result = self.source[1][0][self.source[0]]
-            else:
-                result = self.source[1][self.source[0]]
+            result = self.source.resolve()
             if result:
                 return result
         return self.default
 
 
-def _resolve_indirect_inner(maybe_idict):
-    """Resolve the contents an indirect dictionary (containing promises) to produce
-    a dictionary actual values, including merging multiple sources into a
-    single input.
+class JustAValue(object):
+    """
+    A simple value masquerading as a 'resolve'-able object
     """
 
-    if isinstance(maybe_idict, IndirectDict):
-        result = {}
-        metadata = {}
-        for key, value in list(maybe_idict.items()):
-            if isinstance(value, (MergeInputs, DefaultWithSource)):
-                result[key] = value.resolve()
-            else:
-                if isinstance(value[1], tuple):
-                    if isinstance(value[1][0], tuple):
-                        result[key] = value[1][0][0].get(value[0])
-                        metadata[key] = value[1][0][1]
-                    else:
-                        result[key] = value[1][0].get(value[0])
-                        metadata[key] = value[1][1]
-                else:
-                    result[key] = value[1].get(value[0])
-        return result, metadata
-    return maybe_idict
+    def __init__(self, val):
+        self.val = val
+
+    def resolve(self):
+        return self.val
 
 
 def resolve_indirect(pdict):
-    """Resolve the contents an indirect dictionary (containing promises) and
-    evaluate expressions to produce the dictionary of actual values.
     """
+    Resolve the contents of an indirect dictionary (containing promises) and
+    evaluate expressions to produce the dictionary of actual values.
 
-    inner = IndirectDict() if isinstance(pdict, IndirectDict) else {}
-    needs_eval = False
-    if isinstance(pdict, tuple):
-        #TODO should this return metadata
-        return resolve_indirect(pdict[0])
-    for k, value in iteritems(pdict):
-        if isinstance(value, StepValueFrom):
-            inner[k] = value.inner
-            needs_eval = True
+    :param pdict: input pdict for these values
+    :return:
+    """
+    if isinstance(pdict, IndirectDict):
+        first_pass_results = {k: v.resolve() for k, v in pdict.items()}
+    else:
+        first_pass_results = {k: v for k, v in pdict.items()}
+
+    result = {}
+    for k, v in pdict.items():
+        if isinstance(v, StepValueFrom):
+            result[k] = v.do_eval(inputs=first_pass_results)
         else:
-            inner[k] = value
-    res = _resolve_indirect_inner(inner)
-    if needs_eval:
-        ev = {}
-        metadata = {}
-        for k, value in iteritems(pdict):
-            if isinstance(value, StepValueFrom):
-                if isinstance(res, tuple):
-                    ev[k] = value.do_eval(res[0], res[0][k])
-                    metadata[k] = res[1]
-                else:
-                    ev[k] = value.do_eval(res, res[k])
-            else:
-                if isinstance(res, tuple):
-                    ev[k] = res[0][k]
-                    metadata[k] = res[1]
-                else:
-                    ev[k] = res[k]
-        return ev, metadata
-    return res
+            result[k] = first_pass_results[k]
+    return result
 
 
 def simplify_list(maybe_list):
@@ -479,35 +680,32 @@ class CWLJobWrapper(Job):
 
     """
 
-    def __init__(self, tool, cwljob, runtime_context):
+    def __init__(self, tool, cwljob, runtime_context, conditional):
         super(CWLJobWrapper, self).__init__(
             cores=1, memory=1024*1024, disk=8*1024)
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
         self.runtime_context = runtime_context
+        self.conditional = conditional
 
     def run(self, file_store):
-        resolved_cwljob = resolve_indirect(self.cwljob)
-        metadata = {}
-        if isinstance(resolved_cwljob, tuple):
-            cwljob = resolved_cwljob[0]
-            metadata = resolved_cwljob[1]
-        else:
-            cwljob = resolved_cwljob
+        cwljob = resolve_indirect(self.cwljob)
         fill_in_defaults(
             self.cwltool.tool['inputs'], cwljob,
             self.runtime_context.make_fs_access(
                 self.runtime_context.basedir or ""))
-        realjob = CWLJob(self.cwltool, cwljob, self.runtime_context)
+        realjob = CWLJob(self.cwltool, cwljob, self.runtime_context, conditional=self.conditional)
         self.addChild(realjob)
-        return realjob.rv(), metadata
+        return realjob.rv()
 
 
 class CWLJob(Job):
     """Execute a CWL tool using cwltool.executors.SingleJobExecutor"""
 
-    def __init__(self, tool, cwljob, runtime_context, step_inputs=None):
+    def __init__(self, tool, cwljob, runtime_context, step_inputs=None, conditional=None):
         self.cwltool = remove_pickle_problems(tool)
+        self.conditional = conditional or Conditional()
+
         if runtime_context.builder:
             builder = runtime_context.builder
         else:
@@ -563,15 +761,14 @@ class CWLJob(Job):
         self.workdir = runtime_context.workdir
 
     def run(self, file_store):
-        resolved_cwljob = resolve_indirect(self.cwljob)
-        if isinstance(resolved_cwljob, tuple):
-            cwljob, metadata = resolved_cwljob
-        else:
-            cwljob = resolved_cwljob
-            metadata = {}
+        cwljob = resolve_indirect(self.cwljob)
         fill_in_defaults(
             self.step_inputs, cwljob,
             self.runtime_context.make_fs_access(""))
+
+        if self.conditional.is_false(cwljob):
+            return self.conditional.skipped_outputs()
+
         immobile_cwljob_dict = copy.deepcopy(cwljob)
         for inp_id in immobile_cwljob_dict.keys():
             found = False
@@ -624,24 +821,24 @@ class CWLJob(Job):
             uploadFile, functools.partial(writeGlobalFileWrapper, file_store),
             index, existing))
 
-        metadata[process_uuid] = {
-            'started_at': started_at,
-            'ended_at': ended_at,
-            'job_order': cwljob,
-            'outputs': output,
-            'internal_name': self.jobName
-        }
-        return output, metadata
+        # metadata[process_uuid] = {
+        #     'started_at': started_at,
+        #     'ended_at': ended_at,
+        #     'job_order': cwljob,
+        #     'outputs': output,
+        #     'internal_name': self.jobName
+        # }
+        return output
 
 
-def makeJob(tool, jobobj, step_inputs, runtime_context):
+def makeJob(tool, jobobj, step_inputs, runtime_context, conditional):
     """Create the correct Toil Job object for the CWL tool (workflow, job, or job
     wrapper for dynamic resource requirements.)
 
     """
 
     if tool.tool["class"] == "Workflow":
-        wfjob = CWLWorkflow(tool, jobobj, runtime_context)
+        wfjob = CWLWorkflow(tool, jobobj, runtime_context, conditional=conditional)
         followOn = ResolveIndirect(wfjob.rv())
         wfjob.addFollowOn(followOn)
         return (wfjob, followOn)
@@ -654,9 +851,9 @@ def makeJob(tool, jobobj, step_inputs, runtime_context):
                 r = resourceReq.get(req)
                 if isinstance(r, string_types) and ("$(" in r or "${" in r):
                     # Found a dynamic resource requirement so use a job wrapper
-                    job = CWLJobWrapper(tool, jobobj, runtime_context)
+                    job = CWLJobWrapper(tool, jobobj, runtime_context, conditional=conditional)
                     return (job, job)
-        job = CWLJob(tool, jobobj, runtime_context)
+        job = CWLJob(tool, jobobj, runtime_context, conditional=conditional)
         return (job, job)
 
 
@@ -666,11 +863,12 @@ class CWLScatter(Job):
 
     """
 
-    def __init__(self, step, cwljob, runtime_context):
+    def __init__(self, step, cwljob, runtime_context, conditional):
         super(CWLScatter, self).__init__()
         self.step = step
         self.cwljob = cwljob
         self.runtime_context = runtime_context
+        self.conditional = conditional
 
     def flat_crossproduct_scatter(self,
                                   joborder,
@@ -683,7 +881,8 @@ class CWLScatter(Job):
             if len(scatter_keys) == 1:
                 jo = postScatterEval(jo)
                 (subjob, followOn) = makeJob(
-                    self.step.embedded_tool, jo, None, self.runtime_context)
+                    self.step.embedded_tool, jo, None, self.runtime_context,
+                    conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
@@ -700,7 +899,8 @@ class CWLScatter(Job):
             if len(scatter_keys) == 1:
                 jo = postScatterEval(jo)
                 (subjob, followOn) = makeJob(
-                    self.step.embedded_tool, jo, None, self.runtime_context)
+                    self.step.embedded_tool, jo, None, self.runtime_context,
+                    conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
             else:
@@ -709,11 +909,7 @@ class CWLScatter(Job):
         return outputs
 
     def run(self, file_store):
-        resolved_cwljob = resolve_indirect(self.cwljob)
-        if isinstance(resolved_cwljob, tuple):
-            cwljob, metadata = resolved_cwljob
-        else:
-            cwljob = resolved_cwljob
+        cwljob = resolve_indirect(self.cwljob)
 
         if isinstance(self.step.tool["scatter"], string_types):
             scatter = [self.step.tool["scatter"]]
@@ -750,7 +946,7 @@ class CWLScatter(Job):
                 copyjob = postScatterEval(copyjob)
                 (subjob, follow_on) = makeJob(
                     self.step.embedded_tool, copyjob, None,
-                    self.runtime_context)
+                    self.runtime_context, conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(follow_on.rv())
         elif scatterMethod == "nested_crossproduct":
@@ -768,7 +964,7 @@ class CWLScatter(Job):
                     "Must provide scatterMethod to scatter over multiple"
                     " inputs.")
 
-        return outputs, metadata
+        return outputs
 
 
 class CWLGather(Job):
@@ -795,27 +991,14 @@ class CWLGather(Job):
             return obj.get(k)
         elif isinstance(obj, MutableSequence):
             cp = []
-            metadata = []
             for l in obj:
-                if isinstance(l, tuple):
-                    cp.append(self.extract(l[0], k))
-                    metadata.append(self.extract(l[1], k))
-                else:
-                    result = self.extract(l, k)
-                    if isinstance(result, tuple):
-                        cp.append(result[0])
-                        metadata.append(result[1])
-                    else:
-                        cp.append(result)
-            return cp, metadata
-        elif isinstance(obj, tuple):
-            return self.extract(obj[0], k)
+                cp.append(self.extract(l, k))
+            return cp
         else:
             return []
 
     def run(self, file_store):
         outobj = {}
-        metadata = {}
 
         def sn(n):
             if isinstance(n, Mapping):
@@ -824,12 +1007,9 @@ class CWLGather(Job):
                 return shortname(n)
 
         for k in [sn(i) for i in self.step.tool["out"]]:
-            result = self.extract(self.outputs, k)
-            if isinstance(result, tuple):
-                outobj[k], metadata[k] = result
-            else:
-                outobj[k] = result
-        return outobj, metadata
+            outobj[k] = self.extract(self.outputs, k)
+
+        return outobj
 
 
 class SelfJob(object):
@@ -862,34 +1042,25 @@ def remove_pickle_problems(obj):
     return obj
 
 
-def _link_merge_source(promises, in_out_obj, source_obj):
-    to_merge = [(shortname(s), promises[s].rv()) for s in aslist(source_obj)]
-    link_merge = in_out_obj.get("linkMerge", "merge_nested")
-    if link_merge == "merge_nested":
-        merged = MergeInputsNested(to_merge)
-    elif link_merge == "merge_flattened":
-        merged = MergeInputsFlattened(to_merge)
-    else:
-        raise validate.ValidationException(
-            "Unsupported linkMerge '%s'" % link_merge)
-    return merged
-
-
 class CWLWorkflow(Job):
     """Traverse a CWL workflow graph and create a Toil job graph with appropriate
     dependencies.
 
     """
 
-    def __init__(self, cwlwf, cwljob, runtime_context):
+    def __init__(self, cwlwf, cwljob, runtime_context, conditional=None):
         super(CWLWorkflow, self).__init__()
         self.cwlwf = cwlwf
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.cwlwf = remove_pickle_problems(self.cwlwf)
+        self.conditional = conditional or Conditional()
 
     def run(self, file_store):
         cwljob = resolve_indirect(self.cwljob)
+
+        if self.conditional.is_false(cwljob):
+            return self.conditional.skipped_outputs()
 
         # `promises` dict
         # from: each parameter (workflow input or step output)
@@ -904,14 +1075,14 @@ class CWLWorkflow(Job):
         for inp in self.cwlwf.tool["inputs"]:
             promises[inp["id"]] = SelfJob(self, cwljob)
 
-        alloutputs_fufilled = False
-        while not alloutputs_fufilled:
+        all_outputs_fulfilled = False
+        while not all_outputs_fulfilled:
             # Iteratively go over the workflow steps, scheduling jobs as their
             # dependencies can be fufilled by upstream workflow inputs or
             # step outputs. Loop exits when the workflow outputs
             # are satisfied.
 
-            alloutputs_fufilled = True
+            all_outputs_fulfilled = True
 
             for step in self.cwlwf.steps:
                 if step.tool["id"] not in jobs:
@@ -927,59 +1098,40 @@ class CWLWorkflow(Job):
                         for inp in step.tool["inputs"]:
                             key = shortname(inp["id"])
                             if "source" in inp:
-                                inpSource = inp["source"]
-                                if inp.get("linkMerge") \
-                                        or len(aslist(inp["source"])) > 1:
-                                    jobobj[key] =\
-                                        _link_merge_source(promises, inp, inpSource)
-                                else:
-                                    if isinstance(inpSource, MutableSequence):
-                                        # It seems that an input source with a
-                                        # '#' in the name will be returned as a
-                                        # CommentedSeq list by the yaml parser.
-                                        inpSource = str(inpSource[0])
-                                    jobobj[key] = (shortname(inpSource),
-                                                   promises[inpSource].rv())
+                                jobobj[key] = \
+                                    ResolveSource(
+                                        name="%s/%s" % (step.tool["id"], key),
+                                        input=inp,
+                                        source_key="source",
+                                        promises=promises)
+
                             if "default" in inp:
-                                if key in jobobj:
-                                    if isinstance(jobobj[key][1], Promise):
-                                        d = copy.copy(inp["default"])
-                                        jobobj[key] = DefaultWithSource(
-                                            d, jobobj[key])
-                                    else:
-                                        if (isinstance(jobobj[key][1], tuple) and
-                                                jobobj[key][1][0][jobobj[key][0]]
-                                                is None) or (jobobj[key][1][
-                                                    jobobj[key][0]] is None):
-                                            d = copy.copy(inp["default"])
-                                            jobobj[key] = (
-                                                "default", {"default": d})
-                                else:
-                                    d = copy.copy(inp["default"])
-                                    jobobj[key] = ("default", {"default": d})
+                                jobobj[key] = DefaultWithSource(
+                                    copy.copy(inp["default"]), jobobj.get(key))
 
                             if "valueFrom" in inp \
                                     and "scatter" not in step.tool:
-                                if key in jobobj:
-                                    jobobj[key] = StepValueFrom(
-                                        inp["valueFrom"], jobobj[key],
-                                        self.cwlwf.requirements)
-                                else:
-                                    jobobj[key] = StepValueFrom(
-                                        inp["valueFrom"], (
-                                            "None", {"None": None}),
-                                        self.cwlwf.requirements)
+                                jobobj[key] = StepValueFrom(
+                                    inp["valueFrom"], jobobj.get(key, JustAValue(None)),
+                                    self.cwlwf.requirements)
+
+                        conditional = Conditional(
+                            expression=step.tool.get("when"),
+                            outputs=step.tool["out"],
+                            requirements=self.cwlwf.requirements)
 
                         if "scatter" in step.tool:
                             wfjob = CWLScatter(step, IndirectDict(jobobj),
-                                               self.runtime_context)
+                                               self.runtime_context,
+                                               conditional=conditional)
                             followOn = CWLGather(step, wfjob.rv())
                             wfjob.addFollowOn(followOn)
                         else:
                             (wfjob, followOn) = makeJob(
                                 step.embedded_tool, IndirectDict(jobobj),
                                 step.tool["inputs"],
-                                self.runtime_context)
+                                self.runtime_context,
+                                conditional=conditional)
 
                         jobs[step.tool["id"]] = followOn
 
@@ -1008,26 +1160,23 @@ class CWLWorkflow(Job):
                 for inp in step.tool["inputs"]:
                     for source in aslist(inp.get("source", [])):
                         if source not in promises:
-                            alloutputs_fufilled = False
+                            all_outputs_fulfilled = False
 
             # may need a test
             for out in self.cwlwf.tool["outputs"]:
                 if "source" in out:
                     if out["source"] not in promises:
-                        alloutputs_fufilled = False
+                        all_outputs_fulfilled = False
 
         outobj = {}
         for out in self.cwlwf.tool["outputs"]:
             key = shortname(out["id"])
-            if out.get("linkMerge") or len(aslist(out["outputSource"])) > 1:
-                outobj[key] = _link_merge_source(promises, out, out["outputSource"])
-            else:
-                # A CommentedSeq of length one still appears here rarely -
-                # not clear why from the CWL code. When it does, it breaks
-                # the execution by causing a non-hashable type exception.
-                # We simplify the list into its first (and only) element.
-                src = simplify_list(out["outputSource"])
-                outobj[key] = (shortname(src), promises[src].rv())
+            outobj[key] = (
+                ResolveSource(
+                    name="Workflow output '%s'" % key,
+                    input=out,
+                    source_key="outputSource",
+                    promises=promises))
 
         return IndirectDict(outobj)
 
@@ -1047,6 +1196,7 @@ def visitSteps(t, op):
             op(s.tool)
             visitSteps(s.embedded_tool, op)
 
+
 def main(args=None, stdout=sys.stdout):
     """Main method for toil-cwl-runner."""
     cwllogger.removeHandler(defaultStreamHandler)
@@ -1061,6 +1211,8 @@ def main(args=None, stdout=sys.stdout):
     # user to select jobStore or get a default from logic one below.
     parser.add_argument("--jobStore", type=str)
     parser.add_argument("--not-strict", action="store_true")
+    parser.add_argument("--enable-dev", action="store_true",
+                        help="Enable loading and running development versions of CWL")
     parser.add_argument("--quiet", dest="logLevel", action="store_const",
                         const="ERROR")
     parser.add_argument("--basedir", type=str)
@@ -1128,7 +1280,7 @@ def main(args=None, stdout=sys.stdout):
         "--strict-memory-limit", action="store_true", help="When running with "
         "software containers and the Docker engine, pass either the "
         "calculated memory allocation from ResourceRequirements or the "
-        "default of 1 gigabyte to Docker's --memory option.")    
+        "default of 1 gigabyte to Docker's --memory option.")
     parser.add_argument(
         "--relax-path-checks", action="store_true",
         default=False, help="Relax requirements on path names to permit "
@@ -1179,7 +1331,7 @@ def main(args=None, stdout=sys.stdout):
     # Problem: we want to keep our job store somewhere auto-generated based on
     # our options, unless overridden by... an option. So we will need to parse
     # options twice, because we need to feed the parser the job store.
-    
+
     # Propose a local workdir, probably under /tmp.
     # mkdtemp actually creates the directory, but
     # toil requires that the directory not exist,
@@ -1347,22 +1499,15 @@ def main(args=None, stdout=sys.stdout):
                 runtime_context.force_docker_pull = options.force_docker_pull
                 runtime_context.no_match_user = options.no_match_user
                 runtime_context.no_read_only = options.no_read_only
-                (wf1, _) = makeJob(tool, {}, None, runtime_context)
+                (wf1, _) = makeJob(tool, {}, None, runtime_context, conditional=None)
             except cwltool.process.UnsupportedRequirement as err:
                 logging.error(err)
                 return 33
 
             wf1.cwljob = initialized_job_order
-
-            result = toil.start(wf1)
-            if isinstance(result, tuple):
-                outobj, metadata = result
-            else:
-                outobj = result
+            outobj = toil.start(wf1)
 
         outobj = resolve_indirect(outobj)
-        if isinstance(outobj, tuple):
-            outobj, metadata = outobj
 
         # Stage files. Specify destination bucket if specified in CLI
         # options. If destination bucket not passed in,
