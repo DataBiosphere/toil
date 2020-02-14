@@ -147,9 +147,9 @@ class CWLTest(ToilTest):
         cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
                os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
 
-        # create a fake rev bin that actually points to the calendar
-        cal_path = [d for d in os.environ["PATH"].split(':') if os.path.exists(os.path.join(d, 'cal'))][-1]
-        os.symlink(os.path.join(cal_path, 'cal'), f'{os.path.join(outDir, "rev")}')
+        # create a fake rev bin that actually points to the "date" binary
+        cal_path = [d for d in os.environ["PATH"].split(':') if os.path.exists(os.path.join(d, 'date'))][-1]
+        os.symlink(os.path.join(cal_path, 'date'), f'{os.path.join(outDir, "rev")}')
 
         def path_with_bogus_rev():
             # append to the front of the PATH so that we check there first

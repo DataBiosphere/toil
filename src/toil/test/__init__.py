@@ -69,7 +69,7 @@ class ToilTest(unittest.TestCase):
         western = pytz.timezone('America/Los_Angeles')
         california_time = western.localize(datetime.datetime.now())
         timestamp = california_time.strftime("%b %d %Y %H:%M:%S:%f %Z")
-        print(f"\n\n[TEST] {type(self).__name__}:{method.__name__} ({timestamp})\n\n")
+        print(f"\n\n[TEST] {strclass(self.__class__)}:{self._testMethodName} ({timestamp})\n\n")
 
     @classmethod
     def setUpClass(cls):
