@@ -102,25 +102,32 @@ class CWLTest(ToilTest):
                   self._expected_download_output(self.outDir))
 
     def test_run_revsort(self):
+        logger.info('Running CWL revsort Test.\n\n')
         self.revsort('revsort.cwl', self._tester)
 
     def test_run_revsort2(self):
+        logger.info('Running CWL revsort2 Test.\n\n')
         self.revsort('revsort2.cwl', self._tester)
 
     def test_run_revsort_debug_worker(self):
+        logger.info('Running CWL revsort debugWorker Test.\n\n')
         self.revsort('revsort.cwl', self._debug_worker_tester)
 
     def test_run_s3(self):
+        logger.info('Running CWL S3 Test.\n\n')
         self.download('download_s3.json', self._tester)
 
     def test_run_http(self):
+        logger.info('Running CWL HTTP Test.\n\n')
         self.download('download_http.json', self._tester)
 
     def test_run_https(self):
+        logger.info('Running CWL HTTPS Test.\n\n')
         self.download('download_https.json', self._tester)
 
     @slow
     def test_bioconda(self):
+        logger.info('Running CWL Bioconda Test.\n\n')
         self._tester('src/toil/test/cwl/seqtk_seq.cwl',
                      'src/toil/test/cwl/seqtk_seq_job.json',
                      self._expected_seqtk_output(self.outDir),
@@ -129,6 +136,7 @@ class CWLTest(ToilTest):
 
     @needs_docker
     def test_biocontainers(self):
+        logger.info('Running CWL Biocontainers Test.\n\n')
         # currently the galaxy lib seems to have some str/bytestring errors?
         # TODO: fix to work on python 3.6 on gitlab
         if sys.version_info < (3, 0):
@@ -141,6 +149,7 @@ class CWLTest(ToilTest):
     @slow
     def test_restart(self):
         """Enable restarts with toil-cwl-runner -- run failing test, re-run correct test."""
+        logger.info('Running CWL Test Restart.  Expecting failure, then success.\n\n')
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException
         from toil.leader import FailedJobsException
@@ -160,7 +169,6 @@ class CWLTest(ToilTest):
         orig_path = os.environ["PATH"]
         # Force a failure by trying to use an incorrect version of `rev` from the PATH
         os.environ["PATH"] = path_with_bogus_rev()
-        logger.critical(str(os.environ['PATH']))
         try:
             cwltoil.main(cmd)
             self.fail("Expected problem job with incorrect PATH did not fail")
@@ -181,11 +189,13 @@ class CWLTest(ToilTest):
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_run_conformance_with_caching(self):
+        logger.info('Running CWL Conformance with Caching Test.\n\n')
         self.test_run_conformance(caching=True)
 
     @slow
     @pytest.mark.timeout(2400)
     def test_run_conformance(self, batchSystem=None, caching=False):
+        logger.info('Running CWL Conformance Test.\n\n')
         try:
             cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
                    '--timeout=2400', '--basedir=' + self.workDir]
@@ -220,6 +230,7 @@ class CWLTest(ToilTest):
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_lsf_cwl_conformance_with_caching(self):
+        logger.info('Running [LSF] CWL Conformance with Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="LSF", caching=True)
 
     @slow
@@ -228,6 +239,7 @@ class CWLTest(ToilTest):
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_slurm_cwl_conformance_with_caching(self):
+        logger.info('Running [SLURM] CWL Conformance with Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="Slurm", caching=True)
 
     @slow
@@ -236,6 +248,7 @@ class CWLTest(ToilTest):
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_torque_cwl_conformance_with_caching(self):
+        logger.info('Running [TORQUE] CWL Conformance with Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="Torque", caching=True)
 
     @slow
@@ -244,6 +257,7 @@ class CWLTest(ToilTest):
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_gridengine_cwl_conformance_with_caching(self):
+        logger.info('Running [GRIDENGINE] CWL Conformance with Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="gridEngine", caching=True)
 
     @slow
@@ -252,6 +266,7 @@ class CWLTest(ToilTest):
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_mesos_cwl_conformance_with_caching(self):
+        logger.info('Running [MESOS] CWL Conformance with Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="mesos", caching=True)
 
     @slow
@@ -260,42 +275,49 @@ class CWLTest(ToilTest):
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_parasol_cwl_conformance_with_caching(self):
+        logger.info('Running [PARASOL] CWL Conformance with Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="parasol", caching=True)
 
     @slow
     @needs_lsf
     @unittest.skip
     def test_lsf_cwl_conformance(self):
+        logger.info('Running [LSF] CWL Conformance without Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="LSF")
 
     @slow
     @needs_slurm
     @unittest.skip
     def test_slurm_cwl_conformance(self):
+        logger.info('Running [SLURM] CWL Conformance without Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="Slurm")
 
     @slow
     @needs_torque
     @unittest.skip
     def test_torque_cwl_conformance(self):
+        logger.info('Running [TORQUE] CWL Conformance without Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="Torque")
 
     @slow
     @needs_gridengine
     @unittest.skip
     def test_gridengine_cwl_conformance(self):
+        logger.info('Running [GRIDENGINE] CWL Conformance without Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="gridEngine")
 
     @slow
     @needs_mesos
     @unittest.skip
     def test_mesos_cwl_conformance(self):
+        logger.info('Running [MESOS] CWL Conformance without Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="mesos")
 
     @slow
     @needs_parasol
     @unittest.skip
     def test_parasol_cwl_conformance(self):
+        logger.info('Running [PARASOL] CWL Conformance without Caching Test.\n\n')
         return self.test_run_conformance(batchSystem="parasol")
 
     @staticmethod
