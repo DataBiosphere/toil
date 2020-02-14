@@ -159,9 +159,8 @@ class Node(object):
                     break
                 else:
                     logger.info('...Still waiting for appliance, trying again in %s sec...' % sleepTime)
-                    logger.critical('Role: {role}\n'
-                                    'Output: {output}\n\n'.format(role=str(role),
-                                                                  output=str(output)))
+                    logger.debug(f'Role: {role}\n'
+                                 f'Output: {output}\n\n')
                     time.sleep(sleepTime)
             except RuntimeError:
                 # ignore exceptions, keep trying
