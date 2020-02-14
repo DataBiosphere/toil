@@ -789,7 +789,7 @@ class Leader(object):
                     # more memory efficient than read().striplines() while leaving off the
                     # trailing \n left when using readlines()
                     # http://stackoverflow.com/a/15233739
-                    StatsAndLogging.logWithFormatting(jobStoreID, logFileStream, method=logger.warn,
+                    StatsAndLogging.logWithFormatting(jobStoreID, logFileStream, method=logger.warning,
                                                       message='The job seems to have left a log file, indicating failure: %s' % jobGraph)
                 if self.config.writeLogs or self.config.writeLogsGzip:
                     with jobGraph.getLogFileHandle(self.jobStore) as logFileStream:
@@ -814,7 +814,7 @@ class Leader(object):
                     else:
                         with batchSystemFileStream:
                             if os.path.getsize(batchSystemFile) > 0:
-                                StatsAndLogging.logWithFormatting(jobStoreID, batchSystemFileStream, method=logger.warn,
+                                StatsAndLogging.logWithFormatting(jobStoreID, batchSystemFileStream, method=logger.warning,
                                                                   message='The batch system left a non-empty file %s:' % batchSystemFile)
                                 if self.config.writeLogs or self.config.writeLogsGzip:
                                     batchSystemFileRoot, _ = os.path.splitext(os.path.basename(batchSystemFile))
