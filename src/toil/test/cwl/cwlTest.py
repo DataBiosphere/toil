@@ -18,6 +18,7 @@ import os
 import sys
 import unittest
 import re
+import logging
 import shutil
 import zipfile
 import pytest
@@ -30,6 +31,7 @@ from six import text_type
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
 
+logger = logging.getLogger(__name__)
 import subprocess
 from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_mesos, needs_parasol, needs_gridengine, needs_slurm,
@@ -127,19 +129,16 @@ class CWLTest(ToilTest):
 
     @needs_docker
     def test_biocontainers(self):
-        # currently the galaxy lib seems to have some str/bytestring errors?
-        # TODO: fix to work on python 3.6 on gitlab
-        if sys.version_info < (3, 0):
-            self._tester('src/toil/test/cwl/seqtk_seq.cwl',
-                         'src/toil/test/cwl/seqtk_seq_job.json',
-                         self._expected_seqtk_output(self.outDir),
-                         main_args=["--beta-use-biocontainers"],
-                         out_name="output1")
+        self._tester('src/toil/test/cwl/seqtk_seq.cwl',
+                     'src/toil/test/cwl/seqtk_seq_job.json',
+                     self._expected_seqtk_output(self.outDir),
+                     main_args=["--beta-use-biocontainers"],
+                     out_name="output1")
 
     @slow
     def test_restart(self):
-        """Enable restarts with toil-cwl-runner -- run failing test, re-run correct test.
-        """
+        """Enable restarts with toil-cwl-runner -- run failing test, re-run correct test."""
+        logger.info('Running CWL Test Restart.  Expecting failure, then success.')
         from toil.cwl import cwltoil
         from toil.jobStores.abstractJobStore import NoSuchJobStoreException
         from toil.leader import FailedJobsException
@@ -148,12 +147,17 @@ class CWLTest(ToilTest):
         cmd = ['--outdir', outDir, '--jobStore', os.path.join(outDir, 'jobStore'), "--no-container",
                os.path.join(cwlDir, "revsort.cwl"), os.path.join(cwlDir, "revsort-job.json")]
 
-        def path_without_rev():
-            return ":".join([d for d in os.environ["PATH"].split(":")
-                             if not os.path.exists(os.path.join(d, "rev"))])
+        # create a fake rev bin that actually points to the "date" binary
+        cal_path = [d for d in os.environ["PATH"].split(':') if os.path.exists(os.path.join(d, 'date'))][-1]
+        os.symlink(os.path.join(cal_path, 'date'), f'{os.path.join(outDir, "rev")}')
+
+        def path_with_bogus_rev():
+            # append to the front of the PATH so that we check there first
+            return f'{outDir}:' + os.environ["PATH"]
+
         orig_path = os.environ["PATH"]
-        # Force a failure and half finished job by removing `rev` from the PATH
-        os.environ["PATH"] = path_without_rev()
+        # Force a failure by trying to use an incorrect version of `rev` from the PATH
+        os.environ["PATH"] = path_with_bogus_rev()
         try:
             cwltoil.main(cmd)
             self.fail("Expected problem job with incorrect PATH did not fail")
@@ -172,7 +176,7 @@ class CWLTest(ToilTest):
     @slow
     @pytest.mark.timeout(2400)
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail 
+    @pytest.mark.xfail
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
@@ -211,7 +215,7 @@ class CWLTest(ToilTest):
     @needs_lsf
     @unittest.skip
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail 
+    @pytest.mark.xfail
     def test_lsf_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="LSF", caching=True)
 
@@ -219,7 +223,7 @@ class CWLTest(ToilTest):
     @needs_slurm
     @unittest.skip
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail 
+    @pytest.mark.xfail
     def test_slurm_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="Slurm", caching=True)
 
@@ -227,7 +231,7 @@ class CWLTest(ToilTest):
     @needs_torque
     @unittest.skip
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail 
+    @pytest.mark.xfail
     def test_torque_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="Torque", caching=True)
 
@@ -235,7 +239,7 @@ class CWLTest(ToilTest):
     @needs_gridengine
     @unittest.skip
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail 
+    @pytest.mark.xfail
     def test_gridengine_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="gridEngine", caching=True)
 
@@ -243,7 +247,7 @@ class CWLTest(ToilTest):
     @needs_mesos
     @unittest.skip
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail 
+    @pytest.mark.xfail
     def test_mesos_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="mesos", caching=True)
 
@@ -251,7 +255,7 @@ class CWLTest(ToilTest):
     @needs_parasol
     @unittest.skip
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail 
+    @pytest.mark.xfail
     def test_parasol_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="parasol", caching=True)
 
