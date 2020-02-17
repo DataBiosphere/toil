@@ -94,6 +94,7 @@ class FileJobStore(AbstractJobStore):
         self.fanOut = fanOut
 
         self.linkImports = None
+        self.moveExports = None
 
     def __repr__(self):
         return 'FileJobStore({})'.format(self.jobStoreDir)
@@ -112,6 +113,7 @@ class FileJobStore(AbstractJobStore):
         mkdir_p(self.jobFilesDir)
         mkdir_p(self.sharedFilesDir)
         self.linkImports = config.linkImports
+        self.moveExports = config.moveExports
         super(FileJobStore, self).initialize(config)
 
     def resume(self):
@@ -294,9 +296,19 @@ class FileJobStore(AbstractJobStore):
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, FileJobStore):
-            atomic_copy(self._getFilePathFromId(jobStoreFileID), self._extractPathFromUrl(url))
+            srcPath = self._getFilePathFromId(jobStoreFileID)
+            destPath = self._extractPathFromUrl(url)
+            if self.moveExports:
+                self._move_and_linkback(srcPath, destPath)
+            else:
+                atomic_copy(srcPath, destPath)
         else:
-            super(FileJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
+            super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
+
+    def _move_and_linkback(self, srcPath, destPath):
+        logger.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)
+        shutil.move(srcPath, destPath)
+        os.symlink(destPath, srcPath)
 
     @classmethod
     def getSize(cls, url):

@@ -15,7 +15,8 @@ from __future__ import absolute_import
 
 import os
 
-__all__ = ['fileStore', 'nonCachingFileStore', 'cachingFileStore']
+__all__ = ['fileStore', 'nonCachingFileStore', 'cachingFileStore', 'FileID']
+
 
 class FileID(str):
     """
