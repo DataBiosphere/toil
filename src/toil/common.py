@@ -1231,7 +1231,8 @@ class ToilMetrics:
 
     def log(self, message):
         if self.mtailProc:
-            self.mtailProc.stdin.write(message + "\n")
+            self.mtailProc.stdin.write((message + "\n").encode("utf-8"))
+            self.mtailProc.stdin.flush()
 
     # Note: The mtail configuration (dashboard/mtail/toil.mtail) depends on these messages
     # remaining intact
