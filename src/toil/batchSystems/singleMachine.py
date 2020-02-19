@@ -55,13 +55,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     numCores = cpu_count()
 
-    minCores = 0.1
     """
     The minimal fractional CPU. Tasks with a smaller core requirement will be rounded up to this
     value. One important invariant of this class is that each worker thread represents a CPU
     requirement of minCores, meaning that we can never run more than numCores / minCores jobs
     concurrently.
     """
+    minCores = 1
+    
     physicalMemory = toil.physicalMemory()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
