@@ -306,7 +306,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         workDir = Toil.getToilWorkDir(self.config.workDir)
         fileName = 'toil_workflow_{workflowID}_job_{jobID}_batch_{batchSystem}_{batchJobIDfmt}_{fileDesc}.log'.format(
             workflowID=workflowID, jobID=jobID, batchSystem=batchSystem, batchJobIDfmt=batchJobIDfmt, fileDesc=fileDesc)
-        return os.path.join(workflowDir, fileName)
+        return os.path.join(workDir, fileName)
 
     @staticmethod
     def workerCleanup(info):
