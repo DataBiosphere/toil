@@ -138,7 +138,7 @@ class MesosExecutor(Executor):
                                         memoryTotal=psutil.virtual_memory().total,
                                         workers=len(self.runningTasks))
             log.debug("Send framework message: %s", message)
-            driver.sendFrameworkMessage(encode_data(repr(message)))
+            driver.sendFrameworkMessage(encode_data(repr(message).encode('utf-8')))
             # Prevent workers launched together from repeatedly hitting the leader at the same time
             time.sleep(random.randint(45, 75))
 
