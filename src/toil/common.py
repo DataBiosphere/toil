@@ -919,7 +919,7 @@ class Toil(object):
                                '--disableCaching flag if you want to '
                                'use this batch system.' % config.batchSystem)
         logger.debug('Using the %s' %
-                    re.sub("([a-z])([A-Z])", "\g<1> \g<2>", batchSystemClass.__name__).lower())
+                    re.sub("([a-z])([A-Z])", r'\g<1> \g<2>', batchSystemClass.__name__).lower())
 
         return batchSystemClass(**kwargs)
 
