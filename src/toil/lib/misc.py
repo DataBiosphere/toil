@@ -6,6 +6,7 @@ import os
 import shutil
 import sys
 import time
+import uuid
 import socket
 from contextlib import contextmanager
 
@@ -205,7 +206,7 @@ def atomic_tmp_file(final_path):
         return final_path
     final_basename = os.path.basename(final_path)
     final_ext = os.path.splitext(final_path)[1]
-    base_name = "{}.{}.{}.tmp{}".format(final_basename, socket.gethostname(), os.getpid(), final_ext)
+    base_name = "{}.{}.tmp{}".format(final_basename, uuid.uuid4(), final_ext)
     return os.path.join(final_dir, base_name)
 
 
