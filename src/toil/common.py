@@ -1022,23 +1022,44 @@ class Toil(object):
         self._jobCache[job.jobStoreID] = job
 
     @staticmethod
-    def getWorkflowDir(workflowID, configWorkDir=None):
+    def getToilWorkDir(configWorkDir=None):
         """
-        Returns a path to the directory where worker directories and the cache will be located
-        for this workflow.
+        Returns a path to a writable directory under which per-workflow
+        directories exist.  This directory is always required to exist on a
+        machine, even if the Toil worker has not run yet.  If your workers and
+        leader have different temp directories, you may need to set
+        TOIL_WORKDIR.
 
-        :param str workflowID: Unique identifier for the workflow
         :param str configWorkDir: Value passed to the program using the --workDir flag
-        :return: Path to the workflow directory
+        :return: Path to the Toil work directory, constant across all machines
         :rtype: str
         """
+
         workDir = configWorkDir or os.getenv('TOIL_WORKDIR') or tempfile.gettempdir()
         if not os.path.exists(workDir):
             raise RuntimeError("The directory specified by --workDir or TOIL_WORKDIR (%s) does not "
                                "exist." % workDir)
-        # Create the workflow dir, make it unique to each host in case workDir is on a shared FS.
-        # This prevents workers on different nodes from erasing each other's directories.
-        workflowDir = os.path.join(workDir, 'toil-%s-%s' % (workflowID, getNodeID()))
+        return workDir
+
+    @classmethod
+    def getLocalWorkflowDir(cls, workflowID, configWorkDir=None):
+        """
+        Returns a path to the directory where worker directories and the cache will be located
+        for this workflow on this machine.
+
+        :param str workflowID: Unique identifier for the workflow
+        :param str configWorkDir: Value passed to the program using the --workDir flag
+        :return: Path to the local workflow directory on this machine
+        :rtype: str
+        """
+
+        # Get the global Toil work directory. This ensures that it exists.
+        base = cls.getToilWorkDir(configWorkDir=configWorkDir)
+
+        # Create a directory unique to each host and workflow in case workDir
+        # is on a shared FS. This prevents workers on different nodes from
+        # erasing each other's directories.
+        workflowDir = os.path.join(base, 'node-%s-%s' % (workflowID, getNodeID()))
         try:
             # Directory creation is atomic
             os.mkdir(workflowDir)
@@ -1047,7 +1068,7 @@ class Toil(object):
                 # The directory exists if a previous worker set it up.
                 raise
         else:
-            logger.debug('Created the workflow directory at %s' % workflowDir)
+            logger.debug('Created the workflow directory for this machine at %s' % workflowDir)
         return workflowDir
 
     def _runMainLoop(self, rootJob):

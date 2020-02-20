@@ -172,7 +172,7 @@ def physicalMemory():
 def physicalDisk(config, toilWorkflowDir=None):
     if toilWorkflowDir is None:
         from toil.common import Toil
-        toilWorkflowDir = Toil.getWorkflowDir(config.workflowID, config.workDir)
+        toilWorkflowDir = Toil.getLocalWorkflowDir(config.workflowID, config.workDir)
     diskStats = os.statvfs(toilWorkflowDir)
     return diskStats.f_frsize * diskStats.f_bavail
 
