@@ -48,6 +48,7 @@ from toil.lib.humanize import bytes2human
 from toil.lib.misc import mkdir_p, robust_rmtree, atomic_copy, atomic_copyobj
 from toil.lib.objects import abstractclassmethod
 from toil.lib.retry import retry
+from toil.lib.threading import get_process_name, process_name_exists
 from toil.resource import ModuleDescriptor
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
@@ -357,7 +358,7 @@ class CachingFileStore(AbstractFileStore):
                 path TEXT UNIQUE NOT NULL,
                 size INT NOT NULL,
                 state TEXT NOT NULL,
-                owner INT
+                owner TEXT
             )
         """, """
             CREATE TABLE IF NOT EXISTS refs (
@@ -372,7 +373,7 @@ class CachingFileStore(AbstractFileStore):
                 id TEXT NOT NULL PRIMARY KEY,
                 tempdir TEXT NOT NULL,
                 disk INT NOT NULL,
-                worker INT
+                worker TEXT
             )
         """, """
             CREATE TABLE IF NOT EXISTS properties (
@@ -638,7 +639,7 @@ class CachingFileStore(AbstractFileStore):
         We don't actually process them here. We take action based on the states of files we own later.
         """
 
-        pid = os.getpid()
+        me = get_process_name(self.workFlowDir)
 
         # Get a list of all file owner processes on this node.
         # Exclude NULL because it comes out as 0 and we can't look for PID 0.
@@ -647,10 +648,9 @@ class CachingFileStore(AbstractFileStore):
             owners.append(row[0])
 
         # Work out which of them have died.
-        # TODO: use GUIDs or something to account for PID re-use?
         deadOwners = []
         for owner in owners:
-            if not self._pidExists(owner):
+            if not process_name_exists(self.workFlowDir, owner):
                 deadOwners.append(owner)
 
         for owner in deadOwners:
@@ -671,16 +671,16 @@ class CachingFileStore(AbstractFileStore):
             # TODO: if we ever let other PIDs be responsible for writing our
             # files asynchronously, this will need to change.
             self._write([('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
-                (pid, 'deleting', owner, 'deleting')),
+                (me, 'deleting', owner, 'deleting')),
                 ('UPDATE files SET owner = ?, state = ? WHERE owner = ? AND state = ?',
-                (pid, 'deleting', owner, 'downloading')),
+                (me, 'deleting', owner, 'downloading')),
                 ('UPDATE files SET owner = NULL, state = ? WHERE owner = ? AND (state = ? OR state = ?)',
                 ('cached', owner, 'uploadable', 'uploading'))])
 
             logger.debug('Tried to adopt file operations from dead worker %d', owner)
 
     @classmethod
-    def _executePendingDeletions(cls, con, cur):
+    def _executePendingDeletions(cls, workFlowDir, con, cur):
         """
         Delete all the files that are registered in the database as in the
         process of being deleted from the cache by us.
@@ -691,15 +691,17 @@ class CachingFileStore(AbstractFileStore):
         appropriate to its thread without any chance of getting at the main
         thread's connection and cursor in self.
 
+        :param str workFlowDir: The Toil workflow directory on the current
+                                node. 
         :param sqlite3.Connection con: Connection to the cache database.
         :param sqlite3.Cursor cur: Cursor in the cache database.
         """
 
-        pid = os.getpid()
+        me = get_process_name(workFlowDir)
 
         # Remember the file IDs we are deleting
         deletedFiles = []
-        for row in cur.execute('SELECT id, path FROM files WHERE owner = ? AND state = ?', (pid, 'deleting')):
+        for row in cur.execute('SELECT id, path FROM files WHERE owner = ? AND state = ?', (me, 'deleting')):
             # Grab everything we are supposed to delete and delete it
             fileID = row[0]
             filePath = row[1]
@@ -737,7 +739,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        pid = os.getpid()
+        me = get_process_name(self.workFlowDir)
 
         # Record how many files we upload
         uploadedCount = 0
@@ -745,7 +747,7 @@ class CachingFileStore(AbstractFileStore):
             # Try and find a file we might want to upload
             fileID = None
             filePath = None
-            for row in cur.execute('SELECT id, path FROM files WHERE state = ? AND owner = ? LIMIT 1', ('uploadable', pid)):
+            for row in cur.execute('SELECT id, path FROM files WHERE state = ? AND owner = ? LIMIT 1', ('uploadable', me)):
                 fileID = row[0]
                 filePath = row[1]
 
@@ -796,8 +798,8 @@ class CachingFileStore(AbstractFileStore):
         # This will take up space for us and potentially make the cache over-full.
         # But we won't actually let the job run and use any of this space until
         # the cache has been successfully cleared out.
-        pid = os.getpid()
-        self._write([('INSERT INTO jobs VALUES (?, ?, ?, ?)', (self.jobID, self.localTempDir, newJobReqs, pid))])
+        me = get_process_name(self.workFlowDir)
+        self._write([('INSERT INTO jobs VALUES (?, ?, ?, ?)', (self.jobID, self.localTempDir, newJobReqs, me))])
 
         # Now we need to make sure that we can fit all currently cached files,
         # and the parts of the total job requirements not currently spent on
@@ -870,12 +872,12 @@ class CachingFileStore(AbstractFileStore):
 
         # First we want to make sure that dead jobs aren't holding
         # references to files and keeping them from looking unused.
-        self._removeDeadJobs(self.con)
+        self._removeDeadJobs(self.workFlowDir, self.con)
 
         # Adopt work from any dead workers
         self._stealWorkFromTheDead()
 
-        if self._executePendingDeletions(self.con, self.cur) > 0:
+        if self._executePendingDeletions(self.workFlowDir, self.con, self.cur) > 0:
             # We actually had something to delete, which we deleted.
             # Maybe there is space now
             logger.debug('Successfully executed pending deletions to free space')
@@ -910,7 +912,7 @@ class CachingFileStore(AbstractFileStore):
         fileID = row[0]
 
         # Work out who we are
-        pid = os.getpid()
+        me = get_process_name(self.workFlowDir)
 
         # Try and grab it for deletion, subject to the condition that nothing has started reading it
         self._write([("""
@@ -919,12 +921,12 @@ class CachingFileStore(AbstractFileStore):
                 SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
             )
             """,
-            (pid, 'deleting', fileID, 'cached'))])
+            (me, 'deleting', fileID, 'cached'))])
 
         logger.debug('Evicting file %s', fileID)
 
         # Whether we actually got it or not, try deleting everything we have to delete
-        if self._executePendingDeletions(self.con, self.cur) > 0:
+        if self._executePendingDeletions(self.workFlowDir, self.con, self.cur) > 0:
             # We deleted something
             logger.debug('Successfully executed pending deletions to free space')
             return True
@@ -983,7 +985,7 @@ class CachingFileStore(AbstractFileStore):
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
-        self._removeDeadJobs(self.con)
+        self._removeDeadJobs(self.workFlowDir, self.con)
         # Get the requirements for the job.
         self.jobDiskBytes = job.disk
 
@@ -1041,14 +1043,14 @@ class CachingFileStore(AbstractFileStore):
         fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup)
 
         # Work out who we are
-        pid = os.getpid()
+        me = get_process_name(self.workFlowDir)
 
         # Work out where the file ought to go in the cache
         cachePath = self._getNewCachingPath(fileID)
 
         # Create a file in uploadable state and a reference, in the same transaction.
         # Say the reference is an immutable reference
-        self._write([('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploadable', pid)),
+        self._write([('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploadable', me)),
             ('INSERT INTO refs VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))])
 
         if absLocalFileName.startswith(self.localTempDir):
@@ -1107,10 +1109,7 @@ class CachingFileStore(AbstractFileStore):
             # Make our own destination
             localFilePath = self.getLocalTempFileName()
 
-        # Work out who we are
-        pid = os.getpid()
-
-        # And what job we are operating on behalf of
+        # Work out what job we are operating on behalf of
         readerID = self.jobGraph.jobStoreID
 
         if cache:
@@ -1235,7 +1234,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        pid = os.getpid()
+        me = get_process_name(self.workFlowDir)
 
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getNewCachingPath(fileStoreID)
@@ -1245,10 +1244,10 @@ class CachingFileStore(AbstractFileStore):
             # Try and create a downloading entry if no entry exists
             logger.debug('Trying to make file record for id %s', fileStoreID)
             self._write([('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
-                (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', pid))])
+                (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', me))])
 
             # See if we won the race
-            self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', pid))
+            self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', me))
             if self.cur.fetchone()[0] > 0:
                 # We are responsible for downloading the file
                 logger.debug('We are now responsible for downloading file %s', fileStoreID)
@@ -1315,7 +1314,7 @@ class CachingFileStore(AbstractFileStore):
                                 SELECT NULL FROM refs WHERE refs.file_id = files.id AND refs.state != 'mutable'
                             )
                             """,
-                            (pid, 'downloading', fileStoreID, 'cached'))])
+                            (me, 'downloading', fileStoreID, 'cached'))])
 
                         if self._giveAwayDownloadingFile(fileStoreID, cachedPath, localFilePath):
                             # We got ownership of the file and managed to give it away.
@@ -1353,9 +1352,9 @@ class CachingFileStore(AbstractFileStore):
             # from dead workers and loop again.
             # We may have to wait for someone else's download or delete to
             # finish. If they die, we will notice.
-            self._removeDeadJobs(self.con)
+            self._removeDeadJobs(self.workFlowDir, self.con)
             self._stealWorkFromTheDead()
-            self._executePendingDeletions(self.con, self.cur)
+            self._executePendingDeletions(self.workFlowDir, self.con, self.cur)
 
             # Wait for other people's downloads to progress before re-polling.
             time.sleep(self.contentionBackoff)
@@ -1421,11 +1420,11 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        pid = os.getpid()
+        me = get_process_name(self.workFlowDir)
 
         # See if we actually own this file and can giove it away
         self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?',
-            (fileStoreID, 'downloading', pid))
+            (fileStoreID, 'downloading', me))
         if self.cur.fetchone()[0] > 0:
             # Now we have exclusive control of the cached copy of the file, so we can give it away.
 
@@ -1490,7 +1489,7 @@ class CachingFileStore(AbstractFileStore):
         # Now we know to use the cache, and that we don't require a mutable copy.
 
         # Work out who we are
-        pid = os.getpid()
+        me = get_process_name(self.workFlowDir)
 
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getNewCachingPath(fileStoreID)
@@ -1502,12 +1501,12 @@ class CachingFileStore(AbstractFileStore):
             # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
             logger.debug('Trying to make file record and reference for id %s', fileStoreID)
             self._write([('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
-                (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', pid)),
+                (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', me)),
                 ('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
-                (localFilePath, readerID, 'immutable', fileStoreID, 'downloading', pid))])
+                (localFilePath, readerID, 'immutable', fileStoreID, 'downloading', me))])
 
             # See if we won the race
-            self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', pid))
+            self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?', (fileStoreID, 'downloading', me))
             if self.cur.fetchone()[0] > 0:
                 # We are responsible for downloading the file (and we have the reference)
                 logger.debug('We are now responsible for downloading file %s', fileStoreID)
@@ -1583,9 +1582,9 @@ class CachingFileStore(AbstractFileStore):
                     # If we didn't get a download or a reference, adopt and do work from dead workers and loop again.
                     # We may have to wait for someone else's download or delete to
                     # finish. If they die, we will notice.
-                    self._removeDeadJobs(self.con)
+                    self._removeDeadJobs(self.workFlowDir, self.con)
                     self._stealWorkFromTheDead()
-                    self._executePendingDeletions(self.con, self.cur)
+                    self._executePendingDeletions(self.workFlowDir, self.con, self.cur)
 
                     # Wait for other people's downloads to progress.
                     time.sleep(self.contentionBackoff)
@@ -1647,7 +1646,7 @@ class CachingFileStore(AbstractFileStore):
         self.deleteLocalFile(fileStoreID)
 
         # Work out who we are
-        pid = os.getpid()
+        me = get_process_name(self.workFlowDir)
 
         # Make sure nobody else has references to it
         for row in self.cur.execute('SELECT job_id FROM refs WHERE file_id = ? AND state != ?', (fileStoreID, 'mutable')):
@@ -1656,10 +1655,10 @@ class CachingFileStore(AbstractFileStore):
         # it gets evicted, and only delete at the back end?
 
         # Pop the file into deleting state owned by us if it exists
-        self._write([('UPDATE files SET state = ?, owner = ? WHERE id = ?', ('deleting', pid, fileStoreID))])
+        self._write([('UPDATE files SET state = ?, owner = ? WHERE id = ?', ('deleting', me, fileStoreID))])
 
         # Finish the delete if the file is present
-        self._executePendingDeletions(self.con, self.cur)
+        self._executePendingDeletions(self.workFlowDir, self.con, self.cur)
 
         # Add the file to the list of files to be deleted from the job store
         # once the run method completes.
@@ -1724,7 +1723,7 @@ class CachingFileStore(AbstractFileStore):
             # Finish all uploads
             self._executePendingUploads(con, cur)
             # Finish all deletions out of the cache (not from the job store)
-            self._executePendingDeletions(con, cur)
+            self._executePendingDeletions(self.workFlowDir, con, cur)
 
             if jobState:
                 # Do all the things that make this job not redoable
@@ -1754,13 +1753,14 @@ class CachingFileStore(AbstractFileStore):
     @classmethod
     def shutdown(cls, dir_):
         """
-        :param dir_: The cache directory, containing cache state database.
-               Job local temp directories will be removed due to their appearance
-               in the database.
+        :param dir_: The workflow diorectory for the node, which is used as the
+                     cache directory, containing cache state database. Job
+                     local temp directories will be removed due to their
+                     appearance in the database.
         """
 
         if os.path.isdir(dir_):
-            # There is a caching directory to clean up
+            # There is a directory to clean up
        
        
             # We need the database for the most recent workflow attempt so we
@@ -1810,7 +1810,7 @@ class CachingFileStore(AbstractFileStore):
 
                         # Remove dead jobs and their job directories (not under the
                         # cache)
-                        cls._removeDeadJobs(con)
+                        cls._removeDeadJobs(dir_, con)
 
                         con.close()
             else:
@@ -1829,19 +1829,20 @@ class CachingFileStore(AbstractFileStore):
         self.waitForCommit()
 
     @classmethod
-    def _removeDeadJobs(cls, con):
+    def _removeDeadJobs(cls, workFlowDir, con):
         """
         Look at the state of all jobs registered in the database, and handle them
         (clean up the disk)
 
+        :param str workFlowDir: Toil workflow directory for the node.
         :param sqlite3.Connection con: Connection to the cache database.
         """
 
         # Get a cursor
         cur = con.cursor()
 
-        # Work out our PID for taking ownership of jobs
-        pid = os.getpid()
+        # Work out our process name for taking ownership of jobs
+        me = get_process_name(workFlowDir)
 
         # Get all the dead worker PIDs
         workers = []
@@ -1852,7 +1853,7 @@ class CachingFileStore(AbstractFileStore):
         # TODO: account for PID reuse somehow.
         deadWorkers = []
         for worker in workers:
-            if not cls._pidExists(worker):
+            if not process_name_exists(workFlowDir, worker):
                 deadWorkers.append(worker)
 
         # Now we know which workers are dead.
@@ -1874,10 +1875,10 @@ class CachingFileStore(AbstractFileStore):
             jobID = row[0]
 
             # Try to own this job
-            cls._staticWrite(con, cur, [('UPDATE jobs SET worker = ? WHERE id = ? AND worker IS NULL', (pid, jobID))])
+            cls._staticWrite(con, cur, [('UPDATE jobs SET worker = ? WHERE id = ? AND worker IS NULL', (me, jobID))])
 
             # See if we won the race
-            cur.execute('SELECT id, tempdir FROM jobs WHERE id = ? AND worker = ?', (jobID, pid))
+            cur.execute('SELECT id, tempdir FROM jobs WHERE id = ? AND worker = ?', (jobID, me))
             row = cur.fetchone()
             if row is None:
                 # We didn't win the race. Try another one.

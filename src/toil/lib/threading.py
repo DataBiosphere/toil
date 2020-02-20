@@ -197,6 +197,8 @@ NAME_DIR_STEM = 'workers'
 current_process_name = None
 # And we need this lock to control access to it
 current_process_name_lock = threading.Lock()
+# And we want to catch if we ever get the workflow directory wrong.
+last_dir = None
 
 def get_process_name(workflowDir):
     """
@@ -204,15 +206,23 @@ def get_process_name(workflowDir):
     containers on what to Toil appears to be a node.
 
     :param str workflowDir: The Toil workflow directory on the current
-    node. Defines the shared namespace.
+                            node. Defines the shared namespace.
     :return: Process's assigned name
     :rtype: str
     """
 
     global current_process_name_lock
     global current_process_name
+    global last_dir
 
     with current_process_name_lock:
+
+        if last_dir is not None and last_dir != workflowDir:
+            message = 'Got {} as workflow directory instead of {}'.format(workflowDir, last_dir)
+            logging.critical(message)
+            raise RuntimeError(message)
+        elif last_dir is None:
+            last_dir = workflowDir
 
         if current_process_name is not None:
             # If we already gave ourselves a name, return that.
@@ -259,8 +269,17 @@ def process_name_exists(workflowDir, name):
 
     global current_process_name_lock
     global current_process_name
+    global last_dir
 
     with current_process_name_lock:
+
+        if last_dir is not None and last_dir != workflowDir:
+            message = 'Got {} as workflow directory instead of {}'.format(workflowDir, last_dir)
+            logging.critical(message)
+            raise RuntimeError(message)
+        elif last_dir is None:
+            last_dir = workflowDir
+
         if current_process_name == name:
             # We are asking about ourselves. We are alive.
             return True
