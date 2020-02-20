@@ -67,7 +67,7 @@ class NonCachingFileStore(AbstractFileStore):
         jobReqs = job.disk
         startingDir = os.getcwd()
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
-        self._removeDeadJobs(self.workFlowDir)
+        self._removeDeadJobs(self.workDir)
         self.jobStateFile = self._createJobStateFile()
         freeSpace, diskSize = getFileSystemSize(self.localTempDir)
         if freeSpace <= 0.1 * diskSize:
@@ -269,7 +269,7 @@ class NonCachingFileStore(AbstractFileStore):
         :rtype: str
         """
         jobStateFile = os.path.join(self.localTempDir, '.jobState')
-        jobState = {'jobProcessName': get_process_name(self.workFlowDir),
+        jobState = {'jobProcessName': get_process_name(self.workDir),
                     'jobName': self.jobName,
                     'jobDir': self.localTempDir}
         with open(jobStateFile + '.tmp', 'wb') as fH:

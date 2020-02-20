@@ -33,7 +33,7 @@ else:
 
 import psutil
 
-from toil.lib.misc import mkdir_p
+from toil.lib.misc import mkdir_p, robust_rmtree
 
 log = logging.getLogger(__name__)
 
@@ -184,46 +184,89 @@ def cpu_count():
 # So instead we have another system for file store implementations to
 # coordinate among themselves, based on file locks.
 # TODO: deduplicate with DeferredFunctionManager?
-
-# Define what directory the name files should be in, under the local
-# workflow directory.
-NAME_DIR_STEM = 'workers'
+# TODO: Wrap in a class as static methods?
 
 # Note that we don't offer a way to enumerate these names. You can only get
 # your name and poll others' names (or your own). So we don't have
 # distinguishing prefixes or WIP suffixes to allow for enumeration.
 
-# If the process has a name already, it is a string here. Otherwise this is None.
-current_process_name = None
-# And we need this lock to control access to it
-current_process_name_lock = threading.Lock()
+# We keep one name per unique Toil workDir (i.e. /tmp or whatever existing
+# directory Toil tries to put its workflow directory under.)
 
-def get_process_name(workflowDir):
+# We have a global lock to control looking things up
+current_process_name_lock = threading.Lock()
+# And a global dict from work directory to name in that work directory.
+# We also have a file descriptor per work directory but it is just leaked.
+current_process_name_for = {}
+
+def collect_process_name_garbage():
+    """
+    Delete all the process names that point to files that don't exist anymore
+    (because the work directory was temporary and got cleaned up). This is
+    known to happen during the tests, which get their own temp directories.
+
+    Caller must hold current_process_name_lock.
+    """
+    
+    global current_process_name_for
+
+    # Collect the workDirs of the missing names to delete them after iterating.
+    missing = []
+
+    for workDir, name in current_process_name_for.items():
+        if not os.path.exists(os.path.join(workDir, name)):
+            # The name file is gone, probably because the work dir is gone.
+            log.critical('We are no longer %s in %s', name, workDir)
+            missing.append(workDir)
+        else:
+            log.critical('We are still %s in %s', name, workDir)
+
+    for workDir in missing:
+        del current_process_name_for[workDir]
+
+def destroy_all_process_names():
+    """
+    Delete all our process name files because our process is going away.
+
+    We let all our FDs get closed by the process death.
+
+    We assume there is nobody else using the system during exit to race with.
+    """
+
+    global current_process_name_for
+
+    for workDir, name in current_process_name_for.items():
+        robust_rmtree(os.path.join(workDir, name))
+
+# Run the cleanup at exit
+atexit.register(destroy_all_process_names)
+
+def get_process_name(workDir):
     """
     Return the name of the current process. Like a PID but visible between
     containers on what to Toil appears to be a node.
 
-    :param str workflowDir: The Toil workflow directory on the current
-                            node. Defines the shared namespace.
+    :param str workDir: The Toil work directory. Defines the shared namespace.
     :return: Process's assigned name
     :rtype: str
     """
 
     global current_process_name_lock
-    global current_process_name
+    global current_process_name_for
 
     with current_process_name_lock:
 
-        if current_process_name is not None:
-            # If we already gave ourselves a name, return that.
-            return current_process_name
+        # Make sure all the names still exist.
+        # TODO: a bit O(n^2) in the number of workDirs in flight at any one time.
+        collect_process_name_garbage()
 
-        # Make sure the name directory exists
-        nameDir = os.path.join(workflowDir, NAME_DIR_STEM)
-        mkdir_p(nameDir)
+        if workDir in current_process_name_for:
+            # If we already gave ourselves a name, return that.
+            log.critical('Name for %s is %s', workDir, current_process_name_for[workDir])
+            return current_process_name_for[workDir]
 
         # We need to get a name file.
-        nameFD, nameFileName = tempfile.mkstemp(dir=nameDir)
+        nameFD, nameFileName = tempfile.mkstemp(dir=workDir)
 
         # Lock the file. The lock will automatically go away if our process does.
         try:
@@ -232,42 +275,40 @@ def get_process_name(workflowDir):
             # Someone else might have locked it even though they should not have.
             raise RuntimeError("Could not lock process name file %s: %s" % (nameFileName, str(e)))
 
-        # Save the name
-        current_process_name = nameFileName
+        # Save the basename
+        current_process_name_for[workDir] = os.path.basename(nameFileName)
 
-        # Remember to delete it when we die, if we can.
-        atexit.register(lambda: os.remove(nameFileName))
+        log.critical('We are now %s in %s', current_process_name_for[workDir], workDir)
 
         # Return the basename
-        return os.path.basename(nameFileName)
+        return current_process_name_for[workDir] 
 
         # TODO: we leave the file open forever. We might need that in order for
         # it to stay locked while we are alive.
 
-def process_name_exists(workflowDir, name):
+def process_name_exists(workDir, name):
     """
     Return true if the process named by the given name (from process_name) exists, and false otherwise.
 
     Can see across container boundaries using the given node workflow directory.
 
-    :param str workflowDir: The Toil workflow directory on the current
-    node. Defines the shared namespace.
+    :param str workDir: The Toil work directory. Defines the shared namespace.
     :param str name: Process's name to poll
     :return: True if the named process is still alive, and False otherwise.
     :rtype: bool
     """
 
     global current_process_name_lock
-    global current_process_name
+    global current_process_name_for
     
     with current_process_name_lock:
-
-        if current_process_name == name:
+        if current_process_name_for.get(workDir, None) == name:
             # We are asking about ourselves. We are alive.
+            log.critical('Process %s in %s is us', name, workDir)
             return True
 
     # Work out what the corresponding file name is
-    nameFileName = os.path.join(workflowDir, NAME_DIR_STEM, name)
+    nameFileName = os.path.join(workDir, name)
     if not os.path.exists(nameFileName):
         # If the file is gone, the process can't exist.
         return False
@@ -275,15 +316,18 @@ def process_name_exists(workflowDir, name):
     
     nameFD = None
     try:
-        # Otherwise see if we can lock it shared
-        nameFD = os.open(nameFileName)
+        # Otherwise see if we can lock it shared, for which we need an FD, but
+        # only for reading.
+        nameFD = os.open(nameFileName, os.O_RDONLY)
         try:
             fcntl.lockf(nameFD, fcntl.LOCK_SH | fcntl.LOCK_NB)
         except IOError as e:
             # Could not lock. Process is alive.
+            log.critical('Process %s in %s is alive', name, workDir)
             return True
         else:
             # Could lock. Process is dead.
+            log.critical('Process %s in %s is dead', name, workDir)
             # Remove the file. We race to be the first to do so.
             try:
                 os.remove(nameFileName)

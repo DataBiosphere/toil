@@ -86,7 +86,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
                running job.
         :param str localTempDir: the per-worker local temporary directory, under which
                per-job directories will be created. Assumed to be inside the
-               workflow directory.
+               workflow directory, which is assumed to be inside the work directory.
 
         :param waitForPreviousCommit: the waitForCommit method of the previous job's file
                store, when jobs are running in sequence on the same worker. Used to
@@ -99,6 +99,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         self.jobGraph = jobGraph
         self.localTempDir = os.path.abspath(localTempDir)
         self.workFlowDir = os.path.dirname(self.localTempDir)
+        self.workDir = os.path.dirname(self.localTempDir)
         self.jobName = self.jobGraph.command.split()[1]
         self.waitForPreviousCommit = waitForPreviousCommit
         self.loggingMessages = []

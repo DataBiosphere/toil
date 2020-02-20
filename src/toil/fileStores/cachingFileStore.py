@@ -639,7 +639,7 @@ class CachingFileStore(AbstractFileStore):
         We don't actually process them here. We take action based on the states of files we own later.
         """
 
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
 
         # Get a list of all file owner processes on this node.
         # Exclude NULL because it comes out as 0 and we can't look for PID 0.
@@ -650,7 +650,7 @@ class CachingFileStore(AbstractFileStore):
         # Work out which of them have died.
         deadOwners = []
         for owner in owners:
-            if not process_name_exists(self.workFlowDir, owner):
+            if not process_name_exists(self.workDir, owner):
                 deadOwners.append(owner)
 
         for owner in deadOwners:
@@ -680,7 +680,7 @@ class CachingFileStore(AbstractFileStore):
             logger.debug('Tried to adopt file operations from dead worker %d', owner)
 
     @classmethod
-    def _executePendingDeletions(cls, workFlowDir, con, cur):
+    def _executePendingDeletions(cls, workDir, con, cur):
         """
         Delete all the files that are registered in the database as in the
         process of being deleted from the cache by us.
@@ -691,13 +691,12 @@ class CachingFileStore(AbstractFileStore):
         appropriate to its thread without any chance of getting at the main
         thread's connection and cursor in self.
 
-        :param str workFlowDir: The Toil workflow directory on the current
-                                node. 
+        :param str workDir: The Toil work directory.
         :param sqlite3.Connection con: Connection to the cache database.
         :param sqlite3.Cursor cur: Cursor in the cache database.
         """
 
-        me = get_process_name(workFlowDir)
+        me = get_process_name(workDir)
 
         # Remember the file IDs we are deleting
         deletedFiles = []
@@ -739,7 +738,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
 
         # Record how many files we upload
         uploadedCount = 0
@@ -798,7 +797,7 @@ class CachingFileStore(AbstractFileStore):
         # This will take up space for us and potentially make the cache over-full.
         # But we won't actually let the job run and use any of this space until
         # the cache has been successfully cleared out.
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
         self._write([('INSERT INTO jobs VALUES (?, ?, ?, ?)', (self.jobID, self.localTempDir, newJobReqs, me))])
 
         # Now we need to make sure that we can fit all currently cached files,
@@ -872,12 +871,12 @@ class CachingFileStore(AbstractFileStore):
 
         # First we want to make sure that dead jobs aren't holding
         # references to files and keeping them from looking unused.
-        self._removeDeadJobs(self.workFlowDir, self.con)
+        self._removeDeadJobs(self.workDir, self.con)
 
         # Adopt work from any dead workers
         self._stealWorkFromTheDead()
 
-        if self._executePendingDeletions(self.workFlowDir, self.con, self.cur) > 0:
+        if self._executePendingDeletions(self.workDir, self.con, self.cur) > 0:
             # We actually had something to delete, which we deleted.
             # Maybe there is space now
             logger.debug('Successfully executed pending deletions to free space')
@@ -912,7 +911,7 @@ class CachingFileStore(AbstractFileStore):
         fileID = row[0]
 
         # Work out who we are
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
 
         # Try and grab it for deletion, subject to the condition that nothing has started reading it
         self._write([("""
@@ -926,7 +925,7 @@ class CachingFileStore(AbstractFileStore):
         logger.debug('Evicting file %s', fileID)
 
         # Whether we actually got it or not, try deleting everything we have to delete
-        if self._executePendingDeletions(self.workFlowDir, self.con, self.cur) > 0:
+        if self._executePendingDeletions(self.workDir, self.con, self.cur) > 0:
             # We deleted something
             logger.debug('Successfully executed pending deletions to free space')
             return True
@@ -985,7 +984,7 @@ class CachingFileStore(AbstractFileStore):
         self.localTempDir = makePublicDir(os.path.join(self.localTempDir, str(uuid.uuid4())))
         # Check the status of all jobs on this node. If there are jobs that started and died before
         # cleaning up their presence from the database, clean them up ourselves.
-        self._removeDeadJobs(self.workFlowDir, self.con)
+        self._removeDeadJobs(self.workDir, self.con)
         # Get the requirements for the job.
         self.jobDiskBytes = job.disk
 
@@ -1043,7 +1042,7 @@ class CachingFileStore(AbstractFileStore):
         fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup)
 
         # Work out who we are
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
 
         # Work out where the file ought to go in the cache
         cachePath = self._getNewCachingPath(fileID)
@@ -1234,7 +1233,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
 
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getNewCachingPath(fileStoreID)
@@ -1352,9 +1351,9 @@ class CachingFileStore(AbstractFileStore):
             # from dead workers and loop again.
             # We may have to wait for someone else's download or delete to
             # finish. If they die, we will notice.
-            self._removeDeadJobs(self.workFlowDir, self.con)
+            self._removeDeadJobs(self.workDir, self.con)
             self._stealWorkFromTheDead()
-            self._executePendingDeletions(self.workFlowDir, self.con, self.cur)
+            self._executePendingDeletions(self.workDir, self.con, self.cur)
 
             # Wait for other people's downloads to progress before re-polling.
             time.sleep(self.contentionBackoff)
@@ -1420,7 +1419,7 @@ class CachingFileStore(AbstractFileStore):
         """
 
         # Work out who we are
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
 
         # See if we actually own this file and can giove it away
         self.cur.execute('SELECT COUNT(*) FROM files WHERE id = ? AND state = ? AND owner = ?',
@@ -1489,7 +1488,7 @@ class CachingFileStore(AbstractFileStore):
         # Now we know to use the cache, and that we don't require a mutable copy.
 
         # Work out who we are
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
 
         # Work out where to cache the file if it isn't cached already
         cachedPath = self._getNewCachingPath(fileStoreID)
@@ -1582,9 +1581,9 @@ class CachingFileStore(AbstractFileStore):
                     # If we didn't get a download or a reference, adopt and do work from dead workers and loop again.
                     # We may have to wait for someone else's download or delete to
                     # finish. If they die, we will notice.
-                    self._removeDeadJobs(self.workFlowDir, self.con)
+                    self._removeDeadJobs(self.workDir, self.con)
                     self._stealWorkFromTheDead()
-                    self._executePendingDeletions(self.workFlowDir, self.con, self.cur)
+                    self._executePendingDeletions(self.workDir, self.con, self.cur)
 
                     # Wait for other people's downloads to progress.
                     time.sleep(self.contentionBackoff)
@@ -1646,7 +1645,7 @@ class CachingFileStore(AbstractFileStore):
         self.deleteLocalFile(fileStoreID)
 
         # Work out who we are
-        me = get_process_name(self.workFlowDir)
+        me = get_process_name(self.workDir)
 
         # Make sure nobody else has references to it
         for row in self.cur.execute('SELECT job_id FROM refs WHERE file_id = ? AND state != ?', (fileStoreID, 'mutable')):
@@ -1658,7 +1657,7 @@ class CachingFileStore(AbstractFileStore):
         self._write([('UPDATE files SET state = ?, owner = ? WHERE id = ?', ('deleting', me, fileStoreID))])
 
         # Finish the delete if the file is present
-        self._executePendingDeletions(self.workFlowDir, self.con, self.cur)
+        self._executePendingDeletions(self.workDir, self.con, self.cur)
 
         # Add the file to the list of files to be deleted from the job store
         # once the run method completes.
@@ -1723,7 +1722,7 @@ class CachingFileStore(AbstractFileStore):
             # Finish all uploads
             self._executePendingUploads(con, cur)
             # Finish all deletions out of the cache (not from the job store)
-            self._executePendingDeletions(self.workFlowDir, con, cur)
+            self._executePendingDeletions(self.workDir, con, cur)
 
             if jobState:
                 # Do all the things that make this job not redoable
@@ -1829,12 +1828,12 @@ class CachingFileStore(AbstractFileStore):
         self.waitForCommit()
 
     @classmethod
-    def _removeDeadJobs(cls, workFlowDir, con):
+    def _removeDeadJobs(cls, workDir, con):
         """
         Look at the state of all jobs registered in the database, and handle them
         (clean up the disk)
 
-        :param str workFlowDir: Toil workflow directory for the node.
+        :param str workDir: Toil work directory.
         :param sqlite3.Connection con: Connection to the cache database.
         """
 
@@ -1842,7 +1841,7 @@ class CachingFileStore(AbstractFileStore):
         cur = con.cursor()
 
         # Work out our process name for taking ownership of jobs
-        me = get_process_name(workFlowDir)
+        me = get_process_name(workDir)
 
         # Get all the dead worker PIDs
         workers = []
@@ -1853,7 +1852,7 @@ class CachingFileStore(AbstractFileStore):
         # TODO: account for PID reuse somehow.
         deadWorkers = []
         for worker in workers:
-            if not process_name_exists(workFlowDir, worker):
+            if not process_name_exists(workDir, worker):
                 deadWorkers.append(worker)
 
         # Now we know which workers are dead.
