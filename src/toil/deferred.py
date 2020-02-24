@@ -105,7 +105,7 @@ class DeferredFunctionManager(object):
     # "silly rename" files, or other garbage that people put in our
     # directory
     PREFIX = 'func'
-    # And a suffix to distingusidh in-progress from completed files
+    # And a suffix to distinguish in-progress from completed files
     WIP_SUFFIX = '.tmp'
 
     def __init__(self, stateDirBase):

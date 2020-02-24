@@ -1191,7 +1191,7 @@ def _exportStaticMethodAsGlobalFunctions(cls):
     for name, kind, clazz, value in inspect.classify_class_attrs(cls):
         if kind == 'static method' and name != '__new__':  # __new__ became static in 3.7
             method = value.__func__
-            args = inspect.getargspec(method).args
+            args = inspect.getfullargspec(method).args
             if args and args[0] == 'job':
                 globals()[name] = method
 
