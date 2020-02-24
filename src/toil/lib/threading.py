@@ -216,10 +216,7 @@ def collect_process_name_garbage():
     for workDir, name in current_process_name_for.items():
         if not os.path.exists(os.path.join(workDir, name)):
             # The name file is gone, probably because the work dir is gone.
-            log.critical('We are no longer %s in %s', name, workDir)
             missing.append(workDir)
-        else:
-            log.critical('We are still %s in %s', name, workDir)
 
     for workDir in missing:
         del current_process_name_for[workDir]
@@ -262,7 +259,6 @@ def get_process_name(workDir):
 
         if workDir in current_process_name_for:
             # If we already gave ourselves a name, return that.
-            log.critical('Name for %s is %s', workDir, current_process_name_for[workDir])
             return current_process_name_for[workDir]
 
         # We need to get a name file.
@@ -277,8 +273,6 @@ def get_process_name(workDir):
 
         # Save the basename
         current_process_name_for[workDir] = os.path.basename(nameFileName)
-
-        log.critical('We are now %s in %s', current_process_name_for[workDir], workDir)
 
         # Return the basename
         return current_process_name_for[workDir] 
@@ -304,7 +298,6 @@ def process_name_exists(workDir, name):
     with current_process_name_lock:
         if current_process_name_for.get(workDir, None) == name:
             # We are asking about ourselves. We are alive.
-            log.critical('Process %s in %s is us', name, workDir)
             return True
 
     # Work out what the corresponding file name is
@@ -323,11 +316,9 @@ def process_name_exists(workDir, name):
             fcntl.lockf(nameFD, fcntl.LOCK_SH | fcntl.LOCK_NB)
         except IOError as e:
             # Could not lock. Process is alive.
-            log.critical('Process %s in %s is alive', name, workDir)
             return True
         else:
             # Could lock. Process is dead.
-            log.critical('Process %s in %s is dead', name, workDir)
             # Remove the file. We race to be the first to do so.
             try:
                 os.remove(nameFileName)
