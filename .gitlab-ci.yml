@@ -41,6 +41,13 @@ cwl:
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py
 
+cwl_v1.1:
+  stage: test
+  script:
+    - pwd
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    - python -m pytest -s -r s src/toil/test/cwl/cwlNewTest.py
+
 wdl:
   stage: test
   script:
