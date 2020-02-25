@@ -30,6 +30,7 @@ import logging
 import copy
 import functools
 from typing import Text, Mapping, MutableSequence, MutableMapping, List, Dict, Union, Any
+from collections import OrderedDict
 import uuid
 import datetime
 
@@ -807,12 +808,9 @@ class CWLJob(Job):
         runtime_context = self.runtime_context.copy()
         runtime_context.basedir = os.getcwd()
         runtime_context.outdir = outdir
-        self.builder.outdir = outdir
         runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
         runtime_context.make_fs_access = functools.partial(
-            ToilFsAccess, file_store=file_store)
-        self.builder.make_fs_access = functools.partial(
             ToilFsAccess, file_store=file_store)
 
         runtime_context.toil_get_file = functools.partial(
@@ -1232,7 +1230,7 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files):
     # remove secondary files still containing interpolated strings
     for sf in unfiltered_secondary_files['secondaryFiles']:
         sf_bn = sf.get('basename', '')
-        if ('${' not in sf_bn) and ('${' not in sf_bn):
+        if ('$(' not in sf_bn) and ('${' not in sf_bn):
             intermediate_secondary_files.append(sf)
     # remove secondary files that are not present in the filestore
     # i.e. 'file://' only gets converted to 'toilfs:' upon a successful import
@@ -1261,7 +1259,7 @@ def main(args=None, stdout=sys.stdout):
                         help="Enable loading and running development versions of CWL")
     parser.add_argument("--quiet", dest="logLevel", action="store_const",
                         const="ERROR")
-    parser.add_argument("--basedir", type=str)
+    parser.add_argument("--basedir", type=str)  # TODO: Might be hard-coded?
     parser.add_argument("--outdir", type=str, default=os.getcwd())
     parser.add_argument("--version", action='version', version=baseVersion)
     dockergroup = parser.add_mutually_exclusive_group()
@@ -1543,6 +1541,7 @@ def main(args=None, stdout=sys.stdout):
             runtime_context.force_docker_pull = options.force_docker_pull
             runtime_context.no_match_user = options.no_match_user
             runtime_context.no_read_only = options.no_read_only
+            runtime_context.basedir = options.basedir
 
             # We instantiate an early builder object here to populate indirect secondaryFile references
             # using cwltool's library because we need to resolve them before toil imports them into the filestore.

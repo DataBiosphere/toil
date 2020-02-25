@@ -96,7 +96,7 @@ class CWLTest(ToilTest):
                   self._expected_revsort_output(self.outDir))
 
     def download(self,inputs, tester_fn):
-        input_location = os.path.join('src/toil/test/cwl',inputs)
+        input_location = os.path.join('src/toil/test/cwl', inputs)
         tester_fn('src/toil/test/cwl/download.cwl',
                   input_location,
                   self._expected_download_output(self.outDir))
