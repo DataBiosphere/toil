@@ -323,8 +323,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
-                length = otherCls._readFromUrl(url, writable)
-                return FileID(jobStoreFileID, length)
+                size = otherCls._readFromUrl(url, writable)
+                return FileID(jobStoreFileID, size)
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
@@ -1067,8 +1067,8 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
             with attempt:
                 with closing(urlopen(url.geturl())) as readable:
                     # just read the header for content length
-                    length = readable.info().get('content-length')
-                    return int(length) if length is not None else None
+                    size = readable.info().get('content-length')
+                    return int(size) if size is not None else None
 
     @classmethod
     def _readFromUrl(cls, url, writable):
@@ -1082,12 +1082,12 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
                     # We need to put the actual count in a container so our
                     # nested function can modify it without creating its own
                     # local with the same name.
-                    length = [0]
+                    size = [0]
                     def count(l):
-                        length[0] += l
+                        size[0] += l
                     counter = WriteWatchingStream(writable)
                     counter.onWrite(count)
                     
                     # Do the download
                     shutil.copyfileobj(readable, counter)
-                    return length[0]
+                    return size[0]
