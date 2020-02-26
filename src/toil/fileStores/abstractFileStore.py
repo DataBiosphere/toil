@@ -244,6 +244,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
             
             # When the stream is written to, count the bytes
             def handle(numBytes):
+                # No scope problem here, because we don't assign to a fileID local
                 fileID.size += numBytes 
             wrappedStream.onWrite(handle)
             

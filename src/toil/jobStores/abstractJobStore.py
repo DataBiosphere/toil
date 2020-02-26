@@ -1079,12 +1079,15 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
             with attempt:
                 with closing(urlopen(url.geturl())) as readable:
                     # Make something to count the bytes we get
-                    length = 0
+                    # We need to put the actual count in a container so our
+                    # nested function can modify it without creating its own
+                    # local with the same name.
+                    length = [0]
                     def count(l):
-                        length += l
+                        length[0] += l
                     counter = WriteWatchingStream(writable)
                     counter.onWrite(count)
                     
                     # Do the download
                     shutil.copyfileobj(readable, counter)
-                    return length
+                    return length[0]
