@@ -33,6 +33,7 @@ except ImportError:
     import pickle
 
 # toil dependencies
+from toil.job import Toil
 from toil.fileStores import FileID
 from toil.lib.bioio import absSymPath
 from toil.lib.misc import mkdir_p, robust_rmtree, AtomicFileCreate, atomic_copy, atomic_copyobj
@@ -112,6 +113,7 @@ class FileJobStore(AbstractJobStore):
         mkdir_p(self.jobFilesDir)
         mkdir_p(self.sharedFilesDir)
         self.linkImports = config.linkImports
+        self.restart = config.restart
         super(FileJobStore, self).initialize(config)
 
     def resume(self):
@@ -172,6 +174,7 @@ class FileJobStore(AbstractJobStore):
         over the course of large workflows with a jobStore on a busy NFS."""
         for iTry in range(1,maxTries+1):
             jobFile = self._getJobFileName(jobStoreID)
+            logging.debug("being called waitforexists for {}".format(jobStoreID))
             if os.path.exists(jobFile):
                 return True
             if iTry >= maxTries:
@@ -632,8 +635,10 @@ class FileJobStore(AbstractJobStore):
         """
         Raises a NoSuchJobException if the job with ID jobStoreID does not exist.
         """
-        if not self.waitForExists(jobStoreID,30):
-            raise NoSuchJobException(jobStoreID)
+        if not self.restart:
+            if not self.waitForExists(jobStoreID,30):
+                raise NoSuchJobException(jobStoreID)
+        raise NoSuchJobException(jobStoreID)
 
     def _getFilePathFromId(self, jobStoreFileID):
         """
