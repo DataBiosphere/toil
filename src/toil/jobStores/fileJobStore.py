@@ -33,7 +33,6 @@ except ImportError:
     import pickle
 
 # toil dependencies
-from toil.job import Toil
 from toil.fileStores import FileID
 from toil.lib.bioio import absSymPath
 from toil.lib.misc import mkdir_p, robust_rmtree, AtomicFileCreate, atomic_copy, atomic_copyobj
