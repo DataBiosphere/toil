@@ -95,6 +95,8 @@ class FileJobStore(AbstractJobStore):
 
         self.linkImports = None
 
+        self.restart = False
+
     def __repr__(self):
         return 'FileJobStore({})'.format(self.jobStoreDir)
 
