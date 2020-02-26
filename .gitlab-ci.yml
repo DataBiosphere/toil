@@ -34,19 +34,19 @@ batch_systems:
     - python -m pytest -s -r s src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest -s -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
-cwl:
+cwl_v1.0:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py
+    - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py::CWLv10Test
 
 cwl_v1.1:
   stage: test
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all]
-    - python -m pytest -s -r s src/toil/test/cwl/cwlNewTest.py
+    - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py::CWLv11Test
 
 wdl:
   stage: test
