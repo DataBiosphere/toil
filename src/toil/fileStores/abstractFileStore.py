@@ -40,6 +40,7 @@ import uuid
 
 from toil.lib.objects import abstractclassmethod
 from toil.lib.humanize import bytes2human
+from toil.lib.misc import WriteWatchingStream
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 
@@ -463,61 +464,4 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
 
-class WriteWatchingStream(object):
-    """
-    A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
-    
-    Not seekable.
-    """
-    
-    def __init__(self, backingStream):
-        """
-        Wrap the given backing stream.
-        """
-        
-        self.backingStream = backingStream
-        # We have no write listeners yet
-        self.writeListeners = []
-        
-    def onWrite(self, listener):
-        """
-        Call the given listener with the number of bytes written on every write.
-        """
-        
-        self.writeListeners.append(listener)
-        
-    # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
-        
-    def write(self, data):
-        """
-        Write the given data to the file.
-        """
-        
-        # Do the write
-        self.backingStream.write(data)
-        
-        for listener in self.writeListeners:
-            # Send out notifications
-            listener(len(data))
-            
-    def writelines(self, datas):
-        """
-        Write each string from the given iterable, without newlines.
-        """
-        
-        for data in datas:
-            self.write(data)
-            
-    def flush(self):
-        """
-        Flush the backing stream.
-        """
-        
-        self.backingStream.flush()
-        
-    def close(self):
-        """
-        Close the backing stream.
-        """
-        
-        self.backingStream.close()
+

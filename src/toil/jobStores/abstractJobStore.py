@@ -38,6 +38,7 @@ from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
 from toil.job import JobException
 from toil.lib.memoize import memoize
+from toil.lib.misc import WriteWatchingStream
 from toil.lib.objects import abstractclassmethod
 from future.utils import with_metaclass
 
@@ -322,8 +323,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
-                otherCls._readFromUrl(url, writable)
-                return FileID(jobStoreFileID, otherCls.getSize(url))
+                length = otherCls._readFromUrl(url, writable)
+                return FileID(jobStoreFileID, length)
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
@@ -367,7 +368,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @abstractclassmethod
     def getSize(cls, url):
         """
-        returns the size in bytes of the file at the given URL
+        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
@@ -386,6 +387,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param writable: a writable stream
+
+        :return int: returns the size of the file in bytes
         """
         raise NotImplementedError()
 
@@ -1070,6 +1073,16 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
     @classmethod
     def _readFromUrl(cls, url, writable):
         for attempt in retry_http():
+            # We can only retry on errors that happen as responses to the request.
+            # If we start getting file data, and the connection drops, we fail.
+            # So we don't have to worry about writing the start of the file twice.
             with attempt:
                 with closing(urlopen(url.geturl())) as readable:
-                    shutil.copyfileobj(readable, writable)
+                    # Make something to count the bytes we get
+                    length = 0
+                    counter = WriteWatchingStream(writable)
+                    counter.onWrite(lambda l: length += l)
+                    
+                    # Do the download
+                    shutil.copyfileobj(readable, counter)
+                    return length

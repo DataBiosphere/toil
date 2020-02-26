@@ -452,6 +452,7 @@ class AWSJobStore(AbstractJobStore):
             srcKey.get_contents_to_file(writable)
         finally:
             srcKey.bucket.connection.close()
+        return key.size
 
     @classmethod
     def _writeToUrl(cls, readable, url):

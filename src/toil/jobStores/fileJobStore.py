@@ -309,9 +309,13 @@ class FileJobStore(AbstractJobStore):
         :param str url: A path as a string of the file to be read from.
         :param object writable: An open file object to write to.
         """
+        
         # we use a ~10Mb buffer to improve speed
         with open(cls._extractPathFromUrl(url), 'rb') as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
+            # Return the number of bytes we read when we reached EOF.
+            return readable.tell()
+        
 
     @classmethod
     def _writeToUrl(cls, readable, url):
