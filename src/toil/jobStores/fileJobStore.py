@@ -643,7 +643,6 @@ class FileJobStore(AbstractJobStore):
         if not self.restart:
             if not self.waitForExists(jobStoreID,30):
                 raise NoSuchJobException(jobStoreID)
-        raise NoSuchJobException(jobStoreID)
 
     def _getFilePathFromId(self, jobStoreFileID):
         """
