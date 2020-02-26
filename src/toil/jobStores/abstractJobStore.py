@@ -1080,8 +1080,10 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
                 with closing(urlopen(url.geturl())) as readable:
                     # Make something to count the bytes we get
                     length = 0
+                    def count(l):
+                        length += l
                     counter = WriteWatchingStream(writable)
-                    counter.onWrite(lambda l: length += l)
+                    counter.onWrite(count)
                     
                     # Do the download
                     shutil.copyfileobj(readable, counter)
