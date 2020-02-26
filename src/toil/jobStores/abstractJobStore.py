@@ -1064,7 +1064,8 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
             with attempt:
                 with closing(urlopen(url.geturl())) as readable:
                     # just read the header for content length
-                    return int(readable.info().get('content-length'))
+                    length = readable.info().get('content-length')
+                    return int(length) if length is not None else None
 
     @classmethod
     def _readFromUrl(cls, url, writable):
