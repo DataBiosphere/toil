@@ -136,8 +136,12 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                      'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
             for i in range(self.numWorkers):
                 worker = Thread(target=self.worker, args=(self.inputQueue,))
-                self.workerThreads.append(worker)
-                worker.start()
+                try:
+                    self.workerThreads.append(worker)
+                    worker.start()
+                except Exception as e:
+                    log.error("Thread start exception: %s", e)
+                    worker.join()
         else:
             log.debug('Started in worker debug mode.')
 
