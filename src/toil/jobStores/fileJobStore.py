@@ -244,8 +244,10 @@ class FileJobStore(AbstractJobStore):
                 logger.warning('Job Dir: %s' % i)
                 if i.startswith(self.JOB_DIR_PREFIX):
                     # This is a job instance directory
+                    jobId = self._getJobIdFromDir(os.path.join(tempDir, i))
                     try:
-                        yield self.load(self._getJobIdFromDir(os.path.join(tempDir, i)))
+                        if self.exists(jobId):
+                            yield self.load(jobId)
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
                         pass
