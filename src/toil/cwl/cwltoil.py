@@ -281,11 +281,11 @@ class ResolveSource:
             raise validate.ValidationException(
                 "Unsupported linkMerge '%s' on %s." % (link_merge_type, self.name))
 
-    def pick_value(self, values: dict) -> Any:
+    def pick_value(self, values: Union[List, Any]) -> Any:
         """
         Apply pickValue operator to `values` object
 
-        :param values: dict
+        :param values: Intended to be a list, but other types will be returned without modification.
         :return:
         """
         pick_value_type = self.input.get("pickValue")
@@ -298,7 +298,6 @@ class ResolveSource:
                 "pickValue used but input %s is not a list." % self.name)
             return values
 
-        # seems to return dictionary keys and not values?
         result = [v for v in values if not isinstance(v, SkipNull) and v is not None]
 
         if pick_value_type == "first_non_null":
