@@ -293,12 +293,12 @@ class CWLv10Test(ToilTest):
         # makes for a less noisy diff in case the assertion fails.
         loc = 'file://' + os.path.join(outDir, 'out')
         return {
-            u'output1':  {
-                u'location': loc,
-                u'checksum': u'sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2',
-                u'basename': u'out',
-                u'class': u'File',
-                u'size': 150}}
+            'output1':  {
+                'location': loc,
+                'checksum': 'sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2',
+                'basename': 'out',
+                'class': 'File',
+                'size': 150}}
 
     @staticmethod
     def _expected_revsort_output(outDir):
@@ -306,12 +306,12 @@ class CWLv10Test(ToilTest):
         # makes for a less noisy diff in case the assertion fails.
         loc = 'file://' + os.path.join(outDir, 'output.txt')
         return {
-            u'output': {
-                u'location': loc,
-                u'basename': u'output.txt',
-                u'size': 1111,
-                u'class': u'File',
-                u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}}
+            'output': {
+                'location': loc,
+                'basename': 'output.txt',
+                'size': 1111,
+                'class': 'File',
+                'checksum': 'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}}
 
     @staticmethod
     def _expected_download_output(outDir):
@@ -319,12 +319,12 @@ class CWLv10Test(ToilTest):
         # makes for a less noisy diff in case the assertion fails.
         loc = 'file://' + os.path.join(outDir, 'output.txt')
         return {
-            u'output': {
-                u'location': loc,
-                u'basename': u'output.txt',
-                u'size': 0,
-                u'class': u'File',
-                u'checksum': u'sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709'}}
+            'output': {
+                'location': loc,
+                'basename': 'output.txt',
+                'size': 0,
+                'class': 'File',
+                'checksum': 'sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709'}}
 
 
 @needs_cwl

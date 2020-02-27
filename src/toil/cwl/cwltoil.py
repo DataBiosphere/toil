@@ -526,6 +526,12 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         self.file_store = file_store
         super(ToilFsAccess, self).__init__(basedir)
 
+    def exists(self, path):  # type: (str) -> bool
+        try:
+            return os.path.exists(self._abs(path))
+        except NoSuchFileException:
+            return False
+
     def _abs(self, path: str) -> str:
         """
         Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
@@ -533,12 +539,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         """
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
         if path.startswith("toilfs:"):
-            try:
-                return self.file_store.readGlobalFile(FileID.unpack(path[7:]))
-            except NoSuchFileException:
-                # normally toil initiates a similar filename and then places the file there
-                # here we return the created filename even if the file was not there
-                return self.file_store.getLocalTempFileName()
+            return self.file_store.readGlobalFile(FileID.unpack(path[7:]))
         return super(ToilFsAccess, self)._abs(path)
 
 
@@ -1219,15 +1220,14 @@ cwltool.process.supportedProcessRequirements = (
     "StepInputExpressionRequirement", "ResourceRequirement")
 
 
-def visitSteps(cmdline_tool, op):
-    # : Union[cwltool.command_line_tool.CommandLineTool, cwltool.workflow.Workflow]
+def visitSteps(cmdline_tool: Union[cwltool.command_line_tool.CommandLineTool, cwltool.workflow.Workflow], op: Any):
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
         for step in cmdline_tool.steps:
             op(step.tool)
             visitSteps(step.embedded_tool, op)
 
 
-def remove_unprocessed_secondary_files(unfiltered_secondary_files):
+def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> dict:
     """
     Interpolated strings and optional inputs in secondary files were added to CWL in version 1.1.
 
