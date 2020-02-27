@@ -360,8 +360,8 @@ class CWLv11Test(ToilTest):
     @pytest.mark.timeout(2400)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently run tests: 213, 227, 228, 229, 242, 244, 246
-            selected_tests = '1-212,214-226,230-241,243,245,247-253'
+            # TODO: we do not currently run tests: 213, 227, 228, 229, 242, 244, 246, 249
+            selected_tests = '1-212,214-226,230-241,243,245,247-248,250-253'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',
