@@ -1,4 +1,5 @@
-# Copyright (C) 2015 Curoverse, Inc
+# Copyright (C) 2016-2020 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2020 Curoverse, Inc
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -191,11 +192,7 @@ class CWLv10Test(ToilTest):
             # check output -- if we failed but only have unsupported features, we're okay
             p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
 
-            error_log = e.output
-            if isinstance(e.output, bytes):
-                # py2/3 string handling
-                error_log = e.output.decode('utf-8')
-
+            error_log = e.output.decode('utf-8')
             for line in error_log.split('\n'):
                 m = p.search(line)
                 if m:
@@ -340,7 +337,7 @@ class CWLv11Test(ToilTest):
         cls.rootDir = cls._projectRootPath()
         cls.cwlSpec = os.path.join(cls.rootDir, 'src/toil/test/cwl/spec_v11')
         cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
-        # TODO: Pin these tests either by cloning a specific commit
+        # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = 'https://github.com/common-workflow-language/cwl-v1.1.git'
         commit = 'a22b7580c6b50e77c0a181ca59d3828dd5c69143'
         p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
@@ -381,11 +378,7 @@ class CWLv11Test(ToilTest):
             # check output -- if we failed but only have unsupported features, we're okay
             p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
 
-            error_log = e.output
-            if isinstance(e.output, bytes):
-                # py2/3 string handling
-                error_log = e.output.decode('utf-8')
-
+            error_log = e.output.decode('utf-8')
             for line in error_log.split('\n'):
                 m = p.search(line)
                 if m:

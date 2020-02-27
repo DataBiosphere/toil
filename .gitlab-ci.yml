@@ -39,6 +39,7 @@ cwl_v1.0:
   script:
     - pwd
     - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    - mypy --ignore-missing-imports --no-strict-optional src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py::CWLv10Test
 
 cwl_v1.1:
