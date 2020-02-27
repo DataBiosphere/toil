@@ -526,7 +526,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         self.file_store = file_store
         super(ToilFsAccess, self).__init__(basedir)
 
-    def exists(self, path):  # type: (str) -> bool
+    def exists(self, path: str) -> bool:
         try:
             return os.path.exists(self._abs(path))
         except NoSuchFileException:
@@ -865,7 +865,8 @@ class CWLJob(Job):
 
 
 def makeJob(tool, jobobj, step_inputs, runtime_context, conditional):
-    """Create the correct Toil Job object for the CWL tool (workflow, job, or job
+    """
+    Create the correct Toil Job object for the CWL tool (workflow, job, or job
     wrapper for dynamic resource requirements.)
     """
     if tool.tool["class"] == "Workflow":
@@ -888,11 +889,10 @@ def makeJob(tool, jobobj, step_inputs, runtime_context, conditional):
 
 
 class CWLScatter(Job):
-    """Implement workflow scatter step.  When run, this creates a child job for
-    each parameterization of the scatter.
-
     """
-
+    Implement workflow scatter step.  When run, this creates a child job for
+    each parameterization of the scatter.
+    """
     def __init__(self, step, cwljob, runtime_context, conditional):
         super(CWLScatter, self).__init__()
         self.step = step
@@ -1042,14 +1042,14 @@ class CWLGather(Job):
         return outobj
 
 
-class SelfJob(object):
+class SelfJob:
     """Fake job object to facilitate implementation of CWLWorkflow.run()"""
 
     def __init__(self, j, v):
         self.j = j
         self.v = v
 
-    def rv(self):
+    def rv(self) -> Any:
         return self.v
 
     def addChild(self, c):
@@ -1220,14 +1220,15 @@ cwltool.process.supportedProcessRequirements = (
     "StepInputExpressionRequirement", "ResourceRequirement")
 
 
-def visitSteps(cmdline_tool: Union[cwltool.command_line_tool.CommandLineTool, cwltool.workflow.Workflow], op: Any):
+def visitSteps(cmdline_tool: Union[cwltool.command_line_tool.CommandLineTool, cwltool.workflow.Workflow],
+               op: Any) -> None:
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
         for step in cmdline_tool.steps:
             op(step.tool)
             visitSteps(step.embedded_tool, op)
 
 
-def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> dict:
+def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list:
     """
     Interpolated strings and optional inputs in secondary files were added to CWL in version 1.1.
 
