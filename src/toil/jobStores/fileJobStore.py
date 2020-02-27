@@ -248,7 +248,6 @@ class FileJobStore(AbstractJobStore):
                     try:
                         if self.exists(jobId):
                             yield self.load(jobId)
-                        raise NoSuchJobException(jobId)
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
                         pass
