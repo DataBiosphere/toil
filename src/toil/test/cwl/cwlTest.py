@@ -1,5 +1,5 @@
-# Copyright (C) 2016-2020 UCSC Computational Genomics Lab
-# Copyright (C) 2015-2020 Curoverse, Inc
+# Copyright (C) 2015-2020 Regents of the University of California
+# Copyright (C) 2015 Curoverse, Inc
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
