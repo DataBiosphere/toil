@@ -95,8 +95,6 @@ class FileJobStore(AbstractJobStore):
 
         self.linkImports = None
 
-        self.restart = False
-
     def __repr__(self):
         return 'FileJobStore({})'.format(self.jobStoreDir)
 
@@ -174,7 +172,6 @@ class FileJobStore(AbstractJobStore):
         over the course of large workflows with a jobStore on a busy NFS."""
         for iTry in range(1,maxTries+1):
             jobFile = self._getJobFileName(jobStoreID)
-            logging.debug("being called waitforexists for {}".format(jobStoreID))
             if os.path.exists(jobFile):
                 return True
             if iTry >= maxTries:
@@ -251,8 +248,7 @@ class FileJobStore(AbstractJobStore):
                     try:
                         if self.exists(jobId):
                             yield self.load(jobId)
-                        else:
-                            raise NoSuchFileException(jobId)
+                        raise NoSuchJobException(jobId)
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
                         pass
