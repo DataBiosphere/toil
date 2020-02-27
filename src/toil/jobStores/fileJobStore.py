@@ -114,7 +114,6 @@ class FileJobStore(AbstractJobStore):
         mkdir_p(self.jobFilesDir)
         mkdir_p(self.sharedFilesDir)
         self.linkImports = config.linkImports
-        self.restart = config.restart
         super(FileJobStore, self).initialize(config)
 
     def resume(self):
@@ -248,8 +247,12 @@ class FileJobStore(AbstractJobStore):
                 logger.warning('Job Dir: %s' % i)
                 if i.startswith(self.JOB_DIR_PREFIX):
                     # This is a job instance directory
+                    jobId = self._getJobIdFromDir(os.path.join(tempDir, i))
                     try:
-                        yield self.load(self._getJobIdFromDir(os.path.join(tempDir, i)))
+                        if self.exists(jobId):
+                            yield self.load(jobId)
+                        else:
+                            raise NoSuchFileException(jobId)
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
                         pass
@@ -636,9 +639,8 @@ class FileJobStore(AbstractJobStore):
         """
         Raises a NoSuchJobException if the job with ID jobStoreID does not exist.
         """
-        if not self.restart:
-            if not self.waitForExists(jobStoreID,30):
-                raise NoSuchJobException(jobStoreID)
+        if not self.waitForExists(jobStoreID,30):
+            raise NoSuchJobException(jobStoreID)
 
     def _getFilePathFromId(self, jobStoreFileID):
         """
