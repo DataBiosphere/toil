@@ -738,7 +738,7 @@ class CWLJob(Job):
                  tool: ToilCommandLineTool,
                  cwljob: dict,
                  runtime_context: cwltool.context.RuntimeContext,
-                 conditional: Conditional = None):
+                 conditional: Union[Conditional, None] = None):
 
         self.cwltool = remove_pickle_problems(tool)
         self.conditional = conditional or Conditional()
@@ -879,7 +879,7 @@ class CWLJob(Job):
 def makeJob(tool: Process,
             jobobj: dict,
             runtime_context: cwltool.context.RuntimeContext,
-            conditional: Conditional) -> tuple:
+            conditional: Union[Conditional, None]) -> tuple:
     """
     Create the correct Toil Job object for the CWL tool (workflow, job, or job
     wrapper for dynamic resource requirements.)
@@ -912,7 +912,7 @@ class CWLScatter(Job):
                  step: cwltool.workflow.WorkflowStep,
                  cwljob: dict,
                  runtime_context: cwltool.context.RuntimeContext,
-                 conditional: Conditional):
+                 conditional: Union[Conditional, None]):
         super(CWLScatter, self).__init__()
         self.step = step
         self.cwljob = cwljob
