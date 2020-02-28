@@ -37,9 +37,7 @@ from typing import (Text,
                     Any,
                     Iterator,
                     TextIO,
-                    Set,
-                    Tuple,
-                    Optional)
+                    Set)
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -453,12 +451,12 @@ class ToilPathMapper(PathMapper):
     """
 
     def __init__(self,
-                 referenced_files,
+                 referenced_files: list,
                  basedir: str,
                  stagedir: str,
-                 separateDirs=True,
-                 get_file=None,
-                 stage_listing=False):
+                 separateDirs: bool = True,
+                 get_file: Union[Any, None] = None,
+                 stage_listing: bool = False):
         self.get_file = get_file
         self.stage_listing = stage_listing
         super(ToilPathMapper, self).__init__(
