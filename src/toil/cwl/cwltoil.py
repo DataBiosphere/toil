@@ -883,6 +883,8 @@ def makeJob(tool: Process,
     """
     Create the correct Toil Job object for the CWL tool (workflow, job, or job
     wrapper for dynamic resource requirements.)
+
+    :return: "wfjob, followOn" if the input tool is a workflow, and "job, job" otherwise
     """
     if tool.tool["class"] == "Workflow":
         wfjob = CWLWorkflow(tool, jobobj, runtime_context, conditional=conditional)
