@@ -25,9 +25,21 @@ import sys
 import logging
 import copy
 import functools
-from typing import Text, Mapping, MutableSequence, MutableMapping, List, Dict, Union, Any, Iterator, TextIO
 import uuid
 import datetime
+from typing import (Text,
+                    Mapping,
+                    MutableSequence,
+                    MutableMapping,
+                    List,
+                    Dict,
+                    Union,
+                    Any,
+                    Iterator,
+                    TextIO,
+                    Set,
+                    Tuple,
+                    Optional)
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -389,15 +401,15 @@ class DefaultWithSource:
         return self.default
 
 
-class JustAValue(object):
+class JustAValue:
     """
     A simple value masquerading as a 'resolve'-able object
     """
 
-    def __init__(self, val):
+    def __init__(self, val: Any):
         self.val = val
 
-    def resolve(self):
+    def resolve(self) -> Any:
         return self.val
 
 
@@ -423,7 +435,7 @@ def resolve_dict_w_promises(dict_w_promises: dict) -> dict:
     return result
 
 
-def simplify_list(maybe_list: Any):
+def simplify_list(maybe_list: Any) -> Any:
     """Turn a length one list loaded by cwltool into a scalar.
     Anything else is passed as-is, by reference."""
     if isinstance(maybe_list, MutableSequence):
@@ -524,6 +536,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         super(ToilFsAccess, self).__init__(basedir)
 
     def exists(self, path: str) -> bool:
+        # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
         try:
             return os.path.exists(self._abs(path))
         except NoSuchFileException:
@@ -531,9 +544,12 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
     def _abs(self, path: str) -> str:
         """
-        Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
-        (among other things) so this should not error on missing files.
+        Return a local absolute path for a file (no schema).
+
+        Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
+        # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
+        # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
         if path.startswith("toilfs:"):
             return self.file_store.readGlobalFile(FileID.unpack(path[7:]))
@@ -582,30 +598,33 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
         return index[file_uri]
 
 
-def uploadFile(uploadfunc, fileindex, existing, uf, skip_broken=False):
-    """Update a file object so that the location is a reference to the toil file
-    store, writing it to the file store if necessary.
-
+def uploadFile(uploadfunc: Any,
+               fileindex: dict,
+               existing: dict,
+               file_metadata: dict,
+               skip_broken: bool = False) -> None:
     """
-
-    if uf["location"].startswith("toilfs:") or uf["location"].startswith("_:"):
+    Update a file object so that the location is a reference to the toil file
+    store, writing it to the file store if necessary.
+    """
+    if file_metadata["location"].startswith("toilfs:") or file_metadata["location"].startswith("_:"):
         return
-    if uf["location"] in fileindex:
-        uf["location"] = fileindex[uf["location"]]
+    if file_metadata["location"] in fileindex:
+        file_metadata["location"] = fileindex[file_metadata["location"]]
         return
-    if not uf["location"] and uf["path"]:
-        uf["location"] = schema_salad.ref_resolver.file_uri(uf["path"])
-    if uf["location"].startswith("file://") and not os.path.isfile(uf["location"][7:]):
+    if not file_metadata["location"] and file_metadata["path"]:
+        file_metadata["location"] = schema_salad.ref_resolver.file_uri(file_metadata["path"])
+    if file_metadata["location"].startswith("file://") and not os.path.isfile(file_metadata["location"][7:]):
         if skip_broken:
             return
         else:
             raise cwltool.errors.WorkflowException(
-                "File is missing: %s" % uf["location"])
-    uf["location"] = write_file(
-        uploadfunc, fileindex, existing, uf["location"])
+                "File is missing: %s" % file_metadata["location"])
+    file_metadata["location"] = write_file(
+        uploadfunc, fileindex, existing, file_metadata["location"])
 
 
-def writeGlobalFileWrapper(file_store, fileuri):
+def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
     """Wrap writeGlobalFile to accept file:// URIs"""
     return file_store.writeGlobalFile(
         schema_salad.ref_resolver.uri_file_path(fileuri))
@@ -617,18 +636,18 @@ class ResolveIndirect(Job):
 
     """
 
-    def __init__(self, cwljob):
+    def __init__(self, cwljob: dict):
         super(ResolveIndirect, self).__init__()
         self.cwljob = cwljob
 
-    def run(self, file_store):
+    def run(self, file_store: AbstractFileStore) -> dict:
         return resolve_dict_w_promises(self.cwljob)
 
 
 def toilStageFiles(file_store: AbstractFileStore,
-                   cwljob,
-                   outdir,
-                   destBucket=None):
+                   cwljob: Union[Dict[Text, Any], List[Dict[Text, Any]]],
+                   outdir: str,
+                   destBucket: Union[str, None] = None) -> None:
     """Copy input files out of the global file store and update location and path."""
     def _collectDirEntries(obj: Union[Dict[Text, Any], List[Dict[Text, Any]]]) -> Iterator[Dict[Text, Any]]:
         if isinstance(obj, dict):
@@ -675,7 +694,7 @@ def toilStageFiles(file_store: AbstractFileStore,
             with open(p.target, "wb") as n:
                 n.write(p.resolved.encode("utf-8"))
 
-    def _check_adjust(f):
+    def _check_adjust(f: dict) -> dict:
         f["location"] = schema_salad.ref_resolver.file_uri(
             pm.mapper(f["location"])[1])
         if "contents" in f:
@@ -693,14 +712,14 @@ class CWLJobWrapper(Job):
                  tool: ToilCommandLineTool,
                  cwljob: dict,
                  runtime_context: cwltool.context.RuntimeContext,
-                 conditional: Conditional = None):
+                 conditional: Union[Conditional, None] = None):
         super(CWLJobWrapper, self).__init__(cores=1, memory=1024*1024, disk=8*1024)
         self.cwltool = remove_pickle_problems(tool)
         self.cwljob = cwljob
         self.runtime_context = runtime_context
         self.conditional = conditional
 
-    def run(self, file_store):
+    def run(self, file_store: AbstractFileStore) -> Any:
         cwljob = resolve_dict_w_promises(self.cwljob)
         fill_in_defaults(
             self.cwltool.tool['inputs'],
@@ -782,7 +801,7 @@ class CWLJob(Job):
         self.step_inputs = self.cwltool.tool["inputs"]
         self.workdir = runtime_context.workdir
 
-    def run(self, file_store):
+    def run(self, file_store: AbstractFileStore) -> Any:
         cwljob = resolve_dict_w_promises(self.cwljob)
         fill_in_defaults(
             self.step_inputs,
@@ -814,8 +833,8 @@ class CWLJob(Job):
         # cleaned up by Toil.
         tmp_outdir_prefix = os.path.join(file_store.getLocalTempDir(), "tmp-out")
 
-        index = {}
-        existing = {}
+        index = {}  # type: ignore
+        existing = {}  # type: ignore
         # Prepare the run instructions for cwltool
         runtime_context = self.runtime_context.copy()
         runtime_context.basedir = os.getcwd()
@@ -860,10 +879,9 @@ class CWLJob(Job):
 
 
 def makeJob(tool: Process,
-            jobobj,
-            step_inputs,
-            runtime_context,
-            conditional):
+            jobobj: dict,
+            runtime_context: cwltool.context.RuntimeContext,
+            conditional: Conditional) -> tuple:
     """
     Create the correct Toil Job object for the CWL tool (workflow, job, or job
     wrapper for dynamic resource requirements.)
@@ -894,8 +912,8 @@ class CWLScatter(Job):
     """
     def __init__(self,
                  step: cwltool.workflow.WorkflowStep,
-                 cwljob,
-                 runtime_context,
+                 cwljob: dict,
+                 runtime_context: cwltool.context.RuntimeContext,
                  conditional: Conditional):
         super(CWLScatter, self).__init__()
         self.step = step
@@ -904,9 +922,10 @@ class CWLScatter(Job):
         self.conditional = conditional
 
     def flat_crossproduct_scatter(self,
-                                  joborder,
-                                  scatter_keys,
-                                  outputs, postScatterEval):
+                                  joborder: dict,
+                                  scatter_keys: list,
+                                  outputs: list,
+                                  postScatterEval: Any) -> None:
         scatter_key = shortname(scatter_keys[0])
         for n in range(0, len(joborder[scatter_key])):
             updated_joborder = copy.copy(joborder)
@@ -914,10 +933,9 @@ class CWLScatter(Job):
             if len(scatter_keys) == 1:
                 updated_joborder = postScatterEval(updated_joborder)
                 subjob, followOn = makeJob(
-                    self.step.embedded_tool,
-                    updated_joborder,
-                    None,
-                    self.runtime_context,
+                    tool=self.step.embedded_tool,
+                    jobobj=updated_joborder,
+                    runtime_context=self.runtime_context,
                     conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
@@ -926,9 +944,9 @@ class CWLScatter(Job):
                     updated_joborder, scatter_keys[1:], outputs, postScatterEval)
 
     def nested_crossproduct_scatter(self,
-                                    joborder,
-                                    scatter_keys,
-                                    postScatterEval):
+                                    joborder: dict,
+                                    scatter_keys: list,
+                                    postScatterEval: Any) -> list:
         scatter_key = shortname(scatter_keys[0])
         outputs = []
         for n in range(0, len(joborder[scatter_key])):
@@ -937,7 +955,9 @@ class CWLScatter(Job):
             if len(scatter_keys) == 1:
                 updated_joborder = postScatterEval(updated_joborder)
                 subjob, followOn = makeJob(
-                    self.step.embedded_tool, updated_joborder, None, self.runtime_context,
+                    tool=self.step.embedded_tool,
+                    jobobj=updated_joborder,
+                    runtime_context=self.runtime_context,
                     conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(followOn.rv())
@@ -946,7 +966,7 @@ class CWLScatter(Job):
                     updated_joborder, scatter_keys[1:], postScatterEval))
         return outputs
 
-    def run(self, file_store: AbstractFileStore):
+    def run(self, file_store: AbstractFileStore) -> list:
         cwljob = resolve_dict_w_promises(self.cwljob)
 
         if isinstance(self.step.tool["scatter"], string_types):
@@ -962,19 +982,19 @@ class CWLScatter(Job):
         valueFrom = {shortname(i["id"]): i["valueFrom"]
                      for i in self.step.tool["inputs"] if "valueFrom" in i}
 
-        def postScatterEval(io):
-            shortio = {shortname(k): v for k, v in iteritems(io)}
+        def postScatterEval(job_dict: dict) -> Any:
+            shortio = {shortname(k): v for k, v in iteritems(job_dict)}
             for k in valueFrom:
-                io.setdefault(k, None)
+                job_dict.setdefault(k, None)
 
-            def valueFromFunc(k, v):
+            def valueFromFunc(k: str, v: Any) -> Any:
                 if k in valueFrom:
                     return cwltool.expression.do_eval(
                         valueFrom[k], shortio, self.step.requirements,
                         None, None, {}, context=v)
                 else:
                     return v
-            return {k: valueFromFunc(k, v) for k, v in list(io.items())}
+            return {k: valueFromFunc(k, v) for k, v in list(job_dict.items())}
 
         if scatterMethod == "dotproduct":
             for i in range(0, len(cwljob[shortname(scatter[0])])):
@@ -983,8 +1003,10 @@ class CWLScatter(Job):
                     copyjob[sc] = cwljob[sc][i]
                 copyjob = postScatterEval(copyjob)
                 subjob, follow_on = makeJob(
-                    self.step.embedded_tool, copyjob, None,
-                    self.runtime_context, conditional=self.conditional)
+                    tool=self.step.embedded_tool,
+                    jobobj=copyjob,
+                    runtime_context=self.runtime_context,
+                    conditional=self.conditional)
                 self.addChild(subjob)
                 outputs.append(follow_on.rv())
         elif scatterMethod == "nested_crossproduct":
@@ -1010,12 +1032,14 @@ class CWLGather(Job):
     Follows on to a scatter.  This gathers the outputs of each job in the
     scatter into an array for each output parameter.
     """
-    def __init__(self, step, outputs):
+    def __init__(self,
+                 step: cwltool.workflow.WorkflowStep,
+                 outputs: Union[Mapping, MutableSequence]):
         super(CWLGather, self).__init__()
         self.step = step
         self.outputs = outputs
 
-    def allkeys(self, obj, keys):
+    def allkeys(self, obj: Union[Mapping, MutableSequence], keys: Set) -> None:
         if isinstance(obj, Mapping):
             for k in list(obj.keys()):
                 keys.add(k)
@@ -1023,7 +1047,7 @@ class CWLGather(Job):
             for l in obj:
                 self.allkeys(l, keys)
 
-    def extract(self, obj, k):
+    def extract(self, obj: Union[Mapping, MutableSequence], k: str) -> list:
         if isinstance(obj, Mapping):
             return obj.get(k)
         elif isinstance(obj, MutableSequence):
@@ -1034,7 +1058,7 @@ class CWLGather(Job):
         else:
             return []
 
-    def run(self, file_store):
+    def run(self, file_store: AbstractFileStore) -> Any:
         outobj = {}
 
         def sn(n):
@@ -1058,10 +1082,10 @@ class SelfJob:
     def rv(self) -> Any:
         return self.v
 
-    def addChild(self, c: str):
+    def addChild(self, c: str) -> Any:
         return self.j.addChild(c)
 
-    def hasChild(self, c: str):
+    def hasChild(self, c: str) -> Any:
         return self.j.hasChild(c)
 
 
@@ -1162,10 +1186,9 @@ class CWLWorkflow(Job):
                             wfjob.addFollowOn(followOn)
                         else:
                             wfjob, followOn = makeJob(
-                                step.embedded_tool,
-                                UnresolvedDict(jobobj),
-                                step.tool["inputs"],
-                                self.runtime_context,
+                                tool=step.embedded_tool,
+                                jobobj=UnresolvedDict(jobobj),
+                                runtime_context=self.runtime_context,
                                 conditional=conditional)
 
                         jobs[step.tool["id"]] = followOn
@@ -1587,7 +1610,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                                 job_params['secondaryFiles'] = remove_unprocessed_secondary_files(job_params)
 
             try:
-                wf1, _ = makeJob(tool, {}, None, runtime_context, conditional=None)
+                wf1, _ = makeJob(tool=tool,
+                                 jobobj={},
+                                 runtime_context=runtime_context,
+                                 conditional=None)
             except cwltool.process.UnsupportedRequirement as err:
                 logging.error(err)
                 return 33
