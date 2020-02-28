@@ -131,6 +131,10 @@ class AWSProvisioner(AbstractProvisioner):
         self._tags = self.getLeader().tags
         self._masterPublicKey = self._setSSH()
         self._leaderProfileArn = instanceMetaData['iam']['info']['InstanceProfileArn']
+        # The existing metadata API returns a single string if there is one security group, but
+        # a list when there are multiple: change the format to always be a list.
+        rawSecurityGroups = instanceMetaData['security-groups']
+        self._leaderSecurityGroupNames = [rawSecurityGroups] if not isinstance(rawSecurityGroups, list) else rawSecurityGroups
 
     def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
         """
@@ -155,11 +159,13 @@ class AWSProvisioner(AbstractProvisioner):
             # Spot-market provisioning requires bytes for user data.
             # We probably won't have a spot-market leader, but who knows!
             userData = userData.encode('utf-8')
-        specKwargs = {'key_name': self._keyName, 'security_group_ids': [sg.id for sg in sgs],
-                  'instance_type': leaderNodeType,
-                  'user_data': userData, 'block_device_map': bdm,
-                  'instance_profile_arn': profileArn,
-                  'placement': self._zone}
+        specKwargs = {'key_name': self._keyName,
+                      'security_group_ids': [sg.id for sg in sgs] + kwargs.get('awsEc2ExtraSecurityGroupIds', []),
+                      'instance_type': leaderNodeType,
+                      'user_data': userData,
+                      'block_device_map': bdm,
+                      'instance_profile_arn': profileArn,
+                      'placement': self._zone}
         if self._vpcSubnet:
             specKwargs["subnet_id"] = self._vpcSubnet
         instances = create_ondemand_instances(self._ctx.ec2, image_id=self._discoverAMI(),
@@ -289,7 +295,7 @@ class AWSProvisioner(AbstractProvisioner):
         if isinstance(userData, text_type):
             # Spot-market provisioning requires bytes for user data.
             userData = userData.encode('utf-8')
-        sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if sg.name == self.clusterName]
+        sgs = [sg for sg in self._ctx.ec2.get_all_security_groups() if sg.name in self._leaderSecurityGroupNames]
         kwargs = {'key_name': self._keyName,
                   'security_group_ids': [sg.id for sg in sgs],
                   'instance_type': instanceType.name,
