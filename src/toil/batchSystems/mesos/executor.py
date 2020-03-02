@@ -78,7 +78,7 @@ class MesosExecutor(Executor):
         
         log.debug("Registered executor %s with framework", self.id)
         self.address = socket.gethostbyname(agentInfo.hostname)
-        nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver])
+        nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver], daemon=True)
         nodeInfoThread.daemon = True
         nodeInfoThread.start()
 
@@ -230,7 +230,7 @@ class MesosExecutor(Executor):
 
             driver.sendStatusUpdate(update)
 
-        thread = threading.Thread(target=runTask)
+        thread = threading.Thread(target=runTask, daemon=True)
         thread.start()
 
     def frameworkMessage(self, driver, message):
