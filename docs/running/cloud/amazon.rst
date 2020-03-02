@@ -205,6 +205,12 @@ custom IAM role with all necessary permissions and set the ``--awsEc2ProfileArn`
 when launching the cluster. Note that your custom role must at least have
 :ref:`these permissions <minAwsPermissions>` in order for the Toil cluster to function properly.
 
+In addition, Toil creates a new security group with the same name as the cluster name with
+default rules (e.g. opens port 22 for SSH access). If you require additional security groups,
+you may use the ``--awsEc2ExtraSecurityGroupId`` parameter when launching the cluster.
+**Note:** Do not use the same name as the cluster name for the extra security groups as
+any security group matching the cluster name will be deleted once the cluster is destroyed.
+
 For more information on options try: ::
 
     (venv) $ toil launch-cluster --help
