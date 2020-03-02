@@ -72,7 +72,7 @@ def _singleMachineOptions(addOptionFn, config):
             "store, output files are by default moved to the output directory, "
             "and a symlink to the moved exported file is created at the initial location. "                           
             "Specifying this option instead copies the files into the output "
-            "directory.")
+            "directory. Applies to filesystem-based job stores only.")
     else:
         addOptionFn(
             "--linkImports", dest="linkImports", default=False,
@@ -86,7 +86,7 @@ def _singleMachineOptions(addOptionFn, config):
             action='store_true', help="When using Toil's exportFile function "
             "for staging, output files are copied to the output directory. Specifying "
             "this option saves space by moving exported files, and making a symlink to "
-            "the exported file in the job store.")
+            "the exported file in the job store. Applies to filesystem-based job stores only.")
 
 def _mesosOptions(addOptionFn, config=None):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP() + ':5050',

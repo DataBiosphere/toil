@@ -710,16 +710,19 @@ class AbstractJobStoreTest(object):
                 dstUrl = other._prepareTestFile(store)
                 self.jobstore_initialized.exportFile(jobStoreFileID, dstUrl)
                 self.assertEqual(fileMD5, other._hashTestFile(dstUrl))
+
                 if otherCls.__name__ == 'FileJobStoreTest':
-                    jobStorePath = self.jobstore_initialized._getFilePathFromId(jobStoreFileID)
-                    jobStoreHasLink = os.path.islink(jobStorePath)
-                    if self.jobstore_initialized.moveExports:
-                        # Ensure the export performed a move / link
-                        self.assertTrue(jobStoreHasLink)
-                        self.assertEqual(os.path.realpath(jobStorePath), dstUrl[7:])
-                    else:
-                        # Ensure the export has not moved the job store file
-                        self.assertFalse(jobStoreHasLink)
+                    if isinstance(self.jobstore_initialized, FileJobStore):
+                        jobStorePath = self.jobstore_initialized._getFilePathFromId(jobStoreFileID)
+                        jobStoreHasLink = os.path.islink(jobStorePath)
+                        if self.jobstore_initialized.moveExports:
+                            # Ensure the export performed a move / link
+                            self.assertTrue(jobStoreHasLink)
+                            self.assertEqual(os.path.realpath(jobStorePath), dstUrl[7:])
+                        else:
+                            # Ensure the export has not moved the job store file
+                            self.assertFalse(jobStoreHasLink)
+
                     # Remove local Files
                     os.remove(srcUrl[7:])
                     os.remove(dstUrl[7:])
