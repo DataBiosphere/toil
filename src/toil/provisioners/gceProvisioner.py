@@ -368,7 +368,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         threads = []
         for instance in instances:
-            t = threading.Thread(target=worker, args=(self._gceDriver,instance), daemon=True)
+            t = threading.Thread(target=worker, args=(self._gceDriver,instance))
             threads.append(t)
             t.start()
 

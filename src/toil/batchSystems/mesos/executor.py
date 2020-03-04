@@ -79,7 +79,6 @@ class MesosExecutor(Executor):
         log.debug("Registered executor %s with framework", self.id)
         self.address = socket.gethostbyname(agentInfo.hostname)
         nodeInfoThread = threading.Thread(target=self._sendFrameworkMessage, args=[driver], daemon=True)
-        nodeInfoThread.daemon = True
         nodeInfoThread.start()
 
     def reregistered(self, driver, agentInfo):

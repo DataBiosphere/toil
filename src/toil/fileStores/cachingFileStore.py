@@ -1702,7 +1702,7 @@ class CachingFileStore(AbstractFileStore):
         self.waitForCommit()
 
         # Start the commit thread
-        self.commitThread = threading.Thread(target=self.startCommitThread, args=(jobState,), daemon=True)
+        self.commitThread = threading.Thread(target=self.startCommitThread, args=(jobState,))
         self.commitThread.start()
 
     def startCommitThread(self, jobState):
