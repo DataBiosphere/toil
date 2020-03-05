@@ -153,11 +153,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A thread in charge of managing all our child processes.
         # Also takes care of resource accounting.
         self.daddyThread = None
+        # If it breaks it will fill this in
+        self.daddyException = None
 
         if self.debugWorker:
             log.debug('Started in worker debug mode.')
         else:
             self.daddyThread = Thread(target=self.daddy, daemon=True)
+            self.daddyThread.start()
+            log.debug('Started in normal mode.')
 
     def daddy(self):
         """
@@ -174,63 +178,84 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         information in the output queue.
         """
 
-        while not self.shuttingDown.is_set():
-            # Main loop
+        try:
+            log.debug('Started daddy thread.')
 
-            
             while not self.shuttingDown.is_set():
-                # Try to start as many jobs as we can try to start
-                try:
-                    # Grab something from the input queue if available.
-                    args = self.inputQueue.get()
-                    jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
+                # Main loop
 
-                    coreFractions = int(old_div(jobCores, self.minCores))
-                    
-                    # Try to start the child
-                    result = self._startChild(jobCommand, jobID,
-                        coreFractions, jobMemory, jobDisk, environment)
-                    
-                    if result is None:
-                        # We did not get the resources to run this job.
-                        # Requeue last, so we can look at the next job.
-                        # TODO: Have some kind of condition the job can wait on,
-                        # but without threads (queues for jobs needing
-                        # cores/memory/disk individually)?
-                        self.inputQueue.put(args)
+                log.debug('Daddy looking for new jobs.')
+                
+                while not self.shuttingDown.is_set():
+                    # Try to start as many jobs as we can try to start
+                    try:
+                        # Grab something from the input queue if available.
+                        args = self.inputQueue.get_nowait()
+                        jobCommand, jobID, jobCores, jobMemory, jobDisk, environment = args
+
+                        coreFractions = int(old_div(jobCores, self.minCores))
+                        
+                        # Try to start the child
+                        result = self._startChild(jobCommand, jobID,
+                            coreFractions, jobMemory, jobDisk, environment)
+
+                        log.debug('Tried to start %s: %s', jobID, str(result))
+                        
+                        if result is None:
+                            # We did not get the resources to run this job.
+                            # Requeue last, so we can look at the next job.
+                            # TODO: Have some kind of condition the job can wait on,
+                            # but without threads (queues for jobs needing
+                            # cores/memory/disk individually)?
+                            self.inputQueue.put(args)
+                            break
+
+                        # Otherwise it's a PID if it succeeded, or False if it couldn't
+                        # start. But we don't care either way here.
+
+                    except Empty:
+                        # Nothing to run. Stop looking in the queue.
+                        log.debug('No more jobs to run.')
                         break
 
-                    # Otherwise it's a PID if it succeeded, or False if it couldn't
-                    # start. But we don't care either way here.
+                log.debug('Daddy looking for done children.')
+    
+                # Now check on our children.
+                for done_pid in self._pollForDoneChildrenIn(self.children):
+                    # A child has actually finished.
+                    # Clean up after it.
+                    self._handleChild(done_pid)
 
-                except Empty:
-                    # Nothing to run. Stop looking in the queue.
-                    break
+                # Then loop again: start and collect more jobs.
+                # TODO: It would be good to be able to wait on a new job or a finished child, whichever comes first.
+                # For now we just sleep and loop.
+                time.sleep(0.01)
+                    
 
-            # Now check on our children.
-            for done_pid in self._pollForDoneChildrenIn(self.children):
-                # A child has actually finished.
-                # Clean up after it.
-                self._handleChild(self.children[done_pid])
-
-            # Then loop again: start and collect more jobs.
-            # TODO: It would be good to be able to wait on a new job or a finished child, whichever comes first.
-            # For now we just sleep and loop.
-            time.sleep(0.01)
-                
-
-        # When we get here, we are shutting down.
-        
-        for popen in self.children.values():
-            # Kill all the children, going through popen to avoid signaling re-used PIDs.
-            popen.kill()
-        for popen in self.children.values():
-            # Reap all the children
-            popen.wait()
-        
-        # Then exit the thread.
-        return
+            # When we get here, we are shutting down.
             
+            for popen in self.children.values():
+                # Kill all the children, going through popen to avoid signaling re-used PIDs.
+                popen.kill()
+            for popen in self.children.values():
+                # Reap all the children
+                popen.wait()
+            
+            # Then exit the thread.
+            return
+        except Exception as e:
+            log.critical('Unhandled exception in daddy thread: %s', traceback.format_exc())
+            # Pass the exception back to the main thread so it can stop the next person who calls into us.
+            self.daddyException = e
+            raise
+
+    def _checkOnDaddy(self):
+        if self.daddyException is not None:
+            # The daddy thread broke and we cannot do our job
+            log.critical('Propagating unhandled exception in daddy thread to main thread')
+            exc = self.daddyException
+            self.daddyException = None
+            raise exc
 
     def _pollForDoneChildrenIn(self, pid_to_popen):
         """
@@ -277,6 +302,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 if popen.poll() is not None:
                     # Process is done
                     ready.add(pid)
+                    log.debug('Child %d has stopped', pid)
+                else:
+                    log.debug('Child %d is still running', pid)
             
             # Return all the done processes we found
             return ready
@@ -373,6 +401,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         info = Info(startTime, popen, (coreFractions, jobMemory, jobDisk), killIntended=False)
                         self.runningJobs[jobID] = info
 
+                        log.debug('Launched job %s as child %d', jobID, popen.pid)
+
                         # Report success starting the job
                         # Note that if a PID were somehow 0 it would look like False
                         assert popen.pid != 0
@@ -381,9 +411,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # We can't get disk, so free cores and memory
                     self.coreFractions.release(coreFractions)
                     self.memory.release(jobMemory)
+                    log.debug('Not enough disk to run job %s', jobID)
             else:
                 # Free cores, since we can't get memory
                 self.coreFractions.release(coreFractions)
+                log.debug('Not enough memory to run job %s', jobID)
+        else:
+            log.debug('Not enough cores to run job %s', jobID)
 
         # If we get here, we didn't succeed or fail starting the job.
         # We didn't manage to get the resources.
@@ -427,9 +461,14 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.memory.release(jobMemory)
         self.disk.release(jobDisk)
 
+        log.debug('Child %d for job %s succeeded', pid, jobID)
+
         
     def issueBatchJob(self, jobNode):
         """Adds the command and resources to a queue to be run."""
+
+        self._checkOnDaddy()
+
         # Round cores to minCores and apply scale
         cores = math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores
         assert cores <= self.maxCores, ('The job {} is requesting {} cores, more than the maximum of '
@@ -462,13 +501,18 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def killBatchJobs(self, jobIDs):
         """Kills jobs by ID."""
+
+        self._checkOnDaddy()
+
         log.debug('Killing jobs: {}'.format(jobIDs))
         for jobID in jobIDs:
             if jobID in self.runningJobs:
                 info = self.runningJobs[jobID]
                 info.killIntended = True
                 if info.popen != None:
+                    log.debug('Send kill to PID %s', info.popen.pid)
                     info.popen.kill()
+                    log.debug('Sent kill to PID %s', info.popen.pid)
                 else:
                     # No popen if running in forkless mode currently 
                     assert self.debugWorker
@@ -478,9 +522,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def getIssuedBatchJobIDs(self):
         """Just returns all the jobs that have been run, but not yet returned as updated."""
+        
+        self._checkOnDaddy()
+        
         return list(self.jobs.keys())
 
     def getRunningBatchJobIDs(self):
+        
+        self._checkOnDaddy()
+        
         now = time.time()
         return {jobID: now - info.time for jobID, info in list(self.runningJobs.items())}
 
@@ -499,6 +549,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
     def getUpdatedBatchJob(self, maxWait):
         """Returns a tuple of a no-longer-running job, the return value of its process, and its runtime, or None."""
+        
+        self._checkOnDaddy()
+        
         try:
             item = self.outputQueue.get(timeout=maxWait)
         except Empty:
