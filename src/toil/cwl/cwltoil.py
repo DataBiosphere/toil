@@ -90,8 +90,8 @@ CWL_INTERNAL_JOBS = ("CWLJobWrapper", "CWLWorkflow", "CWLScatter", "CWLGather",
 # output object to the correct key of the input object.
 
 
-def cwltoil_is_deprecated():
-    raise RuntimeError('Please run with "toil-cwl-runner" instead of "cwltoil" (deprecated).')
+def cwltoil_was_removed():
+    raise RuntimeError('Please run with "toil-cwl-runner" instead of "cwltoil" (which has been removed).')
 
 
 class IndirectDict(dict):
