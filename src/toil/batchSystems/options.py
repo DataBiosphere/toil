@@ -66,6 +66,13 @@ def _singleMachineOptions(addOptionFn, config):
             "When not specified and as long as caching is enabled, Toil will "
             "protect the file automatically by changing the permissions to "
             "read-only.")
+        addOptionFn(
+            "--noMoveExports", dest="moveExports", default=True,
+            action='store_false', help="When using a filesystem based job "
+            "store, output files are by default moved to the output directory, "
+            "and a symlink to the moved exported file is created at the initial location. "                           
+            "Specifying this option instead copies the files into the output "
+            "directory. Applies to filesystem-based job stores only.")
     else:
         addOptionFn(
             "--linkImports", dest="linkImports", default=False,
@@ -74,7 +81,12 @@ def _singleMachineOptions(addOptionFn, config):
             "this option saves space by sym-linking imported files. As long "
             "as caching is enabled Toil will protect the file "
             "automatically by changing the permissions to read-only.")
-
+        addOptionFn(
+            "--moveExports", dest="moveExports", default=False,
+            action='store_true', help="When using Toil's exportFile function "
+            "for staging, output files are copied to the output directory. Specifying "
+            "this option saves space by moving exported files, and making a symlink to "
+            "the exported file in the job store. Applies to filesystem-based job stores only.")
 
 def _mesosOptions(addOptionFn, config=None):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP() + ':5050',
@@ -153,6 +165,7 @@ def setDefaultOptions(config):
     # single machine
     config.scale = 1
     config.linkImports = False
+    config.moveExports = False
 
     # mesos
     config.mesosMasterAddress = '%s:5050' % getPublicIP()

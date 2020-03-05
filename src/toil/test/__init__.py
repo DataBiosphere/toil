@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from __future__ import absolute_import
-from builtins import next
-from builtins import str
+
+import datetime
 import logging
 import os
 import re
@@ -24,25 +24,27 @@ import threading
 import time
 import unittest
 import uuid
-import subprocess
-import datetime
-import pytz
-from future.utils import with_metaclass
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 from inspect import getsource
+from shutil import which
 from textwrap import dedent
-from unittest.util import strclass
+
+import pytz
+from builtins import str
+from future.utils import with_metaclass
 from six import iteritems, itervalues
 from six.moves.urllib.request import urlopen
-from shutil import which
+from unittest.util import strclass
 
-from toil.lib.memoize import memoize
-from toil.lib.iterables import concat
-from toil.lib.threading import ExceptionalThread, cpu_count
-from toil.lib.misc import mkdir_p
-from toil.provisioners.aws import runningOnEC2
+from toil import subprocess
 from toil import toilPackageDirPath, applianceSelf
+from toil import which
+from toil.lib.iterables import concat
+from toil.lib.memoize import memoize
+from toil.lib.misc import mkdir_p
+from toil.lib.threading import ExceptionalThread, cpu_count
+from toil.provisioners.aws import runningOnEC2
 from toil.version import distVersion
 
 logging.basicConfig(level=logging.DEBUG)
@@ -582,18 +584,6 @@ def make_tests(generalMethod, targetClass, **kwargs):
     False
 
     """
-    def pop(d):
-        """
-        Pops an arbitrary key value pair from a given dict.
-
-        :param d: a dictionary
-
-        :return: the popped key, value tuple
-        """
-        k, v = next(iter(iteritems(kwargs)))
-        d.pop(k)
-        return k, v
-
     def permuteIntoLeft(left, rParamName, right):
         """
         Permutes values in right dictionary into each parameter: value dict pair in the left
