@@ -160,6 +160,7 @@ def runSetup():
             'console_scripts': [
                 'toil = toil.utils.toilMain:main',
                 '_toil_worker = toil.worker:main',
+                'cwltoil = toil.cwl.cwltoil:cwltoil_is_deprecated [cwl]',
                 'toil-cwl-runner = toil.cwl.cwltoil:main [cwl]',
                 'toil-wdl-runner = toil.wdl.toilwdl:main',
                 '_toil_mesos_executor = toil.batchSystems.mesos.executor:main [mesos]',
