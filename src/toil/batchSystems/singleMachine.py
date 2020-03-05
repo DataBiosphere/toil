@@ -184,8 +184,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             while not self.shuttingDown.is_set():
                 # Main loop
 
-                log.debug('Daddy looking for new jobs.')
-                
                 while not self.shuttingDown.is_set():
                     # Try to start as many jobs as we can try to start
                     try:
@@ -199,7 +197,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         result = self._startChild(jobCommand, jobID,
                             coreFractions, jobMemory, jobDisk, environment)
 
-                        log.debug('Tried to start %s: %s', jobID, str(result))
+                        log.debug('Tried to start job %s and got: %s', jobID, str(result))
                         
                         if result is None:
                             # We did not get the resources to run this job.
@@ -215,11 +213,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
                     except Empty:
                         # Nothing to run. Stop looking in the queue.
-                        log.debug('No more jobs to run.')
                         break
 
-                log.debug('Daddy looking for done children.')
-    
                 # Now check on our children.
                 for done_pid in self._pollForDoneChildrenIn(self.children):
                     # A child has actually finished.
@@ -303,8 +298,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # Process is done
                     ready.add(pid)
                     log.debug('Child %d has stopped', pid)
-                else:
-                    log.debug('Child %d is still running', pid)
             
             # Return all the done processes we found
             return ready

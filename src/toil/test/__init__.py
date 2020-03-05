@@ -42,7 +42,7 @@ from toil.lib.iterables import concat
 from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.lib.misc import mkdir_p
 from toil.provisioners.aws import runningOnEC2
-from toil import toilPackageDirPath, applianceSelf
+from toil import toilPackageDirPath, applianceSelf, ApplianceImageNotFound
 from toil.version import distVersion
 
 logging.basicConfig(level=logging.DEBUG)
@@ -465,6 +465,25 @@ def needs_appliance(test_item):
     return unittest.skip(f"Cannot find appliance {image}. Use 'make test' target to automatically build appliance, or "
                          f"just run 'make push_docker' prior to running this test.")(test_item)
 
+def needs_fetchable_appliance(test_item):
+    """
+    Use as a decorator before test classes or methods to only run them if
+    the Toil appliance Docker image is able to be downloaded from the Internet.
+    """
+
+    test_item = _mark_test('fetchable_appliance', test_item)
+    if os.getenv('TOIL_SKIP_DOCKER', '').lower() == 'true':
+        return unittest.skip('Skipping docker test.')(test_item)
+    try:
+        image = applianceSelf()
+    except ApplianceImageNotFound:
+        # Not downloadable
+        return unittest.skip(f"Cannot see appliance in registry. Use 'make test' target to automatically build appliance, or "
+                             f"just run 'make push_docker' prior to running this test.")(test_item)
+    else:
+        return test_item
+        
+    
 
 def integrative(test_item):
     """
