@@ -13,38 +13,27 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+
 from future import standard_library
+
 standard_library.install_aliases()
 from builtins import map
 from builtins import str
-from builtins import range
-from builtins import object
-from abc import abstractmethod, ABCMeta
-from collections import namedtuple, defaultdict
+from collections import defaultdict
 from contextlib import contextmanager
-from functools import partial
-from hashlib import sha1
-from future.utils import with_metaclass
-import base64
 import dill
 import errno
 import fcntl
 import logging
 import os
-import shutil
-import stat
 import sys
-import tempfile
-import time
 import uuid
 
 from toil.lib.misc import robust_rmtree
-from toil.lib.objects import abstractclassmethod
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.lib.humanize import bytes2human
-from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
+from toil.common import getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
-from toil.resource import ModuleDescriptor
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
 

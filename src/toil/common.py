@@ -220,6 +220,7 @@ class Config(object):
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
         setOption("linkImports")
+        setOption("moveExports")
         setOption("environment", parseSetEnv)
 
         # Autoscaling options

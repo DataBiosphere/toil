@@ -13,36 +13,23 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+
 from future import standard_library
+
 standard_library.install_aliases()
-from builtins import map
-from builtins import str
-from builtins import range
 from builtins import object
 from abc import abstractmethod, ABCMeta
 from contextlib import contextmanager
-from fcntl import flock, LOCK_EX, LOCK_UN
-from functools import partial
-from hashlib import sha1
-from threading import Thread, Semaphore, Event
+from threading import Semaphore, Event
 from future.utils import with_metaclass
-from six.moves.queue import Empty, Queue
-import base64
 import dill
-import errno
 import logging
 import os
-import shutil
-import stat
 import tempfile
-import time
-import uuid
 
 from toil.lib.objects import abstractclassmethod
-from toil.lib.humanize import bytes2human
 from toil.lib.misc import WriteWatchingStream
-from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
-from toil.lib.bioio import makePublicDir
+from toil.common import cacheDirName
 
 from toil.fileStores import FileID
 
@@ -245,7 +232,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
             # When the stream is written to, count the bytes
             def handle(numBytes):
                 # No scope problem here, because we don't assign to a fileID local
-                fileID.size += numBytes 
+                fileID.size += numBytes
             wrappedStream.onWrite(handle)
             
             yield wrappedStream, fileID

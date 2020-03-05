@@ -88,6 +88,10 @@ def main():
                         help="If provided, the specified ARN is used as the instance profile for EC2 instances."
                              "Useful for setting custom IAM profiles. If not specified, a new IAM role is created "
                              "by default with sufficient access to perform basic cluster operations.")
+    parser.add_argument('--awsEc2ExtraSecurityGroupId', dest='awsEc2ExtraSecurityGroupIds', default=[], action='append',
+                        help="Any additional security groups to attach to EC2 instances. Note that a security group "
+                             "with its name equal to the cluster name will always be created, thus ensure that "
+                             "the extra security groups do not have the same name as the cluster name.")
     config = parseBasicOptions(parser)
     tagsDict = None if config.tags is None else createTagsDict(config.tags)
     checkValidNodeTypes(config.provisioner, config.nodeTypes)
@@ -146,7 +150,8 @@ def main():
                           botoPath=config.botoPath,
                           userTags=tagsDict,
                           vpcSubnet=config.vpcSubnet,
-                          awsEc2ProfileArn=config.awsEc2ProfileArn)
+                          awsEc2ProfileArn=config.awsEc2ProfileArn,
+                          awsEc2ExtraSecurityGroupIds=config.awsEc2ExtraSecurityGroupIds)
 
     for nodeType, workers in zip(nodeTypes, numNodes):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)

@@ -13,21 +13,13 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+
 from future import standard_library
+
 standard_library.install_aliases()
 from builtins import map
 from builtins import str
-from builtins import range
-from builtins import object
-from abc import abstractmethod, ABCMeta
-from collections import namedtuple, defaultdict
 from contextlib import contextmanager
-from fcntl import flock, LOCK_EX, LOCK_UN
-from functools import partial
-from future.utils import with_metaclass
-from six.moves.queue import Empty, Queue
-import base64
-import dill
 import errno
 import hashlib
 import logging
@@ -35,7 +27,6 @@ import os
 import re
 import shutil
 import sqlite3
-import stat
 import sys
 import tempfile
 import threading
@@ -46,10 +37,8 @@ from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
 from toil.lib.misc import mkdir_p, robust_rmtree, atomic_copy, atomic_copyobj
-from toil.lib.objects import abstractclassmethod
 from toil.lib.retry import retry
 from toil.lib.threading import get_process_name, process_name_exists
-from toil.resource import ModuleDescriptor
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
 
@@ -59,6 +48,11 @@ if sys.version_info[0] < 3:
     # Define a usable FileNotFoundError as will be raised by os.remove on a
     # nonexistent file.
     FileNotFoundError = OSError
+
+
+# Use longer timeout to avoid hitting 'database is locked' errors.
+SQLITE_TIMEOUT_SECS = 60.0
+
 
 class CacheError(Exception):
     """
@@ -107,6 +101,7 @@ class InvalidSourceCacheError(CacheError):
 
     def __init__(self, message):
         super(InvalidSourceCacheError, self).__init__(message)
+
 
 class CachingFileStore(AbstractFileStore):
     """
@@ -235,7 +230,7 @@ class CachingFileStore(AbstractFileStore):
         # already been created.
         self.dbPath = os.path.join(self.localCacheDir, 'cache-{}.db'.format(self.workflowAttemptNumber))
         # We need to hold onto both a connection (to commit) and a cursor (to actually use the database)
-        self.con = sqlite3.connect(self.dbPath, timeout=60.0)
+        self.con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
         self.cur = self.con.cursor()
 
         # Note that sqlite3 automatically starts a transaction when we go to
@@ -1714,7 +1709,7 @@ class CachingFileStore(AbstractFileStore):
             # Reconnect to the database from this thread. The main thread can
             # keep using self.con and self.cur. We need to do this because
             # SQLite objects are tied to a thread.
-            con = sqlite3.connect(self.dbPath)
+            con = sqlite3.connect(self.dbPath, timeout=SQLITE_TIMEOUT_SECS)
             cur = con.cursor()
 
             logger.debug('Committing file uploads asynchronously')
@@ -1796,7 +1791,7 @@ class CachingFileStore(AbstractFileStore):
                 if os.path.exists(dbPath):
                     try:
                         # The database exists, see if we can open it
-                        con = sqlite3.connect(dbPath)
+                        con = sqlite3.connect(dbPath, timeout=SQLITE_TIMEOUT_SECS)
                     except:
                         # Probably someone deleted it.
                         pass
