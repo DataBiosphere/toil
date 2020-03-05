@@ -281,7 +281,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 # TODO: Is this one-notification-per-done-child with WNOHANG? Or
                 # can we miss some? Or do we see the same one repeatedly until it
                 # is reaped?
-                siginfo = waitid(os.P_ALL, -1, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+                try:
+                    siginfo = waitid(os.P_ALL, -1, os.WEXITED | os.WNOWAIT | os.WNOHANG)
+                except ChildProcessError:
+                    # This happens when there is nothing to wait on right now,
+                    # instead of the weird C behavior of overwriting a field in
+                    # a pointed-to struct.
+                    siginfo = None
                 if siginfo is not None and siginfo.si_pid in pid_to_popen and siginfo.si_pid not in ready:
                     # Something new finished
                     ready.add(siginfo.si_pid)
