@@ -135,9 +135,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                      'given a minimum CPU fraction of %f '
                      'and a maximum CPU value of %i.', self.numWorkers, self.minCores, maxCores)
             for i in range(self.numWorkers):
-                worker = Thread(target=self.worker, args=(self.inputQueue,))
-                self.workerThreads.append(worker)
+                worker = Thread(target=self.worker, args=(self.inputQueue,), daemon=True)
                 worker.start()
+                self.workerThreads.append(worker)
         else:
             log.debug('Started in worker debug mode.')
 
