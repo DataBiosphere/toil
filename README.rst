@@ -25,5 +25,7 @@ programming.
    :alt: Join the chat at https://gitter.im/bd2k-genomics-toil/Lobby
    :target: https://gitter.im/bd2k-genomics-toil/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 
-Notes: Toil moved from https://github.com/BD2KGenomics/toil to https://github.com/DataBiosphere/toil on July 5th, 2018.
-       Toil dropped python 2.7 support on February 13, 2020 (last working py2.7 version is 3.24.0).
+Notes:
+
+* Toil moved from https://github.com/BD2KGenomics/toil to https://github.com/DataBiosphere/toil on July 5th, 2018.
+* Toil dropped python 2.7 support on February 13, 2020 (last working py2.7 version is 3.24.0).
