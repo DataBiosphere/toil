@@ -435,7 +435,7 @@ class AWSJobStore(AbstractJobStore):
             finally:
                 dstKey.bucket.connection.close()
         else:
-            super(AWSJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
+            super(AWSJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
     @classmethod
     def getSize(cls, url):
@@ -452,6 +452,7 @@ class AWSJobStore(AbstractJobStore):
             srcKey.get_contents_to_file(writable)
         finally:
             srcKey.bucket.connection.close()
+        return srcKey.size
 
     @classmethod
     def _writeToUrl(cls, readable, url):

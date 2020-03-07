@@ -94,6 +94,7 @@ class FileJobStore(AbstractJobStore):
         self.fanOut = fanOut
 
         self.linkImports = None
+        self.moveExports = None
 
     def __repr__(self):
         return 'FileJobStore({})'.format(self.jobStoreDir)
@@ -112,6 +113,7 @@ class FileJobStore(AbstractJobStore):
         mkdir_p(self.jobFilesDir)
         mkdir_p(self.sharedFilesDir)
         self.linkImports = config.linkImports
+        self.moveExports = config.moveExports
         super(FileJobStore, self).initialize(config)
 
     def resume(self):
@@ -244,8 +246,10 @@ class FileJobStore(AbstractJobStore):
                 logger.warning('Job Dir: %s' % i)
                 if i.startswith(self.JOB_DIR_PREFIX):
                     # This is a job instance directory
+                    jobId = self._getJobIdFromDir(os.path.join(tempDir, i))
                     try:
-                        yield self.load(self._getJobIdFromDir(os.path.join(tempDir, i)))
+                        if self.exists(jobId):
+                            yield self.load(jobId)
                     except NoSuchJobException:
                         # An orphaned job may leave an empty or incomplete job file which we can safely ignore
                         pass
@@ -292,9 +296,19 @@ class FileJobStore(AbstractJobStore):
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, FileJobStore):
-            atomic_copy(self._getFilePathFromId(jobStoreFileID), self._extractPathFromUrl(url))
+            srcPath = self._getFilePathFromId(jobStoreFileID)
+            destPath = self._extractPathFromUrl(url)
+            if self.moveExports:
+                self._move_and_linkback(srcPath, destPath)
+            else:
+                atomic_copy(srcPath, destPath)
         else:
-            super(FileJobStore, self)._exportFile(otherCls, jobStoreFileID, url)
+            super(FileJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
+
+    def _move_and_linkback(self, srcPath, destPath):
+        logger.debug("moveExports option, Moving src=%s to dest=%s ; then symlinking dest to src", srcPath, destPath)
+        shutil.move(srcPath, destPath)
+        os.symlink(destPath, srcPath)
 
     @classmethod
     def getSize(cls, url):
@@ -309,9 +323,13 @@ class FileJobStore(AbstractJobStore):
         :param str url: A path as a string of the file to be read from.
         :param object writable: An open file object to write to.
         """
+        
         # we use a ~10Mb buffer to improve speed
         with open(cls._extractPathFromUrl(url), 'rb') as readable:
             shutil.copyfileobj(readable, writable, length=cls.BUFFER_SIZE)
+            # Return the number of bytes we read when we reached EOF.
+            return readable.tell()
+        
 
     @classmethod
     def _writeToUrl(cls, readable, url):

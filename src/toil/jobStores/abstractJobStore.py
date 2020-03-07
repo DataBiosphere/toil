@@ -38,6 +38,7 @@ from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
 from toil.job import JobException
 from toil.lib.memoize import memoize
+from toil.lib.misc import WriteWatchingStream
 from toil.lib.objects import abstractclassmethod
 from future.utils import with_metaclass
 
@@ -322,8 +323,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         if sharedFileName is None:
             with self.writeFileStream() as (writable, jobStoreFileID):
-                otherCls._readFromUrl(url, writable)
-                return FileID(jobStoreFileID, otherCls.getSize(url))
+                size = otherCls._readFromUrl(url, writable)
+                return FileID(jobStoreFileID, size)
         else:
             self._requireValidSharedFileName(sharedFileName)
             with self.writeSharedFileStream(sharedFileName) as writable:
@@ -361,13 +362,28 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
         :param urlparse.ParseResult url: The parsed URL of the file to export to.
         """
+        self._defaultExportFile(otherCls, jobStoreFileID, url)
+
+    def _defaultExportFile(self, otherCls, jobStoreFileID, url):
+        """
+        Refer to exportFile docstring for information about this method.
+
+        :param AbstractJobStore otherCls: The concrete subclass of AbstractJobStore that supports
+               exporting to the given URL. Note that the type annotation here is not completely
+               accurate. This is not an instance, it's a class, but there is no way to reflect
+               that in :pep:`484` type hints.
+
+        :param str jobStoreFileID: The id of the file that will be exported.
+
+        :param urlparse.ParseResult url: The parsed URL of the file to export to.
+        """
         with self.readFileStream(jobStoreFileID) as readable:
             otherCls._writeToUrl(readable, url)
 
     @abstractclassmethod
     def getSize(cls, url):
         """
-        returns the size in bytes of the file at the given URL
+        Get the size in bytes of the file at the given URL, or None if it cannot be obtained.
 
         :param urlparse.ParseResult url: URL that points to a file or object in the storage
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
@@ -386,6 +402,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                mechanism of a supported URL scheme e.g. a blob in an AWS s3 bucket.
 
         :param writable: a writable stream
+
+        :return int: returns the size of the file in bytes
         """
         raise NotImplementedError()
 
@@ -1064,11 +1082,27 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
             with attempt:
                 with closing(urlopen(url.geturl())) as readable:
                     # just read the header for content length
-                    return int(readable.info().get('content-length'))
+                    size = readable.info().get('content-length')
+                    return int(size) if size is not None else None
 
     @classmethod
     def _readFromUrl(cls, url, writable):
         for attempt in retry_http():
+            # We can only retry on errors that happen as responses to the request.
+            # If we start getting file data, and the connection drops, we fail.
+            # So we don't have to worry about writing the start of the file twice.
             with attempt:
                 with closing(urlopen(url.geturl())) as readable:
-                    shutil.copyfileobj(readable, writable)
+                    # Make something to count the bytes we get
+                    # We need to put the actual count in a container so our
+                    # nested function can modify it without creating its own
+                    # local with the same name.
+                    size = [0]
+                    def count(l):
+                        size[0] += l
+                    counter = WriteWatchingStream(writable)
+                    counter.onWrite(count)
+                    
+                    # Do the download
+                    shutil.copyfileobj(readable, counter)
+                    return size[0]

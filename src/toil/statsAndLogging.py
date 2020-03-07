@@ -37,7 +37,8 @@ class StatsAndLogging( object ):
     def __init__(self, jobStore, config):
         self._stop = Event()
         self._worker = Thread(target=self.statsAndLoggingAggregator,
-                              args=(jobStore, self._stop, config))
+                              args=(jobStore, self._stop, config),
+                              daemon=True)
 
     def start(self):
         """

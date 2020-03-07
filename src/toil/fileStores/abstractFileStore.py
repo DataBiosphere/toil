@@ -13,35 +13,23 @@
 # limitations under the License.
 
 from __future__ import absolute_import, print_function
+
 from future import standard_library
+
 standard_library.install_aliases()
-from builtins import map
-from builtins import str
-from builtins import range
 from builtins import object
 from abc import abstractmethod, ABCMeta
 from contextlib import contextmanager
-from fcntl import flock, LOCK_EX, LOCK_UN
-from functools import partial
-from hashlib import sha1
-from threading import Thread, Semaphore, Event
+from threading import Semaphore, Event
 from future.utils import with_metaclass
-from six.moves.queue import Empty, Queue
-import base64
 import dill
-import errno
 import logging
 import os
-import shutil
-import stat
 import tempfile
-import time
-import uuid
 
 from toil.lib.objects import abstractclassmethod
-from toil.lib.humanize import bytes2human
-from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
-from toil.lib.bioio import makePublicDir
+from toil.lib.misc import WriteWatchingStream
+from toil.common import cacheDirName
 
 from toil.fileStores import FileID
 
@@ -243,7 +231,8 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
             
             # When the stream is written to, count the bytes
             def handle(numBytes):
-                fileID.size += numBytes 
+                # No scope problem here, because we don't assign to a fileID local
+                fileID.size += numBytes
             wrappedStream.onWrite(handle)
             
             yield wrappedStream, fileID
@@ -463,61 +452,4 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
 
-class WriteWatchingStream(object):
-    """
-    A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
-    
-    Not seekable.
-    """
-    
-    def __init__(self, backingStream):
-        """
-        Wrap the given backing stream.
-        """
-        
-        self.backingStream = backingStream
-        # We have no write listeners yet
-        self.writeListeners = []
-        
-    def onWrite(self, listener):
-        """
-        Call the given listener with the number of bytes written on every write.
-        """
-        
-        self.writeListeners.append(listener)
-        
-    # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
-        
-    def write(self, data):
-        """
-        Write the given data to the file.
-        """
-        
-        # Do the write
-        self.backingStream.write(data)
-        
-        for listener in self.writeListeners:
-            # Send out notifications
-            listener(len(data))
-            
-    def writelines(self, datas):
-        """
-        Write each string from the given iterable, without newlines.
-        """
-        
-        for data in datas:
-            self.write(data)
-            
-    def flush(self):
-        """
-        Flush the backing stream.
-        """
-        
-        self.backingStream.flush()
-        
-    def close(self):
-        """
-        Close the backing stream.
-        """
-        
-        self.backingStream.close()
+

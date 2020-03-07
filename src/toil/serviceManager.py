@@ -62,7 +62,8 @@ class ServiceManager( object ):
                                      args=(self._jobGraphsWithServicesToStart,
                                            self._jobGraphsWithServicesThatHaveStarted,
                                            self._serviceJobGraphsToStart, self._terminate,
-                                           self.jobStore))
+                                           self.jobStore),
+                                      daemon=True)
         
     def start(self): 
         """

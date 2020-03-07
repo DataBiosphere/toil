@@ -14,6 +14,7 @@
 
 from __future__ import absolute_import
 from __future__ import division
+
 from future import standard_library
 
 standard_library.install_aliases()
@@ -36,7 +37,6 @@ from stubserver import FTPStubServer
 from abc import abstractmethod, ABCMeta
 from itertools import chain, islice
 from threading import Thread
-from unittest import skip
 from six.moves.queue import Queue
 from six.moves import SimpleHTTPServer, StringIO
 from six import iteritems
@@ -47,7 +47,6 @@ from toil.lib.memoize import memoize
 from toil.lib.exceptions import panic
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
-from mock import patch
 
 from toil.lib.compatibility import USING_PYTHON2
 from toil.common import Config, Toil
@@ -682,7 +681,7 @@ class AbstractJobStoreTest(object):
                                        for testCls in testClasses
                                        if not getattr(testCls, '__unittest_skip__', False)}
 
-            def testImportExportFile(self, otherCls, size):
+            def testImportExportFile(self, otherCls, size, moveExports):
                 """
                 :param AbstractJobStoreTest.Test self: the current test case
 
@@ -693,6 +692,8 @@ class AbstractJobStoreTest(object):
                 """
                 # Prepare test file in other job store
                 self.jobstore_initialized.partSize = cls.mpTestPartSize
+                self.jobstore_initialized.moveExports = moveExports
+
                 # The string in otherCls() is arbitrary as long as it returns a class that has access
                 # to ._externalStore() and ._prepareTestFile()
                 other = otherCls('testSharedFiles')
@@ -709,7 +710,20 @@ class AbstractJobStoreTest(object):
                 dstUrl = other._prepareTestFile(store)
                 self.jobstore_initialized.exportFile(jobStoreFileID, dstUrl)
                 self.assertEqual(fileMD5, other._hashTestFile(dstUrl))
-                if otherCls.__name__ == 'FileJobStoreTest':  # Remove local Files
+
+                if otherCls.__name__ == 'FileJobStoreTest':
+                    if isinstance(self.jobstore_initialized, FileJobStore):
+                        jobStorePath = self.jobstore_initialized._getFilePathFromId(jobStoreFileID)
+                        jobStoreHasLink = os.path.islink(jobStorePath)
+                        if self.jobstore_initialized.moveExports:
+                            # Ensure the export performed a move / link
+                            self.assertTrue(jobStoreHasLink)
+                            self.assertEqual(os.path.realpath(jobStorePath), dstUrl[7:])
+                        else:
+                            # Ensure the export has not moved the job store file
+                            self.assertFalse(jobStoreHasLink)
+
+                    # Remove local Files
                     os.remove(srcUrl[7:])
                     os.remove(dstUrl[7:])
 
@@ -719,7 +733,8 @@ class AbstractJobStoreTest(object):
                                  oneMiB=2 ** 20,
                                  partSizeMinusOne=cls.mpTestPartSize - 1,
                                  partSize=cls.mpTestPartSize,
-                                 partSizePlusOne=cls.mpTestPartSize + 1))
+                                 partSizePlusOne=cls.mpTestPartSize + 1),
+                       moveExports={'deactivated': None, 'activated': True})
 
             def testImportSharedFile(self, otherCls):
                 """
@@ -1116,7 +1131,6 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
         shutil.rmtree(self.jobstore_initialized.jobStoreDir)
 
     def _prepareTestFile(self, dirPath, size=None):
-        import binascii
         fileName = 'testfile_%s' % uuid.uuid4()
         localFilePath = dirPath + fileName
         url = 'file://%s' % localFilePath

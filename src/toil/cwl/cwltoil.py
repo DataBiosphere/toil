@@ -96,6 +96,10 @@ CWL_INTERNAL_JOBS = ("CWLJobWrapper",
 # output object to the correct key of the input object.
 
 
+def cwltoil_was_removed():
+    raise RuntimeError('Please run with "toil-cwl-runner" instead of "cwltoil" (which has been removed).')
+
+
 class UnresolvedDict(dict):
     """Tag to indicate a dict contains promises that must be resolved."""
     pass
