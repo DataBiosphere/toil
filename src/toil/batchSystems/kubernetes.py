@@ -49,6 +49,7 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
 from toil.lib.humanize import human2bytes
 from toil.resource import Resource
+from toil.lib.retry import retry_http
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,19 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         self.enableWatching = True
 
         self.jobIds = set()
-        
+   # WIP ----------------------------------------------------------------------------------------- 
+    GATEWAY_TIMEOUT = 504
+    MAX_RETRY_ERROR = 111
+
+    
+    def handle_retriable_exception(exception):
+        if (isinstance(exception, rest.ApiException) and \
+                (exception.status == GATEWAY_TIMEOUT or exception.status == MAX_RETRY_ERROR)):
+            # ADD FUNCTION FHERE
+            return True
+        return not isinstance(exception, util.TimeoutError)
+# WIP -----------------------------------------------------------------------------------------
+
     def _api(self, kind, max_age_seconds = 5 * 60):
         """
         The Kubernetes module isn't clever enough to renew its credentials when
@@ -205,11 +218,15 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 
         else:
             # We need an API object
+            # WIP -------------------------------------------------------------------- 
+            for attempt in retry_http(predicate=handle_retriable_exception):
+                with attempt:
+                    api_get = self._apis[kind]
             try:
                 return self._apis[kind]
             except KeyError: 
                 raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
-        
+            # END OF WIP -------------------------------------------------------------
 
     def setUserScript(self, userScript):
         logger.info('Setting user script for deployment: {}'.format(userScript))
