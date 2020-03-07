@@ -37,7 +37,8 @@ from typing import (Text,
                     Any,
                     Iterator,
                     TextIO,
-                    Set)
+                    Set,
+                    Tuple)
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -550,7 +551,9 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
-        # Note: toil's _abs() throws errors when files are not found and cwltool's _abs() does not
+        # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
+        # (among other things) so this should not error on missing files.
+        # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
         if path.startswith("toilfs:"):
             return self.file_store.readGlobalFile(FileID.unpack(path[7:]))
         return super(ToilFsAccess, self)._abs(path)
@@ -801,12 +804,54 @@ class CWLJob(Job):
         self.step_inputs = self.cwltool.tool["inputs"]
         self.workdir = runtime_context.workdir
 
+    def required_env_vars(self, cwljob: Any) -> Iterator[Tuple[str, str]]:
+        """An iterator that yields environment variables specified with the EnvVarRequirement keyword."""
+        if isinstance(cwljob, dict):
+            if cwljob.get("class") == 'EnvVarRequirement':
+                for t in cwljob.get("envDef", {}):
+                    yield t["envName"], self.builder.do_eval(t["envValue"])
+            for k, v in cwljob.items():
+                for env_name, env_value in self.required_env_vars(v):
+                    yield env_name, env_value
+        if isinstance(cwljob, list):
+            for env_var in cwljob:
+                for env_name, env_value in self.required_env_vars(env_var):
+                    yield env_name, env_value
+
+    def populate_env_vars(self, cwljob: dict) -> dict:
+        """
+        Prepares environment variables necessary at runtime of the job.
+
+        Env vars specified in the CWL "requirements" section should already be loaded in self.cwltool.requirements,
+        however those specified with "EnvVarRequirement" take precedence and are only populated here.  Therefore,
+        this not only returns a dictionary with all evaluated "EnvVarRequirement" env vars, but checks
+        self.cwltool.requirements for any env vars with the same name and replaces their value with that found in the
+        "EnvVarRequirement" env var if it exists.
+        """
+        self.builder.job = cwljob
+        required_env_vars = {}
+        # iterate over EnvVarRequirement env vars, if any
+        for k, v in self.required_env_vars(cwljob):
+            required_env_vars[k] = v  # will tell cwltool which env vars to take from the environment
+            os.environ[k] = v  # needs to actually be populated in the environment as well or they're not used
+
+        # EnvVarRequirement env vars take priority over those specified with "requirements"
+        # so cwltool.requirements need to be overwritten if an env var with the same name is found
+        for req in self.cwltool.requirements:
+            for env_def in req.get('envDef', {}):
+                env_name = env_def.get('envName', '')
+                if env_name in required_env_vars:
+                    env_def['envValue'] = required_env_vars[env_name]
+        return required_env_vars
+
     def run(self, file_store: AbstractFileStore) -> Any:
         cwljob = resolve_dict_w_promises(self.cwljob)
         fill_in_defaults(
             self.step_inputs,
             cwljob,
             self.runtime_context.make_fs_access(""))
+
+        required_env_vars = self.populate_env_vars(cwljob)
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
@@ -843,6 +888,7 @@ class CWLJob(Job):
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
         runtime_context.make_fs_access = functools.partial(
             ToilFsAccess, file_store=file_store)
+        runtime_context.preserve_environment = required_env_vars
 
         runtime_context.toil_get_file = functools.partial(
             toil_get_file, file_store, index, existing)
