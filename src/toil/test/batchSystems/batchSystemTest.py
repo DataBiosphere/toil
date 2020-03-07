@@ -49,6 +49,7 @@ from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_lsf,
                        needs_kubernetes,
+                       needs_fetchable_appliance,
                        needs_mesos,
                        needs_parasol,
                        needs_gridengine,
@@ -345,6 +346,7 @@ class hidden(object):
 
 @needs_kubernetes
 @needs_aws_s3
+@needs_fetchable_appliance
 class KubernetesBatchSystemTest(hidden.AbstractBatchSystemTest):
     """
     Tests against the Kubernetes batch system
