@@ -40,7 +40,7 @@ from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
 from toil.version import python
-from mock import patch, mock_open
+from mock import patch
 
 logger = logging.getLogger(__name__)
 
