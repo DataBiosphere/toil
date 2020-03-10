@@ -390,19 +390,19 @@ class UtilsTest(ToilTest):
 
     @needs_cwl
     @needs_docker
-    @patch('toil.utils.toilStatus.Toil')
     @patch('builtins.print')
-    def testPrintJobLog(self, mock_print, mock_toil):
-
-        # mock getLogFileHandle so the fake error log contents will be returned
-        open_log_file = mock_open(read_data=b'ERROR file not found')
-        mock_toil.resumeJobStore.return_value.load.return_value.getLogFileHandle = open_log_file
-
-        status = ToilStatus(self.toilDir, specifiedJobs=[Job()])
+    def testPrintJobLog(self, mock_print):
+        """Test that ToilStatus.printJobLog() reads the log from a failed command without error."""
+        # Run a workflow that will always fail
+        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
+               'src/toil/test/cwl/alwaysfails.cwl', '--message', 'Testing']
+        wf = subprocess.Popen(cmd)
+        wf.wait()
+        # print log and check output
+        status = ToilStatus(self.toilDir)
         status.printJobLog()
-        mock_print.assert_called_with("LOG_FILE_OF_JOB:{} LOG: =======>\nERROR file not found<=========".format(
-            mock_toil.resumeJobStore.return_value.load.return_value
-        ))
+        args, kwargs = mock_print.call_args
+        self.assertIn('LOG_FILE_OF_JOB', args[0])
 
 
 def printUnicodeCharacter():
