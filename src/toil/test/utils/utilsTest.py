@@ -40,6 +40,7 @@ from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
 from toil.version import python
+from mock import patch, mock_open
 
 logger = logging.getLogger(__name__)
 
@@ -386,6 +387,22 @@ class UtilsTest(ToilTest):
         self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
+
+    @needs_cwl
+    @needs_docker
+    @patch('toil.utils.toilStatus.Toil')
+    @patch('builtins.print')
+    def testPrintJobLog(self, mock_print, mock_toil):
+
+        # mock getLogFileHandle so the fake error log contents will be returned
+        open_log_file = mock_open(read_data=b'ERROR file not found')
+        mock_toil.resumeJobStore.return_value.load.return_value.getLogFileHandle = open_log_file
+
+        status = ToilStatus(self.toilDir, specifiedJobs=[Job()])
+        status.printJobLog()
+        mock_print.assert_called_with("LOG_FILE_OF_JOB:{} LOG: =======>\nERROR file not found<=========".format(
+            mock_toil.resumeJobStore.return_value.load.return_value
+        ))
 
 
 def printUnicodeCharacter():
