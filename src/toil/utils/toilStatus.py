@@ -80,7 +80,7 @@ class ToilStatus():
             if job.logJobStoreFileID is not None:
                 msg = "LOG_FILE_OF_JOB:%s LOG: =======>\n" % job
                 with job.getLogFileHandle(self.jobStore) as fH:
-                    msg += fH.read()
+                    msg += fH.read().decode('utf-8')
                 msg += "<========="
             else:
                 msg = "LOG_FILE_OF_JOB:%s LOG: Job has no log file" % job
