@@ -40,6 +40,7 @@ from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
 from toil.version import python
+from mock import patch
 
 logger = logging.getLogger(__name__)
 
@@ -386,6 +387,22 @@ class UtilsTest(ToilTest):
         self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
         wf.wait()
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
+
+    @needs_cwl
+    @needs_docker
+    @patch('builtins.print')
+    def testPrintJobLog(self, mock_print):
+        """Test that ToilStatus.printJobLog() reads the log from a failed command without error."""
+        # Run a workflow that will always fail
+        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
+               'src/toil/test/cwl/alwaysfails.cwl', '--message', 'Testing']
+        wf = subprocess.Popen(cmd)
+        wf.wait()
+        # print log and check output
+        status = ToilStatus(self.toilDir)
+        status.printJobLog()
+        args, kwargs = mock_print.call_args
+        self.assertIn('LOG_FILE_OF_JOB', args[0])
 
 
 def printUnicodeCharacter():
