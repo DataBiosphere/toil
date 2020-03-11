@@ -152,7 +152,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
             path_key = cls.resourceEnvNamePrefix + pathHash
             s = os.environ[path_key]
         except KeyError:
-            log.warning("'%s' may exist, but is not yet referenced by the worker (KeyError from os.environ[]).", str(path_key))
+            # Resources that don't actually exist but get looked up are normal; don't complain.
             return None
         else:
             self = cls.unpickle(s)
