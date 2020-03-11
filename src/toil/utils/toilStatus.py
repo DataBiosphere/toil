@@ -33,6 +33,7 @@ from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException, NoSuchFileException
 from toil.job import JobException
+from toil.statsAndLogging import StatsAndLogging
 from toil.version import version
 
 logger = logging.getLogger(__name__)
@@ -78,13 +79,14 @@ class ToilStatus():
         """Takes a list of jobs, finds their log files, and prints them to the terminal."""
         for job in self.jobsToReport:
             if job.logJobStoreFileID is not None:
-                msg = "LOG_FILE_OF_JOB:%s LOG: =======>\n" % job
+                # TODO: This looks intended to be machine-readable, but the format is
+                # unspecified and no escaping is done. But keep these tags around.
+                msg = "LOG_FILE_OF_JOB:%s LOG:" % job
                 with job.getLogFileHandle(self.jobStore) as fH:
-                    msg += fH.read().decode('utf-8')
-                msg += "<========="
+                    msg += StatsAndLogging.formatLogStream(fH)
+                print(msg)
             else:
-                msg = "LOG_FILE_OF_JOB:%s LOG: Job has no log file" % job
-            print(msg)
+                print("LOG_FILE_OF_JOB:%s LOG: Job has no log file" % job)
 
     def printJobChildren(self):
         """Takes a list of jobs, and prints their successors."""

@@ -400,8 +400,10 @@ class UtilsTest(ToilTest):
         # print log and check output
         status = ToilStatus(self.toilDir)
         status.printJobLog()
+        
+        # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
-        self.assertIn('LOG_FILE_OF_JOB', args[0])
+        self.assertIn('invalidcommand', args[0])
 
 
 def printUnicodeCharacter():
