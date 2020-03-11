@@ -1,3 +1,4 @@
+# Copyright (C) 2015-2020 Regents of the University of California
 # Copyright (C) 2015 Curoverse, Inc
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,8 +12,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from __future__ import print_function
 import json
 import os
 import sys
@@ -23,10 +22,8 @@ import shutil
 import zipfile
 import pytest
 import uuid
-from future.moves.urllib.request import urlretrieve
-from six.moves import StringIO
-from six import u as str
-from six import text_type
+from urllib.request import urlretrieve
+from io import StringIO
 
 pkg_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))  # noqa
 sys.path.insert(0, pkg_root)  # noqa
@@ -39,11 +36,10 @@ from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
 
 
 @needs_cwl
-class CWLTest(ToilTest):
+class CWLv10Test(ToilTest):
     def setUp(self):
         """Runs anew before each test to create farm fresh temp dirs."""
-        from builtins import str as normal_str
-        self.outDir = os.path.join('/tmp/', 'toil-cwl-test-' + normal_str(uuid.uuid4()))
+        self.outDir = f'/tmp/toil-cwl-test-{str(uuid.uuid4())}'
         os.makedirs(self.outDir)
         self.rootDir = self._projectRootPath()
         self.cwlSpec = os.path.join(self.rootDir, 'src/toil/test/cwl/spec')
@@ -96,7 +92,7 @@ class CWLTest(ToilTest):
                   self._expected_revsort_output(self.outDir))
 
     def download(self,inputs, tester_fn):
-        input_location = os.path.join('src/toil/test/cwl',inputs)
+        input_location = os.path.join('src/toil/test/cwl', inputs)
         tester_fn('src/toil/test/cwl/download.cwl',
                   input_location,
                   self._expected_download_output(self.outDir))
@@ -196,11 +192,7 @@ class CWLTest(ToilTest):
             # check output -- if we failed but only have unsupported features, we're okay
             p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
 
-            error_log = e.output
-            if isinstance(e.output, bytes):
-                # py2/3 string handling
-                error_log = e.output.decode('utf-8')
-
+            error_log = e.output.decode('utf-8')
             for line in error_log.split('\n'):
                 m = p.search(line)
                 if m:
@@ -300,39 +292,99 @@ class CWLTest(ToilTest):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
         loc = 'file://' + os.path.join(outDir, 'out')
-        loc = str(loc) if not isinstance(loc, text_type) else loc  # py2/3
         return {
-            u'output1':  {
-                u'location': loc,
-                u'checksum': u'sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2',
-                u'basename': u'out',
-                u'class': u'File',
-                u'size': 150}}
+            'output1':  {
+                'location': loc,
+                'checksum': 'sha1$322e001e5a99f19abdce9f02ad0f02a17b5066c2',
+                'basename': 'out',
+                'class': 'File',
+                'size': 150}}
 
     @staticmethod
     def _expected_revsort_output(outDir):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
         loc = 'file://' + os.path.join(outDir, 'output.txt')
-        loc = str(loc) if not isinstance(loc, text_type) else loc  # py2/3
         return {
-            u'output': {
-                u'location': loc,
-                u'basename': u'output.txt',
-                u'size': 1111,
-                u'class': u'File',
-                u'checksum': u'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}}
+            'output': {
+                'location': loc,
+                'basename': 'output.txt',
+                'size': 1111,
+                'class': 'File',
+                'checksum': 'sha1$b9214658cc453331b62c2282b772a5c063dbd284'}}
 
     @staticmethod
     def _expected_download_output(outDir):
         # Having unicode string literals isn't necessary for the assertion but
         # makes for a less noisy diff in case the assertion fails.
         loc = 'file://' + os.path.join(outDir, 'output.txt')
-        loc = str(loc) if not isinstance(loc, text_type) else loc  # py2/3
         return {
-            u'output': {
-                u'location': loc,
-                u'basename': u'output.txt',
-                u'size': 0,
-                u'class': u'File',
-                u'checksum': u'sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709'}}
+            'output': {
+                'location': loc,
+                'basename': 'output.txt',
+                'size': 0,
+                'class': 'File',
+                'checksum': 'sha1$da39a3ee5e6b4b0d3255bfef95601890afd80709'}}
+
+
+@needs_cwl
+class CWLv11Test(ToilTest):
+    @classmethod
+    def setUpClass(cls):
+        """Runs anew before each test to create farm fresh temp dirs."""
+        cls.outDir = f'/tmp/toil-cwl-v1_1-test-{str(uuid.uuid4())}'
+        os.makedirs(cls.outDir)
+        cls.rootDir = cls._projectRootPath()
+        cls.cwlSpec = os.path.join(cls.rootDir, 'src/toil/test/cwl/spec_v11')
+        cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
+        # TODO: Use a commit zip in case someone decides to rewrite master's history?
+        url = 'https://github.com/common-workflow-language/cwl-v1.1.git'
+        commit = 'a22b7580c6b50e77c0a181ca59d3828dd5c69143'
+        p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
+        p.communicate()
+
+    def tearDown(self):
+        """Clean up outputs."""
+        if os.path.exists(self.outDir):
+            shutil.rmtree(self.outDir)
+        unittest.TestCase.tearDown(self)
+
+    @slow
+    @pytest.mark.timeout(2400)
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail
+    def test_run_conformance_with_caching(self):
+        self.test_run_conformance(caching=True)
+
+    @slow
+    @pytest.mark.timeout(2400)
+    def test_run_conformance(self, batchSystem=None, caching=False):
+        try:
+            # TODO: we do not currently run tests: 213, 242, 244, 246, 249
+            selected_tests = '1-212,214-241,243,245,247-248,250-253'
+            cmd = [f'cwltest',
+                   f'--tool=toil-cwl-runner',
+                   f'--test={self.test_yaml}',
+                   f'--timeout=2400',
+                   f'--basedir={self.cwlSpec}',
+                   f'-n={selected_tests}']
+            if batchSystem:
+                cmd.extend(["--batchSystem", batchSystem])
+            if caching:
+                cmd.extend(['--', '--disableCaching="False"'])
+            subprocess.check_output(cmd, cwd=self.cwlSpec, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as e:
+            only_unsupported = False
+            # check output -- if we failed but only have unsupported features, we're okay
+            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
+
+            error_log = e.output.decode('utf-8')
+            for line in error_log.split('\n'):
+                m = p.search(line)
+                if m:
+                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
+                        only_unsupported = True
+                        break
+            if not only_unsupported:
+                print(error_log)
+                raise e

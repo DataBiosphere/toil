@@ -20,3 +20,4 @@ tmp/
 /docker/toil-*.tar.gz
 /src/toil/version.py
 .coverage*
+.mypy_cache
