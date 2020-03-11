@@ -183,7 +183,7 @@ class UtilsTest(ToilTest):
 
             # `toil rsync-cluster`
             # Testing special characters - string.punctuation
-            fname = '!"#$%&\'()*+,-.;<=>:\ ?@[\\\\]^_`{|}~'
+            fname = r'!"#$%&\'()*+,-.;<=>:\ ?@[\\]^_`{|}~'
             testData = os.urandom(3 * (10**6))
             with tempfile.NamedTemporaryFile(suffix=fname) as tmpFile:
                 relpath = os.path.basename(tmpFile.name)
