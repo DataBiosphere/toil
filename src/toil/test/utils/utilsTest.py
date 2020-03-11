@@ -389,7 +389,6 @@ class UtilsTest(ToilTest):
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
 
     @needs_cwl
-    @needs_docker
     @patch('builtins.print')
     def testPrintJobLog(self, mock_print):
         """Test that ToilStatus.printJobLog() reads the log from a failed command without error."""
