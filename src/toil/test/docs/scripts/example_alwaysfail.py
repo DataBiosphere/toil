@@ -3,6 +3,7 @@ import sys
 
 from toil.common import Toil
 from toil.job import Job
+from toil.leader import FailedJobsException
 
 def main():
     """

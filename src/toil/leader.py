@@ -69,22 +69,29 @@ logger = logging.getLogger( __name__ )
 
 class FailedJobsException(Exception):
     def __init__(self, jobStoreLocator, failedJobs, jobStore):
-        msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
+        self.msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
         try:
-            msg += ": %s" % ", ".join((str(failedJob) for failedJob in failedJobs))
+            self.msg += ": %s" % ", ".join((str(failedJob) for failedJob in failedJobs))
             for jobNode in failedJobs:
                 job = jobStore.load(jobNode.jobStoreID)
                 if job.logJobStoreFileID:
-                    msg += "\n=========> Failed job %s \n" % jobNode
+                    self.msg += "\n=========> Failed job %s \n" % jobNode
                     with job.getLogFileHandle(jobStore) as fH:
-                        msg += fH.read().decode('utf-8')
-                    msg += "<=========\n"
+                        self.msg += fH.read().decode('utf-8')
+                    self.msg += "<=========\n"
         # catch failures to prepare more complex details and only return the basics
         except:
             logger.exception('Exception when compiling information about failed jobs')
         super().__init__()
         self.jobStoreLocator = jobStoreLocator
         self.numberOfFailedJobs = len(failedJobs)
+    
+    def __str__(self):
+        """
+        Stringify the exception, including the message.
+        """
+        return self.msg
+    
 
 ####################################################
 # Exception thrown by the Leader class when a deadlock is encountered due to insufficient
@@ -93,8 +100,14 @@ class FailedJobsException(Exception):
 
 class DeadlockException(Exception):
     def __init__(self, msg):
-        msg = "Deadlock encountered: " + msg
+        self.msg = "Deadlock encountered: " + msg
         super().__init__()
+
+    def __str__(self):
+        """
+        Stringify the exception, including the message.
+        """
+        return self.msg
 
 ####################################################
 ##Following class represents the leader
@@ -186,8 +199,7 @@ class Leader(object):
         """
         This runs the leader process to issue and manage jobs.
 
-        :raises: toil.leader.FailedJobsException if at the end of function their remain \
-        failed jobs
+        :raises: toil.leader.FailedJobsException if failed jobs remain after running.
 
         :return: The return value of the root job's run function.
         :rtype: Any
