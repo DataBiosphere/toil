@@ -26,6 +26,7 @@ import os
 import time
 import math
 import subprocess
+import sys
 import traceback
 from threading import Thread, Event
 from threading import Lock, Condition
@@ -77,16 +78,29 @@ class SingleMachineBatchSystem(BatchSystemSupport):
     physicalMemory = toil.physicalMemory()
 
     def __init__(self, config, maxCores, maxMemory, maxDisk):
+        
+        # Limit to the smaller of the user-imposed limit and what we actually
+        # have on this machine for each resource. 
+        #
+        # If we don't have up to the limit of the resource (and the resource
+        # isn't the inlimited sentinel), warn.
         if maxCores > self.numCores:
-            log.warning('Limiting maxCores to CPU count of system (%i).', self.numCores)
+            if maxCores != sys.maxsize:
+                # We have an actually specified limit and not the default
+                log.warning('Not enough cores! User limited to %i but we only have %i.', maxCores, self.numCores)
             maxCores = self.numCores
         if maxMemory > self.physicalMemory:
-            log.warning('Limiting maxMemory to physically available memory (%i).', self.physicalMemory)
+            if maxMemory != sys.maxsize:
+                # We have an actually specified limit and not the default
+                log.warning('Not enough memory! User limited to %i bytes but we only have %i bytes.', maxMemory, self.physicalMemory)
             maxMemory = self.physicalMemory
         self.physicalDisk = toil.physicalDisk(config)
         if maxDisk > self.physicalDisk:
-            log.warning('Limiting maxDisk to physically available disk (%i).', self.physicalDisk)
+            if maxDisk != sys.maxsize:
+                # We have an actually specified limit and not the default
+                log.warning('Not enough disk space! User limited to %i bytes but we only have %i bytes.', maxDisk, self.physicalDisk)
             maxDisk = self.physicalDisk
+            
         super(SingleMachineBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
         assert self.maxCores >= self.minCores
         assert self.maxMemory >= 1
