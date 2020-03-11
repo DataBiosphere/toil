@@ -75,13 +75,12 @@ class FailedJobsException(Exception):
             for jobNode in failedJobs:
                 job = jobStore.load(jobNode.jobStoreID)
                 if job.logJobStoreFileID:
-                    self.msg += "\n=========> Failed job %s \n" % jobNode
                     with job.getLogFileHandle(jobStore) as fH:
-                        self.msg += fH.read().decode('utf-8')
-                    self.msg += "<=========\n"
+                        self.msg += "\n" + StatsAndLogging.formatLogStream(fH, jobNode)
         # catch failures to prepare more complex details and only return the basics
         except:
             logger.exception('Exception when compiling information about failed jobs')
+        self.msg = self.msg.rstrip('\n')
         super().__init__()
         self.jobStoreLocator = jobStoreLocator
         self.numberOfFailedJobs = len(failedJobs)
