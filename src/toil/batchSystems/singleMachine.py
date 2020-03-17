@@ -32,7 +32,7 @@ from threading import Lock, Condition
 from six.moves.queue import Empty, Queue
 
 import toil
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, UpdatedBatchJobInfo
 from toil.lib.threading import cpu_count
 from toil import worker as toil_worker
 from toil.common import Toil
@@ -337,7 +337,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self.runningJobs.pop(jobID)
         if not info.killIntended:
-            self.outputQueue.put((jobID, 0, time.time() - info.time))
+            self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=0, wallTime=time.time() - info.time, exitReason=None))
 
     def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, environment):
         """
@@ -382,7 +382,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         
                         # Report as failed.
                         # TODO: what should the exit code be?
-                        self.outputQueue.put((jobID, -1, 0))
+                        self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=-1, wallTime=0, exitReason=None))
 
                         # Free resources
                         self.coreFractions.release(coreFractions)
@@ -453,7 +453,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if not info.killIntended:
             # Report if the job failed and we didn't kill it.
             # If we killed it then it shouldn't show up in the queue.
-            self.outputQueue.put((jobID, statusCode, time.time() - info.time))
+            self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=statusCode, wallTime=time.time() - info.time, exitReason=None))
 
         # Free up the job's resources.
         self.coreFractions.release(coreFractions)
@@ -555,10 +555,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             item = self.outputQueue.get(timeout=maxWait)
         except Empty:
             return None
-        jobID, exitValue, wallTime = item
-        jobCommand = self.jobs.pop(jobID)
-        log.debug("Ran jobID: %s with exit value: %i", jobID, exitValue)
-        return jobID, exitValue, wallTime
+        self.jobs.pop(item.jobID)
+        log.debug("Ran jobID: %s with exit value: %i", item.jobID, item.exitStatus)
+        return item
 
     @classmethod
     def setOptions(cls, setOption):

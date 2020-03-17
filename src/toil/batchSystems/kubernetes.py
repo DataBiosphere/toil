@@ -46,7 +46,8 @@ from six.moves.queue import Empty, Queue
 
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
-                                                   BatchSystemLocalSupport)
+                                                   BatchSystemLocalSupport,
+                                                   UpdatedBatchJobInfo)
 from toil.lib.humanize import human2bytes
 from toil.resource import Resource
 
@@ -567,7 +568,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 logger.debug("FINISHED")
                                 if containerStatuses is None or len(containerStatuses) == 0: 
                                     logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
-                                    return (int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), -1, 0)
+                                    return UpdatedBatchJobInfo(jobID=int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), exitStatus=-1, wallTime=0)
 
                                 # Get termination onformation from the pod
                                 termination = pod.status.container_statuses[0].state.terminated
@@ -580,7 +581,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
                                 terminated = pod.status.container_statuses[0].state.terminated
                                 runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
-                                result = (jobID, terminated.exit_code, runtime)
+                                result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=terminated.exit_code, wallTime=runtime, exitReason=None)
                                 self._api('batch').delete_namespaced_job(pod.metadata.owner_references[0].name,
                                                                          self.namespace,
                                                                          propagation_policy='Foreground')
@@ -802,7 +803,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             pass
 
         # Return the one finished job we found
-        return jobID, exitCode, runtime
+        return UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=None)
 
     def _waitForJobDeath(self, jobName):
         """

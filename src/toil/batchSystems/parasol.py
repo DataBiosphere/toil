@@ -34,7 +34,7 @@ from six import itervalues
 from toil.lib.iterables import concat
 from shutil import which
 
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, UpdatedBatchJobInfo
 from toil.lib.bioio import getTempFile
 from toil.common import Toil
 
@@ -269,16 +269,16 @@ class ParasolBatchSystem(BatchSystemSupport):
     def getUpdatedBatchJob(self, maxWait):
         while True:
             try:
-                jobID, status, wallTime = self.updatedJobsQueue.get(timeout=maxWait)
+                item = self.updatedJobsQueue.get(timeout=maxWait)
             except Empty:
                 return None
             try:
-                self.runningJobs.remove(jobID)
+                self.runningJobs.remove(item.jobID)
             except KeyError:
                 # We tried to kill this job, but it ended by itself instead, so skip it.
                 pass
             else:
-                return jobID, status, wallTime
+                return item
 
     def updatedJobWorker(self):
         """
@@ -341,7 +341,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                             wallTime = float( max( 1, usrTicks + sysTicks) ) * 0.01
                         else:
                             wallTime = float(endTime - startTime)
-                        self.updatedJobsQueue.put((jobId, status, wallTime))
+                        self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobId, exitStatus=status, wallTime=wallTime, exitReason=None))
                 time.sleep(1)
         except:
             logger.warning("Error occurred while parsing parasol results files.")

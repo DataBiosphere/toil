@@ -16,6 +16,7 @@ from future import standard_library
 standard_library.install_aliases()
 from future.utils import with_metaclass
 from builtins import object
+import enum
 import os
 import shutil
 import logging
@@ -37,10 +38,20 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-# Special (fake) exit code for jobs that are lost due to preemption.
-# We use a code that is outside of the normal 0-255 range on purpose here to ensure it
-# doesn't conflict with other exit codes.
-LOST_JOB_EXIT_STATUS = 2550
+UpdatedBatchJobInfo = namedtuple('UpdatedBatchJobInfo', (
+    'jobID',
+    'exitStatus',  # The exit status (integer value) of the job. 0 implies successful.
+    'exitReason',  # The exit reason, if available. One of BatchJobExitReason enum.
+    'wallTime'))
+
+
+class BatchJobExitReason(enum.Enum):
+    FINISHED = 1  # Successfully finished.
+    FAILED = 2  # Job finished, but failed.
+    LOST = 3  # Preemptable failure.
+    KILLED = 4  # Job killed before finishing.
+    ERROR = 5  # Internal error.
+
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (
@@ -156,8 +167,8 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
 
         :param float maxWait: the number of seconds to block, waiting for a result
 
-        :rtype: tuple(str, int, float) or None
-        :return: If a result is available, returns a tuple (jobID, exitValue, wallTime).
+        :rtype: UpdatedBatchJobInfo or None
+        :return: If a result is available, returns UpdatedBatchJobInfo.
                  Otherwise it returns None. wallTime is the number of seconds (a strictly 
                  positive float) in wall-clock time the job ran for, or None if this
                  batch system does not support tracking wall time. Returns None for jobs

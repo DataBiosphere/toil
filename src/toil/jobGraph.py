@@ -14,6 +14,7 @@
 from __future__ import absolute_import
 import logging
 
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.job import JobNode
 
 logger = logging.getLogger(__name__)
@@ -103,19 +104,19 @@ class JobGraph(JobNode):
     def __hash__(self):
         return hash(self.jobStoreID)
 
-    def setupJobAfterFailure(self, config, decrementRetryCount=True):
+    def setupJobAfterFailure(self, config, exitReason=None):
         """
-        Reduce the remainingRetryCount if greater than zero (if decrementRetryCount==True)
-        and set the memory to be at least as big as the default memory (in case of
-        exhaustion of memory, which is common).
+        Reduce the remainingRetryCount if greater than zero and set the memory
+        to be at least as big as the default memory (in case of exhaustion of memory,
+        which is common).
         """
-        if decrementRetryCount:
+        if config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
+            logger.info("*Not* reducing retry count (%s) of job %s with ID %s",
+                        self.remainingRetryCount, self, self.jobStoreID)
+        else:
             self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
             logger.warning("Due to failure we are reducing the remaining retry count of job %s with ID %s to %s",
                         self, self.jobStoreID, self.remainingRetryCount)
-        else:
-            logger.info("*Not* reducing retry count (%s) of job %s with ID %s",
-                         self.remainingRetryCount, self, self.jobStoreID)
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
