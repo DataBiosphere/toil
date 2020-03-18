@@ -104,6 +104,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         # Get our namespace (and our Kubernetes credentials to make sure they exist)
         self.namespace = self._api('namespace')
+        
+        # Decide if we are going to mount a Kubernetes host path as /tmp in the workers.
+        # If we do this and the work dir is the default of the temp dir, caches will be shared.
+        self.host_path = config.kubernetesHostPath
+        if self.host_path is None and os.environ.get("TOIL_KUBERNETES_HOST_PATH", None) is not None:
+            # We can also take it from an environment variable
+            self.host_path = os.environ.get("TOIL_KUBERNETES_HOST_PATH")
 
         # Make a Kubernetes-acceptable version of our username: not too long,
         # and all lowercase letters, numbers, or - or .
@@ -280,14 +287,24 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             volumes = []
             mounts = []
             
-            # Mount volume to provision disk
-            ephemeral_volume_name = 'tmp'
-            ephemeral_volume_source = kubernetes.client.V1EmptyDirVolumeSource()
-            ephemeral_volume = kubernetes.client.V1Volume(name=ephemeral_volume_name,
-                                                          empty_dir=ephemeral_volume_source)
-            volumes.append(ephemeral_volume)
-            ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/tmp', name=ephemeral_volume_name)
-            mounts.append(ephemeral_volume_mount)
+            if self.host_path is not None:
+                # Provision /tmp from a HostPath volume, to share with other pods
+                host_path_volume_name = 'tmp'
+                host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path)
+                host_path_volume = kubernetes.client.V1Volume(name=host_path_volume_name,
+                                                             host_path=host_path_volume_source)
+                volumes.append(host_path_volume)
+                host_path_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/tmp', name=host_path_volume_name)
+                mounts.append(host_path_volume_mount)
+            else:
+                # Provision /tmp as an ephemeral volume
+                ephemeral_volume_name = 'tmp'
+                ephemeral_volume_source = kubernetes.client.V1EmptyDirVolumeSource()
+                ephemeral_volume = kubernetes.client.V1Volume(name=ephemeral_volume_name,
+                                                              empty_dir=ephemeral_volume_source)
+                volumes.append(ephemeral_volume)
+                ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/tmp', name=ephemeral_volume_name)
+                mounts.append(ephemeral_volume_mount)
 
             if self.awsSecretName is not None:
                 # Also mount an AWS secret, if provided.

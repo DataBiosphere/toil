@@ -92,12 +92,16 @@ def _mesosOptions(addOptionFn, config=None):
     addOptionFn("--mesosMaster", dest="mesosMasterAddress", default=getPublicIP() + ':5050',
                 help=("The host and port of the Mesos master separated by colon. (default: %(default)s)"))
 
+def _kubernetesOptions(addOptionFn, config=None):
+    addOptionFn("--kubernetesHostPath", dest="kubernetesHostPath", default=None,
+                help=("Path on Kubernetes hosts to use as shared inter-pod temp directory (default: %(default)s)"))
 
 # Built in batch systems that have options
 _options = [
     _parasolOptions,
     _singleMachineOptions,
-    _mesosOptions
+    _mesosOptions,
+    _kubernetesOptions
     ]
 
 
@@ -162,6 +166,10 @@ def setDefaultOptions(config):
     config.maxLocalJobs = cpu_count()
     config.manualMemArgs = False
 
+    # parasol
+    config.parasolCommand = 'parasol'
+    config.parasolMaxBatches = 10000
+
     # single machine
     config.scale = 1
     config.linkImports = False
@@ -169,7 +177,8 @@ def setDefaultOptions(config):
 
     # mesos
     config.mesosMasterAddress = '%s:5050' % getPublicIP()
+    
+    # Kubernetes
+    config.kubernetesHostPath = None
 
-    # parasol
-    config.parasolCommand = 'parasol'
-    config.parasolMaxBatches = 10000
+    

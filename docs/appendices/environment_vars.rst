@@ -31,6 +31,9 @@ There are several environment variables that affect the way Toil runs.
 |                                  | cases, the system's `standard temporary directory`_|
 |                                  | is used.                                           |
 +----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
+|                                  | /tmp in the workers, to allow for shared caching.  |
++----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_OWNER            | A name prefix for easy identification of           |
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
 |                                  | current user name.                                 |

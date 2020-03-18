@@ -216,11 +216,12 @@ class Config(object):
         setBatchOptions(self, setOption)
         setOption("disableAutoDeployment")
         setOption("scale", float, fC(0.0))
-        setOption("mesosMasterAddress")
         setOption("parasolCommand")
         setOption("parasolMaxBatches", int, iC(1))
         setOption("linkImports")
         setOption("moveExports")
+        setOption("mesosMasterAddress")
+        setOption("kubernetesHostPath")
         setOption("environment", parseSetEnv)
 
         # Autoscaling options
