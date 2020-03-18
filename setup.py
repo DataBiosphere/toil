@@ -53,7 +53,7 @@ def runSetup():
     docker = 'docker==2.5.1'
     dateutil = 'python-dateutil'
     addict = 'addict<=2.2.0'
-    sphinx = 'sphinx==1.7.6'
+    sphinx = 'sphinx>=2.4.4, <3'
     pathlib2 = 'pathlib2==2.3.2'
 
     core_reqs = [
