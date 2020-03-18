@@ -1,6 +1,7 @@
 # -*- encoding: utf-8 -*-
 #
 # Copyright © 2012 New Dream Network, LLC (DreamHost)
+# Copyright © 2020 Regents of the University of California
 #
 # Author: Doug Hellmann <doug.hellmann@dreamhost.com>
 #
@@ -39,31 +40,36 @@ def html_page_context(app, pagename, templatename, context, doctree):
         # json builder doesn't use toctree func, so nothing to replace
         return
 
-    def make_toctree(collapse=True):
+    def make_toctree(**kwargs):
+        kwargs['prune'] = False
         return get_rendered_toctree(app.builder,
                                     pagename,
-                                    prune=False,
-                                    collapse=collapse,
+                                    **kwargs,
                                     )
 
     context['toctree'] = make_toctree
 
 
-def get_rendered_toctree(builder, docname, prune=False, collapse=True):
+def get_rendered_toctree(builder, docname, **kwargs):
     """Build the toctree relative to the named document,
     with the given parameters, and then return the rendered
     HTML fragment.
     """
+    
+    if kwargs.get('prune', None) is None:
+        kwargs['prune'] = False
+    if kwargs.get('collapse', None) is None:
+        kwargs['collapse'] = True
+    
     fulltoc = build_full_toctree(builder,
                                  docname,
-                                 prune=prune,
-                                 collapse=collapse,
+                                 **kwargs
                                  )
     rendered_toc = builder.render_partial(fulltoc)['fragment']
     return rendered_toc
 
 
-def build_full_toctree(builder, docname, prune, collapse):
+def build_full_toctree(builder, docname, prune, collapse, **kwargs):
     """Return a single toctree starting from docname containing all
     sub-document doctrees.
     """
@@ -74,6 +80,7 @@ def build_full_toctree(builder, docname, prune, collapse):
         toctree = env.resolve_toctree(docname, builder, toctreenode,
                                       collapse=collapse,
                                       prune=prune,
+                                      **kwargs
                                       )
         toctrees.append(toctree)
     if not toctrees:
