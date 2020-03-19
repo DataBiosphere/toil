@@ -47,6 +47,7 @@ from six.moves.queue import Empty, Queue
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport,
+                                                   EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
 from toil.lib.humanize import human2bytes
 from toil.resource import Resource
@@ -568,7 +569,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 logger.debug("FINISHED")
                                 if containerStatuses is None or len(containerStatuses) == 0: 
                                     logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
-                                    return UpdatedBatchJobInfo(jobID=int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), exitStatus=-1, wallTime=0, exitReason=None)
+                                    return UpdatedBatchJobInfo(jobID=int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None)
 
                                 # Get termination onformation from the pod
                                 termination = pod.status.container_statuses[0].state.terminated
@@ -732,7 +733,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     # Complain so we can find out.
                     logger.warning('Exit code and runtime unavailable; pod has no container statuses')
                     logger.warning('Pod: %s', str(pod))
-                    exitCode = -1
+                    exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                     # Say it stopped now and started when it was scheduled/submitted.
                     # We still need a strictly positive runtime.
                     runtime = slow_down((utc_now() - startTime).totalSeconds())
@@ -742,7 +743,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     if terminatedInfo is None:
                         logger.warning('Exit code and runtime unavailable; pod stopped without container terminating')
                         logger.warning('Pod: %s', str(pod))
-                        exitCode = -1
+                        exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                         # Say it stopped now and started when it was scheduled/submitted.
                         # We still need a strictly positive runtime.
                         runtime = slow_down((utc_now() - startTime).totalSeconds())
@@ -770,13 +771,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 assert chosenFor == 'stuck'
                 
                 # Synthesize an exit code
-                exitCode = -1
+                exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                 # Say it ran from when the job was submitted to when the pod got stuck
                 runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
         else:
             # The pod went away from under the job.
             logging.warning('Exit code and runtime unavailable; pod vanished')
-            exitCode = -1
+            exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
             # Say it ran from when the job was submitted to when the pod vanished
             runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
         

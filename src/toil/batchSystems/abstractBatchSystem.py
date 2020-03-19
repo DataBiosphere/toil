@@ -40,7 +40,9 @@ logger = logging.getLogger(__name__)
 
 UpdatedBatchJobInfo = namedtuple('UpdatedBatchJobInfo', (
     'jobID',
-    'exitStatus',  # The exit status (integer value) of the job. 0 implies successful.
+    # The exit status (integer value) of the job. 0 implies successful.
+    # EXIT_STATUS_UNAVAILABLE_VALUE is used when the exit status is not available (e.g. job is lost).
+    'exitStatus',
     'exitReason',  # The exit reason, if available. One of BatchJobExitReason enum.
     'wallTime'))
 
@@ -52,6 +54,9 @@ class BatchJobExitReason(enum.Enum):
     KILLED = 4  # Job killed before finishing.
     ERROR = 5  # Internal error.
 
+
+# Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
+EXIT_STATUS_UNAVAILABLE_VALUE = 255
 
 # A class containing the information required for worker cleanup on shutdown of the batch system.
 WorkerCleanupInfo = namedtuple('WorkerCleanupInfo', (

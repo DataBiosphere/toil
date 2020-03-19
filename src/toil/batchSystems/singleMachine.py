@@ -32,7 +32,7 @@ from threading import Lock, Condition
 from six.moves.queue import Empty, Queue
 
 import toil
-from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, UpdatedBatchJobInfo
+from toil.batchSystems.abstractBatchSystem import BatchSystemSupport, EXIT_STATUS_UNAVAILABLE_VALUE, UpdatedBatchJobInfo
 from toil.lib.threading import cpu_count
 from toil import worker as toil_worker
 from toil.common import Toil
@@ -381,8 +381,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         log.error('Could not start job %s: %s', jobID, traceback.format_exc())
                         
                         # Report as failed.
-                        # TODO: what should the exit code be?
-                        self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=-1, wallTime=0, exitReason=None))
+                        self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None))
 
                         # Free resources
                         self.coreFractions.release(coreFractions)

@@ -48,6 +48,7 @@ from toil import resolveEntryPoint
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
                                                    BatchJobExitReason,
                                                    BatchSystemLocalSupport,
+                                                   EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    NodeInfo,
                                                    UpdatedBatchJobInfo)
 from toil.batchSystems.mesos import ToilJob, MesosShape, TaskData, JobQueue
@@ -638,7 +639,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             try:
                 exitStatus = int(update.message)
             except ValueError:
-                exitStatus = 255
+                exitStatus = EXIT_STATUS_UNAVAILABLE_VALUE
                 log.warning("Job %i failed with message '%s' due to reason '%s' on executor '%s' on agent '%s'.",
                             jobID, update.message, update.reason,
                             update.executor_id, update.agent_id)
@@ -650,12 +651,13 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             
             jobEnded(exitStatus, exitReason=BatchJobExitReason.FAILED)
         elif update.state == 'TASK_LOST':
-            log.warning("Job %i is lost. Retrying.", jobID)
-            jobEnded(255, exitReason=BatchJobExitReason.LOST)
+            log.warning("Job %i is lost.", jobID)
+            jobEnded(EXIT_STATUS_UNAVAILABLE_VALUE, exitReason=BatchJobExitReason.LOST)
         elif update.state in ('TASK_KILLED', 'TASK_ERROR'):
             log.warning("Job %i is in unexpected state %s with message '%s' due to reason '%s'.",
                         jobID, update.state, update.message, update.reason)
-            jobEnded(255, exitReason=(BatchJobExitReason.KILLED if update.state == 'TASK_KILLED' else BatchJobExitReason.ERROR))
+            jobEnded(EXIT_STATUS_UNAVAILABLE_VALUE,
+                     exitReason=(BatchJobExitReason.KILLED if update.state == 'TASK_KILLED' else BatchJobExitReason.ERROR))
 
         if 'limitation' in update:
             log.warning("Job limit info: %s" % update.limitation)
