@@ -46,7 +46,7 @@ class CWLv10Test(ToilTest):
         self.workDir = os.path.join(self.cwlSpec, 'v1.0')
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
-        testhash = '9ddfa5bd2c432fb426087ad938113d4b32a0b36a'
+        testhash = '40fcfc01812046f012acf5153cc955ee848e69e3' # Date:   Tue Jan 21 07:36:37 2020 +0100
         url = 'https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip' % testhash
         if not os.path.exists(self.cwlSpec):
             urlretrieve(url, 'spec.zip')
@@ -360,8 +360,8 @@ class CWLv11Test(ToilTest):
     @pytest.mark.timeout(2400)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently run tests: 213, 242, 244, 246, 249
-            selected_tests = '1-212,214-241,243,245,247-248,250-253'
+            # TODO: we do not currently run tests: 55, 213, 236, 242, 243, 244, 245, 246
+            selected_tests = '1-54,56-212,214-235,237-241,247-253'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',

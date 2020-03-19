@@ -1287,15 +1287,6 @@ class CWLWorkflow(Job):
         return UnresolvedDict(outobj)
 
 
-cwltool.process.supportedProcessRequirements = (
-    "DockerRequirement", "ExpressionEngineRequirement",
-    "InlineJavascriptRequirement", "InitialWorkDirRequirement",
-    "SchemaDefRequirement", "EnvVarRequirement", "CreateFileRequirement",
-    "SubworkflowFeatureRequirement", "ScatterFeatureRequirement",
-    "ShellCommandRequirement", "MultipleInputFeatureRequirement",
-    "StepInputExpressionRequirement", "ResourceRequirement")
-
-
 def visitSteps(cmdline_tool: Union[cwltool.command_line_tool.CommandLineTool, cwltool.workflow.Workflow],
                op: Any) -> None:
     if isinstance(cmdline_tool, cwltool.workflow.Workflow):
