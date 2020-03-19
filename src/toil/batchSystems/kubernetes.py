@@ -568,7 +568,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 logger.debug("FINISHED")
                                 if containerStatuses is None or len(containerStatuses) == 0: 
                                     logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
-                                    return UpdatedBatchJobInfo(jobID=int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), exitStatus=-1, wallTime=0)
+                                    return UpdatedBatchJobInfo(jobID=int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), exitStatus=-1, wallTime=0, exitReason=None)
 
                                 # Get termination onformation from the pod
                                 termination = pod.status.container_statuses[0].state.terminated
