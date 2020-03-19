@@ -204,18 +204,17 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                         mem_index = i
 
         if cpu_index is None or mem_index is None:
-                RuntimeError("lshosts command does not return ncpus or maxmem "
+                raise RuntimeError("lshosts command does not return ncpus or maxmem "
                              "columns")
-
-        # p.stdout.readline().decode('utf-8')
 
         maxCPU = 0
         maxMEM = MemoryString("0")
-        for line in p.stdout:
-            split_items = line.strip().split()
-            items = [item.decode('utf-8') for item in split_items if isinstance(item, bytes)]
+        for line in stdout.split('\n')[1:]:
+            items = line.strip().split()
+            if not items:
+                continue
             if len(items) < num_columns:
-                RuntimeError("lshosts output has a varying number of "
+                raise RuntimeError("lshosts output has a varying number of "
                              "columns")
             if items[cpu_index] != '-' and int(items[cpu_index]) > int(maxCPU):
                 maxCPU = items[cpu_index]
@@ -224,7 +223,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 maxMEM = MemoryString(items[mem_index])
 
         if maxCPU is 0 or maxMEM is 0:
-                RuntimeError("lshosts returns null ncpus or maxmem info")
+                raise RuntimeError("lshosts returns null ncpus or maxmem info")
         logger.debug("Got the maxMEM: {}".format(maxMEM))
         logger.debug("Got the maxCPU: {}".format(maxCPU))
 
