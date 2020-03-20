@@ -480,7 +480,9 @@ class Leader(object):
 
     def _gatherUpdatedJobs(self, updatedJobTuple):
         """Gather any new, updated jobGraph from the batch system"""
-        jobID, result, wallTime = updatedJobTuple
+        jobID, exitStatus, exitReason, wallTime = (
+            updatedJobTuple.jobID, updatedJobTuple.exitStatus, updatedJobTuple.exitReason,
+            updatedJobTuple.wallTime)
         # easy, track different state
         try:
             updatedJob = self.jobBatchSystemIDToIssuedJob[jobID]
@@ -488,7 +490,7 @@ class Leader(object):
             logger.warning("A result seems to already have been processed "
                         "for job %s", jobID)
         else:
-            if result == 0:
+            if exitStatus == 0:
                 cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
                               else logger.info)
                 cur_logger('Job ended: %s', updatedJob)
@@ -496,8 +498,8 @@ class Leader(object):
                     self.toilMetrics.logCompletedJob(updatedJob)
             else:
                 logger.warning('Job failed with exit value %i: %s',
-                            result, updatedJob)
-            self.processFinishedJob(jobID, result, wallTime=wallTime)
+                               exitStatus, updatedJob)
+            self.processFinishedJob(jobID, exitStatus, wallTime=wallTime, exitReason=exitReason)
 
     def _processLostJobs(self):
         """Process jobs that have gone awry"""
@@ -759,7 +761,7 @@ class Leader(object):
                         "job %s seems to have finished and been removed", issuedJob)
         self._updatePredecessorStatus(issuedJob.jobStoreID)
 
-    def processFinishedJob(self, batchSystemID, resultStatus, wallTime=None):
+    def processFinishedJob(self, batchSystemID, resultStatus, wallTime=None, exitReason=None):
         """
         Function reads a processed jobGraph file and updates its state.
         """
@@ -833,7 +835,7 @@ class Leader(object):
                             else:
                                 logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
-                jobGraph.setupJobAfterFailure(self.config)
+                jobGraph.setupJobAfterFailure(self.config, exitReason=exitReason)
                 self.jobStore.update(jobGraph)
             elif jobStoreID in self.toilState.hasFailedSuccessors:
                 # If the job has completed okay, we can remove it from the list of jobs with failed successors
