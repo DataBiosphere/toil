@@ -48,6 +48,7 @@ from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
 from toil.lib.humanize import human2bytes
+from toil.lib.threading import LastProcessStandingArena
 from toil.resource import Resource
 
 logger = logging.getLogger(__name__)
@@ -85,7 +86,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
     @classmethod
     def supportsWorkerCleanup(cls):
-        return False
+        return True
    
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
@@ -249,6 +250,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             job = {'command': jobNode.command,
                    'environment': self.environment.copy()}
             # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
+            
+            # Send the worker cleanup info so that the last worker on a
+            # host to shut down can clean up if warranted.
+            job['workerCleanupInfo'] = self.workerCleanupInfo
 
             if self.userScript is not None:
                 # If there's a user script resource be sure to send it along
@@ -958,10 +963,13 @@ def executor():
 
     logging.basicConfig(level=logging.DEBUG)
     logger.debug("Starting executor")
+    
+    # If we don't manage to run the child, what should our exit code be?
+    exit_code = 1
 
     if len(sys.argv) != 2:
         logger.error('Executor requires exactly one base64-encoded argument')
-        sys.exit(1)
+        sys.exit(exit_code)
 
     # Take in a base64-encoded pickled dict as our first argument and decode it
     try:
@@ -970,27 +978,48 @@ def executor():
     except:
         exc_info = sys.exc_info()
         logger.error('Exception while unpickling task: ', exc_info=exc_info)
-        sys.exit(1)
+        sys.exit(exit_code)
 
-    # Set JTRES_ROOT and other global state needed for resource
-    # downloading/deployment to work.
-    logger.debug('Preparing system for resource download')
-    Resource.prepareSystem()
-
-    if 'userScript' in job:
-        job['userScript'].register()
-    logger.debug("Invoking command: '%s'", job['command'])
-    # Construct the job's environment
-    jobEnv = dict(os.environ, **job['environment'])
-    logger.debug('Using environment variables: %s', jobEnv.keys())
+    # We need to tell other workers in this workflow not to do cleanup now that
+    # we are here, or else wait for them to finish. So get the cleanup info
+    # that knows where the work dir is.
+    cleanupInfo = job['workerCleanupInfo']
     
-    # Start the child process
-    child = subprocess.Popen(job['command'],
-                             preexec_fn=lambda: os.setpgrp(),
-                             shell=True,
-                             env=jobEnv)
+    # Join a Last Process Standing arena, so we know which process should be
+    # responsible for cleanup.
+    arena = LastProcessStandingArena(cleanupInfo.workDir, 
+        cleanupInfo.workflowID + '-kube-executor')
+    arena.enter()
+    
+    try:
+        # Set JTRES_ROOT and other global state needed for resource
+        # downloading/deployment to work.
+        logger.debug('Preparing system for resource download')
+        Resource.prepareSystem()
 
-    # Reporduce child's exit code
-    sys.exit(child.wait())
+        if 'userScript' in job:
+            job['userScript'].register()
+        logger.debug("Invoking command: '%s'", job['command'])
+        # Construct the job's environment
+        jobEnv = dict(os.environ, **job['environment'])
+        logger.debug('Using environment variables: %s', jobEnv.keys())
+        
+        # Start the child process
+        child = subprocess.Popen(job['command'],
+                                 preexec_fn=lambda: os.setpgrp(),
+                                 shell=True,
+                                 env=jobEnv)
+
+        # Reproduce child's exit code
+        exit_code = child.wait()
+    finally:
+        for _ in arena.leave():
+            # We are the last concurrent executor to finish.
+            # Do batch system cleanup.
+            logger.debug('Cleaning system')
+            Resource.cleanSystem()
+            BatchSystemSupport.workerCleanup(cleanupInfo)
+        logger.debug('Shutting down')
+        sys.exit(exit_code)
 
 

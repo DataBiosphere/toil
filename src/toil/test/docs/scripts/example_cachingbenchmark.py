@@ -57,7 +57,7 @@ def root(job):
     # Collect all their views into a report
     return job.addFollowOnJobFn(report, child_rvs).rv()
     
-def poll(job, file_id, number, cores=1, disk='100M', memory='256M'):
+def poll(job, file_id, number, cores=0.1, disk='200M', memory='512M'):
 
     # Wait a random amount of time before grabbing the file for others to cache it
     time.sleep(random.randint(1, 10))
