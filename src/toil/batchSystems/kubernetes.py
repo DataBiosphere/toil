@@ -40,6 +40,7 @@ import subprocess
 import sys
 import uuid
 import time
+import urllib3
 
 from kubernetes.client.rest import ApiException
 from six.moves.queue import Empty, Queue
@@ -55,7 +56,7 @@ from toil.lib.retry import retry
 logger = logging.getLogger(__name__)
 
 def exception_found(e):
-    return e.error_code.endswith('.ApiException') or e.error_code.endswith('.MaxRetryError')
+    return e is kubernetes.client.rest.ApiException or e is urllib3.exceptions.MaxRetryError
 
 def retry_kubernetes(t=5, retry_for=10 * 5, retry_while=exception_found):
     return retry(delays=(t, t, t * 2, t * 4),
