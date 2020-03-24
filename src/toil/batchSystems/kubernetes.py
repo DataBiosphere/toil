@@ -793,13 +793,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 # Synthesize an exit code
                 exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                 # Say it ran from when the job was submitted to when the pod got stuck
-                runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
+                runtime = slow_down((utc_now() - jobSubmitTime).total_seconds())
         else:
             # The pod went away from under the job.
             logging.warning('Exit code and runtime unavailable; pod vanished')
             exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
             # Say it ran from when the job was submitted to when the pod vanished
-            runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
+            runtime = slow_down((utc_now() - jobSubmitTime).total_seconds())
         
         
         try:
