@@ -41,6 +41,7 @@ import sys
 import uuid
 import time
 import urllib3
+import http
 
 from kubernetes.client.rest import ApiException
 from six.moves.queue import Empty, Queue
@@ -58,7 +59,7 @@ from toil.lib.retry import retry
 logger = logging.getLogger(__name__)
      
 def exception_found(e):
-    if e is urllib3.exceptions.MaxRetryError or e.code == 504 or e is kubernetes.client.rest.ApiException:
+    if e is urllib3.exceptions.MaxRetryError or e is http.client.GATEWAY_TIMEOUT or e is kubernetes.client.rest.ApiException:
         return False
     return True
 
@@ -755,7 +756,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                     # Say it stopped now and started when it was scheduled/submitted.
                     # We still need a strictly positive runtime.
-                    runtime = slow_down((utc_now() - startTime).totalSeconds())
+                    runtime = slow_down((utc_now() - startTime).total_seconds())
                 else:
                     # Get the termination info from the pod's main (only) container
                     terminatedInfo = getattr(getattr(containerStatuses[0], 'state', None), 'terminated', None)
@@ -765,7 +766,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                         # Say it stopped now and started when it was scheduled/submitted.
                         # We still need a strictly positive runtime.
-                        runtime = slow_down((utc_now() - startTime).totalSeconds())
+                        runtime = slow_down((utc_now() - startTime).total_seconds())
                     else:
                         # Extract the exit code
                         exitCode = terminatedInfo.exit_code
