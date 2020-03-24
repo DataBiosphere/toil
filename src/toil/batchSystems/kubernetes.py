@@ -56,17 +56,19 @@ from toil.resource import Resource
 from toil.lib.retry import retry
 
 logger = logging.getLogger(__name__)
-
+     
 def exception_found(e):
-    return e.endswith(".ApiException") or e.endswith("MaxRetryError")
+    if e is urllib3.exceptions.MaxRetryError or e.code == 504 or e is kubernetes.client.rest.ApiException:
+        return False
+    return True
 
-def retry_kubernetes(t=5, retry_for=10 * 5, retry_while=exception_found):
-    return retry(delays=(t, t, t * 2, t * 4),
+def retry_kubernetes(t=5, retry_for=300, retry_while=exception_found):
+    return retry(delays=(t, 1*t, 1*t, 4*t, 16*t, 64*t),
                  timeout=retry_for,
                  predicate=retry_while)
 
 def slow_down(seconds):
-    """f
+    """
     Toil jobs that have completed are not allowed to have taken 0 seconds, but
     Kubernetes timestamps things to the second. It is possible in Kubernetes for
     a pod to have identical start and end timestamps.
