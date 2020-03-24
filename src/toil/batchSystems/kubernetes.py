@@ -58,7 +58,7 @@ from toil.lib.retry import retry
 logger = logging.getLogger(__name__)
 
 def exception_found(e):
-    return e is kubernetes.client.rest.ApiException or e is urllib3.exceptions.MaxRetryError
+    return e.endswith(".ApiException") or e.endswith("MaxRetryError")
 
 def retry_kubernetes(t=5, retry_for=10 * 5, retry_while=exception_found):
     return retry(delays=(t, t, t * 2, t * 4),
@@ -816,7 +816,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             self._waitForJobDeath(jobObject.metadata.name)
                     
         except kubernetes.client.rest.ApiException:
-            # TODO: check to see if this is a 404 on the thing we tried to delete
+            # TODO: check to see if this is a 404 on the thing wgit add e tried to delete
             # If so, it is gone already and we don't need to delete it again.
             pass
 
