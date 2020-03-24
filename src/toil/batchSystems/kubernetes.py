@@ -454,7 +454,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             kwargs = {'label_selector': query}
             if token is not None:
                 kwargs['_continue'] = token
-            results = self.try_kubernetes(self._api('core').list_namespaced_pod, self.namespace)
+            results = self.try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, **kwargs)
             
             for pod in results.items:
                 # Return the first pod we find
