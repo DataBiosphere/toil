@@ -20,7 +20,6 @@ import argparse
 import sys
 import os
 import socket
-import subprocess
 import time
 import random
 import collections
@@ -73,7 +72,7 @@ def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
     local_file = job.fileStore.readGlobalFile(file_id, cache=True, mutable=False, symlink=False)
     
     # Wait a random amount of after before grabbing the file for others to use it
-    time.sleep(random.randint(1, 10))
+    time.sleep(random.randint(options.minSleep, options.minSleep + 10))
     
     # Stat the file (reads through links)
     stats = os.stat(local_file)
@@ -82,10 +81,6 @@ def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
     hostname = socket.gethostname()
     
     RealtimeLogger.info('Job {} on host {} sees file at device {} inode {}'.format(number, hostname, stats.st_dev, stats.st_ino))
-    
-    # Collect mount info
-    mount_info = subprocess.check_output(['mount'])
-    RealtimeLogger.info('Job {} on host {} sees mounts: {}'.format(number, hostname, mount_info))
     
     # Return a tuple representing our view of the file.
     # Drop hostname since hostnames are unique per pod.

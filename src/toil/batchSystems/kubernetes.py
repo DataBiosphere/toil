@@ -185,7 +185,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         max_age_seconds needs to be << your cluster's credential expiry time.
         """
         
-        now = datetime.datetime.now()
+        now = utc_now()
         
         if self.credential_time is None or (now - self.credential_time).total_seconds() > max_age_seconds:
             # Credentials need a refresh
