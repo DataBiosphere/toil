@@ -46,6 +46,7 @@ from six.moves.queue import Empty, Queue
 
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   BatchSystemSupport,
                                                    BatchSystemLocalSupport,
                                                    EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
