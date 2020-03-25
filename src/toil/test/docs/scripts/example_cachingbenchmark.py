@@ -33,7 +33,7 @@ from toil.realtimeLogger import RealtimeLogger
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     
-    parser.addOption('--minSleep', type=int, default=1,
+    parser.add_argument('--minSleep', type=int, default=1,
         help="Minimum seconds to sleep")
     
     Job.Runner.addToilOptions(parser)
