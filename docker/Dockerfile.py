@@ -47,6 +47,8 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          'pkg-config',
                          'squashfs-tools',
                          'cryptsetup',
+                         'less',
+                         'vim',
                          'git'])
 
 
