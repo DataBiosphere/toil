@@ -602,10 +602,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
                                 terminated = pod.status.container_statuses[0].state.terminated
                                 runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
-                                result = (jobID, terminated.exit_code, runtime)
+                                result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=terminated.exit_code, wallTime=runtime, exitReason=None)
                                 self.try_kubernetes(self._api('batch').delete_namespaced_job, pod.metadata.owner_references[0].name,
-                                                                         self.namespace,
-                                                                         propagation_policy='Foreground')
+                                            self.namespace,
+                                            propagation_policy='Foreground')
 
                                 self._waitForJobDeath(pod.metadata.owner_references[0].name)
                                 return result
