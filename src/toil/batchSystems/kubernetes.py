@@ -312,7 +312,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             if self.host_path is not None:
                 # Provision Toil WorkDir from a HostPath volume, to share with other pods
                 host_path_volume_name = 'workdir'
-                host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path)
+                # Use type='Directory' to fail if the host directory doesn't exist already.
+                host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path, type='Directory')
                 host_path_volume = kubernetes.client.V1Volume(name=host_path_volume_name,
                                                              host_path=host_path_volume_source)
                 volumes.append(host_path_volume)
