@@ -409,7 +409,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             if token is not None:
                 kwargs['_continue'] = token
             
-            results = self.try_kubernetes(self._api('batch').list_namespaced_job, self.namespace)
+            results = self.try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs)
             
             for job in results.items:
                 if self._isJobOurs(job):
