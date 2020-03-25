@@ -28,7 +28,7 @@ from future.utils import with_metaclass
 import subprocess
 from toil.lib.objects import abstractclassmethod
 
-from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport
+from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport, UpdatedBatchJobInfo
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 status = with_retries(self.getJobExitCode, batchJobID)
                 if status is not None:
                     activity = True
-                    self.updatedJobsQueue.put((jobID, status))
+                    self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=status, exitReason=None, wallTime=None))
                     self.forgetJob(jobID)
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()
@@ -396,9 +396,8 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
             except Empty:
                 return None
             logger.debug('UpdatedJobsQueue Item: %s', item)
-            jobID, retcode = item
-            self.currentJobs.remove(jobID)
-            return jobID, retcode, None
+            self.currentJobs.remove(item.jobID)
+            return item
 
     def shutdown(self):
         """

@@ -114,6 +114,7 @@ class Config(object):
 
         # Retrying/rescuing jobs
         self.retryCount = 1
+        self.enableUnlimitedPreemptableRetries = False
         self.maxJobDuration = sys.maxsize
         self.rescueJobsFrequency = 3600
 
@@ -264,6 +265,7 @@ class Config(object):
 
         # Retrying/rescuing jobs
         setOption("retryCount", int, iC(1))
+        setOption("enableUnlimitedPreemptableRetries")
         setOption("maxJobDuration", int, iC(1))
         setOption("rescueJobsFrequency", int, iC(1))
 
@@ -525,6 +527,11 @@ def _addOptions(addGroupFn, config):
     addOptionFn("--retryCount", dest="retryCount", default=None,
                 help=("Number of times to retry a failing job before giving up and "
                       "labeling job failed. default=%s" % config.retryCount))
+    addOptionFn("--enableUnlimitedPreemptableRetries", dest="enableUnlimitedPreemptableRetries",
+                action='store_true', default=False,
+                help=("If set, preemptable failures (or any failure due to an instance getting "
+                      "unexpectedly terminated) would not count towards job failures and "
+                      "--retryCount."))
     addOptionFn("--maxJobDuration", dest="maxJobDuration", default=None,
                 help=("Maximum runtime of a job (in seconds) before we kill it "
                       "(this is a lower bound, and the actual time before killing "
