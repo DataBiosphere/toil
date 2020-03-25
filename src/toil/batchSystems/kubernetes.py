@@ -47,6 +47,7 @@ from six.moves.queue import Empty, Queue
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    BatchSystemLocalSupport)
+from toil.common import Toil
 from toil.lib.humanize import human2bytes
 from toil.lib.threading import LastProcessStandingArena
 from toil.resource import Resource
@@ -985,9 +986,12 @@ def executor():
     # that knows where the work dir is.
     cleanupInfo = job['workerCleanupInfo']
     
+    # We need to get the real workDir, not just the override from cleanupInfo.
+    workDir = Toil.getToilWorkDir(cleanupInfo.workDir)
+    
     # Join a Last Process Standing arena, so we know which process should be
     # responsible for cleanup.
-    arena = LastProcessStandingArena(cleanupInfo.workDir, 
+    arena = LastProcessStandingArena(workDir, 
         cleanupInfo.workflowID + '-kube-executor')
     arena.enter()
     
