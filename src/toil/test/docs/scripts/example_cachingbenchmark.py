@@ -20,6 +20,7 @@ import argparse
 import sys
 import os
 import socket
+import subprocess
 import time
 import random
 import collections
@@ -31,10 +32,15 @@ from toil.realtimeLogger import RealtimeLogger
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    
+    parser.addOption('--minSleep', type=int, default=1,
+        help="Minimum seconds to sleep")
+    
     Job.Runner.addToilOptions(parser)
+    
     options = parser.parse_args(sys.argv[1:])
 
-    root_job = Job.wrapJobFn(root)
+    root_job = Job.wrapJobFn(root, options)
 
     with Toil(options) as toil:
         results = toil.start(root_job)
@@ -43,7 +49,7 @@ def main():
     print(results)
 
 
-def root(job):
+def root(job, options):
     # Make a file
     with job.fileStore.writeGlobalFileStream() as (stream, file_id):
         stream.write(('This is a test of the Toil file caching system. ' +
@@ -52,15 +58,15 @@ def root(job):
     child_rvs = []
     for i in range(100):
         # Make lots of child jobs that read and report on the file
-        child_rvs.append(job.addChildJobFn(poll, file_id, i).rv())
+        child_rvs.append(job.addChildJobFn(poll, options, file_id, i).rv())
     
     # Collect all their views into a report
     return job.addFollowOnJobFn(report, child_rvs).rv()
     
-def poll(job, file_id, number, cores=0.1, disk='200M', memory='512M'):
+def poll(job, options, file_id, number, cores=0.1, disk='200M', memory='512M'):
 
     # Wait a random amount of time before grabbing the file for others to cache it
-    time.sleep(random.randint(1, 10))
+    time.sleep(random.randint(options.minSleep, options.minSleep + 10))
 
     # Read the file. Don't accept a symlink because then we might just have the
     # filestore's copy, even if caching is not happening.
@@ -77,8 +83,13 @@ def poll(job, file_id, number, cores=0.1, disk='200M', memory='512M'):
     
     RealtimeLogger.info('Job {} on host {} sees file at device {} inode {}'.format(number, hostname, stats.st_dev, stats.st_ino))
     
-    # Return a tuple representing our view of the file
-    return (hostname, stats.st_dev, stats.st_ino)
+    # Collect mount info
+    mount_info = subprocess.check_output(['mount'])
+    RealtimeLogger.info('Job {} on host {} sees mounts: {}'.format(number, hostname, mount_info))
+    
+    # Return a tuple representing our view of the file.
+    # Drop hostname since hostnames are unique per pod.
+    return (stats.st_dev, stats.st_ino)
     
 
 def report(job, views):
@@ -87,9 +98,9 @@ def report(job, views):
     for v in views:
         counts[v] += 1
         
-    report = ['{} distinct views:'.format(len(counts))]
+    report = ['{} distinct views, most frequent:'.format(len(counts))]
         
-    for view, count in counts.items():
+    for view, count in counts.most_common(10):
         report.append('{}: {}'.format(view, count))
         
     return '\n'.join(report)
