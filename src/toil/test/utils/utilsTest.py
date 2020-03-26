@@ -183,7 +183,7 @@ class UtilsTest(ToilTest):
 
             # `toil rsync-cluster`
             # Testing special characters - string.punctuation
-            fname = '!"#$%&\'()*+,-.;<=>:\ ?@[\\\\]^_`{|}~'
+            fname = r'!"#$%&\'()*+,-.;<=>:\ ?@[\\]^_`{|}~'
             testData = os.urandom(3 * (10**6))
             with tempfile.NamedTemporaryFile(suffix=fname) as tmpFile:
                 relpath = os.path.basename(tmpFile.name)
@@ -389,7 +389,6 @@ class UtilsTest(ToilTest):
         self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
 
     @needs_cwl
-    @needs_docker
     @patch('builtins.print')
     def testPrintJobLog(self, mock_print):
         """Test that ToilStatus.printJobLog() reads the log from a failed command without error."""
@@ -401,8 +400,10 @@ class UtilsTest(ToilTest):
         # print log and check output
         status = ToilStatus(self.toilDir)
         status.printJobLog()
+        
+        # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
-        self.assertIn('LOG_FILE_OF_JOB', args[0])
+        self.assertIn('invalidcommand', args[0])
 
 
 def printUnicodeCharacter():
