@@ -79,18 +79,16 @@ def _testGlobalMutexOrderingTask(scope, mutex, number):
             assert not os.path.exists(potato), "We see someone else holding the potato file"
             
             # Put our name there
-            out_stream = open(potato, 'w')
-            out_stream.write(str(number))
-            out_stream.close()
+            with open(potato, 'w') as out_stream:
+                out_stream.write(str(number))
             
             # Wait
             time.sleep(random.random() * 0.01)
             
             # Make sure our name is still there
-            in_stream = open(potato, 'r')
-            seen = in_stream.read().rstrip() 
-            assert seen == str(number), "We are {} but {} stole our potato!".format(number, seen)
-            in_stream.close()
+            with open(potato, 'r') as in_stream:
+                seen = in_stream.read().rstrip() 
+                assert seen == str(number), "We are {} but {} stole our potato!".format(number, seen)
             
             os.unlink(potato)
             assert not os.path.exists(potato), "We left the potato behind"
@@ -111,19 +109,17 @@ def _testLastProcessStandingTask(scope, arena_name, number):
             my_precious = os.path.join(scope, 'precious' + str(number))
             
             # Put our name there
-            out_stream = open(my_precious, 'w')
-            out_stream.write(str(number))
-            out_stream.close()
+            with open(my_precious, 'w') as out_stream:
+                out_stream.write(str(number))
             
             # Wait
             time.sleep(random.random() * 0.01)
             
             # Make sure our file is still there unmodified
             assert os.path.exists(my_precious), "Precious file {} has been stolen!".format(my_precious)
-            in_stream = open(my_precious, 'r')
-            seen = in_stream.read().rstrip() 
-            assert seen == str(number), "We are {} but saw {} in our precious file!".format(number, seen)
-            in_stream.close()
+            with open(my_precious, 'r') as in_stream:
+                seen = in_stream.read().rstrip() 
+                assert seen == str(number), "We are {} but saw {} in our precious file!".format(number, seen)
         finally:
             was_last = False
             for _ in arena.leave():
