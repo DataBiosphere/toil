@@ -28,7 +28,7 @@ import xml.etree.ElementTree as ET
 import tempfile
 
 from toil.batchSystems import MemoryString
-from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
+from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem, UpdatedBatchJobInfo
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -109,15 +109,15 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
         def getUpdatedBatchJob(self, maxWait):
             try:
                 logger.debug("getUpdatedBatchJob: Job updates")
-                pbsJobID, retcode = self.updatedJobsQueue.get(timeout=maxWait)
+                item = self.updatedJobsQueue.get(timeout=maxWait)
                 self.updatedJobsQueue.task_done()
-                jobID, retcode = (self.jobIDs[pbsJobID], retcode)
-                self.currentjobs -= {self.jobIDs[pbsJobID]}
+                jobID, retcode = (self.jobIDs[item.jobID], item.exitStatus)
+                self.currentjobs -= {self.jobIDs[item.jobID]}
             except Empty:
                 logger.debug("getUpdatedBatchJob: Job queue is empty")
                 pass
             else:
-                return jobID, retcode, None
+                return UpdatedBatchJobInfo(jobID=jobID, exitStatus=retcode, wallTime=None, exitReason=None)
 
         def killJob(self, jobID):
             subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
