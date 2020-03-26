@@ -543,6 +543,8 @@ class LastProcessStandingArena:
                     # Delete the arena directory so as to leave nothing behind.
                     os.rmdir(self.lockfileDir)
                 except:
+                    log.warning('Could not clean up arena %s completely: %s',
+                                self.lockfileDir, traceback.format_exc())
                     pass
             
             # Now we're done, whether we were the last one or not, and can
