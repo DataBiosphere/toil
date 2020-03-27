@@ -69,7 +69,7 @@ from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
-                                normalizeFilesDirs)
+                                normalizeFilesDirs, downloadHttpFile)
 from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
                              add_sizes, Process)
 from cwltool.secrets import SecretStore
