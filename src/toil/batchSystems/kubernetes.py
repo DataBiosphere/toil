@@ -58,15 +58,21 @@ from toil.lib.retry import retry
 
 logger = logging.getLogger(__name__)
      
-def exception_found(e):
-    if e is urllib3.exceptions.MaxRetryError or e is http.client.GATEWAY_TIMEOUT or e is kubernetes.client.rest.ApiException:
+def retryable_kubernetes_errors(e):
+    """
+    A function that determins whether or not Toil should retry or stop given 
+    exceptions thrown by Kubernetes. 
+    """
+    if isinstance(e, urllib3.exceptions.MaxRetryError) or isinstance(e, http.client.GATEWAY_TIMEOUT) or isinstance(e, kubernetes.client.rest.ApiException):
         return False
     return True
 
-def retry_kubernetes(t=5, retry_for=300, retry_while=exception_found):
-    return retry(delays=(t, 1*t, 1*t, 4*t, 16*t, 64*t),
-                 timeout=retry_for,
-                 predicate=retry_while)
+def retry_kubernetes(retry_while=retryable_kubernetes_errors):
+    """
+    A wrapper that sends retryable Kubernetes predicates into a context-manager which will allow 
+    Kubernetes to keep retrying until a False or an executable method is seen.  
+    """
+    return retry(predicate=retry_while)
 
 def slow_down(seconds):
     """
@@ -101,11 +107,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
     @classmethod
     def supportsWorkerCleanup(cls):
         return False
-
-    def try_kubernetes(self, method, *args, **kwargs):
-        for attempt in retry_kubernetes():
-            with attempt:
-                return method(*args, **kwargs)
     
    
     def __init__(self, config, maxCores, maxMemory, maxDisk):
@@ -231,6 +232,21 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 return self._apis[kind]
             except KeyError: 
                 raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
+    
+    def _try_kubernetes(self, method, *args, **kwargs):
+        """
+        Kubernetes API can end abruptly when it could wait and retry until successful or terminate immediatley if it encounters 
+        an unretryable error such as gateway timeout or max number of retries reached. 
+        For example, in a traditional case where we call self._api('batch').create_namespaced_job(self.namespace, job)
+        without this wrapper, Kubernetes can behave irregularly and inconsistently given a large job.
+        
+        This new function, given a large volume of incoming jobs, we can give Kubernetes more time in between tries 
+        to check if the API is executable or not by calling self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs).      
+        """
+
+        for attempt in retry_kubernetes():
+            with attempt:
+                return method(*args, **kwargs)
 
     def setUserScript(self, userScript):
         logger.info('Setting user script for deployment: {}'.format(userScript))
@@ -345,7 +361,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                           kind="Job")
             
             # Make the job
-            launched = self.try_kubernetes(self._api('batch').create_namespaced_job, self.namespace, job)
+            launched = self._try_kubernetes(self._api('batch').create_namespaced_job, self.namespace, job)
 
             logger.debug('Launched job: %s', jobName)
             
@@ -409,7 +425,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             if token is not None:
                 kwargs['_continue'] = token
             
-            results = self.try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs)
+            results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs)
             
             for job in results.items:
                 if self._isJobOurs(job):
@@ -454,7 +470,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             kwargs = {'label_selector': query}
             if token is not None:
                 kwargs['_continue'] = token
-            results = self.try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, **kwargs)
+            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, **kwargs)
         
             for pod in results.items:
                 # Return the first pod we find
@@ -482,7 +498,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         """
 
-        return self.try_kubernetes(self._api('core').read_namespaced_pod_log, podObject.metadata.name,
+        return self._try_kubernetes(self._api('core').read_namespaced_pod_log, podObject.metadata.name,
                                                          namespace=self.namespace)
 
     def _isPodStuckOOM(self, podObject, minFreeBytes=1024 * 1024 * 2):
@@ -512,9 +528,11 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Look for it
         # TODO: When the Kubernetes Python API actually wraps the metrics API, switch to that
-        response = self.try_kubernetes(self._api('customObjects').list_namespaced_custom_object, 'metrics.k8s.io', 'v1beta1',
-                                                                            self.namespace, 'pods',
-                                                                            field_selector=query)
+        response = self._try_kubernetes(self._api('customObjects').\
+                list_namespaced_custom_object, 
+                'metrics.k8s.io', 'v1beta1',
+                self.namespace, 'pods',
+                field_selector=query)
 
         # Pull out the items
         items = response.get('items', [])
@@ -603,7 +621,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 terminated = pod.status.container_statuses[0].state.terminated
                                 runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
                                 result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=terminated.exit_code, wallTime=runtime, exitReason=None)
-                                self.try_kubernetes(self._api('batch').delete_namespaced_job, pod.metadata.owner_references[0].name,
+                                self._try_kubernetes(self._api('batch').delete_namespaced_job, 
+                                            pod.metadata.owner_references[0].name,
                                             self.namespace,
                                             propagation_policy='Foreground')
 
@@ -804,7 +823,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         try:
             # Delete the job and all dependents (pods)
-            self.try_kubernetes(self._api('batch').delete_namespaced_job, jobObject.metadata.name,
+            self._try_kubernetes(self._api('batch').delete_namespaced_job, jobObject.metadata.name,
                                                      self.namespace,
                                                      propagation_policy='Foreground')
                                                 
@@ -819,7 +838,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             self._waitForJobDeath(jobObject.metadata.name)
                     
         except kubernetes.client.rest.ApiException:
-            # TODO: check to see if this is a 404 on the thing wgit add e tried to delete
+            # TODO: check to see if this is a 404 on the thing we tried to delete
             # If so, it is gone already and we don't need to delete it again.
             pass
 
@@ -838,7 +857,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         while True:
             try:
                 # Look for the job
-                self.try_kubernetes(self._api('batch').read_namespaced_job, jobName, self.namespace)
+                self._try_kubernetes(self._api('batch').read_namespaced_job, jobName, self.namespace)
                 # If we didn't 404, wait a bit with exponential backoff
                 time.sleep(backoffTime)
                 if backoffTime < maxBackoffTime:
@@ -868,7 +887,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Kill jobs whether they succeeded or failed
             try:
                 # Delete with background poilicy so we can quickly issue lots of commands
-                response = self.try_kubernetes(self._api('batch').delete_namespaced_job, jobName, 
+                response = self._try_kubernetes(self._api('batch').delete_namespaced_job, jobName, 
                                                                     self.namespace, 
                                                                     propagation_policy='Background')
                 logger.debug('Killed job for shutdown: %s', jobName)
@@ -936,7 +955,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
             # Delete the requested job in the foreground.
             # This doesn't block, but it does delete expeditiously.
-            response = self.try_kubernetes(self._api('batch').delete_namespaced_job, jobName, 
+            response = self._try_kubernetes(self._api('batch').delete_namespaced_job, jobName, 
                                                                 self.namespace, 
                                                                 propagation_policy='Foreground')
             logger.debug('Killed job by request: %s', jobName)
