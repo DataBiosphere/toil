@@ -63,10 +63,9 @@ def retryable_kubernetes_errors(e):
     exceptions thrown by Kubernetes. 
     """
     if isinstance(e, urllib3.exceptions.MaxRetryError) or \
-        getattr(getattr(e, 'response', None), 'status_code', None) == 504 or \
         isinstance(e, ApiException):
-        return False
-    return True
+        return True
+    return False
 
 def retry_kubernetes(retry_while=retryable_kubernetes_errors):
     """
