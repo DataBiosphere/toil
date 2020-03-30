@@ -41,7 +41,6 @@ import sys
 import uuid
 import time
 import urllib3
-import http
 
 from kubernetes.client.rest import ApiException
 from six.moves.queue import Empty, Queue
@@ -63,7 +62,7 @@ def retryable_kubernetes_errors(e):
     A function that determins whether or not Toil should retry or stop given 
     exceptions thrown by Kubernetes. 
     """
-    if isinstance(e, urllib3.exceptions.MaxRetryError) or isinstance(e, http.client.GATEWAY_TIMEOUT) or isinstance(e, ApiException):
+    if isinstance(e, urllib3.exceptions.MaxRetryError) or isinstance(e, urllib3.exceptions.HTTPError(504)) or isinstance(e, ApiException):
         return False
     return True
 
