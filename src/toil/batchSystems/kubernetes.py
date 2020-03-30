@@ -63,7 +63,7 @@ def retryable_kubernetes_errors(e):
     A function that determins whether or not Toil should retry or stop given 
     exceptions thrown by Kubernetes. 
     """
-    if isinstance(e, urllib3.exceptions.MaxRetryError) or isinstance(e, http.client.GATEWAY_TIMEOUT) or isinstance(e, kubernetes.client.rest.ApiException):
+    if isinstance(e, urllib3.exceptions.MaxRetryError) or isinstance(e, http.client.GATEWAY_TIMEOUT) or isinstance(e, ApiException):
         return False
     return True
 
@@ -235,13 +235,14 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
     
     def _try_kubernetes(self, method, *args, **kwargs):
         """
-        Kubernetes API can end abruptly when it could wait and retry until successful or terminate immediatley if it encounters 
-        an unretryable error such as gateway timeout or max number of retries reached. 
-        For example, in a traditional case where we call self._api('batch').create_namespaced_job(self.namespace, job)
-        without this wrapper, Kubernetes can behave irregularly and inconsistently given a large job.
+        Kubernetes API can end abruptly and fail when it could dynamically backoff and retry.
+
+        For example, calling self._api('batch').create_namespaced_job(self.namespace, job),
+        Kubernetes can behave irregularly, inconsistently, and fail given a large job. See 
+        https://github.com/DataBiosphere/toil/issues/2884
         
-        This new function, given a large volume of incoming jobs, we can give Kubernetes more time in between tries 
-        to check if the API is executable or not by calling self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs).      
+        This function gives Kubernetes more time to check if the API is executable or not by 
+        calling self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs).      
         """
 
         for attempt in retry_kubernetes():
