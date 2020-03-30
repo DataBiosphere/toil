@@ -238,11 +238,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         Kubernetes API can end abruptly and fail when it could dynamically backoff and retry.
 
         For example, calling self._api('batch').create_namespaced_job(self.namespace, job),
-        Kubernetes can behave irregularly, inconsistently, and fail given a large job. See 
-        https://github.com/DataBiosphere/toil/issues/2884
+        Kubernetes can behave inconsistently and fail given a large job. See 
+        https://github.com/DataBiosphere/toil/issues/2884 .
         
-        This function gives Kubernetes more time to check if the API is executable or not by 
-        calling self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs).      
+        This function gives Kubernetes more time to try an executable api.  
         """
 
         for attempt in retry_kubernetes():
