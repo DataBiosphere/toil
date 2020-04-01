@@ -134,6 +134,7 @@ def runSetup():
           'Topic :: System :: Distributed Computing',
           'Topic :: Utilities'],
         license="Apache License v2.0",
+        python_requires=">=3.6",
         install_requires=core_reqs,
         extras_require={
             'aws': aws_reqs,
