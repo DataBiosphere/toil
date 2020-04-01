@@ -865,7 +865,8 @@ class AWSJobStore(AbstractJobStore):
             :param numContentChunks: the number of SDB domain attributes occupied by this files
 
             :type checksum: str|None
-            :param checksum: the sha1 checksum of the file, if available.
+            :param checksum: the checksum of the file, if available. Formatted
+            as <algorithm>$<lowercase hex hash>.
 
             inlined content. Note that an inlined empty string still occupies one chunk.
             """
@@ -1084,14 +1085,19 @@ class AWSJobStore(AbstractJobStore):
                                               bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
                                               headers=headers)
 
-        def _get_file_checksum(self, localFilePath):
+        def _get_data_checksum(self, data, algorithm='sha1'):
+            checksum = getattr(hashlib, algorithm)()
+            checksum.update(data)
+            return '$'.join(algorithm, checksum.hexdigest())
+        
+        def _get_file_checksum(self, localFilePath, algorithm='sha1'):
             with open(localFilePath, 'rb') as f:
-                checksum = hashlib.sha1()
+                checksum = getattr(hashlib, algorithm)
                 contents = f.read(1024 * 1024)
                 while contents != b'':
                     checksum.update(contents)
                     contents = f.read(1024 * 1024)
-                return 'sha1$%s' % checksum.hexdigest()
+                return '$'.join(algorithm, checksum.hexdigest())
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
