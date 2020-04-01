@@ -68,7 +68,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
                                       uploadFromPath, chunkedFileUpload, fileSizeAndTime)
-from toil.jobStores.utils import WritablePipe, ReadablePipe
+from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
@@ -81,6 +81,11 @@ s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
 log = logging.getLogger(__name__)
 
+class ChecksumError(Exception):
+    """
+    Raised when a download from AWS does not contain the correct data.
+    """
+    pass
 
 class AWSJobStore(AbstractJobStore):
     """
@@ -419,7 +424,7 @@ class AWSJobStore(AbstractJobStore):
                 info.copyFrom(srcKey)
                 info.save()
             finally:
-                srcKey.bucket.connection.close()
+                srcKey.bucket.connection.close() 
             return FileID(info.fileID, size) if sharedFileName is None else None
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url,
@@ -1085,19 +1090,68 @@ class AWSJobStore(AbstractJobStore):
                                               bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
                                               headers=headers)
 
-        def _get_data_checksum(self, data, algorithm='sha1'):
-            checksum = getattr(hashlib, algorithm)()
-            checksum.update(data)
-            return '$'.join(algorithm, checksum.hexdigest())
+        def _start_checksum(self, to_match=None, algorithm='sha1'):
+            """
+            Get a hasher that can be used with _update_checksum and
+            _finish_checksum.
+            
+            If to_match is set, it is a precomputed checksum which we expect
+            the result to match.
+            
+            The right way to compare checksums is to feed in the checksum to be
+            matched, so we can see its algorithm, instead of getting a new one
+            and comparing. If a checksum to match is fed in, _finish_checksum()
+            will raise a ChecksumError if it isn't matched.
+            """
+            
+            # If we have an expexted result it will go here.
+            expected = None
+            
+            if to_match is not None:
+                parts = to_match.split('$')
+                algorithm = parts[0]
+                expected = parts[1]
+            
+            hasher = getattr(hashlib, algorithm)()
+            return (algorithm, hasher, expected)
+            
+        def _update_checksum(self, checksum_in_progress, data):
+            """
+            Update a checksum in progress from _start_checksum with new data.
+            """
+            checksum_in_progress[1].update(data)
         
-        def _get_file_checksum(self, localFilePath, algorithm='sha1'):
+        def _finish_checksum(self, checksum_in_progress):
+            """
+            Complete a checksum in progress from _start_checksum and return the
+            checksum result string.
+            """
+            
+            result_hash = checksum_in_progress[1].hexdigest()
+            
+            if checksum_in_progress[2] is not None:
+                # We expected a particular hash
+                if result_hash != checksum_in_progress[2]:
+                    raise ChecksumError('Checksum mismatch. Expected: %s Actual: %s' %
+                        (checksum_in_progress[2], result_hash))
+                    
+            return '$'.join([checksum_in_progress[0], result_hash])
+            
+            
+        
+        def _get_data_checksum(self, data, to_match=None):
+            hasher = self._start_checksum(to_match=to_match)
+            self._update_checksum(hasher, data)
+            return self._finish_checksum(hasher)
+        
+        def _get_file_checksum(self, localFilePath, to_match=None):
             with open(localFilePath, 'rb') as f:
-                checksum = getattr(hashlib, algorithm)
+                hasher = self._start_checksum(to_match=to_match)
                 contents = f.read(1024 * 1024)
                 while contents != b'':
-                    checksum.update(contents)
+                    self._update_checksum(hasher, contents)
                     contents = f.read(1024 * 1024)
-                return '$'.join(algorithm, checksum.hexdigest())
+                return self._finish_checksum(hasher)
 
         @contextmanager
         def uploadStream(self, multipart=True, allowInlining=True):
@@ -1113,6 +1167,7 @@ class AWSJobStore(AbstractJobStore):
 
             info = self
             store = self.outer
+            hasher = self._start_checksum()
 
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
@@ -1146,6 +1201,7 @@ class AWSJobStore(AbstractJobStore):
                                     break
                                 buf = readable.read(info.outer.partSize)
                                 assert isinstance(buf, bytes)
+                                info._update_checksum(hasher, buf)
                         except:
                             with panic(log=log):
                                 for attempt in retry_s3():
@@ -1156,6 +1212,9 @@ class AWSJobStore(AbstractJobStore):
                             while store._getBucketVersioning(store.filesBucket) != True:
                                 log.warning('Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
                                 time.sleep(1)
+                                
+                            # Save the checksum
+                            info.checksum = info._finish_checksum(hasher)
 
                             for attempt in retry_s3():
                                 with attempt:
@@ -1186,6 +1245,9 @@ class AWSJobStore(AbstractJobStore):
                         log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
                     else:
+                        info._update_checksum(hasher, buf)
+                        info.checksum = info._finish_checksum(hasher)
+                        
                         key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
                         buf = BytesIO(buf)
                         headers = info._s3EncryptionHeaders()
@@ -1193,6 +1255,8 @@ class AWSJobStore(AbstractJobStore):
                         while store._getBucketVersioning(store.filesBucket) != True:
                             log.warning('Versioning does not appear to be enabled yet. Deferring single part upload...')
                             time.sleep(1)
+                            
+                        
 
                         for attempt in retry_s3():
                             with attempt:
@@ -1296,16 +1360,17 @@ class AWSJobStore(AbstractJobStore):
                                                          version_id=self.version,
                                                          headers=headers)
                 if verifyChecksum and self.checksum:
-                    downloadedChecksum = self._get_file_checksum(localFilePath)
-                    if self.checksum != downloadedChecksum:
-                        raise AssertionError(
-                            'Checksums do not match for file %s. Expected: %s Actual: %s' % (
-                                localFilePath, self.checksum, downloadedChecksum))
+                    try:
+                        # This automatically compares the result and matches the algorithm.
+                        self._get_file_checksum(localFilePath, self.checksum)
+                    except ChecksumError as e:
+                        # Annotate checksum mismatches with file name
+                        raise ChecksumError('Checksums do not match for file %s.' % localFilePath) from e
             else:
                 assert False
 
         @contextmanager
-        def downloadStream(self):
+        def downloadStream(self, verifyChecksum=True):
             info = self
 
             class DownloadPipe(ReadablePipe):
@@ -1322,9 +1387,41 @@ class AWSJobStore(AbstractJobStore):
                                                          version_id=info.version)
                     else:
                         assert False
-
+            
+            class HashingPipe(ReadableTransformingPipe):
+                """
+                Class which checksums all the data read through it. If it
+                reaches EOF and the checksum isn't correct, raises
+                ChecksumError.
+                
+                Assumes info actually has a checksum.
+                """
+            
+                def transform(self, readable, writable):
+                    hasher = info._start_checksum(to_match=info.checksum)
+                    contents = readable.read(1024 * 1024)
+                    while contents != b'':
+                        info._update_checksum(hasher, contents)
+                        try:
+                            writable.write(contents)
+                        except BrokenPipeError:
+                            # Read was stopped early by user code.
+                            # Can't check the checksum.
+                            return
+                        contents = readable.read(1024 * 1024)
+                    # We reached EOF in the input.
+                    # Finish checksumming and verify.
+                    info._finish_checksum(hasher)
+                    # Now stop so EOF happens in the output.
+                    
             with DownloadPipe() as readable:
-                yield readable
+                if verifyChecksum and self.checksum:
+                    # Interpose a pipe to check the hash
+                    with HashingPipe(readable) as verified:
+                        yield verified
+                else:
+                    # No true checksum available, so don't hash
+                    yield readable
 
         def delete(self):
             store = self.outer
