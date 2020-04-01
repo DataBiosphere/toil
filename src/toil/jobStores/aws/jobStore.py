@@ -33,11 +33,10 @@ import uuid
 import base64
 import hashlib
 import itertools
+import reprlib
 import urllib.parse
 import urllib.request, urllib.parse, urllib.error
 from io import BytesIO
-# Python 3 compatibility imports
-from six.moves import StringIO, reprlib
 
 from toil.lib.memoize import strict_bool
 from toil.lib.exceptions import panic
@@ -50,7 +49,7 @@ from boto.exception import SDBResponseError, S3ResponseError
 import botocore.session
 import botocore.credentials
 
-from toil.lib.compatibility import compat_bytes, compat_plain, USING_PYTHON2
+from toil.lib.compatibility import compat_bytes, compat_plain
 from toil.lib.misc import AtomicFileCreate
 from toil.fileStores import FileID
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
@@ -1132,16 +1131,10 @@ class AWSJobStore(AbstractJobStore):
                                 for attempt in retry_s3():
                                     with attempt:
                                         log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
-                                        if USING_PYTHON2:
-                                            upload.upload_part_from_file(fp=StringIO(buf),
-                                                                         # part numbers are 1-based
-                                                                         part_num=part_num + 1,
-                                                                         headers=headers)
-                                        else:
-                                            upload.upload_part_from_file(fp=BytesIO(buf),
-                                                                         # part numbers are 1-based
-                                                                         part_num=part_num + 1,
-                                                                         headers=headers)
+                                        upload.upload_part_from_file(fp=BytesIO(buf),
+                                                                     # part numbers are 1-based
+                                                                     part_num=part_num + 1,
+                                                                     headers=headers)
 
                                 if len(buf) == 0:
                                     break
