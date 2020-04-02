@@ -127,7 +127,7 @@ py37_batch_systems:
   stage: test
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - python -m pytest -s -r s src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest -s -r s src/toil/test/mesos/MesosDataStructuresTest.py
@@ -136,6 +136,7 @@ py37_cwl_v1.0:
   stage: test
   script:
     - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - mypy --ignore-missing-imports --no-strict-optional $(pwd)/src/toil/cwl/cwltoil.py  # make this a separate linting stage
     - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py::CWLv10Test
@@ -144,6 +145,7 @@ py37_cwl_v1.1:
   stage: test
   script:
     - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - python -m pytest -s -r s src/toil/test/cwl/cwlTest.py::CWLv11Test
 
@@ -151,6 +153,7 @@ py37_wdl:
   stage: test
   script:
     - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - python -m pytest -s -r s src/toil/test/wdl/toilwdlTest.py
 
@@ -158,6 +161,7 @@ py37_jobstore_and_provisioning:
   stage: test
   script:
     - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/jobStores/jobStoreTest.py
     - python -m pytest -s -r s src/toil/test/sort/sortTest.py
@@ -171,6 +175,7 @@ py37_main:
   stage: main_tests
   script:
     - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor
     - python -m pytest -s -r s src/toil/test/src
     - python -m pytest -s -r s src/toil/test/utils
@@ -179,7 +184,7 @@ py37_appliance_build:
   stage: main_tests
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
@@ -189,7 +194,7 @@ py37_integration:
   stage: integration
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - export TOIL_TEST_INTEGRATIVE=True
     - export TOIL_AWS_KEYNAME=id_rsa
@@ -203,7 +208,7 @@ py37_provisioner_integration:
   stage: integration
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - python setup_gitlab_ssh.py && chmod 400 /root/.ssh/id_rsa
     - echo $'Host *\n    AddressFamily inet' > /root/.ssh/config
