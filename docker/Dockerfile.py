@@ -23,7 +23,7 @@ sdistName = os.environ['_TOIL_SDIST_NAME']
 # Make sure to install packages into the pip for the version of Python we are
 # building for.
 python = f'python{sys.version_info[0]}.{sys.version_info[1]}'
-pip = f'{python_version} -m pip'
+pip = f'{python} -m pip'
 
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
