@@ -123,7 +123,7 @@ print(heredoc('''
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh
     
     # The stock pip is too old and can't install from sdist with extras
-    RUN {pip} install --upgrade pip==9.0.1
+    RUN {pip} install --upgrade pip==20.0.2
 
     # Default setuptools is too old
     RUN {pip} install --upgrade setuptools==36.5.0
