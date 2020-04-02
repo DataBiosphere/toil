@@ -228,16 +228,17 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         # Extract the slurm batchsystem config for the appropriate value
         wait_duration_seconds = 1
         lines = subprocess.check_output(['scontrol', 'show', 'config']).decode('utf-8').split('\n')
+        time_value_list = []
         for line in lines:
             values = line.split()
-            if len(values) > 0 and values[0] == "SchedulerTimeSlice":
-            time_name = values[values.index('=')+1:][1]
-            time_value = int(values[values.index('=')+1:][0])
-            if time_name == 'min':
-                time_value *= 60
-            # Add a 20% ceiling on the wait duration relative to the scheduler update duration
-            wait_duration_seconds = math.ceil(time_value*1.2)
-        return wait_duration_seconds
+            if len(values) > 0 and (values[0] == "SchedulerTimeSlice" or values[0] == "AcctGatherNodeFreq"):
+                time_name = values[values.index('=')+1:][1]
+                time_value = int(values[values.index('=')+1:][0])
+                if time_name == 'min':
+                    time_value *= 60
+                # Add a 20% ceiling on the wait duration relative to the scheduler update duration
+                time_value_list.append(math.ceil(time_value*1.2))
+        return max(time_value_list)
 
     @classmethod
     def obtainSystemConstants(cls):
