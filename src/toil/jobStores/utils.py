@@ -44,7 +44,7 @@ class WritablePipe(with_metaclass(ABCMeta, object)):
 
     More complicated, less illustrative tests:
 
-    Same as above, but provving that handles are closed:
+    Same as above, but proving that handles are closed:
 
     >>> x = os.dup(0); os.close(x)
     >>> class MyPipe(WritablePipe):
@@ -164,7 +164,7 @@ class ReadablePipe(with_metaclass(ABCMeta, object)):
 
     More complicated, less illustrative tests:
 
-    Same as above, but provving that handles are closed:
+    Same as above, but proving that handles are closed:
 
     >>> x = os.dup(0); os.close(x)
     >>> class MyPipe(ReadablePipe):
