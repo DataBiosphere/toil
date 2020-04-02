@@ -1353,19 +1353,22 @@ class AWSJobStore(AbstractJobStore):
             elif self.version:
                 headers = self._s3EncryptionHeaders()
                 key = self.outer.filesBucket.get_key(compat_bytes(self.fileID), validate=False)
-                for attempt in retry_s3():
+                for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, ChecksumError)):
                     with attempt:
                         with AtomicFileCreate(localFilePath) as tmpPath:
                             key.get_contents_to_filename(tmpPath,
                                                          version_id=self.version,
                                                          headers=headers)
-                if verifyChecksum and self.checksum:
-                    try:
-                        # This automatically compares the result and matches the algorithm.
-                        self._get_file_checksum(localFilePath, self.checksum)
-                    except ChecksumError as e:
-                        # Annotate checksum mismatches with file name
-                        raise ChecksumError('Checksums do not match for file %s.' % localFilePath) from e
+                                                         
+                        if verifyChecksum and self.checksum:
+                            try:
+                                # This automatically compares the result and matches the algorithm.
+                                self._get_file_checksum(localFilePath, self.checksum)
+                            except ChecksumError as e:
+                                # Annotate checksum mismatches with file name
+                                raise ChecksumError('Checksums do not match for file %s.' % localFilePath) from e
+                                # The error will get caught and result in a retry of the download until we run out of retries.
+                                # TODO: handle obviously truncated downloads by resuming instead.
             else:
                 assert False
 
