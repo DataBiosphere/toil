@@ -180,6 +180,16 @@ py37_main:
     - python -m pytest -s -r s src/toil/test/src
     - python -m pytest -s -r s src/toil/test/utils
 
+py37_appliance_build:
+  stage: main_tests
+  script:
+    - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
+    - python setup_gitlab_docker.py
+    - make push_docker
+
 py37_integration:
   stage: integration
   script:
