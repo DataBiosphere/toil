@@ -19,18 +19,17 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import subprocess
 import time
 import math
 import sys
 import shlex
 import xml.etree.ElementTree as ET
 import tempfile
+from toil.lib.misc import call_command, CalledProcessErrorStderr
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem, UpdatedBatchJobInfo
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
@@ -48,15 +47,14 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             """ Determines PBS/Torque version via pbsnodes
             """
             try:
-                out = subprocess.check_output(["pbsnodes", "--version"]).decode('utf-8')
-                logger.debug("pbsnodes output %s", out)
+                out = call_command(["pbsnodes", "--version"])
                 if "PBSPro" in out:
                      logger.debug("PBS Pro proprietary Torque version detected")
                      self._version = "pro"
                 else:
                      logger.debug("Torque OSS version detected")
                      self._version = "oss"
-            except subprocess.CalledProcessError as e:
+            except CalledProcessErrorStderr as e:
                if e.returncode != 0:
                     logger.error("Could not determine PBS/Torque version")
 
@@ -77,16 +75,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             # PBS plain qstat will return every running job on the system.
             jobids = sorted(list(currentjobs.keys()))
             if self._version == "pro":
-                process = subprocess.Popen(['qstat', '-x'] + jobids, stdout=subprocess.PIPE)
+                stdout = call_command(['qstat', '-x'] + jobids)
             elif self._version == "oss":
-                process = subprocess.Popen(['qstat'] + jobids, stdout=subprocess.PIPE)
-
-
-            stdout, stderr = process.communicate()
+                stdout = call_command(['qstat'] + jobids)
 
             # qstat supports XML output which is more comprehensive, but PBSPro does not support it
             # so instead we stick with plain commandline qstat tabular outputs
-            for currline in stdout.decode('utf-8').split('\n'):
+            for currline in stdout.split('\n'):
                 items = currline.strip().split()
                 if items:
                     jobid = items[0].strip()
@@ -120,16 +115,13 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                 return UpdatedBatchJobInfo(jobID=jobID, exitStatus=retcode, wallTime=None, exitReason=None)
 
         def killJob(self, jobID):
-            subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
+            call_command(['qdel', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             return self.prepareQsub(cpu, memory, jobID) + [self.generateTorqueWrapper(command, jobID)]
 
         def submitJob(self, subLine):
-            process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
-            so, se = process.communicate()
-            logger.debug("%s output %s", subLine[0], so)
-            return so
+            return call_command(subLine)
 
         def getJobExitCode(self, torqueJobID):
             if self._version == "pro":
@@ -137,11 +129,9 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             elif self._version == "oss":
                 args = ["qstat", "-f", str(torqueJobID).split('.')[0]]
 
-            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            for line in process.stdout:
-                logger.debug("%s output %s", args[0], line)
+            stdout = call_command(args)
+            for line in stdout.split('\n'):
                 line = line.strip()
-                #logger.debug("getJobExitCode exit status: " + line)
                 # Case differences due to PBSPro vs OSS Torque qstat outputs
                 if line.startswith("failed") or line.startswith("FAILED") and int(line.split()[1]) == 1:
                     return 1

@@ -1,7 +1,4 @@
-from  __future__ import print_function
 import random
-import six
-from six.moves import xrange
 from math import sqrt
 import logging
 import errno
@@ -12,17 +9,7 @@ import time
 import uuid
 import socket
 from contextlib import contextmanager
-
-# can't do from 'toil import subprocess' as __init__.py import this module!
-if os.name == 'posix' and six.PY2:
-    import subprocess32 as subprocess
-else:
-    import subprocess
-
-if sys.version_info[0] < 3:
-    # Define a usable FileNotFoundError as will be raised by os.remove on a
-    # nonexistent file.
-    FileNotFoundError = OSError
+import subprocess
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +178,7 @@ def partition_seq(seq, size):
     """
     if size < 1:
         raise ValueError('Size must be greater than 0')
-    return (seq[pos:pos + size] for pos in xrange(0, len(seq), size))
+    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
 
 def truncExpBackoff():
@@ -327,40 +314,29 @@ class CalledProcessErrorStderr(subprocess.CalledProcessError):
             return "Command '%s' exit status %d: %s" % (self.cmd, self.returncode, err)
 
 
-def popen_communicate(cmd, input=None, timeout=None, **kwargs):
-    """Start a process with subprocess.Popen, run the process and return
-    (stdout, stderr). Raise an exception if the process exits non-zero. Kwargs
-    are as passed to subprocess.Popen, with input and timeout being passed to
-    communicate.  The PY3.6 Popen encode and error arguments are allowed and
-    implemented.  Generally, Toil should used encoding='latin1'.
-
-    This is similar to check_call, although it both allows one to get back
-    stderr and also includes stderr in the exception that is raised in the
-    process fails.
+def call_command(cmd, *, input=None, timeout=None, useCLocale=True, env=None):
+    """Simplified calling of external commands.  This always returns
+    stdout and uses utf- encode8.  If process fails, CalledProcessErrorStderr
+    is raised.  The captured stderr is always printed, regardless of
+    if an expect occurs, so it can be logged.  At the debug log level, the
+    command and captured out are always used.  With useCLocale, C locale
+    is force to prevent failures that occurred in some batch systems
+    with UTF-8 locale.
     """
-    no_encode_arg = six.PY2 or (sys.version_info.major < 6)
-    def do_decoding(s):
-        # FIXME: remove when < 3.6 is no longer supported
-        if (not no_encode_arg) or isinstance(s, str) or (s is None):
-            return s
-        else:
-            dargs = [kwargs["encoding"]]
-            if "error" in dargs:
-                dargs.append(kwargs["error"])
-            return s.decode(*dargs)
 
-    args = {"stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE}
-    args.update(kwargs)
-    if no_encode_arg:
-        # remove unsupported arguments
-        for k in ("encoding", "error"):
-            if k in args:
-                del args[k]
+    # using non-C locales can cause GridEngine commands, maybe other to
+    # generate errors
+    if useCLocale:
+        env = dict(os.environ) if env is None else dict(env)  # copy since modifying
+        env["LANGUAGE"] = env["LC_ALL"] = "C"
 
     logger.debug("run command: {}".format(" ".join(cmd)))
-    proc = subprocess.Popen(cmd, **args)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            encoding='utf-8', errors="replace", env=env)
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
+    sys.stderr.write(stderr)
     if proc.returncode != 0:
+        logger.debug("command failed: {}: {}".format(cmd[0], stderr))
         raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
-    return do_decoding(stdout), do_decoding(stderr)
+    logger.debug("command results: {}: {}".format(cmd[0], stdout))
+    return stdout

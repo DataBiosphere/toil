@@ -21,8 +21,7 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-from toil import subprocess
-from toil.lib.misc import popen_communicate
+from toil.lib.misc import call_command
 import time
 import math
 
@@ -45,10 +44,9 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             times = {}
             with self.runningJobsLock:
                 currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
-            stdout, stderr = popen_communicate(["qstat"], encoding='latin1')
+            stdout = call_command(["qstat"])
 
             for currline in stdout.split('\n'):
-                logger.debug("qstat output %s", currline)
                 items = currline.strip().split()
                 if items:
                     if items[0] in currentjobs and items[4] == 'r':
@@ -59,15 +57,14 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             return times
 
         def killJob(self, jobID):
-            subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
+            call_command(['qdel', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             return self.prepareQsub(cpu, memory, jobID) + [command]
 
         def submitJob(self, subLine):
-            stdout, stderr = popen_communicate(subLine, encoding='latin1')
+            stdout = call_command(subLine)
             output = stdout.split('\n')[0].strip()
-            logger.debug("%s output %s", subLine[0], output)
             result = int(output)
             return result
 
@@ -82,10 +79,8 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             if task is not None:
                 args.extend(["-t", str(task)])
 
-            logger.debug("Running %r", args)
-            stdout, stderr = popen_communicate(args, encoding='latin1')
+            stdout = call_command(args)
             for line in stdout.split('\n'):
-                logger.debug("%s output %s", args[0], line)
                 if line.startswith("failed") and int(line.split()[1]) == 1:
                     return 1
                 elif line.startswith("exit_status"):
@@ -145,13 +140,14 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def obtainSystemConstants(cls):
-        def byteStrip(s):
-            return s.encode('utf-8').strip()
-        output = subprocess.check_output(["qhost"]).decode('utf-8')
-        logger.debug("qhost output %s", line)
-        lines = [_f for _f in map(byteStrip, output.split('\n')) if _f]
-        line = lines[0]
-        items = line.strip().split()
+        lines = call_command(["qhost"]).split()
+        # expect qhost output is in the form:
+        # HOSTNAME                ARCH         NCPU NSOC NCOR NTHR NLOAD  MEMTOT  MEMUSE  SWAPTO  SWAPUS
+        # ----------------------------------------------------------------------------------------------
+        # global                  -               -    -    -    -     -       -       -       -       -
+        # compute-1-1             lx-amd64       72    2   36   72  0.49  188.8G   79.6G   92.7G   19.2G
+        # compute-1-10            lx-amd64       72    2   36   72  0.22  188.8G   51.1G   92.7G    2.8G
+        items = lines[0].strip().split()
         num_columns = len(items)
         cpu_index = None
         mem_index = None

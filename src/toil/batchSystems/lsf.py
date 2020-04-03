@@ -24,8 +24,7 @@ from builtins import range
 from past.utils import old_div
 import logging
 import math
-from toil import subprocess
-from toil.lib.misc import popen_communicate
+from toil.lib.misc import call_command
 import os
 
 from dateutil.parser import parse
@@ -53,9 +52,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in
                                    self.runningJobs)
 
-            stdout, _ = popen_communicate(["bjobs", "-o", "jobid stat start_time delimiter='|'"], encoding='latin1')
+            stdout = call_command(["bjobs", "-o", "jobid stat start_time delimiter='|'"])
             for curline in stdout.split('\n'):
-                logger.debug("bjobs output %s", curline)
                 items = curline.strip().split('|')
                 if items[0] in currentjobs and items[1] == 'RUN':
                     jobstart = parse(items[2], default=datetime.now(tzlocal()))
@@ -64,7 +62,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             return times
 
         def killJob(self, jobID):
-            subprocess.check_call(['bkill', self.getBatchSystemID(jobID)])
+            call_command(['bkill', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             return self.prepareBsub(cpu, memory, jobID) + [command]
@@ -72,9 +70,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
         def submitJob(self, subLine):
             combinedEnv = self.boss.environment
             combinedEnv.update(os.environ)
-            stdout, stderr = popen_communicate(subLine, encoding='latin1', env=combinedEnv)
+            stdout = call_command(subLine, env=combinedEnv)
             line = stdout.split('\n')[0]
-            logger.debug("%s output %s", subLine[0], line)
             result = int(line.strip().split()[1].strip('<>'))
             logger.debug("Got the job id: {}".format(result))
             return result
@@ -89,12 +86,11 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             args = ["bjobs", "-l", str(job)]
             logger.debug("Checking job exit code for job via bjobs: "
                          "{}".format(job))
-            stdout, stderr = popen_communicate(args, encoding='latin1')
+            stdout = call_command(args)
             output = stdout.replace("\n                     ", "")
             process_output = output.split('\n')
             started = 0
             for line in process_output:
-                logger.debug("%s output %s", args[0], line)
                 if "Done successfully" in line or "Status <DONE>" in line:
                     logger.debug("bjobs detected job completed for job: "
                                  "{}".format(job))
@@ -129,10 +125,9 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                          "{}".format(job))
 
             args = ["bacct", "-l", str(job)]
-            stdout, stderr = popen_communicate(args, encoding='latin1')
+            stdout = call_command(args)
             process_output = stdout.split('\n')
             for line in process_output:
-                logger.debug("%s output %s", args[0], line)
                 if line.find("Completed <done>") > -1 or line.find("<DONE>") > -1:
                     logger.debug("Detected job completed for job: "
                                  "{}".format(job))
@@ -190,9 +185,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def obtainSystemConstants(cls):
-        stdout, stderr = popen_communicate(["lshosts"], encoding='latin1')
+        stdout = call_command(["lshosts"])
         line = stdout.split('\n')[0]
-        logger.debug("lshosts output %s", line)
         items = line.strip().split()
         num_columns = len(items)
         cpu_index = None

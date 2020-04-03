@@ -19,9 +19,9 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import subprocess
 import time
 import math
+from toil.lib.misc import call_command, CalledProcessErrorStderr
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
@@ -46,9 +46,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # -h for no header
             # --format to get jobid i, state %t and time days-hours:minutes:seconds
 
-            lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).decode('utf-8').split('\n')
+            lines = call_command(['squeue', '-h', '--format', '%i %t %M']).split('\n')
             for line in lines:
-                logger.debug("squeue output %s", line)
                 values = line.split()
                 if len(values) < 3:
                     continue
@@ -60,15 +59,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             return times
 
         def killJob(self, jobID):
-            subprocess.check_call(['scancel', self.getBatchSystemID(jobID)])
+            call_command(['scancel', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             return self.prepareSbatch(cpu, memory, jobID, jobName) + ['--wrap={}'.format(command)]
 
         def submitJob(self, subLine):
             try:
-                output = subprocess.check_output(subLine, stderr=subprocess.STDOUT).decode('utf-8')
-                logger.debug("%s output %s", subLine[0], output)
+                output = call_command(subLine)
                 # sbatch prints a line like 'Submitted batch job 2954103'
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)
@@ -80,9 +78,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         def getJobExitCode(self, slurmJobID):
             logger.debug("Getting exit code for slurm job %d", int(slurmJobID))
 
-            state, rc = self._getJobDetailsFromSacct(slurmJobID)
-
-            if rc == -999:
+            try:
+                state, rc = self._getJobDetailsFromSacct(slurmJobID)
+            except CalledProcessErrorStderr:
+                # no accounting system or some other error
                 state, rc = self._getJobDetailsFromScontrol(slurmJobID)
 
             logger.debug("s job state is %s", state)
@@ -101,14 +100,8 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     '-P', # separate columns with pipes
                     '-S', '1970-01-01'] # override start time limit
 
-            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            rc = process.wait()
-
-            if rc != 0:
-                # no accounting system or some other error
-                return (None, -999)
-
-            for line in process.stdout:
+            stdout = call_command(args)
+            for line in stdout:
                 logger.debug("%s output %s", args[0], line)
                 values = line.decode('utf-8').strip().split('|')
                 if len(values) < 2:
@@ -131,15 +124,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     'job',
                     str(slurmJobID)]
 
-            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            rc = process.wait()
-
-            if rc != 0:
-                # no accounting system or some other error
-                return (None, None)
-
+            stderr = call_command(args)
             job = dict()
-            for line in process.stdout:
+            for line in stdout:
                 logger.debug("%s output %s", args[0], line)
                 values = line.decode('utf-8').strip().split()
 
@@ -236,7 +223,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
     def getWaitDuration(cls):
         # Extract the slurm batchsystem config for the appropriate value
         wait_duration_seconds = 1
-        lines = subprocess.check_output(['scontrol', 'show', 'config']).decode('utf-8').split('\n')
+        lines = call_command(['scontrol', 'show', 'config']).split('\n')
         time_value_list = []
         for line in lines:
             values = line.split()
@@ -259,7 +246,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         # --format to get memory, cpu
         max_cpu = 0
         max_mem = MemoryString('0')
-        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).decode('utf-8').split('\n')
+        lines = call_command(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
         for line in lines:
             logger.debug("sinfo output %s", line)
             values = line.split()
