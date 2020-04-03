@@ -82,7 +82,7 @@ appliance_build:
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq
-    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.6 venv && . venv/bin/activate && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
@@ -185,7 +185,7 @@ py37_appliance_build:
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
-    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && pip install pycparser && make develop extras=[all] && pip install htcondor awscli==1.16.272
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
