@@ -140,13 +140,13 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def obtainSystemConstants(cls):
-        lines = call_command(["qhost"]).split()
         # expect qhost output is in the form:
         # HOSTNAME                ARCH         NCPU NSOC NCOR NTHR NLOAD  MEMTOT  MEMUSE  SWAPTO  SWAPUS
         # ----------------------------------------------------------------------------------------------
         # global                  -               -    -    -    -     -       -       -       -       -
         # compute-1-1             lx-amd64       72    2   36   72  0.49  188.8G   79.6G   92.7G   19.2G
         # compute-1-10            lx-amd64       72    2   36   72  0.22  188.8G   51.1G   92.7G    2.8G
+        lines = call_command(["qhost"]).strip().split('\n')
         items = lines[0].strip().split()
         num_columns = len(items)
         cpu_index = None
