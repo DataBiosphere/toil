@@ -126,10 +126,10 @@ print(heredoc('''
     RUN {pip} install --upgrade pip==20.0.2
 
     # Default setuptools is too old
-    RUN {pip} install --upgrade setuptools==36.5.0
+    RUN {pip} install --upgrade setuptools==45
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
-    RUN {pip} install --upgrade virtualenv==15.0.3
+    RUN {pip} install --upgrade virtualenv==20.0.
 
     # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
     RUN virtualenv --python {python} --never-download /home/s3am \

@@ -37,7 +37,7 @@ def runSetup():
     pycryptodome = 'pycryptodome==3.5.1'
     pymesos = 'toil-pymesos==0.3.80'
     psutil = 'psutil >= 3.0.1, <6'
-    pynacl = 'pynacl==1.1.2'
+    pynacl = 'pynacl==1.3.0'
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
