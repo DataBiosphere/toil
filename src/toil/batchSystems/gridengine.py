@@ -157,17 +157,17 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             elif items[i] == 'MEMTOT':
                 mem_index = i
         if cpu_index is None or mem_index is None:
-            RuntimeError('qhost command does not return NCPU or MEMTOT columns')
+            raise RuntimeError('qhost command does not return NCPU or MEMTOT columns')
         maxCPU = 0
         maxMEM = MemoryString("0")
         for line in lines[2:]:
             items = line.strip().split()
             if len(items) < num_columns:
-                RuntimeError('qhost output has a varying number of columns')
+                raise RuntimeError('qhost output has a varying number of columns')
             if items[cpu_index] != '-' and int(items[cpu_index]) > maxCPU:
                 maxCPU = int(items[cpu_index])
             if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
                 maxMEM = MemoryString(items[mem_index])
         if maxCPU is 0 or maxMEM is 0:
-            RuntimeError('qhost returned null NCPU or MEMTOT info')
+            raise RuntimeError('qhost returned null NCPU or MEMTOT info')
         return maxCPU, maxMEM

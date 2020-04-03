@@ -256,5 +256,5 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             max_cpu = max(max_cpu, int(cpu))
             max_mem = max(max_mem, MemoryString(mem + 'M'))
         if max_cpu == 0 or max_mem.byteVal() == 0:
-            RuntimeError('sinfo did not return memory or cpu info')
+            raise RuntimeError('sinfo did not return memory or cpu info')
         return max_cpu, max_mem
