@@ -164,8 +164,8 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             items = line.strip().split()
             if len(items) < num_columns:
                 RuntimeError('qhost output has a varying number of columns')
-            if items[cpu_index] != '-' and items[cpu_index] > maxCPU:
-                maxCPU = items[cpu_index]
+            if items[cpu_index] != '-' and int(items[cpu_index]) > maxCPU:
+                maxCPU = int(items[cpu_index])
             if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
                 maxMEM = MemoryString(items[mem_index])
         if maxCPU is 0 or maxMEM is 0:

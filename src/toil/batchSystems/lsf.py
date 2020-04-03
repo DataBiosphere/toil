@@ -211,7 +211,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 raise RuntimeError("lshosts output has a varying number of "
                              "columns")
             if items[cpu_index] != '-' and int(items[cpu_index]) > int(maxCPU):
-                maxCPU = items[cpu_index]
+                maxCPU = int(items[cpu_index])
             if (items[mem_index] != '-' and
                 MemoryString(items[mem_index]) > maxMEM):
                 maxMEM = MemoryString(items[mem_index])
