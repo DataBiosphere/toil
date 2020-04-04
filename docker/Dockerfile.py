@@ -27,14 +27,9 @@ pip = f'{python} -m pip'
 
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
-                         'python3.6',
-                         'python3.6-dev',
-                         'python3.7',
-                         'python3.7-dev',
-                         'python3.8',
-                         'python3.8-dev',
-                         'python-dev',  # For installing Python packages with native code
-                         'python-pip',  # Bootstrap pip, but needs upgrading, see below
+                         python,
+                         f'{python}-dev',
+                         'python3.8-distutils' if python == 'python3.8' else '',
                          'python3-pip',
                          'libcurl4-openssl-dev',
                          'libssl-dev',
@@ -45,7 +40,7 @@ dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras 
                          "nodejs",  # CWL support for javascript expressions
                          'rsync',
                          'screen',
-                         'build-essential', # We need a build environment to build Singularity 3.
+                         'build-essential',  # We need a build environment to build Singularity 3.
                          'uuid-dev',
                          'libgpgme11-dev',
                          'libseccomp-dev',
@@ -121,6 +116,9 @@ print(heredoc('''
     ADD customDockerInit.sh /usr/bin/customDockerInit.sh
 
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh
+    
+    # fixes an incompatibility updating pip on Ubuntu 16 w/ python3.8
+    RUN sed -i "s/platform.linux_distribution()/('Ubuntu', '16.04', 'xenial')/g" /usr/lib/python3/dist-packages/pip/download.py
     
     # The stock pip is too old and can't install from sdist with extras
     RUN {pip} install --upgrade pip==20.0.2
