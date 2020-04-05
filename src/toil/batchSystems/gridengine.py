@@ -21,7 +21,7 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-from toil.lib.misc import call_command
+from toil.lib.misc import call_command, CalledProcessErrorStderr
 import time
 import math
 
@@ -69,16 +69,30 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             return result
 
         def getJobExitCode(self, sgeJobID):
+            """
+            Get job exist code, checking both qstat and qacct.  Return None if
+            still running.  Higher level should retry on
+            CalledProcessErrorStderr, for the case the job has finished and
+            qacct result is stale.
+            """
             # the task is set as part of the job ID if using getBatchSystemID()
             job, task = (sgeJobID, None)
             if '.' in sgeJobID:
                 job, task = sgeJobID.split('.', 1)
+            assert task is None, "task ids not currently support by qstat logic below"
+
+            # First try qstat to see if job is still running, if not get the
+            # status qacct.  Also, qstat is much faster.
+            try:
+                call_command(["qstat", "-j", str(job)])
+                return None
+            except CalledProcessErrorStderr as ex:
+                if "Following jobs do not exist" not in ex.stderr:
+                    raise
 
             args = ["qacct", "-j", str(job)]
-
             if task is not None:
                 args.extend(["-t", str(task)])
-
             stdout = call_command(args)
             for line in stdout.split('\n'):
                 if line.startswith("failed") and int(line.split()[1]) == 1:

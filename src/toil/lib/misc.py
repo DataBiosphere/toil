@@ -336,7 +336,7 @@ def call_command(cmd, *, input=None, timeout=None, useCLocale=True, env=None):
     stdout, stderr = proc.communicate(input=input, timeout=timeout)
     sys.stderr.write(stderr)
     if proc.returncode != 0:
-        logger.debug("command failed: {}: {}".format(cmd[0], stderr))
+        logger.debug("command failed: {}: {}".format(" ".join(cmd), stderr.rstrip()))
         raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
-    logger.debug("command results: {}: {}".format(cmd[0], stdout))
+    logger.debug("command succeeded: {}: {}".format(" ".join(cmd), stdout.rstrip()))
     return stdout
