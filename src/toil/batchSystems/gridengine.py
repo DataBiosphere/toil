@@ -21,7 +21,7 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import subprocess
+from toil.lib.misc import call_command, CalledProcessErrorStderr
 import time
 import math
 
@@ -44,10 +44,9 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             times = {}
             with self.runningJobsLock:
                 currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in self.runningJobs)
-            process = subprocess.Popen(["qstat"], stdout=subprocess.PIPE)
-            stdout, stderr = process.communicate()
+            stdout = call_command(["qstat"])
 
-            for currline in stdout.decode('utf-8').split('\n'):
+            for currline in stdout.split('\n'):
                 items = currline.strip().split()
                 if items:
                     if items[0] in currentjobs and items[4] == 'r':
@@ -58,30 +57,44 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             return times
 
         def killJob(self, jobID):
-            subprocess.check_call(['qdel', self.getBatchSystemID(jobID)])
+            call_command(['qdel', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             return self.prepareQsub(cpu, memory, jobID) + [command]
 
         def submitJob(self, subLine):
-            process = subprocess.Popen(subLine, stdout=subprocess.PIPE)
-            result = int(process.stdout.readline().decode('utf-8').strip())
+            stdout = call_command(subLine)
+            output = stdout.split('\n')[0].strip()
+            result = int(output)
             return result
 
         def getJobExitCode(self, sgeJobID):
+            """
+            Get job exist code, checking both qstat and qacct.  Return None if
+            still running.  Higher level should retry on
+            CalledProcessErrorStderr, for the case the job has finished and
+            qacct result is stale.
+            """
             # the task is set as part of the job ID if using getBatchSystemID()
             job, task = (sgeJobID, None)
             if '.' in sgeJobID:
                 job, task = sgeJobID.split('.', 1)
+            assert task is None, "task ids not currently support by qstat logic below"
+
+            # First try qstat to see if job is still running, if not get the
+            # status qacct.  Also, qstat is much faster.
+            try:
+                call_command(["qstat", "-j", str(job)])
+                return None
+            except CalledProcessErrorStderr as ex:
+                if "Following jobs do not exist" not in ex.stderr:
+                    raise
 
             args = ["qacct", "-j", str(job)]
-
             if task is not None:
                 args.extend(["-t", str(task)])
-
-            logger.debug("Running %r", args)
-            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            for line in process.stdout:
+            stdout = call_command(args)
+            for line in stdout.split('\n'):
                 if line.startswith("failed") and int(line.split()[1]) == 1:
                     return 1
                 elif line.startswith("exit_status"):
@@ -141,11 +154,14 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def obtainSystemConstants(cls):
-        def byteStrip(s):
-            return s.encode('utf-8').strip()
-        lines = [_f for _f in map(byteStrip, subprocess.check_output(["qhost"]).decode('utf-8').split('\n')) if _f]
-        line = lines[0]
-        items = line.strip().split()
+        # expect qhost output is in the form:
+        # HOSTNAME                ARCH         NCPU NSOC NCOR NTHR NLOAD  MEMTOT  MEMUSE  SWAPTO  SWAPUS
+        # ----------------------------------------------------------------------------------------------
+        # global                  -               -    -    -    -     -       -       -       -       -
+        # compute-1-1             lx-amd64       72    2   36   72  0.49  188.8G   79.6G   92.7G   19.2G
+        # compute-1-10            lx-amd64       72    2   36   72  0.22  188.8G   51.1G   92.7G    2.8G
+        lines = call_command(["qhost"]).strip().split('\n')
+        items = lines[0].strip().split()
         num_columns = len(items)
         cpu_index = None
         mem_index = None
@@ -155,17 +171,17 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
             elif items[i] == 'MEMTOT':
                 mem_index = i
         if cpu_index is None or mem_index is None:
-            RuntimeError('qhost command does not return NCPU or MEMTOT columns')
+            raise RuntimeError('qhost command does not return NCPU or MEMTOT columns')
         maxCPU = 0
         maxMEM = MemoryString("0")
         for line in lines[2:]:
             items = line.strip().split()
             if len(items) < num_columns:
-                RuntimeError('qhost output has a varying number of columns')
-            if items[cpu_index] != '-' and items[cpu_index] > maxCPU:
-                maxCPU = items[cpu_index]
+                raise RuntimeError('qhost output has a varying number of columns')
+            if items[cpu_index] != '-' and int(items[cpu_index]) > maxCPU:
+                maxCPU = int(items[cpu_index])
             if items[mem_index] != '-' and MemoryString(items[mem_index]) > maxMEM:
                 maxMEM = MemoryString(items[mem_index])
         if maxCPU is 0 or maxMEM is 0:
-            RuntimeError('qhost returned null NCPU or MEMTOT info')
+            raise RuntimeError('qhost returned null NCPU or MEMTOT info')
         return maxCPU, maxMEM
