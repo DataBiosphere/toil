@@ -1083,6 +1083,8 @@ class AWSJobStore(AbstractJobStore):
             if file_size <= self.maxInlinedSize():
                 with open(localFilePath, 'rb') as f:
                     self.content = f.read()
+                # Clear out any old checksum in case of overwrite
+                self.checksum = ''
             else:
                 headers = self._s3EncryptionHeaders()
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
@@ -1112,11 +1114,11 @@ class AWSJobStore(AbstractJobStore):
                 algorithm = parts[0]
                 expected = parts[1]
             
-            hasher = getattr(hashlib, algorithm)()
+            wrapped = getattr(hashlib, algorithm)()
             
             log.debug('Starting %s checksum to match %s', algorithm, expected)
             
-            return (algorithm, hasher, expected)
+            return (algorithm, wrapped, expected)
             
         def _update_checksum(self, checksum_in_progress, data):
             """
@@ -1145,11 +1147,6 @@ class AWSJobStore(AbstractJobStore):
             
             
         
-        def _get_data_checksum(self, data, to_match=None):
-            hasher = self._start_checksum(to_match=to_match)
-            self._update_checksum(hasher, data)
-            return self._finish_checksum(hasher)
-        
         def _get_file_checksum(self, localFilePath, to_match=None):
             with open(localFilePath, 'rb') as f:
                 hasher = self._start_checksum(to_match=to_match)
@@ -1173,19 +1170,23 @@ class AWSJobStore(AbstractJobStore):
 
             info = self
             store = self.outer
-            hasher = self._start_checksum()
 
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
                     # Get the first block of data we want to put
                     buf = readable.read(store.partSize)
                     assert isinstance(buf, bytes)
-                    info._update_checksum(hasher, buf)
                     
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
+                        # There will be no checksum
+                        info.checksum = ''
                     else:
+                        # We will compute a checksum
+                        hasher = info._start_checksum()
+                        info._update_checksum(hasher, buf)
+                    
                         headers = info._s3EncryptionHeaders()
                         for attempt in retry_s3():
                             with attempt:
@@ -1252,7 +1253,11 @@ class AWSJobStore(AbstractJobStore):
                     if allowInlining and dataLength <= info.maxInlinedSize():
                         log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
+                        # There will be no checksum
+                        info.checksum = ''
                     else:
+                        # We will compute a checksum
+                        hasher = info._start_checksum()
                         info._update_checksum(hasher, buf)
                         info.checksum = info._finish_checksum(hasher)
                         
