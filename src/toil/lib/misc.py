@@ -1,6 +1,6 @@
 import random
-from six.moves import xrange
 from math import sqrt
+import logging
 import errno
 import os
 import shutil
@@ -9,11 +9,9 @@ import time
 import uuid
 import socket
 from contextlib import contextmanager
+import subprocess
 
-if sys.version_info[0] < 3:
-    # Define a usable FileNotFoundError as will be raised by os.remove on a
-    # nonexistent file.
-    FileNotFoundError = OSError
+logger = logging.getLogger(__name__)
 
 
 def mkdir_p(path):
@@ -180,7 +178,7 @@ def partition_seq(seq, size):
     """
     if size < 1:
         raise ValueError('Size must be greater than 0')
-    return (seq[pos:pos + size] for pos in xrange(0, len(seq), size))
+    return (seq[pos:pos + size] for pos in range(0, len(seq), size))
 
 
 def truncExpBackoff():
@@ -248,58 +246,97 @@ def atomic_copyobj(src_fh, dest_path, length=16384):
 class WriteWatchingStream(object):
     """
     A stream wrapping class that calls any functions passed to onWrite() with the number of bytes written for every write.
-    
+
     Not seekable.
     """
-    
+
     def __init__(self, backingStream):
         """
         Wrap the given backing stream.
         """
-        
+
         self.backingStream = backingStream
         # We have no write listeners yet
         self.writeListeners = []
-        
+
     def onWrite(self, listener):
         """
         Call the given listener with the number of bytes written on every write.
         """
-        
+
         self.writeListeners.append(listener)
-        
+
     # Implement the file API from https://docs.python.org/2.4/lib/bltin-file-objects.html
-        
+
     def write(self, data):
         """
         Write the given data to the file.
         """
-        
+
         # Do the write
         self.backingStream.write(data)
-        
+
         for listener in self.writeListeners:
             # Send out notifications
             listener(len(data))
-            
+
     def writelines(self, datas):
         """
         Write each string from the given iterable, without newlines.
         """
-        
+
         for data in datas:
             self.write(data)
-            
+
     def flush(self):
         """
         Flush the backing stream.
         """
-        
+
         self.backingStream.flush()
-        
+
     def close(self):
         """
         Close the backing stream.
         """
-        
+
         self.backingStream.close()
+
+
+class CalledProcessErrorStderr(subprocess.CalledProcessError):
+    """Version of CalledProcessError that include stderr in the error message if it is set"""
+
+    def __str__(self):
+        if (self.returncode and (self.returncode < 0)) or (self.stderr is None):
+            return str(super())
+        else:
+            err = self.stderr if isinstance(self.stderr, str) else self.stderr.decode("ascii", errors="replace")
+            return "Command '%s' exit status %d: %s" % (self.cmd, self.returncode, err)
+
+
+def call_command(cmd, *, input=None, timeout=None, useCLocale=True, env=None):
+    """Simplified calling of external commands.  This always returns
+    stdout and uses utf- encode8.  If process fails, CalledProcessErrorStderr
+    is raised.  The captured stderr is always printed, regardless of
+    if an expect occurs, so it can be logged.  At the debug log level, the
+    command and captured out are always used.  With useCLocale, C locale
+    is force to prevent failures that occurred in some batch systems
+    with UTF-8 locale.
+    """
+
+    # using non-C locales can cause GridEngine commands, maybe other to
+    # generate errors
+    if useCLocale:
+        env = dict(os.environ) if env is None else dict(env)  # copy since modifying
+        env["LANGUAGE"] = env["LC_ALL"] = "C"
+
+    logger.debug("run command: {}".format(" ".join(cmd)))
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            encoding='utf-8', errors="replace", env=env)
+    stdout, stderr = proc.communicate(input=input, timeout=timeout)
+    sys.stderr.write(stderr)
+    if proc.returncode != 0:
+        logger.debug("command failed: {}: {}".format(" ".join(cmd), stderr.rstrip()))
+        raise CalledProcessErrorStderr(proc.returncode, cmd, output=stdout, stderr=stderr)
+    logger.debug("command succeeded: {}: {}".format(" ".join(cmd), stdout.rstrip()))
+    return stdout

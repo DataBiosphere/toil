@@ -41,6 +41,7 @@ import sys
 import tempfile
 import time
 import uuid
+import urllib3
 
 from kubernetes.client.rest import ApiException
 from six.moves.queue import Empty, Queue
@@ -56,8 +57,26 @@ from toil.lib.humanize import human2bytes
 from toil.lib.threading import LastProcessStandingArena
 from toil.resource import Resource
 
-logger = logging.getLogger(__name__)
+from toil.lib.retry import retry
 
+logger = logging.getLogger(__name__)
+     
+def retryable_kubernetes_errors(e):
+    """
+    A function that determins whether or not Toil should retry or stop given 
+    exceptions thrown by Kubernetes. 
+    """
+    if isinstance(e, urllib3.exceptions.MaxRetryError) or \
+        isinstance(e, ApiException):
+        return True
+    return False
+
+def retry_kubernetes(retry_while=retryable_kubernetes_errors):
+    """
+    A wrapper that sends retryable Kubernetes predicates into a context-manager which will allow 
+    Kubernetes to keep retrying until a False or an executable method is seen.  
+    """
+    return retry(predicate=retry_while)
 
 def slow_down(seconds):
     """
@@ -161,7 +180,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         self.enableWatching = True
 
         self.jobIds = set()
-        
+    
+   
     def _api(self, kind, max_age_seconds = 5 * 60):
         """
         The Kubernetes module isn't clever enough to renew its credentials when
@@ -234,7 +254,21 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 return self._apis[kind]
             except KeyError: 
                 raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
+    
+    def _try_kubernetes(self, method, *args, **kwargs):
+        """
+        Kubernetes API can end abruptly and fail when it could dynamically backoff and retry.
+
+        For example, calling self._api('batch').create_namespaced_job(self.namespace, job),
+        Kubernetes can behave inconsistently and fail given a large job. See 
+        https://github.com/DataBiosphere/toil/issues/2884 .
         
+        This function gives Kubernetes more time to try an executable api.  
+        """
+
+        for attempt in retry_kubernetes():
+            with attempt:
+                return method(*args, **kwargs)
 
     def setUserScript(self, userScript):
         logger.info('Setting user script for deployment: {}'.format(userScript))
@@ -364,7 +398,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                           kind="Job")
             
             # Make the job
-            launched = self._api('batch').create_namespaced_job(self.namespace, job)
+            launched = self._try_kubernetes(self._api('batch').create_namespaced_job, self.namespace, job)
 
             logger.debug('Launched job: %s', jobName)
             
@@ -427,7 +461,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 kwargs['field_selector'] = 'status.successful==1'
             if token is not None:
                 kwargs['_continue'] = token
-            results = self._api('batch').list_namespaced_job(self.namespace, **kwargs)
+            
+            results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs)
             
             for job in results.items:
                 if self._isJobOurs(job):
@@ -472,8 +507,8 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             kwargs = {'label_selector': query}
             if token is not None:
                 kwargs['_continue'] = token
-            results = self._api('core').list_namespaced_pod(self.namespace, **kwargs)
-            
+            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, **kwargs)
+        
             for pod in results.items:
                 # Return the first pod we find
                 return pod
@@ -500,7 +535,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         """
 
-        return self._api('core').read_namespaced_pod_log(podObject.metadata.name,
+        return self._try_kubernetes(self._api('core').read_namespaced_pod_log, podObject.metadata.name,
                                                          namespace=self.namespace)
 
     def _isPodStuckOOM(self, podObject, minFreeBytes=1024 * 1024 * 2):
@@ -530,9 +565,11 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Look for it
         # TODO: When the Kubernetes Python API actually wraps the metrics API, switch to that
-        response = self._api('customObjects').list_namespaced_custom_object('metrics.k8s.io', 'v1beta1',
-                                                                            self.namespace, 'pods',
-                                                                            field_selector=query)
+        response = self._try_kubernetes(self._api('customObjects').\
+                list_namespaced_custom_object, 
+                'metrics.k8s.io', 'v1beta1',
+                self.namespace, 'pods',
+                field_selector=query)
 
         # Pull out the items
         items = response.get('items', [])
@@ -621,9 +658,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                                 terminated = pod.status.container_statuses[0].state.terminated
                                 runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
                                 result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=terminated.exit_code, wallTime=runtime, exitReason=None)
-                                self._api('batch').delete_namespaced_job(pod.metadata.owner_references[0].name,
-                                                                         self.namespace,
-                                                                         propagation_policy='Foreground')
+                                self._try_kubernetes(self._api('batch').delete_namespaced_job, 
+                                            pod.metadata.owner_references[0].name,
+                                            self.namespace,
+                                            propagation_policy='Foreground')
 
                                 self._waitForJobDeath(pod.metadata.owner_references[0].name)
                                 return result
@@ -774,7 +812,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                     exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                     # Say it stopped now and started when it was scheduled/submitted.
                     # We still need a strictly positive runtime.
-                    runtime = slow_down((utc_now() - startTime).totalSeconds())
+                    runtime = slow_down((utc_now() - startTime).total_seconds())
                 else:
                     # Get the termination info from the pod's main (only) container
                     terminatedInfo = getattr(getattr(containerStatuses[0], 'state', None), 'terminated', None)
@@ -784,7 +822,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                         exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                         # Say it stopped now and started when it was scheduled/submitted.
                         # We still need a strictly positive runtime.
-                        runtime = slow_down((utc_now() - startTime).totalSeconds())
+                        runtime = slow_down((utc_now() - startTime).total_seconds())
                     else:
                         # Extract the exit code
                         exitCode = terminatedInfo.exit_code
@@ -811,18 +849,18 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                 # Synthesize an exit code
                 exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
                 # Say it ran from when the job was submitted to when the pod got stuck
-                runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
+                runtime = slow_down((utc_now() - jobSubmitTime).total_seconds())
         else:
             # The pod went away from under the job.
             logging.warning('Exit code and runtime unavailable; pod vanished')
             exitCode = EXIT_STATUS_UNAVAILABLE_VALUE
             # Say it ran from when the job was submitted to when the pod vanished
-            runtime = slow_down((utc_now() - jobSubmitTime).totalSeconds())
+            runtime = slow_down((utc_now() - jobSubmitTime).total_seconds())
         
         
         try:
             # Delete the job and all dependents (pods)
-            self._api('batch').delete_namespaced_job(jobObject.metadata.name,
+            self._try_kubernetes(self._api('batch').delete_namespaced_job, jobObject.metadata.name,
                                                      self.namespace,
                                                      propagation_policy='Foreground')
                                                 
@@ -856,7 +894,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         while True:
             try:
                 # Look for the job
-                self._api('batch').read_namespaced_job(jobName, self.namespace)
+                self._try_kubernetes(self._api('batch').read_namespaced_job, jobName, self.namespace)
                 # If we didn't 404, wait a bit with exponential backoff
                 time.sleep(backoffTime)
                 if backoffTime < maxBackoffTime:
@@ -886,7 +924,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Kill jobs whether they succeeded or failed
             try:
                 # Delete with background poilicy so we can quickly issue lots of commands
-                response = self._api('batch').delete_namespaced_job(jobName, 
+                response = self._try_kubernetes(self._api('batch').delete_namespaced_job, jobName, 
                                                                     self.namespace, 
                                                                     propagation_policy='Background')
                 logger.debug('Killed job for shutdown: %s', jobName)
@@ -954,7 +992,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
             # Delete the requested job in the foreground.
             # This doesn't block, but it does delete expeditiously.
-            response = self._api('batch').delete_namespaced_job(jobName, 
+            response = self._try_kubernetes(self._api('batch').delete_namespaced_job, jobName, 
                                                                 self.namespace, 
                                                                 propagation_policy='Foreground')
             logger.debug('Killed job by request: %s', jobName)

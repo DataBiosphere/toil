@@ -35,13 +35,13 @@ def runSetup():
     boto3 = 'boto3>=1.7.50, <2.0'
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
-    pymesos = 'pymesos==0.3.7'
+    pymesos = 'toil-pymesos==0.3.80'
     psutil = 'psutil >= 3.0.1, <6'
-    pynacl = 'pynacl==1.1.2'
+    pynacl = 'pynacl==1.3.0'
     gcs = 'google-cloud-storage==1.6.0'
     gcs_oauth2_boto_plugin = 'gcs_oauth2_boto_plugin==1.14'
     apacheLibcloud = 'apache-libcloud==2.2.1'
-    cwltool = 'cwltool<=2.0.20200126090152'
+    cwltool = 'cwltool==3.0.20200324120055'
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
@@ -54,7 +54,6 @@ def runSetup():
     docker = 'docker==2.5.1'
     dateutil = 'python-dateutil'
     addict = 'addict<=2.2.0'
-    sphinx = 'sphinx>=2.4.4, <3'
     pathlib2 = 'pathlib2==2.3.2'
 
     core_reqs = [
@@ -66,7 +65,6 @@ def runSetup():
         dateutil,
         psutil,
         addict,
-        sphinx,
         pathlib2,
         pytz]
 
@@ -136,6 +134,7 @@ def runSetup():
           'Topic :: System :: Distributed Computing',
           'Topic :: Utilities'],
         license="Apache License v2.0",
+        python_requires=">=3.6",
         install_requires=core_reqs,
         extras_require={
             'aws': aws_reqs,

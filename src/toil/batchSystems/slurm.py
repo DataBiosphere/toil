@@ -19,9 +19,9 @@ from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import subprocess
 import time
 import math
+from toil.lib.misc import call_command, CalledProcessErrorStderr
 
 # Python 3 compatibility imports
 from six.moves.queue import Empty, Queue
@@ -46,7 +46,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             # -h for no header
             # --format to get jobid i, state %t and time days-hours:minutes:seconds
 
-            lines = subprocess.check_output(['squeue', '-h', '--format', '%i %t %M']).decode('utf-8').split('\n')
+            lines = call_command(['squeue', '-h', '--format', '%i %t %M']).split('\n')
             for line in lines:
                 values = line.split()
                 if len(values) < 3:
@@ -59,14 +59,14 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             return times
 
         def killJob(self, jobID):
-            subprocess.check_call(['scancel', self.getBatchSystemID(jobID)])
+            call_command(['scancel', self.getBatchSystemID(jobID)])
 
         def prepareSubmission(self, cpu, memory, jobID, command, jobName):
             return self.prepareSbatch(cpu, memory, jobID, jobName) + ['--wrap={}'.format(command)]
 
         def submitJob(self, subLine):
             try:
-                output = subprocess.check_output(subLine, stderr=subprocess.STDOUT).decode('utf-8')
+                output = call_command(subLine)
                 # sbatch prints a line like 'Submitted batch job 2954103'
                 result = int(output.strip().split()[-1])
                 logger.debug("sbatch submitted job %d", result)
@@ -77,19 +77,20 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
         def getJobExitCode(self, slurmJobID):
             logger.debug("Getting exit code for slurm job %d", int(slurmJobID))
-            
-            state, rc = self._getJobDetailsFromSacct(slurmJobID)
-            
-            if rc == -999:
+
+            try:
+                state, rc = self._getJobDetailsFromSacct(slurmJobID)
+            except CalledProcessErrorStderr:
+                # no accounting system or some other error
                 state, rc = self._getJobDetailsFromScontrol(slurmJobID)
-            
+
             logger.debug("s job state is %s", state)
-            # If Job is in a running state, return None to indicate we don't have an update                                 
+            # If Job is in a running state, return None to indicate we don't have an update
             if state in ('PENDING', 'RUNNING', 'CONFIGURING', 'COMPLETING', 'RESIZING', 'SUSPENDED'):
                 return None
-            
+
             return rc
-            
+
         def _getJobDetailsFromSacct(self, slurmJobID):
             # SLURM job exit codes are obtained by running sacct.
             args = ['sacct',
@@ -98,15 +99,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     '--format', 'State,ExitCode', # specify output columns
                     '-P', # separate columns with pipes
                     '-S', '1970-01-01'] # override start time limit
-            
-            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-            rc = process.returncode
-            
-            if rc != 0:
-                # no accounting system or some other error
-                return (None, -999)
-            
-            for line in process.stdout:
+
+            stdout = call_command(args)
+            for line in stdout:
+                logger.debug("%s output %s", args[0], line)
                 values = line.decode('utf-8').strip().split('|')
                 if len(values) < 2:
                     continue
@@ -120,33 +116,33 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 logger.debug("sacct exit code is %s, returning status %d", exitcode, status)
                 return (state, status)
             logger.debug("Did not find exit code for job in sacct output")
-            return None
+            return (None, None)
 
         def _getJobDetailsFromScontrol(self, slurmJobID):
             args = ['scontrol',
                     'show',
                     'job',
                     str(slurmJobID)]
-    
-            process = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-    
+
+            stderr = call_command(args)
             job = dict()
-            for line in process.stdout:
+            for line in stdout:
+                logger.debug("%s output %s", args[0], line)
                 values = line.decode('utf-8').strip().split()
-    
+
                 # If job information is not available an error is issued:
                 # slurm_load_jobs error: Invalid job id specified
                 # There is no job information, so exit.
                 if len(values)>0 and values[0] == 'slurm_load_jobs':
                     return (None, None)
-                
+
                 # Output is in the form of many key=value pairs, multiple pairs on each line
                 # and multiple lines in the output. Each pair is pulled out of each line and
                 # added to a dictionary
                 for v in values:
                     bits = v.split('=')
                     job[bits[0]] = bits[1]
-    
+
             state = job['JobState']
             try:
                 exitcode = job['ExitCode']
@@ -161,7 +157,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     rc = None
             except KeyError:
                 rc = None
-            
+
             return (state, rc)
 
         """
@@ -174,13 +170,13 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             if self.boss.environment:
                 argList = []
-                
+
                 for k, v in self.boss.environment.items():
                     quoted_value = quote(os.environ[k] if v is None else v)
                     argList.append('{}={}'.format(k, quoted_value))
-                    
+
                 sbatch_line.append('--export=' + ','.join(argList))
-            
+
             if mem is not None:
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append('--mem={}'.format(old_div(int(mem), 2 ** 20)))
@@ -225,7 +221,20 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
     @classmethod
     def getWaitDuration(cls):
-        return 1
+        # Extract the slurm batchsystem config for the appropriate value
+        wait_duration_seconds = 1
+        lines = call_command(['scontrol', 'show', 'config']).split('\n')
+        time_value_list = []
+        for line in lines:
+            values = line.split()
+            if len(values) > 0 and (values[0] == "SchedulerTimeSlice" or values[0] == "AcctGatherNodeFreq"):
+                time_name = values[values.index('=')+1:][1]
+                time_value = int(values[values.index('=')+1:][0])
+                if time_name == 'min':
+                    time_value *= 60
+                # Add a 20% ceiling on the wait duration relative to the scheduler update duration
+                time_value_list.append(math.ceil(time_value*1.2))
+        return max(time_value_list)
 
     @classmethod
     def obtainSystemConstants(cls):
@@ -237,8 +246,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
         # --format to get memory, cpu
         max_cpu = 0
         max_mem = MemoryString('0')
-        lines = subprocess.check_output(['sinfo', '-Nhe', '--format', '%m %c']).decode('utf-8').split('\n')
+        lines = call_command(['sinfo', '-Nhe', '--format', '%m %c']).split('\n')
         for line in lines:
+            logger.debug("sinfo output %s", line)
             values = line.split()
             if len(values) < 2:
                 continue
@@ -246,5 +256,5 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             max_cpu = max(max_cpu, int(cpu))
             max_mem = max(max_mem, MemoryString(mem + 'M'))
         if max_cpu == 0 or max_mem.byteVal() == 0:
-            RuntimeError('sinfo did not return memory or cpu info')
+            raise RuntimeError('sinfo did not return memory or cpu info')
         return max_cpu, max_mem

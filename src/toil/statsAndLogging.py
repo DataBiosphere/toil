@@ -45,18 +45,54 @@ class StatsAndLogging( object ):
         Start the stats and logging thread.
         """
         self._worker.start()
+        
+    @classmethod
+    def formatLogStream(cls, stream, identifier=None):
+        """
+        Given a stream of text or bytes, and the job name, job itself, or some
+        other optional stringifyable identity info for the job, return a big
+        text string with the formatted job log, suitable for printing for the
+        user.
+        
+        We don't want to prefix every line of the job's log with our own
+        logging info, or we get prefixes wider than any reasonable terminal
+        and longer than the messages.
+        """
+        
+        lines = []
+        
+        if identifier is not None:
+            if isinstance(identifier, bytes):
+                # Decode the identifier if it is bytes
+                identifier = identifier.decode('utf-8', error='replace')
+            elif not isinstance(identifier, str):
+                # Otherwise just stringify it
+                identifier = str(identifier)
+                
+            lines.append('Log from job %s follows:' % identifier)
+        else:
+            lines.append('Log from job follows:')
+            
+        lines.append('=========>')
+        
+        for line in stream:
+            if isinstance(line, bytes):
+                line = line.decode('utf-8')
+            lines.append('\t' + line.rstrip('\n'))
+            
+        lines.append('<=========')
+        
+        return '\n'.join(lines)
+    
 
     @classmethod
     def logWithFormatting(cls, jobStoreID, jobLogs, method=logger.debug, message=None):
         if message is not None:
             method(message)
-        if isinstance(jobStoreID, bytes):
-            jobStoreID = jobStoreID.decode('utf-8')
-        for line in jobLogs:
-            if isinstance(line, bytes):
-                line = line.decode('utf-8')
-            method('%s    %s', jobStoreID, line.rstrip('\n'))
-
+            
+        # Format and log the logs, identifying the job with its job store ID.
+        method(cls.formatLogStream(jobLogs, jobStoreID))
+        
     @classmethod
     def writeLogFiles(cls, jobNames, jobLogList, config, failed=False):
         def createName(logPath, jobName, logExtension, failed=False):
