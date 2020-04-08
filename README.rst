@@ -1,8 +1,6 @@
-ATTENTION: Toil is no longer supporting python 2.7 as of February 13, 2020.
-           The last working version of toil in python2.7 is 3.24.0, though
-           subsequent 3.24.x releases may be made for hotfixes.
-
-           Toil 4.0.0 will be our first release incompatible with python2.7 and will require python3.6+.
+.. image:: https://badges.gitter.im/bd2k-genomics-toil/Lobby.svg
+   :alt: Join the chat at https://gitter.im/bd2k-genomics-toil/Lobby
+   :target: https://gitter.im/bd2k-genomics-toil/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 
 Toil is a scalable, efficient, cross-platform (Linux & macOS) pipeline management system,
 written entirely in Python, and designed around the principles of functional
@@ -20,10 +18,6 @@ programming.
 .. _announce: https://groups.google.com/forum/#!forum/toil-announce
 .. _forum: https://groups.google.com/forum/#!forum/toil-community
 .. _blog: https://toilpipelines.wordpress.com/
-
-.. image:: https://badges.gitter.im/bd2k-genomics-toil/Lobby.svg
-   :alt: Join the chat at https://gitter.im/bd2k-genomics-toil/Lobby
-   :target: https://gitter.im/bd2k-genomics-toil/Lobby?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge
 
 Notes:
 
