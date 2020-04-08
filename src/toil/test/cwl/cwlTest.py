@@ -46,7 +46,7 @@ class CWLv10Test(ToilTest):
         self.workDir = os.path.join(self.cwlSpec, 'v1.0')
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
-        testhash = '9ddfa5bd2c432fb426087ad938113d4b32a0b36a'
+        testhash = '40fcfc01812046f012acf5153cc955ee848e69e3' # Date:   Tue Jan 21 07:36:37 2020 +0100
         url = 'https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip' % testhash
         if not os.path.exists(self.cwlSpec):
             urlretrieve(url, 'spec.zip')
@@ -360,8 +360,8 @@ class CWLv11Test(ToilTest):
     @pytest.mark.timeout(2400)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently run tests: 213, 242, 244, 246, 249
-            selected_tests = '1-212,214-241,243,245,247-248,250-253'
+            # TODO: we do not currently pass tests: 213, 236, 242, 243, 244, 245, 246, 249
+            selected_tests = '1-212,214-235,237-241,247-248,250-253'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',
@@ -372,6 +372,72 @@ class CWLv11Test(ToilTest):
                 cmd.extend(["--batchSystem", batchSystem])
             if caching:
                 cmd.extend(['--', '--disableCaching="False"'])
+            subprocess.check_output(cmd, cwd=self.cwlSpec, stderr=subprocess.STDOUT)
+        except subprocess.CalledProcessError as e:
+            only_unsupported = False
+            # check output -- if we failed but only have unsupported features, we're okay
+            p = re.compile(r"(?P<failures>\d+) failures, (?P<unsupported>\d+) unsupported features")
+
+            error_log = e.output.decode('utf-8')
+            for line in error_log.split('\n'):
+                m = p.search(line)
+                if m:
+                    if int(m.group("failures")) == 0 and int(m.group("unsupported")) > 0:
+                        only_unsupported = True
+                        break
+            if not only_unsupported:
+                print(error_log)
+                raise e
+
+@needs_cwl
+class CWLv12Test(ToilTest):
+    @classmethod
+    def setUpClass(cls):
+        """Runs anew before each test to create farm fresh temp dirs."""
+        cls.outDir = f'/tmp/toil-cwl-v1_2-test-{str(uuid.uuid4())}'
+        os.makedirs(cls.outDir)
+        cls.rootDir = cls._projectRootPath()
+        cls.cwlSpec = os.path.join(cls.rootDir, 'src/toil/test/cwl/spec_v12')
+        cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
+        # TODO: Use a commit zip in case someone decides to rewrite master's history?
+        url = 'https://github.com/common-workflow-language/cwl-v1.2.git'
+        commit = 'fca122ef126d03da8c8091111ef5d0cf75763382'
+        p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
+        p.communicate()
+
+    def tearDown(self):
+        """Clean up outputs."""
+        if os.path.exists(self.outDir):
+            shutil.rmtree(self.outDir)
+        unittest.TestCase.tearDown(self)
+
+    @slow
+    @pytest.mark.timeout(2400)
+    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
+    @pytest.mark.xfail
+    def test_run_conformance_with_caching(self):
+        self.test_run_conformance(caching=True)
+
+    @slow
+    @pytest.mark.timeout(2400)
+    def test_run_conformance(self, batchSystem=None, caching=False):
+        try:
+            # TODO: we do not currently pass tests: 213, 236, 242, 243, 244, 245, 246, 249
+            selected_tests = '1-212,214-235,237-241,247-248,250-276'
+            cmd = [f'cwltest',
+                   f'--tool=toil-cwl-runner',
+                   f'--test={self.test_yaml}',
+                   f'--timeout=2400',
+                   f'--basedir={self.cwlSpec}',
+                   f'-n={selected_tests}']
+            if batchSystem:
+                cmd.extend(["--batchSystem", batchSystem])
+
+            args_passed_directly_to_toil = ['--enable-dev']
+            if caching:
+                args_passed_directly_to_toil.extend(['--disableCaching="False"'])
+            cmd.extend(['--'] + args_passed_directly_to_toil)
+
             subprocess.check_output(cmd, cwd=self.cwlSpec, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
