@@ -229,7 +229,7 @@ py38_batch_systems:
   stage: test
   script:
     - pwd
-    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.8 python3.8-dev
     - virtualenv -p python3.8 venv && . venv/bin/activate && make prepare && make develop extras=[all] && pip install htcondor awscli==1.16.272
     - python -m pytest -s -r s src/toil/test/batchSystems/batchSystemTest.py
     - python -m pytest -s -r s src/toil/test/mesos/MesosDataStructuresTest.py
