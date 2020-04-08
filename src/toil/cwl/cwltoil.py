@@ -22,10 +22,12 @@ import os
 import tempfile
 import json
 import sys
+import stat
 import logging
 import copy
 import functools
 import uuid
+import urllib
 import datetime
 from typing import (Text,
                     Mapping,
@@ -46,6 +48,7 @@ from six.moves.urllib import parse as urlparse
 
 from schema_salad import validate
 from schema_salad.schema import Names
+from schema_salad.sourceline import SourceLine
 import schema_salad.ref_resolver
 
 import cwltool.errors
@@ -66,7 +69,7 @@ from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
                                 get_listing, MapperEnt, visit_class,
-                                normalizeFilesDirs)
+                                normalizeFilesDirs, downloadHttpFile)
 from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
                              add_sizes, Process)
 from cwltool.secrets import SecretStore
@@ -491,20 +494,48 @@ class ToilPathMapper(PathMapper):
 
         elif obj["class"] == "File":
             path = obj["location"]
-            if "contents" in obj and obj["location"].startswith("_:"):
+            ab = cwltool.stdfsaccess.abspath(path, basedir)
+            if "contents" in obj and path.startswith("_:"):
                 self._pathmap[path] = MapperEnt(
                     obj["contents"],
                     tgt,
-                    "CreateFile",  # TODO: Allow "WritableFile" here; see base class
+                    "CreateWritableFile" if copy else "CreateFile",
+                    # "CreateFile",  # TODO: Allow "WritableFile" here; see base class
                     staged)
             else:
-                resolved = self.get_file(path) if self.get_file else path
-                if resolved.startswith("file:"):
-                    resolved = schema_salad.ref_resolver.uri_file_path(resolved)
-                self._pathmap[path] = MapperEnt(
-                    resolved, tgt, "WritableFile" if copy else "File", staged)
-                self.visitlisting(obj.get("secondaryFiles", []),
-                                  stagedir, basedir, copy=copy, staged=staged)
+                with SourceLine(
+                    obj,
+                    "location",
+                    validate.ValidationException,
+                    cwllogger.isEnabledFor(logging.DEBUG),
+                ):
+                    deref = self.get_file(path) if self.get_file else ab
+                    if deref.startswith("file:"):
+                        deref = schema_salad.ref_resolver.uri_file_path(deref)
+                    if urllib.parse.urlsplit(deref).scheme in ["http", "https"]:
+                        deref = downloadHttpFile(path)
+                    elif urllib.parse.urlsplit(deref).scheme != 'toilfs':
+                        # Dereference symbolic links
+                        st = os.lstat(deref)
+                        while stat.S_ISLNK(st.st_mode):
+                            rl = os.readlink(deref)
+                            deref = (
+                                rl
+                                if os.path.isabs(rl)
+                                else os.path.join(os.path.dirname(deref), rl)
+                            )
+                            st = os.lstat(deref)
+
+                    self._pathmap[path] = MapperEnt(
+                        deref, tgt, "WritableFile" if copy else "File", staged
+                    )
+            self.visitlisting(
+                obj.get("secondaryFiles", []),
+                stagedir,
+                basedir,
+                copy=copy,
+                staged=staged,
+            )
 
 
 class ToilCommandLineTool(cwltool.command_line_tool.CommandLineTool):
@@ -689,7 +720,7 @@ def toilStageFiles(file_store: AbstractFileStore,
 
         if not os.path.exists(os.path.dirname(p.target)):
             os.makedirs(os.path.dirname(p.target), 0o0755)
-        if p.type == "File":
+        if p.type == "File" and not os.path.exists(p.target):
             file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
         elif p.type == "Directory" and not os.path.exists(p.target):
             os.makedirs(p.target, 0o0755)
@@ -1285,15 +1316,6 @@ class CWLWorkflow(Job):
                     promises=promises))
 
         return UnresolvedDict(outobj)
-
-
-cwltool.process.supportedProcessRequirements = (
-    "DockerRequirement", "ExpressionEngineRequirement",
-    "InlineJavascriptRequirement", "InitialWorkDirRequirement",
-    "SchemaDefRequirement", "EnvVarRequirement", "CreateFileRequirement",
-    "SubworkflowFeatureRequirement", "ScatterFeatureRequirement",
-    "ShellCommandRequirement", "MultipleInputFeatureRequirement",
-    "StepInputExpressionRequirement", "ResourceRequirement")
 
 
 def visitSteps(cmdline_tool: Union[cwltool.command_line_tool.CommandLineTool, cwltool.workflow.Workflow],
