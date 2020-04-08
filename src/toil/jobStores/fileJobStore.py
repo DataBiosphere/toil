@@ -60,7 +60,7 @@ class FileJobStore(AbstractJobStore):
 
     # What prefix should be on the per-job job directories, to distinguish them
     # from the spray directories?
-    JOB_DIR_PREFIX = 'instance'
+    JOB_DIR_PREFIX = 'instance-'
 
     # What prefix do we put on the per-job-name directories we sort jobs into?
     JOB_NAME_DIR_PREFIX = 'kind-'

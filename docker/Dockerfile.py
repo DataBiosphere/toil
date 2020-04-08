@@ -22,12 +22,17 @@ sdistName = os.environ['_TOIL_SDIST_NAME']
 
 # Make sure to install packages into the pip for the version of Python we are
 # building for.
-pip = 'python{}.{} -m pip'.format(sys.version_info[0], sys.version_info[1])
+python = f'python{sys.version_info[0]}.{sys.version_info[1]}'
+pip = f'{python} -m pip'
 
 
 dependencies = ' '.join(['libffi-dev',  # For client side encryption for extras with PyNACL
                          'python3.6',
                          'python3.6-dev',
+                         'python3.7',
+                         'python3.7-dev',
+                         'python3.8',
+                         'python3.8-dev',
                          'python-dev',  # For installing Python packages with native code
                          'python-pip',  # Bootstrap pip, but needs upgrading, see below
                          'python3-pip',
@@ -118,16 +123,16 @@ print(heredoc('''
     RUN chmod 777 /usr/bin/waitForKey.sh && chmod 777 /usr/bin/customDockerInit.sh
     
     # The stock pip is too old and can't install from sdist with extras
-    RUN {pip} install --upgrade pip==9.0.1
+    RUN {pip} install --upgrade pip==20.0.2
 
     # Default setuptools is too old
-    RUN {pip} install --upgrade setuptools==36.5.0
+    RUN {pip} install --upgrade setuptools==45
 
     # Include virtualenv, as it is still the recommended way to deploy pipelines
-    RUN {pip} install --upgrade virtualenv==15.0.3
+    RUN {pip} install --upgrade virtualenv==20.0.
 
     # Install s3am (--never-download prevents silent upgrades to pip, wheel and setuptools)
-    RUN virtualenv --python python3.6 --never-download /home/s3am \
+    RUN virtualenv --python {python} --never-download /home/s3am \
         && /home/s3am/bin/pip install s3am==2.0 \
         && ln -s /home/s3am/bin/s3am /usr/local/bin/
 
