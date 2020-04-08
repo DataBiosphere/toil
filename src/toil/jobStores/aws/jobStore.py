@@ -1113,12 +1113,16 @@ class AWSJobStore(AbstractJobStore):
                 expected = parts[1]
             
             hasher = getattr(hashlib, algorithm)()
+            
+            log.debug('Starting %s checksum to match %s', algorithm, expected)
+            
             return (algorithm, hasher, expected)
             
         def _update_checksum(self, checksum_in_progress, data):
             """
             Update a checksum in progress from _start_checksum with new data.
             """
+            log.debug('Updating checksum with %d bytes', len(data))
             checksum_in_progress[1].update(data)
         
         def _finish_checksum(self, checksum_in_progress):
@@ -1128,6 +1132,8 @@ class AWSJobStore(AbstractJobStore):
             """
             
             result_hash = checksum_in_progress[1].hexdigest()
+            
+            log.debug('Completed checksum with hash %s vs. expected %s', result_hash, checksum_in_progress[2])
             
             if checksum_in_progress[2] is not None:
                 # We expected a particular hash
@@ -1171,8 +1177,11 @@ class AWSJobStore(AbstractJobStore):
 
             class MultiPartPipe(WritablePipe):
                 def readFrom(self, readable):
+                    # Get the first block of data we want to put
                     buf = readable.read(store.partSize)
                     assert isinstance(buf, bytes)
+                    info._update_checksum(hasher, buf)
+                    
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
@@ -1186,9 +1195,6 @@ class AWSJobStore(AbstractJobStore):
                                     headers=headers)
                         try:
                             for part_num in itertools.count():
-                                # There must be at least one part, even if the file is empty.
-                                if len(buf) == 0 and part_num > 0:
-                                    break
                                 for attempt in retry_s3():
                                     with attempt:
                                         log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
@@ -1196,11 +1202,13 @@ class AWSJobStore(AbstractJobStore):
                                                                      # part numbers are 1-based
                                                                      part_num=part_num + 1,
                                                                      headers=headers)
-
-                                if len(buf) == 0:
-                                    break
+                                
+                                # Get the next block of data we want to put
                                 buf = readable.read(info.outer.partSize)
                                 assert isinstance(buf, bytes)
+                                if len(buf) == 0:
+                                    # Don't allow any part other than the very first to be empty.
+                                    break
                                 info._update_checksum(hasher, buf)
                         except:
                             with panic(log=log):
