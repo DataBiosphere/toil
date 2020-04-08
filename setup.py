@@ -47,7 +47,7 @@ def runSetup():
     kubernetes = 'kubernetes>=10, <11'
     idna = 'idna>=2'
     pytz = 'pytz>=2012'
-    dill = 'dill==0.2.7.1'
+    dill = 'dill==0.3.1.1'
     six = 'six>=1.10.0'
     future = 'future'
     requests = 'requests>=2, <3'
