@@ -320,13 +320,13 @@ class ResolveSource:
             else:
                 return result[0]
 
-        elif pick_value_type == "only_non_null":
+        elif pick_value_type == "the_only_non_null":
             if len(result) == 0:
                 raise cwltool.errors.WorkflowException(
-                    "%s: only_non_null operator found no non-null values" % self.name)
+                    f"{self.name}: the_only_non_null operator found no non-null values")
             elif len(result) > 1:
                 raise cwltool.errors.WorkflowException(
-                    "%s: only_non_null operator found more than one non-null values" % self.name)
+                    f"{self.name}: the_only_non_null operator found more than one non-null values")
             else:
                 return result[0]
 
@@ -335,7 +335,7 @@ class ResolveSource:
 
         else:
             raise cwltool.errors.WorkflowException(
-                "Unsupported pickValue '%s' on %s" % (pick_value_type, self.name))
+                f"Unsupported pickValue '{pick_value_type}' on {self.name}")
 
 
 class StepValueFrom:
