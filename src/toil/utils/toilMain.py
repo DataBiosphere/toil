@@ -1,38 +1,32 @@
-from __future__ import absolute_import, print_function
-from past.builtins import map
-from toil.version import version
-import pkg_resources
 import os
 import sys
 import re
+import textwrap
+import pkg_resources
 
-# Python 3 compatibility imports
-from six import iteritems, iterkeys
+from toil.version import version
+
 
 def main():
     modules = loadModules()
-    try:
-        command = sys.argv[1]
-    except IndexError:
+
+    if len(sys.argv) < 2 or sys.argv[1] == '--help':
         printHelp(modules)
-    else:
-        if command == '--help':
-            printHelp(modules)
-        elif command == '--version':
-            try:
-                print(pkg_resources.get_distribution('toil').version)
-            except:
-                print("Version gathered from toil.version: "+version)
-        else:
-            try:
-                module = modules[command]
-            except KeyError:
-                print("Unknown option '%s'. "
-                      "Pass --help to display usage information.\n" % command, file=sys.stderr)
-                sys.exit(1)
-            else:
-                del sys.argv[1]
-                module.main()
+        sys.exit(0)
+
+    cmd = sys.argv[1]
+    if cmd == '--version':
+        printVersion()
+        sys.exit(0)
+
+    try:
+        module = modules[cmd]
+        del sys.argv[1]
+        module.main()
+    except KeyError:
+        sys.stderr.write(f'Unknown option "{cmd}".  Pass --help to display usage information.\n')
+        sys.exit(1)
+
 
 def loadModules():
     # noinspection PyUnresolvedReferences
@@ -46,18 +40,25 @@ def loadModules():
                             toilRsyncCluster,
                             toilDebugFile,
                             toilDebugJob)
-    commandMapping = { "-".join(
-                     map(lambda x : x.lower(), re.findall('[A-Z][^A-Z]*', name)
-                     )) : module for name, module in iteritems(locals())}
-    return commandMapping
+    return {"-".join([i.lower() for i in re.findall('[A-Z][^A-Z]*', name)]): module for name, module in locals().items()}
+
 
 def printHelp(modules):
-    usage = ("\n"
-             "Usage: {name} COMMAND ...\n"
-             "       {name} --help\n"
-             "       {name} COMMAND --help\n\n"
-             "where COMMAND is one of the following:\n\n{descriptions}\n\n")
-    print(usage.format(
-        name=os.path.basename(sys.argv[0]),
-        commands='|'.join(iterkeys(modules)),
-        descriptions='\n'.join("%s - %s" % (n, str(m.__doc__).strip()) for n, m in iteritems(modules) if m is not None)))
+    name = os.path.basename(sys.argv[0])
+    descriptions = '\n        '.join(f'{cmd} - {mod.__doc__.strip()}' for cmd, mod in modules.items() if mod)
+    print(textwrap.dedent(f"""
+        Usage: {name} COMMAND ...
+               {name} --help
+               {name} COMMAND --help
+
+        Where COMMAND is one of the following:
+        
+        {descriptions}
+        """[1:]))
+
+
+def printVersion():
+    try:
+        print(pkg_resources.get_distribution('toil').version)
+    except:
+        print(f'Version gathered from toil.version: {version}')

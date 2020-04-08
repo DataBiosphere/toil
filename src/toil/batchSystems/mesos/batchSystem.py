@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,11 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from builtins import filter
-from builtins import str
-from builtins import object
 import ast
 import logging
 import os
@@ -27,20 +22,13 @@ import getpass
 import json
 import traceback
 import addict
-import subprocess
 
-try:
-    from urllib2 import urlopen
-    from urllib import quote_plus
-except ImportError:
-    from urllib.request import urlopen
-    from urllib.parse import quote_plus
-
+from urllib.request import urlopen
+from urllib.parse import quote_plus
 from contextlib import contextmanager
-from six.moves.queue import Empty, Queue
-from six import iteritems, itervalues
-
+from queue import Empty, Queue
 from pymesos import MesosSchedulerDriver, Scheduler, encode_data, decode_data
+
 from toil.lib.compatibility import USING_PYTHON2
 from toil import pickle
 from toil.lib.memoize import strict_bool
@@ -681,10 +669,10 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         nodeAddress = message.pop('address')
         executor = self._registerNode(nodeAddress, agentId.value)
         # Handle optional message fields
-        for k, v in iteritems(message):
+        for k, v in message.items():
             if k == 'nodeInfo':
                 assert isinstance(v, dict)
-                resources = [taskData for taskData in itervalues(self.runningJobMap)
+                resources = [taskData for taskData in self.runningJobMap.values()
                              if taskData.executorID == executorId.value]
                 requestedCores = sum(taskData.cores for taskData in resources)
                 requestedMemory = sum(taskData.memory for taskData in resources)
@@ -717,7 +705,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
     def getNodes(self, preemptable=None, timeout=600):
         timeout = timeout or sys.maxsize
         return {nodeAddress: executor.nodeInfo
-                for nodeAddress, executor in iteritems(self.executors)
+                for nodeAddress, executor in self.executors.items()
                 if time.time() - executor.lastSeen < timeout
                 and (preemptable is None
                      or preemptable == (executor.agentId not in self.nonPreemptableNodes))}
@@ -771,7 +759,7 @@ class MesosBatchSystem(BatchSystemLocalSupport,
             stderrFilenames = []
             # And look for the actual agent logs.
             agentLogFilenames = []
-            for filename in filesDict.iterkeys():
+            for filename in filesDict:
                 if (self.frameworkId in filename and agentID in filename and
                     (executorID is None or executorID in filename)):
                     
