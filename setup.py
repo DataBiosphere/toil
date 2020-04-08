@@ -45,6 +45,7 @@ def runSetup():
     galaxyToolUtil = 'galaxy-tool-util'
     htcondor = 'htcondor>=8.6.0'
     kubernetes = 'kubernetes>=10, <11'
+    idna = 'idna>=2'
     pytz = 'pytz>=2012'
     dill = 'dill==0.2.7.1'
     six = 'six>=1.10.0'
@@ -84,7 +85,8 @@ def runSetup():
     htcondor_reqs = [
         htcondor]
     kubernetes_reqs = [
-        kubernetes]
+        kubernetes,
+        idna] # Kubernetes's urllib3 can mange to use idna without really depending on it.
     mesos_reqs = [
         pymesos,
         psutil]

@@ -46,6 +46,12 @@ setup. Note: this target does not capture output from the terminal. For any of t
 set the 'tests' variable to run a particular test, e.g.
 
 	make test tests=src/toil/test/sort/sortTest.py::SortTest::testSort
+    
+The 'test_offline' target is similar, but runs on;y tests that don't need
+Internet or Docker by default. You can configure the tests it runs with the
+'tests_local' variable:
+
+    make test_offline tests_local=src/toil/test/src/threadingTest.py
 
 The 'integration_test' target runs toil's integration tests. These are more thorough but also
 more costly than the regular unit tests. For the AWS integration tests to run, the environment

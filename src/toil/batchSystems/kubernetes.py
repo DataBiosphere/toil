@@ -38,8 +38,9 @@ import pytz
 import string
 import subprocess
 import sys
-import uuid
+import tempfile
 import time
+import uuid
 import urllib3
 
 from kubernetes.client.rest import ApiException
@@ -47,10 +48,13 @@ from six.moves.queue import Empty, Queue
 
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
+                                                   BatchSystemSupport,
                                                    BatchSystemLocalSupport,
                                                    EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
+from toil.common import Toil
 from toil.lib.humanize import human2bytes
+from toil.lib.threading import LastProcessStandingArena
 from toil.resource import Resource
 
 from toil.lib.retry import retry
@@ -106,8 +110,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
     @classmethod
     def supportsWorkerCleanup(cls):
-        return False
-    
+        return True
    
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
@@ -126,6 +129,13 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         # Get our namespace (and our Kubernetes credentials to make sure they exist)
         self.namespace = self._api('namespace')
+        
+        # Decide if we are going to mount a Kubernetes host path as /tmp in the workers.
+        # If we do this and the work dir is the default of the temp dir, caches will be shared.
+        self.host_path = config.kubernetesHostPath
+        if self.host_path is None and os.environ.get("TOIL_KUBERNETES_HOST_PATH", None) is not None:
+            # We can also take it from an environment variable
+            self.host_path = os.environ.get("TOIL_KUBERNETES_HOST_PATH")
 
         # Make a Kubernetes-acceptable version of our username: not too long,
         # and all lowercase letters, numbers, or - or .
@@ -149,6 +159,18 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         # Ge the image to deploy from Toil's configuration
         self.dockerImage = applianceSelf()
+        
+        # Try and guess what Toil work dir the workers will use.
+        # We need to be able to provision (possibly shared) space there.
+        self.workerWorkDir = Toil.getToilWorkDir(config.workDir)
+        if (config.workDir is None and
+            os.getenv('TOIL_WORKDIR') is None and
+            self.workerWorkDir == tempfile.gettempdir()):
+            
+            # We defaulted to the system temp directory. But we think the
+            # worker Dockerfiles will make them use /var/lib/toil instead.
+            # TODO: Keep this in sync with the Dockerfile.
+            self.workerWorkDir = '/var/lib/toil'
 
         # Get the name of the AWS secret, if any, to mount in containers.
         # TODO: have some way to specify this (env var?)!
@@ -183,7 +205,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         max_age_seconds needs to be << your cluster's credential expiry time.
         """
         
-        now = datetime.datetime.now()
+        now = utc_now()
         
         if self.credential_time is None or (now - self.credential_time).total_seconds() > max_age_seconds:
             # Credentials need a refresh
@@ -279,6 +301,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             job = {'command': jobNode.command,
                    'environment': self.environment.copy()}
             # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
+            
+            # Send the worker cleanup info so that the last worker on a
+            # host to shut down can clean up if warranted.
+            job['workerCleanupInfo'] = self.workerCleanupInfo
 
             if self.userScript is not None:
                 # If there's a user script resource be sure to send it along
@@ -317,14 +343,25 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             volumes = []
             mounts = []
             
-            # Mount volume to provision disk
-            ephemeral_volume_name = 'tmp'
-            ephemeral_volume_source = kubernetes.client.V1EmptyDirVolumeSource()
-            ephemeral_volume = kubernetes.client.V1Volume(name=ephemeral_volume_name,
-                                                          empty_dir=ephemeral_volume_source)
-            volumes.append(ephemeral_volume)
-            ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path='/tmp', name=ephemeral_volume_name)
-            mounts.append(ephemeral_volume_mount)
+            if self.host_path is not None:
+                # Provision Toil WorkDir from a HostPath volume, to share with other pods
+                host_path_volume_name = 'workdir'
+                # Use type='Directory' to fail if the host directory doesn't exist already.
+                host_path_volume_source = kubernetes.client.V1HostPathVolumeSource(path=self.host_path, type='Directory')
+                host_path_volume = kubernetes.client.V1Volume(name=host_path_volume_name,
+                                                             host_path=host_path_volume_source)
+                volumes.append(host_path_volume)
+                host_path_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.workerWorkDir, name=host_path_volume_name)
+                mounts.append(host_path_volume_mount)
+            else:
+                # Provision Toil WorkDir as an ephemeral volume
+                ephemeral_volume_name = 'workdir'
+                ephemeral_volume_source = kubernetes.client.V1EmptyDirVolumeSource()
+                ephemeral_volume = kubernetes.client.V1Volume(name=ephemeral_volume_name,
+                                                              empty_dir=ephemeral_volume_source)
+                volumes.append(ephemeral_volume)
+                ephemeral_volume_mount = kubernetes.client.V1VolumeMount(mount_path=self.workerWorkDir, name=ephemeral_volume_name)
+                mounts.append(ephemeral_volume_mount)
 
             if self.awsSecretName is not None:
                 # Also mount an AWS secret, if provided.
@@ -982,10 +1019,13 @@ def executor():
 
     logging.basicConfig(level=logging.DEBUG)
     logger.debug("Starting executor")
+    
+    # If we don't manage to run the child, what should our exit code be?
+    exit_code = EXIT_STATUS_UNAVAILABLE_VALUE
 
     if len(sys.argv) != 2:
         logger.error('Executor requires exactly one base64-encoded argument')
-        sys.exit(1)
+        sys.exit(exit_code)
 
     # Take in a base64-encoded pickled dict as our first argument and decode it
     try:
@@ -994,27 +1034,60 @@ def executor():
     except:
         exc_info = sys.exc_info()
         logger.error('Exception while unpickling task: ', exc_info=exc_info)
-        sys.exit(1)
+        sys.exit(exit_code)
 
+    if 'environment' in job:
+        # Adopt the job environment into the executor.
+        # This lets us use things like TOIL_WORKDIR when figuring out how to talk to other executors.
+        logger.debug('Adopting environment: %s', str(job['environment'].keys()))
+        for var, value in job['environment'].items():
+            os.environ[var] = value
+    
     # Set JTRES_ROOT and other global state needed for resource
     # downloading/deployment to work.
+    # TODO: Every worker downloads resources independently.
+    # We should have a way to share a resource directory.
     logger.debug('Preparing system for resource download')
     Resource.prepareSystem()
+    try:
+        if 'userScript' in job:
+            job['userScript'].register()
+            
+        # We need to tell other workers in this workflow not to do cleanup now that
+        # we are here, or else wait for them to finish. So get the cleanup info
+        # that knows where the work dir is.
+        cleanupInfo = job['workerCleanupInfo']
+        
+        # Join a Last Process Standing arena, so we know which process should be
+        # responsible for cleanup.
+        # We need to use the real workDir, not just the override from cleanupInfo.
+        # This needs to happen after the environment is applied.
+        arena = LastProcessStandingArena(Toil.getToilWorkDir(cleanupInfo.workDir), 
+            cleanupInfo.workflowID + '-kube-executor')
+        arena.enter()
+        try:
+            
+            # Start the child process
+            logger.debug("Invoking command: '%s'", job['command'])
+            child = subprocess.Popen(job['command'],
+                                     preexec_fn=lambda: os.setpgrp(),
+                                     shell=True)
 
-    if 'userScript' in job:
-        job['userScript'].register()
-    logger.debug("Invoking command: '%s'", job['command'])
-    # Construct the job's environment
-    jobEnv = dict(os.environ, **job['environment'])
-    logger.debug('Using environment variables: %s', jobEnv.keys())
-    
-    # Start the child process
-    child = subprocess.Popen(job['command'],
-                             preexec_fn=lambda: os.setpgrp(),
-                             shell=True,
-                             env=jobEnv)
-
-    # Reporduce child's exit code
-    sys.exit(child.wait())
+            # Reproduce child's exit code
+            exit_code = child.wait()
+            
+        finally:
+            for _ in arena.leave():
+                # We are the last concurrent executor to finish.
+                # Do batch system cleanup.
+                logger.debug('Cleaning up worker')
+                BatchSystemSupport.workerCleanup(cleanupInfo)
+    finally:
+        logger.debug('Cleaning up resources')
+        # TODO: Change resource system to use a shared resource directory for everyone.
+        # Then move this into the last-process-standing cleanup
+        Resource.cleanSystem()
+        logger.debug('Shutting down')
+        sys.exit(exit_code)
 
 

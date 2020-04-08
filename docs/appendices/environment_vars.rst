@@ -24,12 +24,15 @@ There are several environment variables that affect the way Toil runs.
 |                                  | write its temporary files. This directory must     |
 |                                  | exist on each worker node and may be set to a      |
 |                                  | different value on each worker. The ``--workDir``  |
-|                                  | command line option overrides this. On Mesos nodes,|
-|                                  | ``TOIL_WORKDIR`` generally defaults to the Mesos   |
-|                                  | sandbox, except on CGCloud-provisioned nodes where |
-|                                  | it defaults to ``/var/lib/mesos``. In all other    |
-|                                  | cases, the system's `standard temporary directory`_|
-|                                  | is used.                                           |
+|                                  | command line option overrides this. When using the |
+|                                  | Toil docker container, such as on Kubernetes, this |
+|                                  | defaults to ``/var/lib/toil``. When using Toil     |
+|                                  | autoscaling with Mesos, this is somewhere inside   |
+|                                  | the Mesos sandbox. In all other cases, the         |
+|                                  | system's `standard temporary directory`_ is used.  |
++----------------------------------+----------------------------------------------------+
+| TOIL_KUBERNETES_HOST_PATH        | A path on Kubernetes hosts that will be mounted as |
+|                                  | /tmp in the workers, to allow for shared caching.  |
 +----------------------------------+----------------------------------------------------+
 | TOIL_KUBERNETES_OWNER            | A name prefix for easy identification of           |
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
@@ -134,4 +137,4 @@ There are several environment variables that affect the way Toil runs.
 |                                  | --no-include-email --region us-east-1)``.          |
 +----------------------------------+----------------------------------------------------+
 
-.. _standard temporary directory: https://docs.python.org/2/library/tempfile.html#tempfile.gettempdir
+.. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir
