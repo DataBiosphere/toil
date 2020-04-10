@@ -423,11 +423,13 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
             for package in reversed(name.split('.')):
                 dirPathTail = filePath.pop()
                 assert dirPathTail == package
-            dirPath = os.path.sep.join(filePath)
-        log.debug("Module dir is %s", dirPath)
+            dirPath = os.path.abspath(os.path.sep.join(filePath))
+        absPrefix = os.path.abspath(sys.prefix)
+        inVenv = inVirtualEnv()
+        log.debug("Module dir is %s, our prefix is %s, virtualenv: %s", dirPath, absPrefix, inVenv)
         if not os.path.isdir(dirPath):
             raise Exception('Bad directory path %s for module %s. Note that hot-deployment does not support .egg-link files yet, or scripts located in the root directory.' % (dirPath, name))
-        fromVirtualEnv = inVirtualEnv() and dirPath.startswith(sys.prefix)
+        fromVirtualEnv = inVenv and dirPath.startswith(absPrefix)
         return cls(dirPath=dirPath, name=name, fromVirtualEnv=fromVirtualEnv)
 
     @classmethod

@@ -129,7 +129,10 @@ def inVirtualEnv():
     """
     Returns whether we are inside a virtualenv or Conda virtual environment.
     """
-    return hasattr(sys, 'real_prefix') or 'CONDA_DEFAULT_ENV' in os.environ
+    return ('VIRTUAL_ENV' in os.environ or
+            'CONDA_DEFAULT_ENV' in os.environ or
+            hasattr(sys, 'real_prefix') or
+            (hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix))
 
 
 def resolveEntryPoint(entryPoint):
