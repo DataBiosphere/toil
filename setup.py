@@ -24,7 +24,7 @@ def runSetup():
     boto3 = 'boto3>=1.7.50, <2.0'
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
-    pymesos = '=pymesos==0.3.80'
+    pymesos = 'pymesos==0.3.80'
     psutil = 'psutil >= 3.0.1, <6'
     pynacl = 'pynacl==1.3.0'
     gcs = 'google-cloud-storage==1.6.0'
