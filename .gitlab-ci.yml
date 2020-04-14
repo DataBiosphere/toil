@@ -46,7 +46,7 @@ appliance_build:
 
 # Python3.7
 py37_batch_systems:
-  stage: test
+  stage: main_tests
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
@@ -55,7 +55,7 @@ py37_batch_systems:
     - python -m pytest --duration=0 -s -r s src/toil/test/mesos/MesosDataStructuresTest.py
 
 py37_cwl_v1.0:
-  stage: test
+  stage: main_tests
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
@@ -64,7 +64,7 @@ py37_cwl_v1.0:
     - python -m pytest --duration=0 -s -r s src/toil/test/cwl/cwlTest.py::CWLv10Test
 
 py37_cwl_v1.1:
-  stage: test
+  stage: main_tests
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
@@ -72,7 +72,7 @@ py37_cwl_v1.1:
     - python -m pytest --duration=0 -s -r s src/toil/test/cwl/cwlTest.py::CWLv11Test
 
 py37_wdl:
-  stage: test
+  stage: main_tests
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
@@ -80,7 +80,7 @@ py37_wdl:
     - python -m pytest --duration=0 -s -r s src/toil/test/wdl/toilwdlTest.py
 
 py37_jobstore_and_provisioning:
-  stage: test
+  stage: main_tests
   script:
     - pwd
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
