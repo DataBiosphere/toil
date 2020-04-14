@@ -14,17 +14,6 @@
 from setuptools import find_packages, setup
 import os
 
-# setting the 'CPPFLAGS' flag specifies the necessary cython dependency for "http-parser", for more info:
-# toil issue: https://github.com/DataBiosphere/toil/issues/2924
-# very similar to this issue: https://github.com/mcfletch/pyopengl/issues/11
-# the "right way" is waiting for a fix from "http-parser", but this fixes things in the meantime since that might take a while
-cppflags = os.environ.get('CPPFLAGS')
-if cppflags:
-    # note, duplicate options don't affect things here so we don't check - Mark D
-    os.environ['CPPFLAGS'] = ' '.join([cppflags, '-DPYPY_VERSION'])
-else:
-    os.environ['CPPFLAGS'] = '-DPYPY_VERSION'
-
 
 def runSetup():
     """
@@ -35,7 +24,7 @@ def runSetup():
     boto3 = 'boto3>=1.7.50, <2.0'
     futures = 'futures==3.1.1'
     pycryptodome = 'pycryptodome==3.5.1'
-    pymesos = 'toil-pymesos==0.3.80'
+    pymesos = 'pymesos==0.3.15'
     psutil = 'psutil >= 3.0.1, <6'
     pynacl = 'pynacl==1.3.0'
     gcs = 'google-cloud-storage==1.6.0'
