@@ -250,7 +250,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                                                    workflowID=self.config.workflowID,
                                                    cleanWorkDir=self.config.cleanWorkDir)
 
-    def checkResourceRequest(self, memory, cores, disk):
+    def checkResourceRequest(self, memory, cores, disk, name=None, hint=None):
         """
         Check resource request is not greater than that available or allowed.
 
@@ -259,6 +259,10 @@ class BatchSystemSupport(AbstractBatchSystem):
         :param float cores: number of cores being requested
 
         :param int disk: amount of disk space being requested, in bytes
+        
+        :param str name: Name of the job being checked, for generating a useful error report.
+        
+        :param str hint: Batch-system-specific hint to include in the error.
 
         :raise InsufficientSystemResources: raised when a resource is requested in an amount
                greater than allowed
@@ -267,11 +271,14 @@ class BatchSystemSupport(AbstractBatchSystem):
         assert disk is not None
         assert cores is not None
         if cores > self.maxCores:
-            raise InsufficientSystemResources('cores', cores, self.maxCores)
+            raise InsufficientSystemResources('cores', cores, self.maxCores,
+                                              batchSystem=self.__class__.__name__, name=name, hint=hint)
         if memory > self.maxMemory:
-            raise InsufficientSystemResources('memory', memory, self.maxMemory)
+            raise InsufficientSystemResources('memory', memory, self.maxMemory,
+                                              batchSystem=self.__class__.__name__, name=name, hint=hint)
         if disk > self.maxDisk:
-            raise InsufficientSystemResources('disk', disk, self.maxDisk)
+            raise InsufficientSystemResources('disk', disk, self.maxDisk,
+                                              batchSystem=self.__class__.__name__, name=name, hint=hint)
 
     def setEnv(self, name, value=None):
         """
@@ -516,7 +523,7 @@ class InsufficientSystemResources(Exception):
     To be raised when a job requests more of a particular resource than is either currently allowed
     or avaliable
     """
-    def __init__(self, resource, requested, available):
+    def __init__(self, resource, requested, available, batchSystem=None, name=None, hint=None):
         """
         Creates an instance of this exception that indicates which resource is insufficient for current
         demands, as well as the amount requested and amount actually available.
@@ -527,12 +534,37 @@ class InsufficientSystemResources(Exception):
                in this exception
 
         :param int|float available: amount of the particular resource actually available
+        
+        :param str batchSystem: Name of the batch system class complaining, for
+                   generating a useful error report. If you are using a single machine
+                   batch system for local jobs in another batch system, it is important to
+                   know which one has run out of resources.
+        
+        :param str name: Name of the job being checked, for generating a useful error report.
+        
+        :param str hint: Batch-system-specific hint to include in the error.
         """
         self.requested = requested
         self.available = available
         self.resource = resource
+        self.batchSystem = batchSystem if batchSystem is not None else 'this batch system'
+        self.unit = 'bytes of ' if resource == 'disk' or resource == 'memory' else ''
+        self.name = name
+        self.hint = hint
 
     def __str__(self):
-        return 'Requesting more {} than either physically available, or enforced by --max{}. ' \
-               'Requested: {}, Available: {}'.format(self.resource, self.resource.capitalize(),
-                                                     self.requested, self.available)
+        if self.name is not None:
+            phrases = [('The job {} is requesting {}{}, more than '
+                        'the maximum of {} {} was configured '
+                        'with.'.format(self.name, self.requested, self.unit,
+                                       self.resource, self.available, self.batchSystem)]
+        else:
+            phrases = [('Requesting more {} than either physically available to {}, or enforced by --max{}. '
+                        'Requested: {}, Available: {}'.format(self.resource, self.batchSystem,
+                                                              self.resource.capitalize(),
+                                                              self.requested, self.available))]
+        
+        if self.hint is not None:
+            phrases.append(self.hint)
+            
+        return ' '.join(phrases)

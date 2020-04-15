@@ -474,16 +474,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self._checkOnDaddy()
 
-        # Round cores to minCores and apply scale
-        cores = math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores
-        assert cores <= self.maxCores, ('The job {} is requesting {} cores, more than the maximum of '
-                                        '{} cores this batch system was configured with. Scale is '
-                                        'set to {}.'.format(jobNode.jobName, cores, self.maxCores, self.scale))
-        assert cores >= self.minCores
-        assert jobNode.memory <= self.maxMemory, ('The job {} is requesting {} bytes of memory, more than '
-                                          'the maximum of {} this batch system was configured '
-                                          'with.'.format(jobNode.jobName, jobNode.memory, self.maxMemory))
-
+        # Round cores to minCores and apply scale.
+        # Make sure to give minCores even if asked for 0 cores, or negative or something. 
+        cores = max(math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores, self.minCores)
+        
+        # Don't do our own assertions about job size vs. our configured size.
+        # The abstract batch system can handle it.
+        self.checkResourceRequest(jobNode.memory, cores, jobNode.disk, name=jobNode.jobName,
+            hint='Scale is set to {}.'.format(self.scale))
+        
         self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
             jobNode.command, jobNode.memory, cores, jobNode.disk))
