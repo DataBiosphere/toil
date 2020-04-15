@@ -134,9 +134,9 @@ class GridEngineBatchSystem(AbstractGridEngineBatchSystem):
                     if arg.startswith(("vf=", "hvmem=", "-pe")):
                         raise ValueError("Unexpected CPU, memory or pe specifications in TOIL_GRIDGENGINE_ARGs: %s" % arg)
                 qsubline.extend(sgeArgs)
-            if cpu is not None and math.ceil(cpu) > 1:
-                peConfig = os.getenv('TOIL_GRIDENGINE_PE') or 'shm'
-                qsubline.extend(['-pe', peConfig, str(int(math.ceil(cpu)))])
+            if os.getenv('TOIL_GRIDENGINE_PE') is not None:
+                peCpu = int(math.ceil(cpu)) if cpu is not None else 1
+                qsubline.extend(['-pe', os.getenv('TOIL_GRIDENGINE_PE'), str(peCpu)])
 
             stdoutfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_output')
             stderrfile = self.boss.formatStdOutErrPath(jobID, 'gridengine', '$JOB_ID', 'std_error')
