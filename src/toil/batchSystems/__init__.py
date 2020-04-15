@@ -16,6 +16,21 @@ import sys
 
 from functools import total_ordering
 
+class DeadlockException(Exception):
+    """
+    Exception thrown by the Leader or BatchSystem when a deadlock is encountered due to insufficient
+    resources to run the workflow
+    """
+    def __init__(self, msg):
+        self.msg = "Deadlock encountered: " + msg
+        super().__init__()
+
+    def __str__(self):
+        """
+        Stringify the exception, including the message.
+        """
+        return self.msg
+
 @total_ordering
 class MemoryString:
     """

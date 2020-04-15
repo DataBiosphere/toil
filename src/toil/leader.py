@@ -36,6 +36,7 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 from toil.jobStores.abstractJobStore import NoSuchJobException
+from toil.batchSystems import DeadlockException
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
@@ -91,22 +92,6 @@ class FailedJobsException(Exception):
         """
         return self.msg
     
-
-####################################################
-# Exception thrown by the Leader class when a deadlock is encountered due to insufficient
-# resources to run the workflow
-####################################################
-
-class DeadlockException(Exception):
-    def __init__(self, msg):
-        self.msg = "Deadlock encountered: " + msg
-        super().__init__()
-
-    def __str__(self):
-        """
-        Stringify the exception, including the message.
-        """
-        return self.msg
 
 ####################################################
 ##Following class represents the leader
