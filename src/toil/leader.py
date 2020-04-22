@@ -581,10 +581,21 @@ class Leader(object):
             
             # If all the running jobs are active services then we have a potential deadlock
             if len(runningServiceJobs) == totalRunningJobs:
+                # There could be trouble; we are 100% services.
+                # See if the batch system has anything to say for itself about its failure to run our jobs.
+                hint = self.batchSystem.getSchedulingHint()
+                if hint is not None:
+                    # Prepend something explaining the hint
+                    hint = "The batch system reports: {}".format(hint)
+                else:
+                    # Use a generic hint if none is available
+                    hint = "Cluster may be too small."
+                    
+            
                 # See if this is a new potential deadlock
                 if self.potentialDeadlockedJobs != runningServiceJobs:
                     logger.warning(("Potential deadlock detected! All %s running jobs are service jobs, "
-                                    "with no normal jobs to use them! Cluster may be too small!"), totalRunningJobs)
+                                    "with no normal jobs to use them! %s"), totalRunningJobs, hint)
                     self.potentialDeadlockedJobs = runningServiceJobs
                     self.potentialDeadlockTime = time.time()
                 else:
@@ -599,8 +610,8 @@ class Leader(object):
                         # Complain that we are still stuck.
                         waitingNormalJobs = self.getNumberOfJobsIssued() - totalServicesIssued
                         logger.warning(("Potentially deadlocked for %.0f seconds. Waiting at most %.0f more seconds "
-                                        "for any of %d issued non-service jobs to schedule and start."),
-                                       stuckFor, self.config.deadlockWait - stuckFor, waitingNormalJobs)
+                                        "for any of %d issued non-service jobs to schedule and start. %s"),
+                                       stuckFor, self.config.deadlockWait - stuckFor, waitingNormalJobs, hint)
             else:
                 # We have observed non-service jobs running, so reset the potential deadlock
                 

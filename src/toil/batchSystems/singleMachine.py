@@ -153,6 +153,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.memory = ResourcePool(self.maxMemory, 'memory')
         # A pool representing the available space in bytes
         self.disk = ResourcePool(self.maxDisk, 'disk')
+        
+        # If we can't schedule something, we fill this in with a hint as to
+        # why.
+        self.schedulingHint = None
 
         # We use this event to signal shutdown
         self.shuttingDown = Event()
@@ -169,7 +173,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             self.daddyThread = Thread(target=self.daddy, daemon=True)
             self.daddyThread.start()
             log.debug('Started in normal mode.')
-
+            
     def daddy(self):
         """
         Be the "daddy" thread.
@@ -345,6 +349,21 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.runningJobs.pop(jobID)
         if not info.killIntended:
             self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=0, wallTime=time.time() - info.time, exitReason=None))
+            
+    def getSchedulingHint(self):
+        # Implement the abstractBatchSystem's scheduling hint API
+        return self.schedulingHint
+    
+    def _setSchedulingHint(self, hint):
+        """
+        If we can't run a job, we record a short hint about why not.
+        If the leader wants to know what is up with us (for example,m to diagnose a deadlock), it can ask us for the hint.
+        """
+        
+        self.schedulingHint = hint
+        
+        # Report the hint in the debug log too.
+        log.debug(hint)
 
     def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, environment):
         """
@@ -416,13 +435,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # We can't get disk, so free cores and memory
                     self.coreFractions.release(coreFractions)
                     self.memory.release(jobMemory)
-                    log.debug('Not enough disk to run job %s', jobID)
+                    self._setSchedulingHint('Not enough disk to run job %s' % jobID)
             else:
                 # Free cores, since we can't get memory
                 self.coreFractions.release(coreFractions)
-                log.debug('Not enough memory to run job %s', jobID)
+                self._setSchedulingHint('Not enough memory to run job %s' % jobID)
         else:
-            log.debug('Not enough cores to run job %s', jobID)
+            self._setSchedulingHint('Not enough cores to run job %s' % jobID)
 
         # If we get here, we didn't succeed or fail starting the job.
         # We didn't manage to get the resources.

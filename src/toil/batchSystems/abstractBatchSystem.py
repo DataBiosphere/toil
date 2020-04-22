@@ -180,6 +180,26 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
                  that were killed.
         """
         raise NotImplementedError()
+        
+    def getSchedulingHint(self):
+        """
+        Get a hint for the user about anything that might be going wrong in the
+        batch system, if available.
+        
+        If no hint is available, return None.
+        
+        This can be used to report what resource is the limiting factor when
+        scheduling jobs, for example. If the leader thinks the workflow is
+        stuck, the hint can be displayed to the user to help them diagnose why
+        it might be stuck.
+        
+        :rtype: str or None
+        :return: User-directed hint about scheduling state.
+        """
+        
+        # Default implementation returns None.
+        # Override to provide hints.
+        return None
 
     @abstractmethod
     def shutdown(self):
