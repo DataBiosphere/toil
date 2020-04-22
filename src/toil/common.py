@@ -468,16 +468,16 @@ def _addOptions(addGroupFn, config):
             "Allows the specification of the maximum number of service jobs "
             "in a cluster. By keeping this limited "
             " we can avoid all the nodes being occupied with services, so causing a deadlock")
-        addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None,
+        addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None, type=int,
                     help=(
                     "The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
-        addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
+        addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None, type=int,
                     help=(
                     "The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
-        addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
+        addOptionFn("--deadlockWait", dest="deadlockWait", default=None, type=int,
                     help=(
                     "The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
-        addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
+        addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
                     help=("Time, in seconds, to wait before doing a scheduler query for job state. "
                           "Return cached results if within the waiting period."))
 
