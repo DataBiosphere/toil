@@ -45,6 +45,8 @@ from toil.job import JobNode, ServiceJobNode
 from toil.toilState import ToilState
 from toil.common import Toil, ToilMetrics
 
+import enlighten
+
 logger = logging.getLogger( __name__ )
 
 ###############################################################################
@@ -196,6 +198,12 @@ class Leader(object):
         self.deadlockThrottler = LocalThrottle(self.config.deadlockWait)
         
         self.statusThrottler = LocalThrottle(self.config.statusWait)
+        
+        # For fancy console UI, we use an Enlighten counter that displays running / queued jobs
+        # This gets filled in in run() and updated periodically.
+        self.progress_overall = None
+        # Also we have a running vs issued progress meter
+        self.progress_scheduling = None
 
     def run(self):
         """
@@ -206,60 +214,66 @@ class Leader(object):
         :return: The return value of the root job's run function.
         :rtype: Any
         """
-        # Start the stats/logging aggregation thread
-        self.statsAndLogging.start()
-        if self.config.metrics:
-            self.toilMetrics = ToilMetrics(provisioner=self.provisioner)
+        
+        with enlighten.get_manager() as manager:
+            # Set up the fancy console UI if desirable
+            self.progress_overall = manager.counter(total=0, desc='Workflow Progress', unit='jobs')
+            self.progress_scheduling = manager.counter(total=0, desc='Running', unit='jobs')
+        
+            # Start the stats/logging aggregation thread
+            self.statsAndLogging.start()
+            if self.config.metrics:
+                self.toilMetrics = ToilMetrics(provisioner=self.provisioner)
 
-        try:
-
-            # Start service manager thread
-            self.serviceManager.start()
             try:
 
-                # Create cluster scaling processes if not None
-                if self.clusterScaler is not None:
-                    self.clusterScaler.start()
-
+                # Start service manager thread
+                self.serviceManager.start()
                 try:
-                    # Run the main loop
-                    self.innerLoop()
-                finally:
+
+                    # Create cluster scaling processes if not None
                     if self.clusterScaler is not None:
-                        logger.debug('Waiting for workers to shutdown.')
-                        startTime = time.time()
-                        self.clusterScaler.shutdown()
-                        logger.debug('Worker shutdown complete in %s seconds.', time.time() - startTime)
+                        self.clusterScaler.start()
+
+                    try:
+                        # Run the main loop
+                        self.innerLoop()
+                    finally:
+                        if self.clusterScaler is not None:
+                            logger.debug('Waiting for workers to shutdown.')
+                            startTime = time.time()
+                            self.clusterScaler.shutdown()
+                            logger.debug('Worker shutdown complete in %s seconds.', time.time() - startTime)
+
+                finally:
+                    # Ensure service manager thread is properly shutdown
+                    self.serviceManager.shutdown()
 
             finally:
-                # Ensure service manager thread is properly shutdown
-                self.serviceManager.shutdown()
+                # Ensure the stats and logging thread is properly shutdown
+                self.statsAndLogging.shutdown()
+                if self.toilMetrics:
+                    self.toilMetrics.shutdown()
 
-        finally:
-            # Ensure the stats and logging thread is properly shutdown
-            self.statsAndLogging.shutdown()
-            if self.toilMetrics:
-                self.toilMetrics.shutdown()
+            # Filter the failed jobs
+            self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
 
-        # Filter the failed jobs
-        self.toilState.totalFailedJobs = [j for j in self.toilState.totalFailedJobs if self.jobStore.exists(j.jobStoreID)]
+            try:
+                self.create_status_sentinel_file(self.toilState.totalFailedJobs)
+            except IOError as e:
+                logger.debug('Error from importFile with hardlink=True: {}'.format(e))
 
-        try:
-            self.create_status_sentinel_file(self.toilState.totalFailedJobs)
-        except IOError as e:
-            logger.debug('Error from importFile with hardlink=True: {}'.format(e))
+            logger.info("Finished toil run %s" %
+                         ("successfully." if not self.toilState.totalFailedJobs \
+                    else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))
 
-        logger.info("Finished toil run %s" %
-                     ("successfully." if not self.toilState.totalFailedJobs \
-                else ("with %s failed jobs." % len(self.toilState.totalFailedJobs))))
+            if len(self.toilState.totalFailedJobs):
+                logger.info("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
+            # Cleanup
+            if len(self.toilState.totalFailedJobs) > 0:
+                raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
 
-        if len(self.toilState.totalFailedJobs):
-            logger.info("Failed jobs at end of the run: %s", ' '.join(str(job) for job in self.toilState.totalFailedJobs))
-        # Cleanup
-        if len(self.toilState.totalFailedJobs) > 0:
-            raise FailedJobsException(self.config.jobStore, self.toilState.totalFailedJobs, self.jobStore)
-
-        return self.jobStore.getRootJobReturnValue()
+            return self.jobStore.getRootJobReturnValue()
 
     def create_status_sentinel_file(self, fail):
         """Create a file in the jobstore indicating failure or success."""
@@ -571,7 +585,8 @@ class Leader(object):
                 self.checkForDeadlocks()
                 
             if self.statusThrottler.throttle(wait=False):
-                # Time to tell the user how things are going
+                # Time to tell the user how things are going, and/or fully
+                # refresh our idea of running jobs
                 self._reportWorkflowStatus()
 
         logger.debug("Finished the main loop: no jobs left to run.")
@@ -635,6 +650,9 @@ class Leader(object):
         if self.toilMetrics:
             self.toilMetrics.logIssuedJob(jobNode)
             self.toilMetrics.logQueueSize(self.getNumberOfJobsIssued())
+        # Tell the user there's another job to do
+        self.progress_overall.total += 1
+        self.progress_overall.update(incr=0)
 
     def issueJobs(self, jobs):
         """Add a list of jobs, each represented as a jobNode object."""
@@ -678,32 +696,22 @@ class Leader(object):
             assert len(self.jobBatchSystemIDToIssuedJob) >= self.preemptableJobsIssued
             return len(self.jobBatchSystemIDToIssuedJob) - self.preemptableJobsIssued
 
-    def _getStatusHint(self):
-        """
-        Get a short string describing the current state of the workflow for a human.
-        
-        Should include number of currently running jobs, number of issued jobs, etc.
-        
-        Don't call this too often; it will talk to the batch system, which may
-        make queries of the backing scheduler.
-        
-        :return: A one-line description of the current status of the workflow.
-        :rtype: str
-        """
-        
-        issuedJobCount = self.getNumberOfJobsIssued()
-        runningJobCount = len(self.batchSystem.getRunningBatchJobIDs())
-        
-        return "%d jobs are running, %d jobs are issued and waiting to run" % (runningJobCount, issuedJobCount - runningJobCount)
-        
     def _reportWorkflowStatus(self):
         """
         Report the current status of the workflow to the user.
         """
         
-        # For now just log our status hint to the log.
-        # TODO: fancier UI?
-        logger.info(self._getStatusHint())
+        issuedJobCount = self.getNumberOfJobsIssued()
+        runningJobCount = len(self.batchSystem.getRunningBatchJobIDs())
+        
+        if self.progress_scheduling.enabled:
+            # Update the backlog meter
+            self.progress_scheduling.total = issuedJobCount
+            self.progress_scheduling.count = runningJobCount 
+            self.progress_scheduling.refresh()
+        else:
+            # Log a message
+            log.info("%d jobs are running, %d jobs are issued and waiting to run", runningJobCount, issuedJobCount - runningJobCount)
 
     def removeJob(self, jobBatchSystemID):
         """Removes a job from the system."""
@@ -722,6 +730,9 @@ class Leader(object):
                 self.preemptableServiceJobsIssued -= 1
             else:
                 self.serviceJobsIssued -= 1
+
+        # Tell the user that job is done, for progress purposes.
+        self.progress_overall.update(incr=1)
 
         return jobNode
 

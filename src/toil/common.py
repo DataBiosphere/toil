@@ -131,7 +131,7 @@ class Config(object):
         self.useAsync = True
         self.forceDockerAppliance = False
         self.runCwlInternalJobsOnWorkers = False
-        self.statusWait = 3600
+        self.statusWait = 10
 
         # Debug options
         self.debugWorker = False
