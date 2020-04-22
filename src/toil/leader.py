@@ -194,6 +194,8 @@ class Leader(object):
                               "ResolveIndirect")
 
         self.deadlockThrottler = LocalThrottle(self.config.deadlockWait)
+        
+        self.statusThrottler = LocalThrottle(self.config.statusWait)
 
     def run(self):
         """
@@ -567,6 +569,10 @@ class Leader(object):
                 # Nothing happened this round and it's been long
                 # enough since we last checked. Check for deadlocks.
                 self.checkForDeadlocks()
+                
+            if self.statusThrottler.throttle(wait=False):
+                # Time to tell the user how things are going
+                self._reportWorkflowStatus()
 
         logger.debug("Finished the main loop: no jobs left to run.")
 
@@ -672,6 +678,32 @@ class Leader(object):
             assert len(self.jobBatchSystemIDToIssuedJob) >= self.preemptableJobsIssued
             return len(self.jobBatchSystemIDToIssuedJob) - self.preemptableJobsIssued
 
+    def _getStatusHint(self):
+        """
+        Get a short string describing the current state of the workflow for a human.
+        
+        Should include number of currently running jobs, number of issued jobs, etc.
+        
+        Don't call this too often; it will talk to the batch system, which may
+        make queries of the backing scheduler.
+        
+        :return: A one-line description of the current status of the workflow.
+        :rtype: str
+        """
+        
+        issuedJobCount = self.getNumberOfJobsIssued()
+        runningJobCount = len(self.batchSystem.getRunningBatchJobIDs())
+        
+        return "%d jobs are running, %d jobs are issued and waiting to run" % (runningJobCount, issuedJobCount - runningJobCount)
+        
+    def _reportWorkflowStatus(self):
+        """
+        Report the current status of the workflow to the user.
+        """
+        
+        # For now just log our status hint to the log.
+        # TODO: fancier UI?
+        logger.info(self._getStatusHint())
 
     def removeJob(self, jobBatchSystemID):
         """Removes a job from the system."""
@@ -714,7 +746,7 @@ class Leader(object):
             self.batchSystem.killBatchJobs(jobsToKill)
             for jobBatchSystemID in jobsToKill:
                 # Reissue immediately, noting that we killed the job
-                willRerun = self.processFinishedJob(jobBatchSystemID, 1, exitReason=BatchJobExitReason.KILLED):
+                willRerun = self.processFinishedJob(jobBatchSystemID, 1, exitReason=BatchJobExitReason.KILLED)
                 
                 if willRerun:
                     # Compose a list of all the jobs that will run again
@@ -750,22 +782,22 @@ class Leader(object):
 
     def reissueMissingJobs(self, killAfterNTimesMissing=3):
         """
-        Check all the current job ids are in the list of currently running batch system jobs.
+        Check all the current job ids are in the list of currently issued batch system jobs.
         If a job is missing, we mark it as so, if it is missing for a number of runs of
         this function (say 10).. then we try deleting the job (though its probably lost), we wait
         then we pass the job to processFinishedJob.
         """
-        runningJobs = set(self.batchSystem.getIssuedBatchJobIDs())
+        issuedJobs = set(self.batchSystem.getIssuedBatchJobIDs())
         jobBatchSystemIDsSet = set(list(self.jobBatchSystemIDToIssuedJob.keys()))
         #Clean up the reissueMissingJobs_missingHash hash, getting rid of jobs that have turned up
         missingJobIDsSet = set(list(self.reissueMissingJobs_missingHash.keys()))
         for jobBatchSystemID in missingJobIDsSet.difference(jobBatchSystemIDsSet):
             self.reissueMissingJobs_missingHash.pop(jobBatchSystemID)
             logger.warning("Batch system id: %s is no longer missing", str(jobBatchSystemID))
-        assert runningJobs.issubset(jobBatchSystemIDsSet) #Assert checks we have
+        assert issuedJobs.issubset(jobBatchSystemIDsSet) #Assert checks we have
         #no unexpected jobs running
         jobsToKill = []
-        for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(runningJobs)):
+        for jobBatchSystemID in set(jobBatchSystemIDsSet.difference(issuedJobs)):
             jobStoreID = self.jobBatchSystemIDToIssuedJob[jobBatchSystemID].jobStoreID
             if jobBatchSystemID in self.reissueMissingJobs_missingHash:
                 self.reissueMissingJobs_missingHash[jobBatchSystemID] += 1

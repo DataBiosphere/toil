@@ -292,6 +292,9 @@ the logging module:
   --debugWorker         Experimental no forking mode for local debugging.
                         Specifically, workers are not forked and stderr/stdout
                         are not redirected to the log. (default=False)
+  --statusWait STATUSWAIT
+                        The number of seconds to wait between overall status
+                        log messages. default=3600
 
 Restart Option
 --------------
