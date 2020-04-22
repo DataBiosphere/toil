@@ -35,6 +35,7 @@ try:
 except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.jobStores.abstractJobStore import NoSuchJobException
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
@@ -522,7 +523,6 @@ class Leader(object):
             # We only rescue jobs every N seconds, and when we have apparently
             # exhausted the current jobGraph supply
             self.reissueOverLongJobs()
-            logger.info("Reissued any over long jobs")
 
             hasNoMissingJobs = self.reissueMissingJobs()
             if hasNoMissingJobs:
@@ -530,8 +530,6 @@ class Leader(object):
             else:
                 # This means we'll try again in a minute, providing things are quiet
                 self.timeSinceJobsLastRescued += 60
-            logger.debug("Rescued any (long) missing jobs")
-
 
     def innerLoop(self):
         """
@@ -555,6 +553,7 @@ class Leader(object):
             if updatedJobTuple is not None:
                 self._gatherUpdatedJobs(updatedJobTuple)
             else:
+                # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
 
             # Check on the associated threads and exit if a failure is detected
@@ -702,12 +701,27 @@ class Leader(object):
 
     def killJobs(self, jobsToKill):
         """
-        Kills the given set of jobs and then sends them for processing
+        Kills the given set of jobs and then sends them for processing.
+        
+        Returns the jobs that, upon processing, were reissued.
         """
+        
+        # If we are rerunning a job we put the ID in this list.
+        jobsRerunning = []
+        
         if len(jobsToKill) > 0:
+            # Kill the jobs with the batch system. They will now no longer come in as updated.
             self.batchSystem.killBatchJobs(jobsToKill)
             for jobBatchSystemID in jobsToKill:
-                self.processFinishedJob(jobBatchSystemID, 1)
+                # Reissue immediately, noting that we killed the job
+                willRerun = self.processFinishedJob(jobBatchSystemID, 1, exitReason=BatchJobExitReason.KILLED):
+                
+                if willRerun:
+                    # Compose a list of all the jobs that will run again
+                    jobsRerunning.append(jobBatchSystemID)
+        
+        return jobsRerunning
+                    
 
     #Following functions handle error cases for when jobs have gone awry with the batch system.
 
@@ -729,7 +743,10 @@ class Leader(object):
                                 str(runningJobs[jobBatchSystemID]),
                                 str(maxJobDuration))
                     jobsToKill.append(jobBatchSystemID)
-            self.killJobs(jobsToKill)
+            reissued = self.killJobs(jobsToKill)
+            if len(jobsToKill) > 0:
+                # Summarize our actions
+                logger.info("Killed %d over long jobs and reissued %d of them", len(jobsToKill), len(reissued))
 
     def reissueMissingJobs(self, killAfterNTimesMissing=3):
         """
@@ -775,6 +792,9 @@ class Leader(object):
     def processFinishedJob(self, batchSystemID, resultStatus, wallTime=None, exitReason=None):
         """
         Function reads a processed jobGraph file and updates its state.
+        
+        Return True if the job is going to run again, and False if the job is
+        fully done or completely failed.
         """
         jobNode = self.removeJob(batchSystemID)
         jobStoreID = jobNode.jobStoreID
@@ -855,9 +875,15 @@ class Leader(object):
             self.toilState.updatedJobs.add((jobGraph, resultStatus)) #Now we know the
             #jobGraph is done we can add it to the list of updated jobGraph files
             logger.debug("Added job: %s to active jobs", jobGraph)
+            
+            # Return True if it will rerun (still has retries) and false if it
+            # is completely failed.
+            return jobGraph.remainingRetryCount > 0
         else:  #The jobGraph is done
             self.processRemovedJob(jobNode, resultStatus)
-
+            # Being done, it won't run again.
+            return False
+            
     @staticmethod
     def getSuccessors(jobGraph, alreadySeenSuccessors, jobStore):
         """
