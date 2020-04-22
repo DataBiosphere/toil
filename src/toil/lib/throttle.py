@@ -19,9 +19,11 @@ from __future__ import absolute_import
 from builtins import object
 import time
 import threading
+import logging
 
 from toil.lib.threading import BoundedEmptySemaphore
 
+logger = logging.getLogger( __name__ )
 
 class GlobalThrottle(object):
     """
@@ -113,6 +115,7 @@ class LocalThrottle(object):
                     remainder = self.min_interval - interval
                     time.sleep( remainder )
                 else:
+                    logger.info("You must wait! Throttle ready in %d seconds", self.min_interval - interval)
                     return False
         self.per_thread.last_invocation = now
         return True

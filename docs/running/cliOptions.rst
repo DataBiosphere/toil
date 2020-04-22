@@ -239,6 +239,10 @@ the logging module:
                         The minimum number of seconds to observe the cluster
                         stuck running only the same service jobs before
                         throwing a deadlock exception. default=60
+  --deadlockCheckInterval DEADLOCKCHECKINTERVAL
+                        The number of seconds to wait between deadlock
+                        detection checks. Should be shorter than
+                        --deadlockWait. default=10
   --statePollingWait STATEPOLLINGWAIT
                         Time, in seconds, to wait before doing a scheduler
                         query for job state. Return cached results if within
