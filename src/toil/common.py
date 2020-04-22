@@ -99,8 +99,8 @@ class Config(object):
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxsize
         self.maxServiceJobs = sys.maxsize
-        self.deadlockWait = 60  # Number of seconds to wait before declaring a deadlock
-        self.deadlockCheckInterval = 10 # Minimum polling delay for deadlocks
+        self.deadlockWait = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
+        self.deadlockCheckInterval = 30 # Minimum polling delay for deadlocks
         self.statePollingWait = 1  # Number of seconds to wait before querying job state
 
         # Resource requirements

@@ -242,7 +242,7 @@ the logging module:
   --deadlockCheckInterval DEADLOCKCHECKINTERVAL
                         The number of seconds to wait between deadlock
                         detection checks. Should be shorter than
-                        --deadlockWait. default=10
+                        --deadlockWait. default=30
   --statePollingWait STATEPOLLINGWAIT
                         Time, in seconds, to wait before doing a scheduler
                         query for job state. Return cached results if within
