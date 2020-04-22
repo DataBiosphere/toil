@@ -550,7 +550,8 @@ class Leader(object):
                 self.clusterScaler.check()
             
             if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
-                # It's been long enough since we last checked. Check for deadlocks.
+                # Nothing happened this round and it's been long
+                # enough since we last checked. Check for deadlocks.
                 self.checkForDeadlocks()
                     
 

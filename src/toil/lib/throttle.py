@@ -22,6 +22,7 @@ import threading
 
 from toil.lib.threading import BoundedEmptySemaphore
 
+
 class GlobalThrottle(object):
     """
     A thread-safe rate limiter that throttles all threads globally. This should be used to
