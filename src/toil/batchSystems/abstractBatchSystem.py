@@ -554,10 +554,10 @@ class InsufficientSystemResources(Exception):
 
     def __str__(self):
         if self.name is not None:
-            phrases = [('The job {} is requesting {}{}, more than '
-                        'the maximum of {} {} was configured '
-                        'with.'.format(self.name, self.requested, self.unit,
-                                       self.resource, self.available, self.batchSystem)]
+            phrases = [('The job {} is requesting {} {}{}, more than '
+                        'the maximum of {} {}{} that {} was configured '
+                        'with.'.format(self.name, self.requested, self.unit, self.resource,
+                                       self.available, self.unit, self.resource, self.batchSystem))]
         else:
             phrases = [('Requesting more {} than either physically available to {}, or enforced by --max{}. '
                         'Requested: {}, Available: {}'.format(self.resource, self.batchSystem,
