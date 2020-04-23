@@ -131,7 +131,8 @@ class Config(object):
         self.useAsync = True
         self.forceDockerAppliance = False
         self.runCwlInternalJobsOnWorkers = False
-        self.statusWait = 10
+        self.statusWait = 3600
+        self.disableProgress = False
 
         # Debug options
         self.debugWorker = False
@@ -280,7 +281,7 @@ class Config(object):
         setOption("writeLogsGzip")
         setOption("writeLogsFromAllJobs")
         setOption("runCwlInternalJobsOnWorkers")
-        setOption("statusWait", int)
+        setOption("disableProgress")
 
         assert not (self.writeLogs and self.writeLogsGzip), \
             "Cannot use both --writeLogs and --writeLogsGzip at the same time."
@@ -605,10 +606,8 @@ def _addOptions(addGroupFn, config):
                 default=False,
                 help='Disables sanity checking the existence of the docker image specified by '
                 'TOIL_APPLIANCE_SELF, which Toil uses to provision mesos for autoscaling.')
-    addOptionFn("--statusWait", dest="statusWait", default=None,
-                help=(
-                "The number of seconds to wait between overall status log messages. default=%s" % config.statusWait))
-                    
+    addOptionFn('--disableProgress', dest='disableProgress', action='store_true', default=False,
+                help="Disables the progress bar shown when standard error is a terminal.")
     #
     # Debug options
     #

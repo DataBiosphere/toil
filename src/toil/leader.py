@@ -26,6 +26,7 @@ from builtins import super
 import logging
 import time
 import os
+import sys
 import glob
 
 from toil.lib.humanize import bytes2human
@@ -202,8 +203,16 @@ class Leader(object):
         # For fancy console UI, we use an Enlighten counter that displays running / queued jobs
         # This gets filled in in run() and updated periodically.
         self.progress_overall = None
-        # Also we have a running vs issued progress meter
-        self.progress_scheduling = None
+        # Also count failed/killed jobs
+        self.progress_failed = None
+        # Assign colors for them
+        self.GOOD_COLOR = (0, 60, 108)
+        self.BAD_COLOR = (253, 199, 0)
+        # And set a format that shows failures
+        self.PROGRESS_BAR_FORMAT = ('{desc}{desc_pad}{percentage:3.0f}%|{bar}| {count:{len_total}d}/{total:d} '
+                                    '({count_1:d} failures) [{elapsed}<{eta}, {rate:.2f}{unit_pad}{unit}/s]')
+        
+        # TODO: No way to set background color on the terminal for the bar.
 
     def run(self):
         """
@@ -215,10 +224,11 @@ class Leader(object):
         :rtype: Any
         """
         
-        with enlighten.get_manager() as manager:
+        with enlighten.get_manager(stream=sys.stderr, enabled=not self.config.disableProgress) as manager:
             # Set up the fancy console UI if desirable
-            self.progress_overall = manager.counter(total=0, desc='Workflow Progress', unit='jobs')
-            self.progress_scheduling = manager.counter(total=0, desc='Running', unit='jobs')
+            self.progress_overall = manager.counter(total=0, desc='Workflow Progress', unit='jobs',
+                                                    color=self.GOOD_COLOR, bar_format=self.PROGRESS_BAR_FORMAT)
+            self.progress_failed = self.progress_overall.add_subcounter(self.BAD_COLOR)
         
             # Start the stats/logging aggregation thread
             self.statsAndLogging.start()
@@ -585,9 +595,11 @@ class Leader(object):
                 self.checkForDeadlocks()
                 
             if self.statusThrottler.throttle(wait=False):
-                # Time to tell the user how things are going, and/or fully
-                # refresh our idea of running jobs
+                # Time to tell the user how things are going
                 self._reportWorkflowStatus()
+                
+            # Make sure to keep elapsed time and ETA up to date even when no jobs come in
+            self.progress_overall.update(incr=0)
 
         logger.debug("Finished the main loop: no jobs left to run.")
 
@@ -696,22 +708,32 @@ class Leader(object):
             assert len(self.jobBatchSystemIDToIssuedJob) >= self.preemptableJobsIssued
             return len(self.jobBatchSystemIDToIssuedJob) - self.preemptableJobsIssued
 
-    def _reportWorkflowStatus(self):
+    def _getStatusHint(self):
         """
-        Report the current status of the workflow to the user.
+        Get a short string describing the current state of the workflow for a human.
+        
+        Should include number of currently running jobs, number of issued jobs, etc.
+        
+        Don't call this too often; it will talk to the batch system, which may
+        make queries of the backing scheduler.
+        
+        :return: A one-line description of the current status of the workflow.
+        :rtype: str
         """
         
         issuedJobCount = self.getNumberOfJobsIssued()
         runningJobCount = len(self.batchSystem.getRunningBatchJobIDs())
         
-        if self.progress_scheduling.enabled:
-            # Update the backlog meter
-            self.progress_scheduling.total = issuedJobCount
-            self.progress_scheduling.count = runningJobCount 
-            self.progress_scheduling.refresh()
-        else:
-            # Log a message
-            log.info("%d jobs are running, %d jobs are issued and waiting to run", runningJobCount, issuedJobCount - runningJobCount)
+        return "%d jobs are running, %d jobs are issued and waiting to run" % (runningJobCount, issuedJobCount - runningJobCount)
+        
+    def _reportWorkflowStatus(self):
+        """
+        Report the current status of the workflow to the user.
+        """
+        
+        # For now just log our status hint to the log.
+        # TODO: fancier UI?
+        logger.info(self._getStatusHint())
 
     def removeJob(self, jobBatchSystemID):
         """Removes a job from the system."""
@@ -911,6 +933,11 @@ class Leader(object):
 
                 jobGraph.setupJobAfterFailure(self.config, exitReason=exitReason)
                 self.jobStore.update(jobGraph)
+                
+                # Show job as failed in progress (and take it from completed)
+                self.progress_overall.update(incr=-1)
+                self.progress_failed.update(incr=1)
+                
             elif jobStoreID in self.toilState.hasFailedSuccessors:
                 # If the job has completed okay, we can remove it from the list of jobs with failed successors
                 self.toilState.hasFailedSuccessors.remove(jobStoreID)
