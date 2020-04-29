@@ -615,19 +615,19 @@ class Leader(object):
             if len(runningServiceJobs) == totalRunningJobs:
                 # There could be trouble; we are 100% services.
                 # See if the batch system has anything to say for itself about its failure to run our jobs.
-                hint = self.batchSystem.getSchedulingHint()
-                if hint is not None:
-                    # Prepend something explaining the hint
-                    hint = "The batch system reports: {}".format(hint)
+                message = self.batchSystem.getSchedulingStatusMessage()
+                if message is not None:
+                    # Prepend something explaining the message
+                    message = "The batch system reports: {}".format(message)
                 else:
-                    # Use a generic hint if none is available
-                    hint = "Cluster may be too small."
+                    # Use a generic message if none is available
+                    message = "Cluster may be too small."
                     
             
                 # See if this is a new potential deadlock
                 if self.potentialDeadlockedJobs != runningServiceJobs:
                     logger.warning(("Potential deadlock detected! All %s running jobs are service jobs, "
-                                    "with no normal jobs to use them! %s"), totalRunningJobs, hint)
+                                    "with no normal jobs to use them! %s"), totalRunningJobs, message)
                     self.potentialDeadlockedJobs = runningServiceJobs
                     self.potentialDeadlockTime = time.time()
                 else:
@@ -643,7 +643,7 @@ class Leader(object):
                         waitingNormalJobs = self.getNumberOfJobsIssued() - totalServicesIssued
                         logger.warning(("Potentially deadlocked for %.0f seconds. Waiting at most %.0f more seconds "
                                         "for any of %d issued non-service jobs to schedule and start. %s"),
-                                       stuckFor, self.config.deadlockWait - stuckFor, waitingNormalJobs, hint)
+                                       stuckFor, self.config.deadlockWait - stuckFor, waitingNormalJobs, message)
             else:
                 # We have observed non-service jobs running, so reset the potential deadlock
                 
@@ -754,8 +754,9 @@ class Leader(object):
         Report the current status of the workflow to the user.
         """
         
-        # For now just log our status hint to the log.
-        # TODO: fancier UI?
+        # For now just log our scheduling status message to the log.
+        # TODO: make this update fast enought to put it in the progress
+        # bar/status line.
         logger.info(self._getStatusHint())
 
     def removeJob(self, jobBatchSystemID):

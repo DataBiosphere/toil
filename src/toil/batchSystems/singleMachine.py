@@ -154,9 +154,8 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # A pool representing the available space in bytes
         self.disk = ResourcePool(self.maxDisk, 'disk')
         
-        # If we can't schedule something, we fill this in with a hint as to
-        # why.
-        self.schedulingHint = None
+        # If we can't schedule something, we fill this in with a reason why
+        self.schedulingStatusMessage = None
 
         # We use this event to signal shutdown
         self.shuttingDown = Event()
@@ -350,20 +349,21 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         if not info.killIntended:
             self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=0, wallTime=time.time() - info.time, exitReason=None))
             
-    def getSchedulingHint(self):
-        # Implement the abstractBatchSystem's scheduling hint API
-        return self.schedulingHint
+    def getSchedulingStatusMessage(self):
+        # Implement the abstractBatchSystem's scheduling status message API
+        return self.schedulingStatusMessage
     
-    def _setSchedulingHint(self, hint):
+    def _setSchedulingStatusMessage(self, message):
         """
-        If we can't run a job, we record a short hint about why not.
-        If the leader wants to know what is up with us (for example,m to diagnose a deadlock), it can ask us for the hint.
+        If we can't run a job, we record a short message about why not. If the
+        leader wants to know what is up with us (for example, to diagnose a
+        deadlock), it can ask us for the message.
         """
         
-        self.schedulingHint = hint
+        self.schedulingStatusMessage = message
         
-        # Report the hint in the debug log too.
-        log.debug(hint)
+        # Report the message in the debug log too.
+        log.debug(message)
 
     def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, environment):
         """
@@ -435,13 +435,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # We can't get disk, so free cores and memory
                     self.coreFractions.release(coreFractions)
                     self.memory.release(jobMemory)
-                    self._setSchedulingHint('Not enough disk to run job %s' % jobID)
+                    self._setSchedulingStatusMessage('Not enough disk to run job %s' % jobID)
             else:
                 # Free cores, since we can't get memory
                 self.coreFractions.release(coreFractions)
-                self._setSchedulingHint('Not enough memory to run job %s' % jobID)
+                self._setSchedulingStatusMessage('Not enough memory to run job %s' % jobID)
         else:
-            self._setSchedulingHint('Not enough cores to run job %s' % jobID)
+            self._setSchedulingStatusMessage('Not enough cores to run job %s' % jobID)
 
         # If we get here, we didn't succeed or fail starting the job.
         # We didn't manage to get the resources.
@@ -500,7 +500,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         # Don't do our own assertions about job size vs. our configured size.
         # The abstract batch system can handle it.
         self.checkResourceRequest(jobNode.memory, cores, jobNode.disk, name=jobNode.jobName,
-            hint='Scale is set to {}.'.format(self.scale))
+            detail='Scale is set to {}.'.format(self.scale))
         
         self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (

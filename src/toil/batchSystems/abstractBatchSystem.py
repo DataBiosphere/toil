@@ -184,24 +184,24 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError()
         
-    def getSchedulingHint(self):
+    def getSchedulingStatusMessage(self):
         """
-        Get a hint for the user about anything that might be going wrong in the
-        batch system, if available.
+        Get a log message fragment for the user about anything that might be
+        going wrong in the batch system, if available.
         
-        If no hint is available, return None.
+        If no useful message is available, return None.
         
         This can be used to report what resource is the limiting factor when
         scheduling jobs, for example. If the leader thinks the workflow is
-        stuck, the hint can be displayed to the user to help them diagnose why
-        it might be stuck.
+        stuck, the message can be displayed to the user to help them diagnose
+        why it might be stuck.
         
         :rtype: str or None
-        :return: User-directed hint about scheduling state.
+        :return: User-directed message about scheduling state.
         """
         
         # Default implementation returns None.
-        # Override to provide hints.
+        # Override to provide scheduling status information.
         return None
 
     @abstractmethod
@@ -273,7 +273,7 @@ class BatchSystemSupport(AbstractBatchSystem):
                                                    workflowID=self.config.workflowID,
                                                    cleanWorkDir=self.config.cleanWorkDir)
 
-    def checkResourceRequest(self, memory, cores, disk, name=None, hint=None):
+    def checkResourceRequest(self, memory, cores, disk, name=None, detail=None):
         """
         Check resource request is not greater than that available or allowed.
 
@@ -285,7 +285,7 @@ class BatchSystemSupport(AbstractBatchSystem):
         
         :param str name: Name of the job being checked, for generating a useful error report.
         
-        :param str hint: Batch-system-specific hint to include in the error.
+        :param str detail: Batch-system-specific message to include in the error.
 
         :raise InsufficientSystemResources: raised when a resource is requested in an amount
                greater than allowed
@@ -295,13 +295,13 @@ class BatchSystemSupport(AbstractBatchSystem):
         assert cores is not None
         if cores > self.maxCores:
             raise InsufficientSystemResources('cores', cores, self.maxCores,
-                                              batchSystem=self.__class__.__name__, name=name, hint=hint)
+                                              batchSystem=self.__class__.__name__, name=name, detail=detail)
         if memory > self.maxMemory:
             raise InsufficientSystemResources('memory', memory, self.maxMemory,
-                                              batchSystem=self.__class__.__name__, name=name, hint=hint)
+                                              batchSystem=self.__class__.__name__, name=name, detail=detail)
         if disk > self.maxDisk:
             raise InsufficientSystemResources('disk', disk, self.maxDisk,
-                                              batchSystem=self.__class__.__name__, name=name, hint=hint)
+                                              batchSystem=self.__class__.__name__, name=name, detail=detail)
 
     def setEnv(self, name, value=None):
         """
@@ -546,7 +546,7 @@ class InsufficientSystemResources(Exception):
     To be raised when a job requests more of a particular resource than is either currently allowed
     or avaliable
     """
-    def __init__(self, resource, requested, available, batchSystem=None, name=None, hint=None):
+    def __init__(self, resource, requested, available, batchSystem=None, name=None, detail=None):
         """
         Creates an instance of this exception that indicates which resource is insufficient for current
         demands, as well as the amount requested and amount actually available.
@@ -565,7 +565,7 @@ class InsufficientSystemResources(Exception):
         
         :param str name: Name of the job being checked, for generating a useful error report.
         
-        :param str hint: Batch-system-specific hint to include in the error.
+        :param str detail: Batch-system-specific message to include in the error.
         """
         self.requested = requested
         self.available = available
@@ -573,7 +573,7 @@ class InsufficientSystemResources(Exception):
         self.batchSystem = batchSystem if batchSystem is not None else 'this batch system'
         self.unit = 'bytes of ' if resource == 'disk' or resource == 'memory' else ''
         self.name = name
-        self.hint = hint
+        self.detail = detail
 
     def __str__(self):
         if self.name is not None:
@@ -587,7 +587,7 @@ class InsufficientSystemResources(Exception):
                                                               self.resource.capitalize(),
                                                               self.requested, self.available))]
         
-        if self.hint is not None:
-            phrases.append(self.hint)
+        if self.detail is not None:
+            phrases.append(self.detail)
             
         return ' '.join(phrases)
