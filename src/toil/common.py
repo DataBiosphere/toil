@@ -481,10 +481,17 @@ def _addOptions(addGroupFn, config):
                     "The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
         addOptionFn("--deadlockWait", dest="deadlockWait", default=None, type=int,
                     help=(
-                    "The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
+                    "Time, in seconds, to tolerate the workflow running only the same service "
+                    "jobs, with no jobs to use them, before declaring the workflow to be "
+                    "deadlocked and stopping. default=%s" % config.deadlockWait))
         addOptionFn("--deadlockCheckInterval", dest="deadlockCheckInterval", default=None, type=int,
                     help=(
-                    "The number of seconds to wait between deadlock detection checks. Should be shorter than --deadlockWait. default=%s" % config.deadlockCheckInterval))
+                    "Time, in seconds, to wait between checks to see if the workflow is stuck "
+                    "running only service jobs, with no jobs to use them. Should be shorter than "
+                    "--deadlockWait. May need to be increased if the batch system cannot "
+                    "enumerate running jobs quickly enough, or if polling for running jobs is "
+                    "placing an unacceptable load on a shared cluster. default=%s" %
+                    config.deadlockCheckInterval))
         addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
                     help=("Time, in seconds, to wait before doing a scheduler query for job state. "
                           "Return cached results if within the waiting period."))
