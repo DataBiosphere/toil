@@ -43,6 +43,7 @@ class BoundedEmptySemaphore( BoundedSemaphore ):
     def __init__( self, value=1, verbose=None ):
         super( BoundedEmptySemaphore, self ).__init__( value, verbose )
         for i in range( value ):
+            # Empty out the semaphore
             assert self.acquire( blocking=False )
 
 

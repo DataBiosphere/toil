@@ -236,9 +236,18 @@ the logging module:
                         concurrently on preemptable nodes.
                         default=9223372036854775807
   --deadlockWait DEADLOCKWAIT
-                        The minimum number of seconds to observe the cluster
-                        stuck running only the same service jobs before
-                        throwing a deadlock exception. default=60
+                        Time, in seconds, to tolerate the workflow running only
+                        the same service jobs, with no jobs to use them, before
+                        declaring the workflow to be deadlocked and stopping.
+                        default=60
+  --deadlockCheckInterval DEADLOCKCHECKINTERVAL
+                        Time, in seconds, to wait between checks to see if the
+                        workflow is stuck running only service jobs, with no
+                        jobs to use them. Should be shorter than
+                        --deadlockWait. May need to be increased if the batch
+                        system cannot enumerate running jobs quickly enough, or
+                        if polling for running jobs is placing an unacceptable
+                        load on a shared cluster. default=30
   --statePollingWait STATEPOLLINGWAIT
                         Time, in seconds, to wait before doing a scheduler
                         query for job state. Return cached results if within

@@ -38,6 +38,7 @@ except ImportError:
     CWL_INTERNAL_JOBS = ()
 from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.jobStores.abstractJobStore import NoSuchJobException
+from toil.batchSystems import DeadlockException
 from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
@@ -95,22 +96,6 @@ class FailedJobsException(Exception):
         """
         return self.msg
     
-
-####################################################
-# Exception thrown by the Leader class when a deadlock is encountered due to insufficient
-# resources to run the workflow
-####################################################
-
-class DeadlockException(Exception):
-    def __init__(self, msg):
-        self.msg = "Deadlock encountered: " + msg
-        super().__init__()
-
-    def __str__(self):
-        """
-        Stringify the exception, including the message.
-        """
-        return self.msg
 
 ####################################################
 ##Following class represents the leader
@@ -196,7 +181,7 @@ class Leader(object):
         self.debugJobNames = ("CWLJob", "CWLWorkflow", "CWLScatter", "CWLGather",
                               "ResolveIndirect")
 
-        self.deadlockThrottler = LocalThrottle(self.config.deadlockWait)
+        self.deadlockThrottler = LocalThrottle(self.config.deadlockCheckInterval)
         
         self.statusThrottler = LocalThrottle(self.config.statusWait)
         
@@ -588,7 +573,7 @@ class Leader(object):
             # the cluster scaler object will only be instantiated if autoscaling is enabled
             if self.clusterScaler is not None:
                 self.clusterScaler.check()
-
+            
             if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
                 # Nothing happened this round and it's been long
                 # enough since we last checked. Check for deadlocks.
@@ -616,28 +601,66 @@ class Leader(object):
         """
         Checks if the system is deadlocked running service jobs.
         """
+        
         totalRunningJobs = len(self.batchSystem.getRunningBatchJobIDs())
         totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
+        
         # If there are no updated jobs and at least some jobs running
         if totalServicesIssued >= totalRunningJobs and totalRunningJobs > 0:
             serviceJobs = [x for x in list(self.jobBatchSystemIDToIssuedJob.keys()) if isinstance(self.jobBatchSystemIDToIssuedJob[x], ServiceJobNode)]
             runningServiceJobs = set([x for x in serviceJobs if self.serviceManager.isRunning(self.jobBatchSystemIDToIssuedJob[x])])
             assert len(runningServiceJobs) <= totalRunningJobs
-
+            
             # If all the running jobs are active services then we have a potential deadlock
             if len(runningServiceJobs) == totalRunningJobs:
-                # We wait self.config.deadlockWait seconds before declaring the system deadlocked
+                # There could be trouble; we are 100% services.
+                # See if the batch system has anything to say for itself about its failure to run our jobs.
+                message = self.batchSystem.getSchedulingStatusMessage()
+                if message is not None:
+                    # Prepend something explaining the message
+                    message = "The batch system reports: {}".format(message)
+                else:
+                    # Use a generic message if none is available
+                    message = "Cluster may be too small."
+                    
+            
+                # See if this is a new potential deadlock
                 if self.potentialDeadlockedJobs != runningServiceJobs:
+                    logger.warning(("Potential deadlock detected! All %s running jobs are service jobs, "
+                                    "with no normal jobs to use them! %s"), totalRunningJobs, message)
                     self.potentialDeadlockedJobs = runningServiceJobs
                     self.potentialDeadlockTime = time.time()
-                elif time.time() - self.potentialDeadlockTime >= self.config.deadlockWait:
-                    raise DeadlockException("The system is service deadlocked - all %d running jobs are active services" % totalRunningJobs)
+                else:
+                    # We wait self.config.deadlockWait seconds before declaring the system deadlocked
+                    stuckFor = time.time() - self.potentialDeadlockTime
+                    if stuckFor >= self.config.deadlockWait:
+                        logger.error("We have been deadlocked since %s on these service jobs: %s",
+                                     self.potentialDeadlockTime, self.potentialDeadlockedJobs)
+                        raise DeadlockException(("The workflow is service deadlocked - all %d running jobs "
+                                                 "have been the same active services for at least %s seconds") % (totalRunningJobs, self.config.deadlockWait))
+                    else:
+                        # Complain that we are still stuck.
+                        waitingNormalJobs = self.getNumberOfJobsIssued() - totalServicesIssued
+                        logger.warning(("Potentially deadlocked for %.0f seconds. Waiting at most %.0f more seconds "
+                                        "for any of %d issued non-service jobs to schedule and start. %s"),
+                                       stuckFor, self.config.deadlockWait - stuckFor, waitingNormalJobs, message)
             else:
                 # We have observed non-service jobs running, so reset the potential deadlock
+                
+                if len(self.potentialDeadlockedJobs) > 0:
+                    # We thought we had a deadlock. Tell the user it is fixed.
+                    logger.warning("Potential deadlock has been resolved; non-service jobs are now running.")
+                
                 self.potentialDeadlockedJobs = set()
                 self.potentialDeadlockTime = 0
         else:
-            # We have observed non-service jobs running, so reset the potential deadlock
+            # We have observed non-service jobs running, so reset the potential deadlock.
+            # TODO: deduplicate with above
+            
+            if len(self.potentialDeadlockedJobs) > 0:
+                # We thought we had a deadlock. Tell the user it is fixed.
+                logger.warning("Potential deadlock has been resolved; non-service jobs are now running.")
+            
             self.potentialDeadlockedJobs = set()
             self.potentialDeadlockTime = 0
 
@@ -731,8 +754,9 @@ class Leader(object):
         Report the current status of the workflow to the user.
         """
         
-        # For now just log our status hint to the log.
-        # TODO: fancier UI?
+        # For now just log our scheduling status message to the log.
+        # TODO: make this update fast enought to put it in the progress
+        # bar/status line.
         logger.info(self._getStatusHint())
 
     def removeJob(self, jobBatchSystemID):

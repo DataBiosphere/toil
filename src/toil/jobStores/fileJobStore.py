@@ -243,7 +243,6 @@ class FileJobStore(AbstractJobStore):
         # is in progress.
         for tempDir in self._jobDirectories():
             for i in os.listdir(tempDir):
-                logger.warning('Job Dir: %s' % i)
                 if i.startswith(self.JOB_DIR_PREFIX):
                     # This is a job instance directory
                     jobId = self._getJobIdFromDir(os.path.join(tempDir, i))

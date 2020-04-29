@@ -99,7 +99,8 @@ class Config(object):
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
         self.maxPreemptableServiceJobs = sys.maxsize
         self.maxServiceJobs = sys.maxsize
-        self.deadlockWait = 60  # Number of seconds to wait before declaring a deadlock
+        self.deadlockWait = 60  # Number of seconds we must be stuck with all services before declaring a deadlock
+        self.deadlockCheckInterval = 30 # Minimum polling delay for deadlocks
         self.statePollingWait = 1  # Number of seconds to wait before querying job state
 
         # Resource requirements
@@ -253,6 +254,7 @@ class Config(object):
         setOption("maxServiceJobs", int)
         setOption("maxPreemptableServiceJobs", int)
         setOption("deadlockWait", int)
+        setOption("deadlockCheckInterval", int)
         setOption("statePollingWait", int)
 
         # Resource requirements
@@ -471,16 +473,26 @@ def _addOptions(addGroupFn, config):
             "Allows the specification of the maximum number of service jobs "
             "in a cluster. By keeping this limited "
             " we can avoid all the nodes being occupied with services, so causing a deadlock")
-        addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None,
+        addOptionFn("--maxServiceJobs", dest="maxServiceJobs", default=None, type=int,
                     help=(
                     "The maximum number of service jobs that can be run concurrently, excluding service jobs running on preemptable nodes. default=%s" % config.maxServiceJobs))
-        addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None,
+        addOptionFn("--maxPreemptableServiceJobs", dest="maxPreemptableServiceJobs", default=None, type=int,
                     help=(
                     "The maximum number of service jobs that can run concurrently on preemptable nodes. default=%s" % config.maxPreemptableServiceJobs))
-        addOptionFn("--deadlockWait", dest="deadlockWait", default=None,
+        addOptionFn("--deadlockWait", dest="deadlockWait", default=None, type=int,
                     help=(
-                    "The minimum number of seconds to observe the cluster stuck running only the same service jobs before throwing a deadlock exception. default=%s" % config.deadlockWait))
-        addOptionFn("--statePollingWait", dest="statePollingWait", default=1,
+                    "Time, in seconds, to tolerate the workflow running only the same service "
+                    "jobs, with no jobs to use them, before declaring the workflow to be "
+                    "deadlocked and stopping. default=%s" % config.deadlockWait))
+        addOptionFn("--deadlockCheckInterval", dest="deadlockCheckInterval", default=None, type=int,
+                    help=(
+                    "Time, in seconds, to wait between checks to see if the workflow is stuck "
+                    "running only service jobs, with no jobs to use them. Should be shorter than "
+                    "--deadlockWait. May need to be increased if the batch system cannot "
+                    "enumerate running jobs quickly enough, or if polling for running jobs is "
+                    "placing an unacceptable load on a shared cluster. default=%s" %
+                    config.deadlockCheckInterval))
+        addOptionFn("--statePollingWait", dest="statePollingWait", default=1, type=int,
                     help=("Time, in seconds, to wait before doing a scheduler query for job state. "
                           "Return cached results if within the waiting period."))
 
