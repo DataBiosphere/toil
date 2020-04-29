@@ -292,6 +292,9 @@ the logging module:
   --debugWorker         Experimental no forking mode for local debugging.
                         Specifically, workers are not forked and stderr/stdout
                         are not redirected to the log. (default=False)
+  --disableProgress     Disables the progress bar shown when standard error is
+                        a terminal.
+     
 
 Restart Option
 --------------
