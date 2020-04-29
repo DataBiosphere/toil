@@ -50,7 +50,7 @@ UpdatedBatchJobInfo = namedtuple('UpdatedBatchJobInfo', (
 class BatchJobExitReason(enum.Enum):
     FINISHED = 1  # Successfully finished.
     FAILED = 2  # Job finished, but failed.
-    LOST = 3  # Preemptable failure.
+    LOST = 3  # Preemptable failure (job's executing host went away).
     KILLED = 4  # Job killed before finishing.
     ERROR = 5  # Internal error.
 
@@ -130,7 +130,8 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
     def killBatchJobs(self, jobIDs):
         """
         Kills the given job IDs. After returning, the killed jobs will not
-        appear in the results of getRunningBatchJobIDs.
+        appear in the results of getRunningBatchJobIDs. The killed job will not
+        be returned from getUpdatedBatchJob.
 
         :param jobIDs: list of IDs of jobs to kill
         :type jobIDs: list[int]
@@ -169,6 +170,9 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         Returns information about job that has updated its status (i.e. ceased
         running, either successfully or with an error). Each such job will be
         returned exactly once.
+        
+        Does not return info for jobs killed by killBatchJobs, although they
+        may cause None to be returned earlier than maxWait.
 
         :param float maxWait: the number of seconds to block, waiting for a result
 
@@ -176,8 +180,7 @@ class AbstractBatchSystem(with_metaclass(ABCMeta, object)):
         :return: If a result is available, returns UpdatedBatchJobInfo.
                  Otherwise it returns None. wallTime is the number of seconds (a strictly 
                  positive float) in wall-clock time the job ran for, or None if this
-                 batch system does not support tracking wall time. Returns None for jobs
-                 that were killed.
+                 batch system does not support tracking wall time.
         """
         raise NotImplementedError()
         
