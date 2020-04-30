@@ -163,12 +163,21 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
                                          for k, v in self.boss.environment.items()))
 
             reqline = list()
-            if mem is not None:
-                memStr = str(old_div(mem, 1024)) + 'K'
-                reqline.append('mem=' + memStr)
+            if self._version == "pro":
+                request = 'select=1'
+                if mem is not None:
+                    memStr = str(old_div(mem, 1024)) + 'K'
+                    request +=':mem=' + memStr
+                if cpu is not None and math.ceil(cpu) > 1:
+                    request +=':ncpus=' + str(int(math.ceil(cpu)))
+                 reqline.append(request)
+            else:
+                if mem is not None:
+                    memStr = str(old_div(mem, 1024)) + 'K'
+                    reqline.append('mem=' + memStr)
 
-            if cpu is not None and math.ceil(cpu) > 1:
-                reqline.append('nodes=1:ppn=' + str(int(math.ceil(cpu))))
+                if cpu is not None and math.ceil(cpu) > 1:
+                    reqline.append('nodes=1:ppn=' + str(int(math.ceil(cpu))))
 
             # Other resource requirements can be passed through the environment (see man qsub)
             reqlineEnv = os.getenv('TOIL_TORQUE_REQS')
