@@ -213,7 +213,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             stdoutfile = self.boss.formatStdOutErrPath(jobID, 'torque', '$PBS_JOBID', 'std_output')
             stderrfile = self.boss.formatStdOutErrPath(jobID, 'torque', '$PBS_JOBID', 'std_error')
 
-            _, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
+            _fd, tmpFile = tempfile.mkstemp(suffix='.sh', prefix='torque_wrapper')
             fh = open(tmpFile , 'w')
             fh.write("#!/bin/sh\n")
             fh.write("#PBS -o {}\n".format(stdoutfile))
@@ -221,7 +221,8 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
             fh.write("cd $PBS_O_WORKDIR\n\n")
             fh.write(command + "\n")
 
-            fh.close
+            fh.close()
+            os.close(_fd)
 
             return tmpFile
 
