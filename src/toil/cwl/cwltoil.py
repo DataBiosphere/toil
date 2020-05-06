@@ -82,6 +82,8 @@ from toil.job import Job, Promise
 from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
 
+logger = logging.getLogger(__name__)
+
 # Define internal jobs we should avoid submitting to batch systems and logging
 CWL_INTERNAL_JOBS = ("CWLJobWrapper",
                      "CWLWorkflow",
@@ -469,6 +471,11 @@ class ToilPathMapper(PathMapper):
         self.stage_listing = stage_listing
         super(ToilPathMapper, self).__init__(
             referenced_files, basedir, stagedir, separateDirs=separateDirs)
+            
+    def mapper(self, src: str) -> MapperEnt:
+        result = super(ToilPathMapper, self).mapper(src)
+        logger.debug("ToilPathMapper: Mapped %s to %s", src, result)
+        return result
 
     def visit(self,
               obj: Dict[str, Any],
@@ -476,6 +483,7 @@ class ToilPathMapper(PathMapper):
               basedir: str,
               copy: bool = False,
               staged: bool = False) -> None:
+              
         tgt = convert_pathsep_to_unix(os.path.join(stagedir, obj["basename"]))
         if obj["location"] in self._pathmap:
             return
@@ -489,6 +497,9 @@ class ToilPathMapper(PathMapper):
 
             if obj["location"].startswith("file://") and not self.stage_listing:
                 staged = False
+                
+            logger.debug("ToilPathMapper: Directory becomes %s at %s", self._pathmap[obj["location"]], obj["location"])
+                
             self.visitlisting(
                 obj.get("listing", []), tgt, basedir, copy=copy, staged=staged)
 
@@ -529,6 +540,9 @@ class ToilPathMapper(PathMapper):
                     self._pathmap[path] = MapperEnt(
                         deref, tgt, "WritableFile" if copy else "File", staged
                     )
+            
+            logger.debug("ToilPathMapper: File becomes %s at %s", self._pathmap[obj["location"]], obj["location"])
+            
             self.visitlisting(
                 obj.get("secondaryFiles", []),
                 stagedir,
@@ -582,6 +596,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
+        
         # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
         # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
@@ -631,6 +646,40 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
                 raise
         return index[file_uri]
 
+def prepareDirectoryForUpload(directory_metadata: dict,
+                              skip_broken: bool = False) -> None:
+    """
+    Prepare a Directory object to be uploaded.
+
+    Assumes listings are already filled in.
+
+    Makes sure the directory actually exists, and rewrites its location to be
+    something we can use on another machine.
+    
+    Since Files and sub-Directories are already tracked by the directory's
+    listing, we just need some sentinel path to represent the existence of a
+    directory coming from Toil and not the local filesystem.
+    """
+    if directory_metadata["location"].startswith("toilfs:") or directory_metadata["location"].startswith("_:"):
+        # Already in Toil; nothing to do
+        return
+    if not directory_metadata["location"] and directory_metadata["path"]:
+        directory_metadata["location"] = schema_salad.ref_resolver.file_uri(directory_metadata["path"])
+    if directory_metadata["location"].startswith("file://") and not os.path.isdir(directory_metadata["location"][7:]):
+        if skip_broken:
+            return
+        else:
+            raise cwltool.errors.WorkflowException(
+                "Directory is missing: %s" % directory_metadata["location"])
+                
+    # The metadata for a directory is all we need to keep around for it. It
+    # doesn't have a real location. But each directory needs a unique location
+    # or CWL won't ship the metadata along. CWL takes "_:" as a signal to make
+    # directories instead of copying from somewhere. So we give every directory
+    # a unique _: location and CWL's machinery Just Works.
+    directory_metadata["location"] = "_:" + directory_metadata["location"]
+    
+    logger.debug("Sending directory: %s", directory_metadata)
 
 def uploadFile(uploadfunc: Any,
                fileindex: dict,
@@ -641,6 +690,9 @@ def uploadFile(uploadfunc: Any,
     Update a file object so that the location is a reference to the toil file
     store, writing it to the file store if necessary.
     """
+    
+    logger.debug("Sending file: %s", file_metadata)
+    
     if file_metadata["location"].startswith("toilfs:") or file_metadata["location"].startswith("_:"):
         return
     if file_metadata["location"] in fileindex:
@@ -939,6 +991,8 @@ class CWLJob(Job):
         adjustDirObjs(output, functools.partial(
             get_listing, cwltool.stdfsaccess.StdFsAccess(outdir),
             recursive=True))
+            
+        adjustDirObjs(output, prepareDirectoryForUpload)
 
         # write the outputs into the jobstore
         adjustFileObjs(output, functools.partial(
