@@ -113,6 +113,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     :param str jobName: The "job name" (a user friendly name) of the job to be run
     :param str jobStoreLocator: Specifies the job store to use
     :param str jobStoreID: The job store ID of the job to be run
+    
+    :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
     logging.basicConfig()
     setLogLevel(config.logLevel)
@@ -258,7 +260,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     #Worker log file trapped from here on in
     ##########################################
 
-    workerFailed = False
+    jobAttemptFailed = False
     statsDict = MagicExpando()
     statsDict.jobs = []
     statsDict.workers.logsToMaster = []
@@ -477,7 +479,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     if AbstractFileStore._terminateEvent.isSet():
         jobGraph = jobStore.load(jobStoreID)
         jobGraph.setupJobAfterFailure(config)
-        workerFailed = True
+        jobAttemptFailed = True
         if job and jobGraph.remainingRetryCount == 0:
             job._succeeded = False
 
@@ -516,7 +518,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     # relative to the end (since Python won't decode Unicode backward, or even
     # interpret seek offsets in characters for us). TODO: We may get invalid or
     # just different Unicode by breaking up a character at the boundary!
-    if workerFailed and redirectOutputToLogFile:
+    if jobAttemptFailed and redirectOutputToLogFile:
         jobGraph.logJobStoreFileID = jobStore.getEmptyFileStoreID(jobGraph.jobStoreID, cleanup=True)
         jobGraph.chainedJobs = listOfJobs
         with jobStore.updateFileStream(jobGraph.logJobStoreFileID) as w:
@@ -544,7 +546,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         statsDict.logs.names = listOfJobs
         statsDict.logs.messages = logMessages
 
-    if (debugging or config.stats or statsDict.workers.logsToMaster) and not workerFailed:  # We have stats/logging to report back
+    if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
         if USING_PYTHON2:
             jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True))
         else:
@@ -552,13 +554,18 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
     #Remove the temp dir
     cleanUp = config.cleanWorkDir
-    if cleanUp == 'always' or (cleanUp == 'onSuccess' and not workerFailed) or (cleanUp == 'onError' and workerFailed):
+    if cleanUp == 'always' or (cleanUp == 'onSuccess' and not jobAttemptFailed) or (cleanUp == 'onError' and jobAttemptFailed):
         shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
-    if (not workerFailed) and jobGraph.command == None and len(jobGraph.stack) == 0 and len(jobGraph.services) == 0:
+    if (not jobAttemptFailed) and jobGraph.command == None and len(jobGraph.stack) == 0 and len(jobGraph.services) == 0:
         # We can now safely get rid of the jobGraph
         jobStore.delete(jobGraph.jobStoreID)
+        
+    if jobAttemptFailed:
+        return 1
+    else:
+        return 0
 
 def main(argv=None):
     if argv is None:
@@ -585,5 +592,5 @@ def main(argv=None):
     jobStore = Toil.resumeJobStore(jobStoreLocator)
     config = jobStore.config
 
-    # Call the worker
-    workerScript(jobStore, config, jobName, jobStoreID)
+    # Call the worker and exit with its return value
+    sys.exit(workerScript(jobStore, config, jobName, jobStoreID))
