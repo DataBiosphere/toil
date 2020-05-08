@@ -674,9 +674,9 @@ def prepareDirectoryForUpload(directory_metadata: dict,
                 
     # The metadata for a directory is all we need to keep around for it. It
     # doesn't have a real location. But each directory needs a unique location
-    # or CWL won't ship the metadata along. CWL takes "_:" as a signal to make
-    # directories instead of copying from somewhere. So we give every directory
-    # a unique _: location and CWL's machinery Just Works.
+    # or cwltool won't ship the metadata along. cwltool takes "_:" as a signal
+    # to make directories instead of copying from somewhere. So we give every
+    # directory a unique _: location and cwltool's machinery Just Works.
     directory_metadata["location"] = "_:" + directory_metadata["location"]
     
     logger.debug("Sending directory: %s", directory_metadata)
