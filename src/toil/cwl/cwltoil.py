@@ -928,6 +928,14 @@ class CWLJob(Job):
         return required_env_vars
 
     def run(self, file_store: AbstractFileStore) -> Any:
+        
+        # Adjust cwltool's logging to conform to Toil's settings.
+        # We need to make sure this happens in every worker process before we
+        # do CWL things.
+        cwllogger.removeHandler(defaultStreamHandler)
+        cwllogger.setLevel(logger.getEffectiveLevel())
+        
+        
         cwljob = resolve_dict_w_promises(self.cwljob)
         fill_in_defaults(
             self.step_inputs,
@@ -1411,6 +1419,7 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
 
 def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     """Main method for toil-cwl-runner."""
+    # Remove cwltool logger's stream handler so it uses Toil's
     cwllogger.removeHandler(defaultStreamHandler)
     config = Config()
     config.cwl = True
@@ -1580,6 +1589,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     use_container = not options.no_container
 
     if options.logLevel:
+        # Make sure cwltool uses Toil's log level.
+        # Applies only on the leader.
         cwllogger.setLevel(options.logLevel)
 
     outdir = os.path.abspath(options.outdir)
