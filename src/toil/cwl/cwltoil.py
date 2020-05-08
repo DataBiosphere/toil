@@ -133,7 +133,7 @@ def filter_skip_null(name: str, value: Any) -> Any:
     err_flag = [False]
     value = _filter_skip_null(value, err_flag)
     if err_flag[0]:
-        cwllogger.warning(
+        logger.warning(
             "In %s, SkipNull result found and cast to None. \n"
             "You had a conditional step that did not run, "
             "but you did not use pickValue to handle the skipped input." % name)
@@ -312,7 +312,7 @@ class ResolveSource:
             return values
 
         if not isinstance(values, list):
-            cwllogger.warning(
+            logger.warning(
                 "pickValue used but input %s is not a list." % self.name)
             return values
 
@@ -474,7 +474,6 @@ class ToilPathMapper(PathMapper):
             
     def mapper(self, src: str) -> MapperEnt:
         result = super(ToilPathMapper, self).mapper(src)
-        logger.debug("ToilPathMapper: Mapped %s to %s", src, result)
         return result
 
     def visit(self,
@@ -498,8 +497,6 @@ class ToilPathMapper(PathMapper):
             if obj["location"].startswith("file://") and not self.stage_listing:
                 staged = False
                 
-            logger.debug("ToilPathMapper: Directory becomes %s at %s", self._pathmap[obj["location"]], obj["location"])
-                
             self.visitlisting(
                 obj.get("listing", []), tgt, basedir, copy=copy, staged=staged)
 
@@ -518,7 +515,7 @@ class ToilPathMapper(PathMapper):
                     obj,
                     "location",
                     validate.ValidationException,
-                    cwllogger.isEnabledFor(logging.DEBUG),
+                    logger.isEnabledFor(logging.DEBUG),
                 ):
                     deref = self.get_file(path) if self.get_file else ab
                     if deref.startswith("file:"):
@@ -540,8 +537,6 @@ class ToilPathMapper(PathMapper):
                     self._pathmap[path] = MapperEnt(
                         deref, tgt, "WritableFile" if copy else "File", staged
                     )
-            
-            logger.debug("ToilPathMapper: File becomes %s at %s", self._pathmap[obj["location"]], obj["location"])
             
             self.visitlisting(
                 obj.get("secondaryFiles", []),
@@ -642,7 +637,7 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
                 index[file_uri] = "toilfs:" + writeFunc(rp).pack()
                 existing[index[file_uri]] = file_uri
             except Exception as e:
-                cwllogger.error("Got exception '%s' while copying '%s'", e, file_uri)
+                logger.error("Got exception '%s' while copying '%s'", e, file_uri)
                 raise
         return index[file_uri]
 
@@ -679,7 +674,7 @@ def prepareDirectoryForUpload(directory_metadata: dict,
     # directory a unique _: location and cwltool's machinery Just Works.
     directory_metadata["location"] = "_:" + directory_metadata["location"]
     
-    logger.debug("Sending directory: %s", directory_metadata)
+    logger.debug("Sending directory at %s", directory_metadata["location"])
 
 def uploadFile(uploadfunc: Any,
                fileindex: dict,
@@ -690,8 +685,6 @@ def uploadFile(uploadfunc: Any,
     Update a file object so that the location is a reference to the toil file
     store, writing it to the file store if necessary.
     """
-    
-    logger.debug("Sending file: %s", file_metadata)
     
     if file_metadata["location"].startswith("toilfs:") or file_metadata["location"].startswith("_:"):
         return
@@ -708,6 +701,8 @@ def uploadFile(uploadfunc: Any,
                 "File is missing: %s" % file_metadata["location"])
     file_metadata["location"] = write_file(
         uploadfunc, fileindex, existing, file_metadata["location"])
+        
+    logger.debug("Sending file at: %s", file_metadata["location"])
 
 
 def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
