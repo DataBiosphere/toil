@@ -800,7 +800,7 @@ class CWLJob(Job):
                 debug=False,
                 js_console=False,
                 force_docker_pull=False,
-                loadListing='',
+                loadListing='no_listing',
                 outdir='',
                 tmpdir='/tmp',  # TODO: use actual defaults here
                 stagedir='/var/lib/cwl'  # TODO: use actual defaults here
@@ -927,6 +927,9 @@ class CWLJob(Job):
         process_uuid = uuid.uuid4()
         started_at = datetime.datetime.now()
         # Run the tool
+        # from collections import OrderedDict
+        # cwljob = OrderedDict([('d', OrderedDict([('class', 'Directory'), ('location', 'file:///home/quokka/git/cwl-v1.1/tests/tmp1'), ('basename', 'tmp1')]))])
+        # print(cwljob)
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
@@ -1614,17 +1617,29 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             fill_in_defaults(
                 tool.tool["inputs"], initialized_job_order, fs_access)
 
+            load_listing_req, _ = tool.get_requirement("LoadListingRequirement")
+            load_listing_tool_req = load_listing_req.get("loadListing", "no_listing") if load_listing_req else "no_listing"
+
             def path_to_loc(obj):
                 if "location" not in obj and "path" in obj:
                     obj["location"] = obj["path"]
                     del obj["path"]
 
+            def get_conditional_listing(fs_access, rec):
+                load_listing = rec.get("loadListing") or load_listing_tool_req
+                if load_listing and load_listing != "no_listing":
+                    get_listing(fs_access, rec, recursive=(load_listing == "deep_listing"))
+
             def import_files(inner_tool):
                 visit_class(inner_tool, ("File", "Directory"), path_to_loc)
                 visit_class(inner_tool, ("File",), functools.partial(add_sizes, fs_access))
                 normalizeFilesDirs(inner_tool)
-                adjustDirObjs(inner_tool, functools.partial(
-                    get_listing, fs_access, recursive=True))
+
+                op = functools.partial(get_conditional_listing, fs_access)
+                visit_class(rec=inner_tool, cls=("Directory",), op=op)
+
+                # adjustDirObjs(inner_tool, functools.partial(
+                #     get_listing, fs_access, recursive=True))
                 adjustFileObjs(inner_tool, functools.partial(
                     uploadFile, toil.importFile, fileindex, existing,
                     skip_broken=True))  # actually import files into the jobstore
