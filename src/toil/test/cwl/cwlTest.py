@@ -171,8 +171,6 @@ class CWLv10Test(ToilTest):
 
     @slow
     @pytest.mark.timeout(2400)
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
@@ -206,48 +204,36 @@ class CWLv10Test(ToilTest):
     @slow
     @needs_lsf
     @unittest.skip
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_lsf_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="LSF", caching=True)
 
     @slow
     @needs_slurm
     @unittest.skip
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_slurm_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="Slurm", caching=True)
 
     @slow
     @needs_torque
     @unittest.skip
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_torque_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="Torque", caching=True)
 
     @slow
     @needs_gridengine
     @unittest.skip
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_gridengine_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="gridEngine", caching=True)
 
     @slow
     @needs_mesos
     @unittest.skip
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_mesos_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="mesos", caching=True)
 
     @slow
     @needs_parasol
     @unittest.skip
-    # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
-    @pytest.mark.xfail
     def test_parasol_cwl_conformance_with_caching(self):
         return self.test_run_conformance(batchSystem="parasol", caching=True)
 
@@ -360,8 +346,8 @@ class CWLv11Test(ToilTest):
     @pytest.mark.timeout(2400)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently pass tests: 213, 236, 242, 243, 244, 245, 246, 249
-            selected_tests = '1-212,214-235,237-241,247-248,250-253'
+            # TODO: we do not currently pass tests: 213, 236, 242, 243, 244, 245, 246
+            selected_tests = '1-212,214-235,237-241,247-253'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',
@@ -422,8 +408,8 @@ class CWLv12Test(ToilTest):
     @pytest.mark.timeout(2400)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently pass tests: 213, 236, 242, 243, 244, 245, 246, 249
-            selected_tests = '1-212,214-235,237-241,247-248,250-276'
+            # TODO: we do not currently pass tests: 213, 236, 242, 243, 244, 245, 246
+            selected_tests = '1-212,214-235,237-241,247-276'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',

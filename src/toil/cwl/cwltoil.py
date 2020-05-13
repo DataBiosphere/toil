@@ -82,6 +82,8 @@ from toil.job import Job, Promise
 from toil.common import Config, Toil, addOptions
 from toil.version import baseVersion
 
+logger = logging.getLogger(__name__)
+
 # Define internal jobs we should avoid submitting to batch systems and logging
 CWL_INTERNAL_JOBS = ("CWLJobWrapper",
                      "CWLWorkflow",
@@ -131,7 +133,7 @@ def filter_skip_null(name: str, value: Any) -> Any:
     err_flag = [False]
     value = _filter_skip_null(value, err_flag)
     if err_flag[0]:
-        cwllogger.warning(
+        logger.warning(
             "In %s, SkipNull result found and cast to None. \n"
             "You had a conditional step that did not run, "
             "but you did not use pickValue to handle the skipped input." % name)
@@ -310,7 +312,7 @@ class ResolveSource:
             return values
 
         if not isinstance(values, list):
-            cwllogger.warning(
+            logger.warning(
                 "pickValue used but input %s is not a list." % self.name)
             return values
 
@@ -469,6 +471,10 @@ class ToilPathMapper(PathMapper):
         self.stage_listing = stage_listing
         super(ToilPathMapper, self).__init__(
             referenced_files, basedir, stagedir, separateDirs=separateDirs)
+            
+    def mapper(self, src: str) -> MapperEnt:
+        result = super(ToilPathMapper, self).mapper(src)
+        return result
 
     def visit(self,
               obj: Dict[str, Any],
@@ -476,6 +482,7 @@ class ToilPathMapper(PathMapper):
               basedir: str,
               copy: bool = False,
               staged: bool = False) -> None:
+              
         tgt = convert_pathsep_to_unix(os.path.join(stagedir, obj["basename"]))
         if obj["location"] in self._pathmap:
             return
@@ -489,6 +496,7 @@ class ToilPathMapper(PathMapper):
 
             if obj["location"].startswith("file://") and not self.stage_listing:
                 staged = False
+                
             self.visitlisting(
                 obj.get("listing", []), tgt, basedir, copy=copy, staged=staged)
 
@@ -507,7 +515,7 @@ class ToilPathMapper(PathMapper):
                     obj,
                     "location",
                     validate.ValidationException,
-                    cwllogger.isEnabledFor(logging.DEBUG),
+                    logger.isEnabledFor(logging.DEBUG),
                 ):
                     deref = self.get_file(path) if self.get_file else ab
                     if deref.startswith("file:"):
@@ -529,6 +537,7 @@ class ToilPathMapper(PathMapper):
                     self._pathmap[path] = MapperEnt(
                         deref, tgt, "WritableFile" if copy else "File", staged
                     )
+            
             self.visitlisting(
                 obj.get("secondaryFiles", []),
                 stagedir,
@@ -582,6 +591,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
+        
         # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
         # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
@@ -627,10 +637,44 @@ def write_file(writeFunc: Any, index: dict, existing: dict, file_uri: str) -> st
                 index[file_uri] = "toilfs:" + writeFunc(rp).pack()
                 existing[index[file_uri]] = file_uri
             except Exception as e:
-                cwllogger.error("Got exception '%s' while copying '%s'", e, file_uri)
+                logger.error("Got exception '%s' while copying '%s'", e, file_uri)
                 raise
         return index[file_uri]
 
+def prepareDirectoryForUpload(directory_metadata: dict,
+                              skip_broken: bool = False) -> None:
+    """
+    Prepare a Directory object to be uploaded.
+
+    Assumes listings are already filled in.
+
+    Makes sure the directory actually exists, and rewrites its location to be
+    something we can use on another machine.
+    
+    Since Files and sub-Directories are already tracked by the directory's
+    listing, we just need some sentinel path to represent the existence of a
+    directory coming from Toil and not the local filesystem.
+    """
+    if directory_metadata["location"].startswith("toilfs:") or directory_metadata["location"].startswith("_:"):
+        # Already in Toil; nothing to do
+        return
+    if not directory_metadata["location"] and directory_metadata["path"]:
+        directory_metadata["location"] = schema_salad.ref_resolver.file_uri(directory_metadata["path"])
+    if directory_metadata["location"].startswith("file://") and not os.path.isdir(directory_metadata["location"][7:]):
+        if skip_broken:
+            return
+        else:
+            raise cwltool.errors.WorkflowException(
+                "Directory is missing: %s" % directory_metadata["location"])
+                
+    # The metadata for a directory is all we need to keep around for it. It
+    # doesn't have a real location. But each directory needs a unique location
+    # or cwltool won't ship the metadata along. cwltool takes "_:" as a signal
+    # to make directories instead of copying from somewhere. So we give every
+    # directory a unique _: location and cwltool's machinery Just Works.
+    directory_metadata["location"] = "_:" + directory_metadata["location"]
+    
+    logger.debug("Sending directory at %s", directory_metadata["location"])
 
 def uploadFile(uploadfunc: Any,
                fileindex: dict,
@@ -641,6 +685,7 @@ def uploadFile(uploadfunc: Any,
     Update a file object so that the location is a reference to the toil file
     store, writing it to the file store if necessary.
     """
+    
     if file_metadata["location"].startswith("toilfs:") or file_metadata["location"].startswith("_:"):
         return
     if file_metadata["location"] in fileindex:
@@ -656,6 +701,8 @@ def uploadFile(uploadfunc: Any,
                 "File is missing: %s" % file_metadata["location"])
     file_metadata["location"] = write_file(
         uploadfunc, fileindex, existing, file_metadata["location"])
+        
+    logger.debug("Sending file at: %s", file_metadata["location"])
 
 
 def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
@@ -876,6 +923,14 @@ class CWLJob(Job):
         return required_env_vars
 
     def run(self, file_store: AbstractFileStore) -> Any:
+        
+        # Adjust cwltool's logging to conform to Toil's settings.
+        # We need to make sure this happens in every worker process before we
+        # do CWL things.
+        cwllogger.removeHandler(defaultStreamHandler)
+        cwllogger.setLevel(logger.getEffectiveLevel())
+        
+        
         cwljob = resolve_dict_w_promises(self.cwljob)
         fill_in_defaults(
             self.step_inputs,
@@ -939,6 +994,8 @@ class CWLJob(Job):
         adjustDirObjs(output, functools.partial(
             get_listing, cwltool.stdfsaccess.StdFsAccess(outdir),
             recursive=True))
+            
+        adjustDirObjs(output, prepareDirectoryForUpload)
 
         # write the outputs into the jobstore
         adjustFileObjs(output, functools.partial(
@@ -1357,6 +1414,7 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
 
 def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     """Main method for toil-cwl-runner."""
+    # Remove cwltool logger's stream handler so it uses Toil's
     cwllogger.removeHandler(defaultStreamHandler)
     config = Config()
     config.cwl = True
@@ -1526,6 +1584,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     use_container = not options.no_container
 
     if options.logLevel:
+        # Make sure cwltool uses Toil's log level.
+        # Applies only on the leader.
         cwllogger.setLevel(options.logLevel)
 
     outdir = os.path.abspath(options.outdir)
