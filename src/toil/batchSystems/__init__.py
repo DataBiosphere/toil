@@ -12,19 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from past.builtins import cmp
-from builtins import str
-from builtins import object
 import sys
 
-if sys.version_info >= (3, 0):
+from functools import total_ordering
 
-    # https://docs.python.org/3.0/whatsnew/3.0.html#ordering-comparisons
-    def cmp(a, b):
-        return (a > b) - (a < b)
+class DeadlockException(Exception):
+    """
+    Exception thrown by the Leader or BatchSystem when a deadlock is encountered due to insufficient
+    resources to run the workflow
+    """
+    def __init__(self, msg):
+        self.msg = "Deadlock encountered: " + msg
+        super().__init__()
 
-class MemoryString(object):
+    def __str__(self):
+        """
+        Stringify the exception, including the message.
+        """
+        return self.msg
+
+@total_ordering
+class MemoryString:
+    """
+    Represents an amount of bytes, as a string, using suffixes for the unit.
+    
+    Comparable based on the actual number of bytes instead of string value.
+    """
     def __init__(self, string):
         if string[-1] == 'K' or string[-1] == 'M' or string[-1] == 'G' or string[-1] == 'T': #10K
             self.unit = string[-1]
@@ -55,8 +68,8 @@ class MemoryString(object):
         elif self.unit == 'T':
             return self.val * 1099511627776
 
-    def __cmp__(self, other):
-        return cmp(self.bytes, other.bytes)
+    def __eq__(self, other):
+        return self.bytes == other.bytes
 
-    def __gt__(self, other):
-        return self.bytes > other.bytes
+    def __lt__(self, other):
+        return self.bytes < other.bytes

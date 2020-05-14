@@ -12,13 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import absolute_import
-from __future__ import division
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import range
-from builtins import object
 from past.utils import old_div
 from contextlib import contextmanager
 import logging
@@ -160,6 +153,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.memory = ResourcePool(self.maxMemory, 'memory')
         # A pool representing the available space in bytes
         self.disk = ResourcePool(self.maxDisk, 'disk')
+        
+        # If we can't schedule something, we fill this in with a reason why
+        self.schedulingStatusMessage = None
 
         # We use this event to signal shutdown
         self.shuttingDown = Event()
@@ -176,7 +172,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             self.daddyThread = Thread(target=self.daddy, daemon=True)
             self.daddyThread.start()
             log.debug('Started in normal mode.')
-
+            
     def daddy(self):
         """
         Be the "daddy" thread.
@@ -352,6 +348,22 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.runningJobs.pop(jobID)
         if not info.killIntended:
             self.outputQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=0, wallTime=time.time() - info.time, exitReason=None))
+            
+    def getSchedulingStatusMessage(self):
+        # Implement the abstractBatchSystem's scheduling status message API
+        return self.schedulingStatusMessage
+    
+    def _setSchedulingStatusMessage(self, message):
+        """
+        If we can't run a job, we record a short message about why not. If the
+        leader wants to know what is up with us (for example, to diagnose a
+        deadlock), it can ask us for the message.
+        """
+        
+        self.schedulingStatusMessage = message
+        
+        # Report the message in the debug log too.
+        log.debug(message)
 
     def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, environment):
         """
@@ -423,13 +435,13 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                     # We can't get disk, so free cores and memory
                     self.coreFractions.release(coreFractions)
                     self.memory.release(jobMemory)
-                    log.debug('Not enough disk to run job %s', jobID)
+                    self._setSchedulingStatusMessage('Not enough disk to run job %s' % jobID)
             else:
                 # Free cores, since we can't get memory
                 self.coreFractions.release(coreFractions)
-                log.debug('Not enough memory to run job %s', jobID)
+                self._setSchedulingStatusMessage('Not enough memory to run job %s' % jobID)
         else:
-            log.debug('Not enough cores to run job %s', jobID)
+            self._setSchedulingStatusMessage('Not enough cores to run job %s' % jobID)
 
         # If we get here, we didn't succeed or fail starting the job.
         # We didn't manage to get the resources.
@@ -481,16 +493,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
 
         self._checkOnDaddy()
 
-        # Round cores to minCores and apply scale
-        cores = math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores
-        assert cores <= self.maxCores, ('The job {} is requesting {} cores, more than the maximum of '
-                                        '{} cores this batch system was configured with. Scale is '
-                                        'set to {}.'.format(jobNode.jobName, cores, self.maxCores, self.scale))
-        assert cores >= self.minCores
-        assert jobNode.memory <= self.maxMemory, ('The job {} is requesting {} bytes of memory, more than '
-                                          'the maximum of {} this batch system was configured '
-                                          'with.'.format(jobNode.jobName, jobNode.memory, self.maxMemory))
-
+        # Round cores to minCores and apply scale.
+        # Make sure to give minCores even if asked for 0 cores, or negative or something. 
+        cores = max(math.ceil(jobNode.cores * self.scale / self.minCores) * self.minCores, self.minCores)
+        
+        # Don't do our own assertions about job size vs. our configured size.
+        # The abstract batch system can handle it.
+        self.checkResourceRequest(jobNode.memory, cores, jobNode.disk, name=jobNode.jobName,
+            detail='Scale is set to {}.'.format(self.scale))
+        
         self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
         log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
             jobNode.command, jobNode.memory, cores, jobNode.disk))
