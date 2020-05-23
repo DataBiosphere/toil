@@ -26,11 +26,23 @@ from builtins import str
 
 import subprocess
 from toil.provisioners import clusterFactory
+from toil.provisioners.aws.awsProvisioner import AWSProvisioner
 from toil.version import exactPython
 from toil.test import needs_aws_ec2, integrative, ToilTest, needs_appliance, timeLimit, slow
 
 log = logging.getLogger(__name__)
 
+class AWSProvisionerBenchTest(ToilTest):
+    """
+    Tests for the AWS provisioner that don't actually provision anything.
+    """
+    
+    def testAMIFinding(self):
+        for zone in ['us-west-2a', 'eu-central-1a', 'sa-east-1b']:
+            provisioner = AWSProvisioner('fakename', zone, 10000, None)
+            ami = provisioner._discoverAMI()
+            # Make sure we got an AMI and it looks plausible
+            assert(ami.startswith('ami-'))
 
 @needs_aws_ec2
 @needs_appliance
@@ -410,3 +422,4 @@ class PreemptableDeficitCompensationTest(AbstractAWSAutoscaleTest):
         command = ['/home/venv/bin/python', '/home/userScript.py']
         command.extend(toilOptions)
         self.sshUtil(command)
+
