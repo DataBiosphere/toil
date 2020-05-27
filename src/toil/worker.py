@@ -36,6 +36,7 @@ from toil.common import Toil, safeUnpickleFromStream
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil import logProcessContext
 from toil.job import Job
+from toil.lib.bioio import configureRootLogger
 from toil.lib.bioio import setLogLevel
 from toil.lib.bioio import getTotalCpuTime
 from toil.lib.bioio import getTotalCpuTimeAndMemoryUsage
@@ -46,8 +47,6 @@ except ImportError:
     # CWL extra not installed
     CWL_INTERNAL_JOBS = ()
 
-
-logging.basicConfig()
 logger = logging.getLogger(__name__)
 
 def nextChainableJobGraph(jobGraph, jobStore):
@@ -116,7 +115,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     
     :return int: 1 if a job failed, or 0 if all jobs succeeded
     """
-    logging.basicConfig()
+    
+    configureRootLogger()
     setLogLevel(config.logLevel)
 
     ##########################################

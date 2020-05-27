@@ -144,14 +144,24 @@ def _addLoggingOptions(addOptionFn):
     addOptionFn("--rotatingLogging", dest="logRotating", action="store_true", default=False,
                 help="Turn on rotating logging, which prevents log files getting too big.")
 
-def setLoggingFromOptions(options):
+def configureRootLogger():
     """
-    Sets the logging from a dictionary of name/value options.
+    Set up the root logger with handlers and formatting.
+    
+    Should be called (either by itself or via setLoggingFromOptions) before any
+    entry point tries to log anything, to ensure consistent formatting.
     """
+    
     formatStr = ' '.join([socket.gethostname(), '%(asctime)s', '%(threadName)s',
                           '%(levelname)s', '%(name)s:', '%(message)s'])
     logging.basicConfig(format=formatStr)
     rootLogger.setLevel(defaultLogLevel)
+
+def setLoggingFromOptions(options):
+    """
+    Sets the logging from a dictionary of name/value options.
+    """
+    configureRootLogger()
     if options.logLevel is not None:
         setLogLevel(options.logLevel)
     else:
