@@ -70,14 +70,18 @@ def retryable_kubernetes_errors(e):
         isinstance(e, ApiException):
         return True
     return False
-
-def retry_kubernetes(retry_while=retryable_kubernetes_errors):
+    
+def retryable_kubernetes_errors_expecting_gone(e):
     """
-    A wrapper that sends retryable Kubernetes predicates into a context-manager which will allow 
-    Kubernetes to keep retrying until a False or an executable method is seen.  
+    A function that determins whether or not Toil should retry or stop given 
+    exceptions thrown by Kubernetes, when Toil is expecting a 404 indicating
+    that a resource is gone, as it should be.
+    
+    Retries on errors other than 404.
     """
-    return retry(predicate=retry_while)
-
+    
+    return retryable_kubernetes_errors(e) and not (isinstance(e, ApiException) and e.status == 404)
+    
 def slow_down(seconds):
     """
     Toil jobs that have completed are not allowed to have taken 0 seconds, but
@@ -266,7 +270,18 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         This function gives Kubernetes more time to try an executable api.  
         """
 
-        for attempt in retry_kubernetes():
+        for attempt in retry(predicate=retryable_kubernetes_errors):
+            with attempt:
+                return method(*args, **kwargs)
+                
+    def _try_kubernetes_expecting_gone(self, method, *args, **kwargs):
+        """
+        Same as _try_kubernetes, but raises 404 errors as soon as they are
+        encountered (because we are waiting for them) instead of retrying on
+        them.
+        """
+        
+        for attempt in retry(predicate=retryable_kubernetes_errors_expecting_gone):
             with attempt:
                 return method(*args, **kwargs)
 
@@ -859,10 +874,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
         
         try:
-            # Delete the job and all dependents (pods)
-            self._try_kubernetes(self._api('batch').delete_namespaced_job, jobObject.metadata.name,
-                                                     self.namespace,
-                                                     propagation_policy='Foreground')
+            # Delete the job and all dependents (pods), hoping to get a 404 if it's magically gone
+            self._try_kubernetes_expecting_gone(self._api('batch').delete_namespaced_job, jobObject.metadata.name,
+                                                self.namespace,
+                                                propagation_policy='Foreground')
                                                 
             # That just kicks off the deletion process. Foreground doesn't
             # actually block. See
@@ -874,10 +889,11 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # non-existence.
             self._waitForJobDeath(jobObject.metadata.name)
                     
-        except kubernetes.client.rest.ApiException:
-            # TODO: check to see if this is a 404 on the thing we tried to delete
-            # If so, it is gone already and we don't need to delete it again.
-            pass
+        except ApiException as e:
+            if e.status != 404:
+                # Something is wrong, other than the job already being deleted.
+                raise
+            # Otherwise everything is fine and the job is gone. 
 
         # Return the one finished job we found
         return UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=None)
@@ -894,13 +910,17 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         while True:
             try:
                 # Look for the job
-                self._try_kubernetes(self._api('batch').read_namespaced_job, jobName, self.namespace)
+                self._try_kubernetes_expecting_gone(self._api('batch').read_namespaced_job, jobName, self.namespace)
                 # If we didn't 404, wait a bit with exponential backoff
                 time.sleep(backoffTime)
                 if backoffTime < maxBackoffTime:
                     backoffTime *= 2
-            except kubernetes.client.rest.ApiException:
+            except ApiException as e:
                 # We finally got a failure!
+                if e.status != 404:
+                    # But it wasn't due to the job being gone; something is wrong.
+                    raise
+                # It was a 404; the job is gone. Stop polling it.
                 break
             
     def shutdown(self):
@@ -924,12 +944,14 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Kill jobs whether they succeeded or failed
             try:
                 # Delete with background poilicy so we can quickly issue lots of commands
-                response = self._try_kubernetes(self._api('batch').delete_namespaced_job, jobName, 
-                                                                    self.namespace, 
-                                                                    propagation_policy='Background')
+                response = self._try_kubernetes_expecting_gone(self._api('batch').delete_namespaced_job, jobName, 
+                                                               self.namespace, 
+                                                               propagation_policy='Background')
                 logger.debug('Killed job for shutdown: %s', jobName)
             except ApiException as e:
-                logger.error("Exception when calling BatchV1Api->delte_namespaced_job: %s" % e)
+                if e.status != 404:
+                    # Anything other than a 404 is weird here.
+                    logger.error("Exception when calling BatchV1Api->delte_namespaced_job: %s" % e)
 
 
     def _getIssuedNonLocalBatchJobIDs(self):

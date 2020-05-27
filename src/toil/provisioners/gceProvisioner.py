@@ -39,7 +39,7 @@ class GCEProvisioner(AbstractProvisioner):
     """
 
     NODE_BOTO_PATH = "/root/.boto" # boto file path on instances
-    SOURCE_IMAGE = (b'projects/coreos-cloud/global/images/family/coreos-stable')
+    SOURCE_IMAGE = (b'projects/flatcar-cloud/global/images/family/flatcar-stable')
 
     def __init__(self, clusterName, zone, nodeStorage, sseKey):
         super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage)
@@ -137,7 +137,7 @@ class GCEProvisioner(AbstractProvisioner):
 
         userData =  self._getCloudConfigUserData('leader')
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
-        imageType = 'coreos-stable'
+        imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         disk = {}
         disk['initializeParams'] = {
@@ -243,7 +243,7 @@ class GCEProvisioner(AbstractProvisioner):
         #kwargs["subnet_id"] = self.subnetID if self.subnetID else self._getClusterInstance(self.instanceMetaData).subnet_id
         userData =  self._getCloudConfigUserData('worker', self._masterPublicKey, keyPath, preemptable)
         metadata = {'items': [{'key': 'user-data', 'value': userData}]}
-        imageType = 'coreos-stable'
+        imageType = 'flatcar-stable'
         sa_scopes = [{'scopes': ['compute', 'storage-full']}]
         disk = {}
         disk['initializeParams'] = {

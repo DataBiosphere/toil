@@ -207,8 +207,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                         result = self._startChild(jobCommand, jobID,
                             coreFractions, jobMemory, jobDisk, environment)
 
-                        log.debug('Tried to start job %s and got: %s', jobID, str(result))
-                        
                         if result is None:
                             # We did not get the resources to run this job.
                             # Requeue last, so we can look at the next job.
@@ -361,9 +359,6 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         """
         
         self.schedulingStatusMessage = message
-        
-        # Report the message in the debug log too.
-        log.debug(message)
 
     def _startChild(self, jobCommand, jobID, coreFractions, jobMemory, jobDisk, environment):
         """

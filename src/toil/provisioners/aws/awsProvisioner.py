@@ -17,6 +17,8 @@ from builtins import str
 from builtins import range
 import time
 import string
+import json
+import urllib.request
 
 # Python 3 compatibility imports
 from _ssl import SSLError
@@ -376,22 +378,52 @@ class AWSProvisioner(AbstractProvisioner):
 
     @memoize
     def _discoverAMI(self):
-        def descriptionMatches(ami):
-            return ami.description is not None and 'stable 1855.5.0' in ami.description
-        coreOSAMI = os.environ.get('TOIL_AWS_AMI')
-        if coreOSAMI is not None:
-            return coreOSAMI
-
-        for attempt in retry(predicate=lambda e: isinstance(e, SSLError)):
-            # SSLError is thrown when get_all_images times out
+        """
+        :return: The AMI ID (a string like 'ami-0a9a5d2b65cce04eb') for CoreOS
+                 or a compatible replacement like Flatcar.
+        :rtype: str
+        """
+        
+        # Take a user override
+        ami = os.environ.get('TOIL_AWS_AMI')
+        if ami is not None:
+            return ami
+        
+        # CoreOS is dead, long live Flatcar
+        
+        # Flatcar images, however, only live for 9 months.
+        # Rather than hardcode a list of AMIs by region that will die, we use
+        # their JSON feed of the current ones. 
+        JSON_FEED_URL = 'https://stable.release.flatcar-linux.net/amd64-usr/current/flatcar_production_ami_all.json'
+        
+        # What region do we care about?
+        region = zoneToRegion(self._zone)
+        
+        for attempt in retry(predicate=lambda e: True):
+            # Until we get parseable JSON
+            # TODO: What errors do we get for timeout, JSON parse failure, etc?
             with attempt:
-                # 679593333241 is the aws marketplace account
-                amis = self._ctx.ec2.get_all_images(owners=['679593333241'], filters={'name': 'CoreOS-stable-1855.5.0-hvm-0d1e0bd0-eaea-4397-9a3a-c56f861d2a14-ami-0f74e41ea6c13f74b.4'})
+                # Try to get the JSON and parse it.
+                feed = json.loads(urllib.request.urlopen(JSON_FEED_URL).read())
+                
+        try:
+            for ami_record in feed['amis']:
+                # Scan the klist of regions
+                if ami_record['name'] == region:
+                    # When we find ours
+                    # Save the AMI ID
+                    ami = ami_record['hvm']
+                    # And stop scanning
+                    break
+        except KeyError:
+            # We didn't see a field we need
+            raise RuntimeError('Flatcar image feed at {} does not have expected format'.format(JSON_FEED_URL))
+        
+        if ami is None:
+            # We didn't find it
+            raise RuntimeError('Flatcar image feed at {} does not have an image for region {}'.format(JSON_FEED_URL, region))
 
-        coreOSAMI = [ami for ami in amis if descriptionMatches(ami)]
-        logger.debug('Found the following matching AMIs: %s', coreOSAMI)
-        assert len(coreOSAMI) == 1, coreOSAMI
-        return coreOSAMI.pop().id
+        return ami
 
     def _toNameSpace(self):
         assert isinstance(self.clusterName, (str, bytes))
