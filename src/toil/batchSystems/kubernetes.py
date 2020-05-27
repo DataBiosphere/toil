@@ -53,6 +53,8 @@ from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
                                                    EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
+from toil.lib.bioio import configureRootLogger
+from toil.lib.bioio import setLogLevel
 from toil.lib.humanize import human2bytes
 from toil.lib.threading import LastProcessStandingArena
 from toil.resource import Resource
@@ -1039,7 +1041,8 @@ def executor():
 
     """
 
-    logging.basicConfig(level=logging.DEBUG)
+    configureRootLogger()
+    setLogLevel("DEBUG")
     logger.debug("Starting executor")
     
     # If we don't manage to run the child, what should our exit code be?
