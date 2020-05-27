@@ -16,7 +16,6 @@ from __future__ import absolute_import
 
 from builtins import range
 from builtins import object
-import socket
 import sys
 import os
 import logging
@@ -152,8 +151,7 @@ def configureRootLogger():
     entry point tries to log anything, to ensure consistent formatting.
     """
     
-    formatStr = ' '.join([socket.gethostname(), '%(asctime)s', '%(threadName)s',
-                          '%(levelname)s', '%(name)s:', '%(message)s'])
+    formatStr = ' '.join(['[%(asctime)s]', '[%(threadName)-10.10s]', '[%(levelname).1s]', '[%(name)s]', '%(message)s'])
     logging.basicConfig(format=formatStr)
     rootLogger.setLevel(defaultLogLevel)
 
