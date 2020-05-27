@@ -151,7 +151,7 @@ def configureRootLogger():
     entry point tries to log anything, to ensure consistent formatting.
     """
     
-    formatStr = ' '.join(['[%(asctime)s]', '[%(threadName)-10.10s]',
+    formatStr = ' '.join(['[%(asctime)s]', '[%(threadName)-10s]',
                           '[%(levelname).1s]', '[%(name)s]', '%(message)s'])
     logging.basicConfig(format=formatStr)
     rootLogger.setLevel(defaultLogLevel)
