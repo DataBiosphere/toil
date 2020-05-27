@@ -44,7 +44,7 @@ def runSetup():
     dateutil = 'python-dateutil'
     addict = 'addict<=2.2.0'
     pathlib2 = 'pathlib2==2.3.2'
-    enlighten = 'enlighten>=1.5.1, <2'
+    enlighten = 'enlighten>=1.5.2, <2'
 
     core_reqs = [
         dill,
