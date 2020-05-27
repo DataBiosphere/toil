@@ -153,7 +153,7 @@ def configureRootLogger():
     
     formatStr = ' '.join(['[%(asctime)s]', '[%(threadName)-10s]',
                           '[%(levelname).1s]', '[%(name)s]', '%(message)s'])
-    logging.basicConfig(format=formatStr)
+    logging.basicConfig(format=formatStr, datefmt='%Y-%m-%dT%H:%M:%S%z')
     rootLogger.setLevel(defaultLogLevel)
 
 def setLoggingFromOptions(options):
