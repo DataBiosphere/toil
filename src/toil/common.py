@@ -325,7 +325,17 @@ jobStoreLocatorHelp = ("A job store holds persistent information about the jobs 
                        "file:./foo or just file:foo) or /bar (equivalent to file:/bar).")
 
 
-def _addOptions(addGroupFn, config):
+def addCoreOptions(parser, config):
+    """
+    Add options that configure how the worker should find the job store and run a job.
+    Used both by full workflows and by debugging tools that run individual jobs.
+    
+    Doesn't include logging options; those are added separately.
+    """
+    
+    def addGroupFn(headingString, bodyString):
+        return parser.add_argument_group(headingString, bodyString).add_argument
+    
     #
     # Core options
     #
@@ -370,6 +380,15 @@ def _addOptions(addGroupFn, config):
                      "but an absolute path can also be passed to specify where this file "
                      "should be written. This options only applies when using scalable batch "
                      "systems.")
+
+def _addOtherOptions(parser, config):
+    """
+    Add all the options not encapsulated in other option-adding functions.
+    """
+    
+    def addGroupFn(headingString, bodyString):
+        return parser.add_argument_group(headingString, bodyString).add_argument
+    
     #
     # Restarting the workflow options
     #
@@ -641,20 +660,18 @@ def _addOptions(addGroupFn, config):
 
 def addOptions(parser, config=Config()):
     """
-    Adds toil options to a parser object, either optparse or argparse.
+    Adds toil options to a parser object. Only argparse.ArgumentParser is supported.
     """
-    # Wrapper function that allows toil to be used with both the optparse and
-    # argparse option parsing modules
-    addLoggingOptions(parser)  # This adds the logging stuff.
-    if isinstance(parser, ArgumentParser):
-        def addGroup(headingString, bodyString):
-            return parser.add_argument_group(headingString, bodyString).add_argument
-
-        parser.register("type", "bool", lambda v: v.lower() == "true")  # Custom type for arg=True/False.
-        _addOptions(addGroup, config)
-    else:
-        raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
+    
+    if not isinstance(parser, ArgumentParser):
+         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
                            "argparse.ArgumentParser" % parser.__class__)
+    
+    parser.register("type", "bool", lambda v: v.lower() == "true")  # Custom type for arg=True/False.
+    addLoggingOptions(parser, config)
+    addCoreOptions(parser, config)
+    _addOtherOptions(parser, config)
+       
 
 
 def getNodeID():

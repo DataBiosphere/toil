@@ -18,9 +18,9 @@
 from __future__ import absolute_import
 import logging
 
-from toil.lib.bioio import getBasicOptionParser
-from toil.lib.bioio import parseBasicOptions
-from toil.common import jobStoreLocatorHelp, Config, Toil
+from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
+
+from toil.common import jobStoreLocatorHelp, Config, Toil, addCoreOptions
 from toil.version import version
 from toil.worker import workerScript
 from toil.utils.toilDebugFile import printContentsOfJobStore
@@ -32,9 +32,14 @@ def print_successor_jobs():
 
 def main():
     parser = getBasicOptionParser()
-
-    parser.add_argument("jobStore", type=str,
-                        help="The location of the job store used by the workflow." + jobStoreLocatorHelp)
+    
+    # Set up options
+    config = Config()
+    # We need just the options required to talk to the job store and configure
+    # the worker, but nothing about batch systems
+    addCoreOptions(parser, config)
+    
+    
     parser.add_argument("jobID", nargs=1, help="The job store id of a job "
                         "within the provided jobstore to run by itself.")
     parser.add_argument("--printJobInfo", nargs=1,
@@ -43,9 +48,8 @@ def main():
                         " from the last known run.")
     parser.add_argument("--version", action='version', version=version)
     
-    # Parse options
+    # Parse options and set up logging
     options = parseBasicOptions(parser)
-    config = Config()
     config.setOptions(options)
     
     # Load the job store

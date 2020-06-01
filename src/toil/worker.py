@@ -118,7 +118,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     
     configureRootLogger()
     setLogLevel(config.logLevel)
-
+    
     ##########################################
     #Create the worker killer, if requested
     ##########################################

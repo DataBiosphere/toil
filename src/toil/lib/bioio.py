@@ -26,7 +26,6 @@ import random
 import math
 import shutil
 from argparse import ArgumentParser
-from optparse import OptionContainer, OptionGroup
 import subprocess
 
 # Python 3 compatibility imports
@@ -104,26 +103,23 @@ def logStream(fileHandle, shortName, printFunction=logger.info):
         line = fileHandle.readline()
     fileHandle.close()
 
-def addLoggingOptions(parser):
-    # Wrapper function that allows toil to be used with both the optparse and
-    # argparse option parsing modules
-    if isinstance(parser, ArgumentParser):
-        group = parser.add_argument_group("Logging Options",
-                                          "Options that control logging")
-        _addLoggingOptions(group.add_argument)
-    else:
-        raise RuntimeError("Unanticipated class passed to "
-                           "addLoggingOptions(), %s. Expecting "
-                           "argparse.ArgumentParser" % parser.__class__)
-
 supportedLogLevels = (logging.CRITICAL, logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG)
 
-def _addLoggingOptions(addOptionFn):
+def addLoggingOptions(parser, config=None):
     """
-    Adds logging options
+    Add the logging options to an option parser, given a group-adding function
+    that returns and option-adding function.
+    
+    Can also take a config, which ought to be used as a source of option
+    defaults, but currently isn't.
     """
-    # BEFORE YOU ADD OR REMOVE OPTIONS TO THIS FUNCTION, KNOW THAT YOU MAY ONLY USE VARIABLES ACCEPTED BY BOTH
-    # optparse AND argparse FOR EXAMPLE, YOU MAY NOT USE default=%default OR default=%(default)s
+    
+    def addGroupFn(headingString, bodyString):
+        return parser.add_argument_group(headingString, bodyString).add_argument
+    
+    addOptionFn = addGroupFn("Logging Options",
+                             "Options that control logging")
+
     defaultLogLevelName = logging.getLevelName( defaultLogLevel )
     addOptionFn("--logOff", dest="logLevel",
                 default=defaultLogLevelName,
@@ -273,12 +269,19 @@ class TestStatus(object):
         return os.environ["SON_TRACE_DATASETS"]
     getPathToDataSets = staticmethod(getPathToDataSets)
 
-def getBasicOptionParser( parser=None):
+def getBasicOptionParser(parser=None):
     if parser is None:
         parser = ArgumentParser()
 
+    if not isinstance(parser, ArgumentParser):
+        raise RuntimeError("Unanticipated class passed to getBasicOptionParser(), %s. Expecting "
+                           "argparse.ArgumentParser" % parser.__class__)
+    
+    parser.register("type", "bool", lambda v: v.lower() == "true")  # Custom type for arg=True/False.
+    
     addLoggingOptions(parser)
 
+    # TODO: Move this somewhere where Toil workflows could get at it.
     parser.add_argument("--tempDirRoot", dest="tempDirRoot", type=str,
                       help="Path to where temporary directory containing all temp files are created, by default uses the current working directory as the base.",
                       default=tempfile.gettempdir())
