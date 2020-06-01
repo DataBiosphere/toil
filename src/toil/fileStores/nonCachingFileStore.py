@@ -93,6 +93,9 @@ class NonCachingFileStore(AbstractFileStore):
         return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
+        
+        logger.info('Reading global file %s', fileStoreID)
+        
         if userPath is not None:
             localFilePath = self._resolveAbsoluteLocalPath(userPath)
             if os.path.exists(localFilePath):
@@ -106,6 +109,9 @@ class NonCachingFileStore(AbstractFileStore):
 
     @contextmanager
     def readGlobalFileStream(self, fileStoreID):
+    
+        logger.info('Reading global file stream %s', fileStoreID)
+    
         with self.jobStore.readFileStream(fileStoreID) as f:
             yield f
 

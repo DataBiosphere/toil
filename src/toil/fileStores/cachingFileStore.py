@@ -1089,7 +1089,9 @@ class CachingFileStore(AbstractFileStore):
         return FileID.forPath(fileID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
-        
+       
+        logger.info('Reading global file %s', fileStoreID)
+       
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
@@ -1584,6 +1586,9 @@ class CachingFileStore(AbstractFileStore):
                     time.sleep(self.contentionBackoff)
 
     def readGlobalFileStream(self, fileStoreID):
+    
+        logger.info('Reading global file stream %s', fileStoreID)
+    
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
