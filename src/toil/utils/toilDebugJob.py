@@ -24,7 +24,6 @@ from toil.common import jobStoreLocatorHelp, Config, Toil, addCoreOptions
 from toil.version import version
 from toil.worker import workerScript
 from toil.resource import Resource, setRunningOnWorker
-from toil.utils.toilDebugFile import printContentsOfJobStore
 
 logger = logging.getLogger( __name__ )
 
@@ -43,10 +42,6 @@ def main():
     
     parser.add_argument("jobID", nargs=1, help="The job store id of a job "
                         "within the provided jobstore to run by itself.")
-    parser.add_argument("--printJobInfo", nargs=1,
-                        help="Return information about this job to the user"
-                        " including preceding jobs, inputs, outputs, and runtime"
-                        " from the last known run.")
     parser.add_argument("--version", action='version', version=version)
     
     # Parse options and set up logging
@@ -55,9 +50,6 @@ def main():
     
     # Load the job store
     jobStore = Toil.resumeJobStore(config.jobStore)
-
-    if options.printJobInfo:
-        printContentsOfJobStore(jobStorePath=options.jobStore, nameOfJob=options.printJobInfo)
 
     # TODO: Option to print list of successor jobs
     # TODO: Option to run job within python debugger, allowing step through of arguments
