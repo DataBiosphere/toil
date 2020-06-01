@@ -46,6 +46,18 @@ from toil import inVirtualEnv
 
 log = logging.getLogger(__name__)
 
+# We have some logic to detect if we are on a worker, but in some circumstances
+# (like when debugging a job) we may need to override it.
+_forceRunningOnWorker = False
+
+def setRunningOnWorker():
+    """
+    Tell the resource system that the current process is a Toil worker, no
+    matter if it seems like one or not.
+    """
+    global _forceRunningOnWorker
+    _forceRunningOnWorker = True
+
 
 class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash'))):
     """
@@ -514,6 +526,15 @@ class ModuleDescriptor(namedtuple('ModuleDescriptor', ('dirPath', 'name', 'fromV
                                   fromVirtualEnv=self.fromVirtualEnv)
 
     def _runningOnWorker(self):
+        """
+        Return True if the current process is a Toil worker, and False otherwise.
+        """
+        
+        # If we have been told we are a worker, we're a worker.
+        global _forceRunningOnWorker
+        if _forceRunningOnWorker:
+            return True
+        
         try:
             mainModule = sys.modules['__main__']
         except KeyError:
