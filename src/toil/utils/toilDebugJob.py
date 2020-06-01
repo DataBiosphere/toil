@@ -23,7 +23,7 @@ from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
 from toil.common import jobStoreLocatorHelp, Config, Toil, addCoreOptions
 from toil.version import version
 from toil.worker import workerScript
-from toil.resource import setRunningOnWorker
+from toil.resource import Resource, setRunningOnWorker
 from toil.utils.toilDebugFile import printContentsOfJobStore
 
 logger = logging.getLogger( __name__ )
@@ -68,5 +68,8 @@ def main():
     logger.debug("Going to run the following job locally: %s", jobID)
     # Tell the resource system we are a worker, whatever it might think.
     setRunningOnWorker()
+    # Set up for resource download
+    # TODO: Don't we need to get the environment from the job and set it up first?
+    Resource.prepareSystem()
     workerScript(jobStore, config, jobID, jobID, redirectOutputToLogFile=False)
     logger.debug("Ran the following job locally: %s", jobID)
