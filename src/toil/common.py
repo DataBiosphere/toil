@@ -192,7 +192,7 @@ class Config(object):
 
         # Core options
         setOption("jobStore", parsingFn=parseJobStore)
-        # TODO: LOG LEVEL STRING
+        setOption("logLevel", str)
         setOption("workDir")
         if self.workDir is not None:
             self.workDir = os.path.abspath(self.workDir)
