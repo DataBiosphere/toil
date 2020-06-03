@@ -165,3 +165,29 @@ py38_appliance_build:
     # This reads GITLAB_SECRET_FILE_QUAY_CREDENTIALS
     - python setup_gitlab_docker.py
     - make push_docker
+
+# Cactus-on-Kubernetes integration (as a script and not a pytest test)
+py37_cactus_integration:
+  stage: integration
+  script:
+    - set -e
+    - export TOIL_KUBERNETES_OWNER=toiltest
+    - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
+    - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+    - export TOIL_WORKDIR=/var/lib/toil
+    - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - BUCKET_NAME=toil-test-$(uuid)
+    - cd
+    - virtualenv --system-site-packages --python python3 venv
+    - . venv/bin/activate
+    - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
+    - cd cactus
+    - git fetch origin
+    - git checkout b78fad4cf91f5ac91717796d4357ca8d85b4f7d1
+    - git submodule update --init --recursive
+    - pip install --upgrade setuptools pip
+    - pip install --upgrade .
+    - toil clean aws:us-west-2:${BUCKET_NAME}
+    - time cactus --batchSystem kubernetes --binariesMode singularity --clean always aws:us-west-2:${BUCKET_NAME} examples/evolverMammals.txt examples/evolverMammals.hal --root mr --defaultDisk "8G" --logDebug --disableCaching false
+
+
