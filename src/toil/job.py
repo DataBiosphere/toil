@@ -24,6 +24,7 @@ from builtins import super
 import collections
 import importlib
 import inspect
+import itertools
 import logging
 import sys
 import os
@@ -618,18 +619,23 @@ class Job(BaseJob):
         """
         roots = set()
         visited = set()
-        #Function to get the roots of a job
-        def getRoots(job):
+        todo = [self]
+        
+        while len(todo) > 0:
+            # Until we've finished the graph traversal
+            job = todo[-1]
+            todo.pop()
             if job not in visited:
                 visited.add(job)
                 if len(job._directPredecessors) > 0:
-                    list(map(lambda p : getRoots(p), job._directPredecessors))
+                    for other in job._directPredecessors:
+                        todo.append(other)
                 else:
                     roots.add(job)
-                #The following call ensures we explore all successor edges.
-                list(map(lambda c : getRoots(c), job._children +
-                    job._followOns))
-        getRoots(self)
+                for other in itertools.chain(job._children, job._followOns):
+                    # Ensure we explore all successor edges.
+                    todo.append(other)
+        
         return roots
 
     def checkJobGraphConnected(self):
