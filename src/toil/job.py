@@ -1205,6 +1205,7 @@ class Job(BaseJob):
                 jobGraph.services.append([])
 
             # Recursively call to process child services
+            # TODO: What if service nesting depth is more than max Python stack depth?
             for childServiceJob in serviceJob.service._childServices:
                 processService(childServiceJob, depth+1)
 
@@ -1282,6 +1283,7 @@ class Job(BaseJob):
                 def setForServices(serviceJob):
                     serviceJob.prepareForPromiseRegistration(jobStore)
                     for childServiceJob in serviceJob.service._childServices:
+                        # TODO: What if service nesting depth is more than max Python stack depth?
                         setForServices(childServiceJob)
                 for serviceJob in job._services:
                     setForServices(serviceJob)
