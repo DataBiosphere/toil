@@ -1139,17 +1139,34 @@ class Job(BaseJob):
         """
         ordering = []
         visited = set()
-        def getRunOrder(job):
+
+        # We need to recurse and traverse the graph without exhausting Python's
+        # stack, so we keep our own stack.
+        todo = [self]
+
+        while len(todo) > 0:
+            job = todo[-1]
+            todo.pop()
+
             #Do not add the job to the ordering until all its predecessors have been
             #added to the ordering
+            outstandingPredecessor = False
             for p in job._directPredecessors:
                 if p not in visited:
-                    return
+                    outstandingPredecessor = True
+                    break
+            if outstandingPredecessor:
+                continue
+
             if job not in visited:
                 visited.add(job)
                 ordering.append(job)
-                list(map(getRunOrder, job._children + job._followOns))
-        getRunOrder(self)
+                
+                for other in itertools.chain(job._followOns, job._children):
+                    # Stack up descendants so we process children and then follow-ons.
+                    # So stack up follow-ons deeper
+                    todo.append(other)
+
         return ordering
 
     def _serialiseJob(self, jobStore, jobsToJobGraphs, rootJobGraph):
