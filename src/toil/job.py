@@ -698,7 +698,7 @@ class Job(BaseJob):
 
         # All jobs in the component of the job graph containing self
         jobs = set()
-        list(map(lambda x : x._dfs(jobs), roots))
+        list(map(lambda x : x._collectAllSuccessors(jobs), roots))
 
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
         for y in [x for x in jobs if x.checkpoint]:
@@ -1032,14 +1032,22 @@ class Job(BaseJob):
     # Functions associated with Job.checkJobGraphAcyclic to establish that the job graph does not
     # contain any cycles of dependencies:
 
-    def _dfs(self, visited):
+    def _collectAllSuccessors(self, visited):
         """
         Adds the job and all jobs reachable on a directed path from current node to the given set.
         """
-        if self not in visited:
-            visited.add(self)
-            for successor in self._children + self._followOns:
-                successor._dfs(visited)
+        
+        # Keep our own stack since we may have a stick in the graph long enough
+        # to exhaust the real stack
+        todo = [self]
+        
+        while len(todo) > 0:
+            job = todo[-1]
+            todo.pop()
+            if job not in visited:
+                visited.add(self)
+                for successor in itertools.chain(self._children, self._followOns):
+                    todo.append(successor)
 
     def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
         """
@@ -1063,7 +1071,7 @@ class Job(BaseJob):
         #Get nodes in job graph
         nodes = set()
         for root in roots:
-            root._dfs(nodes)
+            root._collectAllSuccessors(nodes)
 
         ##For each follow-on edge calculate the extra implied edges
         #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
@@ -1075,7 +1083,7 @@ class Job(BaseJob):
                 #with a child edge
                 reacheable = set()
                 for child in job._children:
-                    child._dfs(reacheable)
+                    child._collectAllSuccessors(reacheable)
                 #Now add extra edges
                 for descendant in reacheable:
                     extraEdges[descendant] += job._followOns[:]
