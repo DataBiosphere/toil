@@ -176,7 +176,7 @@ py37_cactus_integration:
     - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
-    - BUCKET_NAME=toil-test-$(uuid)
+    - BUCKET_NAME=toil-test-$RANDOM-$RANDOM-$RANDOM
     - cd
     - virtualenv --system-site-packages --python python3 venv
     - . venv/bin/activate
