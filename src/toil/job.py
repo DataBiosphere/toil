@@ -1045,8 +1045,8 @@ class Job(BaseJob):
             job = todo[-1]
             todo.pop()
             if job not in visited:
-                visited.add(self)
-                for successor in itertools.chain(self._children, self._followOns):
+                visited.add(job)
+                for successor in itertools.chain(job._children, job._followOns):
                     todo.append(successor)
 
     def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
