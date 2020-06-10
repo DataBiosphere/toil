@@ -171,6 +171,9 @@ py37_cactus_integration:
   stage: integration
   script:
     - set -e
+    - virtualenv --system-site-packages --python python3.7 venv
+    - . venv/bin/activate
+    - pip install .[aws,kubernetes]
     - export TOIL_KUBERNETES_OWNER=toiltest
     - export TOIL_AWS_SECRET_NAME=shared-s3-credentials
     - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
@@ -178,8 +181,6 @@ py37_cactus_integration:
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
     - BUCKET_NAME=toil-test-$RANDOM-$RANDOM-$RANDOM
     - cd
-    - virtualenv --system-site-packages --python python3 venv
-    - . venv/bin/activate
     - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
     - cd cactus
     - git fetch origin
