@@ -128,6 +128,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self.outputQueue = Queue()
 
         # A dictionary mapping IDs of currently running jobs to their Info objects
+        # Shared between daddy thread and main thread without synchronization;
+        # do not iterate over this dict or any of its views (like items() or
+        # keys()).
         self.runningJobs = {}
         """
         :type: dict[str,Info]
@@ -259,6 +262,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             exc = self.daddyException
             self.daddyException = None
             raise exc
+        if not self.daddyThread or not self.daddyThread.is_alive():
+            # The daddy thread has wandered off or stopped.
+            # We should bail. Something is broken.
+            raise RuntimeError('Daddy thread is not running. Nobody is minding the local job children!')
 
     def _pollForDoneChildrenIn(self, pid_to_popen):
         """
@@ -299,10 +306,15 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 if siginfo is not None and siginfo.si_pid in pid_to_popen and siginfo.si_pid not in ready:
                     # Something new finished
                     ready.add(siginfo.si_pid)
+                    log.debug('Child %d has stopped according to waitid', siginfo.si_pid)
                 else:
                     # Nothing we own that we haven't seen before has finished.
-                    return ready
-        else:
+                    break
+                    
+        if len(ready) == 0:
+            # waitid may be dropping messages. See
+            # https://github.com/DataBiosphere/toil/issues/3082 where local
+            # jobs appear to be getting stuck.
             # On Mac there's no waitid and no way to wait and not reap.
             # Fall back on polling all the Popen objects.
             # To make this vaguely efficient we have to return done children in
@@ -311,10 +323,10 @@ class SingleMachineBatchSystem(BatchSystemSupport):
                 if popen.poll() is not None:
                     # Process is done
                     ready.add(pid)
-                    log.debug('Child %d has stopped', pid)
+                    log.debug('Child %d has stopped according to polling', pid)
             
-            # Return all the done processes we found
-            return ready
+        # Return all the done processes we found
+        return ready
 
     def _runDebugJob(self, jobCommand, jobID, environment):
         """
@@ -498,7 +510,7 @@ class SingleMachineBatchSystem(BatchSystemSupport):
             detail='Scale is set to {}.'.format(self.scale))
         
         self.checkResourceRequest(jobNode.memory, cores, jobNode.disk)
-        log.debug("Issuing the command: %s with memory: %i, cores: %i, disk: %i" % (
+        log.debug("Issuing local command: %s with memory: %i, cores: %i, disk: %i" % (
             jobNode.command, jobNode.memory, cores, jobNode.disk))
         with self.jobIndexLock:
             jobID = self.jobIndex
@@ -550,7 +562,9 @@ class SingleMachineBatchSystem(BatchSystemSupport):
         self._checkOnDaddy()
         
         now = time.time()
-        return {jobID: now - info.time for jobID, info in list(self.runningJobs.items())}
+        # Grab a snapshot of the running jobs that can be safely iterated over
+        snapshot = self.runningJobs.copy()
+        return {jobID: now - info.time for jobID, info in snapshot.items()}
 
     def shutdown(self):
         """

@@ -56,6 +56,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             for curline in stdout.split('\n'):
                 items = curline.strip().split('|')
                 if items[0] in currentjobs and items[1] == 'RUN':
+                    logger.debug('Running job %s belongs to us', items[0])
                     jobstart = parse(items[2], default=datetime.now(tzlocal()))
                     times[currentjobs[items[0]]] = datetime.now(tzlocal()) \
                         - jobstart

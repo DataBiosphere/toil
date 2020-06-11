@@ -373,10 +373,14 @@ class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
                 self.config.statePollingWait):
             batchIds = self._getRunningBatchJobIDsCache
         else:
+            logger.debug('Refreshing view of running batch scheduler jobs')
             batchIds = self.with_retries(self.worker.getRunningJobIDs)
             self._getRunningBatchJobIDsCache = batchIds
             self._getRunningBatchJobIDsTimestamp = datetime.now()
+        batchCount = len(batchIds)
         batchIds.update(self.getRunningLocalJobIDs())
+        localCount = len(batchIds) - batchCount
+        logger.debug('Found %d jobs running on the batch scheduler and %d jobs running locally', batchCount, localCount)
         return batchIds
 
     def getUpdatedBatchJob(self, maxWait):
