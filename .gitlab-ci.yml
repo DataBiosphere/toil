@@ -180,6 +180,7 @@ py37_cactus_integration:
     - export TOIL_KUBERNETES_HOST_PATH=/data/scratch
     - export TOIL_WORKDIR=/var/lib/toil
     - export SINGULARITY_CACHEDIR=/var/lib/toil/singularity-cache
+    - mkdir -p ${TOIL_WORKDIR}
     - BUCKET_NAME=toil-test-$RANDOM-$RANDOM-$RANDOM
     - cd
     - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
