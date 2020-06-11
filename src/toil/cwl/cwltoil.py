@@ -847,7 +847,7 @@ class CWLJob(Job):
                 debug=False,
                 js_console=False,
                 force_docker_pull=False,
-                loadListing='no_listing',
+                loadListing=determine_load_listing(tool),
                 outdir='',
                 tmpdir='/tmp',  # TODO: use actual defaults here
                 stagedir='/var/lib/cwl'  # TODO: use actual defaults here
@@ -981,10 +981,7 @@ class CWLJob(Job):
 
         process_uuid = uuid.uuid4()
         started_at = datetime.datetime.now()
-        # Run the tool
-        # from collections import OrderedDict
-        # cwljob = OrderedDict([('d', OrderedDict([('class', 'Directory'), ('location', 'file:///home/quokka/git/cwl-v1.1/tests/tmp1'), ('basename', 'tmp1')]))])
-        # print(cwljob)
+
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
@@ -1415,6 +1412,13 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
     return final_secondary_files
 
 
+def determine_load_listing(tool):
+    load_listing_req, _ = tool.get_requirement("LoadListingRequirement")
+    load_listing_tool_req = load_listing_req.get("loadListing", "no_listing") if load_listing_req else "no_listing"
+    load_listing = tool.tool.get("loadListing") or load_listing_tool_req
+    return load_listing
+
+
 def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     """Main method for toil-cwl-runner."""
     # Remove cwltool logger's stream handler so it uses Toil's
@@ -1677,29 +1681,16 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             fill_in_defaults(
                 tool.tool["inputs"], initialized_job_order, fs_access)
 
-            load_listing_req, _ = tool.get_requirement("LoadListingRequirement")
-            load_listing_tool_req = load_listing_req.get("loadListing", "no_listing") if load_listing_req else "no_listing"
-
             def path_to_loc(obj):
                 if "location" not in obj and "path" in obj:
                     obj["location"] = obj["path"]
                     del obj["path"]
-
-            def get_conditional_listing(fs_access, rec):
-                load_listing = rec.get("loadListing") or load_listing_tool_req
-                if load_listing and load_listing != "no_listing":
-                    get_listing(fs_access, rec, recursive=(load_listing == "deep_listing"))
 
             def import_files(inner_tool):
                 visit_class(inner_tool, ("File", "Directory"), path_to_loc)
                 visit_class(inner_tool, ("File",), functools.partial(add_sizes, fs_access))
                 normalizeFilesDirs(inner_tool)
 
-                op = functools.partial(get_conditional_listing, fs_access)
-                visit_class(rec=inner_tool, cls=("Directory",), op=op)
-
-                # adjustDirObjs(inner_tool, functools.partial(
-                #     get_listing, fs_access, recursive=True))
                 adjustFileObjs(inner_tool, functools.partial(
                     uploadFile, toil.importFile, fileindex, existing,
                     skip_broken=True))  # actually import files into the jobstore
@@ -1736,6 +1727,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # using cwltool's library because we need to resolve them before toil imports them into the filestore.
             # A second builder will be built in the job's run method when toil actually starts the cwl job.
             builder = tool._init_job(initialized_job_order, runtime_context)
+
+            # make sure this doesn't add listing items; if shallow_listing is selected, it will discover dirs one deep
+            # and then again later on (producing 2+ deep listings instead of only 1)
+            builder.loadListing = 'no_listing'
+
             builder.bind_input(
                     tool.inputs_record_schema,
                     initialized_job_order,

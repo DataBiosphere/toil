@@ -349,8 +349,8 @@ class CWLv11Test(ToilTest):
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently pass tests: 213, 236, 245
-            selected_tests = '1-212,214-235,237-244,246-253'
+            # TODO: we do not currently pass tests: 213, 236
+            selected_tests = '1-212,214-235,237-253'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',
@@ -411,8 +411,8 @@ class CWLv12Test(ToilTest):
     @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently pass tests: 213, 236, 245
-            selected_tests = '1-212,214-235,237-244,246-276'
+            # TODO: we do not currently pass tests: 213, 236
+            selected_tests = '1-212,214-235,237-276'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',
