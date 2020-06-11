@@ -16,7 +16,6 @@ from __future__ import absolute_import
 
 from builtins import range
 from builtins import object
-import socket
 import sys
 import os
 import logging
@@ -144,14 +143,24 @@ def _addLoggingOptions(addOptionFn):
     addOptionFn("--rotatingLogging", dest="logRotating", action="store_true", default=False,
                 help="Turn on rotating logging, which prevents log files getting too big.")
 
+def configureRootLogger():
+    """
+    Set up the root logger with handlers and formatting.
+    
+    Should be called (either by itself or via setLoggingFromOptions) before any
+    entry point tries to log anything, to ensure consistent formatting.
+    """
+    
+    formatStr = ' '.join(['[%(asctime)s]', '[%(threadName)-10s]',
+                          '[%(levelname).1s]', '[%(name)s]', '%(message)s'])
+    logging.basicConfig(format=formatStr, datefmt='%Y-%m-%dT%H:%M:%S%z')
+    rootLogger.setLevel(defaultLogLevel)
+
 def setLoggingFromOptions(options):
     """
     Sets the logging from a dictionary of name/value options.
     """
-    formatStr = ' '.join([socket.gethostname(), '%(asctime)s', '%(threadName)s',
-                          '%(levelname)s', '%(name)s:', '%(message)s'])
-    logging.basicConfig(format=formatStr)
-    rootLogger.setLevel(defaultLogLevel)
+    configureRootLogger()
     if options.logLevel is not None:
         setLogLevel(options.logLevel)
     else:

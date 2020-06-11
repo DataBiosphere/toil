@@ -18,6 +18,7 @@ import errno
 import logging
 import os
 import requests
+import socket
 import sys
 import time
 from datetime import datetime
@@ -415,7 +416,7 @@ def logProcessContext(config):
     # toil.version.version (string) cannot be imported at top level because it conflicts with
     # toil.version (module) and Sphinx doesn't like that.
     from toil.version import version
-    log.info("Running Toil version %s.", version)
+    log.info("Running Toil version %s on host %s.", version, socket.gethostname())
     log.debug("Configuration: %s", config.__dict__)
 
 
