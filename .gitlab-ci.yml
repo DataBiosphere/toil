@@ -171,6 +171,7 @@ py37_cactus_integration:
   stage: integration
   script:
     - set -e
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata awscli jq python3.7 python3.7-dev
     - virtualenv --system-site-packages --python python3.7 venv
     - . venv/bin/activate
     - pip install .[aws,kubernetes]
