@@ -24,6 +24,7 @@ from builtins import super
 import collections
 import importlib
 import inspect
+import itertools
 import logging
 import sys
 import os
@@ -618,18 +619,23 @@ class Job(BaseJob):
         """
         roots = set()
         visited = set()
-        #Function to get the roots of a job
-        def getRoots(job):
+        todo = [self]
+        
+        while len(todo) > 0:
+            # Until we've finished the graph traversal
+            job = todo[-1]
+            todo.pop()
             if job not in visited:
                 visited.add(job)
                 if len(job._directPredecessors) > 0:
-                    list(map(lambda p : getRoots(p), job._directPredecessors))
+                    for other in job._directPredecessors:
+                        todo.append(other)
                 else:
                     roots.add(job)
-                #The following call ensures we explore all successor edges.
-                list(map(lambda c : getRoots(c), job._children +
-                    job._followOns))
-        getRoots(self)
+                for other in itertools.chain(job._children, job._followOns):
+                    # Ensure we explore all successor edges.
+                    todo.append(other)
+        
         return roots
 
     def checkJobGraphConnected(self):
@@ -692,7 +698,7 @@ class Job(BaseJob):
 
         # All jobs in the component of the job graph containing self
         jobs = set()
-        list(map(lambda x : x._dfs(jobs), roots))
+        list(map(lambda x : x._collectAllSuccessors(jobs), roots))
 
         # Check for each job for which checkpoint is true that it is a cut vertex or leaf
         for y in [x for x in jobs if x.checkpoint]:
@@ -1026,14 +1032,22 @@ class Job(BaseJob):
     # Functions associated with Job.checkJobGraphAcyclic to establish that the job graph does not
     # contain any cycles of dependencies:
 
-    def _dfs(self, visited):
+    def _collectAllSuccessors(self, visited):
         """
         Adds the job and all jobs reachable on a directed path from current node to the given set.
         """
-        if self not in visited:
-            visited.add(self)
-            for successor in self._children + self._followOns:
-                successor._dfs(visited)
+        
+        # Keep our own stack since we may have a stick in the graph long enough
+        # to exhaust the real stack
+        todo = [self]
+        
+        while len(todo) > 0:
+            job = todo[-1]
+            todo.pop()
+            if job not in visited:
+                visited.add(job)
+                for successor in itertools.chain(job._children, job._followOns):
+                    todo.append(successor)
 
     def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
         """
@@ -1057,7 +1071,7 @@ class Job(BaseJob):
         #Get nodes in job graph
         nodes = set()
         for root in roots:
-            root._dfs(nodes)
+            root._collectAllSuccessors(nodes)
 
         ##For each follow-on edge calculate the extra implied edges
         #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
@@ -1069,7 +1083,7 @@ class Job(BaseJob):
                 #with a child edge
                 reacheable = set()
                 for child in job._children:
-                    child._dfs(reacheable)
+                    child._collectAllSuccessors(reacheable)
                 #Now add extra edges
                 for descendant in reacheable:
                     extraEdges[descendant] += job._followOns[:]
@@ -1125,17 +1139,34 @@ class Job(BaseJob):
         """
         ordering = []
         visited = set()
-        def getRunOrder(job):
+
+        # We need to recurse and traverse the graph without exhausting Python's
+        # stack, so we keep our own stack.
+        todo = [self]
+
+        while len(todo) > 0:
+            job = todo[-1]
+            todo.pop()
+
             #Do not add the job to the ordering until all its predecessors have been
             #added to the ordering
+            outstandingPredecessor = False
             for p in job._directPredecessors:
                 if p not in visited:
-                    return
+                    outstandingPredecessor = True
+                    break
+            if outstandingPredecessor:
+                continue
+
             if job not in visited:
                 visited.add(job)
                 ordering.append(job)
-                list(map(getRunOrder, job._children + job._followOns))
-        getRunOrder(self)
+                
+                for other in itertools.chain(job._followOns, job._children):
+                    # Stack up descendants so we process children and then follow-ons.
+                    # So stack up follow-ons deeper
+                    todo.append(other)
+
         return ordering
 
     def _serialiseJob(self, jobStore, jobsToJobGraphs, rootJobGraph):
@@ -1174,6 +1205,7 @@ class Job(BaseJob):
                 jobGraph.services.append([])
 
             # Recursively call to process child services
+            # TODO: What if service nesting depth is more than max Python stack depth?
             for childServiceJob in serviceJob.service._childServices:
                 processService(childServiceJob, depth+1)
 
@@ -1251,6 +1283,7 @@ class Job(BaseJob):
                 def setForServices(serviceJob):
                     serviceJob.prepareForPromiseRegistration(jobStore)
                     for childServiceJob in serviceJob.service._childServices:
+                        # TODO: What if service nesting depth is more than max Python stack depth?
                         setForServices(childServiceJob)
                 for serviceJob in job._services:
                     setForServices(serviceJob)
