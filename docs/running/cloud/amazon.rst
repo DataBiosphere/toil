@@ -82,16 +82,8 @@ during the computation of a workflow, first set up and configure an account with
     " AWS Secret Access Key [****************G0ys]: "
     " Default region name [us-west-1]: "
     " Default output format [json]: "
-
-#. Toil also relies on boto, and you'll need to create a boto file containing your credentials as well.  To do this, run: ::
-
-    $ nano ~/.boto
-
-#. Paste in the following (with your actual "AWS Access Key ID" and "AWS Secret Access Key"): ::
-
-    [Credentials]
-    aws_access_key_id = ****************Q65Q
-    aws_secret_access_key = ****************G0ys
+   
+   This will create the files `~/.aws/config` and `~/.aws/credentials`.
 
 #. If not done already, install toil (example uses version 3.12.0, but we recommend the latest release): ::
 
