@@ -35,6 +35,9 @@ from toil.test import (ToilTest, needs_cwl, slow, needs_docker, needs_lsf,
                        needs_torque)
 
 
+CONFORMANCE_TEST_TIMEOUT = 3600
+
+
 @needs_cwl
 class CWLv10Test(ToilTest):
     def setUp(self):
@@ -46,7 +49,7 @@ class CWLv10Test(ToilTest):
         self.workDir = os.path.join(self.cwlSpec, 'v1.0')
         # The latest cwl git commit hash from https://github.com/common-workflow-language/common-workflow-language.
         # Update it to get the latest tests.
-        testhash = '40fcfc01812046f012acf5153cc955ee848e69e3' # Date:   Tue Jan 21 07:36:37 2020 +0100
+        testhash = '40fcfc01812046f012acf5153cc955ee848e69e3'  # Date:   Tue Jan 21 07:36:37 2020 +0100
         url = 'https://github.com/common-workflow-language/common-workflow-language/archive/%s.zip' % testhash
         if not os.path.exists(self.cwlSpec):
             urlretrieve(url, 'spec.zip')
@@ -170,12 +173,12 @@ class CWLv10Test(ToilTest):
             pass
 
     @slow
-    @pytest.mark.timeout(2400)
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
     @slow
-    @pytest.mark.timeout(2400)
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
             cmd = ['cwltest', '--tool', 'toil-cwl-runner', '--test=conformance_test_v1.0.yaml',
@@ -336,18 +339,18 @@ class CWLv11Test(ToilTest):
         unittest.TestCase.tearDown(self)
 
     @slow
-    @pytest.mark.timeout(2400)
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
     @slow
-    @pytest.mark.timeout(2400)
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently pass tests: 213, 236, 242, 243, 244, 245, 246
-            selected_tests = '1-212,214-235,237-241,247-253'
+            # TODO: we do not currently pass tests: 213, 236
+            selected_tests = '1-212,214-235,237-253'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',
@@ -398,18 +401,18 @@ class CWLv12Test(ToilTest):
         unittest.TestCase.tearDown(self)
 
     @slow
-    @pytest.mark.timeout(2400)
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     # Cannot work until we fix https://github.com/DataBiosphere/toil/issues/2801
     @pytest.mark.xfail
     def test_run_conformance_with_caching(self):
         self.test_run_conformance(caching=True)
 
     @slow
-    @pytest.mark.timeout(2400)
+    @pytest.mark.timeout(CONFORMANCE_TEST_TIMEOUT)
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
-            # TODO: we do not currently pass tests: 213, 236, 242, 243, 244, 245, 246
-            selected_tests = '1-212,214-235,237-241,247-276'
+            # TODO: we do not currently pass tests: 213, 236
+            selected_tests = '1-212,214-235,237-276'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',

@@ -847,7 +847,7 @@ class CWLJob(Job):
                 debug=False,
                 js_console=False,
                 force_docker_pull=False,
-                loadListing='',
+                loadListing=determine_load_listing(tool),
                 outdir='',
                 tmpdir='/tmp',  # TODO: use actual defaults here
                 stagedir='/var/lib/cwl'  # TODO: use actual defaults here
@@ -981,7 +981,7 @@ class CWLJob(Job):
 
         process_uuid = uuid.uuid4()
         started_at = datetime.datetime.now()
-        # Run the tool
+
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
@@ -1412,6 +1412,42 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
     return final_secondary_files
 
 
+def determine_load_listing(tool: ToilCommandLineTool):
+    """
+    Determines the directory.listing feature in CWL.
+
+    In CWL, any input directory can have a DIRECTORY_NAME.listing (where DIRECTORY_NAME is any variable name) set to
+    one of the following three options:
+
+        no_listing: DIRECTORY_NAME.listing will be undefined.
+            e.g. inputs.DIRECTORY_NAME.listing == unspecified
+
+        shallow_listing: DIRECTORY_NAME.listing will return a list one level deep of DIRECTORY_NAME's contents.
+            e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
+                 inputs.DIRECTORY_NAME.listing[0].listing == undefined
+                 inputs.DIRECTORY_NAME.listing.length == # of items in directory
+
+        deep_listing: DIRECTORY_NAME.listing will return a list of the entire contents of DIRECTORY_NAME.
+            e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
+                 inputs.DIRECTORY_NAME.listing[0].listing == [items in subdirectory if it exists and is the first item listed]
+                 inputs.DIRECTORY_NAME.listing.length == # of items in directory
+
+    See: https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingRequirement
+         https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingEnum
+
+    DIRECTORY_NAME.listing should be determined first from loadListing.
+    If that's not specified, from LoadListingRequirement.
+    Else, default to "no_listing" if unspecified.
+
+    :param tool: ToilCommandLineTool
+    :return str: One of 'no_listing', 'shallow_listing', or 'deep_listing'.
+    """
+    load_listing_req, _ = tool.get_requirement("LoadListingRequirement")
+    load_listing_tool_req = load_listing_req.get("loadListing", "no_listing") if load_listing_req else "no_listing"
+    load_listing = tool.tool.get("loadListing") or load_listing_tool_req
+    return load_listing
+
+
 def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     """Main method for toil-cwl-runner."""
     # Remove cwltool logger's stream handler so it uses Toil's
@@ -1683,8 +1719,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
                 visit_class(inner_tool, ("File", "Directory"), path_to_loc)
                 visit_class(inner_tool, ("File",), functools.partial(add_sizes, fs_access))
                 normalizeFilesDirs(inner_tool)
-                adjustDirObjs(inner_tool, functools.partial(
-                    get_listing, fs_access, recursive=True))
+
                 adjustFileObjs(inner_tool, functools.partial(
                     uploadFile, toil.importFile, fileindex, existing,
                     skip_broken=True))  # actually import files into the jobstore
@@ -1721,6 +1756,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             # using cwltool's library because we need to resolve them before toil imports them into the filestore.
             # A second builder will be built in the job's run method when toil actually starts the cwl job.
             builder = tool._init_job(initialized_job_order, runtime_context)
+
+            # make sure this doesn't add listing items; if shallow_listing is selected, it will discover dirs one deep
+            # and then again later on (producing 2+ deep listings instead of only 1)
+            builder.loadListing = 'no_listing'
+
             builder.bind_input(
                     tool.inputs_record_schema,
                     initialized_job_order,
