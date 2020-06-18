@@ -57,6 +57,7 @@ Cloud Platforms
 ===============
 
 .. toctree::
+    kubernetes
     amazon
     gce
     clusterUtils
