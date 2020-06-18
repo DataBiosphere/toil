@@ -1412,7 +1412,36 @@ def remove_unprocessed_secondary_files(unfiltered_secondary_files: dict) -> list
     return final_secondary_files
 
 
-def determine_load_listing(tool):
+def determine_load_listing(tool: ToilCommandLineTool):
+    """
+    Determines the directory.listing feature in CWL.
+
+    In CWL, any input directory can have a DIRECTORY_NAME.listing (where DIRECTORY_NAME is any variable name) set to
+    one of the following three options:
+
+        no_listing: DIRECTORY_NAME.listing will be undefined.
+            e.g. inputs.DIRECTORY_NAME.listing == unspecified
+
+        shallow_listing: DIRECTORY_NAME.listing will return a list one level deep of DIRECTORY_NAME's contents.
+            e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
+                 inputs.DIRECTORY_NAME.listing[0].listing == undefined
+                 inputs.DIRECTORY_NAME.listing.length == # of items in directory
+
+        deep_listing: DIRECTORY_NAME.listing will return a list of the entire contents of DIRECTORY_NAME.
+            e.g. inputs.DIRECTORY_NAME.listing == [items in directory]
+                 inputs.DIRECTORY_NAME.listing[0].listing == [items in subdirectory if it exists and is the first item listed]
+                 inputs.DIRECTORY_NAME.listing.length == # of items in directory
+
+    See: https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingRequirement
+         https://www.commonwl.org/v1.1/CommandLineTool.html#LoadListingEnum
+
+    DIRECTORY_NAME.listing should be determined first from loadListing.
+    If that's not specified, from LoadListingRequirement.
+    Else, default to "no_listing" if unspecified.
+
+    :param tool: ToilCommandLineTool
+    :return str: One of 'no_listing', 'shallow_listing', or 'deep_listing'.
+    """
     load_listing_req, _ = tool.get_requirement("LoadListingRequirement")
     load_listing_tool_req = load_listing_req.get("loadListing", "no_listing") if load_listing_req else "no_listing"
     load_listing = tool.tool.get("loadListing") or load_listing_tool_req
