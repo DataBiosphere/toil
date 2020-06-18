@@ -26,7 +26,7 @@ Preparing your Kubernetes environment
    * `Microsoft Azure AKS <https://docs.microsoft.com/en-us/azure/aks/>`_
    * `Google GKE <https://cloud.google.com/kubernetes-engine/>`_
    * `DigitalOcean Kubernetes <https://www.digitalocean.com/docs/kubernetes/>`_
-   * `minikube <https://kubernetes.io/docs/tasks/tools/install-minikube/>`_
+   * `minikube <https://kubernetes.io/docs/tasks/tools/install-minikube/>`__
 
 #. **Get a Kubernetes context on your local machine**
 
