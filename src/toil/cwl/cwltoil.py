@@ -68,14 +68,14 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 from cwltool.loghandler import _logger as cwllogger
 from cwltool.loghandler import defaultStreamHandler
 from cwltool.pathmapper import (PathMapper, adjustDirObjs, adjustFileObjs,
-                                get_listing, MapperEnt, visit_class,
-                                normalizeFilesDirs, downloadHttpFile)
+                                MapperEnt, visit_class,
+                                downloadHttpFile)
 from cwltool.process import (shortname, fill_in_defaults, compute_checksums,
                              add_sizes, Process)
 from cwltool.secrets import SecretStore
 from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
-from cwltool.utils import aslist, convert_pathsep_to_unix
+from cwltool.utils import aslist, convert_pathsep_to_unix, get_listing, normalizeFilesDirs, CWLObjectType
 from cwltool.mutation import MutationManager
 
 from toil.job import Job, Promise
@@ -325,13 +325,13 @@ class ResolveSource:
             else:
                 return result[0]
 
-        elif pick_value_type == "only_non_null":
+        elif pick_value_type == "the_only_non_null":
             if len(result) == 0:
                 raise cwltool.errors.WorkflowException(
-                    "%s: only_non_null operator found no non-null values" % self.name)
+                    "%s: the_only_non_null operator found no non-null values" % self.name)
             elif len(result) > 1:
                 raise cwltool.errors.WorkflowException(
-                    "%s: only_non_null operator found more than one non-null values" % self.name)
+                    "%s: the_only_non_null operator found more than one non-null values" % self.name)
             else:
                 return result[0]
 
@@ -371,7 +371,7 @@ class StepValueFrom:
         self.context = self.source.resolve()
         return self.context
 
-    def do_eval(self, inputs: Dict[str, cwltool.expression.JSON]) -> Any:
+    def do_eval(self, inputs: CWLObjectType) -> Any:
         """
         Evaluate the valueFrom expression with the given input object
 

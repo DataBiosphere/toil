@@ -71,6 +71,14 @@ py37_cwl_v1.1:
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - python -m pytest --duration=0 -s -r s src/toil/test/cwl/cwlTest.py::CWLv11Test
 
+py37_cwl_v1.2:
+  stage: main_tests
+  script:
+    - pwd
+    - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
+    - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
+    - python -m pytest --duration=0 -s -r s src/toil/test/cwl/cwlTest.py::CWLv12Test
+
 py37_wdl:
   stage: main_tests
   script:
