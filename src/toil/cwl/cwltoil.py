@@ -1453,6 +1453,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     # Remove cwltool logger's stream handler so it uses Toil's
     cwllogger.removeHandler(defaultStreamHandler)
     config = Config()
+    config.disableChaining = True
     config.cwl = True
     parser = argparse.ArgumentParser()
     addOptions(parser, config)
