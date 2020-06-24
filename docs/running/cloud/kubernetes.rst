@@ -51,7 +51,7 @@ Currently, the only job store, which is what Toil uses to exchange data between 
 
 #. **Get access to AWS S3 and SimpleDB** 
 
-   In your AWS account, you need to create an AWS access key. First go to the IAM dashboard; for "us-west1", the link would be::
+   In your AWS account, you need to create an AWS access key. First go to the IAM dashboard; for "us-west1", the link would be: ::
 
     https://console.aws.amazon.com/iam/home?region=us-west-1#/home
 
@@ -65,18 +65,42 @@ Currently, the only job store, which is what Toil uses to exchange data between 
 
 #. **Configure AWS access from the local machine**
 
-   This only really needs to happen if you run the leader on the local machine. But we need the files in place to fill in the secret in the next step.
-
+   This only really needs to happen if you run the leader on the local machine. But we need the files in place to fill in the secret in the next step. Run: ::
+   
+      $ aws configure
+      
+   Then when prompted, enter your secret key and access key. This should create a file ``~/.aws/credentials`` that looks like this: ::
+    
+      [default]
+      aws_access_key_id =  BLAH
+      aws_secret_access_key =  blahblahblah
+    
 #. **Create a Kubernetes secret to give jobs access to AWS**
+
+  Go into the directory where the ``credentials`` file is: ::
+  
+     $ cd ~/.aws
+  
+  Then, create a Kubernetes secret that contains it. We'll call it ``s3-credentials``: ::
+  
+     $ kubectl create secret generic s3-credentials --from-file credentials
 
 Configuring Toil for your Kubernetes environment
 ------------------------------------------------
 
 #. **Work out environment variable settings**
 
-   Make sure to set up a host path volume if you want to use caching. This may not be possible on most cloud-provider-managed Kubernetes clusters.
-   Make sure to use Sigularity and not Toil-integrated Docker for running containers, as Docker cannot be run inside unprivileged Kubernetes jobs.
-   If using Singularity, make sure to put the image cache outside the container (in the host path volume) so that the container doesn't need to be re-downloaded by every job.
+   There are several environment variables that are important for running Toil on Kubernetes. Doing the research to figure out what their values should be may require talking to your cluster provider.
+   
+   #. ``TOIL_AWS_SECRET_NAME`` is the most important, and **MUST** be set to the secret that contains your AWS ``credentials`` file, if your cluster nodes don't otherwise have access to S3 and SimpleDB (such as through IAM roles), if you want the AWS job store to work. In this example we are using ``s3-credentials``.
+   
+   #. ``TOIL_KUBERNETES_HOST_PATH`` can be set to allow Toil jobs on the same physical host to share a cache. It should be set to a path on the host where the shared cache should be stored. It will be mounted as ``/var/lib/toil`` inside the container. This path must already exist on the host, and must have as much free space as your Kubernetes node offers to jobs. In this example, we are using ``/data/scratch``. To actually make use of caching, make sure to also pass ``--disableCaching false`` to your Toil workflow.
+   
+   #. ``TOIL_KUBERNETES_OWNER`` **should** be set to the user name of the user running the Toil workflow. The jobs that Toil creates will include this user name, so they can be more easily recognized, and cleaned up by the user if anything happens to the Toil leader. In this example we are using ``demouser``.
+   
+   Note that Docker containers cannot be run inside of unprivileged Kubernetes pods (which are themselves containers). The Docker daemon does not (yet) support this. Other tools, such as Singularity, are able to run containers from within containers. If using Singularity to run containerized tools, you will also want to make sure that Singularity is downloading its containers under ``/var/lib/toil`` somewhere by setting ``SINGULARITY_CACHEDIR``. But you will need to make sure that no two jobs try to download the same container at the same time; Singularity has no synchronization or locking around its cache, but the cache is also not safe for simultaneous access by multiple Singularity invocations. Some Toil workflows use their own custom workaround logic for this problem; this work is likely to be made part of Toil in a future release.
+   
+  
    
 Running workflows
 -----------------
@@ -84,6 +108,57 @@ Running workflows
 #. **Launch the Toil workflow with a local leader**
 
 #. **Alternately, run the Toil workflow as a Kubernetes job**
+
+   Here's an example YAML: ::
+
+    apiVersion: batch/v1
+    kind: Job
+    metadata:
+      name: demouser-toil-test
+    spec:
+      template:
+        spec:
+          containers:
+          - name: main
+            image: quay.io/ucsc_cgl/toil:4.1.0
+            command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              mkdir /tmp/work
+              cd /tmp/work
+              wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
+              python3 tutorial_helloworld.py \
+                  aws:us-west-2:demouser-toil-test-jobstore \
+                  --logInfo \
+                  --batchSystem kubernetes \
+                  --disableCaching false
+            volumeMounts:
+            - mountPath: /root/.aws
+              name: s3-credentials
+            resources:
+              limits:
+                cpu: 2
+                memory: "4Gi"
+                ephemeral-storage: "10Gi"
+            env:
+            - name: TOIL_KUBERNETES_OWNER
+              value: demouser
+            - name: TOIL_AWS_SECRET_NAME
+              value: s3-credentials
+            - name: TOIL_KUBERNETES_HOST_PATH
+              value: /data/scratch
+          restartPolicy: Never
+          volumes:
+          - name: scratch-volume
+            emptyDir: {}
+          - name: s3-credentials
+            secret:
+              secretName: shared-s3-credentials
+          serviceAccountName: toil-workflow-svc
+      backoffLimit: 0
+    EOF
 
    
 
