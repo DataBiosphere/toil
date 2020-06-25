@@ -103,128 +103,165 @@ Configuring Toil for your Kubernetes environment
 Running workflows
 -----------------
 
-#. **Run the Toil workflow as a Kubernetes job**
+To run the workflow, you will need to run the Toil leader process somewhere. It can either be run inside Kubernetes as a Kubernetes job, or outside Kubernetes as a normal command.
 
-   Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML soi that they can be used from the leader as well.
-   
-   Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the verison of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:4.1.0``.
+Option 1: Running the Leader Inside Kubernetes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-   Here's an example YAML file to run a test workflow: ::
+Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML soi that they can be used from the leader as well.
 
-      apiVersion: batch/v1
-      kind: Job
-      metadata:
-        # It is good practice to include your user name in your job name.
-        # Also specify it in TOIL_KUBERNETES_OWNER
-        name: demo-user-toil-test
-      # Do not try and rerun the leader job if it fails
-      backoffLimit: 0
-      spec:
-      template:
-        spec:
-          # Do not restart the pod when the job fails, but keep it around so the
-          # log can be retrieved
-          restartPolicy: Never
-          volumes:
-          - name: aws-credentials-vol
-            secret:
-              # Make sure the AWS credentials are available as a volume.
-              # This should match TOIL_AWS_SECRET_NAME
-              secretName: aws-credentials
-          serviceAccountName: toil-workflow-svc
-          containers:
-          - name: main
-            image: quay.io/ucsc_cgl/toil:4.1.0
-            env:
-            # Specify your username for inclusion in job names
-            - name: TOIL_KUBERNETES_OWNER
-              value: demo-user
-            # Specify where to find the AWS credentials to access the job store with
-            - name: TOIL_AWS_SECRET_NAME
-              value: aws-credentials
-            # Specify where per-host caches should be stored, on the Kubernetes hosts.
-            # Needs to be set for Toil's caching to be efficient.
-            - name: TOIL_KUBERNETES_HOST_PATH
-              value: /data/scratch
-            volumeMounts:
-            # Mount the AWS credentials volume
-            - mountPath: /root/.aws
-              name: aws-credentials-vol
-            resources:
-              # Make sure to set these resource limits to values large enough
-              # to accomodate the work your workflow does in the leader
-              # process, but small enough to fit on your cluster.
-              #
-              # Since no request values are specified, the limits are also used
-              # for the requests.
-              limits:
-                cpu: 2
-                memory: "4Gi"
-                ephemeral-storage: "10Gi"
-            command:
-            - /bin/bash
-            - -c
-            - |
-              # This Bash script will set up Toil and the workflow to run, and run them.
-              set -e
-              # We make sure to create a work directory; Toil can't hot-deploy a
-              # script from the root of the filesystem, which is where we start.
-              mkdir /tmp/work
-              cd /tmp/work
-              # We make a virtual environment to allow workflow dependencies to be
-              # hot-deployed.
-              #
-              # We don't really make use of it in this example, but for workflows
-              # that depend on PyPI packages we will need this.
-              #
-              # We use --system-site-packages so that the Toil installed in the
-              # appliance image is still available.
-              virtualenv --python python3 --system-site-packages venv
-              . venv/bin/activate
-              # Now we install the workflow. Here we're using a demo workflow
-              # script from Toil itself.
-              wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
-              # Now we run the workflow. We make sure to use the Kubernetes batch
-              # system and an AWS job store, and we set some generally useful
-              # logging options. We also make sure to enable caching.
-              python3 tutorial_helloworld.py \
-                  aws:us-west-2:demouser-toil-test-jobstore \
-                  --batchSystem kubernetes \
-                  --realTimeLogging \
-                  --logInfo \
-                  --disableCaching false
+Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the verison of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:4.1.0``.
 
-   You can save this YAML as ``leader.yaml``, and then run it on your Kubernetes installation with: ::
-   
-      $ kubectl apply -f leader.yaml
-      
-   To monitor the progress of the job, you will want to read its logs. If you are using a Kubernetes dashboard such as `k9s <https://github.com/derailed/k9s>`_, you can simply find the pod created for the job in the dashboard, and view its logs there. If not, you will need to locate the pod by hand.
-   
-   Kubernetes names pods for jobs by appending a short random string to the name of the job. You can find the name of the pod for your job by doing: ::
-   
-      $ kubectl get pods | grep demo-user-toil-test
-      demo-user-toil-test-g5496                                         1/1     Running     0          2m
-      
-   If the status of the pod is anything other than ``Pending``, you will be able to view its logs with: ::
-   
-      $ kubectl logs demo-user-toil-test-g5496
-      
-   This will dump the pod's logs from the beginning to now and terminate. To follow along with the logs from a running pod, add the ``-f`` option: ::
-   
-      $ kubectl logs -f demo-user-toil-test-g5496
-      
-   If your pod seems to be stuck ``Pending``, ``ContainerCreating``, or in ``ImagePullBackoff``, you can get information on what is wrong with it by using ``kubectl describe pod``: ::
-   
-      $ kubectl describe pod demo-user-toil-test-g5496
-      
-   Pay particular attention to the ``Events:`` section at the end of the output. If 
-   
-   
-#. **Alternatively, launch the Toil workflow with a local leader**
+Here's an example YAML file to run a test workflow: ::
 
-   If you don't want to run your Toil leader inside Kubernetes, you can run it locally instead.
+   apiVersion: batch/v1
+   kind: Job
+   metadata:
+     # It is good practice to include your user name in your job name.
+     # Also specify it in TOIL_KUBERNETES_OWNER
+     name: demo-user-toil-test
+   # Do not try and rerun the leader job if it fails
+   backoffLimit: 0
+   spec:
+   template:
+     spec:
+       # Do not restart the pod when the job fails, but keep it around so the
+       # log can be retrieved
+       restartPolicy: Never
+       volumes:
+       - name: aws-credentials-vol
+         secret:
+           # Make sure the AWS credentials are available as a volume.
+           # This should match TOIL_AWS_SECRET_NAME
+           secretName: aws-credentials
+       serviceAccountName: toil-workflow-svc
+       containers:
+       - name: main
+         image: quay.io/ucsc_cgl/toil:4.1.0
+         env:
+         # Specify your username for inclusion in job names
+         - name: TOIL_KUBERNETES_OWNER
+           value: demo-user
+         # Specify where to find the AWS credentials to access the job store with
+         - name: TOIL_AWS_SECRET_NAME
+           value: aws-credentials
+         # Specify where per-host caches should be stored, on the Kubernetes hosts.
+         # Needs to be set for Toil's caching to be efficient.
+         - name: TOIL_KUBERNETES_HOST_PATH
+           value: /data/scratch
+         volumeMounts:
+         # Mount the AWS credentials volume
+         - mountPath: /root/.aws
+           name: aws-credentials-vol
+         resources:
+           # Make sure to set these resource limits to values large enough
+           # to accomodate the work your workflow does in the leader
+           # process, but small enough to fit on your cluster.
+           #
+           # Since no request values are specified, the limits are also used
+           # for the requests.
+           limits:
+             cpu: 2
+             memory: "4Gi"
+             ephemeral-storage: "10Gi"
+         command:
+         - /bin/bash
+         - -c
+         - |
+           # This Bash script will set up Toil and the workflow to run, and run them.
+           set -e
+           # We make sure to create a work directory; Toil can't hot-deploy a
+           # script from the root of the filesystem, which is where we start.
+           mkdir /tmp/work
+           cd /tmp/work
+           # We make a virtual environment to allow workflow dependencies to be
+           # hot-deployed.
+           #
+           # We don't really make use of it in this example, but for workflows
+           # that depend on PyPI packages we will need this.
+           #
+           # We use --system-site-packages so that the Toil installed in the
+           # appliance image is still available.
+           virtualenv --python python3 --system-site-packages venv
+           . venv/bin/activate
+           # Now we install the workflow. Here we're using a demo workflow
+           # script from Toil itself.
+           wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
+           # Now we run the workflow. We make sure to use the Kubernetes batch
+           # system and an AWS job store, and we set some generally useful
+           # logging options. We also make sure to enable caching.
+           python3 tutorial_helloworld.py \
+               aws:us-west-2:demouser-toil-test-jobstore \
+               --batchSystem kubernetes \
+               --realTimeLogging \
+               --logInfo \
+               --disableCaching false
+
+You can save this YAML as ``leader.yaml``, and then run it on your Kubernetes installation with: ::
+
+   $ kubectl apply -f leader.yaml
    
-   Note that if you set ``TOIL_WORKDIR``, it will need to be a directory that exists both on the host and in the Toil appliance.
+To monitor the progress of the leader job, you will want to read its logs. If you are using a Kubernetes dashboard such as `k9s <https://github.com/derailed/k9s>`_, you can simply find the pod created for the job in the dashboard, and view its logs there. If not, you will need to locate the pod by hand.
+
+.. _debugKubeJob:
+   
+Monitoring and Debugging Kubernetes Jobs and Pods
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The following techniques are most useful for looking at the pod which holds the Toil leader, but they can also be applied to individual Toil jobs on Kubernetes, even when the leader is outside the cluster.
+
+Kubernetes names pods for jobs by appending a short random string to the name of the job. You can find the name of the pod for your job by doing: ::
+
+   $ kubectl get pods | grep demo-user-toil-test
+   demo-user-toil-test-g5496                                         1/1     Running     0          2m
+   
+Assuming you have set ``TOIL_KUBERNETES_OWNER`` correctly, you should be able to find all of your workflow's pods by searching for your user name: ::
+
+   $ kubectl get pods | grep demo-user
+
+If the status of a pod is anything other than ``Pending``, you will be able to view its logs with: ::
+
+   $ kubectl logs demo-user-toil-test-g5496
+   
+This will dump the pod's logs from the beginning to now and terminate. To follow along with the logs from a running pod, add the ``-f`` option: ::
+
+   $ kubectl logs -f demo-user-toil-test-g5496
+   
+A status of ``ImagePullBackoff`` suggests that you have requested to use an image that is not available. Check the ``image`` section of your YAML if you are looking at a leader, or the value of ``TOIL_APPLIANCE_SELF`` if you are delaing with a worker job. You also might want to check your Kubernetes node's Internet connectivity and DNS function; in Kubernetes, DNS depends on system-level pods which can be terminated or evicted in cases of resource oversubscription, just like user workloads.
+   
+If your pod seems to be stuck ``Pending``, ``ContainerCreating``, you can get information on what is wrong with it by using ``kubectl describe pod``: ::
+
+   $ kubectl describe pod demo-user-toil-test-g5496
+   
+Pay particular attention to the ``Events:`` section at the end of the output. An indication that a job is too big for the available nodes on your cluster, or that your cluster is too busy for your jobs, is ``FailedScheduling`` events: ::
+
+  Type     Reason            Age                  From               Message
+  ----     ------            ----                 ----               -------
+  Warning  FailedScheduling  13s (x79 over 100m)  default-scheduler  0/4 nodes are available: 1 Insufficient cpu, 1 Insufficient ephemeral-storage, 4 Insufficient memory.
+  
+If a pod is running but seems to be behaving erratically, or seems stuck, you can shell into it and look around: ::
+   
+   $ kubectl exec -ti demo-user-toil-test-g5496 /bin/bash
+   
+One common cause of stuck pods is attempting to use more memory than allowed by Kubernetes (or by the Toil job's memory resource requirement), but in a way that does not trigger the Linux OOM killer to terminate the pod's processes. In these cases, the pod can remain stuck at nearly 100% memory usage more or less indefinitely, and attempting to shell into the pod (which needs to start a process within the pod, using some of its memory) will fail. In these cases, the recommended solution is to kill the offending pod and increase its (or its Toil job's) memory requirement, or reduce its memory needs by adapting user code.
+   
+When Things Go Wrong
+^^^^^^^^^^^^^^^^^^^^
+
+The Toil Kubernetes batch system includes cleanup code to terminate worker jobs when the leader shuts down. However, if the leader pod is removed by Kubernetes, is forcibly killed or otherwise suffers a sudden existence failure, it can go away while its worker jobs live on. It is not recommended to restart a workflow in this state, as jobs from the previous invocation will remain running and will be trying to modify the job store concurrently with jobs from the new invocation.
+
+To clean up dangling jobs, you can use the following snippet: ::
+
+   $ kubectl get jobs | grep demo-user | cut -f1 -d' ' | xargs -n10 kubectl delete job
+   
+This will delete all jobs with ``demo-user``'s user name in their names, in batches of 10. You can also use the UUID that Toil assigns to a particular workflow invocation in the filter, to clean up only the jobs pretaining to that workflow invocation.
+
+Option 2: Running the Leader Outside Kubernetes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you don't want to run your Toil leader inside Kubernetes, you can run it locally instead.
+
+Note that if you set ``TOIL_WORKDIR``, it will need to be a directory that exists both on the host and in the Toil appliance.
 
 
 
