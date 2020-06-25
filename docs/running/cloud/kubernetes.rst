@@ -259,9 +259,19 @@ This will delete all jobs with ``demo-user``'s user name in their names, in batc
 Option 2: Running the Leader Outside Kubernetes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you don't want to run your Toil leader inside Kubernetes, you can run it locally instead.
+If you don't want to run your Toil leader inside Kubernetes, you can run it locally instead. This can be useful when developing a workflow; files can be hot-deployed from your local machine directly to Kubernetes. However, your local machine will have to have (ideally role-assumption- and MFA-free) access to AWS, and access to Kubernetes. Real time logging will not work unless your local machine is able to listen for incoming UDP packets on arbitrary ports on the address it uses to contact the IPv4 Internet; Toil does no NAT traversal or detection.
 
-Note that if you set ``TOIL_WORKDIR``, it will need to be a directory that exists both on the host and in the Toil appliance.
+Note that if you set ``TOIL_WORKDIR`` when running your workflow like this, it will need to be a directory that exists both on the host and in the Toil appliance.
+
+Here is an example of running our test workflow leader locally, outside of Kubernetes: ::
+
+   $ export TOIL_KUBERNETES_OWNER=demo-user  # This defaults to your local username if not set
+   $ export TOIL_AWS_SECRET_NAME=aws-credentials
+   $ export TOIL_KUBERNETES_HOST_PATH=/data/scratch
+   $ virtualenv --python python3 --system-site-packages venv
+   $ . venv/bin/activate
+   $ wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
+   $ python3 tutorial_helloworld.py aws:us-west-2:demouser-toil-test-jobstore  --batchSystem kubernetes --realTimeLogging --logInfo --disableCaching false
 
 
 
