@@ -27,6 +27,8 @@ import math
 from toil.lib.misc import call_command
 import os
 import json
+import re
+from random import randint
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
@@ -53,12 +55,14 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                 currentjobs = dict((str(self.batchJobIDs[x][0]), x) for x in
                                    self.runningJobs)
 
-            stdout = call_command(["bjobs", "-o", "jobid stat start_time delimiter='|'"])
-            for curline in stdout.split('\n'):
-                items = curline.strip().split('|')
-                if items[0] in currentjobs and items[1] == 'RUN':
-                    jobstart = parse(items[2], default=datetime.now(tzlocal()))
-                    times[currentjobs[items[0]]] = datetime.now(tzlocal()) \
+            stdout = call_command(["bjobs","-json","-o", "jobid stat start_time"])
+
+            bjobs_records = self.parseBjobs(stdout)
+            if bjobs_records:
+                for single_item in bjobs_records:
+                    if single_item['STAT'] == 'RUN' and single_item['JOBID'] in currentjobs:
+                        jobstart = parse(single_item['START_TIME'], default=datetime.now(tzlocal()))
+                        times[currentjobs[single_item['JOBID']]] = datetime.now(tzlocal()) \
                         - jobstart
             return times
 
