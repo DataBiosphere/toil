@@ -76,13 +76,26 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             combinedEnv = self.boss.environment
             combinedEnv.update(os.environ)
             stdout = call_command(subLine, env=combinedEnv)
-            line = stdout.split('\n')[0]
-            result = int(line.strip().split()[1].strip('<>'))
-            logger.debug("Got the job id: {}".format(result))
+            # Example success: Job <39605914> is submitted to default queue <general>.
+            # Example fail: Service class does not exist. Job not submitted.
+            result_search = re.search('Job <(.*)> is submitted', stdout)
+
+            if result_search:
+                result = int(result_search.group(1))
+                logger.debug("Got the job id: {}".format(result))
+            else:
+                logger.error("Could not submit job\nReason: {}".format(stdout))
+                temp_id = randint(10000000, 99999999)
+                #Flag this job to be handled by getJobExitCode
+                result = "NOT_SUBMITTED_{}".format(temp_id)
             return result
 
         def getJobExitCode(self, lsfJobID):
             # the task is set as part of the job ID if using getBatchSystemID()
+            if "NOT_SUBMITTED" in lsfJobID:
+                logger.error("bjobs detected job failed to submit")
+                return 1
+
             job, task = (lsfJobID, None)
             if '.' in lsfJobID:
                 job, task = lsfJobID.split('.', 1)
