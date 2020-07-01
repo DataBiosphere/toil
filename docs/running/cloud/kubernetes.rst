@@ -44,11 +44,11 @@ Preparing your Kubernetes environment
    
 #. **If running the Toil leader in the cluster, get a service account**
 
-   If you are going to run your workflow's leader within the Kubernetes cluster (see :ref:`kubernetesLeaderInside`), you will need a service account in your chosen Kubernetes namespace. Most namespaces should have a service account named ``default`` which should work fine. If your cluster requires you to use a different service account, you will need to obtain its name and use it whan launching the Kubernetes job containing the Toil leader.
+   If you are going to run your workflow's leader within the Kubernetes cluster (see :ref:`kubernetesLeaderInside`), you will need a service account in your chosen Kubernetes namespace. Most namespaces should have a service account named ``default`` which should work fine. If your cluster requires you to use a different service account, you will need to obtain its name and use it when launching the Kubernetes job containing the Toil leader.
    
 #. **Set up appropriate permissions**
 
-   Your local Kubernetes context and/or the service account you are using tio run the leader in the cluster will need to have certain permissions in order to run the workflow. Toil needs to be able to interact with jobs and pods in the cluster, and to retrieve pod logs. You as a user may need permission to set up an AWS credentials secret, if one is not already available. Additionally, it is very useful for you as a user to have permission to interact with nodes, and to shell into pods.
+   Your local Kubernetes context and/or the service account you are using to run the leader in the cluster will need to have certain permissions in order to run the workflow. Toil needs to be able to interact with jobs and pods in the cluster, and to retrieve pod logs. You as a user may need permission to set up an AWS credentials secret, if one is not already available. Additionally, it is very useful for you as a user to have permission to interact with nodes, and to shell into pods.
    
    The appropriate permissions may already be available to you and your service account by default, especially in managed or ease-of-use-optimized setups such as EKS or minikube.
    
@@ -200,7 +200,7 @@ Option 1: Running the Leader Inside Kubernetes
 
 Once you have determined a set of environment variable values for your workflow run, write a YAML file that defines a Kubernetes job to run your workflow with that configuration. Some configuration items (such as your username, and the name of your AWS credentials secret) need to be written into the YAML soi that they can be used from the leader as well.
 
-Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the verison of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:4.1.0``.
+Note that the leader pod will need your workflow script, its other dependencies, and Toil all installed. An easy way to get Toil installed is to start with the Toil appliance image for the version of Toil you want to use. In this example, we use ``quay.io/ucsc_cgl/toil:4.1.0``.
 
 Here's an example YAML file to run a test workflow: ::
 
@@ -319,7 +319,7 @@ This will dump the pod's logs from the beginning to now and terminate. To follow
 
    $ kubectl logs -f demo-user-toil-test-g5496
    
-A status of ``ImagePullBackoff`` suggests that you have requested to use an image that is not available. Check the ``image`` section of your YAML if you are looking at a leader, or the value of ``TOIL_APPLIANCE_SELF`` if you are delaing with a worker job. You also might want to check your Kubernetes node's Internet connectivity and DNS function; in Kubernetes, DNS depends on system-level pods which can be terminated or evicted in cases of resource oversubscription, just like user workloads.
+A status of ``ImagePullBackoff`` suggests that you have requested to use an image that is not available. Check the ``image`` section of your YAML if you are looking at a leader, or the value of ``TOIL_APPLIANCE_SELF`` if you are delaying with a worker job. You also might want to check your Kubernetes node's Internet connectivity and DNS function; in Kubernetes, DNS depends on system-level pods which can be terminated or evicted in cases of resource oversubscription, just like user workloads.
    
 If your pod seems to be stuck ``Pending``, ``ContainerCreating``, you can get information on what is wrong with it by using ``kubectl describe pod``: ::
 
@@ -346,7 +346,7 @@ To clean up dangling jobs, you can use the following snippet: ::
 
    $ kubectl get jobs | grep demo-user | cut -f1 -d' ' | xargs -n10 kubectl delete job
    
-This will delete all jobs with ``demo-user``'s username in their names, in batches of 10. You can also use the UUID that Toil assigns to a particular workflow invocation in the filter, to clean up only the jobs pretaining to that workflow invocation.
+This will delete all jobs with ``demo-user``'s username in their names, in batches of 10. You can also use the UUID that Toil assigns to a particular workflow invocation in the filter, to clean up only the jobs pertaining to that workflow invocation.
 
 Option 2: Running the Leader Outside Kubernetes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
