@@ -26,6 +26,7 @@ import logging
 import math
 from toil.lib.misc import call_command
 import os
+import json
 
 from dateutil.parser import parse
 from dateutil.tz import tzlocal
@@ -178,6 +179,30 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
             if lsfArgs:
                 bsubline.extend(lsfArgs.split())
             return bsubline
+
+        def parseBjobs(self,bjobs_output_str):
+            """
+            Parse records from bjobs json type output
+            params:
+                bjobs_output_str: stdout of bjobs json type output
+            """
+            bjobs_dict = None
+            bjobs_records = None
+            # Handle Cannot connect to LSF. Please wait ... type messages
+            dict_start = bjobs_output_str.find('{')
+            dict_end = bjobs_output_str.rfind('}')
+            if dict_start != -1 and dict_end != -1:
+                bjobs_output = bjobs_output_str[dict_start:(dict_end+1)]
+                try:
+                    bjobs_dict = json.loads(bjobs_output)
+                except json.decoder.JSONDecodeError:
+                    logger.error("Could not parse bjobs output: {}".format(bjobs_output_str))
+                if 'RECORDS' in bjobs_dict:
+                    bjobs_records = bjobs_dict['RECORDS']
+            if bjobs_records == None:
+                logger.error("Could not find bjobs output json in: {}".format(bjobs_output_str))
+
+            return bjobs_records
 
     def getWaitDuration(self):
         """We give LSF a second to catch its breath (in seconds)"""
