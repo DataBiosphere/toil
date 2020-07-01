@@ -41,7 +41,97 @@ Preparing your Kubernetes environment
    * `Configuring for minikube <https://kubernetes.io/docs/setup/learning-environment/minikube/#kubectl>`_
 
    Toil's internal Kubernetes configuration logic mirrors that of the ``kubectl`` command. Toil workflows will use the current ``kubectl`` context to launch their Kubernetes jobs.
+   
+#. **If running the Toil leader in the cluster, get a service account**
 
+   If you are going to run your workflow's leader within the Kubernetes cluster (see :ref:`kubernetesLeaderInside`), you will need a service account in your chosen Kubernetes namespace. Most namespaces should have a service account named ``default`` which should work fine. If your cluster requires you to use a different service account, you will need to obtain its name and use it whan launching the Kubernetes job containing the Toil leader.
+   
+#. **Set up appropriate permissions**
+
+   Your local Kubernetes context and/or the service account you are using tio run the leader in the cluster will need to have certain permissions in order to run the workflow. Toil needs to be able to interact with jobs and pods in the cluster, and to retrieve pod logs. You as a user may need permission to set up an AWS credentials secret, if one is not already available. Additionally, it is very useful for you as a user to have permission to interact with nodes, and to shell into pods.
+   
+   The appropriate permissions may already be available to you and your service account by default, especially in managed or ease-of-use-optimized setups such as EKS or minikube.
+   
+   However, if the appropriate permissions are not already available, you or your cluster administrator will have to grant them manually. The following ``Role`` (``toil-user``) and ``ClusterRole`` (``node-reader``), to be applied with ``kubectl apply -f filename.yaml``, should grant sufficient permissions to run Toil workflows when bound to your account and the service account used by Toil workflows. Be sure to replace ``YOUR_NAMESPACE_HERE`` with the namespace you are running your workflows in ::
+   
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: Role
+      metadata:
+        namespace: YOUR_NAMESPACE_HERE
+        name: toil-user
+      rules:
+      - apiGroups: ["*"]
+        resources: ["*"]
+        verbs: ["explain", "get", "watch", "list", "describe", "logs", "attach", "exec", "port-forward", "proxy", "cp", "auth"]
+      - apiGroups: ["batch"]
+        resources: ["*"]
+        verbs: ["get", "watch", "list", "create", "run", "set", "delete"]
+      - apiGroups: [""]
+        resources: ["secrets", "pods", "pods/attach", "podtemplates", "configmaps", "events", "services"]
+        verbs: ["patch", "get", "update", "watch", "list", "create", "run", "set", "delete", "exec"]
+      - apiGroups: [""]
+        resources: ["pods", "pods/log"]
+        verbs: ["get", "list"]
+      - apiGroups: [""]
+        resources: ["pods/exec"]
+        verbs: ["create"]
+   
+   ::
+   
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: node-reader
+      rules:
+      - apiGroups: [""]
+        resources: ["nodes"]
+        verbs: ["get", "list", "describe"]
+      - apiGroups: [""]
+        resources: ["namespaces"]
+        verbs: ["get", "list", "describe"]
+      - apiGroups: ["metrics.k8s.io"]
+        resources: ["*"]
+        verbs: ["*"]
+        
+   To bind a user or service account to the ``Role`` or ``ClusterRole`` and actually grant the permissions, you will need a ``RoleBinding`` and a ``ClusterRoleBinding``, respectively. Make sure to fill in the namespace, username, and service account name, and add more user stanzas if your cluster is to support multiple Toil users.
+   
+   ::
+   
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: RoleBinding
+      metadata:
+        name: toil-developer-member
+        namespace: toil
+      subjects:
+      - kind: User
+        name: YOUR_KUBERNETES_USERNAME_HERE
+        apiGroup: rbac.authorization.k8s.io
+      - kind: ServiceAccount
+        name: YOUR_SERVICE_ACCOUNT_NAME_HERE
+        namespace: YOUR_NAMESPACE_HERE
+      roleRef:
+        kind: Role
+        name: toil-user
+        apiGroup: rbac.authorization.k8s.io
+        
+   ::
+
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRoleBinding
+      metadata:
+        name: read-nodes
+      subjects:
+      - kind: User
+        name: YOUR_KUBERNETES_USERNAME_HERE
+        apiGroup: rbac.authorization.k8s.io
+      - kind: ServiceAccount
+        name: YOUR_SERVICE_ACCOUNT_NAME_HERE
+        namespace: YOUR_NAMESPACE_HERE
+      roleRef:
+        kind: ClusterRole
+        name: node-reader
+        apiGroup: rbac.authorization.k8s.io
+      
 .. _awsJobStoreForKubernetes:
 
 AWS Job Store for Kubernetes
@@ -94,7 +184,7 @@ To configure your workflow to run on Kubernetes, you will have to configure seve
 
 #. ``TOIL_KUBERNETES_HOST_PATH`` **can** be set to allow Toil jobs on the same physical host to share a cache. It should be set to a path on the host where the shared cache should be stored. It will be mounted as ``/var/lib/toil``, or at ``TOIL_WORKDIR`` if specified, inside the container. This path must already exist on the host, and must have as much free space as your Kubernetes node offers to jobs. In this example, we are using ``/data/scratch``. To actually make use of caching, make sure to also pass ``--disableCaching false`` to your Toil workflow.
 
-#. ``TOIL_KUBERNETES_OWNER`` **should** be set to the user name of the user running the Toil workflow. The jobs that Toil creates will include this username, so they can be more easily recognized, and cleaned up by the user if anything happens to the Toil leader. In this example we are using ``demo-user``.
+#. ``TOIL_KUBERNETES_OWNER`` **should** be set to the username of the user running the Toil workflow. The jobs that Toil creates will include this username, so they can be more easily recognized, and cleaned up by the user if anything happens to the Toil leader. In this example we are using ``demo-user``.
 
 Note that Docker containers cannot be run inside of unprivileged Kubernetes pods (which are themselves containers). The Docker daemon does not (yet) support this. Other tools, such as Singularity in its user-namespace mode, are able to run containers from within containers. If using Singularity to run containerized tools, and you want downloaded container images to persist between Toil jobs, you will also want to set ``TOIL_KUBERNETES_HOST_PATH`` and make sure that Singularity is downloading its containers under the Toil work directory (``/var/lib/toil`` buy default) by setting ``SINGULARITY_CACHEDIR``. However, you will need to make sure that no two jobs try to download the same container at the same time; Singularity has no synchronization or locking around its cache, but the cache is also not safe for simultaneous access by multiple Singularity invocations. Some Toil workflows use their own custom workaround logic for this problem; this work is likely to be made part of Toil in a future release.  
    
@@ -102,6 +192,8 @@ Running workflows
 -----------------
 
 To run the workflow, you will need to run the Toil leader process somewhere. It can either be run inside Kubernetes as a Kubernetes job, or outside Kubernetes as a normal command.
+
+.. _kubernetesLeaderInside:
 
 Option 1: Running the Leader Inside Kubernetes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -115,7 +207,7 @@ Here's an example YAML file to run a test workflow: ::
    apiVersion: batch/v1
    kind: Job
    metadata:
-     # It is good practice to include your user name in your job name.
+     # It is good practice to include your username in your job name.
      # Also specify it in TOIL_KUBERNETES_OWNER
      name: demo-user-toil-test
    # Do not try and rerun the leader job if it fails
@@ -132,7 +224,9 @@ Here's an example YAML file to run a test workflow: ::
            # Make sure the AWS credentials are available as a volume.
            # This should match TOIL_AWS_SECRET_NAME
            secretName: aws-credentials
-       serviceAccountName: toil-workflow-svc
+       # You may need to replace this with a different service account name as
+       # appropriate for your cluster.
+       serviceAccountName: default
        containers:
        - name: main
          image: quay.io/ucsc_cgl/toil:4.1.0
@@ -213,7 +307,7 @@ Kubernetes names pods for jobs by appending a short random string to the name of
    $ kubectl get pods | grep demo-user-toil-test
    demo-user-toil-test-g5496                                         1/1     Running     0          2m
    
-Assuming you have set ``TOIL_KUBERNETES_OWNER`` correctly, you should be able to find all of your workflow's pods by searching for your user name: ::
+Assuming you have set ``TOIL_KUBERNETES_OWNER`` correctly, you should be able to find all of your workflow's pods by searching for your username: ::
 
    $ kubectl get pods | grep demo-user
 
@@ -252,7 +346,7 @@ To clean up dangling jobs, you can use the following snippet: ::
 
    $ kubectl get jobs | grep demo-user | cut -f1 -d' ' | xargs -n10 kubectl delete job
    
-This will delete all jobs with ``demo-user``'s user name in their names, in batches of 10. You can also use the UUID that Toil assigns to a particular workflow invocation in the filter, to clean up only the jobs pretaining to that workflow invocation.
+This will delete all jobs with ``demo-user``'s username in their names, in batches of 10. You can also use the UUID that Toil assigns to a particular workflow invocation in the filter, to clean up only the jobs pretaining to that workflow invocation.
 
 Option 2: Running the Leader Outside Kubernetes
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
