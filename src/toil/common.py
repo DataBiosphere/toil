@@ -250,7 +250,17 @@ class Config(object):
             raise RuntimeError('preemptableCompensation (%f) must be between 0.0 and 1.0!'
                                '' % self.preemptableCompensation)
         setOption("nodeStorage", int)
-        setOption("nodeStorageOverrides", parseStrList)
+
+        def checkNodeStorageOverrides(nodeStorageOverrides):
+            for override in nodeStorageOverrides:
+                tokens = override.split(":")
+                assert len(tokens) == 2, \
+                    'Each component of --nodeStorageOverrides must have nodeType:nodeStorage'
+                assert any(tokens[0] in n for n in self.nodeTypes), \
+                    'nodeType of --nodeStorageOverrides must be among --nodeTypes'
+                assert tokens[1].isdigit(), \
+                    'nodeStorage must be an integer in --nodeStorageOverrides'
+        setOption("nodeStorageOverrides", parseStrList, checkFn=checkNodeStorageOverrides)
 
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
@@ -461,8 +471,8 @@ def _addOptions(addGroupFn, config):
                       "in gigabytes. You may want to set this if your jobs require a lot of disk "
                       "space. The default value is 50."))
     addOptionFn('--nodeStorageOverrides', default=None,
-                help="(optional) Comma-separated list of nodeType:nodeStorage that are used to "
-                     "override the default value from --nodeStorage for the specified nodeType(s). "
+                help="Comma-separated list of nodeType:nodeStorage that are used to override "
+                     "the default value from --nodeStorage for the specified nodeType(s). "
                      "This is useful for heterogeneous jobs where some tasks require much more "
                      "disk than others.")
     addOptionFn("--metrics", dest="metrics",

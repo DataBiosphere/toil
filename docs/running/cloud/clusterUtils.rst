@@ -222,9 +222,9 @@ exist yet, Toil will create it for you.
                         any worker instances created when using the -w flag.
                         This is an EBS volume.
   --nodeStorageOverrides NODESTORAGEOVERRIDES
-                        (optional) Comma-separated list of nodeType:nodeStorage that
-                        are used to override the default value from --nodeStorage for
-                        the specified nodeType(s). This is useful for heterogeneous jobs
+                        Comma-separated list of nodeType:nodeStorage that are used
+                        to override the default value from --nodeStorage for the
+                        specified nodeType(s). This is useful for heterogeneous jobs
                         where some tasks require much more disk than others.
 
 **Logging Options**

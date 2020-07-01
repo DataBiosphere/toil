@@ -190,9 +190,9 @@ the logging module:
                         set this if your jobs require a lot of disk space. The
                         default value is 50.
   --nodeStorageOverrides NODESTORAGEOVERRIDES
-                        (optional) Comma-separated list of nodeType:nodeStorage that
-                        are used to override the default value from --nodeStorage for
-                        the specified nodeType(s). This is useful for heterogeneous jobs
+                        Comma-separated list of nodeType:nodeStorage that are used
+                        to override the default value from --nodeStorage for the
+                        specified nodeType(s). This is useful for heterogeneous jobs
                         where some tasks require much more disk than others.
   --metrics             Enable the prometheus/grafana dashboard for monitoring
                         CPU/RAM usage, queue size, and issued jobs.
