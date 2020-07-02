@@ -17,7 +17,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def clusterFactory(provisioner, clusterName=None, zone=None, nodeStorage=50, sseKey=None):
+def clusterFactory(provisioner, clusterName=None, zone=None, nodeStorage=50, nodeStorageOverrides=None, sseKey=None):
     """
     :param clusterName: The name of the cluster.
     :param provisioner: The cloud type of the cluster.
@@ -30,14 +30,14 @@ def clusterFactory(provisioner, clusterName=None, zone=None, nodeStorage=50, sse
         except ImportError:
             logger.error('The aws extra must be installed to use this provisioner')
             raise
-        return AWSProvisioner(clusterName, zone, nodeStorage, sseKey)
+        return AWSProvisioner(clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey)
     elif provisioner == 'gce':
         try:
             from toil.provisioners.gceProvisioner import GCEProvisioner
         except ImportError:
             logger.error('The google extra must be installed to use this provisioner')
             raise
-        return GCEProvisioner(clusterName, zone, nodeStorage, sseKey)
+        return GCEProvisioner(clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey)
     else:
         raise RuntimeError("Invalid provisioner '%s'" % provisioner)
 

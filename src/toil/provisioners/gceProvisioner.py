@@ -41,8 +41,8 @@ class GCEProvisioner(AbstractProvisioner):
     NODE_BOTO_PATH = "/root/.boto" # boto file path on instances
     SOURCE_IMAGE = (b'projects/flatcar-cloud/global/images/family/flatcar-stable')
 
-    def __init__(self, clusterName, zone, nodeStorage, sseKey):
-        super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage)
+    def __init__(self, clusterName, zone, nodeStorage, nodeStorageOverrides, sseKey):
+        super(GCEProvisioner, self).__init__(clusterName, zone, nodeStorage, nodeStorageOverrides)
         self.cloud = 'gce'
         self._sseKey = sseKey
 
@@ -181,7 +181,7 @@ class GCEProvisioner(AbstractProvisioner):
         if disk == 0:
             # This is an EBS-backed instance. We will use the root
             # volume, so add the amount of EBS storage requested forhe root volume
-            disk = self._nodeStorage * 2 ** 30
+            disk = self._nodeStorageOverrides.get(nodeType, self._nodeStorage) * 2 ** 30
 
         # Ram is in M.
         #Underestimate memory by 100M to prevent autoscaler from disagreeing with
@@ -248,7 +248,7 @@ class GCEProvisioner(AbstractProvisioner):
         disk = {}
         disk['initializeParams'] = {
             'sourceImage': self.SOURCE_IMAGE,
-            'diskSizeGb' : self._nodeStorage }
+            'diskSizeGb' : self._nodeStorageOverrides.get(nodeType, self._nodeStorage) }
         disk.update({'boot': True,
              'autoDelete': True })
 

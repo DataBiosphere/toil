@@ -94,6 +94,7 @@ class Config(object):
         self.scaleInterval = 60
         self.preemptableCompensation = 0.0
         self.nodeStorage = 50
+        self.nodeStorageOverrides = []
         self.metrics = False
 
         # Parameters to limit service jobs, so preventing deadlock scheduling scenarios
@@ -249,6 +250,17 @@ class Config(object):
             raise RuntimeError('preemptableCompensation (%f) must be between 0.0 and 1.0!'
                                '' % self.preemptableCompensation)
         setOption("nodeStorage", int)
+
+        def checkNodeStorageOverrides(nodeStorageOverrides):
+            for override in nodeStorageOverrides:
+                tokens = override.split(":")
+                assert len(tokens) == 2, \
+                    'Each component of --nodeStorageOverrides must have nodeType:nodeStorage'
+                assert any(tokens[0] in n for n in self.nodeTypes), \
+                    'nodeType of --nodeStorageOverrides must be among --nodeTypes'
+                assert tokens[1].isdigit(), \
+                    'nodeStorage must be an integer in --nodeStorageOverrides'
+        setOption("nodeStorageOverrides", parseStrList, checkFn=checkNodeStorageOverrides)
 
         # Parameters to limit service jobs / detect deadlocks
         setOption("maxServiceJobs", int)
@@ -458,6 +470,11 @@ def _addOptions(addGroupFn, config):
                 help=("Specify the size of the root volume of worker nodes when they are launched "
                       "in gigabytes. You may want to set this if your jobs require a lot of disk "
                       "space. The default value is 50."))
+    addOptionFn('--nodeStorageOverrides', default=None,
+                help="Comma-separated list of nodeType:nodeStorage that are used to override "
+                     "the default value from --nodeStorage for the specified nodeType(s). "
+                     "This is useful for heterogeneous jobs where some tasks require much more "
+                     "disk than others.")
     addOptionFn("--metrics", dest="metrics",
                 default=False, action="store_true",
                 help=(
@@ -870,6 +887,7 @@ class Toil(object):
                                                clusterName=None,
                                                zone=None, # read from instance meta-data
                                                nodeStorage=self.config.nodeStorage,
+                                               nodeStorageOverrides=self.config.nodeStorageOverrides,
                                                sseKey=self.config.sseKey)
             self._provisioner.setAutoscaledNodeTypes(self.config.nodeTypes)
 
