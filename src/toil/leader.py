@@ -517,11 +517,11 @@ class Leader(object):
                 cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
                               else logger.info)
                 cur_logger('Job ended: %s', updatedJob)
-                if self.toilMetrics:
-                    self.toilMetrics.logCompletedJob(updatedJob)
             else:
                 logger.warning('Job failed with exit value %i: %s',
                                exitStatus, updatedJob)
+            if self.toilMetrics:
+                self.toilMetrics.logCompletedJob(updatedJob)
             self.processFinishedJob(jobID, exitStatus, wallTime=wallTime, exitReason=exitReason)
 
     def _processLostJobs(self):
