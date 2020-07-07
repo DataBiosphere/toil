@@ -29,6 +29,7 @@ import math
 import os
 import subprocess
 import fnmatch
+import re
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
@@ -139,6 +140,22 @@ def get_lsf_units(resource=False):
         return DEFAULT_RESOURCE_UNITS
     else:
         return DEFAULT_LSF_UNITS
+
+def get_lsf_version():
+    """
+    Get current LSF version
+    """
+    cmd = ["bjobs", "-V"]
+    try:
+        output = subprocess.check_output(cmd).decode('utf-8')
+    except:
+        return None
+    bjobs_search = re.search('IBM Spectrum LSF Standard (.*),',output)
+    if bjobs_search:
+        lsf_version = bjobs_search.group(1)
+        return lsf_version
+    else:
+        return None
 
 def parse_memory_resource(mem):
     """
