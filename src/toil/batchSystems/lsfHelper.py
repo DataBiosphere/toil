@@ -147,7 +147,7 @@ def get_lsf_version():
     """
     Get current LSF version
     """
-    cmd = ["bjobs", "-V"]
+    cmd = ["lsid"]
     try:
         output = subprocess.check_output(cmd).decode('utf-8')
     except:
