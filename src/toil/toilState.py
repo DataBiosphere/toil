@@ -47,8 +47,11 @@ class ToilState(object):
         # Hash of jobStoreIDs mapping to services issued for the job
         self.servicesIssued = {}
         
-        # Jobs that are ready to be processed
-        self.updatedJobs = set()
+        # Jobs that are ready to be processed.
+        # Stored as a dict from job store ID to a pair of (job, result status),
+        # where a status other than 0 indicates that an error occurred when
+        # running the job.
+        self.updatedJobs = {} 
         
         # The set of totally failed jobs - this needs to be filtered at the
         # end to remove jobs that were removed by checkpoints
@@ -96,7 +99,7 @@ class ToilState(object):
                          'with  services: %s, with stack: %s', jobGraph.jobStoreID,
                          jobGraph.command is not None, jobGraph.checkpoint is not None,
                          len(jobGraph.services) > 0, len(jobGraph.stack) == 0)
-            self.updatedJobs.add((jobGraph, 0))
+            self.updatedJobs[jobGraph.jobStoreID] = (jobGraph, 0)
 
             if jobGraph.checkpoint is not None:
                 jobGraph.command = jobGraph.checkpoint
