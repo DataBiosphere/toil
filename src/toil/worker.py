@@ -478,10 +478,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     
     if AbstractFileStore._terminateEvent.isSet():
         jobGraph = jobStore.load(jobStoreID)
-        jobGraph.setupJobAfterFailure(config)
         jobAttemptFailed = True
-        if job and jobGraph.remainingRetryCount == 0:
-            job._succeeded = False
 
     ##########################################
     #Cleanup

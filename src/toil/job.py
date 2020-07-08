@@ -313,7 +313,6 @@ class Job(BaseJob):
         self._fileStore = None
         self._defer = None
         self._tempDir = None
-        self._succeeded = True
 
     def run(self, fileStore):
         """
