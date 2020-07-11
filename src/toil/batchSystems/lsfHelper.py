@@ -25,16 +25,19 @@
 from __future__ import print_function
 from __future__ import division
 from past.utils import old_div
+from packaging import version
 import math
 import os
 import subprocess
 import fnmatch
+import re
 
 LSB_PARAMS_FILENAME = "lsb.params"
 LSF_CONF_FILENAME = "lsf.conf"
 LSF_CONF_ENV = ["LSF_CONFDIR", "LSF_ENVDIR"]
 DEFAULT_LSF_UNITS = "KB"
 DEFAULT_RESOURCE_UNITS = "MB"
+LSF_JSON_OUTPUT_MIN_VERSION = "10.1.0.2"
 
 def find(basedir, string):
     """
@@ -139,6 +142,39 @@ def get_lsf_units(resource=False):
         return DEFAULT_RESOURCE_UNITS
     else:
         return DEFAULT_LSF_UNITS
+
+def get_lsf_version():
+    """
+    Get current LSF version
+    """
+    cmd = ["lsid"]
+    try:
+        output = subprocess.check_output(cmd).decode('utf-8')
+    except:
+        return None
+    bjobs_search = re.search('IBM Spectrum LSF Standard (.*),',output)
+    if bjobs_search:
+        lsf_version = bjobs_search.group(1)
+        return lsf_version
+    else:
+        return None
+
+
+def check_lsf_json_output_supported():
+    """
+    Check if the current LSF system supports bjobs json output
+    """
+    lsf_version = get_lsf_version()
+    if not lsf_version:
+        return False
+    try:
+        if version.parse(lsf_version) >= version.parse(LSF_JSON_OUTPUT_MIN_VERSION):
+            return True
+        else:
+            return False
+    except:
+        return False
+
 
 def parse_memory_resource(mem):
     """
