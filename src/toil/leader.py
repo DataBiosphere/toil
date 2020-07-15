@@ -23,9 +23,11 @@ standard_library.install_aliases()
 from builtins import str
 from builtins import object
 from builtins import super
+import base64
 import logging
 import time
 import os
+import pickle
 import sys
 import glob
 
@@ -668,10 +670,19 @@ class Leader(object):
 
     def issueJob(self, jobNode):
         """Add a job to the queue of jobs."""
-        jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
-                                    jobNode.jobName,
-                                    self.jobStoreLocator,
-                                    jobNode.jobStoreID))
+        
+        workerParts = [resolveEntryPoint('_toil_worker'),
+                       jobNode.jobName,
+                       self.jobStoreLocator,
+                       jobNode.jobStoreID]
+                       
+        for context in self.batchSystem.getWorkerContexts():
+            # For each context manager hook the batch system wants to run in
+            # the worker, serialize and send it.
+            workerParts.append('--context')
+            workerParts.append(base64.b64encode(pickle.dumps(context)).decode('utf-8'))
+        
+        jobNode.command = ' '.join(workerParts)
         # jobBatchSystemID is an int that is an incremented counter for each job
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode
