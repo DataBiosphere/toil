@@ -17,7 +17,10 @@ standard_library.install_aliases()
 from builtins import str
 from builtins import map
 from builtins import filter
+import argparse
+from contextlib import contextmanager
 import os
+import pickle
 import sys
 import copy
 import random
@@ -624,7 +627,7 @@ def main(argv=None):
         argv = sys.argv
         
     # Parse our command line
-    options = parse_args(args)
+    options = parse_args(argv)
 
     # Parse input args
     jobName = argv[1]
