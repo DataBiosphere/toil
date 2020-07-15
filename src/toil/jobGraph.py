@@ -103,6 +103,34 @@ class JobGraph(JobNode):
 
     def __hash__(self):
         return hash(self.jobStoreID)
+        
+    def __eq__(self, other):
+        return (
+            isinstance(other, self.__class__)
+            and self.remainingRetryCount == other.remainingRetryCount
+            and self.jobStoreID == other.jobStoreID
+            and self.filesToDelete == other.filesToDelete
+            and self.stack == other.stack
+            and self.predecessorNumber == other.predecessorNumber
+            and self.predecessorsFinished == other.predecessorsFinished
+            and self.logJobStoreFileID == other.logJobStoreFileID)
+            
+    def __repr__(self):
+        return "JobGraph({})".format(", ".join((repr(x) for x in [command, memory, cores, disk, unitName, jobName, preemptable,
+            jobStoreID,
+            remainingRetryCount,
+            predecessorNumber,
+            filesToDelete,
+            predecessorsFinished,
+            stack,
+            services,
+            startJobStoreID,
+            terminateJobStoreID,
+            errorJobStoreID,
+            logJobStoreFileID,
+            checkpoint,
+            checkpointFilesToDelete,
+            chainedJobs])))
 
     def setupJobAfterFailure(self, config, exitReason=None):
         """
@@ -204,13 +232,4 @@ class JobGraph(JobNode):
                    unitName=jobNode.unitName, jobName=jobNode.jobName,
                    **jobNode._requirements)
 
-    def __eq__(self, other):
-        return (
-            isinstance(other, self.__class__)
-            and self.remainingRetryCount == other.remainingRetryCount
-            and self.jobStoreID == other.jobStoreID
-            and self.filesToDelete == other.filesToDelete
-            and self.stack == other.stack
-            and self.predecessorNumber == other.predecessorNumber
-            and self.predecessorsFinished == other.predecessorsFinished
-            and self.logJobStoreFileID == other.logJobStoreFileID)
+   
