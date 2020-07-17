@@ -747,9 +747,7 @@ def toilStageFiles(file_store: AbstractFileStore,
 
     jobfiles = list(_collectDirEntries(cwljob))
     pm = ToilPathMapper(jobfiles, "", outdir, separateDirs=False, stage_listing=True)
-    toil_path_to_file_path_map = {}
     for _, p in pm.items():
-        toil_path_to_file_path_map[p.resolved] = p.target
         if p.staged:
             if destBucket:
                 # Directories don't need to be created if we're exporting to a bucket
@@ -772,12 +770,7 @@ def toilStageFiles(file_store: AbstractFileStore,
                         n.write(p.resolved.encode("utf-8"))
 
     def _check_adjust(f: dict) -> dict:
-        if f["location"] in pm._pathmap:
-            f["location"] = schema_salad.ref_resolver.file_uri(pm.mapper(f["location"])[1])
-        elif f['location'] in toil_path_to_file_path_map:
-            f["location"] = schema_salad.ref_resolver.file_uri(toil_path_to_file_path_map[f["location"]])
-        else:
-            raise ValueError(f'Could not map to a file location: {f["location"]}')
+        f["location"] = schema_salad.ref_resolver.file_uri(pm.mapper(f["location"])[1])
 
         if "contents" in f:
             del f["contents"]
