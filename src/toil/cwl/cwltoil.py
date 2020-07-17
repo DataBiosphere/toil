@@ -750,39 +750,34 @@ def toilStageFiles(file_store: AbstractFileStore,
     toil_path_to_file_path_map = {}
     for _, p in pm.items():
         toil_path_to_file_path_map[p.resolved] = p.target
-        if not p.staged:
-            continue
+        if p.staged:
+            if destBucket:
+                # Directories don't need to be created if we're exporting to a bucket
+                if p.type == "File":
+                    # Remove the staging directory from the filepath and
+                    # from the destination URL
+                    unstageTargetPath = p.target[len(outdir):]
+                    destUrl = '/'.join(s.strip('/') for s in [destBucket, unstageTargetPath])
 
-        # Deal with bucket exports
-        if destBucket:
-            # Directories don't need to be created if we're exporting to
-            # a bucket
-            if p.type == "File":
-                # Remove the staging directory from the filepath and
-                # form the destination URL
-                unstageTargetPath = p.target[len(outdir):]
-                destUrl = '/'.join(s.strip('/')
-                                   for s in [destBucket, unstageTargetPath])
-
-                file_store.exportFile(FileID.unpack(p.resolved[7:]), destUrl)
-
-            continue
-
-        if not os.path.exists(os.path.dirname(p.target)):
-            os.makedirs(os.path.dirname(p.target), 0o0755)
-        if p.type == "File" and not os.path.exists(p.target):
-            file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
-        elif p.type == "Directory" and not os.path.exists(p.target):
-            os.makedirs(p.target, 0o0755)
-        elif p.type == "CreateFile":
-            with open(p.target, "wb") as n:
-                n.write(p.resolved.encode("utf-8"))
+                    file_store.exportFile(FileID.unpack(p.resolved[7:]), destUrl)
+            else:
+                if not os.path.exists(os.path.dirname(p.target)):
+                    os.makedirs(os.path.dirname(p.target), 0o0755)
+                if p.type == "File" and not os.path.exists(p.target):
+                    file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
+                elif p.type == "Directory" and not os.path.exists(p.target):
+                    os.makedirs(p.target, 0o0755)
+                elif p.type == "CreateFile":
+                    with open(p.target, "wb") as n:
+                        n.write(p.resolved.encode("utf-8"))
 
     def _check_adjust(f: dict) -> dict:
         if f["location"] in pm._pathmap:
             f["location"] = schema_salad.ref_resolver.file_uri(pm.mapper(f["location"])[1])
         elif f['location'] in toil_path_to_file_path_map:
             f["location"] = schema_salad.ref_resolver.file_uri(toil_path_to_file_path_map[f["location"]])
+        else:
+            raise ValueError(f'Could not map to a file location: {f["location"]}')
 
         if "contents" in f:
             del f["contents"]
