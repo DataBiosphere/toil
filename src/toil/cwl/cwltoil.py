@@ -734,6 +734,8 @@ def toilStageFiles(file_store: AbstractFileStore,
         if isinstance(obj, dict):
             if obj.get("class") in ("File", "Directory"):
                 yield obj
+                for dir_entry in _collectDirEntries(obj.get("secondaryFiles", [])):
+                    yield dir_entry
             else:
                 for sub_obj in obj.values():
                     for dir_entry in _collectDirEntries(sub_obj):
@@ -744,9 +746,10 @@ def toilStageFiles(file_store: AbstractFileStore,
                     yield dir_entry
 
     jobfiles = list(_collectDirEntries(cwljob))
-    pm = ToilPathMapper(
-        jobfiles, "", outdir, separateDirs=False, stage_listing=True)
+    pm = ToilPathMapper(jobfiles, "", outdir, separateDirs=False, stage_listing=True)
+    toil_path_to_file_path_map = {}
     for _, p in pm.items():
+        toil_path_to_file_path_map[p.resolved] = p.target
         if not p.staged:
             continue
 
@@ -776,8 +779,11 @@ def toilStageFiles(file_store: AbstractFileStore,
                 n.write(p.resolved.encode("utf-8"))
 
     def _check_adjust(f: dict) -> dict:
-        f["location"] = schema_salad.ref_resolver.file_uri(
-            pm.mapper(f["location"])[1])
+        if f["location"] in pm._pathmap:
+            f["location"] = schema_salad.ref_resolver.file_uri(pm.mapper(f["location"])[1])
+        elif f['location'] in toil_path_to_file_path_map:
+            f["location"] = schema_salad.ref_resolver.file_uri(toil_path_to_file_path_map[f["location"]])
+
         if "contents" in f:
             del f["contents"]
         return f
