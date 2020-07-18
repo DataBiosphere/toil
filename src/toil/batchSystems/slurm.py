@@ -100,10 +100,10 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     '-P', # separate columns with pipes
                     '-S', '1970-01-01'] # override start time limit
 
-            stdout = call_command(args)
+            stdout = call_command(args).split('\n')
             for line in stdout:
                 logger.debug("%s output %s", args[0], line)
-                values = line.decode('utf-8').strip().split('|')
+                values = line.strip().split('|')
                 if len(values) < 2:
                     continue
                 state, exitcode = values
@@ -124,11 +124,11 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     'job',
                     str(slurmJobID)]
 
-            stderr = call_command(args)
+            stdout = call_command(args).split('\n')
             job = dict()
             for line in stdout:
                 logger.debug("%s output %s", args[0], line)
-                values = line.decode('utf-8').strip().split()
+                values = line.strip().split()
 
                 # If job information is not available an error is issued:
                 # slurm_load_jobs error: Invalid job id specified
