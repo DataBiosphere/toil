@@ -734,6 +734,8 @@ def toilStageFiles(file_store: AbstractFileStore,
         if isinstance(obj, dict):
             if obj.get("class") in ("File", "Directory"):
                 yield obj
+                for dir_entry in _collectDirEntries(obj.get("secondaryFiles", [])):
+                    yield dir_entry
             else:
                 for sub_obj in obj.values():
                     for dir_entry in _collectDirEntries(sub_obj):
@@ -744,40 +746,32 @@ def toilStageFiles(file_store: AbstractFileStore,
                     yield dir_entry
 
     jobfiles = list(_collectDirEntries(cwljob))
-    pm = ToilPathMapper(
-        jobfiles, "", outdir, separateDirs=False, stage_listing=True)
+    pm = ToilPathMapper(jobfiles, "", outdir, separateDirs=False, stage_listing=True)
     for _, p in pm.items():
-        if not p.staged:
-            continue
+        if p.staged:
+            if destBucket:
+                # Directories don't need to be created if we're exporting to a bucket
+                if p.type == "File":
+                    # Remove the staging directory from the filepath and
+                    # from the destination URL
+                    unstageTargetPath = p.target[len(outdir):]
+                    destUrl = '/'.join(s.strip('/') for s in [destBucket, unstageTargetPath])
 
-        # Deal with bucket exports
-        if destBucket:
-            # Directories don't need to be created if we're exporting to
-            # a bucket
-            if p.type == "File":
-                # Remove the staging directory from the filepath and
-                # form the destination URL
-                unstageTargetPath = p.target[len(outdir):]
-                destUrl = '/'.join(s.strip('/')
-                                   for s in [destBucket, unstageTargetPath])
-
-                file_store.exportFile(FileID.unpack(p.resolved[7:]), destUrl)
-
-            continue
-
-        if not os.path.exists(os.path.dirname(p.target)):
-            os.makedirs(os.path.dirname(p.target), 0o0755)
-        if p.type == "File" and not os.path.exists(p.target):
-            file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
-        elif p.type == "Directory" and not os.path.exists(p.target):
-            os.makedirs(p.target, 0o0755)
-        elif p.type == "CreateFile":
-            with open(p.target, "wb") as n:
-                n.write(p.resolved.encode("utf-8"))
+                    file_store.exportFile(FileID.unpack(p.resolved[7:]), destUrl)
+            else:
+                if not os.path.exists(os.path.dirname(p.target)):
+                    os.makedirs(os.path.dirname(p.target), 0o0755)
+                if p.type == "File" and not os.path.exists(p.target):
+                    file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
+                elif p.type == "Directory" and not os.path.exists(p.target):
+                    os.makedirs(p.target, 0o0755)
+                elif p.type == "CreateFile":
+                    with open(p.target, "wb") as n:
+                        n.write(p.resolved.encode("utf-8"))
 
     def _check_adjust(f: dict) -> dict:
-        f["location"] = schema_salad.ref_resolver.file_uri(
-            pm.mapper(f["location"])[1])
+        f["location"] = schema_salad.ref_resolver.file_uri(pm.mapper(f["location"])[1])
+
         if "contents" in f:
             del f["contents"]
         return f
