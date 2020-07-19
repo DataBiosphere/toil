@@ -844,7 +844,8 @@ class CWLJob(Job):
                 loadListing=determine_load_listing(tool),
                 outdir='',
                 tmpdir='/tmp',  # TODO: use actual defaults here
-                stagedir='/var/lib/cwl'  # TODO: use actual defaults here
+                stagedir='/var/lib/cwl',  # TODO: use actual defaults here
+                cwlVersion=self.cwltool.metadata['cwlVersion']
             )
 
         req = tool.evalResources(self.builder, runtime_context)
