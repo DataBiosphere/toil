@@ -160,6 +160,10 @@ def apiDockerCall(job,
     if volumes is None:
         volumes = {working_dir: {'bind': '/data', 'mode': 'rw'}}
 
+    for volume in volumes:
+        if not os.path.exists(volume):
+            os.makedirs(volume)
+
     if parameters is None:
         parameters = []
 
