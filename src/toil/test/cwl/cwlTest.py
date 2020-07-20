@@ -412,7 +412,7 @@ class CWLv12Test(ToilTest):
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
             # TODO: we do not currently pass tests: 213, 236
-            selected_tests = '1-212,214-235,237-276'
+            selected_tests = '1-213,215-236,238-276'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',
