@@ -927,15 +927,16 @@ class CWLJob(Job):
         
         
         cwljob = resolve_dict_w_promises(self.cwljob)
+
+        if self.conditional.is_false(cwljob):
+            return self.conditional.skipped_outputs()
+
         fill_in_defaults(
             self.step_inputs,
             cwljob,
             self.runtime_context.make_fs_access(""))
 
         required_env_vars = self.populate_env_vars(cwljob)
-
-        if self.conditional.is_false(cwljob):
-            return self.conditional.skipped_outputs()
 
         immobile_cwljob_dict = copy.deepcopy(cwljob)
         for inp_id in immobile_cwljob_dict.keys():
