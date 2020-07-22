@@ -761,7 +761,13 @@ class CachingFileStore(AbstractFileStore):
 
             # Upload the file
             logger.debug('Actually executing upload for file %s', fileID)
-            self.jobStore.updateFile(fileID, filePath)
+            try:
+                self.jobStore.updateFile(fileID, filePath)
+            except:
+                # We need to set the state back to 'uploadable' in case of any failures to ensure
+                # we can retry properly.
+                self._staticWrite(con, cur, [('UPDATE files SET state = ? WHERE id = ? AND state = ?', ('uploadable', fileID, 'uploading'))])
+                raise
 
             # Count it for the total uploaded files value we need to return
             uploadedCount += 1
