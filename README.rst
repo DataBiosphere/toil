@@ -18,6 +18,7 @@ programming.
 .. _announce: https://groups.google.com/forum/#!forum/toil-announce
 .. _forum: https://groups.google.com/forum/#!forum/toil-community
 .. _blog: https://toilpipelines.wordpress.com/
+.. _biostars: https://www.biostars.org/t/toil/
 
 Notes:
 
