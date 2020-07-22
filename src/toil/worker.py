@@ -18,6 +18,7 @@ from builtins import str
 from builtins import map
 from builtins import filter
 import argparse
+import base64
 from contextlib import contextmanager
 import os
 import pickle
