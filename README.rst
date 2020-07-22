@@ -12,6 +12,7 @@ programming.
 * Please subscribe to low-volume `announce`_ mailing list so we keep you informed
 * Google Groups discussion `forum`_
 * See our occasional `blog`_ for tutorials. 
+* Use `biostars`_ channel for discussion.
 
 .. _website: http://toil.ucsc-cgl.org/
 .. _Read the Docs: https://toil.readthedocs.io/en/latest
