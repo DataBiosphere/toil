@@ -1595,7 +1595,7 @@ class CachingFileStore(AbstractFileStore):
     def deleteLocalFile(self, fileStoreID):
         # What job are we operating as?
         jobID = self.jobID
-
+        
         # What paths did we delete
         deleted = []
         # What's the first path, if any, that was missing? If we encounter a
@@ -1620,6 +1620,11 @@ class CachingFileStore(AbstractFileStore):
                     break
                 deleted.append(path)
 
+        if len(deleted) == 0 and not missingFile:
+            # We have to tell the user if they tried to delete 0 local copies.
+            # But if we found a missing local copy, go on to report that instead.
+            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none")
+
         for path in deleted:
             # Drop the references
             self._write([('DELETE FROM refs WHERE file_id = ? AND job_id = ? AND path = ?', (fileStoreID, jobID, path))])
@@ -1636,8 +1641,15 @@ class CachingFileStore(AbstractFileStore):
             raise IllegalDeletionCacheError(missingFile)
 
     def deleteGlobalFile(self, fileStoreID):
-        # Delete local copies for this job
-        self.deleteLocalFile(fileStoreID)
+        try:
+            # Delete local copies of the file
+            self.deleteLocalFile(fileStoreID)
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                # Turns out there weren't any
+                pass
+            else:
+                raise
 
         # Work out who we are
         me = get_process_name(self.workDir)

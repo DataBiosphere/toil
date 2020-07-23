@@ -116,7 +116,7 @@ class NonCachingFileStore(AbstractFileStore):
         try:
             localFilePaths = self.localFileMap.pop(fileStoreID)
         except KeyError:
-            raise OSError(errno.ENOENT, "Attempting to delete a non-local file")
+            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none")
         else:
             for localFilePath in localFilePaths:
                 os.remove(localFilePath)

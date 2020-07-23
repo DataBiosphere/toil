@@ -302,6 +302,9 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
     def deleteLocalFile(self, fileStoreID):
         """
         Deletes local copies of files associated with the provided job store ID.
+        
+        Raises an OSError with an errno of errno.ENOENT if no such local copies
+        exist. Thus, cannot be called multiple times in succession.
 
         The files deleted are all those previously read from this file ID via
         readGlobalFile by the current job into the job's file-store-provided
