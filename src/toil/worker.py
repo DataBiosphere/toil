@@ -367,9 +367,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
                             job._runner(jobGraph=jobGraph, jobStore=jobStore, fileStore=fileStore, defer=defer)
 
-                            # When the job succeeds, start committing files immediately.
-                            fileStore.startCommit(jobState=False)      
-
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
 
