@@ -611,7 +611,7 @@ def in_contexts(contexts):
         rest = contexts[1:]
         
         try:
-            manager = pickle.loads(base64.b64decode(options.workerCleanupInfo.encode('utf-8')))
+            manager = pickle.loads(base64.b64decode(first.encode('utf-8')))
         except:
             exc_info = sys.exc_info()
             logger.error('Exception while unpickling context manager: ', exc_info=exc_info)
