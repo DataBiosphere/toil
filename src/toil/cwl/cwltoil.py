@@ -929,8 +929,11 @@ class CWLJob(Job):
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
 
-
         cwljob = resolve_dict_w_promises(self.cwljob)
+
+        if self.conditional.is_false(cwljob):
+            return self.conditional.skipped_outputs()
+
         fill_in_defaults(
             self.step_inputs,
             cwljob,
