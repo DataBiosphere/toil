@@ -37,8 +37,8 @@ class ToilDebugFileTest(ToilTest):
     def tearDown(self):
         """Default tearDown for unittest."""
 
-        #shutil.rmtree(self.jobStoreDir)
-        #shutil.rmtree(self.outputDir)
+        shutil.rmtree(self.jobStoreDir)
+        shutil.rmtree(self.outputDir)
         ABC = os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/ABC.txt')
         if os.path.exists(ABC):
             os.remove(ABC)
