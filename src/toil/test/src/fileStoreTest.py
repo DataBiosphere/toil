@@ -33,6 +33,7 @@ from toil.realtimeLogger import RealtimeLogger
 
 import collections
 import datetime
+import errno
 import inspect
 import logging
 import os
@@ -1059,8 +1060,13 @@ class hidden(object):
             # Delete fsid of local file. The file should be deleted
             job.fileStore.deleteLocalFile(localFsID)
             assert not os.path.exists(localFile.name)
-            # Delete fsid of non-local file. The file should persist
-            job.fileStore.deleteLocalFile(nonLocalFsID)
+            # Delete fsid of non-local file. It should fail and the file should persist
+            try:
+                job.fileStore.deleteLocalFile(nonLocalFsID)
+            except OSError as e:
+                assert e.errno == errno.ENOENT
+            else:
+                assert False, "Error should have been raised"
             assert os.path.exists(nonLocalFile.name)
             # Read back one file and then delete it
             readBackFile1 = job.fileStore.readGlobalFile(localFsID)
