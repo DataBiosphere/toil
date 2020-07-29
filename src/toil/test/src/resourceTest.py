@@ -22,7 +22,6 @@ from io import BytesIO
 from textwrap import dedent
 from zipfile import ZipFile
 
-from toil.test import mkdir_p
 from mock import MagicMock, patch
 
 import subprocess
@@ -84,7 +83,7 @@ class ResourceTest(ToilTest):
         try:
             for relPath in pyFiles:
                 path = os.path.join(dirPath, relPath)
-                mkdir_p(os.path.dirname(path))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
                 with open(path, 'w') as f:
                     f.write('pass\n')
             sys.path.append(dirPath)

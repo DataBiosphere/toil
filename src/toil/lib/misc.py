@@ -1,28 +1,15 @@
 import random
 from math import sqrt
 import logging
-import errno
 import os
 import shutil
 import sys
-import time
 import uuid
-import socket
 from contextlib import contextmanager
 import subprocess
 
 logger = logging.getLogger(__name__)
 
-
-def mkdir_p(path):
-    """The equivalent of mkdir -p"""
-    try:
-        os.makedirs(path)
-    except OSError as exc:
-        if exc.errno == errno.EEXIST and os.path.isdir(path):
-            pass
-        else:
-            raise
 
 def robust_rmtree(path):
     """

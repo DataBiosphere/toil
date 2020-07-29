@@ -29,7 +29,6 @@ import os
 import shutil
 import tempfile
 
-from toil.lib.misc import mkdir_p
 from toil.realtimeLogger import RealtimeLogger
 from toil.resource import ModuleDescriptor
 
@@ -125,7 +124,7 @@ class DeferredFunctionManager(object):
 
         # Work out where state files live
         self.stateDir = os.path.join(stateDirBase, self.STATE_DIR_STEM)
-        mkdir_p(self.stateDir)
+        os.makedirs(self.stateDir, exist_ok=True)
 
         # We need to get a state file, locked by us and not somebody scanning for abandoned state files.
         # So we suffix not-yet-ready ones with our suffix
