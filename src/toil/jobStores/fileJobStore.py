@@ -388,8 +388,10 @@ class FileJobStore(AbstractJobStore):
         return relPath
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False):
-        absPath = self._getUniqueFilePath('stream', jobStoreID, cleanup)
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
+        if not basename:
+            basename = 'stream'
+        absPath = self._getUniqueFilePath(basename, jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
         with open(absPath, 'wb') as f:
             # Don't yield while holding an open file descriptor to the temp
@@ -397,8 +399,8 @@ class FileJobStore(AbstractJobStore):
             # to clean ourselves up, somehow, for certain workloads.
             yield f, relPath
 
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
-        with self.writeFileStream(jobStoreID, cleanup) as (fileHandle, jobStoreFileID):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
+        with self.writeFileStream(jobStoreID, cleanup, basename) as (fileHandle, jobStoreFileID):
             return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):

@@ -195,7 +195,11 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         """
         Takes a file (as a path) and uploads it to the job store.
 
-        :param string localFileName: The path to the local file to upload.
+        :param string localFileName: The path to the local file to upload. The
+               last path component (basename of the file) will remain 
+               associated with the file in the file store, if supported by the
+               backing JobStore, so that the file can be searched for by name
+               or name glob. 
         :param bool cleanup: if True then the copy of the global file will be deleted once the
                job and all its successors have completed running.  If not the global file must be
                deleted manually.
@@ -205,19 +209,24 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @contextmanager
-    def writeGlobalFileStream(self, cleanup=False):
+    def writeGlobalFileStream(self, cleanup=False, basename=None):
         """
         Similar to writeGlobalFile, but allows the writing of a stream to the job store.
         The yielded file handle does not need to and should not be closed explicitly.
 
         :param bool cleanup: is as in :func:`toil.fileStores.abstractFileStore.AbstractFileStore.writeGlobalFile`.
+        
+        :param str basename: If supported by the backing JobStore, use the given
+               file basename so that when searching the job store with a query
+               matching that basename, the file will be detected.
+        
         :return: A context manager yielding a tuple of
                   1) a file handle which can be written to and
                   2) the toil.fileStores.FileID of the resulting file in the job store.
         """
         
-        # TODO: Make this work with FileID
-        with self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID) as (backingStream, fileStoreID):
+        with self.jobStore.writeFileStream(self.jobGraph.jobStoreID, cleanup, basename) as (backingStream, fileStoreID):
+            
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
             # that accurately reflects the size of the data written to the
