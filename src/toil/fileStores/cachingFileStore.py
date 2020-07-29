@@ -36,7 +36,7 @@ import uuid
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
-from toil.lib.misc import mkdir_p, robust_rmtree, atomic_copy, atomic_copyobj
+from toil.lib.misc import robust_rmtree, atomic_copy, atomic_copyobj
 from toil.lib.retry import retry
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.fileStores.abstractFileStore import AbstractFileStore
@@ -221,7 +221,7 @@ class CachingFileStore(AbstractFileStore):
         self.workflowAttemptNumber = self.jobStore.config.workflowAttemptNumber
 
         # Make sure the cache directory exists
-        mkdir_p(self.localCacheDir)
+        os.makedirs(self.localCacheDir, exist_ok=True)
 
         # Connect to the cache database in there, or create it if not present.
         # We name it by workflow attempt number in case a previous attempt of

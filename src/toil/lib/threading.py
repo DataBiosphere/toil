@@ -31,7 +31,7 @@ from threading import BoundedSemaphore
 
 import psutil
 
-from toil.lib.misc import mkdir_p, robust_rmtree
+from toil.lib.misc import robust_rmtree
 
 log = logging.getLogger(__name__)
 

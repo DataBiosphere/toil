@@ -35,7 +35,7 @@ except ImportError:
 # toil dependencies
 from toil.fileStores import FileID
 from toil.lib.bioio import absSymPath
-from toil.lib.misc import mkdir_p, robust_rmtree, AtomicFileCreate, atomic_copy, atomic_copyobj
+from toil.lib.misc import robust_rmtree, AtomicFileCreate, atomic_copy, atomic_copyobj
 from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchJobException,
                                              NoSuchFileException,
@@ -107,11 +107,11 @@ class FileJobStore(AbstractJobStore):
                 raise JobStoreExistsException(self.jobStoreDir)
             else:
                 raise
-        mkdir_p(self.jobsDir)
-        mkdir_p(self.statsDir)
-        mkdir_p(self.filesDir)
-        mkdir_p(self.jobFilesDir)
-        mkdir_p(self.sharedFilesDir)
+        os.makedirs(self.jobsDir, exist_ok=True)
+        os.makedirs(self.statsDir, exist_ok=True)
+        os.makedirs(self.filesDir, exist_ok=True)
+        os.makedirs(self.jobFilesDir, exist_ok=True)
+        os.makedirs(self.sharedFilesDir, exist_ok=True)
         self.linkImports = config.linkImports
         self.moveExports = config.moveExports
         super(FileJobStore, self).initialize(config)
@@ -764,12 +764,12 @@ class FileJobStore(AbstractJobStore):
         tempDir = root
 
         # Make sure the root exists
-        mkdir_p(tempDir)
+        os.makedirs(tempDir, exist_ok=True)
 
         while len(os.listdir(tempDir)) >= self.fanOut:
             # We need to use a layer of directories under here to avoid over-packing the directory
             tempDir = os.path.join(tempDir, random.choice(self.validDirs))
-            mkdir_p(tempDir)
+            os.makedirs(tempDir, exist_ok=True)
 
         # When we get here, we found a sufficiently empty directory
         return tempDir
@@ -899,7 +899,7 @@ class FileJobStore(AbstractJobStore):
 
             # Lazily create the parent directory.
             # We don't want our tree filled with confusingly empty directories.
-            mkdir_p(jobFilesDir)
+            os.makedirs(jobFilesDir, exist_ok=True)
 
             # Then make a temp directory inside it
             return tempfile.mkdtemp(prefix='file-', dir=jobFilesDir)

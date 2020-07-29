@@ -25,7 +25,6 @@ from datetime import datetime
 from pytz import timezone
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
-from toil.lib.misc import mkdir_p
 from toil.lib.retry import retry
 from toil.version import currentCommit
 
@@ -612,7 +611,7 @@ try:
                         if not os.path.exists(dir_path):
                             log.debug('Creating parent directory %s', dir_path)
                             # A race would be ok at this point
-                            mkdir_p(dir_path)
+                            os.makedirs(dir_path, exist_ok=True)
                     else:
                         raise
                 else:
