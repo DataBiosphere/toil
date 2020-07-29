@@ -89,7 +89,10 @@ class NonCachingFileStore(AbstractFileStore):
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
         creatorID = self.jobGraph.jobStoreID
         fileStoreID = self.jobStore.writeFile(absLocalFileName, creatorID, cleanup)
-        self.localFileMap[fileStoreID].append(absLocalFileName)
+        if absLocalFileName.startswith(self.localTempDir):
+            # Only files in the appropriate directory should become local files
+            # we can delete with deleteLocalFile
+            self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):

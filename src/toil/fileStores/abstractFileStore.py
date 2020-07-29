@@ -193,7 +193,11 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def writeGlobalFile(self, localFileName, cleanup=False):
         """
-        Takes a file (as a path) and uploads it to the job store.
+        Takes a file (as a path) and uploads it to the job store. If the file
+        is in a FileStore-managed temporary directory (i.e. from
+        :func:`toil.fileStores.abstractFileStore.AbstractFileStore.getLocalTempDir`),
+        it will become a local copy of the file, eligible for deletion by
+        :func:`toil.fileStores.abstractFileStore.AbstractFileStore.deleteLocalFile`.
 
         :param string localFileName: The path to the local file to upload. The
                last path component (basename of the file) will remain 

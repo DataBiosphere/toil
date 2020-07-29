@@ -1624,11 +1624,12 @@ class CachingFileStore(AbstractFileStore):
         if len(deleted) == 0 and not missingFile:
             # We have to tell the user if they tried to delete 0 local copies.
             # But if we found a missing local copy, go on to report that instead.
-            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none")
+            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none: {}".format(fileStoreID))
 
         for path in deleted:
             # Drop the references
             self._write([('DELETE FROM refs WHERE file_id = ? AND job_id = ? AND path = ?', (fileStoreID, jobID, path))])
+            logger.debug('Deleted local file %s for global file %s', path, fileStoreID)
 
         # Now space has been revoked from the cache because that job needs its space back.
         # That might result in stuff having to be evicted.

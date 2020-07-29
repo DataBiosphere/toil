@@ -145,7 +145,10 @@ class hidden(object):
             fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
                                                fileMB=writeFileSize)
             writtenFiles[fsId] = writeFileSize
-            localFileIDs.add(list(writtenFiles.keys())[0])
+            writtenID = list(writtenFiles.keys())[0]
+            localFileIDs.add(writtenID)
+            logger.info('Now have local file: %s', writtenID)
+            
             i = 0
             while i <= numIters:
                 randVal = random.random()
@@ -156,7 +159,9 @@ class hidden(object):
                                                        nonLocalDir=nonLocalDir,
                                                        fileMB=writeFileSize)
                     writtenFiles[fsID] = writeFileSize
-                    localFileIDs.add(fsID)
+                    if isLocalFile:
+                        localFileIDs.add(fsID)
+                    logger.info('Wrote %s file of size %d MB: %s', 'local' if isLocalFile else 'non-local', writeFileSize, fsID)
                 else:
                     if len(writtenFiles) == 0:
                         continue
@@ -169,16 +174,27 @@ class hidden(object):
                         job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
                                                      cache=cache, mutable=mutable)
                         localFileIDs.add(fsID)
+                        logger.info('Read %s %s local copy of: %s', 'mutable' if mutable else 'immutable', 'cached' if cache else 'uncached', fsID)
                     else:  # Delete
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in localFileIDs:
-                                continue
-                            job.fileStore.deleteLocalFile(fsID)
+                                # Make sure trying to deleteLocalFile this file fails properly
+                                try:
+                                    job.fileStore.deleteLocalFile(fsID)
+                                except OSError as e:
+                                    assert e.errno == errno.ENOENT
+                                    logger.info('Correctly fail to local-delete non-local file: %s', fsID)
+                                else:
+                                    assert False, "Was able to delete non-local file {}".format(fsID)
+                            else:
+                                logger.info('Delete local file: %s', fsID)
+                                job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
                             job.fileStore.deleteGlobalFile(fsID)
                             writtenFiles.pop(fsID)
                         if fsID in localFileIDs:
                             localFileIDs.remove(fsID)
+                            logger.info('No longer have file: %s', fsID)
                 i += 1
 
         @staticmethod
@@ -789,7 +805,8 @@ class hidden(object):
             RealtimeLogger.info('Expecting %d bytes cached initially', cached)
             work_dir = job.fileStore.getLocalTempDir()
             writtenFiles = {}  # fsID: (size, isLocal)
-            localFileIDs = collections.defaultdict(list)  # fsid: local/non-local/mutable/immutable
+            # fsid: local/mutable/immutable for all operations that should make local files as tracked by the FileStore
+            localFileIDs = collections.defaultdict(list)  
             # Add one file for the sake of having something in the job store
             writeFileSize = random.randint(0, 30)
             jobDisk -= writeFileSize * 1024 * 1024
@@ -816,6 +833,7 @@ class hidden(object):
                         RealtimeLogger.info('Writing a local file of %d MB', writeFileSize)
                         fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=True,
                                                                    fileMB=writeFileSize)
+                        RealtimeLogger.info('Wrote local file: %s', fsID)
                         writtenFiles[fsID] = writeFileSize
                         localFileIDs[fsID].append('local')
                         jobDisk -= writeFileSize * 1024 * 1024
@@ -829,8 +847,9 @@ class hidden(object):
                         fsID = cls._writeFileToJobStoreWithAsserts(job, isLocalFile=False,
                                                                    nonLocalDir=nonLocalDir,
                                                                    fileMB=writeFileSize)
+                        RealtimeLogger.info('Wrote non-local file: %s', fsID)
                         writtenFiles[fsID] = writeFileSize
-                        localFileIDs[fsID].append('non-local')
+                        # Don't record in localFileIDs because we're not local
                         # No change to the job since there was no caching
                     RealtimeLogger.info('Checking for %d bytes cached', cached)
                     cls._requirementsConcur(job, jobDisk, cached)
@@ -842,7 +861,7 @@ class hidden(object):
                         rdelRandVal = random.random()
                         fileWasCached = job.fileStore.fileIsCached(fsID)
                     if randVal < 0.66:  # Read
-                        RealtimeLogger.info('Reading a file with size %d and previous cache status %s', rdelFileSize, str(fileWasCached))
+                        RealtimeLogger.info('Reading a file with size %d and previous cache status %s: %s', rdelFileSize, str(fileWasCached), fsID)
                         if rdelRandVal <= 0.5:  # Read as mutable, uncached
                             RealtimeLogger.info('Reading as mutable and uncached; should still have %d bytes cached', cached)
                             job.fileStore.readGlobalFile(fsID, '/'.join([work_dir, str(uuid4())]),
@@ -869,10 +888,10 @@ class hidden(object):
                         if rdelRandVal <= 0.5:  # Local Delete
                             if fsID not in list(localFileIDs.keys()):
                                 continue
-                            RealtimeLogger.info('Deleting a file locally')
+                            RealtimeLogger.info('Deleting a file locally with history %s: %s', localFileIDs[fsID], fsID)
                             job.fileStore.deleteLocalFile(fsID)
                         else:  # Global Delete
-                            RealtimeLogger.info('Deleting a file globally')
+                            RealtimeLogger.info('Deleting a file globally: %s', fsID)
                             job.fileStore.deleteGlobalFile(fsID)
                             try:
                                 job.fileStore.readGlobalFile(fsID)
@@ -885,7 +904,7 @@ class hidden(object):
                             writtenFiles.pop(fsID)
                         if fsID in list(localFileIDs.keys()):
                             for lFID in localFileIDs[fsID]:
-                                if lFID not in ('non-local', 'mutable'):
+                                if lFID not in ('mutable',):
                                     jobDisk += rdelFileSize * 1024 * 1024
                             localFileIDs.pop(fsID)
                         if fileWasCached:
