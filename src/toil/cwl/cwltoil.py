@@ -850,6 +850,7 @@ class CWLJob(Job):
                 outdir='',
                 tmpdir='/tmp',  # TODO: use actual defaults here
                 stagedir='/var/lib/cwl',  # TODO: use actual defaults here
+                cwlVersion=self.cwltool.metadata['cwlVersion']
             )
 
         req = tool.evalResources(self.builder, runtime_context)
@@ -922,7 +923,6 @@ class CWLJob(Job):
         return required_env_vars
 
     def run(self, file_store: AbstractFileStore) -> Any:
-
         # Adjust cwltool's logging to conform to Toil's settings.
         # We need to make sure this happens in every worker process before we
         # do CWL things.
