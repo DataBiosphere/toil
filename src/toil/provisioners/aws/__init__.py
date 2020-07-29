@@ -17,7 +17,7 @@ from collections import namedtuple
 from difflib import get_close_matches
 from operator import attrgetter
 import datetime
-from toil.lib.misc import std_dev, mean
+from statistics import stdev, mean
 from six import string_types
 from six.moves.urllib.request import urlopen
 from six.moves.urllib.error import URLError
@@ -125,14 +125,14 @@ def choose_spot_zone(zones, bid, spot_history):
     >>> choose_spot_zone(zones, 0.15, spot_history)
     'us-west-2b'
     """
-    # Create two lists of tuples of form: [(zone.name, std_deviation), ...] one for zones
+    # Create two lists of tuples of form: [(zone.name, stdeviation), ...] one for zones
     # over the bid price and one for zones under bid price. Each are sorted by increasing
     # standard deviation values.
     markets_under_bid, markets_over_bid = [], []
     for zone in zones:
         zone_histories = [zone_history for zone_history in spot_history if zone_history.availability_zone == zone.name]
         if zone_histories:
-            price_deviation = std_dev([history.price for history in zone_histories])
+            price_deviation = stdev([history.price for history in zone_histories])
             recent_price = zone_histories[0].price
         else:
             price_deviation, recent_price = 0.0, bid
@@ -266,4 +266,3 @@ def checkValidNodeTypes(provisioner, nodeTypes):
                 pass
     else:
         raise RuntimeError("Invalid provisioner: {}".format(provisioner))
-
