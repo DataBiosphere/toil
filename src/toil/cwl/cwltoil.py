@@ -762,17 +762,15 @@ def toilStageFiles(file_store: AbstractFileStore,
                 destUrl = '/'.join(s.strip('/') for s in [destBucket, baseName])
                 file_store.exportFile(FileID.unpack(local_file_path), destUrl)
             else:
-                if not os.path.exists(p.target):
-                    if p.type == "Directory":
-                        os.makedirs(p.target, 0o0755)
-                    else:
-                        if not os.path.exists(os.path.dirname(p.target)):
-                            os.makedirs(os.path.dirname(p.target), 0o0755)
-                        if p.type == "File":
-                            file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
-                        elif p.type == "CreateFile":
-                            with open(p.target, "wb") as n:
-                                n.write(p.resolved.encode("utf-8"))
+                if not os.path.exists(p.target) and p.type == "Directory":
+                    os.makedirs(p.target, 0o0755)
+                if not os.path.exists(p.target) and p.type == "File":
+                    os.makedirs(os.path.dirname(p.target), 0o0755, exist_ok=True)
+                    file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
+                if not os.path.exists(p.target) and p.type == "CreateFile":
+                    os.makedirs(os.path.dirname(p.target), 0o0755, exist_ok=True)
+                    with open(p.target, "wb") as n:
+                        n.write(p.resolved.encode("utf-8"))
 
     def _check_adjust(f: dict) -> dict:
         f["location"] = schema_salad.ref_resolver.file_uri(pm.mapper(f["location"])[1])
