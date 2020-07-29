@@ -162,7 +162,7 @@ def apiDockerCall(job,
 
     for volume in volumes:
         if not os.path.exists(volume):
-            os.makedirs(volume)
+            os.makedirs(volume, exist_ok=True)
 
     if parameters is None:
         parameters = []
