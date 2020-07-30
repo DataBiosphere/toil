@@ -69,6 +69,7 @@ def retryable_kubernetes_errors(e):
     exceptions thrown by Kubernetes. 
     """
     if isinstance(e, urllib3.exceptions.MaxRetryError) or \
+       isinstance(e, urllib3.exceptions.ProtocolError) or \
         isinstance(e, ApiException):
         return True
     return False
@@ -267,7 +268,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         For example, calling self._api('batch').create_namespaced_job(self.namespace, job),
         Kubernetes can behave inconsistently and fail given a large job. See 
-        https://github.com/DataBiosphere/toil/issues/2884 .
+        https://github.com/DataBiosphere/toil/issues/2884.
         
         This function gives Kubernetes more time to try an executable api.  
         """
@@ -286,6 +287,53 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         for attempt in retry(predicate=retryable_kubernetes_errors_expecting_gone):
             with attempt:
                 return method(*args, **kwargs)
+                
+    def _try_kubernetes_stream(self, method, *args, **kwargs):
+        """
+        Kubernetes kubernetes.watch.Watch().stream() streams can fail and raise
+        errors. We don't want to have those errors fail the entire workflow, so
+        we handle them here.
+        
+        When you want to stream the results of a Kubernetes API method, call
+        this instead of stream().
+        
+        To avoid having to do our own timeout logic, we finish the watch early
+        if it produces an error.
+        """
+    
+        w = kubernetes.watch.Watch()
+        
+        # We will set this to bypass our second catch in the case of user errors.
+        userError = False
+    
+        try: 
+            for item in w.stream(method, *args, **kwargs):
+                # For everything the watch stream gives us
+                try:
+                    # Show the item to user code
+                    yield item
+                except Exception as e:
+                    # If we get an error from user code, skip our catch around
+                    # the Kubernetes generator.
+                    userError = True
+                    raise
+        except Exception as e:
+            # If we get an error
+            if userError:
+                # It wasn't from the Kubernetes watch generator. Pass it along.
+                raise
+            else:
+                # It was from the Kubernetes watch generator we manage.
+                if retryable_kubernetes_errors(e):
+                    # This is just cloud weather.
+                    # TODO: We will also get an APIError if we just can't code good against Kubernetes. So make sure to warn.
+                    logger.warning("Received error from Kubernetes watch stream: %s", e)
+                    # Just end the watch.
+                    return
+                else:
+                    # Something actually weird is happening.
+                    raise
+            
 
     def setUserScript(self, userScript):
         logger.info('Setting user script for deployment: {}'.format(userScript))
@@ -649,11 +697,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         if self.enableWatching:
             # Try watching for something to happen and use that.
 
-            w = kubernetes.watch.Watch()    
-
             if self.enableWatching:
                 for j in self._ourJobObjects():
-                    for event in w.stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
+                    for event in self._try_kubernetes_stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
+                        # For each event from the stream until it times out or just disconnects
                         pod = event['object']
                         if pod.metadata.name.startswith(self.jobPrefix):
                             if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
