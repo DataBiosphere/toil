@@ -211,7 +211,6 @@ def atomic_tmp_file(final_path):
 def atomic_install(tmp_path, final_path):
     "atomic install of tmp_path as final_path"
     if os.path.dirname(os.path.normpath(final_path)) != '/dev':
-        logger.debug('Rename %s to %s', tmp_path, final_path)
         os.rename(tmp_path, final_path)
 
 @contextmanager
@@ -226,23 +225,17 @@ def AtomicFileCreate(final_path, keep=False):
         yield tmp_path
         atomic_install(tmp_path, final_path)
     except Exception as ex:
-        logger.debug('Encountered exception: %s', ex)
         if not keep:
             try:
-                logger.debug('Remove file: %s', tmp_path)
                 os.unlink(tmp_path)
-            except Exception as ex2:
-                logger.debug('Encountered additional ignored exception: %s', ex2)
+            except Exception:
                 pass
         raise
 
 def atomic_copy(src_path, dest_path):
     """Copy a file using posix atomic creations semantics."""
     with AtomicFileCreate(dest_path) as dest_path_tmp:
-        logger.debug('Copy %s to %s', src_path, dest_path_tmp)
         shutil.copyfile(src_path, dest_path_tmp)
-    logger.debug('Copy completed to %s', dest_path)
-    assert os.path.exists(dest_path)
 
 def atomic_copyobj(src_fh, dest_path, length=16384):
     """Copy an open file using posix atomic creations semantics."""

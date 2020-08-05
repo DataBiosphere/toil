@@ -33,8 +33,6 @@ import threading
 import time
 import uuid
 
-import subprocess
-
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
@@ -770,9 +768,6 @@ class CachingFileStore(AbstractFileStore):
             # Upload the file
             logger.debug('Actually executing upload for file %s', fileID)
             self.jobStore.updateFile(fileID, filePath)
-            
-            # Make sure the file hasn't gone away by being uploaded
-            assert os.path.exists(filePath)
 
             # Count it for the total uploaded files value we need to return
             uploadedCount += 1
@@ -1062,15 +1057,12 @@ class CachingFileStore(AbstractFileStore):
         if absLocalFileName.startswith(self.localTempDir) and not os.path.islink(absLocalFileName):
             # We should link into the cache, because the upload is coming from our local temp dir (and not via a symlink in there)
             try:
-            
-                logger.debug('Want to link %s into cache with stat: %s and lstat: %s', absLocalFileName, os.stat(absLocalFileName), os.lstat(absLocalFileName))
-            
                 # Try and hardlink the file into the cache.
                 # This can only fail if the system doesn't have hardlinks, or the
                 # file we're trying to link to has too many hardlinks to it
                 # already, or something.
                 os.link(absLocalFileName, cachePath)
-                
+
                 linkedToCache = True
 
                 logger.debug('Hardlinked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
@@ -1081,9 +1073,11 @@ class CachingFileStore(AbstractFileStore):
                 # We couldn't make the link for some reason
                 linkedToCache = False
         else:
-            # The tests insist that if you are uploading a file from outside
-            # the local temp dir, it should not be linked into the cache.
-            # On systems that support it, we could end up with a hardlink-to-symlink if we break this rule.
+            # If you are uploading a file that physically exists outside the
+            # local temp dir, it should not be linked into the cache. On
+            # systems that support it, we could end up with a
+            # hardlink-to-symlink in the cache if we break this rule, allowing
+            # files to vanish from our cache.
             linkedToCache = False
 
 
@@ -1101,19 +1095,12 @@ class CachingFileStore(AbstractFileStore):
             # Save the file to the job store right now
             logger.debug('Actually executing upload immediately for file %s', fileID)
             self.jobStore.updateFile(fileID, absLocalFileName)
-            
-            # Make sure the file hasn't gone away by being uploaded
-            assert os.path.exists(absLocalFileName)
-            
-        subprocess.check_call(['ls', '-lah', self.localCacheDir])
 
         # Ship out the completed FileID object with its real size.
         return FileID.forPath(fileID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
-       
-        subprocess.check_call(['ls', '-lah', self.localCacheDir])
-       
+
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
@@ -1134,18 +1121,12 @@ class CachingFileStore(AbstractFileStore):
             # We want to use the cache
 
             if mutable:
-                result = self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
-                assert os.path.exists(result)
-                return result
+                return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
             else:
-                result = self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
-                assert os.path.exists(result)
-                return result
+                return self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
         else:
             # We do not want to use the cache
-            result = self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
-            assert os.path.exists(result)
-            return result
+            return self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
 
 
     def _readGlobalFileWithoutCache(self, fileStoreID, localFilePath, mutable, symlink, readerID):
@@ -1359,7 +1340,6 @@ class CachingFileStore(AbstractFileStore):
                     
                     # Make the copy
                     atomic_copy(cachedPath, localFilePath)
-                    assert os.path.exists(localFilePath)
 
                     # Change the reference to mutable
                     self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID))])
@@ -1484,7 +1464,7 @@ class CachingFileStore(AbstractFileStore):
         :rtype: bool
         """
 
-        assert os.path.exists(cachedPath)
+        assert os.path.exists(cachedPath), "Cannot create link to missing cache file %s" % cachedPath
 
         try:
             # Try and make the hard link.
@@ -1568,7 +1548,7 @@ class CachingFileStore(AbstractFileStore):
                     return localFilePath
 
             else:
-                logger.debug('Someone (possibly us) is already responsible for file %s', fileStoreID)
+                logger.debug('We already have an entry in the cache database for file %s', fileStoreID)
 
                 # A record already existed for this file.
                 # Try and create an immutable reference to an entry that
@@ -1583,28 +1563,16 @@ class CachingFileStore(AbstractFileStore):
                 if self.cur.fetchone()[0] > 0:
                     # The file is cached and we can copy or link it
                     logger.debug('Obtained reference to file %s', fileStoreID)
-                    
-                    for row in self.cur.execute('SELECT * FROM files'):
-                        logger.debug('File: %s', row)
-                    for row in self.cur.execute('SELECT * FROM refs'):
-                        logger.debug('Ref: %s', row)
 
                     # Get the path it is actually at in the cache, instead of where we wanted to put it
                     for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
-                        logger.debug('File %s is cached at %s', fileStoreID, row[0])
-                        logger.debug('Exists? %s', os.path.exists(row[0]))
                         cachedPath = row[0]
 
                     if self._createLinkFromCache(cachedPath, localFilePath, symlink):
                         # We managed to make the link
-                        logger.debug('Created link %s to %s', localFilePath, cachedPath)
-                        assert os.path.exists(cachedPath)
-                        assert os.path.exists(localFilePath)
                         return localFilePath
                     else:
                         # We can't make the link. We need a copy instead.
-                        
-                        logger.debug('Unable to create link; need to copy')
 
                         # We could change the reference to copying, see if
                         # there's space, make the copy, try and get ahold of
@@ -1614,9 +1582,7 @@ class CachingFileStore(AbstractFileStore):
 
                         self._write([('DELETE FROM refs WHERE path = ? AND file_id = ?', (localFilePath, fileStoreID))])
 
-                        result = self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
-                        assert os.path.exists(result)
-                        return result
+                        return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
                 else:
                     logger.debug('Could not obtain reference to file %s', fileStoreID)
 
