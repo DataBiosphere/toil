@@ -672,7 +672,7 @@ class CachingFileStore(AbstractFileStore):
                 ('UPDATE files SET owner = NULL, state = ? WHERE owner = ? AND (state = ? OR state = ?)',
                 ('cached', owner, 'uploadable', 'uploading'))])
 
-            logger.debug('Tried to adopt file operations from dead worker %d', owner)
+            logger.debug('Tried to adopt file operations from dead worker %s', owner)
 
     @classmethod
     def _executePendingDeletions(cls, workDir, con, cur):
