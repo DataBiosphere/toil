@@ -575,11 +575,17 @@ def toil_make_tool(toolpath_object: MutableMapping[str, Any],
 class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
     """Custom filesystem access class which handles toil filestore references."""
     def __init__(self, basedir: str, file_store: AbstractFileStore = None):
+        
+        logger.debug('ToilFsAccess::__init__(%s, %s)', basedir, file_store)
+        
         self.file_store = file_store
         super(ToilFsAccess, self).__init__(basedir)
 
     def exists(self, path: str) -> bool:
         # toil's _abs() throws errors when files are not found and cwltool's _abs() does not
+        
+        logger.debug('ToilFsAccess::exists(%s)', path)
+        
         try:
             return os.path.exists(self._abs(path))
         except NoSuchFileException:
@@ -592,12 +598,22 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
         
+        logger.debug('ToilFsAccess::_abs(%s)', path)
+        
         # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
         # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
         if path.startswith("toilfs:"):
-            return self.file_store.readGlobalFile(FileID.unpack(path[7:]))
-        return super(ToilFsAccess, self)._abs(path)
+            logger.debug('Need to download file to get a local absoulte path.')
+            destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
+            logger.debug('Downloaded %s to %s', path, destination)
+            assert os.path.exists(destination)
+            return destination
+        else:
+            logger.debug('Not a Toil file; pass through')
+            result = super(ToilFsAccess, self)._abs(path)
+            logger.debug('Parent says absoulte path of %s is %s', path, result)
+            return result
 
 
 def toil_get_file(file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str) -> str:
@@ -936,7 +952,7 @@ class CWLJob(Job):
             self.step_inputs,
             cwljob,
             self.runtime_context.make_fs_access(""))
-
+            
         required_env_vars = self.populate_env_vars(cwljob)
 
         if self.conditional.is_false(cwljob):
@@ -981,6 +997,8 @@ class CWLJob(Job):
 
         process_uuid = uuid.uuid4()
         started_at = datetime.datetime.now()
+        
+        logger.debug('Running CWL job: %s', cwljob)
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
