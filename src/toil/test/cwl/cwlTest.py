@@ -363,7 +363,7 @@ class CWLv11Test(ToilTest):
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
             if caching:
-                cmd.extend(['--', '--disableCaching=False']) = Err
+                cmd.extend(['--', '--disableCaching=False'])
             else:
                 cmd.extend(['--', '--disableCaching=True'])
             logger.info("Running: '%s'", "' '".join(cmd))
