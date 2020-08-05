@@ -695,14 +695,13 @@ class CachingFileStore(AbstractFileStore):
         """
 
         me = get_process_name(workDir)
-        
+
         logger.debug('Deleting files we need to delete')
 
         # Remember the file IDs we are deleting
         deletedFiles = []
         for row in cur.execute('SELECT id, path FROM files WHERE owner = ? AND state = ?', (me, 'deleting')):
             # Grab everything we are supposed to delete and delete it
-            logger.debug('We need to delete: %s', row)
             fileID = row[0]
             filePath = row[1]
             try:
@@ -711,6 +710,7 @@ class CachingFileStore(AbstractFileStore):
             except OSError:
                 # Probably already deleted
                 logger.debug('File already gone: %s', filePath)
+                # Still need to mark it as deleted
                 pass
 
             # Whether we deleted the file or just found out that it is gone, we
@@ -1502,7 +1502,7 @@ class CachingFileStore(AbstractFileStore):
             # Try and create a downloading entry if no entry exists.
             # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
             # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
-            logger.debug('Trying to make file record downloading reference for id %s', fileStoreID)
+            logger.debug('Trying to make file downloading file record and reference for id %s', fileStoreID)
             self._write([('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
                 (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', me)),
                 ('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
@@ -1545,12 +1545,6 @@ class CachingFileStore(AbstractFileStore):
 
             else:
                 logger.debug('Someone else is already responsible for file %s', fileStoreID)
-                
-                for row in self.cur.execute('SELECT * FROM files WHERE id = ?', (fileStoreID,)):
-                    logger.debug('File: %s', row)
-                for row in self.cur.execute('SELECT * FROM refs WHERE file_id = ?', (fileStoreID,)):
-                    logger.debug('Ref: %s', row)
-                
 
                 # A record already existed for this file.
                 # Try and create an immutable reference to an entry that
@@ -1595,7 +1589,7 @@ class CachingFileStore(AbstractFileStore):
                     self._stealWorkFromTheDead()
                     # We may have acquired ownership of partially-downloaded
                     # files, now in deleting state, that we need to delete
-                    # before we can download them. 
+                    # before we can download them.
                     self._executePendingDeletions(self.workDir, self.con, self.cur)
 
                     # Wait for other people's downloads to progress.
