@@ -655,6 +655,14 @@ def _addOptions(addGroupFn, config):
                       "'badWorkerFailInterval' seconds after the worker starts, default=%s" % config.badWorkerFailInterval))
 
 
+def parseBool(val):
+    if val.lower() in ['true', 't', 'yes', 'y', 'on', '1']:
+        return True
+    elif val.lower() in ['false', 'f', 'no', 'n', 'off', '0']:
+        return False
+    else:
+        raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
+
 def addOptions(parser, config=Config()):
     """
     Adds toil options to a parser object, either optparse or argparse.
@@ -666,7 +674,7 @@ def addOptions(parser, config=Config()):
         def addGroup(headingString, bodyString):
             return parser.add_argument_group(headingString, bodyString).add_argument
 
-        parser.register("type", "bool", lambda v: v.lower() == "true")  # Custom type for arg=True/False.
+        parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
         _addOptions(addGroup, config)
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
