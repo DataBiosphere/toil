@@ -33,6 +33,8 @@ import threading
 import time
 import uuid
 
+import subprocess
+
 from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
@@ -696,8 +698,6 @@ class CachingFileStore(AbstractFileStore):
 
         me = get_process_name(workDir)
 
-        logger.debug('Deleting files we need to delete')
-
         # Remember the file IDs we are deleting
         deletedFiles = []
         for row in cur.execute('SELECT id, path FROM files WHERE owner = ? AND state = ?', (me, 'deleting')):
@@ -770,6 +770,9 @@ class CachingFileStore(AbstractFileStore):
             # Upload the file
             logger.debug('Actually executing upload for file %s', fileID)
             self.jobStore.updateFile(fileID, filePath)
+            
+            # Make sure the file hasn't gone away by being uploaded
+            assert os.path.exists(filePath)
 
             # Count it for the total uploaded files value we need to return
             uploadedCount += 1
@@ -1064,6 +1067,8 @@ class CachingFileStore(AbstractFileStore):
                 # file we're trying to link to has too many hardlinks to it
                 # already, or something.
                 os.link(absLocalFileName, cachePath)
+                assert os.path.exists(absLocalFileName)
+                assert os.path.exists(cachePath)
 
                 linkedToCache = True
 
@@ -1091,14 +1096,21 @@ class CachingFileStore(AbstractFileStore):
                 ('DELETE FROM files WHERE id = ?', (fileID,))])
 
             # Save the file to the job store right now
-            logger.debug('Actually executing upload for file %s', fileID)
+            logger.debug('Actually executing upload immediately for file %s', fileID)
             self.jobStore.updateFile(fileID, absLocalFileName)
+            
+            # Make sure the file hasn't gone away by being uploaded
+            assert os.path.exists(absLocalFileName)
+            
+        subprocess.check_call(['ls', '-lah', self.localCacheDir])
 
         # Ship out the completed FileID object with its real size.
         return FileID.forPath(fileID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
-        
+       
+        subprocess.check_call(['ls', '-lah', self.localCacheDir])
+       
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
@@ -1119,12 +1131,18 @@ class CachingFileStore(AbstractFileStore):
             # We want to use the cache
 
             if mutable:
-                return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                result = self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                assert os.path.exists(result)
+                return result
             else:
-                return self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
+                result = self._readGlobalFileWithCache(fileStoreID, localFilePath, symlink, readerID)
+                assert os.path.exists(result)
+                return result
         else:
             # We do not want to use the cache
-            return self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
+            result = self._readGlobalFileWithoutCache(fileStoreID, localFilePath, mutable, symlink, readerID)
+            assert os.path.exists(result)
+            return result
 
 
     def _readGlobalFileWithoutCache(self, fileStoreID, localFilePath, mutable, symlink, readerID):
@@ -1338,6 +1356,7 @@ class CachingFileStore(AbstractFileStore):
                     
                     # Make the copy
                     atomic_copy(cachedPath, localFilePath)
+                    assert os.path.exists(localFilePath)
 
                     # Change the reference to mutable
                     self._write([('UPDATE refs SET state = ? WHERE path = ? AND file_id = ?', ('mutable', localFilePath, fileStoreID))])
@@ -1448,7 +1467,7 @@ class CachingFileStore(AbstractFileStore):
     def _createLinkFromCache(self, cachedPath, localFilePath, symlink=True):
         """
         Create a hardlink or symlink from the given path in the cache to the
-        given user-provided path. Destination must not exist.
+        given user-provided path. Destination must not exist. Source must exist.
 
         Only creates a symlink if a hardlink cannot be created and symlink is
         true.
@@ -1461,6 +1480,8 @@ class CachingFileStore(AbstractFileStore):
         :return: True if the file is successfully linked. False if the file cannot be linked.
         :rtype: bool
         """
+
+        assert os.path.exists(cachedPath)
 
         try:
             # Try and make the hard link.
@@ -1544,7 +1565,7 @@ class CachingFileStore(AbstractFileStore):
                     return localFilePath
 
             else:
-                logger.debug('Someone else is already responsible for file %s', fileStoreID)
+                logger.debug('Someone (possibly us) is already responsible for file %s', fileStoreID)
 
                 # A record already existed for this file.
                 # Try and create an immutable reference to an entry that
@@ -1559,16 +1580,28 @@ class CachingFileStore(AbstractFileStore):
                 if self.cur.fetchone()[0] > 0:
                     # The file is cached and we can copy or link it
                     logger.debug('Obtained reference to file %s', fileStoreID)
+                    
+                    for row in self.cur.execute('SELECT * FROM files'):
+                        logger.debug('File: %s', row)
+                    for row in self.cur.execute('SELECT * FROM refs'):
+                        logger.debug('Ref: %s', row)
 
                     # Get the path it is actually at in the cache, instead of where we wanted to put it
                     for row in self.cur.execute('SELECT path FROM files WHERE id = ?', (fileStoreID,)):
+                        logger.debug('File %s is cached at %s', fileStoreID, row[0])
+                        logger.debug('Exists? %s', os.path.exists(row[0]))
                         cachedPath = row[0]
 
                     if self._createLinkFromCache(cachedPath, localFilePath, symlink):
                         # We managed to make the link
+                        logger.debug('Created link %s to %s', localFilePath, cachedPath)
+                        assert os.path.exists(cachedPath)
+                        assert os.path.exists(localFilePath)
                         return localFilePath
                     else:
                         # We can't make the link. We need a copy instead.
+                        
+                        logger.debug('Unable to create link; need to copy')
 
                         # We could change the reference to copying, see if
                         # there's space, make the copy, try and get ahold of
@@ -1578,7 +1611,9 @@ class CachingFileStore(AbstractFileStore):
 
                         self._write([('DELETE FROM refs WHERE path = ? AND file_id = ?', (localFilePath, fileStoreID))])
 
-                        return self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                        result = self._readGlobalFileMutablyWithCache(fileStoreID, localFilePath, readerID)
+                        assert os.path.exists(result)
+                        return result
                 else:
                     logger.debug('Could not obtain reference to file %s', fileStoreID)
 
