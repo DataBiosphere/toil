@@ -1059,20 +1059,22 @@ class CachingFileStore(AbstractFileStore):
         self._write([('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploadable', me)),
             ('INSERT INTO refs VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))])
 
-        if absLocalFileName.startswith(self.localTempDir):
-            # We should link into the cache, because the upload is coming from our local temp dir
+        if absLocalFileName.startswith(self.localTempDir) and not os.path.islink(absLocalFileName):
+            # We should link into the cache, because the upload is coming from our local temp dir (and not via a symlink in there)
             try:
+            
+                logger.debug('Want to link %s into cache with stat: %s and lstat: %s', absLocalFileName, os.stat(absLocalFileName), os.lstat(absLocalFileName))
+            
                 # Try and hardlink the file into the cache.
                 # This can only fail if the system doesn't have hardlinks, or the
                 # file we're trying to link to has too many hardlinks to it
                 # already, or something.
                 os.link(absLocalFileName, cachePath)
-                assert os.path.exists(absLocalFileName)
-                assert os.path.exists(cachePath)
-
+                
                 linkedToCache = True
 
-                logger.debug('Linked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
+                logger.debug('Hardlinked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
+                assert not os.path.islink(cachePath), "Symlink %s has invaded cache!" % cachePath
 
                 # Don't do the upload now. Let it be deferred until later (when the job is committing).
             except OSError:
@@ -1081,6 +1083,7 @@ class CachingFileStore(AbstractFileStore):
         else:
             # The tests insist that if you are uploading a file from outside
             # the local temp dir, it should not be linked into the cache.
+            # On systems that support it, we could end up with a hardlink-to-symlink if we break this rule.
             linkedToCache = False
 
 
