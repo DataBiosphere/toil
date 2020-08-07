@@ -194,7 +194,7 @@ py37_cactus_integration:
     - git clone https://github.com/ComparativeGenomicsToolkit/cactus.git --recursive
     - cd cactus
     - git fetch origin
-    - git checkout b78fad4cf91f5ac91717796d4357ca8d85b4f7d1
+    - git checkout c087fe129d8c337c7eab961cebd49c80bcc20ef3
     - git submodule update --init --recursive
     - pip install --upgrade setuptools pip
     - pip install --upgrade .
