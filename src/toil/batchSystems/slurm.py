@@ -101,9 +101,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     '-S', '1970-01-01'] # override start time limit
 
             stdout = call_command(args)
-            for line in stdout:
+            for line in stdout.split('\n'):
                 logger.debug("%s output %s", args[0], line)
-                values = line.decode('utf-8').strip().split('|')
+                values = line.strip().split('|')
                 if len(values) < 2:
                     continue
                 state, exitcode = values
