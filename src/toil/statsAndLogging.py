@@ -142,7 +142,8 @@ class StatsAndLogging( object ):
             # There are chained jobs in this output - indicate this with a symlink
             # of the job's name to this file
             name = createName(path, alternateName, extension, failed)
-            os.symlink(os.path.relpath(fullName, path), name)
+            if not os.path.exists(name):
+                os.symlink(os.path.relpath(fullName, path), name)
 
     @classmethod
     def statsAndLoggingAggregator(cls, jobStore, stop, config):
