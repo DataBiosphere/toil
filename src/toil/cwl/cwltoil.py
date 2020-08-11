@@ -596,7 +596,7 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
         # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
         if path.startswith("toilfs:"):
-            logger.debug('Need to download file to get a local absoulte path.')
+            logger.debug('Need to download file to get a local absolute path.')
             destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
             logger.debug('Downloaded %s to %s', path, destination)
             assert os.path.exists(destination)
