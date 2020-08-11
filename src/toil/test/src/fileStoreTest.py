@@ -1089,7 +1089,11 @@ class hidden(object):
             try:
                 job.fileStore.deleteLocalFile(nonLocalFsID)
             except OSError as e:
-                assert e.errno == errno.ENOENT
+                if e.errno != errno.ENOENT:
+                    # This is supposed to produce an
+                    # ENOENT. If it doesn't something is
+                    # broken.
+                    raise
             else:
                 assert False, "Error should have been raised"
             assert os.path.exists(nonLocalFile.name)
