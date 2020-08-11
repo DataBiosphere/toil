@@ -910,7 +910,7 @@ class hidden(object):
                             writtenFiles.pop(fsID)
                         if fsID in list(localFileIDs.keys()):
                             for lFID in localFileIDs[fsID]:
-                                if lFID not in ('mutable',):
+                                if lFID != 'mutable':
                                     jobDisk += rdelFileSize * 1024 * 1024
                             localFileIDs.pop(fsID)
                         if fileWasCached:
