@@ -591,7 +591,11 @@ def parse_args(args):
     
     # Additional worker abilities
     parser.add_argument("--context", default=[], action="append",
-        help="Pickled, base64-encoded context manager(s) to run job inside of.")
+        help="""Pickled, base64-encoded context manager(s) to run job inside of.
+                Allows the Toil leader to pass setup and cleanup work provided by the
+                batch system, in the form of pickled Python context manager objects,
+                that the worker can then run before/after the job on the batch
+                system's behalf.""")
    
     return parser.parse_args(args)
     
