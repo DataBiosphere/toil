@@ -573,7 +573,7 @@ def parse_args(args):
     Parse command-line arguments to the worker.
     """
     
-    # Drop the progrram name
+    # Drop the program name
     args = args[1:]
     
     # Make the parser
