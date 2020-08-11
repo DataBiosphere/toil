@@ -589,7 +589,7 @@ def parse_args(args):
     parser.add_argument("jobStoreID", type=str,
         help="ID of the job within the job store")
     
-    # Additional worker abbilities
+    # Additional worker abilities
     parser.add_argument("--context", default=[], action="append",
         help="Pickled, base64-encoded context manager(s) to run job inside of.")
    
