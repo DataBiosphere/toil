@@ -144,10 +144,12 @@ class hidden(object):
             cls = hidden.AbstractNonCachingFileStoreTest
             fsId, _ = cls._writeFileToJobStore(job, isLocalFile=True, nonLocalDir=nonLocalDir,
                                                fileMB=writeFileSize)
+
+            # Fill in the size of the local file we just made
             writtenFiles[fsId] = writeFileSize
-            writtenID = list(writtenFiles.keys())[0]
-            localFileIDs.add(writtenID)
-            logger.info('Now have local file: %s', writtenID)
+            # Remember it actually should be local
+            localFileIDs.add(fsId)
+            logger.info('Now have local file: %s', fsId)
             
             i = 0
             while i <= numIters:
