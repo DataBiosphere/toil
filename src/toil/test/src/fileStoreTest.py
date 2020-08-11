@@ -184,7 +184,11 @@ class hidden(object):
                                 try:
                                     job.fileStore.deleteLocalFile(fsID)
                                 except OSError as e:
-                                    assert e.errno == errno.ENOENT
+                                    if e.errno != errno.ENOENT:
+                                        # This is supposed to produce an
+                                        # ENOENT. If it doesn't something is
+                                        # broken.
+                                        raise
                                     logger.info('Correctly fail to local-delete non-local file: %s', fsID)
                                 else:
                                     assert False, "Was able to delete non-local file {}".format(fsID)
