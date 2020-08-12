@@ -41,6 +41,7 @@ from abc import ABCMeta, abstractmethod
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 from contextlib import contextmanager
 from io import BytesIO
+import uuid
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -59,90 +60,137 @@ from future.utils import with_metaclass
 
 logger = logging.getLogger( __name__ )
 
-
-class BaseJob(object):
+class FakeID:
     """
-    Inherit from this class to add job properties to an object.
-
-    If the object doesn't specify explicit requirements, these properties will fall back
-    to the configured defaults. If the value cannot be determined, an AttributeError is raised.
+    Represents a temporarily-assigned ID that can be genertated when relating
+    jobs to each other before the whole graph is saved to the JobStore. When
+    saved, will be replaced by a JobStore-assigned ID.
     """
-    def __init__(self, requirements, unitName, displayName=None, jobName=None):
-        cores = requirements.get('cores')
-        memory = requirements.get('memory')
-        disk = requirements.get('disk')
-        preemptable = requirements.get('preemptable')
-        if unitName:
-            assert isinstance(unitName, (str, bytes))
-        if jobName:
-            assert isinstance(jobName, (str, bytes))
-        self.unitName = unitName
-        self.displayName = displayName if displayName else self.__class__.__name__
-        self.jobName = jobName if jobName else self.__class__.__name__
-        self._cores = self._parseResource('cores', cores)
-        self._memory = self._parseResource('memory', memory)
-        self._disk = self._parseResource('disk', disk)
-        self._preemptable = preemptable
+    def __init__(self):
+        """
+        Assign a unique ID that won't collide with anything.
+        """
+        self._value == uuid.uuid4()
+        
+    def __str__(self):
+        return self._value
+        
+    def __repr__(self):
+        return f'FakeID({self._value})'
+        
+    def __hash__(self):
+        return hash(self._value)
+        
+    def __eq__(self, other):
+        return isinstance(other, FakeID) and self._value == other._value
+        
+    def __ne__(self, other):
+        return not isinstance(other, FakeID) or self._value != other._value
+
+class JobDescription:
+    """
+    Stores all the information that the Toil Leader ever needs to know about a
+    Job: requirements information, dependency information, commands to issue,
+    etc.
+    
+    Can be obtained from an actual (i.e. executable) Job object, and can be
+    used to obtain the Job object from the JobStore.
+    
+    Never contains other Jobs or JobDescriptions: all reference is by ID.
+    
+    Subclassed into variants for checkpoint jobs and service jobs that have
+    their specific parameters.
+    """
+    
+    def __init__(self, requirements=None, unitName='', displayName='', jobName='',
+                 command=None, jobStoreID=None, predecessorNumber=0):
+        """
+        Create a new JobDescription.
+        
+        :param dict|None requirements: Dict from string to number, string, or bool
+            describing the resource requirments of the job. 'cores', 'memory',
+            'disk', and 'preemptable' fields, if set, are parsed and broken out
+            into properties. If unset, the relevant property will be
+            unspecified, and will be pulled from the assigned Config object if
+            queried (see :meth:`toil.job.JobDescription.assignConfig`). If
+            unspecified and no Config object is assigned, an AttributeError
+            will be raised at query time.
+        :param str|None unitName: Name of this instance of this kind of job. May
+            appear with jobName in logging.
+        :param str|None displayName: A human-readable name to identify this
+            particular job instance. Ought to be the job class's name
+            if no real user-defined name is available.
+        :param str|None jobName: Name of the kind of job this is. May be used in job
+            store IDs and logging. Ought to be the job class's name if no real
+            user-defined name is available.
+        :param str|None command: Command that should be run when the job is executed.
+            Generally asks _toil_worker to fetch the actual job data from the
+            JobStore and execute it.
+        :param str|FakeID|None jobStoreID: The ID assigned to this job by the job
+            store. Should be a FakeID until the job has actually been stored in the
+            job store.
+        :param int predecessorNumber: Number of total predecessors
+            that must finish before the described Job from being scheduled.
+        """
+        
+        # Fill in default values
+        if requirements is None:
+            requirements = {}
+        
+        # Save requirements, parsing and validating anything that needs parsing or validating
+        self._requirementOverrides = {k: self._parseResource(k, v) for (k, v) in requirements.items()}
+        
+        # Save names, making sure they are strings and not e.g. bytes.
+        def makeString(x):
+            return x if not isinstance(x, bytes) else x.decode('utf-8', errors='replace')
+        self.unitName = makeString(unitName)
+        self.displayName = makeString(displayName)
+        self.jobName = makeString(jobName)
+    
+        # Set properties that are sensible to configure when a JobDescription
+        # is created.
+        self.command = command
+        self.jobStoreID = jobStoreID
+        self.predecessorNumber = predecessorNumber
+        
+        # Set scheduling properties that the leader read to think about scheduling.
+        
+        # The number of times the job should be retried if it fails This number is reduced by
+        # retries until it is zero and then no further retries are made. If
+        # None, taken as the default value for this workflow execution.
+        self.remainingRetryCount = None
+        
+        # Holds FileStore FileIDs of the files that this job has deleted. Used
+        # to journal deletions of files and recover from a worker crash between
+        # committing a JobDescription update and actually executing the
+        # requested deletions.
+        self.filesToDelete = [] 
+        
+        # The IDs of predecessors that have finished. When len(predecessorsFinished) ==
+        # predecessorNumber then the job can be run.
+        self.predecessorsFinished = set()
+        
+        # The list of successor jobs to run. Successor jobs are stored as JobStore IDs. Successor
+        # jobs are run in reverse order from the stack.
+        self.stack = []
+        
+        # A jobStoreFileID of the log file for a job. This will be None unless the job failed and
+        # the logging has been captured to be reported on the leader.
+        self.logJobStoreFileID = None 
+        
+        # A list of lists of service jobs to run. Each sub list is a list of service jobs
+        # descriptions, each of which is stored as a 6-tuple of the form (jobStoreId, memory,
+        # cores, disk, startJobStoreID, terminateJobStoreID).
+        # TODO: This is a bad internal format
+        self.services = []
+        
+        # Now set properties that don't really describe the job but hook us up
+        # to contextual state so our properties and methods can use it.
+    
+        # We can have a toil.common.Config assigned to fill in default values for
+        # requirements not explicitly specified.
         self._config = None
-
-    @property
-    def disk(self):
-        """
-        The maximum number of bytes of disk the job will require to run.
-        """
-        if self._disk is not None:
-            return self._disk
-        elif self._config is not None:
-            return self._config.defaultDisk
-        else:
-            raise AttributeError("Default value for 'disk' cannot be determined")
-
-    @property
-    def memory(self):
-        """
-        The maximum number of bytes of memory the job will require to run.
-        """
-        if self._memory is not None:
-            return self._memory
-        elif self._config is not None:
-            return self._config.defaultMemory
-        else:
-            raise AttributeError("Default value for 'memory' cannot be determined")
-
-    @property
-    def cores(self):
-        """
-        The number of CPU cores required.
-        """
-        if self._cores is not None:
-            return self._cores
-        elif self._config is not None:
-            return self._config.defaultCores
-        else:
-            raise AttributeError("Default value for 'cores' cannot be determined")
-
-    @property
-    def preemptable(self):
-        """
-        Whether the job can be run on a preemptable node.
-        """
-        if self._preemptable is not None:
-            return self._preemptable
-        elif self._config is not None:
-            return self._config.defaultPreemptable
-        else:
-            raise AttributeError("Default value for 'preemptable' cannot be determined")
-
-    @property
-    def _requirements(self):
-        """
-        Gets a dictionary of all the object's resource requirements. Unset values are defaulted to None
-        """
-        return {'memory': getattr(self, 'memory', None),
-                'cores': getattr(self, 'cores', None),
-                'disk': getattr(self, 'disk', None),
-                'preemptable': getattr(self, 'preemptable', None)}
-
+        
     @staticmethod
     def _parseResource(name, value):
         """
@@ -154,112 +202,297 @@ class BaseJob(object):
         :param None|str|float|int value: The resource value
         :rtype: int|float|None
 
-        >>> Job._parseResource('cores', None)
-        >>> Job._parseResource('cores', 1), Job._parseResource('disk', 1), \
-        Job._parseResource('memory', 1)
+        >>> JobDescription._parseResource('cores', None)
+        >>> JobDescription._parseResource('cores', 1), JobDescription._parseResource('disk', 1), \
+        JobDescription._parseResource('memory', 1)
         (1, 1, 1)
-        >>> Job._parseResource('cores', '1G'), Job._parseResource('disk', '1G'), \
-        Job._parseResource('memory', '1G')
+        >>> JobDescription._parseResource('cores', '1G'), JobDescription._parseResource('disk', '1G'), \
+        JobDescription._parseResource('memory', '1G')
         (1073741824, 1073741824, 1073741824)
-        >>> Job._parseResource('cores', 1.1)
+        >>> JobDescription._parseResource('cores', 1.1)
         1.1
-        >>> Job._parseResource('disk', 1.1) # doctest: +IGNORE_EXCEPTION_DETAIL
+        >>> JobDescription._parseResource('disk', 1.1) # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
         ...
         TypeError: The 'disk' requirement does not accept values that are of <type 'float'>
-        >>> Job._parseResource('memory', object()) # doctest: +IGNORE_EXCEPTION_DETAIL
+        >>> JobDescription._parseResource('memory', object()) # doctest: +IGNORE_EXCEPTION_DETAIL
         Traceback (most recent call last):
         ...
         TypeError: The 'memory' requirement does not accept values that are of ...
         """
-        assert name in ('memory', 'disk', 'cores')
+        
         if value is None:
+            # Anything can be None.
             return value
-        elif isinstance(value, (str, bytes)):
-            value = human2bytes(value)
-        if isinstance(value, int):
-            return value
-        elif isinstance(value, float) and name == 'cores':
-            return value
+        
+        if name in ('memory', 'disk', 'cores'):
+            # These should be numbers that accept things like "5G".
+            if isinstance(value, (str, bytes)):
+                value = human2bytes(value)
+            if isinstance(value, int):
+                return value
+            elif isinstance(value, float) and name == 'cores':
+                # But only cores can be fractional.
+                return value
+            else:
+                raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
+        elif name == 'preemptable':
+            if isinstance(value, str):
+                if v.tolower() == 'true':
+                    return True
+                elif v.tolower() == 'false':
+                    return False
+                else:
+                    raise ValueError(f"The '{name}' requirement must be 'true' or 'false' but is {value}")
+            elif isinstance(value, bool):
+                return value
+            else:
+                raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
         else:
-            raise TypeError("The '%s' requirement does not accept values that are of %s"
-                            % (name, type(value)))
+            # Anything else we just pass along without opinons
+            return value
+        
+    def assignConfig(self, config):
+        """
+        Assign the given config object to be used to provide default values for
+        requirements.
+        
+        :param toil.common.Config config: Config object to query
+        """
+        self._config = config
+        
+    def _fetchRequirement(self, requirement):
+        """
+        Get the value of the specified requirement ('blah') by looking it up in
+        our requirement storage and querying 'defaultBlah' on the config if it
+        isn't set. If the config would be queried but isn't associated, raises
+        AttributeError.
+        """
+        if requirement in self._requirementOverrides:
+            return self._requirementOverrides[requirement]
+        elif self._config is not None:
+            return getattr(config, 'default' + requirement.capitalize())
+        else:
+            raise AttributeError("Default value for '{}' cannot be determined".format(requirement))
+        
+    @property
+    def disk(self):
+        """
+        The maximum number of bytes of disk the job will require to run.
+        """
+        return self._fetchRequirement('disk')
+    @disk.setter
+    def set_disk(self, val):
+         self._requirementOverrides['disk'] = self._parseResource('disk', val)
 
+    @property
+    def memory(self):
+        """
+        The maximum number of bytes of memory the job will require to run.
+        """
+        return self._fetchRequirement('memory')
+    @memory.setter
+    def set_memory(self, val):
+         self._requirementOverrides['memory'] = self._parseResource('memory', val)
+
+    @property
+    def cores(self):
+        """
+        The number of CPU cores required.
+        """
+        return self._fetchRequirement('cores')
+    @cores.setter
+    def set_cores(self, val):
+         self._requirementOverrides['cores'] = self._parseResource('cores', val)
+
+    @property
+    def preemptable(self):
+        """
+        Whether the job can be run on a preemptable node.
+        """
+        return self._fetchRequirement('preemptable')
+    @preemptable.setter
+    def set_preemptable(self, val):
+         self._requirementOverrides['preemptable'] = self._parseResource('preemptable', val)
+        
     def __str__(self):
+        """
+        Produce a useful logging string identifying this job.
+        """
+        
         printedName = "'" + self.jobName + "'"
         if self.unitName:
             printedName += ' ' + self.unitName
         elif self.unitName == '':
-            printedName += ' ' + 'user passed empty string for name'
+            printedName += ' ' + '(unnamed)'
+        
+        if self.jobStoreID is not None:
+            printedName += ' ' + self.jobStoreID
+        
         return printedName
-
-
-class JobNode(BaseJob):
-    """
-    This object bridges the job graph, job, and batchsystem classes
-    """
-    def __init__(self, requirements, jobName, unitName, jobStoreID,
-                 command, displayName=None, predecessorNumber=1):
-        super().__init__(requirements=requirements, displayName=displayName, unitName=unitName, jobName=jobName)
-        self.jobStoreID = jobStoreID
-        self.predecessorNumber = predecessorNumber
-        self.command = command
-
-    def __str__(self):
-        return super().__str__() + ' ' + self.jobStoreID
-
-    def __hash__(self):
-        return hash(self.jobStoreID)
-
-    def __eq__(self, other):
-        if isinstance(other, self.__class__):
-            return self.__dict__ == other.__dict__
-        return NotImplemented
-
-    def __ne__(self, other):
-        if isinstance(other, self.__class__):
-            return not self.__eq__(other)
-        return NotImplemented
+        
+    # Not usable as a key (not hashable) and doesn't have any value-equality.
+    # There really should only ever be one true version of a JobSescription at
+    # a time, keyed by jobStoreID.
 
     def __repr__(self):
         return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
+        
+        
+    # Now we have methods related to scheduling.
+        
+    def setupJobAfterFailure(self, exitReason=None):
+        """
+        Reduce the remainingRetryCount if greater than zero and set the memory
+        to be at least as big as the default memory (in case of exhaustion of memory,
+        which is common).
+        
+        Requires a configuration to have been associated.
+        
+        :param toil.batchSystems.abstractBatchSystem.BatchJobExitReason exitReason: The configuration for the current workflow run.
+        
+        """
+        
+        # Avoid potential circular imports
+        from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+        
+        assert self._config is not None
+        
+        if config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
+            logger.info("*Not* reducing retry count (%s) of job %s with ID %s",
+                        self.remainingRetryCount, self, self.jobStoreID)
+        else:
+            self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
+            logger.warning("Due to failure we are reducing the remaining retry count of job %s with ID %s to %s",
+                           self, self.jobStoreID, self.remainingRetryCount)
+        # Set the default memory to be at least as large as the default, in
+        # case this was a malloc failure (we do this because of the combined
+        # batch system)
+        if self.memory < config.defaultMemory:
+            self.memory = config.defaultMemory
+            logger.warning("We have increased the default memory of the failed job %s to %s bytes",
+                           self, self.memory)
+            
+        if self.disk < config.defaultDisk:
+            self.disk = config.defaultDisk
+            logger.warning("We have increased the disk of the failed job %s to the default of %s bytes",
+                           self, self.disk)
+                           
+                           
+    def getLogFileHandle(self, jobStore):
+        """
+        Returns a context manager that yields a file handle to the log file.
+        
+        Assumes logJobStoreFileID is set.
+        """
+        return jobStore.readFileStream(self.logJobStoreFileID)
+        
+        
+class ServiceJobDescription(JobDescription):
+    """
+    A description of a job that is a service.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        """
+        Create a ServiceJobDescription to describe a service job.
+        """
+        
+        # Make the base JobDescription
+        super(self, ServiceJobDescription).__init__(*args, **kwargs)
+        
+        # Set service-specific properties
+    
+        # An empty file in the jobStore which when deleted is used to signal that the service
+        # should cease.
+        self.terminateJobStoreID = None
+        
+        # Similarly a empty file which when deleted is used to signal that the service is
+        # established
+        self.startJobStoreID = None
+        
+        # An empty file in the jobStore which when deleted is used to signal that the service
+        # should terminate signaling an error.
+        self.errorJobStoreID = None
+        
+        
+class CheckpointJobDescription(JobDescription):
+    """
+    A description of a job that is a checkpoint.
+    """
+    
+    def __init__(self, *args, **kwargs):
+        """
+        Create a CheckpointJobDescription to describe a checkpoint job.
+        """
+        
+        # Make the base JobDescription
+        super(self, CheckpointJobDescription).__init__(*args, **kwargs)
+        
+        # Set checkpoint-specific properties
+        
+        # None, or a copy of the original command string used to reestablish the job after failure.
+        self.checkpoint = None
+        
+        # Files that can not be deleted until the job and its successors have completed
+        self.checkpointFilesToDelete = []
 
-    @classmethod
-    def fromJobGraph(cls, jobGraph):
-        """
-        Takes a job graph object and returns a job node object
-        :param toil.jobGraph.JobGraph jobGraph: A job graph object to be transformed into a job node
-        :return: A job node object
-        :rtype: toil.job.JobNode
-        """
-        return cls(jobStoreID=jobGraph.jobStoreID,
-                   requirements=jobGraph._requirements,
-                   command=jobGraph.command,
-                   jobName=jobGraph.jobName,
-                   unitName=jobGraph.unitName,
-                   displayName=jobGraph.displayName,
-                   predecessorNumber=jobGraph.predecessorNumber)
+        # Human-readable names of jobs that were run as part of this job's
+        # invocation, starting with this job
+        self.chainedJobs = []
+        
+     def restartCheckpoint(self, jobStore):
+        """Restart a checkpoint after the total failure of jobs in its subtree.
 
-    @classmethod
-    def fromJob(cls, job, command, predecessorNumber):
-        """
-        Build a job node from a job object
-        :param toil.job.Job job: the job object to be transformed into a job node
-        :param str command: the JobNode's command
-        :param int predecessorNumber: the number of predecessors that must finish
-            successfully before the job can be scheduled
-        :return: a JobNode object representing the job object parameter
-        :rtype: toil.job.JobNode
-        """
-        return cls(jobStoreID=None,
-                   requirements=job._requirements,
-                   command=command,
-                   jobName=job.jobName,
-                   unitName=job.unitName,
-                   displayName=job.displayName,
-                   predecessorNumber=predecessorNumber)
+        Writes the changes to the jobStore immediately. All the
+        checkpoint's successors will be deleted, but its retry count
+        will *not* be decreased.
 
-class Job(BaseJob):
+        Returns a list with the IDs of any successors deleted.
+        """
+        assert self.checkpoint is not None
+        successorsDeleted = []
+        if self.stack or self.services or self.command != None:
+            if self.command != None:
+                assert self.command == self.checkpoint
+                logger.debug("Checkpoint job already has command set to run")
+            else:
+                self.command = self.checkpoint
+
+            jobStore.update(self) # Update immediately to ensure that checkpoint
+            # is made before deleting any remaining successors
+
+            if self.stack or self.services:
+                # If the subtree of successors is not complete restart everything
+                logger.debug("Checkpoint job has unfinished successor jobs, deleting the jobs on the stack: %s, services: %s " %
+                             (self.stack, self.services))
+                # Delete everything on the stack, as these represent successors to clean
+                # up as we restart the queue
+                def recursiveDelete(jobDesc):
+                    # Recursive walk the stack to delete all remaining jobs
+                    for otherJobs in jobDesc.stack + jobDesc.services:
+                        for otherJobID in otherJobs:
+                            if jobStore.exists(jotherJobID):
+                                recursiveDelete(jobStore.getDescription(otherJobID))
+                            else:
+                                logger.debug("Job %s has already been deleted", otherJobID)
+                    if jobDesc.jobStoreID != self.jobStoreID:
+                        logger.debug("Checkpoint is deleting old successor job: %s", jobDesc.jobStoreID)
+                        jobStore.delete(jobDesc.jobStoreID)
+                        successorsDeleted.append(jobDesc.jobStoreID)
+                recursiveDelete(self)
+
+                self.stack = [ [], [] ] # Initialise the job to mimic the state of a job
+                # that has been previously serialised but which as yet has no successors
+                # TODO: this is a bad internal format
+
+                self.services = [] # Empty the services
+
+                # Update the jobStore to avoid doing this twice on failure and make this clean.
+                jobStore.update(self)
+        return successorsDeleted
+
+class Job:
     """
     Class represents a unit of work in toil.
     """
@@ -282,20 +515,43 @@ class Job(BaseJob):
         :type cache: int or string convertible by toil.lib.humanize.human2bytes to an int
         :type memory: int or string convertible by toil.lib.humanize.human2bytes to an int
         """
+        
+        # Fill in our various names
+        jobName = self.__class__.__name__
+        displayName = displayName if displayName is not None else jobName
+        
+        
+        # Build a requirements dict for the description
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}
-        super().__init__(requirements=requirements, unitName=unitName, displayName=displayName)
-        self.checkpoint = checkpoint
-        self.displayName = displayName if displayName is not None else self.__class__.__name__
-
-        #Private class variables
-
-        #See Job.addChild
+        descriptionClass = JobDescription
+        if checkpoint:
+            # Actually describe as a checkpoint job
+            descriptionClass = CheckpointJobDescription
+        # Create the JobDescription that owns all the scheduling information.
+        # Make it with a fake ID until we can be assigned a real one by the JobStore.
+        self._description = descriptionClass(requirements=requirements, unitName=unitName, displayName=displayName, jobName=jobName, jobStoreID=FakeID())
+        
+        # Private class variables needed to actually execute a job, in the worker.
+        # Also needed for setting up job graph structures before saving to the JobStore.
+        
+        # This dict holds a mapping from FakeIDs to the job objects they represent.
+        # Will be shared among all jobs in a disconnected piece of the job
+        # graph that hasn't been added to a JobStore yet.
+        self._registry = {}
+        
+        # All references to other jobs are stored as IDs: strings if we have
+        # been added to the JobStore or or FakeIDs otherwise.
+       
+        # IDs of all jobs that are children of this job
         self._children = []
-        #See Job.addFollowOn
+        # IDs of all jobs that are followons of this job
         self._followOns = []
-        #See Job.addService
+        # IDs of all jobs that are services of this job
         self._services = []
+        # Dict from service job ID to parent service job ID for service jobs in self._services
+        # A service's parent must be started before it can start.
+        self._serviceParents = {}
         #A follow-on, service or child of a job A, is a "direct successor" of A; if B
         #is a direct successor of A, then A is a "direct predecessor" of B.
         self._directPredecessors = set()
@@ -313,6 +569,24 @@ class Job(BaseJob):
         self._fileStore = None
         self._defer = None
         self._tempDir = None
+        
+    @property
+    def jobStoreID(self):
+        """
+        Get the ID of this Job.
+        """
+        # This is managed by the JobDescription.
+        return self._description.jobStoreID
+        
+    def assignConfig(self, config):
+        """
+        Assign the given config object to be used by various actions
+        implemented inside the Job class.
+        
+        :param toil.common.Config config: Config object to query
+        """
+        self._description.assignConfig(config)
+
 
     def run(self, fileStore):
         """
@@ -326,6 +600,29 @@ class Job(BaseJob):
                  :func:`toil.job.Job.rv`.
         """
         pass
+        
+    def _jobGraphsJoined(other):
+        """
+        Called whenever the job graphs of this job and the other job may have been merged into one connected component.
+        
+        Ought to be called on the bigger registry first.
+        
+        Merges FakeID registries if needed.
+        """
+       
+        if self._registry.size() < other._registry.size():
+            # Merge into the other component instead
+            other._jobGraphsJoined(self)
+        else:
+            if self._registry != other._registry:
+                # We are in fact joining connected components.
+                
+                # Steal everything from the other connected component's registry
+                self._registry.update(other._registry)
+                
+                for job in other._registry.items():
+                    # Point all their jobs at the new combined registry
+                    job._registry = self._registry
 
     def addChild(self, childJob):
         """
@@ -336,7 +633,9 @@ class Job(BaseJob):
         :return: childJob
         :rtype: toil.job.Job
         """
-        self._children.append(childJob)
+        
+        self._jobGraphsJoined(childJob)
+        self._children.append(childJob.jobStoreID)
         childJob._addPredecessor(self)
         return childJob
 
@@ -348,7 +647,7 @@ class Job(BaseJob):
         :return: True if childJob is a child of the job, else False.
         :rtype: bool
         """
-        return childJob in self._children
+        return childJob.jobStoreID in self._children
 
     def addFollowOn(self, followOnJob):
         """
@@ -359,7 +658,8 @@ class Job(BaseJob):
         :return: followOnJob
         :rtype: toil.job.Job
         """
-        self._followOns.append(followOnJob)
+        self._jobGraphsJoined(followOnJob)
+        self._followOns.append(followOnJob.jobStoreID)
         followOnJob._addPredecessor(self)
         return followOnJob
 
@@ -371,7 +671,7 @@ class Job(BaseJob):
         :return: True if the followOnJob is a follow-on of this job, else False.
         :rtype: bool
         """
-        return followOnJob in self._followOns
+        return followOnJob.jobStoreID in self._followOns
 
     def addService(self, service, parentService=None):
         """
@@ -394,23 +694,31 @@ class Job(BaseJob):
             :func:`toil.job.Job.Service.start` of service in any successor of the job.
         :rtype: toil.job.Promise
         """
+        
+        
         if parentService is not None:
             # Do check to ensure that parentService is a service of this job
-            def check(services):
-                for jS in services:
-                    if jS.service == parentService or check(jS.service._childServices):
-                        return True
-                return False
-            if not check(self._services):
+            if parentService.jobStoreID not in self._services:
                 raise JobException("Parent service is not a service of the given job")
-            return parentService._addChild(service)
+            
+            # Save that this is one of our services now
+            self._services.append(service.jobStoreID)
+            # Save the service parent relationship
+            self._serviceParents[service.jobStoreID] = parentService.jobStoreID
+            
+            # Add this service job as a child of the parent service job
+            return parentService._addChildService(service)
         else:
+            # Can't add a service to us without a parent if it already has one
             if service._hasParent:
                 raise JobException("The service already has a parent service")
+            # Say it has one now (TODO: I guuess it's us?)
             service._hasParent = True
-            jobService = ServiceJob(service)
-            self._services.append(jobService)
-            return jobService.rv()
+            
+            hostingJob = ServiceHostJob(service)
+            self._jobGraphsJoined(hostingJob)
+            self._services.append(hostingJob.jobStoreID)
+            return hostingJob.rv()
 
     ##Convenience functions for creating jobs
 
@@ -597,6 +905,10 @@ class Job(BaseJob):
 
     def checkJobGraphForDeadlocks(self):
         """
+        Ensures that a graph of Jobs (that hasn't yet been saved to the
+        JobStore) doesn't contain any pathological relationships between jobs
+        that would result in deadlocks if we tried to run the jobs.
+        
         See :func:`toil.job.Job.checkJobGraphConnected`,
         :func:`toil.job.Job.checkJobGraphAcyclic` and
         :func:`toil.job.Job.checkNewCheckpointsAreLeafVertices` for more info.
@@ -611,8 +923,10 @@ class Job(BaseJob):
 
     def getRootJobs(self):
         """
-        :return: The roots of the connected component of jobs that contains this job. \
+        :return: The roots of the connected component of jobs that contains this job.
         A root is a job with no predecessors.
+        
+        Only works on connected components of jobs not yet added to the JobStore.
 
         :rtype : set of toil.job.Job instances
         """
@@ -624,16 +938,16 @@ class Job(BaseJob):
             # Until we've finished the graph traversal
             job = todo[-1]
             todo.pop()
-            if job not in visited:
-                visited.add(job)
+            if job.jobStoreID not in visited:
+                visited.add(job.jobStoreID)
                 if len(job._directPredecessors) > 0:
-                    for other in job._directPredecessors:
-                        todo.append(other)
+                    for otherID in job._directPredecessors:
+                        todo.append(self._registry[otherID])
                 else:
                     roots.add(job)
-                for other in itertools.chain(job._children, job._followOns):
+                for otherID in itertools.chain(job._children, job._followOns):
                     # Ensure we explore all successor edges.
-                    todo.append(other)
+                    todo.append(self._registry[otherID])
         
         return roots
 
@@ -644,6 +958,8 @@ class Job(BaseJob):
 
         As execution always starts from one root job, having multiple root jobs will \
         cause a deadlock to occur.
+        
+        Only works on connected components of jobs not yet added to the JobStore.
         """
         rootJobs = self.getRootJobs()
         if len(rootJobs) != 1:
@@ -665,6 +981,8 @@ class Job(BaseJob):
 
         For a job graph G = (V, E) the algorithm is ``O(|V|^2)``. It is ``O(|V| + |E|)`` for \
         a graph with no follow-ons. The former follow-on case could be improved!
+        
+        Only works on connected components of jobs not yet added to the JobStore.
         """
         #Get the root jobs
         roots = self.getRootJobs()
@@ -689,6 +1007,8 @@ class Job(BaseJob):
         A checkpoint job must be a leaf when initially added to the job graph. When its \
         run method is invoked it can then create direct successors. This restriction is made
         to simplify implementation.
+        
+        Only works on connected components of jobs not yet added to the JobStore.
 
         :raises toil.job.JobGraphDeadlockException: if there exists a job being added to the graph for which \
         checkpoint=True and which is not a leaf.
@@ -797,9 +1117,15 @@ class Job(BaseJob):
                 else:
                     return toil.restart()
 
-    class Service(with_metaclass(ABCMeta, BaseJob)):
+    class Service(with_metaclass(ABCMeta, Job)):
         """
         Abstract class used to define the interface to a service.
+        
+        Should be subclassed by the user to define services.
+        
+        Is not executed as a job; runs within a ServiceHostJob. 
+        
+        Is described by a ServiceJobDescription.
         """
         def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None):
             """
@@ -809,17 +1135,28 @@ class Job(BaseJob):
             requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                             'preemptable': preemptable}
             super().__init__(requirements=requirements, unitName=unitName)
+           
+            # Holds the IDs of all services that are child services of this service
             self._childServices = []
+            # Set to True when added to a job or a service as a child. 
             self._hasParent = False
-
+        
+        def run(self, fileStore):
+            """
+            Should not be overridden!
+            Services don't run, they start and stop.
+            """
+            raise RuntimeError("Attempted to run a Service outside of a ServiceHostJob")
+            # TODO: Factor out a Schedulable or something that is described by a JobDescription and has an ID but doesn't run() or start()/stop()
+        
         @abstractmethod
         def start(self, job):
             """
             Start the service.
 
-            :param toil.job.Job job: The underlying job that is being run. Can be used to
-                                     register deferred functions, or to access the fileStore
-                                     for creating temporary files.
+            :param toil.job.Job job: The underlying host job that the service is being run in. 
+                                     Can be used to register deferred functions, or to access 
+                                     the fileStore for creating temporary files.
 
             :returns: An object describing how to access the service. The object must be pickleable
                       and will be used by jobs to access the service (see :func:`toil.job.Job.addService`).
@@ -831,9 +1168,9 @@ class Job(BaseJob):
             """
             Stops the service. Function can block until complete.
 
-            :param toil.job.Job job: The underlying job that is being run. Can be used to register
-                                     deferred functions, or to access the fileStore for creating temporary
-                                     files.
+            :param toil.job.Job job: The underlying host job that the service is being run in. 
+                                     Can be used to register deferred functions, or to access 
+                                     the fileStore for creating temporary files.
             """
             pass
 
@@ -848,7 +1185,7 @@ class Job(BaseJob):
             """
             pass
 
-        def _addChild(self, service):
+        def _addChildService(self, service):
             """
             Add a child service to start up after this service has started. This should not be
             called by the user, instead use :func:`toil.job.Job.Service.addService` with the
@@ -862,10 +1199,11 @@ class Job(BaseJob):
             """
             if service._hasParent:
                 raise JobException("The service already has a parent service")
-            service._parent = True
-            jobService = ServiceJob(service)
-            self._childServices.append(jobService)
-            return jobService.rv()
+            service._hasParent = True
+            hostingJob = ServiceHostJob(service)
+            self._jobGraphsJoined(hostingJob)
+            self._childServices.append(hostingJob.jobStoreID)
+            return hostingJob.rv()
 
     ####################################################
     #Private functions
@@ -876,9 +1214,9 @@ class Job(BaseJob):
         Adds a predecessor job to the set of predecessor jobs. Raises a \
         RuntimeError if the job is already a predecessor.
         """
-        if predecessorJob in self._directPredecessors:
+        if predecessorJob.jobStoreID in self._directPredecessors:
             raise RuntimeError("The given job is already a predecessor of this job")
-        self._directPredecessors.add(predecessorJob)
+        self._directPredecessors.add(predecessorJob.jobStoreID)
 
     @staticmethod
     def _isLeafVertex(job):
@@ -993,13 +1331,13 @@ class Job(BaseJob):
             unpickler = FilteredUnpickler(fileHandle)
 
         runnable = unpickler.load()
-        assert isinstance(runnable, BaseJob)
-        runnable._config = config
+        assert isinstance(runnable, Job)
+        runnable.assignConfig(config)
         return runnable
 
     def getUserScript(self):
         return self.userModule
-
+        
     def _fulfillPromises(self, returnValues, jobStore):
         """
         Sets the values for promises using the return values from this job's run() function.
@@ -1097,8 +1435,8 @@ class Job(BaseJob):
         """
         Create an empty job for the job.
         """
-        # set _config to determine user determined default values for resource requirements
-        self._config = jobStore.config
+        # set config to determine user determined default values for resource requirements
+        self.assignConfig(jobStore.config)
         return jobStore.create(JobNode.fromJob(self, command=command,
                                                predecessorNumber=predecessorNumber))
 
@@ -1694,9 +2032,9 @@ class ServiceJobNode(JobNode):
         self.errorJobStoreID = errorJobStoreID
 
 
-class ServiceJob(Job):
+class ServiceHostJob(Job):
     """
-    Job used to wrap a :class:`toil.job.Job.Service` instance.
+    Job that runs a service. Used internally by Toil. Users should subclass Service instead of using this.
     """
     def __init__(self, service):
         """
