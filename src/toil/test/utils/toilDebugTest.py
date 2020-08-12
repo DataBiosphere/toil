@@ -31,11 +31,14 @@ class ToilDebugFileTest(ToilTest):
         subprocess.check_call(['python', os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/debugWorkflow.py')])
         self.jobStoreDir = os.path.abspath('toilWorkflowRun')
         self.tempDir = self._createTempDir(purpose='tempDir')
+        self.outputDir = os.path.abspath('testoutput')
+        os.makedirs(self.outputDir, exist_ok=True)
 
     def tearDown(self):
         """Default tearDown for unittest."""
 
         shutil.rmtree(self.jobStoreDir)
+        shutil.rmtree(self.outputDir)
         ABC = os.path.abspath('src/toil/test/utils/ABCWorkflowDebug/ABC.txt')
         if os.path.exists(ABC):
             os.remove(ABC)
@@ -88,19 +91,20 @@ class ToilDebugFileTest(ToilTest):
 
         Runs a workflow that imports 'B.txt' and 'mkFile.py' into the
         jobStore.  'A.txt', 'C.txt', 'ABC.txt' are then created.  This test then
-        attempts to get a list of these files and copy them over into ./src from
-        the jobStore, confirm that they are present, and then delete them.
+        attempts to get a list of these files and copy them over into our
+        output diectory from the jobStore, confirm that they are present, and
+        then delete them.
         """
         contents = ['A.txt', 'B.txt', 'C.txt', 'ABC.txt', 'mkFile.py']
-        outputDir = os.path.abspath('src')
         cmd = ['python', os.path.abspath('src/toil/utils/toilDebugFile.py'),
                self.jobStoreDir,
                '--fetch', '*A.txt', '*B.txt', '*C.txt', '*ABC.txt', '*mkFile.py',
-               '--localFilePath=' + os.path.abspath('src'),
+               '--localFilePath=' + self.outputDir,
                '--useSymlinks=' + str(symLink)]
+        print(cmd)
         subprocess.check_call(cmd)
         for xfile in contents:
-            matchingFilesFound = recursiveGlob(outputDir, '*' + xfile)
+            matchingFilesFound = recursiveGlob(self.outputDir, '*' + xfile)
             self.assertGreaterEqual(len(matchingFilesFound), 1)
             for fileFound in matchingFilesFound:
                 assert fileFound.endswith(xfile) and os.path.exists(fileFound)

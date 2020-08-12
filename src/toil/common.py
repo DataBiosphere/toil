@@ -121,7 +121,7 @@ class Config(object):
         self.rescueJobsFrequency = 3600
 
         # Misc
-        self.disableCaching = True
+        self.disableCaching = False
         self.disableChaining = False
         self.disableJobStoreChecksumVerification = False
         self.maxLogFileSize = 64000
@@ -578,10 +578,9 @@ def _addOptions(addGroupFn, config):
     #
     addOptionFn = addGroupFn("Toil Miscellaneous Options", "Miscellaneous Options")
     addOptionFn('--disableCaching', dest='disableCaching',
-                type='bool', nargs='?', const=True, default=True,
+                type='bool', nargs='?', const=True, default=False,
                 help='Disables caching in the file store. This flag must be set to use '
-                     'a batch system that does not support caching such as Grid Engine, Parasol, '
-                     'LSF, or Slurm')
+                     'a batch system that does not support cleanup, such as Parasol.')
     addOptionFn('--disableChaining', dest='disableChaining', action='store_true', default=False,
                 help="Disables chaining of jobs (chaining uses one job's resource allocation "
                 "for its successor job if possible).")
@@ -656,6 +655,14 @@ def _addOptions(addGroupFn, config):
                       "'badWorkerFailInterval' seconds after the worker starts, default=%s" % config.badWorkerFailInterval))
 
 
+def parseBool(val):
+    if val.lower() in ['true', 't', 'yes', 'y', 'on', '1']:
+        return True
+    elif val.lower() in ['false', 'f', 'no', 'n', 'off', '0']:
+        return False
+    else:
+        raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
+
 def addOptions(parser, config=Config()):
     """
     Adds toil options to a parser object, either optparse or argparse.
@@ -667,7 +674,7 @@ def addOptions(parser, config=Config()):
         def addGroup(headingString, bodyString):
             return parser.add_argument_group(headingString, bodyString).add_argument
 
-        parser.register("type", "bool", lambda v: v.lower() == "true")  # Custom type for arg=True/False.
+        parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
         _addOptions(addGroup, config)
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
@@ -962,8 +969,9 @@ class Toil(object):
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
         if not config.disableCaching and not batchSystemClass.supportsWorkerCleanup():
-            raise RuntimeError('%s currently does not support shared caching.  Set the '
-                               '--disableCaching flag if you want to '
+            raise RuntimeError('%s currently does not support shared caching, because it '
+                               'does not support cleaning up a worker after the last job '
+                               'finishes. Set the --disableCaching flag if you want to '
                                'use this batch system.' % config.batchSystem)
         logger.debug('Using the %s' %
                     re.sub("([a-z])([A-Z])", r'\g<1> \g<2>', batchSystemClass.__name__).lower())

@@ -28,16 +28,15 @@ from future.utils import with_metaclass
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.objects import abstractclassmethod
 
-from toil.batchSystems.abstractBatchSystem import BatchSystemLocalSupport, UpdatedBatchJobInfo
+from toil.batchSystems.abstractBatchSystem import BatchSystemCleanupSupport, UpdatedBatchJobInfo
 
 logger = logging.getLogger(__name__)
 
 
-class AbstractGridEngineBatchSystem(BatchSystemLocalSupport):
+class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
     """
     A partial implementation of BatchSystemSupport for batch systems run on a
-    standard HPC cluster. By default worker cleanup and auto-deployment are not
-    implemented.
+    standard HPC cluster. By default auto-deployment is not implemented.
     """
 
     class Worker(with_metaclass(ABCMeta, Thread)):

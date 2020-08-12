@@ -804,6 +804,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         not appear in the jobStore until the write has successfully completed.
 
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
+               The last path component (basename of the file) will remain
+               associated with the file in the file store, if supported, so
+               that the file can be searched for by name or name glob. 
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
@@ -827,7 +830,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
@@ -842,6 +845,10 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
+               
+        :param str basename: If supported by the implementation, use the given
+               file basename so that when searching the job store with a query
+               matching that basename, the file will be detected.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -857,7 +864,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         """
         Creates an empty file in the job store and returns its ID.
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
@@ -868,6 +875,10 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
+               
+        :param str basename: If supported by the implementation, use the given
+               file basename so that when searching the job store with a query
+               matching that basename, the file will be detected.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.

@@ -591,13 +591,19 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
-        
+
         # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
         # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
         if path.startswith("toilfs:"):
-            return self.file_store.readGlobalFile(FileID.unpack(path[7:]))
-        return super(ToilFsAccess, self)._abs(path)
+            logger.debug('Need to download file to get a local absolute path.')
+            destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
+            logger.debug('Downloaded %s to %s', path, destination)
+            assert os.path.exists(destination)
+            return destination
+        else:
+            result = super(ToilFsAccess, self)._abs(path)
+            return result
 
 
 def toil_get_file(file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str) -> str:
@@ -977,6 +983,8 @@ class CWLJob(Job):
 
         process_uuid = uuid.uuid4()
         started_at = datetime.datetime.now()
+
+        logger.debug('Running CWL job: %s', cwljob)
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,

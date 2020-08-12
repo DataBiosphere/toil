@@ -17,7 +17,11 @@ standard_library.install_aliases()
 from builtins import str
 from builtins import map
 from builtins import filter
+import argparse
+import base64
+from contextlib import contextmanager
 import os
+import pickle
 import sys
 import copy
 import random
@@ -560,19 +564,72 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         return 1
     else:
         return 0
+        
+def parse_args(args):
+    """
+    Parse command-line arguments to the worker.
+    """
+    
+    # Drop the program name
+    args = args[1:]
+    
+    # Make the parser
+    parser = argparse.ArgumentParser()
+    
+    # Now add all the options to it
+    
+    # Base required job information
+    parser.add_argument("jobName", type=str,
+        help="Text name of the job being run")
+    parser.add_argument("jobStoreLocator", type=str,
+        help="Information required to connect to the job store")
+    parser.add_argument("jobStoreID", type=str,
+        help="ID of the job within the job store")
+    
+    # Additional worker abilities
+    parser.add_argument("--context", default=[], action="append",
+        help="""Pickled, base64-encoded context manager(s) to run job inside of.
+                Allows the Toil leader to pass setup and cleanup work provided by the
+                batch system, in the form of pickled Python context manager objects,
+                that the worker can then run before/after the job on the batch
+                system's behalf.""")
+   
+    return parser.parse_args(args)
+    
+    
+@contextmanager
+def in_contexts(contexts):
+    """
+    Unpickle and enter all the pickled, base64-encoded context managers in the
+    given list. Then do the body, then leave them all.
+    """
+    
+    if len(contexts) == 0:
+        # Base case: nothing to do
+        yield
+    else:
+        first = contexts[0]
+        rest = contexts[1:]
+        
+        try:
+            manager = pickle.loads(base64.b64decode(first.encode('utf-8')))
+        except:
+            exc_info = sys.exc_info()
+            logger.error('Exception while unpickling context manager: ', exc_info=exc_info)
+            raise
+        
+        with manager:
+            # After entering this first context manager, do the rest.
+            # It might set up stuff so we can decode later ones.
+            with in_contexts(rest):
+                yield
 
 def main(argv=None):
     if argv is None:
         argv = sys.argv
-
-    # Do a little argument validation, in case someone tries to run us manually.
-    if len(argv) < 4:
-        if len(argv) < 1:
-            sys.stderr.write("Error: Toil worker invoked without its own name\n")
-            sys.exit(1)
-        else:
-            sys.stderr.write("Error: usage: %s JOB_NAME JOB_STORE_LOCATOR JOB_STORE_ID\n" % argv[0])
-            sys.exit(1)
+        
+    # Parse our command line
+    options = parse_args(argv)
 
     # Parse input args
     jobName = argv[1]
@@ -583,8 +640,12 @@ def main(argv=None):
     #Load the jobStore/config file
     ##########################################
 
-    jobStore = Toil.resumeJobStore(jobStoreLocator)
+    jobStore = Toil.resumeJobStore(options.jobStoreLocator)
     config = jobStore.config
-
-    # Call the worker and exit with its return value
-    sys.exit(workerScript(jobStore, config, jobName, jobStoreID))
+    
+    with in_contexts(options.context):
+        # Call the worker
+        exit_code = workerScript(jobStore, config, options.jobName, options.jobStoreID)
+    
+    # Exit with its return value
+    sys.exit(exit_code)

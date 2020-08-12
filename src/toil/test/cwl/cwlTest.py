@@ -185,8 +185,8 @@ class CWLv10Test(ToilTest):
                    '--timeout=2400', '--basedir=' + self.workDir]
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
-            if caching:
-                cmd.extend(['--', '--disableCaching="False"'])
+            cmd.extend(['--', '--disableCaching={}'.format(not caching)])
+            logger.info("Running: '%s'", "' '".join(cmd))
             subprocess.check_output(cmd, cwd=self.workDir, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
@@ -359,8 +359,8 @@ class CWLv11Test(ToilTest):
                    f'-n={selected_tests}']
             if batchSystem:
                 cmd.extend(["--batchSystem", batchSystem])
-            if caching:
-                cmd.extend(['--', '--disableCaching="False"'])
+            cmd.extend(['--', '--disableCaching={}'.format(not caching)])
+            logger.info("Running: '%s'", "' '".join(cmd))
             subprocess.check_output(cmd, cwd=self.cwlSpec, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
@@ -423,10 +423,10 @@ class CWLv12Test(ToilTest):
                 cmd.extend(["--batchSystem", batchSystem])
 
             args_passed_directly_to_toil = ['--enable-dev']
-            if caching:
-                args_passed_directly_to_toil.extend(['--disableCaching="False"'])
+            args_passed_directly_to_toil.extend(['--disableCaching={}'.format(not caching)])
             cmd.extend(['--'] + args_passed_directly_to_toil)
-
+            
+            logger.info("Running: '%s'", "' '".join(cmd))
             subprocess.check_output(cmd, cwd=self.cwlSpec, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
             only_unsupported = False
