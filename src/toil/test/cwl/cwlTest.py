@@ -390,7 +390,7 @@ class CWLv12Test(ToilTest):
         cls.test_yaml = os.path.join(cls.cwlSpec, 'conformance_tests.yaml')
         # TODO: Use a commit zip in case someone decides to rewrite master's history?
         url = 'https://github.com/common-workflow-language/cwl-v1.2.git'
-        commit = '936961d1c1c5c4ea13df253b1316a264e48df740'
+        commit = 'b6ae88d63ff0b8dfc7ff5deed20f8f42bcb1cc9e'
         p = subprocess.Popen(f'git clone {url} {cls.cwlSpec} && cd {cls.cwlSpec} && git checkout {commit}', shell=True)
         p.communicate()
 
@@ -412,7 +412,7 @@ class CWLv12Test(ToilTest):
     def test_run_conformance(self, batchSystem=None, caching=False):
         try:
             # TODO: we do not currently pass tests: 214, 237 (offset from other versions)
-            selected_tests = '1-213,215-236,238-276'
+            selected_tests = '1-213,215-236,238-336'
             cmd = [f'cwltest',
                    f'--tool=toil-cwl-runner',
                    f'--test={self.test_yaml}',
