@@ -36,6 +36,8 @@ def fetch_parent_dir(filepath, n=1):
         filepath = os.path.dirname(filepath)
     return os.path.basename(filepath)
 
+#if not hasattr(sys, 'real_prefix'):
+    #raise RuntimeError('A virtualenv must be active and Sphinx must be installed in it')
 path_to_dir = os.path.dirname(os.path.abspath(__file__))
 
 # Example of toil.version.__file__ on sphinx:
