@@ -627,9 +627,9 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Download the resulted output to local machine::
 
         (venv) $ toil rsync-cluster \
-                    --provisioner <aws, gce> <cluster-name> \
-                    :/root/cact_ex/pestis_output3.hal \
-                    <path-of-folder-on-local-machine>
+                     --provisioner <aws, gce> <cluster-name> \
+                     :/root/cact_ex/pestis_output3.hal \
+                     <path-of-folder-on-local-machine>
 
 #. Destroy the cluster::
 
