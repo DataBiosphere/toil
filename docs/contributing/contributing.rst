@@ -246,7 +246,7 @@ To spin up a local cluster, start by using the following Docker run command to l
 a Toil leader container::
 
     docker run \
-	--entrypoint=mesos-master \
+        --entrypoint=mesos-master \
 	--net=host \
 	-d \
 	--name=leader \

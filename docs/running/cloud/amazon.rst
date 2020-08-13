@@ -96,10 +96,10 @@ during the computation of a workflow, first set up and configure an account with
    the installed version that you are using if you're using a different version): ::
 
     $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 \
-	toil launch-cluster clustername \
-		--leaderNodeType t2.medium \
-		--zone us-west-1a \
-		--keyPairName id_rsa
+          toil launch-cluster clustername \
+	  --leaderNodeType t2.medium \
+	  --zone us-west-1a \
+	  --keyPairName id_rsa
 
 To further break down each of these commands:
 
@@ -177,9 +177,9 @@ Using the provisioner to launch a Toil leader instance is simple using the ``lau
 to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run ::
 
     (venv) $ toil launch-cluster my-cluster \
-		--leaderNodeType t2.medium \
-		--zone us-west-2a \
-		--keyPairName <your-AWS-key-pair-name>
+	         --leaderNodeType t2.medium \
+		 --zone us-west-2a \
+		 --keyPairName <your-AWS-key-pair-name>
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. Also, the Toil provisioner will
@@ -226,9 +226,9 @@ change. This is in contrast with :ref:`Autoscaling`.
 To launch worker nodes alongside the leader we use the ``-w`` option::
 
     (venv) $ toil launch-cluster my-cluster \
-		--leaderNodeType t2.small -z us-west-2a \
-		--keyPairName your-AWS-key-pair-name \
-		--nodeTypes m3.large,t2.micro -w 1,4
+	         --leaderNodeType t2.small -z us-west-2a \
+		 --keyPairName your-AWS-key-pair-name \
+		 --nodeTypes m3.large,t2.micro -w 1,4
 
 This will spin up a leader node of type t2.small with five additional workers --- one m3.large instance and four t2.micro.
 
@@ -268,9 +268,9 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 #. Launch the leader node in AWS using the :ref:`launchCluster` command: ::
 
     (venv) $ toil launch-cluster <cluster-name> \
-		--keyPairName <AWS-key-pair-name> \
-		--leaderNodeType t2.medium \
-		--zone us-west-2a
+	         --keyPairName <AWS-key-pair-name> \
+		 --leaderNodeType t2.medium \
+		 --zone us-west-2a
 
 #. Copy the ``sort.py`` script up to the leader node: ::
 

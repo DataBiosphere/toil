@@ -366,8 +366,8 @@ line 30, or remove it, and then run
 ::
 
     (venv) $ python sort.py file:jobStore \
-		--restart \
-		--overwriteOutput=True
+                 --restart \
+		 --overwriteOutput=True
 
 The pipeline will run successfully, and the job store will be removed on the
 pipeline's completion.
@@ -531,10 +531,10 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Launch a leader node using the :ref:`launchCluster` command::
 
         (venv) $ toil launch-cluster <cluster-name> \
-		    --provisioner <aws, gce> \
-		    --keyPairName <key-pair-name> \
-		    --leaderNodeType <type> \
-		    --zone <zone>
+		     --provisioner <aws, gce> \
+		     --keyPairName <key-pair-name> \
+		     --leaderNodeType <type> \
+		     --zone <zone>
 
 
    .. note::
@@ -580,18 +580,18 @@ Also!  Remember to use the :ref:`destroyCluster` command when finished to destro
 #. Run `Cactus <https://github.com/ComparativeGenomicsToolkit/cactus>`__ as an autoscaling workflow::
 
        (cact_venv) $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.14.0 cactus \
-		        --provisioner <aws, gce> \
-			--nodeType <type> \
-			--maxNodes 2 \
-			--minNodes 0 \
-			--retry 10 \
-			--batchSystem mesos \
-			--logDebug \
-			--logFile /logFile_pestis3 \
-			--configFile \
-			/root/cact_ex/blockTrim3.xml <aws, google>:<zone>:cactus-pestis \
-			/root/cact_ex/pestis-short-aws-seqFile.txt \
-			/root/cact_ex/pestis_output3.hal
+		         --provisioner <aws, gce> \
+			 --nodeType <type> \
+			 --maxNodes 2 \
+			 --minNodes 0 \
+			 --retry 10 \
+			 --batchSystem mesos \
+			 --logDebug \
+			 --logFile /logFile_pestis3 \
+			 --configFile \
+			 /root/cact_ex/blockTrim3.xml <aws, google>:<zone>:cactus-pestis \
+			 /root/cact_ex/pestis-short-aws-seqFile.txt \
+			 /root/cact_ex/pestis_output3.hal
 
    .. note::
 

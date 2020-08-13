@@ -13,7 +13,7 @@ Note: Currently these features are only implemented for use locally (single mach
 To view what files currently reside in the jobstore, run the following command::
 
     $ toil debug-file file:path-to-jobstore-directory \
-	--listFilesInJobStore
+          --listFilesInJobStore
 
 When run from the commandline, this should generate a file containing the contents of the job store (in addition to
 displaying a series of log messages to the terminal).  This file is named "jobstore_files.txt" by default and will be
@@ -22,8 +22,8 @@ generated in the current working directory.
 If one wishes to copy any of these files to a local directory, one can run for example::
 
     $ toil debug-file file:path-to-jobstore \
-	--fetch overview.txt *.bam *.fastq \
-	--localFilePath=/home/user/localpath
+          --fetch overview.txt *.bam *.fastq \
+	  --localFilePath=/home/user/localpath
 
 To fetch ``overview.txt``, and all ``.bam`` and ``.fastq`` files.  This can be used to recover previously used input and output
 files for debugging or reuse in other workflows, or use in general debugging to ensure that certain outputs were imported

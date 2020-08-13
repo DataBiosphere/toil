@@ -74,10 +74,10 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 #. Launch the leader node in GCE using the :ref:`launchCluster` command::
 
     (venv) $ toil launch-cluster <CLUSTER-NAME> \
-		--provisioner gce \
-		--leaderNodeType n1-standard-1 \
-		--keyPairName <SSH-KEYNAME> \
-		--zone us-west1-a
+	         --provisioner gce \
+		 --leaderNodeType n1-standard-1 \
+		 --keyPairName <SSH-KEYNAME> \
+		 --zone us-west1-a
 
    Where ``<SSH-KEYNAME>`` is the first part of ``[USERNAME]`` used when setting up your ssh key.
    For example if ``[USERNAME]`` was jane@example.com, ``<SSH-KEYNAME>`` should be ``jane``.
@@ -94,10 +94,10 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 #. Run the workflow::
 
     $ python /root/sort.py  google:<PROJECT-ID>:<JOBSTORE-NAME> \
-	--provisioner gce \
-	--batchSystem mesos \
-	--nodeTypes n1-standard-2 \
-	--maxNodes 2
+          --provisioner gce \
+	  --batchSystem mesos \
+	  --nodeTypes n1-standard-2 \
+	  --maxNodes 2
 
 #. Clean up::
 

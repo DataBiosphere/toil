@@ -363,11 +363,12 @@ Here is an example of running our test workflow leader locally, outside of Kuber
    $ virtualenv --python python3 --system-site-packages venv
    $ . venv/bin/activate
    $ wget https://raw.githubusercontent.com/DataBiosphere/toil/releases/4.1.0/src/toil/test/docs/scripts/tutorial_helloworld.py
-   $ python3 tutorial_helloworld.py aws:us-west-2:demouser-toil-test-jobstore \
-	--batchSystem kubernetes \
-	--realTimeLogging \
-	--logInfo \
-	--disableCaching false
+   $ python3 tutorial_helloworld.py \
+         aws:us-west-2:demouser-toil-test-jobstore \
+	 --batchSystem kubernetes \
+	 --realTimeLogging \
+	 --logInfo \
+	 --disableCaching false
 
 
 
