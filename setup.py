@@ -36,14 +36,14 @@ def runSetup():
     kubernetes = 'kubernetes>=10, <11'
     idna = 'idna>=2'
     pytz = 'pytz>=2012'
-    dill = 'dill==0.3.1.1'
+    dill = 'dill>=0.3.2, <0.4'
     six = 'six>=1.10.0'
     future = 'future'
     requests = 'requests>=2, <3'
-    docker = 'docker==2.5.1'
+    docker = 'docker>=2.7.0, <3'
     dateutil = 'python-dateutil'
-    addict = 'addict<=2.2.0'
-    pathlib2 = 'pathlib2==2.3.2'
+    addict = 'addict>=2.2.1, <2.3'
+    pathlib2 = 'pathlib2>=2.3.5, <3'
     enlighten = 'enlighten>=1.5.2, <2'
 
     core_reqs = [
