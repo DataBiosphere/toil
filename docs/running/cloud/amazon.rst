@@ -268,7 +268,7 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 #. Launch the leader node in AWS using the :ref:`launchCluster` command: ::
 
     (venv) $ toil launch-cluster <cluster-name> \
-	         --keyPairName <AWS-key-pair-name> \
+                 --keyPairName <AWS-key-pair-name> \
                  --leaderNodeType t2.medium \
                  --zone us-west-2a
 
@@ -284,9 +284,9 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
     $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
           --provisioner aws \
-	  --nodeTypes c3.large \
-	  --maxNodes 2 \
-	  --batchSystem mesos
+          --nodeTypes c3.large \
+          --maxNodes 2 \
+          --batchSystem mesos
 
 .. note::
 
