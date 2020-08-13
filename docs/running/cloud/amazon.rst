@@ -97,9 +97,9 @@ during the computation of a workflow, first set up and configure an account with
 
     $ TOIL_APPLIANCE_SELF=quay.io/ucsc_cgl/toil:3.12.0 \
           toil launch-cluster clustername \
-	  --leaderNodeType t2.medium \
-	  --zone us-west-1a \
-	  --keyPairName id_rsa
+          --leaderNodeType t2.medium \
+          --zone us-west-1a \
+          --keyPairName id_rsa
 
 To further break down each of these commands:
 

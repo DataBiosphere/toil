@@ -247,15 +247,15 @@ a Toil leader container::
 
     docker run \
         --entrypoint=mesos-master \
-	--net=host \
-	-d \
-	--name=leader \
-	--volume=/home/jobStoreParentDir:/jobStoreParentDir \
-	quay.io/ucsc_cgl/toil:3.6.0 \
-	--registry=in_memory \
-	--ip=127.0.0.1 \
-	--port=5050 \
-	--allocation_interval=500ms
+        --net=host \
+        -d \
+        --name=leader \
+        --volume=/home/jobStoreParentDir:/jobStoreParentDir \
+        quay.io/ucsc_cgl/toil:3.6.0 \
+        --registry=in_memory \
+        --ip=127.0.0.1 \
+        --port=5050 \
+        --allocation_interval=500ms
 
 A couple notes on this command: the ``-d`` flag tells Docker to run in daemon mode so
 the container will run in the background. To verify that the container is running you
@@ -269,17 +269,17 @@ recommend only mounting directories within your home directory. The next command
 launch the Toil worker container with similar parameters::
 
     docker run \
-	--entrypoint=mesos-slave \
-	--net=host \
-	-d \
-	--name=worker \
-	--volume=/home/jobStoreParentDir:/jobStoreParentDir \
-	quay.io/ucsc_cgl/toil:3.6.0 \
-	--work_dir=/var/lib/mesos \
-	--master=127.0.0.1:5050 \
-	--ip=127.0.0.1 \
-	—-attributes=preemptable:False \
-	--resources=cpus:2
+        --entrypoint=mesos-slave \
+        --net=host \
+        -d \
+        --name=worker \
+        --volume=/home/jobStoreParentDir:/jobStoreParentDir \
+        quay.io/ucsc_cgl/toil:3.6.0 \
+        --work_dir=/var/lib/mesos \
+        --master=127.0.0.1:5050 \
+        --ip=127.0.0.1 \
+        —-attributes=preemptable:False \
+        --resources=cpus:2
 
 Note here that we are specifying 2 CPUs and a non-preemptable worker. We can
 easily change either or both of these in a logical way. To change the number

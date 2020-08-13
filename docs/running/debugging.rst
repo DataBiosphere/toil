@@ -23,7 +23,7 @@ If one wishes to copy any of these files to a local directory, one can run for e
 
     $ toil debug-file file:path-to-jobstore \
           --fetch overview.txt *.bam *.fastq \
-	  --localFilePath=/home/user/localpath
+          --localFilePath=/home/user/localpath
 
 To fetch ``overview.txt``, and all ``.bam`` and ``.fastq`` files.  This can be used to recover previously used input and output
 files for debugging or reuse in other workflows, or use in general debugging to ensure that certain outputs were imported

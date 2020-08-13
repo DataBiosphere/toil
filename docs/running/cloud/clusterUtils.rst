@@ -153,8 +153,8 @@ added to the initial cluster by specifying the ``-w`` option.  An example would 
 
     $ toil launch-cluster my-cluster \
           --leaderNodeType t2.small -z us-west-2a \
-	  --keyPairName your-AWS-key-pair-name \
-	  --nodeTypes m3.large,t2.micro -w 1,4
+          --keyPairName your-AWS-key-pair-name \
+          --nodeTypes m3.large,t2.micro -w 1,4
 
 Options are listed below.  These can also be displayed by running ::
 
