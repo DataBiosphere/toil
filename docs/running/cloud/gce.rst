@@ -74,7 +74,7 @@ need to explicitly specify the ``--provisioner gce`` option which otherwise defa
 #. Launch the leader node in GCE using the :ref:`launchCluster` command::
 
     (venv) $ toil launch-cluster <CLUSTER-NAME> \
-	         --provisioner gce \
+                 --provisioner gce \
                  --leaderNodeType n1-standard-1 \
                  --keyPairName <SSH-KEYNAME> \
                  --zone us-west1-a

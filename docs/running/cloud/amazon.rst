@@ -177,9 +177,9 @@ Using the provisioner to launch a Toil leader instance is simple using the ``lau
 to launch a cluster named "my-cluster" with a t2.medium leader in the us-west-2a zone, run ::
 
     (venv) $ toil launch-cluster my-cluster \
-	         --leaderNodeType t2.medium \
-		 --zone us-west-2a \
-		 --keyPairName <your-AWS-key-pair-name>
+                 --leaderNodeType t2.medium \
+                 --zone us-west-2a \
+                 --keyPairName <your-AWS-key-pair-name>
 
 The cluster name is used to uniquely identify your cluster and will be used to
 populate the instance's ``Name`` tag. Also, the Toil provisioner will
@@ -226,9 +226,9 @@ change. This is in contrast with :ref:`Autoscaling`.
 To launch worker nodes alongside the leader we use the ``-w`` option::
 
     (venv) $ toil launch-cluster my-cluster \
-	         --leaderNodeType t2.small -z us-west-2a \
-		 --keyPairName your-AWS-key-pair-name \
-		 --nodeTypes m3.large,t2.micro -w 1,4
+                 --leaderNodeType t2.small -z us-west-2a \
+                 --keyPairName your-AWS-key-pair-name \
+                 --nodeTypes m3.large,t2.micro -w 1,4
 
 This will spin up a leader node of type t2.small with five additional workers --- one m3.large instance and four t2.micro.
 
@@ -269,8 +269,8 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 
     (venv) $ toil launch-cluster <cluster-name> \
 	         --keyPairName <AWS-key-pair-name> \
-		 --leaderNodeType t2.medium \
-		 --zone us-west-2a
+                 --leaderNodeType t2.medium \
+                 --zone us-west-2a
 
 #. Copy the ``sort.py`` script up to the leader node: ::
 
@@ -283,10 +283,10 @@ Autoscaling leverages Mesos containers to provide an execution environment for t
 #. Run the script as an autoscaling workflow: ::
 
     $ python /root/sort.py aws:us-west-2:<my-jobstore-name> \
-	--provisioner aws \
-	--nodeTypes c3.large \
-	--maxNodes 2 \
-	--batchSystem mesos
+          --provisioner aws \
+	  --nodeTypes c3.large \
+	  --maxNodes 2 \
+	  --batchSystem mesos
 
 .. note::
 
