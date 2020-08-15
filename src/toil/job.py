@@ -178,10 +178,7 @@ class JobDescription:
         # the logging has been captured to be reported on the leader.
         self.logJobStoreFileID = None 
         
-        # A list of lists of service jobs to run. Each sub list is a list of service jobs
-        # descriptions, each of which is stored as a 6-tuple of the form (jobStoreId, memory,
-        # cores, disk, startJobStoreID, terminateJobStoreID).
-        # TODO: This is a bad internal format
+        # A list of lists of service jobs to run. Each sub list is a list of service job IDs.
         self.services = []
         
         # Now set properties that don't really describe the job but hook us up
@@ -252,6 +249,16 @@ class JobDescription:
             # Anything else we just pass along without opinons
             return value
         
+    def onCreate(self, jobStore):
+        """
+        Called by the JobStore the first time this JobDescription is saved into it.
+        
+        Used to perform setup work (like hooking up flag files for service jobs) that requires the JobStore.
+        
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store we are being placed into
+        """
+        pass
+    
     def assignConfig(self, config):
         """
         Assign the given config object to be used to provide default values for
@@ -415,7 +422,16 @@ class ServiceJobDescription(JobDescription):
         # should terminate signaling an error.
         self.errorJobStoreID = None
         
+    def onCreate(self, jobStore):
+        """
+        When a ServiceJobDescription is placed into the JobStore, it needs to set up its flag files.
+        """
+        super(self, ServiceJobDescription).onCreate(jobStore)
         
+        self.startJobStoreID = jobStore.getEmptyFileStoreID()
+        self.terminateJobStoreID = jobStore.getEmptyFileStoreID()
+        self.errorJobStoreID = jobStore.getEmptyFileStoreID()
+    
 class CheckpointJobDescription(JobDescription):
     """
     A description of a job that is a checkpoint.
@@ -577,7 +593,14 @@ class Job:
         """
         # This is managed by the JobDescription.
         return self._description.jobStoreID
-        
+
+    @property
+    def description(self):
+        """
+        Expose the JobDescription that describes this job.
+        """
+        return self._description
+
     def assignConfig(self, config):
         """
         Assign the given config object to be used by various actions
@@ -1315,20 +1338,11 @@ class Job:
                     logger.debug('Failed getting %s from module %s.', class_name, module_name)
                 raise
 
-        try:
-            unpickler = pickle.Unpickler(fileHandle)
-            # In Python 2 with cPickle we set "find_global"
-            unpickler.find_global = filter_main
-        except AttributeError:
-            # In Python 3 find_global isn't real and we are supposed to
-            # subclass unpickler and override find_class. We can't just replace
-            # it. But with cPickle in Pyhton 2 we can't subclass Unpickler.
+        class FilteredUnpickler(pickle.Unpickler):
+            def find_class(self, module, name):
+                return filter_main(module, name)
 
-            class FilteredUnpickler(pickle.Unpickler):
-                def find_class(self, module, name):
-                    return filter_main(module, name)
-
-            unpickler = FilteredUnpickler(fileHandle)
+        unpickler = FilteredUnpickler(fileHandle)
 
         runnable = unpickler.load()
         assert isinstance(runnable, Job)
@@ -1546,7 +1560,8 @@ class Job:
             for childServiceJob in serviceJob.service._childServices:
                 processService(childServiceJob, depth+1)
 
-            # Make a job wrapper
+            # Grab the service's job description
+            serviceJobDescription = serviceJob.description
             serviceJobGraph = serviceJob._createEmptyJobGraphForJob(jobStore, predecessorNumber=1)
 
             # Create the start and terminate flags.
@@ -2016,21 +2031,6 @@ class EncapsulatedJob(Job):
 
     def getUserScript(self):
         return self.encapsulatedJob.getUserScript()
-
-
-class ServiceJobNode(JobNode):
-    def __init__(self, jobStoreID, memory, cores, disk, preemptable, startJobStoreID, terminateJobStoreID,
-                 errorJobStoreID, unitName, jobName, command, predecessorNumber):
-        requirements = dict(memory=memory, cores=cores, disk=disk, preemptable=preemptable)
-        super().__init__(unitName=unitName, jobName=jobName,
-                                             requirements=requirements,
-                                             jobStoreID=jobStoreID,
-                                             command=command,
-                                             predecessorNumber=predecessorNumber)
-        self.startJobStoreID = startJobStoreID
-        self.terminateJobStoreID = terminateJobStoreID
-        self.errorJobStoreID = errorJobStoreID
-
 
 class ServiceHostJob(Job):
     """
