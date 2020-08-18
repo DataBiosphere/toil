@@ -28,7 +28,6 @@ import tempfile
 import time
 import uuid
 import requests
-import unittest
 from argparse import ArgumentParser
 from six import iteritems
 
@@ -46,7 +45,6 @@ from toil.provisioners import clusterFactory
 from toil.provisioners.aws import checkValidNodeTypes, zoneToRegion
 from toil import lookupEnvVar
 from toil.version import dockerRegistry, dockerTag
-
 
 # aim to pack autoscaling jobs within a 30 minute block before provisioning a new node
 defaultTargetTime = 1800
@@ -811,7 +809,6 @@ class Toil(object):
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
 
-                # Try destroying jobStore
                 try:
                     self._jobStore.destroy()
                     logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
