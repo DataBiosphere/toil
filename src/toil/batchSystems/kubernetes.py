@@ -52,17 +52,19 @@ from toil.resource import Resource
 from toil.lib.retry import retry_decorator, ErrorCondition
 
 logger = logging.getLogger(__name__)
+retryable_kubernetes_errors = {urllib3.exceptions.MaxRetryError,
+                               urllib3.exceptions.ProtocolError,
+                               ApiException}
 
 
-def retryable_kubernetes_errors(e):
+def is_retryable_kubernetes_error(e):
     """
     A function that determines whether or not Toil should retry or stop given
     exceptions thrown by Kubernetes.
     """
-    if isinstance(e, urllib3.exceptions.MaxRetryError) or \
-       isinstance(e, urllib3.exceptions.ProtocolError) or \
-        isinstance(e, ApiException):
-        return True
+    for error in retryable_kubernetes_errors:
+        if isinstance(e, error):
+            return True
     return False
 
 
@@ -237,9 +239,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
 
     @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors={urllib3.exceptions.MaxRetryError,
-                             urllib3.exceptions.ProtocolError,
-                             ApiException})
+                     errors=retryable_kubernetes_errors)
     def _try_kubernetes(self, method, *args, **kwargs):
         """
         Kubernetes API can end abruptly and fail when it could dynamically backoff and retry.
@@ -253,9 +253,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return method(*args, **kwargs)
 
     @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors={urllib3.exceptions.MaxRetryError,
-                             urllib3.exceptions.ProtocolError,
-                             ApiException},
+                     errors=retryable_kubernetes_errors,
                      error_conditions=[
                          ErrorCondition(
                              error=ApiException,
@@ -306,7 +304,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 raise
             else:
                 # It was from the Kubernetes watch generator we manage.
-                if retryable_kubernetes_errors(e):
+                if is_retryable_kubernetes_error(e):
                     # This is just cloud weather.
                     # TODO: We will also get an APIError if we just can't code good against Kubernetes. So make sure to warn.
                     logger.warning("Received error from Kubernetes watch stream: %s", e)

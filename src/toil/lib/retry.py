@@ -21,8 +21,21 @@ import logging
 from contextlib import contextmanager
 from typing import List, Set, Optional, Tuple, Callable, Any
 
+log = logging.getLogger(__name__)
+
 
 class ErrorCondition:
+    """
+    A wrapper describing an error condition.
+
+    ErrorCondition events may be used to define errors in more detail to determine whether to retry.
+
+    :param error: An Exception (required)
+    :param error_codes: Error codes that must match to be retried (optional; defaults to not checking)
+    :param error_message_must_include: A string that must be in the error message to be retried
+        (optional; defaults to not checking)
+    :param retry_on_this_condition: This can be set to False to always error on this condition.
+    """
     def __init__(self,
                  error: Any,
                  error_codes: List[int] = None,
@@ -32,9 +45,6 @@ class ErrorCondition:
         self.error_codes = error_codes
         self.error_message_must_include = error_message_must_include
         self.retry_on_this_condition = retry_on_this_condition
-
-
-log = logging.getLogger(__name__)
 
 
 def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
@@ -138,25 +148,14 @@ def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
 
 
 def retry_decorator(intervals: Optional[List] = None,
-                    infinite_retries: Optional[bool] = None,
+                    infinite_retries: bool = False,
                     errors: Optional[Set] = None,
                     error_conditions: Optional[List[ErrorCondition]] = None,
                     log_message: Optional[Tuple[Callable, str]] = None):
     """
     Retry a function if it fails with any Exception defined in the "errors" set, every x seconds,
-    where x is defined by a list of floats in "intervals".  If "error_codes" are specified,
-    retry on the HTTPError return codes defined in "error_codes".
-
-    Cases to consider:
-        error_codes ={} && errors={}
-            Don't retry on anything.
-        error_codes ={500} && errors={}
-        error_codes ={500} && errors={HTTPError}
-            Retry only on HTTPErrors that return status_code 500.
-        error_codes ={} && errors={HTTPError}
-            Retry on all HTTPErrors regardless of error code.
-        error_codes ={} && errors={AssertionError}
-            Only retry on AssertionErrors.
+    where x is defined by a list of floats in "intervals".  Also accepts ErrorCondition events for
+    more detailed retry attempts.
 
     :param Optional[List[float, int]] intervals: A list of times in seconds we keep retrying until
         returning failure.
@@ -164,12 +163,14 @@ def retry_decorator(intervals: Optional[List] = None,
             1s, 1s, 2s, 4s, 8s
     :param infinite_retries: If this is True, reset the intervals when they run out.
     :param errors: Exceptions to catch and retry on.  Defaults to: {HTTPError} if error_codes else {}.
-    :param error_conditions: A dictionary where the keys are errors, and the values are dictionaries
-        of conditions with the following optional keys:
-            "error_codes": a list/tuple/dict of integer values of error codes to check for
-            "error_msg_must_include": a string that is checked for in the returned error message
-    :param log_message: A tuple of ("log/print function()", "message string") that will run on
-        each retry.
+    :param error_conditions: A list of ErrorCondition objects describing more detailed error event conditions.
+        An ErrorCondition specifies:
+            - Exception (required)
+            - Error codes that must match to be retried (optional; defaults to not checking)
+            - A string that must be in the error message to be retried (optional; defaults to not checking)
+            - A bool that can be set to False to always error on this condition.
+
+    :param log_message: A tuple of ("log/print function()", "message string") that will precede each attempt.
     :return: The result of the wrapped function or raise.
     """
     # set mutable defaults
@@ -202,8 +203,9 @@ def retry_decorator(intervals: Optional[List] = None,
                         else:
                             raise
 
-                    if error_conditions and not error_meets_conditions(e, error_conditions):
-                        raise
+                    if error_conditions:
+                        if not error_meets_conditions(e, error_conditions):
+                            raise
 
                     interval = intervals_remaining.pop(0)
                     log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
