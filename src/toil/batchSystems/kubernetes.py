@@ -254,7 +254,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             except KeyError: 
                 raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
 
-    @retry_decorator(errors={urllib3.exceptions.MaxRetryError,
+    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+                     errors={urllib3.exceptions.MaxRetryError,
                              urllib3.exceptions.ProtocolError,
                              ApiException})
     def _try_kubernetes(self, method, *args, **kwargs):
