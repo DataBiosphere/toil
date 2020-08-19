@@ -13,31 +13,24 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
-
-from __future__ import absolute_import
-
-from future import standard_library
-standard_library.install_aliases()
-from builtins import next
-from contextlib import contextmanager
 import time
-import urllib.request, urllib.error, urllib.parse
-try:
-    from httplib import BadStatusLine
-except ImportError:
-    # This has moved in Python 3
-    from http.client import BadStatusLine
+import functools
 import logging
 
-log = logging.getLogger( __name__ )
+from contextlib import contextmanager
+from requests.exceptions import HTTPError
+from http.client import BadStatusLine
+from typing import List, Set, Optional, Tuple, Callable
+
+log = logging.getLogger(__name__)
 
 
 # noinspection PyUnusedLocal
-def never( exception ):
+def never(exception):
     return False
 
 
-def retry( delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=never ):
+def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=never):
     """
     Retry an operation while the failure matches a given predicate and until a given timeout
     expires, waiting a given amount of time in between attempts. This function is a generator
@@ -137,47 +130,61 @@ def retry( delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=never ):
         yield single_attempt( )
 
 
-default_delays = (0, 1, 1, 4, 16, 64)
-default_timeout = 300
-
-
-def retryable_http_error( e ):
+def better_retry(intervals: Optional[List] = None,
+                 errors: Optional[Set] = None,
+                 error_codes: Optional[Set] = None,
+                 log_message: Optional[Tuple[Callable, str]] = None):
     """
-    Determine if an error encountered during an HTTP download is likely to go away if we try again.
-    """
-    if isinstance( e, urllib.error.HTTPError ) and e.code in ('503', '408', '500'):
-        # The server returned one of:
-        # 503 Service Unavailable
-        # 408 Request Timeout
-        # 500 Internal Server Error
-        return True
-    if isinstance( e, BadStatusLine ):
-        # The server didn't return a valid response at all
-        return True
-    return False
+    Retry a function if it fails with any Exception defined in the "errors" set, every x seconds,
+    where x is defined by a list of floats in "intervals".  If "error_codes" are specified,
+    retry on the HTTPError return codes defined in "error_codes".
 
+    Cases to consider:
+        error_codes ={} && errors={}
+            Don't retry on anything.
+        error_codes ={500} && errors={}
+        error_codes ={500} && errors={HTTPError}
+            Retry only on HTTPErrors that return status_code 500.
+        error_codes ={} && errors={HTTPError}
+            Retry on all HTTPErrors regardless of error code.
+        error_codes ={} && errors={AssertionError}
+            Only retry on AssertionErrors.
 
-def retry_http( delays=default_delays, timeout=default_timeout, predicate=retryable_http_error ):
+    :param List[float] intervals: A list of times in seconds we keep retrying until returning failure.
+        Defaults to retrying with the following exponential backoff before failing:
+            1s, 1s, 2s, 4s, 8s
+    :param errors: Exceptions to catch and retry on.  Defaults to: {HTTPError}.
+    :param error_codes: HTTPError return codes to retry on.  The default is an empty set.
+    :param log_message: A tuple of ("log/print function()", "message string") that will run on
+        each retry.
+    :return: The result of the wrapped function or raise.
     """
-    >>> i = 0
-    >>> for attempt in retry_http(timeout=5):  # doctest: +IGNORE_EXCEPTION_DETAIL
-    ...     with attempt:
-    ...         i += 1
-    ...         raise urllib.error.HTTPError('http://www.test.com', '408', 'some message', {}, None)
-    Traceback (most recent call last):
-    ...
-    HTTPError: HTTP Error 408: some message
-    >>> i > 1
-    True
-    >>> i = 0
-    >>> for attempt in retry_http(timeout=5):  # doctest: +IGNORE_EXCEPTION_DETAIL
-    ...     with attempt:
-    ...         i += 1
-    ...         raise BadStatusLine('sad-cloud.gif')
-    Traceback (most recent call last):
-    ...
-    BadStatusLine: sad-cloud.gif
-    >>> i > 1
-    True
-    """
-    return retry( delays=delays, timeout=timeout, predicate=predicate )
+    # set mutable defaults
+    intervals = intervals if intervals else [1, 1, 2, 4, 8]
+    errors = errors if errors else {HTTPError}
+    error_codes = error_codes if error_codes else {}
+    if log_message:
+        post_message_function = log_message[0]
+        message = log_message[1]
+
+    def decorate(func):
+        @functools.wraps(func)
+        def call(*args, **kwargs):
+            if error_codes:
+                errors.add(HTTPError)
+            while True:
+                try:
+                    if message:
+                        post_message_function(message)
+                    return func(*args, **kwargs)
+                except tuple(errors) as e:
+                    if not intervals:
+                        raise
+                    interval = intervals.pop(0)
+                    if isinstance(e, HTTPError):
+                        if error_codes and e.response.status_code not in error_codes:
+                            raise
+                    print(f"Error in {func}: {e}. Retrying after {interval} s...")
+                    time.sleep(interval)
+        return call
+    return decorate

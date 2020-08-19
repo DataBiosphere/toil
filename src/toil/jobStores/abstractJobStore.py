@@ -15,24 +15,21 @@ from __future__ import absolute_import
 
 from future import standard_library
 standard_library.install_aliases()
-from builtins import str
-from builtins import map
-from builtins import object
-from builtins import super
 import shutil
-
 import re
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager, closing
 from datetime import timedelta
 from uuid import uuid4
+from requests.exceptions import HTTPError
+from http.client import BadStatusLine
 
 # Python 3 compatibility imports
 from six import itervalues
 from six.moves.urllib.request import urlopen
 import six.moves.urllib.parse as urlparse
 
-from toil.lib.retry import retry_http
+from toil.lib.retry import better_retry
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
@@ -1086,34 +1083,36 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
+    @better_retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+                  errors={HTTPError, BadStatusLine},
+                  error_codes={408, 500, 503})
     def getSize(cls, url):
         if url.scheme.lower() == 'ftp':
             return None
-        for attempt in retry_http():
-            with attempt:
-                with closing(urlopen(url.geturl())) as readable:
-                    # just read the header for content length
-                    size = readable.info().get('content-length')
-                    return int(size) if size is not None else None
+        with closing(urlopen(url.geturl())) as readable:
+            # just read the header for content length
+            size = readable.info().get('content-length')
+            return int(size) if size is not None else None
 
     @classmethod
+    @better_retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+                  errors={HTTPError, BadStatusLine},
+                  error_codes={408, 500, 503})
     def _readFromUrl(cls, url, writable):
-        for attempt in retry_http():
-            # We can only retry on errors that happen as responses to the request.
-            # If we start getting file data, and the connection drops, we fail.
-            # So we don't have to worry about writing the start of the file twice.
-            with attempt:
-                with closing(urlopen(url.geturl())) as readable:
-                    # Make something to count the bytes we get
-                    # We need to put the actual count in a container so our
-                    # nested function can modify it without creating its own
-                    # local with the same name.
-                    size = [0]
-                    def count(l):
-                        size[0] += l
-                    counter = WriteWatchingStream(writable)
-                    counter.onWrite(count)
-                    
-                    # Do the download
-                    shutil.copyfileobj(readable, counter)
-                    return size[0]
+        # We can only retry on errors that happen as responses to the request.
+        # If we start getting file data, and the connection drops, we fail.
+        # So we don't have to worry about writing the start of the file twice.
+        with closing(urlopen(url.geturl())) as readable:
+            # Make something to count the bytes we get
+            # We need to put the actual count in a container so our
+            # nested function can modify it without creating its own
+            # local with the same name.
+            size = [0]
+            def count(l):
+                size[0] += l
+            counter = WriteWatchingStream(writable)
+            counter.onWrite(count)
+
+            # Do the download
+            shutil.copyfileobj(readable, counter)
+            return size[0]
