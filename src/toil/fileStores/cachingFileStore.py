@@ -261,7 +261,7 @@ class CachingFileStore(AbstractFileStore):
     
     @staticmethod
     @retry_decorator(infinite_retries=True,
-                     error_msg_must_include={sqlite3.OperationalError: 'is locked'})
+                     error_conditions={sqlite3.OperationalError: {'error_msg_must_include': 'is locked'}})
     def _staticWrite(con, cur, operations):
         """
         Write to the caching database, using the given connection.

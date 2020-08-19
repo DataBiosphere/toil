@@ -234,7 +234,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         """
         raise NotImplementedError()
 
-    @retry_decorator(errors={HTTPError}, error_codes={400})
+    @retry_decorator(error_conditions={HTTPError: {'error_codes': [400]}})
     def _download(self, dstFile):
         """
         Download this resource from its URL to the given file object.

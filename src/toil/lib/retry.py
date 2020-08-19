@@ -20,7 +20,7 @@ import logging
 
 from contextlib import contextmanager
 from requests.exceptions import HTTPError
-from typing import List, Set, Optional, Tuple, Callable
+from typing import List, Set, Optional, Tuple, Dict, Callable
 
 log = logging.getLogger(__name__)
 
@@ -128,8 +128,7 @@ def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
 def retry_decorator(intervals: Optional[List] = None,
                     infinite_retries: Optional[bool] = None,
                     errors: Optional[Set] = None,
-                    error_codes: Optional[Set] = None,
-                    error_msg_must_include: Optional[dict] = None,
+                    error_conditions: Optional[Dict] = None,
                     log_message: Optional[Tuple[Callable, str]] = None):
     """
     Retry a function if it fails with any Exception defined in the "errors" set, every x seconds,
@@ -160,18 +159,15 @@ def retry_decorator(intervals: Optional[List] = None,
     """
     # set mutable defaults
     intervals = intervals if intervals else [1, 1, 2, 4, 8]
-    errors = errors if errors else {HTTPError} if error_codes else set()
-    error_codes = error_codes if error_codes else {}
+    errors = errors if errors else set()
+    error_conditions = error_conditions if error_conditions else dict()
 
     if log_message:
         post_message_function = log_message[0]
         message = log_message[1]
 
-    if error_codes:
-        errors.add(HTTPError)
-
-    if error_msg_must_include:
-        for error in error_msg_must_include:
+    if error_conditions:
+        for error in error_conditions:
             errors.add(error)
 
     def decorate(func):
@@ -183,18 +179,24 @@ def retry_decorator(intervals: Optional[List] = None,
                     if log_message:
                         post_message_function(message)
                     return func(*args, **kwargs)
+
                 except tuple(errors) as e:
                     if not intervals_remaining:
                         if infinite_retries:
                             intervals_remaining = copy.deepcopy(intervals)
                         else:
                             raise
-                    if isinstance(e, HTTPError):
-                        if error_codes and e.response.status_code not in error_codes:
+
+                    for error in error_conditions:
+                        error_codes = error_conditions[error].get('error_codes', [])
+                        error_msg_must_include = error_conditions[error].get('error_msg_must_include', '')
+
+                        if isinstance(e, error) and error_codes and e.response.status_code not in error_codes:
                             raise
-                    for error in error_msg_must_include:
-                        if isinstance(e, error) and error_msg_must_include[error] not in str(e):
+
+                        if isinstance(e, error) and error_msg_must_include and error_msg_must_include not in str(e):
                             raise
+
                     interval = intervals_remaining.pop(0)
                     log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)

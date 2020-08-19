@@ -1084,8 +1084,8 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
 
     @classmethod
     @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors={HTTPError, BadStatusLine},
-                     error_codes={408, 500, 503})
+                     errors={BadStatusLine},
+                     error_conditions={HTTPError: {'error_codes': [408, 500, 503]}})
     def getSize(cls, url):
         if url.scheme.lower() == 'ftp':
             return None
@@ -1096,8 +1096,8 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
 
     @classmethod
     @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors={HTTPError, BadStatusLine},
-                     error_codes={408, 500, 503})
+                     errors={BadStatusLine},
+                     error_conditions={HTTPError: {'error_codes': [408, 500, 503]}})
     def _readFromUrl(cls, url, writable):
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.
