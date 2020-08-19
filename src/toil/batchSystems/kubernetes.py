@@ -21,12 +21,6 @@ Within non-priveleged Kubernetes containers, additional Docker containers
 cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
-
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-
 import base64
 import datetime
 import getpass
@@ -55,7 +49,7 @@ from toil.lib.bioio import setLogLevel
 from toil.lib.humanize import human2bytes
 from toil.resource import Resource
 
-from toil.lib.retry import retry, retry_decorator
+from toil.lib.retry import retry_decorator, ErrorCondition
 
 logger = logging.getLogger(__name__)
 
@@ -70,18 +64,6 @@ def retryable_kubernetes_errors(e):
         isinstance(e, ApiException):
         return True
     return False
-
-
-def retryable_kubernetes_errors_expecting_gone(e):
-    """
-    A function that determins whether or not Toil should retry or stop given 
-    exceptions thrown by Kubernetes, when Toil is expecting a 404 indicating
-    that a resource is gone, as it should be.
-    
-    Retries on errors other than 404.
-    """
-    
-    return retryable_kubernetes_errors(e) and not (isinstance(e, ApiException) and e.status == 404)
 
 
 def slow_down(seconds):
@@ -269,17 +251,24 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         This function gives Kubernetes more time to try an executable api.  
         """
         return method(*args, **kwargs)
-                
+
+    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+                     errors={urllib3.exceptions.MaxRetryError,
+                             urllib3.exceptions.ProtocolError,
+                             ApiException},
+                     error_conditions=[
+                         ErrorCondition(
+                             error=ApiException,
+                             error_codes=[404],
+                             retry_on_this_condition=False
+                         )])
     def _try_kubernetes_expecting_gone(self, method, *args, **kwargs):
         """
         Same as _try_kubernetes, but raises 404 errors as soon as they are
         encountered (because we are waiting for them) instead of retrying on
         them.
         """
-        
-        for attempt in retry(predicate=retryable_kubernetes_errors_expecting_gone):
-            with attempt:
-                return method(*args, **kwargs)
+        return method(*args, **kwargs)
                 
     def _try_kubernetes_stream(self, method, *args, **kwargs):
         """

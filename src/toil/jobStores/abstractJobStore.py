@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,12 +11,10 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-
-from future import standard_library
-standard_library.install_aliases()
 import shutil
 import re
+import pickle
+import logging
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager, closing
 from datetime import timedelta
@@ -29,7 +27,7 @@ from six import itervalues
 from six.moves.urllib.request import urlopen
 import six.moves.urllib.parse as urlparse
 
-from toil.lib.retry import retry_decorator
+from toil.lib.retry import retry_decorator, ErrorCondition
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
@@ -39,12 +37,6 @@ from toil.lib.misc import WriteWatchingStream
 from toil.lib.objects import abstractclassmethod
 from future.utils import with_metaclass
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -1084,8 +1076,13 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
 
     @classmethod
     @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors={BadStatusLine},
-                     error_conditions={HTTPError: {'error_codes': [408, 500, 503]}})
+                     errors={HTTPError, BadStatusLine},
+                     error_conditions=[
+                         ErrorCondition(
+                             error=HTTPError,
+                             error_codes=[408, 500, 503]
+                         )
+                     ])
     def getSize(cls, url):
         if url.scheme.lower() == 'ftp':
             return None
@@ -1096,8 +1093,13 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
 
     @classmethod
     @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors={BadStatusLine},
-                     error_conditions={HTTPError: {'error_codes': [408, 500, 503]}})
+                     errors={HTTPError, BadStatusLine},
+                     error_conditions=[
+                         ErrorCondition(
+                             error=HTTPError,
+                             error_codes=[408, 500, 503]
+                         )
+                     ])
     def _readFromUrl(cls, url, writable):
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.

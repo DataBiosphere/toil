@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,11 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from future import standard_library
-standard_library.install_aliases()
 from builtins import map
 import errno
 import hashlib
@@ -25,6 +20,7 @@ import logging
 import os
 import shutil
 import sys
+
 from collections import namedtuple
 from contextlib import closing
 from io import BytesIO
@@ -32,16 +28,12 @@ from pydoc import locate
 from tempfile import mkdtemp
 from urllib.error import HTTPError
 from zipfile import ZipFile
-
-# Python 3 compatibility imports
-from toil.lib.retry import retry, retry_decorator
 from six.moves.urllib.request import urlopen
 
+from toil.lib.retry import retry_decorator, ErrorCondition
 from toil.lib.memoize import strict_bool
 from toil.lib.iterables import concat
-
 from toil.version import exactPython
-
 from toil import inVirtualEnv
 
 log = logging.getLogger(__name__)
@@ -234,7 +226,11 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         """
         raise NotImplementedError()
 
-    @retry_decorator(error_conditions={HTTPError: {'error_codes': [400]}})
+    @retry_decorator(error_conditions=[
+        ErrorCondition(
+             error=HTTPError,
+             error_codes=[400])
+    ])
     def _download(self, dstFile):
         """
         Download this resource from its URL to the given file object.

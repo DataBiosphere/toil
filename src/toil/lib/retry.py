@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -19,8 +19,20 @@ import functools
 import logging
 
 from contextlib import contextmanager
-from requests.exceptions import HTTPError
-from typing import List, Set, Optional, Tuple, Dict, Callable
+from typing import List, Set, Optional, Tuple, Callable, Any
+
+
+class ErrorCondition:
+    def __init__(self,
+                 error: Any,
+                 error_codes: List[int] = None,
+                 error_message_must_include: str = None,
+                 retry_on_this_condition: bool = True):
+        self.error = error
+        self.error_codes = error_codes
+        self.error_message_must_include = error_message_must_include
+        self.retry_on_this_condition = retry_on_this_condition
+
 
 log = logging.getLogger(__name__)
 
@@ -128,7 +140,7 @@ def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
 def retry_decorator(intervals: Optional[List] = None,
                     infinite_retries: Optional[bool] = None,
                     errors: Optional[Set] = None,
-                    error_conditions: Optional[Dict] = None,
+                    error_conditions: Optional[List[ErrorCondition]] = None,
                     log_message: Optional[Tuple[Callable, str]] = None):
     """
     Retry a function if it fails with any Exception defined in the "errors" set, every x seconds,
@@ -152,7 +164,10 @@ def retry_decorator(intervals: Optional[List] = None,
             1s, 1s, 2s, 4s, 8s
     :param infinite_retries: If this is True, reset the intervals when they run out.
     :param errors: Exceptions to catch and retry on.  Defaults to: {HTTPError} if error_codes else {}.
-    :param error_codes: HTTPError return codes to retry on.  The default is an empty set.
+    :param error_conditions: A dictionary where the keys are errors, and the values are dictionaries
+        of conditions with the following optional keys:
+            "error_codes": a list/tuple/dict of integer values of error codes to check for
+            "error_msg_must_include": a string that is checked for in the returned error message
     :param log_message: A tuple of ("log/print function()", "message string") that will run on
         each retry.
     :return: The result of the wrapped function or raise.
@@ -160,15 +175,15 @@ def retry_decorator(intervals: Optional[List] = None,
     # set mutable defaults
     intervals = intervals if intervals else [1, 1, 2, 4, 8]
     errors = errors if errors else set()
-    error_conditions = error_conditions if error_conditions else dict()
+    error_conditions = error_conditions if error_conditions else list()
 
     if log_message:
         post_message_function = log_message[0]
         message = log_message[1]
 
-    if error_conditions:
-        for error in error_conditions:
-            errors.add(error)
+    for retriable_error in error_conditions:
+        if retriable_error.retry_on_this_condition:
+            errors.add(retriable_error.error)
 
     def decorate(func):
         @functools.wraps(func)
@@ -187,18 +202,46 @@ def retry_decorator(intervals: Optional[List] = None,
                         else:
                             raise
 
-                    for error in error_conditions:
-                        error_codes = error_conditions[error].get('error_codes', [])
-                        error_msg_must_include = error_conditions[error].get('error_msg_must_include', '')
-
-                        if isinstance(e, error) and error_codes and e.response.status_code not in error_codes:
-                            raise
-
-                        if isinstance(e, error) and error_msg_must_include and error_msg_must_include not in str(e):
-                            raise
+                    if error_conditions and not error_meets_conditions(e, error_conditions):
+                        raise
 
                     interval = intervals_remaining.pop(0)
                     log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)
         return call
     return decorate
+
+
+def return_status_code(e):
+    try:
+        return e.response.status_code  # expected from HTTPError
+    except:
+        return e.status
+
+
+def meets_error_message_condition(e: Exception, error_message: Optional[str]):
+    if error_message:
+        return error_message in str(e)
+    else:  # there is no error message, so the user is not expecting it to be present
+        return True
+
+
+def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
+    if error_codes:
+        status_code = return_status_code(e)
+        return status_code in error_codes
+    else:  # there are no error codes, so the user is not expecting the status to match
+        return True
+
+
+def error_meets_conditions(e, error_conditions):
+    condition_met = False
+    for error in error_conditions:
+        if isinstance(e, error):
+            error_message_condition_met = meets_error_message_condition(e, error.error_message_must_include)
+            error_code_condition_met = meets_error_code_condition(e, error.error_codes)
+            if error_message_condition_met and error_code_condition_met:
+                condition_met = True
+                if not error.retry_on_this_condition:
+                    return False
+    return condition_met
