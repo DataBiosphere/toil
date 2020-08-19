@@ -404,7 +404,7 @@ class DefaultWithSource:
         """
         if self.source:
             result = self.source.resolve()
-            if result:
+            if result is not None:
                 return result
         return self.default
 
