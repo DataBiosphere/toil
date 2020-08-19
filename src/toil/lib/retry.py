@@ -160,7 +160,7 @@ def retry_decorator(intervals: Optional[List] = None,
     """
     # set mutable defaults
     intervals = intervals if intervals else [1, 1, 2, 4, 8]
-    errors = errors if errors else {HTTPError} if error_codes else {}
+    errors = errors if errors else {HTTPError} if error_codes else set()
     error_codes = error_codes if error_codes else {}
 
     if log_message:
