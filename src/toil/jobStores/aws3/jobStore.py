@@ -48,6 +48,7 @@ from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 import botocore.session
 import botocore.credentials
+import botocore.exceptions
 
 from toil.lib.compatibility import compat_bytes, compat_plain
 from toil.lib.misc import AtomicFileCreate
@@ -121,6 +122,10 @@ class AWSJobStore(AbstractJobStore):
                whole file
         """
         super(AWSJobStore, self).__init__()
+        log.warning(' ============================================================== ')
+        log.warning('\tYou are using an experimental version of the AWS JobStore!!')
+        log.warning(' ============================================================== ')
+
         region, namePrefix = locator.split(':')
         if not self.bucketNameRe.match(namePrefix):
             raise ValueError("Invalid name prefix '%s'. Name prefixes must contain only digits, "
@@ -713,7 +718,7 @@ class AWSJobStore(AbstractJobStore):
                bucket appears. Ignored if `create` is True.
 
         :rtype: Bucket|None
-        :raises S3ResponseError: If `block` is True and the bucket still doesn't exist after the
+        :raises botocore.exceptions.ClientError: If `block` is True and the bucket still doesn't exist after the
                 retry timeout expires.
         """
         assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
@@ -724,60 +729,75 @@ class AWSJobStore(AbstractJobStore):
             # https://github.com/BD2KGenomics/toil/issues/955
             # https://github.com/BD2KGenomics/toil/issues/995
             # https://github.com/BD2KGenomics/toil/issues/1093
-            return (isinstance(e, (S3CreateError, S3ResponseError))
-                    and e.error_code in ('BucketAlreadyOwnedByYou',
-                                         'OperationAborted',
-                                         'NoSuchBucket'))
+            return (isinstance(e, botocore.exceptions.ClientError)
+                    and e.response['Error']['Code'] in ('BucketAlreadyOwnedByYou',
+                                                        'OperationAborted',
+                                                        '404',  # TODO: verify?
+                                                        'NoSuchBucket'))
 
         bucketExisted = True
         for attempt in retry_s3(predicate=bucket_creation_pending):
             with attempt:
+                # migration from boto2
+                # see https://boto3.amazonaws.com/v1/documentation/api/latest/guide/migrations3.html#accessing-a-bucket
                 try:
-                    bucket = self.s3.get_bucket(bucket_name, validate=True)
-                except S3ResponseError as e:
-                    if e.error_code == 'NoSuchBucket':
+                    bucket = s3_boto3_resource.Bucket(bucket_name)
+                    s3_boto3_resource.meta.client.head_bucket(Bucket=bucket_name)
+
+                except botocore.exceptions.ClientError as e:
+
+                    errorCode = e.response['Error']['Code']
+                    if errorCode == '404' or errorCode == 'NoSuchBucket':
                         bucketExisted = False
                         log.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
                             log.debug("Creating bucket '%s'.", bucket_name)
+                            print("Creating bucket '%s'.", bucket_name)
+
                             location = region_to_bucket_location(self.region)
-                            bucket = self.s3.create_bucket(bucket_name, location=location)
+                            bucket = s3_boto3_resource.create_bucket(
+                                Bucket=bucket_name,
+                                CreateBucketConfiguration={'LocationConstraint': location})
+
                             # It is possible for create_bucket to return but
                             # for an immediate request for the bucket region to
                             # produce an S3ResponseError with code
                             # NoSuchBucket. We let that kick us back up to the
                             # main retry loop.
-                            assert self.__getBucketRegion(bucket) == self.region
+                            assert self.__getBucketRegion(bucket_name) == self.region
+                            pass
                         elif block:
                             raise
                         else:
                             return None
-                    elif e.status == 301:
+                    elif errorCode == '301':
+                        # TODO: not yet able to reproduce
                         # This is raised if the user attempts to get a bucket in a region outside
                         # the specified one, if the specified one is not `us-east-1`.  The us-east-1
                         # server allows a user to use buckets from any region.
-                        bucket = self.s3.get_bucket(bucket_name, validate=False)
-                        raise BucketLocationConflictException(self.__getBucketRegion(bucket))
+                        raise BucketLocationConflictException(self.__getBucketRegion(bucket_name))
                     else:
                         raise
                 else:
-                    if self.__getBucketRegion(bucket) != self.region:
-                        raise BucketLocationConflictException(self.__getBucketRegion(bucket))
+                    bucketRegion = self.__getBucketRegion(bucket_name)
+                    if bucketRegion != self.region:
+                        raise BucketLocationConflictException(bucketRegion)
                 if versioning and not bucketExisted:
                     # only call this method on bucket creation
-                    bucket.configure_versioning(True)
+                    # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#bucketversioning
+                    s3_boto3_resource.BucketVersioning(bucket_name).enable()
                     # Now wait until versioning is actually on. Some uploads
                     # would come back with no versions; maybe they were
                     # happening too fast and this setting isn't sufficiently
                     # consistent?
                     time.sleep(1)
-                    while self._getBucketVersioning(bucket) != True:
+                    while not self._getBucketVersioningFromName(bucket_name):
                         log.warning("Waiting for versioning activation on bucket '%s'...", bucket_name)
                         time.sleep(1)
                 elif check_versioning_consistency:
                     # now test for versioning consistency
                     # we should never see any of these errors since 'versioning' should always be true
-                    bucket_versioning = self._getBucketVersioning(bucket)
+                    bucket_versioning = self._getBucketVersioningFromName(bucket_name)
                     if bucket_versioning != versioning:
                         assert False, 'Cannot modify versioning on existing bucket'
                     elif bucket_versioning is None:
@@ -788,7 +808,9 @@ class AWSJobStore(AbstractJobStore):
                     log.debug("Created new job store bucket '%s' with versioning state %s.", bucket_name,
                               str(versioning))
 
-                return bucket
+                # return bucket
+                # In the meantime still return the Bucket instance from boto2
+                return self.s3.get_bucket(bucket_name, validate=True)
 
     def _bindDomain(self, domain_name, create=False, block=True):
         """
@@ -1527,10 +1549,25 @@ class AWSJobStore(AbstractJobStore):
                 status = bucket.get_versioning_status()
                 return self.versionings[status['Versioning']] if status else False
 
-    def __getBucketRegion(self, bucket):
+    def _getBucketVersioningFromName(self, bucket_name):
+        """
+        :param bucket_name: str
+        """
+        # TODO: check this behavior
         for attempt in retry_s3():
             with attempt:
-                return bucket_location_to_region(bucket.get_location())
+                versioning = s3_boto3_resource.BucketVersioning(bucket_name)
+                return versioning.status is not None if versioning else False
+
+    def __getBucketRegion(self, bucket_name):
+        """
+        :param bucket_name: str
+        """
+        for attempt in retry_s3():
+            with attempt:
+                region = bucket_location_to_region(
+                    s3_boto3_resource.meta.client.get_bucket_location(Bucket=bucket_name))['LocationConstraint']
+                return region
 
     def destroy(self):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
