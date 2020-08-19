@@ -14,6 +14,7 @@
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
 import time
+import copy
 import functools
 import logging
 
@@ -130,9 +131,11 @@ def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=never):
         yield single_attempt( )
 
 
-def better_retry(intervals: Optional[List] = None,
+def better_retry(intervals: Optional[List[float, int]] = None,
+                 infinite_retries: Optional[bool] = None,
                  errors: Optional[Set] = None,
                  error_codes: Optional[Set] = None,
+                 error_msg_must_include: Optional[dict] = None,
                  log_message: Optional[Tuple[Callable, str]] = None):
     """
     Retry a function if it fails with any Exception defined in the "errors" set, every x seconds,
@@ -150,10 +153,12 @@ def better_retry(intervals: Optional[List] = None,
         error_codes ={} && errors={AssertionError}
             Only retry on AssertionErrors.
 
-    :param List[float] intervals: A list of times in seconds we keep retrying until returning failure.
+    :param Optional[List[float, int]] intervals: A list of times in seconds we keep retrying until
+        returning failure.
         Defaults to retrying with the following exponential backoff before failing:
             1s, 1s, 2s, 4s, 8s
-    :param errors: Exceptions to catch and retry on.  Defaults to: {HTTPError}.
+    :param infinite_retries: If this is True, reset the intervals when they run out.
+    :param errors: Exceptions to catch and retry on.  Defaults to: {HTTPError} if error_codes else {}.
     :param error_codes: HTTPError return codes to retry on.  The default is an empty set.
     :param log_message: A tuple of ("log/print function()", "message string") that will run on
         each retry.
@@ -161,30 +166,41 @@ def better_retry(intervals: Optional[List] = None,
     """
     # set mutable defaults
     intervals = intervals if intervals else [1, 1, 2, 4, 8]
-    errors = errors if errors else {HTTPError}
+    errors = errors if errors else {HTTPError} if error_codes else {}
     error_codes = error_codes if error_codes else {}
     if log_message:
         post_message_function = log_message[0]
         message = log_message[1]
 
+    if error_codes:
+        errors.add(HTTPError)
+    if error_msg_must_include:
+        for error in error_msg_must_include:
+            errors.add(error)
+
     def decorate(func):
         @functools.wraps(func)
         def call(*args, **kwargs):
-            if error_codes:
-                errors.add(HTTPError)
+            intervals_remaining = copy.deepcopy(intervals)
             while True:
                 try:
-                    if message:
+                    if log_message:
                         post_message_function(message)
                     return func(*args, **kwargs)
                 except tuple(errors) as e:
-                    if not intervals:
-                        raise
-                    interval = intervals.pop(0)
+                    if not intervals_remaining:
+                        if infinite_retries:
+                            intervals_remaining = copy.deepcopy(intervals)
+                        else:
+                            raise
                     if isinstance(e, HTTPError):
                         if error_codes and e.response.status_code not in error_codes:
                             raise
-                    print(f"Error in {func}: {e}. Retrying after {interval} s...")
+                    for error in error_msg_must_include:
+                        if isinstance(e, error) and error_msg_must_include[error] not in str(e):
+                            raise
+                    interval = intervals_remaining.pop(0)
+                    log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
                     time.sleep(interval)
         return call
     return decorate

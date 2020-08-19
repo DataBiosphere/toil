@@ -32,7 +32,7 @@ from argparse import ArgumentParser
 from six import iteritems
 
 from toil.lib.humanize import bytes2human
-from toil.lib.retry import retry
+from toil.lib.retry import better_retry
 import subprocess
 from toil import pickle
 from toil import logProcessContext
@@ -1288,22 +1288,19 @@ class ToilMetrics:
             logger.warning("Could not start prometheus/grafana dashboard.")
             return
 
-        # Add prometheus data source
-        def requestPredicate(e):
-            if isinstance(e, requests.exceptions.ConnectionError):
-                return True
-            return False
-
         try:
-            for attempt in retry(delays=(0, 1, 1, 4, 16), predicate=requestPredicate):
-                with attempt:
-                    requests.post('http://localhost:3000/api/datasources', auth=('admin', 'admin'),
-                                  data='{"name":"DS_PROMETHEUS","type":"prometheus", \
-                                  "url":"http://localhost:9090", "access":"direct"}',
-                                  headers={'content-type': 'application/json', "access": "direct"})
+            self.add_prometheus_data_source()
         except requests.exceptions.ConnectionError:
-            logger.debug(
-                "Could not add data source to Grafana dashboard - no metrics will be displayed.")
+            logger.debug("Could not add data source to Grafana dashboard - no metrics will be displayed.")
+
+    @better_retry(intervals=[0, 1, 1, 4, 16], errors={requests.exceptions.ConnectionError})
+    def add_prometheus_data_source(self):
+        requests.post(
+            'http://localhost:3000/api/datasources',
+            auth=('admin', 'admin'),
+            data='{"name":"DS_PROMETHEUS","type":"prometheus", "url":"http://localhost:9090", "access":"direct"}',
+            headers={'content-type': 'application/json', "access": "direct"}
+        )
 
     def log(self, message):
         if self.mtailProc:

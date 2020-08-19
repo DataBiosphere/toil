@@ -26,7 +26,7 @@ import time
 import os
 from toil import pickle
 from toil.lib.misc import AtomicFileCreate
-from toil.lib.retry import retry
+from toil.lib.retry import retry, better_retry
 from toil.lib.compatibility import compat_bytes
 from google.cloud import storage, exceptions
 from google.api_core.exceptions import GoogleAPICallError, InternalServerError, ServiceUnavailable

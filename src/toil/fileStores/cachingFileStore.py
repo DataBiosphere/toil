@@ -37,7 +37,7 @@ from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree, atomic_copy, atomic_copyobj
-from toil.lib.retry import retry
+from toil.lib.retry import retry, better_retry
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
@@ -260,6 +260,8 @@ class CachingFileStore(AbstractFileStore):
 
     
     @staticmethod
+    @better_retry(infinite_retries=True,
+                  error_msg_must_include={sqlite3.OperationalError: 'is locked'})
     def _staticWrite(con, cur, operations):
         """
         Write to the caching database, using the given connection.
@@ -279,40 +281,36 @@ class CachingFileStore(AbstractFileStore):
         :return: Number of rows modified by the last operation
         :rtype: int
         """
-
-        for attempt in retry(timeout=float('inf'), predicate=lambda e: isinstance(e, sqlite3.OperationalError) and 'is locked' in str(e)):
-            # Try forever with backoff
-            with attempt:
-                try:
-                    for item in operations:
-                        if not isinstance(item, tuple):
-                            # Must be a single SQL string. Wrap it.
-                            item = (item,)
-                        # Parse out the command and the variables to substitute
-                        command = item[0]
-                        if len(item) < 2:
-                            args = ()
-                        else:
-                            args = item[1]
-                        # Do it
-                        cur.execute(command, args)
-                except Exception as e:
-                    logging.error('Error talking to caching database: %s', str(e))
-
-                    # Try to make sure we don't somehow leave anything part-done if a
-                    # middle operation somehow fails. 
-                    try:
-                        con.rollback()
-                    except:
-                        # But don't stop if we can't roll back.
-                        pass
-
-                    # Raise and maybe retry
-                    raise e
+        try:
+            for item in operations:
+                if not isinstance(item, tuple):
+                    # Must be a single SQL string. Wrap it.
+                    item = (item,)
+                # Parse out the command and the variables to substitute
+                command = item[0]
+                if len(item) < 2:
+                    args = ()
                 else:
-                    # The transaction worked!
-                    # Now commit the transaction.
-                    con.commit()
+                    args = item[1]
+                # Do it
+                cur.execute(command, args)
+        except Exception as e:
+            logging.error('Error talking to caching database: %s', str(e))
+
+            # Try to make sure we don't somehow leave anything part-done if a
+            # middle operation somehow fails.
+            try:
+                con.rollback()
+            except:
+                # But don't stop if we can't roll back.
+                pass
+
+            # Raise and maybe retry
+            raise e
+        else:
+            # The transaction worked!
+            # Now commit the transaction.
+            con.commit()
 
         return cur.rowcount
 
