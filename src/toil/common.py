@@ -796,22 +796,16 @@ class Toil(object):
         """
         Clean up after a workflow invocation. Depending on the configuration, delete the job store.
         """
-        from toil.job import JobException
-        try:
-            if self.config.restart and self._jobStore.loadRootJob() is not None:
-                raise ToilRestartException('Requested restart without including the restart option. '
-                                            'Use workflow.restart() to resume the workflow.')
-        except JobException:
-            pass
-        
-        try:
+        try: 
             if (exc_type is not None and self.config.clean == "onError" or
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
 
                 try:
-                    self._jobStore.destroy()
-                    logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
+                    path = self._jobStore.sharedFilesDir + '/succeeded.log'
+                    if os.path.isfile(path):                      
+                        self._jobStore.destroy()
+                        logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
                     logger.info("Failed to delete the job store: %s" % str(self._jobStore))
                     raise
