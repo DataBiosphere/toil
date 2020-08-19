@@ -29,7 +29,7 @@ from six import itervalues
 from six.moves.urllib.request import urlopen
 import six.moves.urllib.parse as urlparse
 
-from toil.lib.retry import better_retry
+from toil.lib.retry import retry_decorator
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
@@ -1083,9 +1083,9 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
-    @better_retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                  errors={HTTPError, BadStatusLine},
-                  error_codes={408, 500, 503})
+    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+                     errors={HTTPError, BadStatusLine},
+                     error_codes={408, 500, 503})
     def getSize(cls, url):
         if url.scheme.lower() == 'ftp':
             return None
@@ -1095,9 +1095,9 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
             return int(size) if size is not None else None
 
     @classmethod
-    @better_retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                  errors={HTTPError, BadStatusLine},
-                  error_codes={408, 500, 503})
+    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+                     errors={HTTPError, BadStatusLine},
+                     error_codes={408, 500, 503})
     def _readFromUrl(cls, url, writable):
         # We can only retry on errors that happen as responses to the request.
         # If we start getting file data, and the connection drops, we fail.

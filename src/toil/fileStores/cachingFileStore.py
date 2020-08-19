@@ -37,7 +37,7 @@ from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree, atomic_copy, atomic_copyobj
-from toil.lib.retry import better_retry
+from toil.lib.retry import retry_decorator
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
@@ -260,8 +260,8 @@ class CachingFileStore(AbstractFileStore):
 
     
     @staticmethod
-    @better_retry(infinite_retries=True,
-                  error_msg_must_include={sqlite3.OperationalError: 'is locked'})
+    @retry_decorator(infinite_retries=True,
+                     error_msg_must_include={sqlite3.OperationalError: 'is locked'})
     def _staticWrite(con, cur, operations):
         """
         Write to the caching database, using the given connection.

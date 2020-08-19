@@ -8,7 +8,7 @@ from six.moves.urllib.request import urlopen
 from contextlib import closing
 import time
 
-from toil.lib.retry import better_retry
+from toil.lib.retry import retry_decorator
 from shutil import which
 from toil.lib.threading import ExceptionalThread, cpu_count
 from future.utils import with_metaclass
@@ -20,9 +20,9 @@ class MesosTestSupport(object):
     """
     A mixin for test cases that need a running Mesos master and agent on the local host
     """
-    @better_retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                  errors={Exception},
-                  log_message=(log.info, 'Checking if Mesos is ready...'))
+    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+                     errors={Exception},
+                     log_message=(log.info, 'Checking if Mesos is ready...'))
     def wait_for_master(self):
         with closing(urlopen('http://127.0.0.1:5050/version')) as content:
             content.read()

@@ -125,12 +125,12 @@ def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
         yield single_attempt( )
 
 
-def better_retry(intervals: Optional[List] = None,
-                 infinite_retries: Optional[bool] = None,
-                 errors: Optional[Set] = None,
-                 error_codes: Optional[Set] = None,
-                 error_msg_must_include: Optional[dict] = None,
-                 log_message: Optional[Tuple[Callable, str]] = None):
+def retry_decorator(intervals: Optional[List] = None,
+                    infinite_retries: Optional[bool] = None,
+                    errors: Optional[Set] = None,
+                    error_codes: Optional[Set] = None,
+                    error_msg_must_include: Optional[dict] = None,
+                    log_message: Optional[Tuple[Callable, str]] = None):
     """
     Retry a function if it fails with any Exception defined in the "errors" set, every x seconds,
     where x is defined by a list of floats in "intervals".  If "error_codes" are specified,

@@ -44,35 +44,34 @@ import uuid
 import urllib3
 
 from kubernetes.client.rest import ApiException
-from six.moves.queue import Empty, Queue
 
-from toil import applianceSelf, customDockerInitCmd
-from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
-                                                   BatchSystemCleanupSupport,
+from toil import applianceSelf
+from toil.batchSystems.abstractBatchSystem import (BatchSystemCleanupSupport,
                                                    EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.lib.bioio import configureRootLogger
 from toil.lib.bioio import setLogLevel
 from toil.lib.humanize import human2bytes
-from toil.lib.threading import LastProcessStandingArena
 from toil.resource import Resource
 
-from toil.lib.retry import retry
+from toil.lib.retry import retry, retry_decorator
 
 logger = logging.getLogger(__name__)
-     
+
+
 def retryable_kubernetes_errors(e):
     """
-    A function that determins whether or not Toil should retry or stop given 
-    exceptions thrown by Kubernetes. 
+    A function that determines whether or not Toil should retry or stop given
+    exceptions thrown by Kubernetes.
     """
     if isinstance(e, urllib3.exceptions.MaxRetryError) or \
        isinstance(e, urllib3.exceptions.ProtocolError) or \
         isinstance(e, ApiException):
         return True
     return False
-    
+
+
 def retryable_kubernetes_errors_expecting_gone(e):
     """
     A function that determins whether or not Toil should retry or stop given 
@@ -83,7 +82,8 @@ def retryable_kubernetes_errors_expecting_gone(e):
     """
     
     return retryable_kubernetes_errors(e) and not (isinstance(e, ApiException) and e.status == 404)
-    
+
+
 def slow_down(seconds):
     """
     Toil jobs that have completed are not allowed to have taken 0 seconds, but
@@ -100,16 +100,13 @@ def slow_down(seconds):
 
     return max(seconds, sys.float_info.epsilon)
 
-def utc_now():
-    """
-    Return a datetime in the UTC timezone corresponding to right now.
-    """
 
+def utc_now():
+    """Return a datetime in the UTC timezone corresponding to right now."""
     return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
 
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
-
     @classmethod
     def supportsAutoDeployment(cls):
         return True
@@ -256,7 +253,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 return self._apis[kind]
             except KeyError: 
                 raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
-    
+
+    @retry_decorator(errors={urllib3.exceptions.MaxRetryError,
+                             urllib3.exceptions.ProtocolError,
+                             ApiException})
     def _try_kubernetes(self, method, *args, **kwargs):
         """
         Kubernetes API can end abruptly and fail when it could dynamically backoff and retry.
@@ -267,10 +267,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         This function gives Kubernetes more time to try an executable api.  
         """
-
-        for attempt in retry(predicate=retryable_kubernetes_errors):
-            with attempt:
-                return method(*args, **kwargs)
+        return method(*args, **kwargs)
                 
     def _try_kubernetes_expecting_gone(self, method, *args, **kwargs):
         """

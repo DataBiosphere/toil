@@ -32,7 +32,7 @@ from argparse import ArgumentParser
 from six import iteritems
 
 from toil.lib.humanize import bytes2human
-from toil.lib.retry import better_retry
+from toil.lib.retry import retry_decorator
 import subprocess
 from toil import pickle
 from toil import logProcessContext
@@ -1293,7 +1293,7 @@ class ToilMetrics:
         except requests.exceptions.ConnectionError:
             logger.debug("Could not add data source to Grafana dashboard - no metrics will be displayed.")
 
-    @better_retry(intervals=[0, 1, 1, 4, 16], errors={requests.exceptions.ConnectionError})
+    @retry_decorator(intervals=[0, 1, 1, 4, 16], errors={requests.exceptions.ConnectionError})
     def add_prometheus_data_source(self):
         requests.post(
             'http://localhost:3000/api/datasources',

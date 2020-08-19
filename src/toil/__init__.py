@@ -25,7 +25,7 @@ from datetime import datetime
 from pytz import timezone
 from docker.errors import ImageNotFound
 from toil.lib.memoize import memoize
-from toil.lib.retry import better_retry
+from toil.lib.retry import retry_decorator
 from toil.version import currentCommit
 
 # subprocess32 is a backport of python3's subprocess module for use on Python2,
@@ -536,7 +536,7 @@ try:
 
             self._obtain_credentials_from_cache_or_boto3()
 
-        @better_retry(intervals=[1, 2, 4, 8], errors={Exception})
+        @retry_decorator(intervals=[1, 2, 4, 8], errors={Exception})
         def _obtain_credentials_from_boto3(self):
             """
             We know the current cached credentials are not good, and that we

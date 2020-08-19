@@ -34,7 +34,7 @@ from urllib.error import HTTPError
 from zipfile import ZipFile
 
 # Python 3 compatibility imports
-from toil.lib.retry import retry, better_retry
+from toil.lib.retry import retry, retry_decorator
 from six.moves.urllib.request import urlopen
 
 from toil.lib.memoize import strict_bool
@@ -234,7 +234,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         """
         raise NotImplementedError()
 
-    @better_retry(errors={HTTPError}, error_codes={400})
+    @retry_decorator(errors={HTTPError}, error_codes={400})
     def _download(self, dstFile):
         """
         Download this resource from its URL to the given file object.
