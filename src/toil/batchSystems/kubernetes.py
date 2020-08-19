@@ -48,8 +48,7 @@ from six.moves.queue import Empty, Queue
 
 from toil import applianceSelf, customDockerInitCmd
 from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
-                                                   BatchSystemSupport,
-                                                   BatchSystemLocalSupport,
+                                                   BatchSystemCleanupSupport,
                                                    EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
@@ -69,6 +68,7 @@ def retryable_kubernetes_errors(e):
     exceptions thrown by Kubernetes. 
     """
     if isinstance(e, urllib3.exceptions.MaxRetryError) or \
+       isinstance(e, urllib3.exceptions.ProtocolError) or \
         isinstance(e, ApiException):
         return True
     return False
@@ -108,16 +108,12 @@ def utc_now():
     return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
 
 
-class KubernetesBatchSystem(BatchSystemLocalSupport):
+class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     @classmethod
     def supportsAutoDeployment(cls):
         return True
 
-    @classmethod
-    def supportsWorkerCleanup(cls):
-        return True
-   
     def __init__(self, config, maxCores, maxMemory, maxDisk):
         super(KubernetesBatchSystem, self).__init__(config, maxCores, maxMemory, maxDisk)
 
@@ -267,7 +263,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
         For example, calling self._api('batch').create_namespaced_job(self.namespace, job),
         Kubernetes can behave inconsistently and fail given a large job. See 
-        https://github.com/DataBiosphere/toil/issues/2884 .
+        https://github.com/DataBiosphere/toil/issues/2884.
         
         This function gives Kubernetes more time to try an executable api.  
         """
@@ -286,6 +282,53 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         for attempt in retry(predicate=retryable_kubernetes_errors_expecting_gone):
             with attempt:
                 return method(*args, **kwargs)
+                
+    def _try_kubernetes_stream(self, method, *args, **kwargs):
+        """
+        Kubernetes kubernetes.watch.Watch().stream() streams can fail and raise
+        errors. We don't want to have those errors fail the entire workflow, so
+        we handle them here.
+        
+        When you want to stream the results of a Kubernetes API method, call
+        this instead of stream().
+        
+        To avoid having to do our own timeout logic, we finish the watch early
+        if it produces an error.
+        """
+    
+        w = kubernetes.watch.Watch()
+        
+        # We will set this to bypass our second catch in the case of user errors.
+        userError = False
+    
+        try: 
+            for item in w.stream(method, *args, **kwargs):
+                # For everything the watch stream gives us
+                try:
+                    # Show the item to user code
+                    yield item
+                except Exception as e:
+                    # If we get an error from user code, skip our catch around
+                    # the Kubernetes generator.
+                    userError = True
+                    raise
+        except Exception as e:
+            # If we get an error
+            if userError:
+                # It wasn't from the Kubernetes watch generator. Pass it along.
+                raise
+            else:
+                # It was from the Kubernetes watch generator we manage.
+                if retryable_kubernetes_errors(e):
+                    # This is just cloud weather.
+                    # TODO: We will also get an APIError if we just can't code good against Kubernetes. So make sure to warn.
+                    logger.warning("Received error from Kubernetes watch stream: %s", e)
+                    # Just end the watch.
+                    return
+                else:
+                    # Something actually weird is happening.
+                    raise
+            
 
     def setUserScript(self, userScript):
         logger.info('Setting user script for deployment: {}'.format(userScript))
@@ -319,10 +362,6 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
                    'environment': self.environment.copy()}
             # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
             
-            # Send the worker cleanup info so that the last worker on a
-            # host to shut down can clean up if warranted.
-            job['workerCleanupInfo'] = self.workerCleanupInfo
-
             if self.userScript is not None:
                 # If there's a user script resource be sure to send it along
                 job['userScript'] = self.userScript
@@ -649,11 +688,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         if self.enableWatching:
             # Try watching for something to happen and use that.
 
-            w = kubernetes.watch.Watch()    
-
             if self.enableWatching:
                 for j in self._ourJobObjects():
-                    for event in w.stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
+                    for event in self._try_kubernetes_stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
+                        # For each event from the stream until it times out or just disconnects
                         pod = event['object']
                         if pod.metadata.name.startswith(self.jobPrefix):
                             if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
@@ -1078,39 +1116,19 @@ def executor():
         if 'userScript' in job:
             job['userScript'].register()
             
-        # We need to tell other workers in this workflow not to do cleanup now that
-        # we are here, or else wait for them to finish. So get the cleanup info
-        # that knows where the work dir is.
-        cleanupInfo = job['workerCleanupInfo']
-        
-        # Join a Last Process Standing arena, so we know which process should be
-        # responsible for cleanup.
-        # We need to use the real workDir, not just the override from cleanupInfo.
-        # This needs to happen after the environment is applied.
-        arena = LastProcessStandingArena(Toil.getToilWorkDir(cleanupInfo.workDir), 
-            cleanupInfo.workflowID + '-kube-executor')
-        arena.enter()
-        try:
-            
-            # Start the child process
-            logger.debug("Invoking command: '%s'", job['command'])
-            child = subprocess.Popen(job['command'],
-                                     preexec_fn=lambda: os.setpgrp(),
-                                     shell=True)
+        # Start the child process
+        logger.debug("Invoking command: '%s'", job['command'])
+        child = subprocess.Popen(job['command'],
+                                 preexec_fn=lambda: os.setpgrp(),
+                                 shell=True)
 
-            # Reproduce child's exit code
-            exit_code = child.wait()
-            
-        finally:
-            for _ in arena.leave():
-                # We are the last concurrent executor to finish.
-                # Do batch system cleanup.
-                logger.debug('Cleaning up worker')
-                BatchSystemSupport.workerCleanup(cleanupInfo)
+        # Reproduce child's exit code
+        exit_code = child.wait()
+        
     finally:
         logger.debug('Cleaning up resources')
         # TODO: Change resource system to use a shared resource directory for everyone.
-        # Then move this into the last-process-standing cleanup
+        # Then move this into worker cleanup somehow
         Resource.cleanSystem()
         logger.debug('Shutting down')
         sys.exit(exit_code)

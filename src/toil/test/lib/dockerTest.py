@@ -22,7 +22,6 @@ import docker
 from threading import Thread
 from docker.errors import ContainerError
 
-from toil.test import mkdir_p
 from toil.job import Job
 from toil.leader import FailedJobsException
 from toil.test import ToilTest, slow, needs_docker
@@ -77,8 +76,8 @@ class DockerTest(ToilTest):
         working_dir = os.path.join(self.tempDir, 'working')
         test_file = os.path.join(working_dir, 'test.txt')
 
-        mkdir_p(data_dir)
-        mkdir_p(working_dir)
+        os.makedirs(data_dir, exist_ok=True)
+        os.makedirs(working_dir, exist_ok=True)
 
         options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir,
                                                             'jobstore'))

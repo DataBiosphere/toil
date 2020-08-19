@@ -42,7 +42,6 @@ from toil import toilPackageDirPath, applianceSelf, ApplianceImageNotFound
 from toil import which
 from toil.lib.iterables import concat
 from toil.lib.memoize import memoize
-from toil.lib.misc import mkdir_p
 from toil.lib.threading import ExceptionalThread, cpu_count
 from toil.provisioners.aws import runningOnEC2
 from toil.version import distVersion
@@ -80,7 +79,7 @@ class ToilTest(unittest.TestCase):
         tempBaseDir = os.environ.get('TOIL_TEST_TEMP', None)
         if tempBaseDir is not None and not os.path.isabs(tempBaseDir):
             tempBaseDir = os.path.abspath(os.path.join(cls._projectRootPath(), tempBaseDir))
-            mkdir_p(tempBaseDir)
+            os.makedirs(tempBaseDir, exist_ok=True)
         cls._tempBaseDir = tempBaseDir
 
     @classmethod

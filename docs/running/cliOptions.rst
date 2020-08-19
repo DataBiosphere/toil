@@ -262,7 +262,7 @@ the logging module:
 
   --disableCaching      Disables caching in the file store. This flag must be
                         set to use a batch system that does not support
-                        caching such as Grid Engine, Parasol, LSF, or Slurm.
+                        cleanup, such as Parasol.
   --disableChaining     Disables chaining of jobs (chaining uses one job's
                         resource allocation for its successor job if
                         possible).
