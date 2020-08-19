@@ -20,18 +20,12 @@ import logging
 
 from contextlib import contextmanager
 from requests.exceptions import HTTPError
-from http.client import BadStatusLine
 from typing import List, Set, Optional, Tuple, Callable
 
 log = logging.getLogger(__name__)
 
 
-# noinspection PyUnusedLocal
-def never(exception):
-    return False
-
-
-def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=never):
+def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
     """
     Retry an operation while the failure matches a given predicate and until a given timeout
     expires, waiting a given amount of time in between attempts. This function is a generator
@@ -131,7 +125,7 @@ def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=never):
         yield single_attempt( )
 
 
-def better_retry(intervals: Optional[List[float, int]] = None,
+def better_retry(intervals: Optional[List] = None,
                  infinite_retries: Optional[bool] = None,
                  errors: Optional[Set] = None,
                  error_codes: Optional[Set] = None,
@@ -168,12 +162,14 @@ def better_retry(intervals: Optional[List[float, int]] = None,
     intervals = intervals if intervals else [1, 1, 2, 4, 8]
     errors = errors if errors else {HTTPError} if error_codes else {}
     error_codes = error_codes if error_codes else {}
+
     if log_message:
         post_message_function = log_message[0]
         message = log_message[1]
 
     if error_codes:
         errors.add(HTTPError)
+
     if error_msg_must_include:
         for error in error_msg_must_include:
             errors.add(error)
