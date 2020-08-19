@@ -915,6 +915,10 @@ class Toil(object):
         elif name == 'aws':
             from toil.jobStores.aws.jobStore import AWSJobStore
             return AWSJobStore(rest)
+        elif name == 'aws3':
+            # [!!] Experimental boto3 implementation
+            from toil.jobStores.aws3.jobStore import AWSJobStore
+            return AWSJobStore(rest)
         elif name == 'google':
             from toil.jobStores.googleJobStore import GoogleJobStore
             return GoogleJobStore(rest)
