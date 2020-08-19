@@ -743,29 +743,23 @@ class AWSJobStore(AbstractJobStore):
                 try:
                     bucket = s3_boto3_resource.Bucket(bucket_name)
                     s3_boto3_resource.meta.client.head_bucket(Bucket=bucket_name)
-
                 except botocore.exceptions.ClientError as e:
-
                     errorCode = e.response['Error']['Code']
                     if errorCode == '404' or errorCode == 'NoSuchBucket':
                         bucketExisted = False
                         log.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
                             log.debug("Creating bucket '%s'.", bucket_name)
-                            print("Creating bucket '%s'.", bucket_name)
-
                             location = region_to_bucket_location(self.region)
                             bucket = s3_boto3_resource.create_bucket(
                                 Bucket=bucket_name,
                                 CreateBucketConfiguration={'LocationConstraint': location})
-
                             # It is possible for create_bucket to return but
                             # for an immediate request for the bucket region to
                             # produce an S3ResponseError with code
                             # NoSuchBucket. We let that kick us back up to the
                             # main retry loop.
                             assert self.__getBucketRegion(bucket_name) == self.region
-                            pass
                         elif block:
                             raise
                         else:
@@ -1551,18 +1545,25 @@ class AWSJobStore(AbstractJobStore):
 
     def _getBucketVersioningFromName(self, bucket_name):
         """
+        Get the Versioning property from a bucket name with boto3.
+
+        Similar to _getBucketVersioning with the minor difference that BucketVersioning::status
+        returns the status directly (not in a dictionary). For newly created buckets the
+        status is None instead of an empty dict.
+
         :param bucket_name: str
         """
-        # TODO: check this behavior
         for attempt in retry_s3():
             with attempt:
-                versioning = s3_boto3_resource.BucketVersioning(bucket_name)
-                return versioning.status is not None if versioning else False
+                status = s3_boto3_resource.BucketVersioning(bucket_name).status
+                # status can be 'Enabled', 'Suspended', or None (Disabled)
+                return self.versionings[status] if status else False
 
     def __getBucketRegion(self, bucket_name):
         """
         :param bucket_name: str
         """
+        # TODO: retry_s3() should be updated with boto3 exceptions
         for attempt in retry_s3():
             with attempt:
                 region = bucket_location_to_region(
