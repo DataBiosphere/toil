@@ -32,12 +32,11 @@ import toil.test.sort.sort
 import subprocess
 from toil import resolveEntryPoint
 from toil.job import Job
-from toil.utils.toilStatus import ToilStatus
+from toil.utils.toilStatus import ToilStatus, getStatus
 from toil.lib.bioio import getTempFile, system
 from toil.test import ToilTest, needs_aws_ec2, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
-from toil.utils.toilStatus import getStatus
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
 from toil.version import python
