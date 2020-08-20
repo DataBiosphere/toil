@@ -47,6 +47,110 @@ class ErrorCondition:
         self.retry_on_this_condition = retry_on_this_condition
 
 
+def retry_decorator(intervals: Optional[List] = None,
+                    infinite_retries: bool = False,
+                    errors: Optional[Set] = None,
+                    error_conditions: Optional[List[ErrorCondition]] = None,
+                    log_message: Optional[Tuple[Callable, str]] = None):
+    """
+    Retry a function if it fails with any Exception defined in the "errors" set, every x seconds,
+    where x is defined by a list of numbers (ints or floats) in "intervals".  Also accepts ErrorCondition events
+    for more detailed retry attempts.
+
+    :param Optional[List] intervals: A list of times in seconds we keep retrying until returning failure.
+        Defaults to retrying with the following exponential back-off before failing:
+            1s, 1s, 2s, 4s, 8s
+    :param infinite_retries: If this is True, reset the intervals when they run out.  Defaults to: False.
+    :param errors: A set of exceptions to catch and retry on.
+    :param error_conditions: A list of ErrorCondition objects describing more detailed error event conditions.
+        An ErrorCondition specifies:
+            - Exception (required)
+            - Error codes that must match to be retried (optional; defaults to not checking)
+            - A string that must be in the error message to be retried (optional; defaults to not checking)
+            - A bool that can be set to False to always error on this condition.
+
+    :param log_message: Optional tuple of ("log/print function()", "message string") that will precede each attempt.
+    :return: The result of the wrapped function or raise.
+    """
+    # set mutable defaults
+    intervals = intervals if intervals else [1, 1, 2, 4, 8]
+    errors = errors if errors else set()
+    error_conditions = error_conditions if error_conditions else list()
+
+    if log_message:
+        post_message_function = log_message[0]
+        message = log_message[1]
+
+    for retriable_error in error_conditions:
+        if retriable_error.retry_on_this_condition:
+            errors.add(retriable_error.error)
+
+    def decorate(func):
+        @functools.wraps(func)
+        def call(*args, **kwargs):
+            intervals_remaining = copy.deepcopy(intervals)
+            while True:
+                try:
+                    if log_message:
+                        post_message_function(message)
+                    return func(*args, **kwargs)
+
+                except tuple(errors) as e:
+                    if not intervals_remaining:
+                        if infinite_retries:
+                            intervals_remaining = copy.deepcopy(intervals)
+                        else:
+                            raise
+
+                    if error_conditions:
+                        if not error_meets_conditions(e, error_conditions):
+                            raise
+
+                    interval = intervals_remaining.pop(0)
+                    log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
+                    time.sleep(interval)
+        return call
+    return decorate
+
+
+def return_status_code(e):
+    try:
+        return e.response.status_code  # expected from HTTPError
+    except:
+        return e.status
+
+
+def meets_error_message_condition(e: Exception, error_message: Optional[str]):
+    if error_message:
+        return error_message in str(e)
+    else:  # there is no error message, so the user is not expecting it to be present
+        return True
+
+
+def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
+    if error_codes:
+        status_code = return_status_code(e)
+        return status_code in error_codes
+    else:  # there are no error codes, so the user is not expecting the status to match
+        return True
+
+
+def error_meets_conditions(e, error_conditions):
+    condition_met = False
+    for error in error_conditions:
+        if isinstance(e, error):
+            error_message_condition_met = meets_error_message_condition(e, error.error_message_must_include)
+            error_code_condition_met = meets_error_code_condition(e, error.error_codes)
+            if error_message_condition_met and error_code_condition_met:
+                if not error.retry_on_this_condition:
+                    return False
+                condition_met = True
+    return condition_met
+
+
+# TODO: Replace the use of this with retry_decorator
+#  The aws provisioner and jobstore need a large refactoring to be boto3 compliant, so this is
+#  still used there to avoid the duplication of future work
 def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
     """
     Retry an operation while the failure matches a given predicate and until a given timeout
@@ -145,105 +249,3 @@ def retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
             yield
 
         yield single_attempt( )
-
-
-def retry_decorator(intervals: Optional[List] = None,
-                    infinite_retries: bool = False,
-                    errors: Optional[Set] = None,
-                    error_conditions: Optional[List[ErrorCondition]] = None,
-                    log_message: Optional[Tuple[Callable, str]] = None):
-    """
-    Retry a function if it fails with any Exception defined in the "errors" set, every x seconds,
-    where x is defined by a list of floats in "intervals".  Also accepts ErrorCondition events for
-    more detailed retry attempts.
-
-    :param Optional[List[float, int]] intervals: A list of times in seconds we keep retrying until
-        returning failure.
-        Defaults to retrying with the following exponential backoff before failing:
-            1s, 1s, 2s, 4s, 8s
-    :param infinite_retries: If this is True, reset the intervals when they run out.
-    :param errors: Exceptions to catch and retry on.  Defaults to: {HTTPError} if error_codes else {}.
-    :param error_conditions: A list of ErrorCondition objects describing more detailed error event conditions.
-        An ErrorCondition specifies:
-            - Exception (required)
-            - Error codes that must match to be retried (optional; defaults to not checking)
-            - A string that must be in the error message to be retried (optional; defaults to not checking)
-            - A bool that can be set to False to always error on this condition.
-
-    :param log_message: A tuple of ("log/print function()", "message string") that will precede each attempt.
-    :return: The result of the wrapped function or raise.
-    """
-    # set mutable defaults
-    intervals = intervals if intervals else [1, 1, 2, 4, 8]
-    errors = errors if errors else set()
-    error_conditions = error_conditions if error_conditions else list()
-
-    if log_message:
-        post_message_function = log_message[0]
-        message = log_message[1]
-
-    for retriable_error in error_conditions:
-        if retriable_error.retry_on_this_condition:
-            errors.add(retriable_error.error)
-
-    def decorate(func):
-        @functools.wraps(func)
-        def call(*args, **kwargs):
-            intervals_remaining = copy.deepcopy(intervals)
-            while True:
-                try:
-                    if log_message:
-                        post_message_function(message)
-                    return func(*args, **kwargs)
-
-                except tuple(errors) as e:
-                    if not intervals_remaining:
-                        if infinite_retries:
-                            intervals_remaining = copy.deepcopy(intervals)
-                        else:
-                            raise
-
-                    if error_conditions:
-                        if not error_meets_conditions(e, error_conditions):
-                            raise
-
-                    interval = intervals_remaining.pop(0)
-                    log.debug(f"Error in {func}: {e}. Retrying after {interval} s...")
-                    time.sleep(interval)
-        return call
-    return decorate
-
-
-def return_status_code(e):
-    try:
-        return e.response.status_code  # expected from HTTPError
-    except:
-        return e.status
-
-
-def meets_error_message_condition(e: Exception, error_message: Optional[str]):
-    if error_message:
-        return error_message in str(e)
-    else:  # there is no error message, so the user is not expecting it to be present
-        return True
-
-
-def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
-    if error_codes:
-        status_code = return_status_code(e)
-        return status_code in error_codes
-    else:  # there are no error codes, so the user is not expecting the status to match
-        return True
-
-
-def error_meets_conditions(e, error_conditions):
-    condition_met = False
-    for error in error_conditions:
-        if isinstance(e, error):
-            error_message_condition_met = meets_error_message_condition(e, error.error_message_must_include)
-            error_code_condition_met = meets_error_code_condition(e, error.error_codes)
-            if error_message_condition_met and error_code_condition_met:
-                condition_met = True
-                if not error.retry_on_this_condition:
-                    return False
-    return condition_met

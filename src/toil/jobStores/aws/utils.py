@@ -26,7 +26,7 @@ from six import iteritems
 
 from toil.lib.exceptions import panic
 from toil.lib.compatibility import compat_oldstr, compat_bytes, USING_PYTHON2
-from toil.lib.retry import retry, retry_decorator
+from toil.lib.retry import retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
