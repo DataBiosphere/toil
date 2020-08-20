@@ -124,19 +124,14 @@ def main():
                 nodeTypes.append(nodeTypeStr)
                 numNodes.append(int(num))
 
-    # set owner (default to keyPairName if not given)
-    owner = 'toil'
-    if config.owner:
-        owner = config.owner
-    elif config.keyPairName:
-        owner = config.keyPairName
+    owner = config.owner or config.keyPairName or 'toil'
 
     # Check to see if the user specified a zone. If not, see if one is stored in an environment variable.
     config.zone = config.zone or getZoneFromEnv(config.provisioner)
 
     if not config.zone:
         raise RuntimeError('Please provide a value for --zone or set a default in the TOIL_' +
-                           config.provisioner.upper() + '_ZONE enviroment variable.')
+                           config.provisioner.upper() + '_ZONE environment variable.')
 
     cluster = clusterFactory(provisioner=config.provisioner,
                              clusterName=config.clusterName,
@@ -157,5 +152,5 @@ def main():
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=False)
     for nodeType, workers, spotBid in zip(preemptableNodeTypes, numPreemptableNodes, spotBids):
         cluster.addNodes(nodeType=nodeType, numNodes=workers, preemptable=True,
-                                           spotBid=spotBid)
+                         spotBid=spotBid)
 

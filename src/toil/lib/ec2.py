@@ -253,3 +253,41 @@ def create_ondemand_instances(ec2, image_id, spec, num_instances=1):
                                      min_count=num_instances,
                                      max_count=num_instances,
                                      **spec).instances
+
+
+# TODO: Implement retry_decorator here
+# [5, 5, 10, 20, 20, 20, 20] I don't think we need to retry for an hour... ???
+# InvalidGroup.NotFound
+# OR
+# 'invalid iam instance profile' in m.lower() or 'no associated iam roles' in m.lower()
+def create_instances(ec2_client,
+                     image_id,
+                     num_instances=1,
+                     key_name=None,
+                     security_group_ids=None,
+                     instance_type=None,
+                     user_data=None,
+                     block_device_map=None,
+                     instance_profile_arn=None,
+                     placement=None,
+                     subnet_id=None):
+    """Replaces create_ondemand_instances.  Uses boto3."""
+    log.info('Creating %s instance(s) ... ', instance_type)
+    for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
+        with attempt:
+            request = {'ImageId': image_id,
+                       'MinCount': num_instances,
+                       'MaxCount': num_instances,
+                       'KeyName': key_name,
+                       'SecurityGroupIds': security_group_ids,
+                       'InstanceType': instance_type,
+                       'UserData': user_data,
+                       'Placement': placement,
+                       'BlockDeviceMappings': block_device_map,
+                       'IamInstanceProfile': instance_profile_arn,
+                       'SubnetId': subnet_id}
+            actual_request = dict()
+            for key in request:
+                if request[key]:
+                    actual_request[key] = request[key]
+            return ec2_client.create_instances(**actual_request)
