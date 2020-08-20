@@ -302,4 +302,5 @@ def create_instances(ec2: ServiceResource,
             for key in request:
                 if request[key]:
                     actual_request[key] = request[key]
+
             return ec2.create_instances(**actual_request)

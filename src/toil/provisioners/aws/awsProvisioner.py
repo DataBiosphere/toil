@@ -149,10 +149,18 @@ class AWSProvisioner(AbstractProvisioner):
                       awsEc2ProfileArn: str,
                       awsEc2ExtraSecurityGroupIds: list):
         """
-        In addition to the parameters inherited from the abstractProvisioner,
-        the AWS launchCluster takes the following parameters:
-        keyName: The key used to communicate with instances
-        vpcSubnet: A subnet (optional).
+        Starts a single leader node and populates this class with the leader's metadata.
+
+        :param leaderNodeType: An AWS instance type, like "t2.medium", for example.
+        :param leaderStorage: An integer number of gigabytes to provide the leader instance with.
+        :param owner: Resources will be tagged with this owner string.
+        :param keyName: The ssh key to use to access the leader node.
+        :param botoPath: The path to the boto credentials directory.
+        :param userTags: Optionally provided user tags to put on the leader.
+        :param vpcSubnet: Optionally specify the VPC subnet.
+        :param awsEc2ProfileArn: Optionally provide the profile ARN.
+        :param awsEc2ExtraSecurityGroupIds: Optionally provide additional security group IDs.
+        :return: None
         """
         self._keyName = keyName
         self._vpcSubnet = vpcSubnet

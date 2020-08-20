@@ -1,4 +1,4 @@
-# Copyright (C) 2015 UCSC Computational Genomics Lab
+# Copyright (C) 2015-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """
-Launches a toil leader instance with the specified provisioner
+Launches a toil leader instance with the specified provisioner.
 """
 import logging
 from toil.lib.bioio import parseBasicOptions, getBasicOptionParser
@@ -93,7 +93,7 @@ def main():
                              "with its name equal to the cluster name will always be created, thus ensure that "
                              "the extra security groups do not have the same name as the cluster name.")
     config = parseBasicOptions(parser)
-    tagsDict = None if config.tags is None else createTagsDict(config.tags)
+    tags = createTagsDict(config.tags) if config.tags else dict()
     checkValidNodeTypes(config.provisioner, config.nodeTypes)
     checkValidNodeTypes(config.provisioner, config.leaderNodeType)
 
@@ -143,7 +143,7 @@ def main():
                           owner=owner,
                           keyName=config.keyPairName,
                           botoPath=config.botoPath,
-                          userTags=tagsDict,
+                          userTags=tags,
                           vpcSubnet=config.vpcSubnet,
                           awsEc2ProfileArn=config.awsEc2ProfileArn,
                           awsEc2ExtraSecurityGroupIds=config.awsEc2ExtraSecurityGroupIds)
