@@ -802,8 +802,7 @@ class Toil(object):
                         self.config.clean == "always"):
 
                 try:
-                    path = self._jobStore.sharedFilesDir + '/succeeded.log'
-                    if os.path.isfile(path):                      
+                    with self._jobStore.readSharedFileStream('succeeded.log') as successful:                 
                         self._jobStore.destroy()
                         logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
