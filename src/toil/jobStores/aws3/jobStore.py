@@ -490,6 +490,8 @@ class AWSJobStore(AbstractJobStore):
     @staticmethod
     def _getKeyForUrl(url, existing=None):
         """
+        Deprecated by toil.jobStores.aws3.AWSJobStore._getObjectForUrl.
+
         Extracts a key from a given s3:// URL. On return, but not on exceptions, this method
         leaks an S3Connection object. The caller is responsible to close that by calling
         key.bucket.connection.close().
@@ -538,6 +540,55 @@ class AWSJobStore(AbstractJobStore):
                 s3.close()
         else:
             return key
+
+    @staticmethod
+    def _getObjectForUrl(url, existing=None):
+        """
+        Extracts a key (object) from a given s3:// URL.
+
+        :param bool existing: If True, key is expected to exist. If False, key is expected not to
+        exists and it will be created. If None, the key will be created if it doesn't exist.
+
+        :rtype: S3KeyWrapper
+        """
+        # In boto3, S3.Object represents an S3 Object, whereas
+        # in boto2, boto.s3.key.Key represents a key (object) in an S3 bucket
+        # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#object
+        # http://boto.cloudhackers.com/en/latest/ref/s3.html#module-boto.s3.key
+        keyName = url.path[1:]
+        bucketName = url.netloc
+
+        # Get the bucket's region to avoid a redirect per request
+        region = AWSJobStore.__getBucketRegion(bucketName)
+
+        s3 = boto3_session.resource('s3', region_name=region)
+        obj = s3.Object(bucketName, keyName)
+        objExists = True
+        try:
+            obj.load()
+        except botocore.exceptions.ClientError as e:
+            if e.response['Error']['Code'] == '404':
+                objExists = False
+            else:
+                raise
+        if existing is True:
+            if not objExists:
+                raise RuntimeError("Key '%s' does not exist in bucket '%s'."
+                                   % (keyName, bucketName))
+        elif existing is False:
+            if objExists:
+                raise RuntimeError("Key '%s' exists in bucket '%s'."
+                                   % (keyName, bucketName))
+        elif existing is None:
+            pass
+        else:
+            assert False
+        if not objExists:
+            obj.put()  # write an empty file
+        # return obj
+        # Use a wrapper until all usages are converted to S3.Object syntax
+        from toil.jobStores.aws3.utils import S3KeyWrapper
+        return S3KeyWrapper(obj)
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
@@ -1559,7 +1610,8 @@ class AWSJobStore(AbstractJobStore):
                 # status can be 'Enabled', 'Suspended', or None (Disabled)
                 return self.versionings[status] if status else False
 
-    def __getBucketRegion(self, bucket_name):
+    @staticmethod
+    def __getBucketRegion(bucket_name):
         """
         :param bucket_name: str
         """
