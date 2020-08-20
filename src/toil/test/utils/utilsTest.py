@@ -37,6 +37,7 @@ from toil.lib.bioio import getTempFile, system
 from toil.test import ToilTest, needs_aws_ec2, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
+from toil.utils.toilStatus import getStatus
 from toil.common import Toil, Config
 from toil.provisioners import clusterFactory
 from toil.version import python
@@ -361,9 +362,9 @@ class UtilsTest(ToilTest):
         """
         # --badWorker is set to force failure.
         wf = subprocess.Popen(self.sort_workflow_cmd + ['--badWorker=1'])
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=getStatus)
         wf.wait()
-        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
+        self.check_status('ERROR', status_fn=getStatus)
 
     @needs_cwl
     @needs_docker
@@ -373,9 +374,9 @@ class UtilsTest(ToilTest):
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never', '--badWorker=1',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
         wf = subprocess.Popen(cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=getStatus)
         wf.wait()
-        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
+        self.check_status('ERROR', status_fn=getStatus)
 
     @needs_cwl
     @needs_docker
@@ -384,9 +385,9 @@ class UtilsTest(ToilTest):
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
         wf = subprocess.Popen(cmd)
-        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        self.check_status('RUNNING', status_fn=getStatus)
         wf.wait()
-        self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
+        self.check_status('COMPLETED', status_fn=getStatus)
 
     @needs_cwl
     @patch('builtins.print')
