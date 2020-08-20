@@ -138,7 +138,7 @@ def meets_error_code_condition(e: Exception, error_codes: Optional[List[int]]):
 def error_meets_conditions(e, error_conditions):
     condition_met = False
     for error in error_conditions:
-        if isinstance(e, error):
+        if isinstance(e, error.error):
             error_message_condition_met = meets_error_message_condition(e, error.error_message_must_include)
             error_code_condition_met = meets_error_code_condition(e, error.error_codes)
             if error_message_condition_met and error_code_condition_met:
