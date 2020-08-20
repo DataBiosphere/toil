@@ -354,7 +354,7 @@ class UtilsTest(ToilTest):
     @travis_test
     def testGetStatusFailedToilWF(self):
         """
-        Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
+        Test that getStatus() behaves as expected with a failing Toil workflow.
 
         While this workflow could be called by importing and evoking its main function, doing so would remove the
         opportunity to test the 'RUNNING' functionality of getStatus().
@@ -368,7 +368,7 @@ class UtilsTest(ToilTest):
     @needs_cwl
     @needs_docker
     def testGetStatusFailedCWLWF(self):
-        """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
+        """Test that getStatus() behaves as expected with a failing CWL workflow."""
         # --badWorker is set to force failure.
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never', '--badWorker=1',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
@@ -380,7 +380,7 @@ class UtilsTest(ToilTest):
     @needs_cwl
     @needs_docker
     def testGetStatusSuccessfulCWLWF(self):
-        """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
+        """Test that getStatus() behaves as expected with a successful CWL workflow."""
         cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
         wf = subprocess.Popen(cmd)
