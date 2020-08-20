@@ -14,6 +14,56 @@
 
 from __future__ import absolute_import
 
+from toil.jobStores.aws.utils import fileSizeAndTime
+from toil.lib.compatibility import compat_bytes
+
+
+def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
+    """
+    Uploads a file to s3, using multipart uploading if applicable
+
+    :param str localFilePath: Path of the file to upload to s3
+    :param int partSize: max size of each part in the multipart upload, in bytes
+    :param S3.Bucket bucket: the s3 bucket to upload to. *Note this is a boto3 Bucket instance.*
+    :param str fileID: the name of the file to upload to
+    :param headers: http headers to use when uploading - generally used for encryption purposes
+    :return: version of the newly uploaded file
+    """
+    sseAlgorithm = headers and headers.get('x-amz-server-side-encryption-customer-algorithm')
+    sseKey = headers and headers.get('x-amz-server-side-encryption-customer-key')
+
+    # see toil.jobStores.aws.utils.copyKeyMultipart
+    args = {}
+    if sseAlgorithm:
+        args.update({'SSECustomerAlgorithm': sseAlgorithm, 'SSECustomerKey': sseKey})
+
+    file_size, file_time = fileSizeAndTime(localFilePath)
+    if file_size <= partSize:
+        obj = bucket.Object(key=compat_bytes(fileID))
+        # for attempt in retry_s3():
+        #     with attempt:
+        # if necessary we can also use obj.upload_file for multipart upload
+        obj.put(Body=open(localFilePath, 'rb'), **args)
+        version = obj.version_id
+    else:
+        with open(localFilePath, 'rb') as f:
+            # version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
+            version = ''
+            # [!!] TODO: To be implemented
+            pass
+
+    size = bucket.head_object(compat_bytes(fileID), VersionId=version)['ContentLength']
+    assert size == file_size
+
+    # Make reasonably sure that the file wasn't touched during the upload
+    assert fileSizeAndTime(localFilePath) == (file_size, file_time)
+
+    return version
+
+
+def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSize=50 << 20):
+    pass
+
 
 class S3KeyWrapper:
     """

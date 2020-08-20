@@ -68,7 +68,9 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retryable_s3_errors,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
-                                      uploadFromPath, chunkedFileUpload, fileSizeAndTime)
+                                      chunkedFileUpload, fileSizeAndTime)
+from toil.jobStores.aws3.utils import uploadFromPath
+
 from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
@@ -147,6 +149,7 @@ class AWSJobStore(AbstractJobStore):
         self.jobsDomain = None
         self.filesDomain = None
         self.filesBucket = None
+        self.boto3FilesBucket = None
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
 
@@ -451,41 +454,36 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def getSize(cls, url):
-        key = cls._getKeyForUrl(url, existing=True)
-        try:
-            return key.size
-        finally:
-            key.bucket.connection.close()
+        # [!!] TODO: needs testing
+        return cls._getObjectForUrl(url, existing=True).size
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        srcKey = cls._getKeyForUrl(url, existing=True)
-        try:
-            srcKey.get_contents_to_file(writable)
-        finally:
-            srcKey.bucket.connection.close()
-        return srcKey.size
+        # [!!] TODO: needs testing
+        srcObj = cls._getObjectForUrl(url, existing=True)
+        srcObj.download_fileobj(writable)
+        return srcObj.size
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        dstKey = cls._getKeyForUrl(url)
+        # [!!] TODO: needs testing
+        dstObj = cls._getObjectForUrl(url)
+        canDetermineSize = True
+        fileSize = 0
         try:
-            canDetermineSize = True
-            try:
-                readable.seek(0, 2)  # go to the 0th byte from the end of the file, indicated by '2'
-                fileSize = readable.tell()  # tells the current position in file - in this case == size of file
-                readable.seek(0)  # go to the 0th byte from the start of the file
-            except:
-                canDetermineSize = False
-            if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
-                log.debug("Uploading %s with size %s, will use multipart uploading", dstKey.name, fileSize)
-                chunkedFileUpload(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
-            else:
-                # we either don't know the size, or the size is small
-                log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstKey.name)
-                dstKey.set_contents_from_string(readable.read())
-        finally:
-            dstKey.bucket.connection.close()
+            readable.seek(0, 2)  # go to the 0th byte from the end of the file, indicated by '2'
+            fileSize = readable.tell()  # tells the current position in file - in this case == size of file
+            readable.seek(0)  # go to the 0th byte from the start of the file
+        except:
+            canDetermineSize = False
+        if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
+            log.debug("Uploading %s with size %s, will use multipart uploading", dstObj.key, fileSize)
+            # chunkedFileUpload(readable=readable, bucket=dstObj.Bucket(), fileID=dstObj.key, file_size=fileSize)
+            raise NotImplementedError()
+        else:
+            # we either don't know the size, or the size is small
+            log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstObj.key)
+            dstObj.put(Body=readable.read())
 
     @staticmethod
     def _getKeyForUrl(url, existing=None):
@@ -573,12 +571,10 @@ class AWSJobStore(AbstractJobStore):
                 raise
         if existing is True:
             if not objExists:
-                raise RuntimeError("Key '%s' does not exist in bucket '%s'."
-                                   % (keyName, bucketName))
+                raise RuntimeError("Key '%s' does not exist in bucket '%s'." % (keyName, bucketName))
         elif existing is False:
             if objExists:
-                raise RuntimeError("Key '%s' exists in bucket '%s'."
-                                   % (keyName, bucketName))
+                raise RuntimeError("Key '%s' exists in bucket '%s'." % (keyName, bucketName))
         elif existing is None:
             pass
         else:
@@ -855,6 +851,7 @@ class AWSJobStore(AbstractJobStore):
 
                 # return bucket
                 # In the meantime still return the Bucket instance from boto2
+                self.boto3FilesBucket = bucket
                 return self.s3.get_bucket(bucket_name, validate=True)
 
     def _bindDomain(self, domain_name, create=False, block=True):
@@ -1134,6 +1131,7 @@ class AWSJobStore(AbstractJobStore):
                         with attempt:
                             self.outer.filesBucket.delete_key(compat_bytes(self.fileID),
                                                               version_id=self.previousVersion)
+                    # self.outer.boto3FilesBucket.Object(compat_bytes(self.fileID)).Version(self.previousVersion).delete()
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:
                     residualChunks = range(numNewContentChunks, self._numContentChunks)
@@ -1159,8 +1157,12 @@ class AWSJobStore(AbstractJobStore):
             else:
                 headers = self._s3EncryptionHeaders()
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
+                # self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
+                #                               bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
+                #                               headers=headers)
+                # TODO: needs testing. This is using the aws3/utils implementation
                 self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
-                                              bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
+                                              bucket=self.outer.boto3FilesBucket, fileID=compat_bytes(self.fileID),
                                               headers=headers)
 
         def _start_checksum(self, to_match=None, algorithm='sha1'):
