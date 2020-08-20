@@ -11,9 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from functools import wraps
-
-from builtins import range
 import os
 import time
 import string
@@ -21,13 +18,15 @@ import json
 import boto3
 import logging
 import urllib.request
+import boto.ec2
 
 from six import iteritems, text_type
-from toil.lib.memoize import memoize
-import boto.ec2
+from functools import wraps
 from boto.ec2.blockdevicemapping import BlockDeviceMapping, BlockDeviceType
 from boto.exception import BotoServerError, EC2ResponseError
 from boto.utils import get_instance_metadata
+
+from toil.lib.memoize import memoize
 from toil.lib.ec2 import (a_short_time, create_ondemand_instances, create_instances,
                           create_spot_instances, wait_instances_running, wait_transition)
 from toil.lib.misc import truncExpBackoff
@@ -110,7 +109,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         # establish boto3 clients
         self.session = boto3.Session(region_name=zoneToRegion(zone))
-        self.ec2_client = self.session.resource('ec2')
+        self.ec2 = self.session.resource('ec2')
 
         if clusterName:
             self._buildContext()  # create connection (self._ctx)
@@ -178,7 +177,7 @@ class AWSProvisioner(AbstractProvisioner):
             # Spot-market provisioning requires bytes for user data.
             # We probably won't have a spot-market leader, but who knows!
             userData = userData.encode('utf-8')
-        instances = create_instances(self.ec2_client,
+        instances = create_instances(self.ec2,
                                      image_id=self._discoverAMI(),
                                      num_instances=1,
                                      key_name=self._keyName,

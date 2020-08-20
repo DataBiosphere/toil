@@ -1,5 +1,7 @@
 import logging
 import time
+
+from typing import Optional, List, Dict
 from collections import Iterator
 from operator import attrgetter
 from past.builtins import map
@@ -8,6 +10,7 @@ from toil.lib.retry import retry
 from boto.ec2.instance import Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
+from boto3.resources.base import ServiceResource
 
 a_short_time = 5
 a_long_time = 60 * 60
@@ -260,18 +263,25 @@ def create_ondemand_instances(ec2, image_id, spec, num_instances=1):
 # InvalidGroup.NotFound
 # OR
 # 'invalid iam instance profile' in m.lower() or 'no associated iam roles' in m.lower()
-def create_instances(ec2_client,
-                     image_id,
-                     num_instances=1,
-                     key_name=None,
-                     security_group_ids=None,
-                     instance_type=None,
-                     user_data=None,
-                     block_device_map=None,
-                     instance_profile_arn=None,
-                     placement=None,
-                     subnet_id=None):
-    """Replaces create_ondemand_instances.  Uses boto3."""
+def create_instances(ec2: ServiceResource,
+                     image_id: str,
+                     key_name: str,
+                     instance_type: str,
+                     num_instances: int = 1,
+                     security_group_ids: Optional[List] = None,
+                     user_data: Optional[bytes] = None,
+                     block_device_map: Optional[List[Dict]] = None,
+                     instance_profile_arn: Optional[str] = None,
+                     placement: Optional[Dict] = None,
+                     subnet_id: str = None):
+    """
+    Replaces create_ondemand_instances.  Uses boto3.
+
+    See "create_instances" (returns a list of ec2.Instance objects):
+      https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.ServiceResource.create_instances
+    Not to be confused with "run_instances" (same input args; returns a dictionary):
+      https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/ec2.html#EC2.Client.run_instances
+    """
     log.info('Creating %s instance(s) ... ', instance_type)
     for attempt in retry_ec2(retry_for=a_long_time, retry_while=inconsistencies_detected):
         with attempt:
@@ -286,8 +296,10 @@ def create_instances(ec2_client,
                        'BlockDeviceMappings': block_device_map,
                        'IamInstanceProfile': instance_profile_arn,
                        'SubnetId': subnet_id}
+
+            # remove empty args
             actual_request = dict()
             for key in request:
                 if request[key]:
                     actual_request[key] = request[key]
-            return ec2_client.create_instances(**actual_request)
+            return ec2.create_instances(**actual_request)
