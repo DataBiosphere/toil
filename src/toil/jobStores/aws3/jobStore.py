@@ -35,7 +35,8 @@ import hashlib
 import itertools
 import reprlib
 import urllib.parse
-import urllib.request, urllib.parse, urllib.error
+import urllib.request
+import urllib.error
 from io import BytesIO
 
 from toil.lib.memoize import strict_bool
@@ -44,7 +45,6 @@ from toil.lib.objects import InnerClass
 import boto3
 import boto.s3
 import boto.sdb
-from boto.exception import S3CreateError
 from boto.exception import SDBResponseError, S3ResponseError
 import botocore.session
 import botocore.credentials
@@ -149,7 +149,9 @@ class AWSJobStore(AbstractJobStore):
         self.jobsDomain = None
         self.filesDomain = None
         self.filesBucket = None
-        self.boto3FilesBucket = None
+        self.boto3FilesBucket = None  # to be renamed to filesBucket
+        self.s3_client = None
+        self.s3_resource = None
         self.db = self._connectSimpleDB()
         self.s3 = self._connectS3()
 
@@ -746,6 +748,9 @@ class AWSJobStore(AbstractJobStore):
         """
         :rtype: S3Connection
         """
+        self.s3_client = boto3_session.client('s3', region_name=self.region)
+        self.s3_resource = boto3_session.resource('s3', region_name=self.region)
+
         s3 = boto.s3.connect_to_region(self.region)
         if s3 is None:
             raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." % self.region)
@@ -788,8 +793,7 @@ class AWSJobStore(AbstractJobStore):
                 # migration from boto2
                 # see https://boto3.amazonaws.com/v1/documentation/api/latest/guide/migrations3.html#accessing-a-bucket
                 try:
-                    bucket = s3_boto3_resource.Bucket(bucket_name)
-                    s3_boto3_resource.meta.client.head_bucket(Bucket=bucket_name)
+                    self.s3_resource.meta.client.head_bucket(Bucket=bucket_name)
                 except botocore.exceptions.ClientError as e:
                     errorCode = e.response['Error']['Code']
                     if errorCode == '404' or errorCode == 'NoSuchBucket':
@@ -798,7 +802,7 @@ class AWSJobStore(AbstractJobStore):
                         if create:
                             log.debug("Creating bucket '%s'.", bucket_name)
                             location = region_to_bucket_location(self.region)
-                            bucket = s3_boto3_resource.create_bucket(
+                            self.s3_resource.create_bucket(
                                 Bucket=bucket_name,
                                 CreateBucketConfiguration={'LocationConstraint': location})
                             # It is possible for create_bucket to return but
@@ -823,10 +827,13 @@ class AWSJobStore(AbstractJobStore):
                     bucketRegion = self.__getBucketRegion(bucket_name)
                     if bucketRegion != self.region:
                         raise BucketLocationConflictException(bucketRegion)
+
+                bucket = self.s3_resource.Bucket(bucket_name)
+
                 if versioning and not bucketExisted:
                     # only call this method on bucket creation
                     # https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/s3.html#bucketversioning
-                    s3_boto3_resource.BucketVersioning(bucket_name).enable()
+                    bucket.Versioning().enable()
                     # Now wait until versioning is actually on. Some uploads
                     # would come back with no versions; maybe they were
                     # happening too fast and this setting isn't sufficiently
@@ -1129,9 +1136,9 @@ class AWSJobStore(AbstractJobStore):
                 if self.previousVersion and (self.previousVersion != self.version):
                     for attempt in retry_s3():
                         with attempt:
-                            self.outer.filesBucket.delete_key(compat_bytes(self.fileID),
-                                                              version_id=self.previousVersion)
-                    # self.outer.boto3FilesBucket.Object(compat_bytes(self.fileID)).Version(self.previousVersion).delete()
+                            self.outer.s3_client.delete_object(Bucket=self.outer.boto3FilesBucket.name,
+                                                               Key=compat_bytes(self.fileID),
+                                                               VersionId=self.previousVersion)
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:
                     residualChunks = range(numNewContentChunks, self._numContentChunks)
@@ -1289,7 +1296,7 @@ class AWSJobStore(AbstractJobStore):
                                         upload.cancel_upload()
                         else:
 
-                            while store._getBucketVersioning(store.filesBucket) != True:
+                            while not store._getBucketVersioning(store.filesBucket):
                                 log.warning(
                                     'Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
                                 time.sleep(1)
@@ -1515,6 +1522,7 @@ class AWSJobStore(AbstractJobStore):
                     yield readable
 
         def delete(self):
+            # [!!] TODO: needs testing
             store = self.outer
             if self.previousVersion is not None:
                 for attempt in retry_sdb():
@@ -1523,10 +1531,11 @@ class AWSJobStore(AbstractJobStore):
                             compat_bytes(self.fileID),
                             expected_values=['version', self.previousVersion])
                 if self.previousVersion:
-                    for attempt in retry_s3():
-                        with attempt:
-                            store.filesBucket.delete_key(key_name=compat_bytes(self.fileID),
-                                                         version_id=self.previousVersion)
+                    # for attempt in retry_s3():
+                    #     with attempt:
+                    store.s3_client.delete_object(Bucket=store.boto3FilesBucket.name,
+                                                  Key=compat_bytes(self.fileID),
+                                                  VersionId=self.previousVersion)
 
         def getSize(self):
             """
@@ -1606,23 +1615,22 @@ class AWSJobStore(AbstractJobStore):
 
         :param bucket_name: str
         """
-        for attempt in retry_s3():
-            with attempt:
-                status = s3_boto3_resource.BucketVersioning(bucket_name).status
-                # status can be 'Enabled', 'Suspended', or None (Disabled)
-                return self.versionings[status] if status else False
+        # for attempt in retry_s3():
+        #     with attempt:
+        status = self.s3_resource.BucketVersioning(bucket_name).status
+        return self.versionings[status] if status else False
 
     @staticmethod
     def __getBucketRegion(bucket_name):
         """
         :param bucket_name: str
         """
-        # TODO: retry_s3() should be updated with boto3 exceptions
-        for attempt in retry_s3():
-            with attempt:
-                region = bucket_location_to_region(
-                    s3_boto3_resource.meta.client.get_bucket_location(Bucket=bucket_name))['LocationConstraint']
-                return region
+        # for attempt in retry_s3():
+        #     with attempt:
+        region = bucket_location_to_region(
+            # use the 'global' resource here since it's not region specific
+            s3_boto3_resource.meta.client.get_bucket_location(Bucket=bucket_name))['LocationConstraint']
+        return region
 
     def destroy(self):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
@@ -1657,21 +1665,24 @@ class AWSJobStore(AbstractJobStore):
                     else:
                         raise
 
-    def _delete_bucket(self, b):
-        for attempt in retry_s3():
-            with attempt:
-                try:
-                    for upload in b.list_multipart_uploads():
-                        upload.cancel_upload()  # TODO: upgrade this portion to boto3
-                    bucket = s3_boto3_resource.Bucket(compat_bytes(b.name))
-                    bucket.objects.all().delete()
-                    bucket.object_versions.delete()
-                    bucket.delete()
-                except s3_boto3_resource.meta.client.exceptions.NoSuchBucket:
-                    pass
-                except S3ResponseError as e:
-                    if e.error_code != 'NoSuchBucket':
-                        raise
+    def _delete_bucket(self, bucket):
+        """
+        :param bucket: S3.Bucket
+        """
+        # for attempt in retry_s3():
+        #     with attempt:
+        try:
+            for upload in bucket.list_multipart_uploads():
+                upload.cancel_upload()  # TODO: upgrade this portion to boto3
+            bucket = self.s3_resource.Bucket(compat_bytes(bucket.name))
+            bucket.objects.all().delete()
+            bucket.object_versions.delete()
+            bucket.delete()
+        except self.s3_resource.meta.client.exceptions.NoSuchBucket:
+            pass
+        except S3ResponseError as e:
+            if e.error_code != 'NoSuchBucket':
+                raise
 
 
 aRepr = reprlib.Repr()
