@@ -74,12 +74,17 @@ from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformin
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
+
+def get_boto3_session():
+    botocore_session = botocore.session.get_session()
+    botocore_session.get_component('credential_provider').get_provider(
+        'assume-role').cache = botocore.credentials.JSONFileCache()
+    return boto3.Session(botocore_session=botocore_session)
+
+
 # Make sure to use credential caching when talking to Amazon via boto3
 # See https://github.com/boto/botocore/pull/1338/
-botocore_session = botocore.session.get_session()
-botocore_session.get_component('credential_provider').get_provider(
-    'assume-role').cache = botocore.credentials.JSONFileCache()
-boto3_session = boto3.Session(botocore_session=botocore_session)
+boto3_session = get_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
 log = logging.getLogger(__name__)
@@ -503,7 +508,7 @@ class AWSJobStore(AbstractJobStore):
         # Get the bucket's region to avoid a redirect per request
         region = AWSJobStore.__getBucketRegion(bucketName)
 
-        s3 = boto3_session.resource('s3', region_name=region)
+        s3 = get_boto3_session().resource('s3', region_name=region)
         obj = s3.Object(bucketName, keyName)
         objExists = True
         try:
@@ -700,7 +705,7 @@ class AWSJobStore(AbstractJobStore):
             raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." % self.region)
         s3.close()
 
-        return boto3_session.resource('s3', region_name=self.region)
+        return get_boto3_session().resource('s3', region_name=self.region)
 
     def _bindBucket(self, bucket_name, create=False, block=True, versioning=False,
                     check_versioning_consistency=True):
@@ -1094,8 +1099,7 @@ class AWSJobStore(AbstractJobStore):
             else:
                 args = self._s3EncryptionHeaders()
                 # Create a new Resource in case it needs to be on its own thread
-                session = boto3.Session(botocore_session=botocore_session)
-                resource = session.resource('s3', region_name=self.outer.region)
+                resource = get_boto3_session().resource('s3', region_name=self.outer.region)
 
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
                 self.version = uploadFromPath(localFilePath, resource=resource,
@@ -1337,7 +1341,7 @@ class AWSJobStore(AbstractJobStore):
                 self.content = srcObj.get()['Body'].read().decode("utf-8")
             else:
                 # Create a new Resource in case it needs to be on its own thread
-                resource = boto3.Session(botocore_session=botocore_session).resource('s3')
+                resource = get_boto3_session().resource('s3')
                 self.version = copyKeyMultipart(
                     resource, srcBucketName=compat_plain(srcObj.bucket_name),
                     srcKeyName=compat_plain(srcObj.key), srcKeyVersion=compat_plain(srcObj.version_id),
@@ -1354,7 +1358,7 @@ class AWSJobStore(AbstractJobStore):
                 dstObj.put(Body=self.content)
             elif self.version:
                 # Create a new Resource in case it needs to be on its own thread
-                resource = boto3.Session(botocore_session=botocore_session).resource('s3')
+                resource = get_boto3_session().resource('s3')
 
                 srcObj = self.outer.s3_client.head_object(Bucket=self.outer.filesBucket.name,
                                                           Key=compat_bytes(self.fileID), **self._s3EncryptionArgs())
@@ -1603,7 +1607,7 @@ class AWSJobStore(AbstractJobStore):
             bucket.objects.all().delete()
             bucket.object_versions.delete()
             bucket.delete()
-        except self.s3_boto3_client.exceptions.NoSuchBucket:
+        except s3_boto3_client.exceptions.NoSuchBucket:
             pass
         except botocore.exceptions.ClientError as error:
             if error.response['Error']['Code'] != 'NoSuchBucket':
