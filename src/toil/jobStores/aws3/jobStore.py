@@ -1265,22 +1265,28 @@ class AWSJobStore(AbstractJobStore):
                         hasher = info._start_checksum()
                         info._update_checksum(hasher, buf)
 
-                        headers = info._s3EncryptionHeaders()
-                        for attempt in retry_s3():
-                            with attempt:
-                                log.debug('Starting multipart upload')
-                                upload = store.filesBucket.initiate_multipart_upload(
-                                    key_name=compat_bytes(info.fileID),
-                                    headers=headers)
+                        # for attempt in retry_s3():
+                        #     with attempt:
+                        log.debug('Starting multipart upload')
+                        client = store.s3_client
+                        bucket_name = store.boto3FilesBucket.name
+                        args = info._s3EncryptionArgs()
+
+                        upload = client.create_multipart_upload(Bucket=bucket_name,
+                                                                Key=compat_bytes(info.fileID), **args)
+                        uploadId = upload['UploadId']
+                        parts = []
+
                         try:
                             for part_num in itertools.count():
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
-                                        upload.upload_part_from_file(fp=BytesIO(buf),
-                                                                     # part numbers are 1-based
-                                                                     part_num=part_num + 1,
-                                                                     headers=headers)
+                                # for attempt in retry_s3():
+                                #     with attempt:
+                                log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
+                                part = client.upload_part(Bucket=bucket_name, Key=compat_bytes(info.fileID),
+                                                          PartNumber=part_num + 1, UploadId=uploadId,
+                                                          Body=BytesIO(buf), **args)
+
+                                parts.append({"PartNumber": part_num + 1, "ETag": part["ETag"]})
 
                                 # Get the next block of data we want to put
                                 buf = readable.read(info.outer.partSize)
@@ -1293,36 +1299,39 @@ class AWSJobStore(AbstractJobStore):
                             with panic(log=log):
                                 for attempt in retry_s3():
                                     with attempt:
-                                        upload.cancel_upload()
+                                        client.abort_multipart_upload(Bucket=bucket_name, Key=compat_bytes(info.fileID),
+                                                                      UploadId=uploadId)
                         else:
 
-                            while not store._getBucketVersioning(store.filesBucket):
-                                log.warning(
-                                    'Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
+                            while not store._getBucketVersioningFromName(store.boto3FilesBucket.name):
+                                log.warning('Versioning does not appear to be enabled yet. Deferring multipart upload '
+                                            'completion...')
                                 time.sleep(1)
 
                             # Save the checksum
                             info.checksum = info._finish_checksum(hasher)
 
-                            for attempt in retry_s3():
-                                with attempt:
-                                    log.debug('Attempting to complete upload...')
-                                    completed = upload.complete_upload()
-                                    log.debug('Completed upload object of type %s: %s', str(type(completed)),
-                                              repr(completed))
-                                    info.version = completed.version_id
-                                    log.debug('Completed upload with version %s', str(info.version))
+                            # for attempt in retry_s3():
+                            #     with attempt:
+                            log.debug('Attempting to complete upload...')
+                            completed = client.complete_multipart_upload(
+                                Bucket=bucket_name, Key=compat_bytes(info.fileID), UploadId=uploadId,
+                                MultipartUpload={"Parts": parts}, **args)
+                            log.debug('Completed upload object of type %s: %s', str(type(completed)),
+                                      repr(completed))
+                            info.version = completed['VersionId']
+                            log.debug('Completed upload with version %s', str(info.version))
 
                             if info.version is None:
                                 # Somehow we don't know the version. Try and get it.
-                                for attempt in retry_s3(
-                                        predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
-                                    with attempt:
-                                        key = store.filesBucket.get_key(compat_bytes(info.fileID), headers=headers)
-                                        log.warning('Loaded key for upload with no version and got version %s',
-                                                    str(key.version_id))
-                                        info.version = key.version_id
-                                        assert info.version is not None
+                                # for attempt in retry_s3(
+                                #         predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
+                                #     with attempt:
+                                version = client.head_object(Bucket=bucket_name,
+                                                             Key=compat_bytes(info.fileID), **args)['VersionId']
+                                log.warning('Loaded key for upload with no version and got version %s', str(version))
+                                info.version = version
+                                assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
                     assert (bool(info.version) or info.content is not None)
@@ -1343,31 +1352,33 @@ class AWSJobStore(AbstractJobStore):
                         info._update_checksum(hasher, buf)
                         info.checksum = info._finish_checksum(hasher)
 
-                        key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
-                        buf = BytesIO(buf)
-                        headers = info._s3EncryptionHeaders()
+                        bucket_name = store.boto3FilesBucket.name
+                        args = info._s3EncryptionArgs()
 
-                        while store._getBucketVersioning(store.filesBucket) != True:
+                        obj = store.boto3FilesBucket.Object(compat_bytes(info.fileID))
+                        buf = BytesIO(buf)
+
+                        while not store._getBucketVersioningFromName(bucket_name):
                             log.warning('Versioning does not appear to be enabled yet. Deferring single part upload...')
                             time.sleep(1)
 
-                        for attempt in retry_s3():
-                            with attempt:
-                                log.debug('Uploading single part of %d bytes', dataLength)
-                                assert dataLength == key.set_contents_from_file(fp=buf,
-                                                                                headers=headers)
-                                log.debug('Upload received version %s', str(key.version_id))
-                        info.version = key.version_id
+                        # for attempt in retry_s3():
+                        #     with attempt:
+                        log.debug('Uploading single part of %d bytes', dataLength)
+                        obj.put(Body=buf, **args)
+                        assert dataLength == obj.content_length
+                        info.version = obj.version_id
+                        log.debug('Upload received version %s', str(info.version))
 
                         if info.version is None:
                             # Somehow we don't know the version
-                            for attempt in retry_s3(
-                                    predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
-                                with attempt:
-                                    key.reload()
-                                    log.warning('Reloaded key with no version and got version %s', str(key.version_id))
-                                    info.version = key.version_id
-                                    assert info.version is not None
+                            # for attempt in retry_s3(
+                            #         predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
+                            #     with attempt:
+                            obj.reload()
+                            info.version = obj.version_id
+                            log.warning('Reloaded key with no version and got version %s', str())
+                            assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
                     assert (bool(info.version) or info.content is not None)
@@ -1570,6 +1581,18 @@ class AWSJobStore(AbstractJobStore):
                 return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
                         'x-amz-server-side-encryption-customer-key': encodedSseKey,
                         'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
+            else:
+                return {}
+
+        def _s3EncryptionArgs(self):
+            if self.encrypted:
+                sseKey = self._getSSEKey()
+                assert sseKey is not None, 'Content is encrypted but no key was provided.'
+                assert len(sseKey) == 32
+                encodedSseKey = base64.b64encode(sseKey).decode('utf-8')
+                # encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest()).decode('utf-8')
+                # MD5 is supposedly calculated by boto3, though one can provide it via SSECustomerKeyMD5
+                return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': encodedSseKey}
             else:
                 return {}
 
