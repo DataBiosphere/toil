@@ -68,8 +68,8 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retryable_s3_errors,
                                       bucket_location_to_region,
                                       region_to_bucket_location, copyKeyMultipart,
-                                      chunkedFileUpload, fileSizeAndTime)
-from toil.jobStores.aws3.utils import uploadFromPath
+                                      fileSizeAndTime)
+from toil.jobStores.aws3.utils import uploadFromPath, chunkedFileUpload
 
 from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
 from toil.jobGraph import JobGraph
@@ -405,12 +405,15 @@ class AWSJobStore(AbstractJobStore):
                         self.filesDomain.batch_delete_attributes(itemsDict)
             for item in items:
                 version = item.get('version')
-                for attempt in retry_s3():
-                    with attempt:
-                        if version:
-                            self.filesBucket.delete_key(key_name=compat_bytes(item.name), version_id=version)
-                        else:
-                            self.filesBucket.delete_key(key_name=compat_bytes(item.name))
+                # for attempt in retry_s3():
+                #     with attempt:
+                if version:
+                    self.s3_client.delete_object(Bucket=self.boto3FilesBucket.name,
+                                                 Key=compat_bytes(item.name),
+                                                 VersionId=version)
+                else:
+                    self.s3_client.delete_object(Bucket=self.boto3FilesBucket.name,
+                                                 Key=compat_bytes(item.name))
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
@@ -456,19 +459,16 @@ class AWSJobStore(AbstractJobStore):
 
     @classmethod
     def getSize(cls, url):
-        # [!!] TODO: needs testing
         return cls._getObjectForUrl(url, existing=True).size
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        # [!!] TODO: needs testing
         srcObj = cls._getObjectForUrl(url, existing=True)
         srcObj.download_fileobj(writable)
         return srcObj.size
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        # [!!] TODO: needs testing
         dstObj = cls._getObjectForUrl(url)
         canDetermineSize = True
         fileSize = 0
@@ -480,8 +480,8 @@ class AWSJobStore(AbstractJobStore):
             canDetermineSize = False
         if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
             log.debug("Uploading %s with size %s, will use multipart uploading", dstObj.key, fileSize)
-            # chunkedFileUpload(readable=readable, bucket=dstObj.Bucket(), fileID=dstObj.key, file_size=fileSize)
-            raise NotImplementedError()
+            chunkedFileUpload(readable=readable, client=s3_boto3_client,
+                              bucketName=dstObj.bucket_name, fileID=dstObj.key)
         else:
             # we either don't know the size, or the size is small
             log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstObj.key)
@@ -549,7 +549,7 @@ class AWSJobStore(AbstractJobStore):
         :param bool existing: If True, key is expected to exist. If False, key is expected not to
         exists and it will be created. If None, the key will be created if it doesn't exist.
 
-        :rtype: S3KeyWrapper
+        :rtype: S3.Object
         """
         # In boto3, S3.Object represents an S3 Object, whereas
         # in boto2, boto.s3.key.Key represents a key (object) in an S3 bucket
@@ -583,10 +583,7 @@ class AWSJobStore(AbstractJobStore):
             assert False
         if not objExists:
             obj.put()  # write an empty file
-        # return obj
-        # Use a wrapper until all usages are converted to S3.Object syntax
-        from toil.jobStores.aws3.utils import S3KeyWrapper
-        return S3KeyWrapper(obj)
+        return obj
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
@@ -816,7 +813,6 @@ class AWSJobStore(AbstractJobStore):
                         else:
                             return None
                     elif errorCode == '301':
-                        # TODO: not yet able to reproduce
                         # This is raised if the user attempts to get a bucket in a region outside
                         # the specified one, if the specified one is not `us-east-1`.  The us-east-1
                         # server allows a user to use buckets from any region.
@@ -1162,15 +1158,12 @@ class AWSJobStore(AbstractJobStore):
                 # Clear out any old checksum in case of overwrite
                 self.checksum = ''
             else:
-                headers = self._s3EncryptionHeaders()
+                args = self._s3EncryptionHeaders()
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
-                # self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
-                #                               bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
-                #                               headers=headers)
-                # TODO: needs testing. This is using the aws3/utils implementation
-                self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
-                                              bucket=self.outer.boto3FilesBucket, fileID=compat_bytes(self.fileID),
-                                              headers=headers)
+                self.version = uploadFromPath(localFilePath, resource=self.outer.s3_resource,
+                                              bucketName=self.outer.boto3FilesBucket.name,
+                                              fileID=compat_bytes(self.fileID), args=args,
+                                              partSize=self.outer.partSize)
 
         def _start_checksum(self, to_match=None, algorithm='sha1'):
             """
@@ -1265,6 +1258,10 @@ class AWSJobStore(AbstractJobStore):
                         hasher = info._start_checksum()
                         info._update_checksum(hasher, buf)
 
+                        # Below is using boto3's low level API for uploading parts manually. Note that
+                        # client.upload_file() can automatically upload with multiple parts, though I
+                        # don't want to mess with the checksum logic.
+
                         # for attempt in retry_s3():
                         #     with attempt:
                         log.debug('Starting multipart upload')
@@ -1297,10 +1294,10 @@ class AWSJobStore(AbstractJobStore):
                                 info._update_checksum(hasher, buf)
                         except:
                             with panic(log=log):
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        client.abort_multipart_upload(Bucket=bucket_name, Key=compat_bytes(info.fileID),
-                                                                      UploadId=uploadId)
+                                # for attempt in retry_s3():
+                                #     with attempt:
+                                client.abort_multipart_upload(Bucket=bucket_name, Key=compat_bytes(info.fileID),
+                                                              UploadId=uploadId)
                         else:
 
                             while not store._getBucketVersioningFromName(store.boto3FilesBucket.name):
@@ -1552,10 +1549,10 @@ class AWSJobStore(AbstractJobStore):
             if self.content is not None:
                 return len(self.content)
             elif self.version:
-                for attempt in retry_s3():
-                    with attempt:
-                        key = self.outer.filesBucket.get_key(compat_bytes(self.fileID), validate=False)
-                        return key.size
+                # for attempt in retry_s3():
+                #     with attempt:
+                obj = self.outer.boto3FilesBucket.Object(compat_bytes(self.fileID))
+                return obj.content_length
             else:
                 return 0
 
@@ -1664,9 +1661,10 @@ class AWSJobStore(AbstractJobStore):
             pass
         # TODO: Add other failure cases to be ignored here.
         self._registered = None
-        if self.filesBucket is not None:
-            self._delete_bucket(self.filesBucket)
+        if self.boto3FilesBucket is not None:
+            self._delete_bucket(self.boto3FilesBucket)
             self.filesBucket = None
+            self.boto3FilesBucket = None
         for name in 'filesDomain', 'jobsDomain':
             domain = getattr(self, name)
             if domain is not None:
@@ -1692,13 +1690,15 @@ class AWSJobStore(AbstractJobStore):
         # for attempt in retry_s3():
         #     with attempt:
         try:
-            for upload in bucket.list_multipart_uploads():
-                upload.cancel_upload()  # TODO: upgrade this portion to boto3
-            bucket = self.s3_resource.Bucket(compat_bytes(bucket.name))
+            uploads = s3_boto3_client.list_multipart_uploads(Bucket=bucket.name).get('Uploads')
+            if uploads:
+                for u in uploads:
+                    s3_boto3_client.abort_multipart_upload(Bucket=bucket.name, Key=u["Key"], UploadId=u["UploadId"])
+
             bucket.objects.all().delete()
             bucket.object_versions.delete()
             bucket.delete()
-        except self.s3_resource.meta.client.exceptions.NoSuchBucket:
+        except self.s3_boto3_client.exceptions.NoSuchBucket:
             pass
         except S3ResponseError as e:
             if e.error_code != 'NoSuchBucket':
