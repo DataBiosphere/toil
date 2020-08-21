@@ -19,7 +19,7 @@ import logging
 from boto3.s3.transfer import TransferConfig
 
 from toil.jobStores.aws.utils import fileSizeAndTime
-from toil.lib.compatibility import compat_bytes
+from toil.lib.compatibility import compat_bytes, compat_oldstr
 
 log = logging.getLogger(__name__)
 
@@ -89,3 +89,45 @@ def chunkedFileUpload(readable, client, bucketName, fileID, args=None, partSize=
 
     version = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), **args)['VersionId']
     return version
+
+
+def copyKeyMultipart(resource, srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName,
+                     dstEncryptionArgs=None, srcEncryptionArgs=None):
+    """
+    Copies a key from a source key to a destination key in multiple parts. Note that if the
+    destination key exists it will be overwritten implicitly, and if it does not exist a new
+    key will be created. If the destination bucket does not exist an error will be raised.
+
+    :param S3.Resource resource: boto3 resource
+    :param str srcBucketName: The name of the bucket to be copied from.
+    :param str srcKeyName: The name of the key to be copied from.
+    :param str srcKeyVersion: The version of the key to be copied from.
+    :param str dstBucketName: The name of the destination bucket for the copy.
+    :param str dstKeyName: The name of the destination key that will be created or overwritten.
+
+    :param dict dstEncryptionArgs: SSE headers for the destination
+    :param dict srcEncryptionArgs: SSE headers for the source
+
+    :rtype: str
+    :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
+    """
+    dstBucket = resource.Bucket(compat_oldstr(dstBucketName))
+    dstObject = dstBucket.Object(compat_oldstr(dstKeyName))
+    copySource = {'Bucket': compat_oldstr(srcBucketName), 'Key': compat_oldstr(srcKeyName)}
+    if srcKeyVersion is not None:
+        copySource['VersionId'] = compat_oldstr(srcKeyVersion)
+
+    dstObject.copy(copySource, ExtraArgs=srcEncryptionArgs)
+
+    # Wait until the object exists before calling head_object
+    object_summary = resource.ObjectSummary(dstObject.bucket_name, dstObject.key)
+    object_summary.wait_until_exists(**dstEncryptionArgs)
+
+    # Unfortunately, boto3's managed copy doesn't return the version
+    # that it actually copied to. So we have to check immediately
+    # after, leaving open the possibility that it may have been
+    # modified again in the few seconds since the copy finished. There
+    # isn't much we can do about it.
+    info = resource.meta.client.head_object(Bucket=dstObject.bucket_name, Key=dstObject.key,
+                                            **dstEncryptionArgs)
+    return info.get('VersionId', None)

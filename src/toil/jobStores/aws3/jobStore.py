@@ -19,7 +19,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import range
-from contextlib import contextmanager, closing
+from contextlib import contextmanager
 import logging
 
 try:
@@ -67,9 +67,8 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       retry_s3,
                                       retryable_s3_errors,
                                       bucket_location_to_region,
-                                      region_to_bucket_location, copyKeyMultipart,
-                                      fileSizeAndTime)
-from toil.jobStores.aws3.utils import uploadFromPath, chunkedFileUpload
+                                      region_to_bucket_location, fileSizeAndTime)
+from toil.jobStores.aws3.utils import uploadFromPath, chunkedFileUpload, copyKeyMultipart
 
 from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
 from toil.jobGraph import JobGraph
@@ -426,21 +425,18 @@ class AWSJobStore(AbstractJobStore):
 
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         if issubclass(otherCls, AWSJobStore):
-            srcKey = self._getKeyForUrl(url, existing=True)
-            size = srcKey.size
-            try:
-                if sharedFileName is None:
-                    info = self.FileInfo.create(srcKey.name)
-                else:
-                    self._requireValidSharedFileName(sharedFileName)
-                    jobStoreFileID = self._sharedFileID(sharedFileName)
-                    info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
-                                                      ownerID=str(self.sharedFileOwnerID),
-                                                      encrypted=None)
-                info.copyFrom(srcKey)
-                info.save()
-            finally:
-                srcKey.bucket.connection.close()
+            srcObj = self._getObjectForUrl(url, existing=True)
+            size = srcObj.content_length
+            if sharedFileName is None:
+                info = self.FileInfo.create(srcObj.key)
+            else:
+                self._requireValidSharedFileName(sharedFileName)
+                jobStoreFileID = self._sharedFileID(sharedFileName)
+                info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
+                                                  ownerID=str(self.sharedFileOwnerID),
+                                                  encrypted=None)
+            info.copyFrom(srcObj)
+            info.save()
             return FileID(info.fileID, size) if sharedFileName is None else None
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url,
@@ -448,12 +444,9 @@ class AWSJobStore(AbstractJobStore):
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, AWSJobStore):
-            dstKey = self._getKeyForUrl(url)
-            try:
-                info = self.FileInfo.loadOrFail(jobStoreFileID)
-                info.copyTo(dstKey)
-            finally:
-                dstKey.bucket.connection.close()
+            dstObj = self._getObjectForUrl(url)
+            info = self.FileInfo.loadOrFail(jobStoreFileID)
+            info.copyTo(dstObj)
         else:
             super(AWSJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
@@ -499,47 +492,9 @@ class AWSJobStore(AbstractJobStore):
         :param bool existing: If True, key is expected to exist. If False, key is expected not to
                exists and it will be created. If None, the key will be created if it doesn't exist.
 
-        :rtype: Key
+        :rtype: S3.Object
         """
-        keyName = url.path[1:]
-        bucketName = url.netloc
-
-        # Get the bucket's region to avoid a redirect per request
-        try:
-            with closing(boto.connect_s3()) as s3:
-                location = s3.get_bucket(bucketName).get_location()
-                region = bucket_location_to_region(location)
-        except S3ResponseError as e:
-            if e.error_code == 'AccessDenied':
-                s3 = boto.connect_s3()
-            else:
-                raise
-        else:
-            # Note that caller is responsible for closing the connection
-            s3 = boto.s3.connect_to_region(region)
-
-        try:
-            bucket = s3.get_bucket(bucketName)
-            key = bucket.get_key(keyName.encode('utf-8'))
-            if existing is True:
-                if key is None:
-                    raise RuntimeError("Key '%s' does not exist in bucket '%s'." %
-                                       (keyName, bucketName))
-            elif existing is False:
-                if key is not None:
-                    raise RuntimeError("Key '%s' exists in bucket '%s'." %
-                                       (keyName, bucketName))
-            elif existing is None:
-                pass
-            else:
-                assert False
-            if key is None:
-                key = bucket.new_key(keyName)
-        except:
-            with panic():
-                s3.close()
-        else:
-            return key
+        return AWSJobStore._getObjectForUrl(url, existing)
 
     @staticmethod
     def _getObjectForUrl(url, existing=None):
@@ -1400,51 +1355,42 @@ class AWSJobStore(AbstractJobStore):
                     log.debug('Version: {} Content: {}'.format(self.version, self.content))
                     raise RuntimeError('Content added and version created')
 
-        def copyFrom(self, srcKey):
+        def copyFrom(self, srcObj):
             """
             Copies contents of source key into this file.
 
-            :param srcKey: The key that will be copied from
+            :param S3.Object srcObj: The key (object) that will be copied from
             """
-            assert srcKey.size is not None
-            if srcKey.size <= self.maxInlinedSize():
-                self.content = srcKey.get_contents_as_string()
+            assert srcObj.content_length is not None
+            if srcObj.content_length <= self.maxInlinedSize():
+                self.content = srcObj.get()['Body'].read().decode("utf-8")
             else:
-                self.version = copyKeyMultipart(srcBucketName=compat_plain(srcKey.bucket.name),
-                                                srcKeyName=compat_plain(srcKey.name),
-                                                srcKeyVersion=compat_plain(srcKey.version_id),
-                                                dstBucketName=compat_plain(self.outer.filesBucket.name),
-                                                dstKeyName=compat_plain(self._fileID),
-                                                sseAlgorithm='AES256',
-                                                sseKey=self._getSSEKey())
+                self.version = copyKeyMultipart(
+                    s3_boto3_resource, srcBucketName=compat_plain(srcObj.bucket_name),
+                    srcKeyName=compat_plain(srcObj.key), srcKeyVersion=compat_plain(srcObj.version_id),
+                    dstBucketName=self.outer.boto3FilesBucket.name, dstKeyName=compat_plain(self._fileID),
+                    dstEncryptionArgs=self._s3EncryptionHeaders())
 
-        def copyTo(self, dstKey):
+        def copyTo(self, dstObj):
             """
             Copies contents of this file to the given key.
 
-            :param Key dstKey: The key to copy this file's content to
+            :param S3.Object dstObj: The key (object) to copy this file's content to
             """
             if self.content is not None:
-                for attempt in retry_s3():
-                    with attempt:
-                        dstKey.set_contents_from_string(self.content)
+                # for attempt in retry_s3():
+                #     with attempt:
+                dstObj.put(Body=self.content)
             elif self.version:
-                for attempt in retry_s3():
-                    encrypted = True if self.outer.sseKeyPath else False
-                    if encrypted:
-                        srcKey = self.outer.filesBucket.get_key(compat_bytes(self.fileID),
-                                                                headers=self._s3EncryptionHeaders())
-                    else:
-                        srcKey = self.outer.filesBucket.get_key(compat_bytes(self.fileID))
-                    srcKey.version_id = self.version
-                    with attempt:
-                        copyKeyMultipart(srcBucketName=compat_plain(srcKey.bucket.name),
-                                         srcKeyName=compat_plain(srcKey.name),
-                                         srcKeyVersion=compat_plain(srcKey.version_id),
-                                         dstBucketName=compat_plain(dstKey.bucket.name),
-                                         dstKeyName=compat_plain(dstKey.name),
-                                         copySourceSseAlgorithm='AES256',
-                                         copySourceSseKey=self._getSSEKey())
+                # for attempt in retry_s3():
+                srcObj = self.outer.s3_client.head_object(Bucket=self.outer.boto3FilesBucket.name,
+                                                          Key=compat_bytes(self.fileID), **self._s3EncryptionArgs())
+                srcObj.version_id = self.version
+                # with attempt:
+                copyKeyMultipart(s3_boto3_resource, srcBucketName=compat_plain(srcObj.bucket_name),
+                                 srcKeyName=compat_plain(srcObj.key), srcKeyVersion=compat_plain(srcObj.version_id),
+                                 dstBucketName=compat_plain(dstObj.bucket_name), dstKeyName=compat_plain(dstObj.key),
+                                 srcEncryptionArgs=self._s3EncryptionArgs())
             else:
                 assert False
 
