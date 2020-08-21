@@ -1093,8 +1093,12 @@ class AWSJobStore(AbstractJobStore):
                 self.checksum = ''
             else:
                 args = self._s3EncryptionHeaders()
+                # Create a new Resource in case it needs to be on its own thread
+                session = boto3.Session(botocore_session=botocore_session)
+                resource = session.resource('s3', region_name=self.outer.region)
+
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
-                self.version = uploadFromPath(localFilePath, resource=self.outer.s3_resource,
+                self.version = uploadFromPath(localFilePath, resource=resource,
                                               bucketName=self.outer.filesBucket.name,
                                               fileID=compat_bytes(self.fileID), args=args,
                                               partSize=self.outer.partSize)
@@ -1197,6 +1201,7 @@ class AWSJobStore(AbstractJobStore):
                         # don't want to mess with the checksum logic.
 
                         log.debug('Starting multipart upload')
+                        # low-level clients are thread safe
                         client = store.s3_client
                         bucket_name = store.filesBucket.name
                         args = info._s3EncryptionArgs()
@@ -1331,8 +1336,10 @@ class AWSJobStore(AbstractJobStore):
             if srcObj.content_length <= self.maxInlinedSize():
                 self.content = srcObj.get()['Body'].read().decode("utf-8")
             else:
+                # Create a new Resource in case it needs to be on its own thread
+                resource = boto3.Session(botocore_session=botocore_session).resource('s3')
                 self.version = copyKeyMultipart(
-                    s3_boto3_resource, srcBucketName=compat_plain(srcObj.bucket_name),
+                    resource, srcBucketName=compat_plain(srcObj.bucket_name),
                     srcKeyName=compat_plain(srcObj.key), srcKeyVersion=compat_plain(srcObj.version_id),
                     dstBucketName=self.outer.filesBucket.name, dstKeyName=compat_plain(self._fileID),
                     dstEncryptionArgs=self._s3EncryptionHeaders())
@@ -1346,10 +1353,13 @@ class AWSJobStore(AbstractJobStore):
             if self.content is not None:
                 dstObj.put(Body=self.content)
             elif self.version:
+                # Create a new Resource in case it needs to be on its own thread
+                resource = boto3.Session(botocore_session=botocore_session).resource('s3')
+
                 srcObj = self.outer.s3_client.head_object(Bucket=self.outer.filesBucket.name,
                                                           Key=compat_bytes(self.fileID), **self._s3EncryptionArgs())
                 srcObj.version_id = self.version
-                copyKeyMultipart(s3_boto3_resource, srcBucketName=compat_plain(srcObj.bucket_name),
+                copyKeyMultipart(resource, srcBucketName=compat_plain(srcObj.bucket_name),
                                  srcKeyName=compat_plain(srcObj.key), srcKeyVersion=compat_plain(srcObj.version_id),
                                  dstBucketName=compat_plain(dstObj.bucket_name), dstKeyName=compat_plain(dstObj.key),
                                  srcEncryptionArgs=self._s3EncryptionArgs())
