@@ -14,6 +14,8 @@
 
 from __future__ import absolute_import
 
+import boto3
+
 from toil.jobStores.aws.utils import fileSizeAndTime
 from toil.lib.compatibility import compat_bytes
 
@@ -52,7 +54,8 @@ def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
             # [!!] TODO: To be implemented
             pass
 
-    size = bucket.head_object(compat_bytes(fileID), VersionId=version)['ContentLength']
+    size = boto3.client('s3').head_object(Bucket=bucket.name,
+                                          Key=compat_bytes(fileID), VersionId=version)['ContentLength']
     assert size == file_size
 
     # Make reasonably sure that the file wasn't touched during the upload

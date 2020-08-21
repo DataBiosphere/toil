@@ -1457,14 +1457,13 @@ class AWSJobStore(AbstractJobStore):
                     with open(tmpPath, 'wb') as f:
                         f.write(self.content)
             elif self.version:
-                headers = self._s3EncryptionHeaders()
-                key = self.outer.filesBucket.get_key(compat_bytes(self.fileID), validate=False)
+                args = self._s3EncryptionArgs()
+                obj = self.outer.boto3FilesBucket.Object(compat_bytes(self.fileID))
                 for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, ChecksumError)):
                     with attempt:
                         with AtomicFileCreate(localFilePath) as tmpPath:
-                            key.get_contents_to_filename(tmpPath,
-                                                         version_id=self.version,
-                                                         headers=headers)
+                            with open(tmpPath, 'wb') as content:
+                                obj.download_fileobj(content, ExtraArgs={'VersionId': self.version, **args})
 
                         if verifyChecksum and self.checksum:
                             try:
@@ -1487,13 +1486,11 @@ class AWSJobStore(AbstractJobStore):
                     if info.content is not None:
                         writable.write(info.content)
                     elif info.version:
-                        headers = info._s3EncryptionHeaders()
-                        key = info.outer.filesBucket.get_key(compat_bytes(info.fileID), validate=False)
-                        for attempt in retry_s3():
-                            with attempt:
-                                key.get_contents_to_file(writable,
-                                                         headers=headers,
-                                                         version_id=info.version)
+                        args = info._s3EncryptionArgs()
+                        obj = info.outer.boto3FilesBucket.Object(compat_bytes(info.fileID))
+                        # for attempt in retry_s3():
+                        #     with attempt:
+                        obj.download_fileobj(writable, ExtraArgs={'VersionId': info.version, **args})
                     else:
                         assert False
 
