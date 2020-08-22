@@ -1341,11 +1341,8 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
 
     def _hashTestFile(self, url):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        key = AWSJobStore._getKeyForUrl(urlparse.urlparse(url), existing=True)
-        try:
-            contents = key.get_contents_as_string()
-        finally:
-            key.bucket.connection.close()
+        key = AWSJobStore._getObjectForUrl(urlparse.urlparse(url), existing=True)
+        contents = key.get()['Body'].read()
         return hashlib.md5(contents).hexdigest()
 
     def _createExternalStore(self):
