@@ -186,6 +186,40 @@ class ToilStatus():
         except NoSuchFileException:
             pass
         return 'QUEUED'
+    
+    @staticmethod
+    def getStatus(jobStoreName):
+        """
+        Determine the status of a workflow.
+
+        If the jobstore does not exist, this returns 'QUEUED', assuming it has not been created yet.
+
+        Checks for the existence of files created in the toil.Leader.run(). In toil.Leader.run(), if a workflow completes
+        with failed jobs, 'failed.log' is created, otherwise 'succeeded.log' is written. If neither of these exist,
+        the leader is still running jobs.
+
+        :return: A string indicating the status of the workflow. ['COMPLETED', 'RUNNING', 'ERROR', 'QUEUED']
+        :rtype: str
+        """
+        try:
+            jobstore = Toil.resumeJobStore(jobStoreName)
+        except NoSuchJobStoreException:
+            return 'QUEUED'
+        except NoSuchFileException:
+            return 'QUEUED'
+
+        try:
+            with jobstore.readSharedFileStream('succeeded.log') as successful:
+                pass
+            return 'COMPLETED'
+        except NoSuchFileException:
+            try:
+                with jobstore.readSharedFileStream('failed.log') as failed:
+                    pass
+                return 'ERROR'
+            except NoSuchFileException:
+                pass
+        return 'RUNNING'
 
     def fetchRootJob(self):
         """
@@ -257,39 +291,6 @@ class ToilStatus():
                     jobsToReport.append(self.jobStore.load(serviceJobStoreID))
 
         return jobsToReport
-
-def getStatus(jobStoreName):
-    """
-    Determine the status of a workflow.
-
-    If the jobstore does not exist, this returns 'QUEUED', assuming it has not been created yet.
-
-    Checks for the existence of files created in the toil.Leader.run(). In toil.Leader.run(), if a workflow completes
-    with failed jobs, 'failed.log' is created, otherwise 'succeeded.log' is written. If neither of these exist,
-    the leader is still running jobs.
-
-    :return: A string indicating the status of the workflow. ['COMPLETED', 'RUNNING', 'ERROR', 'QUEUED']
-    :rtype: str
-    """
-    try:
-        jobstore = Toil.resumeJobStore(jobStoreName)
-    except NoSuchJobStoreException:
-        return 'QUEUED'
-    except NoSuchFileException:
-        return 'QUEUED'
-
-    try:
-        with jobstore.readSharedFileStream('succeeded.log') as successful:
-            pass
-        return 'COMPLETED'
-    except NoSuchFileException:
-        try:
-            with jobstore.readSharedFileStream('failed.log') as failed:
-                pass
-            return 'ERROR'
-        except NoSuchFileException:
-            pass
-    return 'RUNNING'
 
 def main():
     """Reports the state of a Toil workflow."""

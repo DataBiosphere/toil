@@ -796,7 +796,7 @@ class Toil(object):
         """
         Clean up after a workflow invocation. Depending on the configuration, delete the job store.
         """
-        from toil.utils.toilStatus import getStatus
+        from toil.utils.toilStatus import ToilStatus
         
         try: 
             if (exc_type is not None and self.config.clean == "onError" or
@@ -804,8 +804,14 @@ class Toil(object):
                         self.config.clean == "always"):
 
                 try:          
-                    jobStoreName = self._jobStore.jobStoreDir
-                    status = getStatus(jobStoreName)
+                    name, _ = self.parseLocator(self.config.jobStore)
+
+                    if name == 'file':
+                        jobStoreName = self._jobStore.jobStoreDir                  
+                    else:
+                        jobStoreName = self._jobStore.locator
+                        
+                    status = ToilStatus.getStatus(jobStoreName)
 
                     if status == 'COMPLETED':
                         self._jobStore.destroy()
