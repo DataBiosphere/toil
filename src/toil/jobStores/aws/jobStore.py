@@ -1084,7 +1084,7 @@ class AWSJobStore(AbstractJobStore):
                 # Clear out any old checksum in case of overwrite
                 self.checksum = ''
             else:
-                headerArgs = self._s3EncryptionHeaders()
+                headerArgs = self._s3EncryptionArgs()
                 # Create a new Resource in case it needs to be on its own thread
                 resource = get_boto3_session().resource('s3', region_name=self.outer.region)
 
@@ -1234,7 +1234,7 @@ class AWSJobStore(AbstractJobStore):
                             log.debug('Attempting to complete upload...')
                             completed = client.complete_multipart_upload(
                                 Bucket=bucket_name, Key=compat_bytes(info.fileID), UploadId=uploadId,
-                                MultipartUpload={"Parts": parts}, **headerArgs)
+                                MultipartUpload={"Parts": parts})
                             log.debug('Completed upload object of type %s: %s', str(type(completed)),
                                       repr(completed))
                             info.version = completed['VersionId']
@@ -1333,7 +1333,7 @@ class AWSJobStore(AbstractJobStore):
                     resource, srcBucketName=compat_plain(srcObj.bucket_name),
                     srcKeyName=compat_plain(srcObj.key), srcKeyVersion=compat_plain(srcObj.version_id),
                     dstBucketName=self.outer.filesBucket.name, dstKeyName=compat_plain(self._fileID),
-                    dstEncryptionArgs=self._s3EncryptionHeaders())
+                    dstEncryptionArgs=self._s3EncryptionArgs())
 
         def copyTo(self, dstObj):
             """
@@ -1477,14 +1477,14 @@ class AWSJobStore(AbstractJobStore):
                 return {}
 
         def _s3EncryptionArgs(self):
+            # the keys of the returned dictionary are unpacked to the corresponding boto3 optional
+            # parameters and will be used to set the http headers
             if self.encrypted:
                 sseKey = self._getSSEKey()
                 assert sseKey is not None, 'Content is encrypted but no key was provided.'
                 assert len(sseKey) == 32
-                encodedSseKey = base64.b64encode(sseKey).decode('utf-8')
-                # encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest()).decode('utf-8')
-                # MD5 is supposedly calculated by boto3, though one can provide it via SSECustomerKeyMD5
-                return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': encodedSseKey}
+                # boto3 encodes the key and calculates the MD5 for us
+                return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sseKey}
             else:
                 return {}
 
