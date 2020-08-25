@@ -804,15 +804,9 @@ class Toil(object):
                         self.config.clean == "always"):
 
                 try:          
-                    name, _ = self.parseLocator(self.config.jobStore)
-
-                    if name == 'file':
-                        jobStoreName = self._jobStore.jobStoreDir                  
-                    else:
-                        jobStoreName = self._jobStore.locator
-                        
-                    status = ToilStatus.getStatus(jobStoreName)
-
+                    _, path = self.parseLocator(self.config.jobStore)
+                    status = ToilStatus.getStatus(path)
+                    
                     if status == 'COMPLETED':
                         self._jobStore.destroy()
                         logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
