@@ -804,8 +804,7 @@ class Toil(object):
                         self.config.clean == "always"):
 
                 try:
-                    _, path = self.parseLocator(self.config.jobStore)
-                    status = ToilStatus.getStatus(path)
+                    status = ToilStatus.getStatus(self._jobStore)
                     
                     if status == 'COMPLETED':
                         self._jobStore.destroy()
