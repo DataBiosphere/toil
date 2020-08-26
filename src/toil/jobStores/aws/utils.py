@@ -257,7 +257,7 @@ def uploadFile(readable, resource, bucketName, fileID, headerArgs=None, partSize
 
 
 def copyKeyMultipart(resource, srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName,
-                     dstEncryptionArgs=None, srcEncryptionArgs=None):
+                     sseAlgorithm=None, sseKey=None, copySourceSseAlgorithm=None, copySourceSseKey=None):
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
@@ -269,37 +269,45 @@ def copyKeyMultipart(resource, srcBucketName, srcKeyName, srcKeyVersion, dstBuck
     :param str srcKeyVersion: The version of the key to be copied from.
     :param str dstBucketName: The name of the destination bucket for the copy.
     :param str dstKeyName: The name of the destination key that will be created or overwritten.
-
-    :param dict dstEncryptionArgs: SSE headers for the destination
-    :param dict srcEncryptionArgs: SSE headers for the source
-
+    :param str sseAlgorithm: Server-side encryption algorithm for the destination.
+    :param str sseKey: Server-side encryption key for the destination.
+    :param str copySourceSseAlgorithm: Server-side encryption algorithm for the source.
+    :param str copySourceSseKey: Server-side encryption key for the source.
     :rtype: str
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
-    if not dstEncryptionArgs:
-        dstEncryptionArgs = {}
-    if not srcEncryptionArgs:
-        srcEncryptionArgs = {}
-
     dstBucket = resource.Bucket(compat_oldstr(dstBucketName))
     dstObject = dstBucket.Object(compat_oldstr(dstKeyName))
     copySource = {'Bucket': compat_oldstr(srcBucketName), 'Key': compat_oldstr(srcKeyName)}
     if srcKeyVersion is not None:
         copySource['VersionId'] = compat_oldstr(srcKeyVersion)
 
-    dstObject.copy(copySource, ExtraArgs=srcEncryptionArgs)
+    # The boto3 functions don't allow passing parameters as None to
+    # indicate they weren't provided. So we have to do a bit of work
+    # to ensure we only provide the parameters when they are actually
+    # required.
+    destEncryptionArgs = {}
+    if sseKey is not None:
+        destEncryptionArgs.update({'SSECustomerAlgorithm': sseAlgorithm,
+                                   'SSECustomerKey': sseKey})
+    copyEncryptionArgs = {}
+    if copySourceSseKey is not None:
+        copyEncryptionArgs.update({'CopySourceSSECustomerAlgorithm': copySourceSseAlgorithm,
+                                   'CopySourceSSECustomerKey': copySourceSseKey})
+    copyEncryptionArgs.update(destEncryptionArgs)
+
+    dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
 
     # Wait until the object exists before calling head_object
     object_summary = resource.ObjectSummary(dstObject.bucket_name, dstObject.key)
-    object_summary.wait_until_exists(**dstEncryptionArgs)
+    object_summary.wait_until_exists(**destEncryptionArgs)
 
     # Unfortunately, boto3's managed copy doesn't return the version
     # that it actually copied to. So we have to check immediately
     # after, leaving open the possibility that it may have been
     # modified again in the few seconds since the copy finished. There
     # isn't much we can do about it.
-    info = resource.meta.client.head_object(Bucket=dstObject.bucket_name, Key=dstObject.key,
-                                            **dstEncryptionArgs)
+    info = resource.meta.client.head_object(Bucket=dstObject.bucket_name, Key=dstObject.key, **destEncryptionArgs)
     return info.get('VersionId', None)
 
 

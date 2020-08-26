@@ -1320,11 +1320,12 @@ class AWSJobStore(AbstractJobStore):
             else:
                 # Create a new Resource in case it needs to be on its own thread
                 resource = get_boto3_session().resource('s3')
-                self.version = copyKeyMultipart(
-                    resource, srcBucketName=compat_plain(srcObj.bucket_name),
-                    srcKeyName=compat_plain(srcObj.key), srcKeyVersion=compat_plain(srcObj.version_id),
-                    dstBucketName=self.outer.filesBucket.name, dstKeyName=compat_plain(self._fileID),
-                    dstEncryptionArgs=self._s3EncryptionArgs())
+                self.version = copyKeyMultipart(resource, srcBucketName=compat_plain(srcObj.bucket_name),
+                                                srcKeyName=compat_plain(srcObj.key),
+                                                srcKeyVersion=compat_plain(srcObj.version_id),
+                                                dstBucketName=compat_plain(self.outer.filesBucket.name),
+                                                dstKeyName=compat_plain(self._fileID),
+                                                sseAlgorithm='AES256', sseKey=self._getSSEKey())
 
         def copyTo(self, dstObj):
             """
@@ -1338,9 +1339,12 @@ class AWSJobStore(AbstractJobStore):
                 # Create a new Resource in case it needs to be on its own thread
                 resource = get_boto3_session().resource('s3')
                 copyKeyMultipart(resource, srcBucketName=compat_plain(self.outer.filesBucket.name),
-                                 srcKeyName=compat_plain(self.fileID), srcKeyVersion=compat_plain(self.version),
-                                 dstBucketName=compat_plain(dstObj.bucket_name), dstKeyName=compat_plain(dstObj.key),
-                                 srcEncryptionArgs=self._s3EncryptionArgs())
+                                 srcKeyName=compat_plain(self.fileID),
+                                 srcKeyVersion=compat_plain(self.version),
+                                 dstBucketName=compat_plain(dstObj.bucket_name),
+                                 dstKeyName=compat_plain(dstObj.key),
+                                 copySourceSseAlgorithm='AES256',
+                                 copySourceSseKey=self._getSSEKey())
             else:
                 assert False
 
@@ -1453,19 +1457,6 @@ class AWSJobStore(AbstractJobStore):
                 with open(sseKeyPath, 'rb') as f:
                     sseKey = f.read()
                     return sseKey
-
-        def _s3EncryptionHeaders(self):
-            if self.encrypted:
-                sseKey = self._getSSEKey()
-                assert sseKey is not None, 'Content is encrypted but no key was provided.'
-                assert len(sseKey) == 32
-                encodedSseKey = base64.b64encode(sseKey).decode('utf-8')
-                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest()).decode('utf-8')
-                return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
-                        'x-amz-server-side-encryption-customer-key': encodedSseKey,
-                        'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
-            else:
-                return {}
 
         def _s3EncryptionArgs(self):
             # the keys of the returned dictionary are unpacked to the corresponding boto3 optional
