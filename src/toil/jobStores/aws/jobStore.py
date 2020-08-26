@@ -703,8 +703,18 @@ class AWSJobStore(AbstractJobStore):
         assert self.bucketNameRe.match(bucket_name)
         log.debug("Binding to job store bucket '%s'.", bucket_name)
 
+        def bucket_creation_pending(error):
+            # https://github.com/BD2KGenomics/toil/issues/955
+            # https://github.com/BD2KGenomics/toil/issues/995
+            # https://github.com/BD2KGenomics/toil/issues/1093
+            return (isinstance(error, botocore.exceptions.ClientError)
+                    and error.response['Error']['Code'] in ('BucketAlreadyOwnedByYou',
+                                                            'OperationAborted',
+                                                            '404',
+                                                            'NoSuchBucket'))
+
         bucketExisted = True
-        for attempt in retry():
+        for attempt in retry(predicate=bucket_creation_pending):
             with attempt:
                 try:
                     bucket = self.s3_resource.Bucket(bucket_name)
