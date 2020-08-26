@@ -188,7 +188,7 @@ class ToilStatus():
         return 'QUEUED'
     
     @staticmethod
-    def getStatus(jobStoreName):
+    def getStatus(jobStore):
         """
         Determine the status of a workflow.
 
@@ -202,19 +202,17 @@ class ToilStatus():
         :rtype: str
         """
         try:
-            jobstore = Toil.resumeJobStore(jobStoreName)
+            jobStore.resume()
         except NoSuchJobStoreException:
-            return 'QUEUED'
-        except NoSuchFileException:
             return 'QUEUED'
 
         try:
-            with jobstore.readSharedFileStream('succeeded.log') as successful:
+            with jobStore.readSharedFileStream('succeeded.log') as successful:
                 pass
             return 'COMPLETED'
         except NoSuchFileException:
             try:
-                with jobstore.readSharedFileStream('failed.log') as failed:
+                with jobStore.readSharedFileStream('failed.log') as failed:
                     pass
                 return 'ERROR'
             except NoSuchFileException:

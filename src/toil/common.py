@@ -803,7 +803,7 @@ class Toil(object):
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
 
-                try:          
+                try:
                     _, path = self.parseLocator(self.config.jobStore)
                     status = ToilStatus.getStatus(path)
                     
