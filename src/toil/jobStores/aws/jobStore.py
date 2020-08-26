@@ -68,7 +68,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       monkeyPatchSdbConnection,
                                       bucket_location_to_region,
                                       region_to_bucket_location, fileSizeAndTime,
-                                      uploadFromPath, chunkedFileUpload, copyKeyMultipart)
+                                      uploadFromPath, uploadFile, copyKeyMultipart)
 
 from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
 from toil.jobGraph import JobGraph
@@ -460,25 +460,12 @@ class AWSJobStore(AbstractJobStore):
     @classmethod
     def _writeToUrl(cls, readable, url):
         dstObj = cls._getObjectForUrl(url)
-        canDetermineSize = True
-        fileSize = 0
-        try:
-            readable.seek(0, 2)  # go to the 0th byte from the end of the file, indicated by '2'
-            fileSize = readable.tell()  # tells the current position in file - in this case == size of file
-            readable.seek(0)  # go to the 0th byte from the start of the file
-        except:
-            canDetermineSize = False
-        if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
-            # Create a new Resource in case it needs to be on its own thread
-            resource = get_boto3_session().resource('s3')
+        resource = get_boto3_session().resource('s3')
 
-            log.debug("Uploading %s with size %s, will use multipart uploading", dstObj.key, fileSize)
-            chunkedFileUpload(readable=readable, resource=resource,
-                              bucketName=dstObj.bucket_name, fileID=dstObj.key)
-        else:
-            # we either don't know the size, or the size is small
-            log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstObj.key)
-            dstObj.put(Body=readable.read())
+        log.debug("Uploading %s", dstObj.key)
+        # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
+        uploadFile(readable=readable, resource=resource, bucketName=dstObj.bucket_name,
+                   fileID=dstObj.key, partSize=5 * 1000 * 1000)
 
     @staticmethod
     def _getObjectForUrl(url, existing=None):
@@ -1271,8 +1258,7 @@ class AWSJobStore(AbstractJobStore):
 
                         bucket_name = store.filesBucket.name
                         headerArgs = info._s3EncryptionArgs()
-
-                        obj = store.filesBucket.Object(compat_bytes(info.fileID))
+                        client = store.s3_client
                         buf = BytesIO(buf)
 
                         while not store._getBucketVersioning(bucket_name):
@@ -1280,17 +1266,22 @@ class AWSJobStore(AbstractJobStore):
                             time.sleep(1)
 
                         log.debug('Uploading single part of %d bytes', dataLength)
-                        obj.put(Body=buf, **headerArgs)
-                        assert dataLength == obj.content_length
-                        info.version = obj.version_id
+                        client.upload_fileobj(Bucket=bucket_name, Key=compat_bytes(info.fileID),
+                                              Fileobj=buf, ExtraArgs=headerArgs)
+
+                        # use head_object with the SSE headers to access version_id and content_length attributes
+                        headObj = client.head_object(Bucket=bucket_name, Key=compat_bytes(info.fileID), **headerArgs)
+                        assert dataLength == headObj.get('ContentLength', None)
+                        info.version = headObj.get('VersionId', None)
                         log.debug('Upload received version %s', str(info.version))
 
                         if info.version is None:
                             # Somehow we don't know the version
                             for attempt in retry(predicate=lambda error: isinstance(error, AssertionError)):
                                 with attempt:
-                                    obj.reload()
-                                    info.version = obj.version_id
+                                    headObj = client.head_object(Bucket=bucket_name,
+                                                                 Key=compat_bytes(info.fileID), **headerArgs)
+                                    info.version = headObj.get('VersionId', None)
                                     log.warning('Reloaded key with no version and got version %s', str())
                                     assert info.version is not None
 
@@ -1520,10 +1511,15 @@ class AWSJobStore(AbstractJobStore):
     @staticmethod
     def __getBucketRegion(bucket_name):
         """
+        Get the bucket location by name. Return None if the bucket does not exist.
+
         :param bucket_name: str
         """
-        region = bucket_location_to_region(
-            s3_boto3_client.get_bucket_location(Bucket=bucket_name))['LocationConstraint']
+        try:
+            loc = s3_boto3_client.get_bucket_location(Bucket=bucket_name)
+        except:
+            return None
+        region = bucket_location_to_region(loc.get('LocationConstraint', None))
         return region
 
     def destroy(self):

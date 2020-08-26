@@ -208,23 +208,20 @@ def uploadFromPath(localFilePath, resource, bucketName, fileID, headerArgs=None,
 
     client = resource.meta.client
     file_size, file_time = fileSizeAndTime(localFilePath)
-    if file_size <= partSize:
-        obj = resource.Object(bucketName, key=compat_bytes(fileID))
-        obj.put(Body=open(localFilePath, 'rb'), **headerArgs)
-        version = obj.version_id
-    else:
-        version = chunkedFileUpload(localFilePath, resource, bucketName, fileID, headerArgs, partSize)
-    size = client.head_object(Bucket=bucketName,
-                              Key=compat_bytes(fileID), VersionId=version)['ContentLength']
+
+    version = uploadFile(localFilePath, resource, bucketName, fileID, headerArgs, partSize)
+    info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), VersionId=version, **headerArgs)
+    size = info.get('ContentLength')
+
     assert size == file_size
     # Make reasonably sure that the file wasn't touched during the upload
     assert fileSizeAndTime(localFilePath) == (file_size, file_time)
     return version
 
 
-def chunkedFileUpload(readable, resource, bucketName, fileID, headerArgs=None, partSize=50 << 20):
+def uploadFile(readable, resource, bucketName, fileID, headerArgs=None, partSize=50 << 20):
     """
-    Upload a readable object to s3 using multipart upload.
+    Upload a readable object to s3, using multipart uploading if applicable.
 
     :param readable: a readable stream or a file path to upload to s3
     :param S3.Resource resource: boto3 resource
@@ -255,11 +252,8 @@ def chunkedFileUpload(readable, resource, bucketName, fileID, headerArgs=None, p
     object_summary = resource.ObjectSummary(bucketName, compat_bytes(fileID))
     object_summary.wait_until_exists(**headerArgs)
 
-    try:
-        info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), **headerArgs)
-        return info.get('VersionId', None)
-    finally:
-        pass
+    info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), **headerArgs)
+    return info.get('VersionId', None)
 
 
 def copyKeyMultipart(resource, srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName,
