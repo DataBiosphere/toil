@@ -170,9 +170,10 @@ class JobDescription:
         # predecessorNumber then the job can be run.
         self.predecessorsFinished = set()
         
-        # The list of successor jobs to run. Successor jobs are stored as JobStore IDs. Successor
+        # The lists of successor jobs to run. Successor jobs are stored as JobStore IDs. Successor
         # jobs are run in reverse order from the stack.
-        self.stack = []
+        # When first set up, this looks like a list of follow-ons and then a list of children.
+        self.stack = [[], []]
         
         # A jobStoreFileID of the log file for a job. This will be None unless the job failed and
         # the logging has been captured to be reported on the leader.
@@ -568,9 +569,6 @@ class Job:
         # Dict from service job ID to parent service job ID for service jobs in self._services
         # A service's parent must be started before it can start.
         self._serviceParents = {}
-        #A follow-on, service or child of a job A, is a "direct successor" of A; if B
-        #is a direct successor of A, then A is a "direct predecessor" of B.
-        self._directPredecessors = set()
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
@@ -660,6 +658,10 @@ class Job:
         self._jobGraphsJoined(childJob)
         self._children.append(childJob.jobStoreID)
         childJob._addPredecessor(self)
+        
+        # Make sure children run before follow-ons (put them on top of the stack)
+        self._description.stack[1].append(childJob.jobStoreID)
+        
         return childJob
 
     def hasChild(self, childJob):
@@ -684,6 +686,10 @@ class Job:
         self._jobGraphsJoined(followOnJob)
         self._followOns.append(followOnJob.jobStoreID)
         followOnJob._addPredecessor(self)
+        
+        # Make sure follow-ons run after children (put them under the children)
+        self._description.stack[0].append(followOnJob.jobStoreID)
+        
         return followOnJob
 
     def hasFollowOn(self, followOnJob):
@@ -921,6 +927,15 @@ class Job:
         :return:
         """
         self._promiseJobStore = jobStore
+        
+    def _disablePromiseRegistration(self):
+        """
+        Called when the job data is about to be saved in the JobStore.
+        No promises should attempt to register with the job after this has been
+        called, because that registration would not be persisted.
+        """
+        
+        self._promiseJobStore = None
 
     ####################################################
     #Cycle/connectivity checking
@@ -951,29 +966,18 @@ class Job:
         
         Only works on connected components of jobs not yet added to the JobStore.
 
-        :rtype : set of toil.job.Job instances
+        :rtype : set of Job objects with no predecessors (i.e. which are not children, follow-ons, or services)
         """
-        roots = set()
-        visited = set()
-        todo = [self]
         
-        while len(todo) > 0:
-            # Until we've finished the graph traversal
-            job = todo[-1]
-            todo.pop()
-            if job.jobStoreID not in visited:
-                visited.add(job.jobStoreID)
-                if len(job._directPredecessors) > 0:
-                    for otherID in job._directPredecessors:
-                        todo.append(self._registry[otherID])
-                else:
-                    roots.add(job)
-                for otherID in itertools.chain(job._children, job._followOns):
-                    # Ensure we explore all successor edges.
-                    todo.append(self._registry[otherID])
+        # Start assuming all jobs are roots
+        roots = set(self._registry.keys())
         
-        return roots
-
+        for job in self._registry:
+            for other in itertools.chain(job._children, job._followOns, job._services):
+                roots.remove(other)
+                
+        return {self._registry[jid] for jid in roots}
+            
     def checkJobGraphConnected(self):
         """
         :raises toil.job.JobGraphDeadlockException: if :func:`toil.job.Job.getRootJobs` does \
@@ -995,6 +999,8 @@ class Job:
         of jobs containing this job contains any cycles of child/followOn dependencies \
         in the *augmented job graph* (see below). Such cycles are not allowed \
         in valid job graphs.
+        
+        Only works on connected components of jobs not yet added to the JobStore.
 
         A follow-on edge (A, B) between two jobs A and B is equivalent \
         to adding a child edge to B from (1) A, (2) from each child of A, \
@@ -1019,6 +1025,46 @@ class Job:
         visited = set()
         for root in roots:
             root._checkJobGraphAcylicDFS([], visited, extraEdges)
+            
+    def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
+        """
+        DFS traversal to detect cycles in augmented job graph.
+        """
+        if self not in visited:
+            visited.add(self)
+            stack.append(self)
+            for successor in self._children + self._followOns + extraEdges[self]:
+                successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
+            assert stack.pop() == self
+        if self in stack:
+            stack.append(self)
+            raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
+
+    @staticmethod
+    def _getImpliedEdges(roots):
+        """
+        Gets the set of implied edges (between children and follow-ons of a common job). See Job.checkJobGraphAcylic
+        """
+        #Get nodes in job graph
+        nodes = set()
+        for root in roots:
+            root._collectAllSuccessors(nodes)
+
+        ##For each follow-on edge calculate the extra implied edges
+        #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
+        #connected by an implied edge
+        extraEdges = dict([(n, []) for n in nodes])
+        for job in nodes:
+            if len(job._followOns) > 0:
+                #Get set of jobs connected by a directed path to job, starting
+                #with a child edge
+                reacheable = set()
+                for child in job._children:
+                    child._collectAllSuccessors(reacheable)
+                #Now add extra edges
+                for descendant in reacheable:
+                    extraEdges[descendant] += job._followOns[:]
+        return extraEdges
 
     def checkNewCheckpointsAreLeafVertices(self):
         """
@@ -1257,64 +1303,6 @@ class Job:
         return userModule.load()
 
     @classmethod
-    def _loadJob(cls, command, jobStore):
-        """
-        Unpickles a :class:`toil.job.Job` instance by decoding command.
-
-        The command is a reference to a jobStoreFileID containing the \
-        pickle file for the job and a list of modules which must be imported so that \
-        the Job can be successfully unpickled. \
-        See :func:`toil.job.Job._serialiseFirstJob` and \
-        :func:`toil.job.Job._makeJobGraphs` to see precisely how the Job is encoded \
-        in the command.
-
-        :param string command: encoding of the job in the job store.
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store.
-        :returns: The job referenced by the command.
-        :rtype: toil.job.Job
-        """
-        commandTokens = command.split()
-        assert "_toil" == commandTokens[0]
-        userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
-        logger.debug('Loading user module %s.', userModule)
-        userModule = cls._loadUserModule(userModule)
-        pickleFile = commandTokens[1]
-
-        # Get a directory to download the job in
-        directory = tempfile.mkdtemp()
-        # Initialize a blank filename so the finally below can't fail due to a
-        # missing variable
-        filename = ''
-
-        try:
-            # Get a filename to download the job to.
-            # Don't use mkstemp because we would need to delete and replace the
-            # file.
-            # Don't use a NamedTemporaryFile context manager because its
-            # context manager exit will crash if we deleted it.
-            filename = os.path.join(directory, 'job')
-                
-            # Download the job
-            if pickleFile == "firstJob":
-                jobStore.readSharedFile(pickleFile, filename)
-            else:
-                jobStore.readFile(pickleFile, filename)
-
-            # Open and unpickle
-            with open(filename, 'rb') as fileHandle:
-                return cls._unpickle(userModule, fileHandle, jobStore.config)
-
-            # TODO: We ought to just unpickle straight from a streaming read
-        finally:
-            # Clean up the file
-            if os.path.exists(filename):
-                os.unlink(filename)
-            # Clean up the directory we put it in
-            # TODO: we assume nobody else put anything in the directory
-            if os.path.exists(directory):
-                os.rmdir(directory)
-
-    @classmethod
     def _unpickle(cls, userModule, fileHandle, config):
         """
         Unpickles an object graph from the given file handle while loading symbols \
@@ -1400,96 +1388,26 @@ class Job:
                 for successor in itertools.chain(job._children, job._followOns):
                     todo.append(successor)
 
-    def _checkJobGraphAcylicDFS(self, stack, visited, extraEdges):
-        """
-        DFS traversal to detect cycles in augmented job graph.
-        """
-        if self not in visited:
-            visited.add(self)
-            stack.append(self)
-            for successor in self._children + self._followOns + extraEdges[self]:
-                successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
-            assert stack.pop() == self
-        if self in stack:
-            stack.append(self)
-            raise JobGraphDeadlockException("A cycle of job dependencies has been detected '%s'" % stack)
-
-    @staticmethod
-    def _getImpliedEdges(roots):
-        """
-        Gets the set of implied edges. See Job.checkJobGraphAcylic
-        """
-        #Get nodes in job graph
-        nodes = set()
-        for root in roots:
-            root._collectAllSuccessors(nodes)
-
-        ##For each follow-on edge calculate the extra implied edges
-        #Adjacency list of implied edges, i.e. map of jobs to lists of jobs
-        #connected by an implied edge
-        extraEdges = dict([(n, []) for n in nodes])
-        for job in nodes:
-            if len(job._followOns) > 0:
-                #Get set of jobs connected by a directed path to job, starting
-                #with a child edge
-                reacheable = set()
-                for child in job._children:
-                    child._collectAllSuccessors(reacheable)
-                #Now add extra edges
-                for descendant in reacheable:
-                    extraEdges[descendant] += job._followOns[:]
-        return extraEdges
-
-    ####################################################
-    #The following functions are used to serialise
-    #a job graph to the jobStore
-    ####################################################
-
-    def _createEmptyJobGraphForJob(self, jobStore, command=None, predecessorNumber=0):
-        """
-        Create an empty job for the job.
-        """
-        # set config to determine user determined default values for resource requirements
-        self.assignConfig(jobStore.config)
-        return jobStore.create(JobNode.fromJob(self, command=command,
-                                               predecessorNumber=predecessorNumber))
-
-    def _makeJobGraphs(self, jobGraph, jobStore):
-        """
-        Creates a jobGraph for each job in the job graph, recursively.
-        """
-        jobsToJobGraphs = {self:jobGraph}
-        for successors in (self._followOns, self._children):
-            jobs = [successor._makeJobGraphs2(jobStore, jobsToJobGraphs) for successor in successors]
-            jobGraph.stack.append(jobs)
-        return jobsToJobGraphs
-
-    def _makeJobGraphs2(self, jobStore, jobsToJobGraphs):
-        #Make the jobGraph for the job, if necessary
-        if self not in jobsToJobGraphs:
-            jobGraph = self._createEmptyJobGraphForJob(jobStore, predecessorNumber=len(self._directPredecessors))
-            jobsToJobGraphs[self] = jobGraph
-            #Add followOns/children to be run after the current job.
-            for successors in (self._followOns, self._children):
-                jobs = [successor._makeJobGraphs2(jobStore, jobsToJobGraphs) for successor in successors]
-                jobGraph.stack.append(jobs)
-        else:
-            jobGraph = jobsToJobGraphs[self]
-        #The return is a tuple stored within a job.stack
-        #The tuple is jobStoreID, memory, cores, disk,
-        #The predecessorID is used to establish which predecessors have been
-        #completed before running the given Job - it is just a unique ID
-        #per predecessor
-        return JobNode.fromJobGraph(jobGraph)
-
     def getTopologicalOrderingOfJobs(self):
         """
         :returns: a list of jobs such that for all pairs of indices i, j for which i < j, \
         the job at index i can be run before the job at index j.
+        
+        Only works on jobs in this job's subgraph that hasn't yet been added to the job store.
+        
+        Ignores service jobs.
+        
         :rtype: list
         """
         ordering = []
         visited = set()
+        
+        # We need a job to predecessor set dict
+        predecessors = collections.defaultdict(set)
+        for job in self._registry.values():
+            for dependent in itertools.chain(job._children, job._followOns):
+                predecessors[dependent.jobStoreID].add(dependent.jobStoreID)
+                
 
         # We need to recurse and traverse the graph without exhausting Python's
         # stack, so we keep our own stack.
@@ -1502,7 +1420,7 @@ class Job:
             #Do not add the job to the ordering until all its predecessors have been
             #added to the ordering
             outstandingPredecessor = False
-            for p in job._directPredecessors:
+            for p in predecessors[job.jobStoreID]:
                 if p not in visited:
                     outstandingPredecessor = True
                     break
@@ -1519,10 +1437,22 @@ class Job:
                     todo.append(other)
 
         return ordering
+        
+    def _saveBody(self, jobStore):
+        """
+        Save the execution data for just this job to the JobStore, and fill in
+        the JobDescription (in memory) with the information needed to retrieve
+        it.
+        """
+        
+        # Note that we can't accept any more requests for our return value
+        self._disablePromiseRegistration()
+        
+        
 
     def _serialiseJob(self, jobStore, jobsToJobGraphs, rootJobGraph):
         """
-        Pickle a job and its jobGraph to disk.
+        Save the job data for just this particular job as a file in the JobStore, and updates
         """
         # Pickle the job so that its run method can be run at a later time.
         # Drop out the children/followOns/predecessors/services - which are
@@ -1663,11 +1593,12 @@ class Job:
                 # Pickle any services for the job
                 self._serialiseServices(jobStore, jobGraph, jobGraph)
 
-    def _serialiseFirstJob(self, jobStore):
+    def saveAsRootJob(self, jobStore):
         """
-        Serialises the root job. Returns the wrapping job.
-
+        Save this job to the given jobStore as the root job of the workflow.
+        
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
+        :return: the JobDescription describing this job.
         """
 
         # Check if the workflow root is a checkpoint but not a leaf vertex.
@@ -1676,33 +1607,79 @@ class Job:
             raise JobGraphDeadlockException(
                 'New checkpoint job %s is not a leaf in the job graph' % self)
 
-        # Create first jobGraph
-        jobGraph = self._createEmptyJobGraphForJob(jobStore=jobStore, predecessorNumber=0)
-        # Write the graph of jobs to disk
-        self._serialiseJobGraph(jobGraph, jobStore, None, True)
-        jobStore.update(jobGraph)
+        # Save us to the job store as a new job
+        jobStore.create(self)
+        
         # Store the name of the first job in a file in case of restart. Up to this point the
         # root job is not recoverable. FIXME: "root job" or "first job", which one is it?
-        jobStore.setRootJob(jobGraph.jobStoreID)
-        return jobGraph
+        jobStore.setRootJob(self.jobStoreID)
 
-    def _serialiseExistingJob(self, jobGraph, jobStore, returnValues):
+        
+        self._serialiseJobGraph(jobGraph, jobStore, None, True)
+        jobStore.update(jobGraph)
+        
+        return self.description
+        
+    @classmethod
+    def loadJob(cls, command, jobStore):
         """
-        Serialise an existing job.
+        Unpickles a :class:`toil.job.Job` instance by decoding command.
+
+        The command is a reference to a jobStoreFileID containing the \
+        pickle file for the job and a list of modules which must be imported so that \
+        the Job can be successfully unpickled. \
+        See :func:`toil.job.Job._serialiseFirstJob` and \
+        :func:`toil.job.Job._makeJobGraphs` to see precisely how the Job is encoded \
+        in the command.
+
+        :param string command: encoding of the job in the job store.
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store.
+        :returns: The job referenced by the command.
+        :rtype: toil.job.Job
         """
-        self._serialiseJobGraph(jobGraph, jobStore, returnValues, False)
-        #Drop the completed command, if not dropped already
-        jobGraph.command = None
-        #Merge any children (follow-ons) created in the initial serialisation
-        #with children (follow-ons) created in the subsequent scale-up.
-        assert len(jobGraph.stack) >= 4
-        combinedChildren = jobGraph.stack[-1] + jobGraph.stack[-3]
-        combinedFollowOns = jobGraph.stack[-2] + jobGraph.stack[-4]
-        jobGraph.stack = jobGraph.stack[:-4]
-        if len(combinedFollowOns) > 0:
-            jobGraph.stack.append(combinedFollowOns)
-        if len(combinedChildren) > 0:
-            jobGraph.stack.append(combinedChildren)
+        commandTokens = command.split()
+        assert "_toil" == commandTokens[0]
+        userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
+        logger.debug('Loading user module %s.', userModule)
+        userModule = cls._loadUserModule(userModule)
+        pickleFile = commandTokens[1]
+
+        # Get a directory to download the job in
+        directory = tempfile.mkdtemp()
+        # Initialize a blank filename so the finally below can't fail due to a
+        # missing variable
+        filename = ''
+
+        try:
+            # Get a filename to download the job to.
+            # Don't use mkstemp because we would need to delete and replace the
+            # file.
+            # Don't use a NamedTemporaryFile context manager because its
+            # context manager exit will crash if we deleted it.
+            filename = os.path.join(directory, 'job')
+                
+            # Download the job
+            if pickleFile == "firstJob":
+                jobStore.readSharedFile(pickleFile, filename)
+            else:
+                jobStore.readFile(pickleFile, filename)
+
+            # Open and unpickle
+            with open(filename, 'rb') as fileHandle:
+                return cls._unpickle(userModule, fileHandle, jobStore.config)
+
+            # TODO: We ought to just unpickle straight from a streaming read
+        finally:
+            # Clean up the file
+            if os.path.exists(filename):
+                os.unlink(filename)
+            # Clean up the directory we put it in
+            # TODO: we assume nobody else put anything in the directory
+            if os.path.exists(directory):
+                os.rmdir(directory)
+
+
+    
 
     ####################################################
     #Function which worker calls to ultimately invoke
@@ -2001,11 +1978,23 @@ class EncapsulatedJob(Job):
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
         Job.__init__(self, **job._requirements)
-        # Ensure that the encapsulated job has the same direct predecessors as the job
-        # being encapsulated.
-        if job._directPredecessors:
-            for job_ in job._directPredecessors:
-                job_.addChild(self)
+        
+        # Ensure that the encapsulated job has the same predecessor
+        # relationships as the job being encapsulated. We have to search the
+        # whole graph because we don't store child and follow-on relationships
+        # both ways.
+        parents = []
+        followed = []
+        for other in job._registry.values():
+            if job.jobStoreID in other._children:
+                parents.append(other)
+            if job.jobStoreID in other._followOns:
+                followed.append(other)
+        for other in parents:
+            other.addChild(self)
+        for other in followed:
+            other.addFollowOn(self)
+            
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.
@@ -2028,6 +2017,10 @@ class EncapsulatedJob(Job):
     def prepareForPromiseRegistration(self, jobStore):
         super().prepareForPromiseRegistration(jobStore)
         self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
+        
+    def _disablePromiseRegistration(self):
+        super()._disablePromiseRegistration()
+        selff.encapsulatedJob._disablePromiseRegistration()
 
     def getUserScript(self):
         return self.encapsulatedJob.getUserScript()
