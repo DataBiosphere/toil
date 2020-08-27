@@ -30,7 +30,6 @@ import threading
 import os
 import sys
 import shutil
-import subprocess
 import tempfile
 import time
 import uuid
@@ -49,11 +48,9 @@ from toil.lib.exceptions import panic
 # noinspection PyPackageRequirements
 # (installed by `make prepare`)
 
-from toil.version import python
 from toil.lib.compatibility import USING_PYTHON2
 from toil.common import Config, Toil
 from toil.fileStores import FileID
-from toil.utils.toilStatus import ToilStatus
 from toil.job import Job, JobNode
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
@@ -62,8 +59,6 @@ from toil.statsAndLogging import StatsAndLogging
 from toil.test import (ToilTest,
                        needs_aws_s3,
                        needs_encryption,
-                       needs_cwl,
-                       needs_docker,
                        make_tests,
                        needs_google,
                        travis_test,
@@ -744,7 +739,7 @@ class AbstractJobStoreTest(object):
             def testImportSharedFile(self, otherCls):
                 """
                 :param AbstractJobStoreTest.Test self: the current test case
-
+                
                 :param AbstractJobStoreTest.Test otherCls: the test case class for the job store
                        to import from or export to
                 """
@@ -1063,58 +1058,6 @@ class AbstractJobStoreTest(object):
                 self.assertTrue(os.path.isfile(path))
             finally:
                 os.unlink(path)
-        
-        def check_status(self, status, status_fn, seconds=10):
-            i = 0.0
-            while status_fn(self.jobstore_initialized) != status:
-                time.sleep(0.5)
-                i += 0.5
-                if i > seconds:
-                    s = status_fn(self.jobstore_initialized)
-                    self.assertEqual(s, status, 'Status took longer than 10 seconds to fetch:  %s' % s)
-        
-        @travis_test
-        def testGetStatusFailedToilWF(self):
-            """
-            Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
-
-            While this workflow could be called by importing and evoking its main function, doing so would remove the
-            opportunity to test the 'RUNNING' functionality of getStatus().
-            """
-            # --badWorker is set to force failure.
-            wf = subprocess.Popen([python, '-m', 'toil.test.sort.sort',
-                                  'file:' + self.jobstore_initialized.jobStoreDir,
-                                  '--clean=never',
-                                  '--numLines=1', '--lineLength=1', '--badWorker=1'])
-
-            self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
-            wf.wait()
-            self.check_status('ERROR', status_fn=ToilStatus.getStatus)
-
-        @needs_cwl
-        @needs_docker
-        def testGetStatusFailedCWLWF(self):
-            """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
-            # --badWorker is set to force failure.
-            cmd = ['toil-cwl-runner', '--jobStore', self.jobstore_initialized.jobStoreDir, 
-                '--clean=never', '--badWorker=1', 'src/toil/test/cwl/sorttool.cwl', '--reverse', 
-                '--input', 'src/toil/test/cwl/whale.txt']
-            wf = subprocess.Popen(cmd)
-            self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
-            wf.wait()
-            self.check_status('ERROR', status_fn=ToilStatus.getStatus)
-
-        @needs_cwl
-        @needs_docker
-        def testGetStatusSuccessfulCWLWF(self):
-            """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
-            cmd = ['toil-cwl-runner', '--jobStore', self.jobstore_initialized.jobStoreDir, '--clean=never',
-                'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
-            wf = subprocess.Popen(cmd)
-            self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
-            wf.wait()
-            self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
-
 
         def _largeLogEntrySize(self):
             """

@@ -34,7 +34,7 @@ from toil import resolveEntryPoint
 from toil.job import Job
 from toil.utils.toilStatus import ToilStatus
 from toil.lib.bioio import getTempFile, system
-from toil.test import ToilTest, needs_aws_ec2, needs_rsync3, integrative, slow, needs_cwl, travis_test
+from toil.test import ToilTest, needs_aws_ec2, needs_rsync3, integrative, slow, needs_cwl, needs_docker, travis_test
 from toil.test.sort.sortTest import makeFileToSort
 from toil.utils.toilStats import getStats, processData
 from toil.common import Toil, Config
@@ -351,6 +351,42 @@ class UtilsTest(ToilTest):
         os.remove(os.path.join(self.toilDir, 'files/shared/pid.log'))
         self.check_status('QUEUED', status_fn=ToilStatus.getPIDStatus)
     
+    @travis_test
+    def testGetStatusFailedToilWF(self):
+        """
+        Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
+        While this workflow could be called by importing and evoking its main function, doing so would remove the
+        opportunity to test the 'RUNNING' functionality of getStatus().
+        """
+        # --badWorker is set to force failure.
+        wf = subprocess.Popen(self.sort_workflow_cmd + ['--badWorker=1'])
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        wf.wait()
+        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
+
+    @needs_cwl
+    @needs_docker
+    def testGetStatusFailedCWLWF(self):
+        """Test that ToilStatus.getStatus() behaves as expected with a failing CWL workflow."""
+        # --badWorker is set to force failure.
+        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never', '--badWorker=1',
+               'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
+        wf = subprocess.Popen(cmd)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        wf.wait()
+        self.check_status('ERROR', status_fn=ToilStatus.getStatus)
+
+    @needs_cwl
+    @needs_docker
+    def testGetStatusSuccessfulCWLWF(self):
+        """Test that ToilStatus.getStatus() behaves as expected with a successful CWL workflow."""
+        cmd = ['toil-cwl-runner', '--jobStore', self.toilDir, '--clean=never',
+               'src/toil/test/cwl/sorttool.cwl', '--reverse', '--input', 'src/toil/test/cwl/whale.txt']
+        wf = subprocess.Popen(cmd)
+        self.check_status('RUNNING', status_fn=ToilStatus.getStatus)
+        wf.wait()
+        self.check_status('COMPLETED', status_fn=ToilStatus.getStatus)
+
     @needs_cwl
     @patch('builtins.print')
     def testPrintJobLog(self, mock_print):
