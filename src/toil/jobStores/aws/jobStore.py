@@ -1292,7 +1292,7 @@ class AWSJobStore(AbstractJobStore):
                                     headObj = client.head_object(Bucket=bucket_name,
                                                                  Key=compat_bytes(info.fileID), **headerArgs)
                                     info.version = headObj.get('VersionId', None)
-                                    log.warning('Reloaded key with no version and got version %s', str())
+                                    log.warning('Reloaded key with no version and got version %s', str(info.version))
                                     assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
@@ -1369,8 +1369,7 @@ class AWSJobStore(AbstractJobStore):
                 for attempt in retry(predicate=lambda error: isinstance(error, ChecksumError)):
                     with attempt:
                         with AtomicFileCreate(localFilePath) as tmpPath:
-                            with open(tmpPath, 'wb') as content:
-                                obj.download_fileobj(content, ExtraArgs={'VersionId': self.version, **headerArgs})
+                            obj.download_file(Filename=tmpPath, ExtraArgs={'VersionId': self.version, **headerArgs})
 
                         if verifyChecksum and self.checksum:
                             try:
@@ -1505,23 +1504,13 @@ class AWSJobStore(AbstractJobStore):
 
         :param bucket_name: str
         """
-
         status = self.s3_resource.BucketVersioning(bucket_name).status
         return self.versionings[status] if status else False
 
     @staticmethod
     def __getBucketRegion(bucket_name):
-        """
-        Get the bucket location by name. Return None if the bucket does not exist.
-
-        :param bucket_name: str
-        """
-        try:
-            loc = s3_boto3_client.get_bucket_location(Bucket=bucket_name)
-        except:
-            return None
-        region = bucket_location_to_region(loc.get('LocationConstraint', None))
-        return region
+        loc = s3_boto3_client.get_bucket_location(Bucket=bucket_name)
+        return bucket_location_to_region(loc.get('LocationConstraint', None))
 
     def destroy(self):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
