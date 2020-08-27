@@ -1401,13 +1401,6 @@ class Job:
         """
         ordering = []
         visited = set()
-        
-        # We need a job to predecessor set dict
-        predecessors = collections.defaultdict(set)
-        for job in self._registry.values():
-            for dependent in itertools.chain(job._children, job._followOns):
-                predecessors[dependent.jobStoreID].add(dependent.jobStoreID)
-                
 
         # We need to recurse and traverse the graph without exhausting Python's
         # stack, so we keep our own stack.
@@ -1420,7 +1413,7 @@ class Job:
             #Do not add the job to the ordering until all its predecessors have been
             #added to the ordering
             outstandingPredecessor = False
-            for p in predecessors[job.jobStoreID]:
+            for p in job._directPredecessors:
                 if p not in visited:
                     outstandingPredecessor = True
                     break
@@ -1441,30 +1434,28 @@ class Job:
     def _saveBody(self, jobStore):
         """
         Save the execution data for just this job to the JobStore, and fill in
-        the JobDescription (in memory) with the information needed to retrieve
-        it.
+        the JobDescription with the information needed to retrieve it.
+        
+        Does not save the JobDescription.
         """
         
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
-        
-        
-
-    def _serialiseJob(self, jobStore, jobsToJobGraphs, rootJobGraph):
-        """
-        Save the job data for just this particular job as a file in the JobStore, and updates
-        """
-        # Pickle the job so that its run method can be run at a later time.
+  
         # Drop out the children/followOns/predecessors/services - which are
         # all recorded within the jobStore and do not need to be stored within
-        # the job
-        self._children, self._followOns, self._services = [], [], []
-        self._directPredecessors, self._promiseJobStore = set(), None
-        # The pickled job is "run" as the command of the job, see worker
-        # for the mechanism which unpickles the job and executes the Job.run
-        # method.
+        # the job. Set to None so we know if we try to actually use them.
+        # ID references shouldn't appear in the body.
+        self._children = None
+        self._followOns = None
+        self._services = None 
+        self._directPredecessors = None
+        
+        # Save the body of the job
         with jobStore.writeFileStream(rootJobGraph.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
             pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
+            
+        # Find the user script.
         # Note that getUserScript() may have been overridden. This is intended. If we used
         # self.userModule directly, we'd be getting a reference to job.py if the job was
         # specified as a function (as opposed to a class) since that is where FunctionWrappingJob
@@ -1472,10 +1463,10 @@ class Job:
         # and FunctionWrappingJob overrides getUserScript() to give us just that. Only then can
         # filter_main() in _unpickle( ) do its job of resolving any user-defined type or function.
         userScript = self.getUserScript().globalize()
-        jobsToJobGraphs[self].command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
-        #Update the status of the jobGraph on disk
-        jobStore.update(jobsToJobGraphs[self])
-
+        
+        # The command connects the body of the job to the JobDescription
+        self._description.command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
+        
     def _serialiseServices(self, jobStore, jobGraph, rootJobGraph):
         """
         Serialises the services for a job.
@@ -1578,7 +1569,8 @@ class Job:
                     # Pickle the services for the job
                     job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
                     # Now pickle the job
-                    job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
+                    job._saveBody(jobStore)
+                    # TODO: create/update JobDescription
             else:
                 #We store the return values at this point, because if a return value
                 #is a promise from another job, we need to register the promise
@@ -1589,7 +1581,8 @@ class Job:
                     # Pickle the services for the job
                     job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
                     # Pickle the job itself
-                    job._serialiseJob(jobStore, jobsToJobGraphs, jobGraph)
+                    job._saveBody(jobStore)
+                    # TODO: create/update JobDescription
                 # Pickle any services for the job
                 self._serialiseServices(jobStore, jobGraph, jobGraph)
 
@@ -1978,23 +1971,11 @@ class EncapsulatedJob(Job):
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
         Job.__init__(self, **job._requirements)
-        
-        # Ensure that the encapsulated job has the same predecessor
-        # relationships as the job being encapsulated. We have to search the
-        # whole graph because we don't store child and follow-on relationships
-        # both ways.
-        parents = []
-        followed = []
-        for other in job._registry.values():
-            if job.jobStoreID in other._children:
-                parents.append(other)
-            if job.jobStoreID in other._followOns:
-                followed.append(other)
-        for other in parents:
-            other.addChild(self)
-        for other in followed:
-            other.addFollowOn(self)
-            
+        # Ensure that the encapsulated job has the same direct predecessors as the job
+        # being encapsulated.
+        if job._directPredecessors:
+            for job_ in job._directPredecessors:
+                job_.addChild(self)
         self.encapsulatedJob = job
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.
