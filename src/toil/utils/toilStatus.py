@@ -158,7 +158,7 @@ class ToilStatus():
         return jobStats
 
     @staticmethod
-    def getPIDStatus(jobStoreName):
+    def getPIDStatus(jobStore):
         """
         Determine the status of a process with a particular pid.
 
@@ -168,14 +168,14 @@ class ToilStatus():
         :rtype: str
         """
         try:
-            jobstore = Toil.resumeJobStore(jobStoreName)
+            jobStore.resume()
         except NoSuchJobStoreException:
             return 'QUEUED'
         except NoSuchFileException:
             return 'QUEUED'
 
         try:
-            with jobstore.readSharedFileStream('pid.log') as pidFile:
+            with jobStore.readSharedFileStream('pid.log') as pidFile:
                 pid = int(pidFile.read())
                 try:
                     os.kill(pid, 0)  # Does not kill process when 0 is passed.
