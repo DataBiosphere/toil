@@ -101,6 +101,8 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import read_csv
                     from toil.wdl.wdl_functions import defined
                     from toil.wdl.wdl_functions import basename
+                    from toil.wdl.wdl_functions import floor
+                    from toil.wdl.wdl_functions import ceil
                     import fnmatch
                     import textwrap
                     import subprocess

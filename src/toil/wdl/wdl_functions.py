@@ -21,6 +21,7 @@ import os
 import logging
 import textwrap
 import csv
+import math
 
 import subprocess
 
@@ -561,4 +562,12 @@ def read_csv(f):
     :return: csv_array
     '''
     return read_tsv(f, delimiter=",")
+
+
+def floor(i):
+    return math.floor(i)
+
+
+def ceil(i):
+    return math.ceil(i)
 
