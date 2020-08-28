@@ -765,6 +765,7 @@ class Toil(object):
         """
         self._jobCache = dict()
         self._inContextManager = False
+        self._inRestart = False
 
     def __enter__(self):
         """
@@ -798,17 +799,14 @@ class Toil(object):
         """
         from toil.utils.toilStatus import ToilStatus
         
-        try: 
+        try:
             if (exc_type is not None and self.config.clean == "onError" or
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
-
-                try:
-                    status = ToilStatus.getStatus(self._jobStore)
-                    
-                    if status == 'COMPLETED':
-                        self._jobStore.destroy()
-                        logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
+    
+                try:               
+                    self._jobStore.destroy()
+                    logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
                     logger.info("Failed to delete the job store: %s" % str(self._jobStore))
                     raise
@@ -818,6 +816,7 @@ class Toil(object):
             else:
                 logger.exception('The following error was raised during clean up:')
         self._inContextManager = False
+        self._inRestart = False
         return False  # let exceptions through
 
     def start(self, rootJob):
@@ -866,6 +865,7 @@ class Toil(object):
 
         :return: The root job's return value
         """
+        self._inRestart = True
         self._assertContextManagerUsed()
         self.writePIDFile()
         if not self.config.restart:
