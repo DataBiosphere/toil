@@ -30,7 +30,6 @@ except ImportError:
 import re
 import time
 import uuid
-import base64
 import hashlib
 import itertools
 import reprlib
@@ -50,7 +49,7 @@ import boto.sdb
 from boto.exception import SDBResponseError
 import botocore.session
 import botocore.credentials
-import botocore.exceptions
+from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes, compat_plain
 from toil.lib.misc import AtomicFileCreate
@@ -488,8 +487,8 @@ class AWSJobStore(AbstractJobStore):
         objExists = True
         try:
             obj.load()
-        except botocore.exceptions.ClientError as e:
-            if e.response['Error']['Code'] == '404':
+        except ClientError as e:
+            if e.response.get('Error', {}).get('Code') == '404':
                 objExists = False
             else:
                 raise
@@ -703,15 +702,18 @@ class AWSJobStore(AbstractJobStore):
         assert self.bucketNameRe.match(bucket_name)
         log.debug("Binding to job store bucket '%s'.", bucket_name)
 
-        def bucket_creation_pending(error):
+        def bucket_creation_pending(e):
             # https://github.com/BD2KGenomics/toil/issues/955
             # https://github.com/BD2KGenomics/toil/issues/995
             # https://github.com/BD2KGenomics/toil/issues/1093
-            return (isinstance(error, botocore.exceptions.ClientError)
-                    and error.response['Error']['Code'] in ('BucketAlreadyOwnedByYou',
-                                                            'OperationAborted',
-                                                            '404',
-                                                            'NoSuchBucket'))
+
+            # head_bucket() call throws a 404 error if the bucket does not exist
+            # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/migrations3.html?#accessing-a-bucket
+            return (isinstance(e, ClientError)
+                    and e.response.get('Error', {}).get('Code') in ('BucketAlreadyOwnedByYou',
+                                                                    'OperationAborted',
+                                                                    '404',
+                                                                    'NoSuchBucket'))
 
         bucketExisted = True
         for attempt in retry(predicate=bucket_creation_pending):
@@ -720,8 +722,8 @@ class AWSJobStore(AbstractJobStore):
                     bucket = self.s3_resource.Bucket(bucket_name)
                     # the head_bucket() call makes sure that the bucket exists and the user can access it
                     self.s3_client.head_bucket(Bucket=bucket_name)
-                except botocore.exceptions.ClientError as e:
-                    errorCode = e.response['Error']['Code']
+                except ClientError as e:
+                    errorCode = e.response.get('Error', {}).get('Code')
                     if errorCode == '404' or errorCode == 'NoSuchBucket':
                         bucketExisted = False
                         log.debug("Bucket '%s' does not exist.", bucket_name)
@@ -1560,8 +1562,8 @@ class AWSJobStore(AbstractJobStore):
             bucket.delete()
         except s3_boto3_client.exceptions.NoSuchBucket:
             pass
-        except botocore.exceptions.ClientError as error:
-            if error.response['Error']['Code'] != 'NoSuchBucket':
+        except ClientError as e:
+            if e.response.get('Error', {}).get('Code') != 'NoSuchBucket':
                 raise
 
 
