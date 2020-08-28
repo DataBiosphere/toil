@@ -62,18 +62,25 @@ logger = logging.getLogger( __name__ )
 
 class FakeID:
     """
-    Represents a temporarily-assigned ID that can be genertated when relating
-    jobs to each other before the whole graph is saved to the JobStore. When
-    saved, will be replaced by a JobStore-assigned ID.
+    Placeholder for a job ID used by a JobDescription that has not yet been
+    registered with any JobStore.
+    
+    Needs to be held:
+        * By JobDescription objects to record normal relationships.
+        * By Jobs to key their connected-component registries and to record
+          predecessor relationships to facilitate EncapsulatedJob adding
+          itself as a child.
+        * By Services to tie back to their hosting jobs, so the service
+          tree can be built up from Service objects.
     """
     def __init__(self):
         """
-        Assign a unique ID that won't collide with anything.
+        Assign a unique temporary ID that won't collide with anything.
         """
         self._value == uuid.uuid4()
         
     def __str__(self):
-        return self._value
+        return __repr__(self)
         
     def __repr__(self):
         return f'FakeID({self._value})'
@@ -102,8 +109,7 @@ class JobDescription:
     their specific parameters.
     """
     
-    def __init__(self, requirements=None, unitName='', displayName='', jobName='',
-                 command=None, jobStoreID=None, predecessorNumber=0):
+    def __init__(self, requirements=None, unitName='', displayName='', jobName=''):
         """
         Create a new JobDescription.
         
@@ -126,9 +132,6 @@ class JobDescription:
         :param str|None command: Command that should be run when the job is executed.
             Generally asks _toil_worker to fetch the actual job data from the
             JobStore and execute it.
-        :param str|FakeID|None jobStoreID: The ID assigned to this job by the job
-            store. Should be a FakeID until the job has actually been stored in the
-            job store.
         :param int predecessorNumber: Number of total predecessors
             that must finish before the described Job from being scheduled.
         """
@@ -147,11 +150,10 @@ class JobDescription:
         self.displayName = makeString(displayName)
         self.jobName = makeString(jobName)
     
-        # Set properties that are sensible to configure when a JobDescription
-        # is created.
-        self.command = command
-        self.jobStoreID = jobStoreID
-        self.predecessorNumber = predecessorNumber
+        # Set properties that are not fully filled in on creation.
+        self.command = None
+        self.jobStoreID = FakeID()
+        
         
         # Set scheduling properties that the leader read to think about scheduling.
         
@@ -166,21 +168,31 @@ class JobDescription:
         # requested deletions.
         self.filesToDelete = [] 
         
+        # The number of direct predecessors of the job.
+        self.predecessorNumber = 0
+        
         # The IDs of predecessors that have finished. When len(predecessorsFinished) ==
         # predecessorNumber then the job can be run.
         self.predecessorsFinished = set()
         
-        # The lists of successor jobs to run. Successor jobs are stored as JobStore IDs. Successor
-        # jobs are run in reverse order from the stack.
-        # When first set up, this looks like a list of follow-ons and then a list of children.
-        self.stack = [[], []]
+        # Note that we don't hold IDs of our predecessors. Predecessors know
+        # about us, and not the other way around. Otherwise we wouldn't be able
+        # to save ourselves to the job store until our predecessors were saved,
+        # but they'd also be waiting on us.
+       
+        # The IDs of all child jobs of the described job.
+        self.childIDs = set()
         
+        # The IDs of all follow-on jobs of the described job.
+        self.followOnIDs = set()
+        
+        # Dict from ServiceHostJob ID to list of child ServiceHostJobs that start after it.
+        # All services must have an entry, if only to an empty list.
+        self.serviceTree = {}
+       
         # A jobStoreFileID of the log file for a job. This will be None unless the job failed and
         # the logging has been captured to be reported on the leader.
         self.logJobStoreFileID = None 
-        
-        # A list of lists of service jobs to run. Each sub list is a list of service job IDs.
-        self.services = []
         
         # Now set properties that don't really describe the job but hook us up
         # to contextual state so our properties and methods can use it.
@@ -188,6 +200,187 @@ class JobDescription:
         # We can have a toil.common.Config assigned to fill in default values for
         # requirements not explicitly specified.
         self._config = None
+        
+    def serviceHostIDsInBatches(self):
+        """
+        Get an iterator over all batches of service host job IDs that can be
+        started at the same time, in the order they need to start in. 
+        """
+      
+        # First start all the jobs with no parent
+        roots = set(self.serviceTree.keys())
+        for parent, children in self.serviceTree:
+            for child in children:
+                roots.remove(child)
+        batch = list(roots)
+        yield batch
+        
+        while len(batch) > 0:
+            nextBatch = []
+            for started in batch:
+                # Go find all the children that can start now that we have started.
+                for child in self.serviceTree[started]:
+                    nextBatch.append(child)
+            
+            # Emit the batch
+            batch = nextBatch
+            yield batch
+            
+    def successorsAndServiceHosts(self):
+        """
+        Get an iterator over all child, follow-on, and service job IDs
+        """
+        return itertools.chain(self.childIDs, jobDesc.self.followOnIDs, self.serviceTree.keys())
+        
+    def clearSuccessorsAndServiceHosts(self):
+        """
+        Remove all references to child, follow-on, and service jobs associated with the described job.
+        """
+        self.childIDs = set()
+        self.followOnIDs = set()
+        self.serviceTree = {}
+        
+    def addChild(self, childID):
+        """
+        Make the job with the given ID a child of the described job.
+        """
+        
+        self.childIDs.add(childID)
+        
+    def addFollowOn(self, followOnID):
+        """
+        Make the job with the given ID a follow-on of the described job.
+        """
+        
+        self.followOnIDs.add(followOnID)
+        
+    def addServiceHostJob(self, serviceID, parentServiceID=None):
+        """
+        Make the ServiceHostJob with the given ID a service of the described job.
+        
+        If a parent ServiceHostJob ID is given, that parent service will be started
+        first, and must have already been added.
+        """
+        
+        # Make sure we aren't clobbering something
+        assert serviceID not in self.serviceTree
+        self.serviceTree[serviceID] = []
+        if parentServiceID is not None:
+            self.serviceTree[parentServiceID].append(serviceID)
+            
+    def hasChild(self, childID):
+        """
+        Return True if the job with the given ID is a child of the described job.
+        """
+        
+        return childID in self.childIDs
+        
+    def hasFollowOn(self, followOnID):
+        """
+        Return True if the job with the given ID is a follow-on of the described job.
+        """
+        
+        return followOnID in self.followOnIDs
+        
+    def hasServiceHostJob(self, serviceID):
+        """
+        Return True if the ServiceHostJob with the given ID is a service of the described job.
+        """
+        
+        return serviceID in self.serviceTree
+        
+    def addPredecessor(self):
+        """
+        Notify the JobDescription that a predecessor has been added to its Job.
+        """
+        self.predecessorNumber += 1
+        
+    def renameReferences(self, renames):
+        """
+        Apply the given dict of ID renames to all references to jobs. Does not
+        modify our own ID or those of finished predecessors.
+        
+        :param dict(FakeID, str) renames: Rename operations to apply.
+        """
+        
+        self.childIDs = {renames[old] for old in self.childIDs}
+        self.followOnIDs = {renames[old] for old in self.followOnIDs}
+        self.serviceTree = {renames[parent]: [renames[child] for child in children]
+                            for parent, children in self.serviceTree.items()}
+        
+    def finishPredecessor(self, predecessorID):
+        """
+        Record that a predecessor has completed.
+        """
+        
+        assert predecessorID not in self.predecessorsFinished, f"Predecessor {predecessorID} duplicated!"
+        assert not isinstance(predecessorID, FakeID), f"Unregistered predecessor {predecessorID} finished!"
+        self.predecessorsFinished.add(predecessorID)
+        
+    def onCreate(self, jobStore):
+        """
+        Called by the JobStore the first time this JobDescription is saved into it.
+        
+        Used to perform setup work (like hooking up flag files for service jobs) that requires the JobStore.
+        
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store we are being placed into
+        """
+        pass
+    
+    def assignConfig(self, config):
+        """
+        Assign the given config object to be used to provide default values for
+        requirements.
+        
+        :param toil.common.Config config: Config object to query
+        """
+        self._config = config
+        
+    def setupJobAfterFailure(self, exitReason=None):
+        """
+        Reduce the remainingRetryCount if greater than zero and set the memory
+        to be at least as big as the default memory (in case of exhaustion of memory,
+        which is common).
+        
+        Requires a configuration to have been associated.
+        
+        :param toil.batchSystems.abstractBatchSystem.BatchJobExitReason exitReason: The configuration for the current workflow run.
+        
+        """
+        
+        # Avoid potential circular imports
+        from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
+        
+        assert self._config is not None
+        
+        if config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
+            logger.info("*Not* reducing retry count (%s) of job %s with ID %s",
+                        self.remainingRetryCount, self, self.jobStoreID)
+        else:
+            self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
+            logger.warning("Due to failure we are reducing the remaining retry count of job %s with ID %s to %s",
+                           self, self.jobStoreID, self.remainingRetryCount)
+        # Set the default memory to be at least as large as the default, in
+        # case this was a malloc failure (we do this because of the combined
+        # batch system)
+        if self.memory < config.defaultMemory:
+            self.memory = config.defaultMemory
+            logger.warning("We have increased the default memory of the failed job %s to %s bytes",
+                           self, self.memory)
+            
+        if self.disk < config.defaultDisk:
+            self.disk = config.defaultDisk
+            logger.warning("We have increased the disk of the failed job %s to the default of %s bytes",
+                           self, self.disk)
+                           
+                           
+    def getLogFileHandle(self, jobStore):
+        """
+        Returns a context manager that yields a file handle to the log file.
+        
+        Assumes logJobStoreFileID is set.
+        """
+        return jobStore.readFileStream(self.logJobStoreFileID)
         
     @staticmethod
     def _parseResource(name, value):
@@ -249,25 +442,6 @@ class JobDescription:
         else:
             # Anything else we just pass along without opinons
             return value
-        
-    def onCreate(self, jobStore):
-        """
-        Called by the JobStore the first time this JobDescription is saved into it.
-        
-        Used to perform setup work (like hooking up flag files for service jobs) that requires the JobStore.
-        
-        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store we are being placed into
-        """
-        pass
-    
-    def assignConfig(self, config):
-        """
-        Assign the given config object to be used to provide default values for
-        requirements.
-        
-        :param toil.common.Config config: Config object to query
-        """
-        self._config = config
         
     def _fetchRequirement(self, requirement):
         """
@@ -347,63 +521,14 @@ class JobDescription:
         return '%s( **%r )' % (self.__class__.__name__, self.__dict__)
         
         
-    # Now we have methods related to scheduling.
-        
-    def setupJobAfterFailure(self, exitReason=None):
-        """
-        Reduce the remainingRetryCount if greater than zero and set the memory
-        to be at least as big as the default memory (in case of exhaustion of memory,
-        which is common).
-        
-        Requires a configuration to have been associated.
-        
-        :param toil.batchSystems.abstractBatchSystem.BatchJobExitReason exitReason: The configuration for the current workflow run.
-        
-        """
-        
-        # Avoid potential circular imports
-        from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
-        
-        assert self._config is not None
-        
-        if config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
-            logger.info("*Not* reducing retry count (%s) of job %s with ID %s",
-                        self.remainingRetryCount, self, self.jobStoreID)
-        else:
-            self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
-            logger.warning("Due to failure we are reducing the remaining retry count of job %s with ID %s to %s",
-                           self, self.jobStoreID, self.remainingRetryCount)
-        # Set the default memory to be at least as large as the default, in
-        # case this was a malloc failure (we do this because of the combined
-        # batch system)
-        if self.memory < config.defaultMemory:
-            self.memory = config.defaultMemory
-            logger.warning("We have increased the default memory of the failed job %s to %s bytes",
-                           self, self.memory)
-            
-        if self.disk < config.defaultDisk:
-            self.disk = config.defaultDisk
-            logger.warning("We have increased the disk of the failed job %s to the default of %s bytes",
-                           self, self.disk)
-                           
-                           
-    def getLogFileHandle(self, jobStore):
-        """
-        Returns a context manager that yields a file handle to the log file.
-        
-        Assumes logJobStoreFileID is set.
-        """
-        return jobStore.readFileStream(self.logJobStoreFileID)
-        
-        
 class ServiceJobDescription(JobDescription):
     """
-    A description of a job that is a service.
+    A description of a job that hosts a service.
     """
     
     def __init__(self, *args, **kwargs):
         """
-        Create a ServiceJobDescription to describe a service job.
+        Create a ServiceJobDescription to describe a ServiceHostJob.
         """
         
         # Make the base JobDescription
@@ -469,7 +594,7 @@ class CheckpointJobDescription(JobDescription):
         """
         assert self.checkpoint is not None
         successorsDeleted = []
-        if self.stack or self.services or self.command != None:
+        if self.childIDs or self.followOnIDs or self.serviceTree or self.command != None:
             if self.command != None:
                 assert self.command == self.checkpoint
                 logger.debug("Checkpoint job already has command set to run")
@@ -479,7 +604,7 @@ class CheckpointJobDescription(JobDescription):
             jobStore.update(self) # Update immediately to ensure that checkpoint
             # is made before deleting any remaining successors
 
-            if self.stack or self.services:
+            if self.childIDs or self.followOnIDs or self.serviceTree:
                 # If the subtree of successors is not complete restart everything
                 logger.debug("Checkpoint job has unfinished successor jobs, deleting the jobs on the stack: %s, services: %s " %
                              (self.stack, self.services))
@@ -487,25 +612,21 @@ class CheckpointJobDescription(JobDescription):
                 # up as we restart the queue
                 def recursiveDelete(jobDesc):
                     # Recursive walk the stack to delete all remaining jobs
-                    for otherJobs in jobDesc.stack + jobDesc.services:
-                        for otherJobID in otherJobs:
-                            if jobStore.exists(jotherJobID):
-                                recursiveDelete(jobStore.getDescription(otherJobID))
-                            else:
-                                logger.debug("Job %s has already been deleted", otherJobID)
+                    for otherJobID in jobDesc.successorsAndServiceHosts():
+                        if jobStore.exists(otherJobID):
+                            recursiveDelete(jobStore.load(otherJobID))
+                        else:
+                            logger.debug("Job %s has already been deleted", otherJobID)
                     if jobDesc.jobStoreID != self.jobStoreID:
                         logger.debug("Checkpoint is deleting old successor job: %s", jobDesc.jobStoreID)
                         jobStore.delete(jobDesc.jobStoreID)
                         successorsDeleted.append(jobDesc.jobStoreID)
                 recursiveDelete(self)
+                
+                # Cut links to the jobs we deleted.
+                self.clearSuccessorsAndServiceHosts()
 
-                self.stack = [ [], [] ] # Initialise the job to mimic the state of a job
-                # that has been previously serialised but which as yet has no successors
-                # TODO: this is a bad internal format
-
-                self.services = [] # Empty the services
-
-                # Update the jobStore to avoid doing this twice on failure and make this clean.
+                # Update again to commit the removal of successors.
                 jobStore.update(self)
         return successorsDeleted
 
@@ -514,7 +635,8 @@ class Job:
     Class represents a unit of work in toil.
     """
     def __init__(self, memory=None, cores=None, disk=None, preemptable=None,
-                       unitName=None, checkpoint=False, displayName=None):
+                       unitName=None, checkpoint=False, displayName=None,
+                       descriptionClass=None):
         """
         This method must be called by any overriding constructor.
 
@@ -522,15 +644,22 @@ class Job:
         :param cores: the number of CPU cores required.
         :param disk: the amount of local disk space required by the job, expressed in bytes.
         :param preemptable: if the job can be run on a preemptable node.
+        :param unitName: Human-readable name for this instance of the job.
         :param checkpoint: if any of this job's successor jobs completely fails,
             exhausting all their retries, remove any successor jobs and rerun this job to restart the
             subtree. Job must be a leaf vertex in the job graph when initially defined, see
             :func:`toil.job.Job.checkNewCheckpointsAreCutVertices`.
+        :param displayName: Human-readable job type display name.
+        :param descriptionClass: Override for the JobDescription class used to describe the job.
+        
+        :type memory: int or string convertible by toil.lib.humanize.human2bytes to an int
         :type cores: int or string convertible by toil.lib.humanize.human2bytes to an int
         :type disk: int or string convertible by toil.lib.humanize.human2bytes to an int
         :type preemptable: bool
-        :type cache: int or string convertible by toil.lib.humanize.human2bytes to an int
-        :type memory: int or string convertible by toil.lib.humanize.human2bytes to an int
+        :type unitName: str
+        :type checkpoint: bool
+        :type displayName: str
+        :type descriptionClass: class
         """
         
         # Fill in our various names
@@ -541,34 +670,32 @@ class Job:
         # Build a requirements dict for the description
         requirements = {'memory': memory, 'cores': cores, 'disk': disk,
                         'preemptable': preemptable}
-        descriptionClass = JobDescription
-        if checkpoint:
-            # Actually describe as a checkpoint job
-            descriptionClass = CheckpointJobDescription
+        if descriptionClass is None:
+            if checkpoint:
+                # Actually describe as a checkpoint job
+                descriptionClass = CheckpointJobDescription
+            else:
+                # Use the normal default
+                descriptionClass = JobDescription
         # Create the JobDescription that owns all the scheduling information.
         # Make it with a fake ID until we can be assigned a real one by the JobStore.
-        self._description = descriptionClass(requirements=requirements, unitName=unitName, displayName=displayName, jobName=jobName, jobStoreID=FakeID())
+        self._description = descriptionClass(requirements=requirements, unitName=unitName, displayName=displayName, jobName=jobName)
         
         # Private class variables needed to actually execute a job, in the worker.
         # Also needed for setting up job graph structures before saving to the JobStore.
         
         # This dict holds a mapping from FakeIDs to the job objects they represent.
         # Will be shared among all jobs in a disconnected piece of the job
-        # graph that hasn't been added to a JobStore yet.
+        # graph that hasn't been registered with a JobStore yet.
         self._registry = {}
         
-        # All references to other jobs are stored as IDs: strings if we have
-        # been added to the JobStore or or FakeIDs otherwise.
-       
-        # IDs of all jobs that are children of this job
-        self._children = []
-        # IDs of all jobs that are followons of this job
-        self._followOns = []
-        # IDs of all jobs that are services of this job
-        self._services = []
-        # Dict from service job ID to parent service job ID for service jobs in self._services
-        # A service's parent must be started before it can start.
-        self._serviceParents = {}
+        # Job relationships are all stored exactly once in the JobDescription.
+        # Except for predecessor relationships which are stored here, just
+        # while the user is creating the job graphs, to check for duplicate
+        # relationships and to let EncapsulatedJob magically add itself as a
+        # child.
+        self._directPredecessors = set()
+        
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
         # defining the class self is an instance of, which may be a subclass of Job that may be
         # defined in a different module.
@@ -655,12 +782,12 @@ class Job:
         :rtype: toil.job.Job
         """
         
+        # Join the job graphs
         self._jobGraphsJoined(childJob)
-        self._children.append(childJob.jobStoreID)
+        # Remember the child relationship
+        self._description.addChild(childJob.jobStoreID)
+        # Record the temporary back-reference
         childJob._addPredecessor(self)
-        
-        # Make sure children run before follow-ons (put them on top of the stack)
-        self._description.stack[1].append(childJob.jobStoreID)
         
         return childJob
 
@@ -672,7 +799,7 @@ class Job:
         :return: True if childJob is a child of the job, else False.
         :rtype: bool
         """
-        return childJob.jobStoreID in self._children
+        return self._description.hasChild(childJob.jobStoreID)
 
     def addFollowOn(self, followOnJob):
         """
@@ -683,12 +810,13 @@ class Job:
         :return: followOnJob
         :rtype: toil.job.Job
         """
-        self._jobGraphsJoined(followOnJob)
-        self._followOns.append(followOnJob.jobStoreID)
-        followOnJob._addPredecessor(self)
         
-        # Make sure follow-ons run after children (put them under the children)
-        self._description.stack[0].append(followOnJob.jobStoreID)
+        # Join the job graphs
+        self._jobGraphsJoined(followOnJob)
+        # Remember the follow-on relationship
+        self._description.addFollowOn(followOnJob.jobStoreID)
+        # Record the temporary back-reference
+        followOnJob._addPredecessor(self)
         
         return followOnJob
 
@@ -700,8 +828,8 @@ class Job:
         :return: True if the followOnJob is a follow-on of this job, else False.
         :rtype: bool
         """
-        return followOnJob.jobStoreID in self._followOns
-
+        return self._description.hasChild(followOnJob.jobStoreID) 
+        
     def addService(self, service, parentService=None):
         """
         Add a service.
@@ -724,31 +852,30 @@ class Job:
         :rtype: toil.job.Promise
         """
         
-        
         if parentService is not None:
-            # Do check to ensure that parentService is a service of this job
-            if parentService.jobStoreID not in self._services:
+            if not self.hasService(parentService):
                 raise JobException("Parent service is not a service of the given job")
-            
-            # Save that this is one of our services now
-            self._services.append(service.jobStoreID)
-            # Save the service parent relationship
-            self._serviceParents[service.jobStoreID] = parentService.jobStoreID
-            
-            # Add this service job as a child of the parent service job
-            return parentService._addChildService(service)
-        else:
-            # Can't add a service to us without a parent if it already has one
-            if service._hasParent:
-                raise JobException("The service already has a parent service")
-            # Say it has one now (TODO: I guuess it's us?)
-            service._hasParent = True
-            
-            hostingJob = ServiceHostJob(service)
-            self._jobGraphsJoined(hostingJob)
-            self._services.append(hostingJob.jobStoreID)
-            return hostingJob.rv()
-
+        
+        if service.hostID is not None:
+            raise JobException("Service has already been added to a job")
+        
+        # Create a host job for the service, ad get it an ID
+        hostingJob = ServiceHostJob(service)
+        self._jobGraphsJoined(hostingJob)
+        
+        # Record the relationship to the hosting job, with its parent if any.
+        self._description.addServiceHostJob(hostingJob.jobStoreID, parentService.hostID if parentService is not None else None)
+        
+        # Return the promise for the service's startup result
+        return hostingJob.rv()
+        
+    def hasService(self, service):
+        """
+        Returns True if the given Service is a service of this job, and False otherwise.
+        """
+        
+        return service.hostID is None or self._description.hasServiceHostJob(service.hostID)
+        
     ##Convenience functions for creating jobs
 
     def addChildFn(self, fn, *args, **kwargs):
@@ -1094,6 +1221,10 @@ class Job:
                 if not Job._isLeafVertex(y):
                     raise JobGraphDeadlockException("New checkpoint job %s is not a leaf in the job graph" % y)
 
+    ####################################################
+    #Deferred function system
+    ####################################################
+
     def defer(self, function, *args, **kwargs):
         """
         Register a deferred function, i.e. a callable that will be invoked after the current
@@ -1186,37 +1317,31 @@ class Job:
                 else:
                     return toil.restart()
 
-    class Service(with_metaclass(ABCMeta, Job)):
+    class Service(with_metaclass(ABCMeta, object)):
         """
         Abstract class used to define the interface to a service.
         
         Should be subclassed by the user to define services.
         
         Is not executed as a job; runs within a ServiceHostJob. 
-        
-        Is described by a ServiceJobDescription.
         """
         def __init__(self, memory=None, cores=None, disk=None, preemptable=None, unitName=None):
             """
             Memory, core and disk requirements are specified identically to as in \
             :func:`toil.job.Job.__init__`.
             """
-            requirements = {'memory': memory, 'cores': cores, 'disk': disk,
-                            'preemptable': preemptable}
-            super().__init__(requirements=requirements, unitName=unitName)
-           
-            # Holds the IDs of all services that are child services of this service
-            self._childServices = []
-            # Set to True when added to a job or a service as a child. 
-            self._hasParent = False
-        
-        def run(self, fileStore):
-            """
-            Should not be overridden!
-            Services don't run, they start and stop.
-            """
-            raise RuntimeError("Attempted to run a Service outside of a ServiceHostJob")
-            # TODO: Factor out a Schedulable or something that is described by a JobDescription and has an ID but doesn't run() or start()/stop()
+            
+            # Save the requirements to pass on to the hosting job.
+            self.requirements = {'memory': memory, 'cores': cores, 'disk': disk,
+                                 'preemptable': preemptable}
+            # And the unit name
+            self.unitName = unitName
+            
+            # And the name for the hosting job
+            self.jobName = self.__class__.__name__
+            
+            # Record that we have as of yet no ServiceHostJob
+            self.hostID = None
         
         @abstractmethod
         def start(self, job):
@@ -1254,26 +1379,6 @@ class Job:
             """
             pass
 
-        def _addChildService(self, service):
-            """
-            Add a child service to start up after this service has started. This should not be
-            called by the user, instead use :func:`toil.job.Job.Service.addService` with the
-            ``parentService`` option.
-
-            :raises toil.job.JobException: If service has already been made the child of a job or another service.
-            :param toil.job.Job.Service service: Service to add as a "child" of this service
-            :return: a promise that will be replaced with the return value from \
-            :func:`toil.job.Job.Service.start` of service after the service has started.
-            :rtype: toil.job.Promise
-            """
-            if service._hasParent:
-                raise JobException("The service already has a parent service")
-            service._hasParent = True
-            hostingJob = ServiceHostJob(service)
-            self._jobGraphsJoined(hostingJob)
-            self._childServices.append(hostingJob.jobStoreID)
-            return hostingJob.rv()
-
     ####################################################
     #Private functions
     ####################################################
@@ -1286,6 +1391,9 @@ class Job:
         if predecessorJob.jobStoreID in self._directPredecessors:
             raise RuntimeError("The given job is already a predecessor of this job")
         self._directPredecessors.add(predecessorJob.jobStoreID)
+        
+        # Record the need for the predecessor to finish
+        self._description.addPredecessor()
 
     @staticmethod
     def _isLeafVertex(job):
@@ -1424,12 +1532,61 @@ class Job:
                 visited.add(job)
                 ordering.append(job)
                 
-                for other in itertools.chain(job._followOns, job._children):
+                for otherID in itertools.chain(job.description.followOnIDs, job.description.childIDs):
                     # Stack up descendants so we process children and then follow-ons.
                     # So stack up follow-ons deeper
-                    todo.append(other)
+                    todo.append(self._registry[otherID])
 
         return ordering
+        
+    ####################################################
+    #Storing Jobs into the JobStore
+    ####################################################
+    
+    def _register(self, jobStore):
+        """
+        If this job lacks a JobStore-assigned ID, assign this job (and all
+        connected jobs) IDs.
+        """
+        
+        if isinstance(self.jobStoreID, FakeID):
+            # We need to register the connected component.
+            
+            allJobs = list(self._registry.values())
+            
+            # We use one big dict from fake ID to corresponding real ID
+            fakeToReal = []
+            
+            for job in allJobs:
+               # Save the fake ID
+               fake = job.jobStoreID
+               # Assign a real one
+               jobStore.assignID(job.description)
+               # Save the mapping
+               fakeToReal[fake] = job.jobStoreID
+            
+            # Remake the registry in place
+            self._registry.clear()
+            self._registry.update({job.jobStoreID: job for job in allJobs})
+            
+            for job in allJobs:
+                # Tell all the jobs (and thus their descriptions and services)
+                # about the renames.
+                job._renameReferences(fakeToReal)
+                
+    def _renameReferences(self, renames):
+        """
+        Apply the given dict of ID renames to all references to other jobs.
+        
+        Ignores the registry, which is shared and assumed to already be updated.
+        
+        :param dict(FakeID, str) renames: Rename operations to apply.
+        """
+        
+        # Rename predecessors
+        self._directPredecessors = {renames[old] for old in self._directPredecessors}
+        # Do renames in the description
+        self._description.renameReferences(renames)
         
     def _saveBody(self, jobStore):
         """
@@ -1442,7 +1599,7 @@ class Job:
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
   
-        # Drop out the children/followOns/predecessors/services - which are
+        # Drop out the children/followOns/predecessors/services/description - which are
         # all recorded within the jobStore and do not need to be stored within
         # the job. Set to None so we know if we try to actually use them.
         # ID references shouldn't appear in the body.
@@ -1450,10 +1607,16 @@ class Job:
         self._followOns = None
         self._services = None 
         self._directPredecessors = None
+        description = self._description
+        self._description = None
         
         # Save the body of the job
-        with jobStore.writeFileStream(rootJobGraph.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
+        # TODO: we need a job store ID in the description to save the job data for cleanup, but we don't want to commit the description until the job data is on disk...
+        with jobStore.writeFileStream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
             pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
+            
+        # Restore important fields
+        self._description = description
             
         # Find the user script.
         # Note that getUserScript() may have been overridden. This is intended. If we used
@@ -1467,125 +1630,70 @@ class Job:
         # The command connects the body of the job to the JobDescription
         self._description.command = ' '.join(('_toil', fileStoreID) + userScript.toCommand())
         
-    def _serialiseServices(self, jobStore, jobGraph, rootJobGraph):
+    def _saveJobGraph(self, jobStore, saveSelf=False, returnValues=None):
         """
-        Serialises the services for a job.
+        Save job data and JobDescriptions to the given job store for this job
+        and all descending jobs, including services.
+        
+        Used to save the initial job graph containing the root job of the workflow.
+        
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store
+            to save the jobs into.
+        :param bool saveSelf: Set to True to save this job along with its children,
+            follow-ons, and services, or False to just save the children, follow-ons,
+            and services and to populate the return value.
+        :param returnValues: The collection of values returned when executing
+            the job (or starting the service the job is hosting). If saveSelf
+            is not set, will be used to fulfil the job's return value promises.
         """
-        def processService(serviceJob, depth):
-            # Extend the depth of the services if necessary
-            if depth == len(jobGraph.services):
-                jobGraph.services.append([])
-
-            # Recursively call to process child services
-            # TODO: What if service nesting depth is more than max Python stack depth?
-            for childServiceJob in serviceJob.service._childServices:
-                processService(childServiceJob, depth+1)
-
-            # Grab the service's job description
-            serviceJobDescription = serviceJob.description
-            serviceJobGraph = serviceJob._createEmptyJobGraphForJob(jobStore, predecessorNumber=1)
-
-            # Create the start and terminate flags.
-            # We can't associate these with the job they belong to because
-            # that job hasn't necessarily been saved yet.
-            serviceJobGraph.startJobStoreID = jobStore.getEmptyFileStoreID()
-            serviceJobGraph.terminateJobStoreID = jobStore.getEmptyFileStoreID()
-            serviceJobGraph.errorJobStoreID = jobStore.getEmptyFileStoreID()
-            assert jobStore.fileExists(serviceJobGraph.startJobStoreID)
-            assert jobStore.fileExists(serviceJobGraph.terminateJobStoreID)
-            assert jobStore.fileExists(serviceJobGraph.errorJobStoreID)
-
-            # Create the service job tuple
-            j = ServiceJobNode(jobStoreID=serviceJobGraph.jobStoreID,
-                               memory=serviceJobGraph.memory, cores=serviceJobGraph.cores,
-                               disk=serviceJobGraph.disk, preemptable=serviceJobGraph.preemptable,
-                               startJobStoreID=serviceJobGraph.startJobStoreID,
-                               terminateJobStoreID=serviceJobGraph.terminateJobStoreID,
-                               errorJobStoreID=serviceJobGraph.errorJobStoreID,
-                               jobName=serviceJobGraph.jobName, unitName=serviceJobGraph.unitName,
-                               command=serviceJobGraph.command,
-                               predecessorNumber=serviceJobGraph.predecessorNumber)
-
-            # Add the service job tuple to the list of services to run
-            jobGraph.services[depth].append(j)
-
-            # Break the links between the services to stop them being serialised together
-            #childServices = serviceJob.service._childServices
-            serviceJob.service._childServices = None
-            assert serviceJob._services == []
-            #service = serviceJob.service
-
-            # Pickle the job
-            serviceJob.pickledService = pickle.dumps(serviceJob.service, protocol=pickle.HIGHEST_PROTOCOL)
-            serviceJob.service = None
-
-            # Serialise the service job and job wrapper
-            serviceJob._serialiseJob(jobStore, { serviceJob:serviceJobGraph }, rootJobGraph)
-
-            # Restore values
-            #serviceJob.service = service
-            #serviceJob.service._childServices = childServices
-
-        for serviceJob in self._services:
-            processService(serviceJob, 0)
-
-        self._services = []
-
-    def _serialiseJobGraph(self, jobGraph, jobStore, returnValues, firstJob):
-        """
-        Pickle the graph of jobs in the jobStore. The graph is not fully serialised \
-        until the jobGraph itself is written to disk, this is not performed by this \
-        function because of the need to coordinate this operation with other updates. \
-        """
-        #Check if the job graph has created
-        #any cycles of dependencies or has multiple roots
+        
+        # Prohibit cycles and multiple roots
         self.checkJobGraphForDeadlocks()
-
-        #Create the jobGraphs for followOns/children
-        with jobStore.batch():
-            jobsToJobGraphs = self._makeJobGraphs(jobGraph, jobStore)
-        #Get an ordering on the jobs which we use for pickling the jobs in the
-        #correct order to ensure the promises are properly established
+        
+        # Make sure everybody in the registry is registrered with the job store
+        # and has an ID.
+        allJobs = list(self_registry.values())
+        for job in allJobs:
+            job._register(jobStore)
+        
+        # Make sure the whole component is ready for promise registration
+        for job in allJobs:
+            job.prepareForPromiseRegistration(jobStore)
+        
+        # Get an ordering on the jobs which we use for pickling the jobs in the
+        # correct order to ensure the promises are properly established
         ordering = self.getTopologicalOrderingOfJobs()
-        assert len(ordering) == len(jobsToJobGraphs)
-
-        with jobStore.batch():
-            # Temporarily set the jobStore locators for the promise call back functions
-            for job in ordering:
-                job.prepareForPromiseRegistration(jobStore)
-                def setForServices(serviceJob):
-                    serviceJob.prepareForPromiseRegistration(jobStore)
-                    for childServiceJob in serviceJob.service._childServices:
-                        # TODO: What if service nesting depth is more than max Python stack depth?
-                        setForServices(childServiceJob)
-                for serviceJob in job._services:
-                    setForServices(serviceJob)
-
-            ordering.reverse()
-            assert self == ordering[-1]
-            if firstJob:
-                #If the first job we serialise all the jobs, including the root job
-                for job in ordering:
-                    # Pickle the services for the job
-                    job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
-                    # Now pickle the job
-                    job._saveBody(jobStore)
-                    # TODO: create/update JobDescription
-            else:
-                #We store the return values at this point, because if a return value
-                #is a promise from another job, we need to register the promise
-                #before we serialise the other jobs
-                self._fulfillPromises(returnValues, jobStore)
-                #Pickle the non-root jobs
-                for job in ordering[:-1]:
-                    # Pickle the services for the job
-                    job._serialiseServices(jobStore, jobsToJobGraphs[job], jobGraph)
-                    # Pickle the job itself
-                    job._saveBody(jobStore)
-                    # TODO: create/update JobDescription
-                # Pickle any services for the job
-                self._serialiseServices(jobStore, jobGraph, jobGraph)
-
+        
+        # Set up to save last job first, so promises flow the right way
+        ordering.reverse()
+        
+        # Make sure we're the root
+        assert ordering[-1] == self
+        
+        if not saveSelf:
+            # Fulfil promises for return values (even if value is None)
+            self._fulfillPromises(returnValues, jobStore)
+        
+        for job in ordering:
+            for serviceBatch in reversed(job.description.serviceHostIDsInBatches()):
+                # For each batch of service host jobs in reverse order they start
+                for serviceID in serviceBatch:
+                    # Find the actual job
+                    serviceJob = self._registry[serviceID]
+                    # Pickle the service body, which triggers all the promise stuff
+                    serviceJob._saveBody(jobStore)
+            if job != self or saveSelf:
+                # Now pickle the job itself
+                job._saveBody(jobStore)
+            
+        # Now that the job data is on disk, commit the JobDescriptions in reverse execution order
+        for job in ordering:
+            for serviceBatch in job.description.serviceHostIDsInBatches():
+                for serviceID in serviceBatch:
+                    jobStore.update(self._registry[serviceID].description)
+            if job != self or saveSelf:
+                jobStore.update(job.description)
+        
     def saveAsRootJob(self, jobStore):
         """
         Save this job to the given jobStore as the root job of the workflow.
@@ -1600,36 +1708,29 @@ class Job:
             raise JobGraphDeadlockException(
                 'New checkpoint job %s is not a leaf in the job graph' % self)
 
-        # Save us to the job store as a new job
-        jobStore.create(self)
+        # Save the root job and all descendants and services
+        self._saveJobGraph(jobGraph, jobStore, saveSelf=True)
         
         # Store the name of the first job in a file in case of restart. Up to this point the
         # root job is not recoverable. FIXME: "root job" or "first job", which one is it?
         jobStore.setRootJob(self.jobStoreID)
-
-        
-        self._serialiseJobGraph(jobGraph, jobStore, None, True)
-        jobStore.update(jobGraph)
         
         return self.description
         
     @classmethod
-    def loadJob(cls, command, jobStore):
+    def loadJob(cls, jobStore, jobDescription):
         """
-        Unpickles a :class:`toil.job.Job` instance by decoding command.
+        Retrieves a :class:`toil.job.Job` instance from a JobStore
 
-        The command is a reference to a jobStoreFileID containing the \
-        pickle file for the job and a list of modules which must be imported so that \
-        the Job can be successfully unpickled. \
-        See :func:`toil.job.Job._serialiseFirstJob` and \
-        :func:`toil.job.Job._makeJobGraphs` to see precisely how the Job is encoded \
-        in the command.
-
-        :param string command: encoding of the job in the job store.
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store.
-        :returns: The job referenced by the command.
+        :param toil.job.JobDescription jobDescription: the JobDescription of the job to retrieve.
+        :returns: The job referenced by the JobDescription.
         :rtype: toil.job.Job
         """
+        
+        # Grab the command that connects the description to the job body
+        command = JobDescription.command
+        
         commandTokens = command.split()
         assert "_toil" == commandTokens[0]
         userModule = ModuleDescriptor.fromCommand(commandTokens[2:])
@@ -1659,7 +1760,9 @@ class Job:
 
             # Open and unpickle
             with open(filename, 'rb') as fileHandle:
-                return cls._unpickle(userModule, fileHandle, jobStore.config)
+                job = cls._unpickle(userModule, fileHandle, jobStore.config)
+                # Fill in the current description
+                job._description = jobDescription
 
             # TODO: We ought to just unpickle straight from a streaming read
         finally:
@@ -1671,16 +1774,14 @@ class Job:
             if os.path.exists(directory):
                 os.rmdir(directory)
 
-
-    
-
-    ####################################################
-    #Function which worker calls to ultimately invoke
-    #a jobs Job.run method, and then handle created
-    #children/followOn jobs
-    ####################################################
-
-    def _run(self, jobGraph, fileStore):
+    def _run(self, fileStore):
+        """
+        Function which worker calls to ultimately invoke
+        a jobs Job.run method, and then handle created
+        children/followOn jobs.
+        
+        May be overridden by specialized TOil-internal jobs.
+        """
         return self.run(fileStore)
 
     @contextmanager
@@ -1725,7 +1826,7 @@ class Job:
                 )
             )
 
-    def _runner(self, jobGraph, jobStore, fileStore, defer):
+    def _runner(self, jobStore, fileStore, defer):
         """
         This method actually runs the job, and serialises the next jobs.
 
@@ -1744,14 +1845,14 @@ class Job:
         # Make fileStore available as an attribute during run() ...
         self._fileStore = fileStore
         # ... but also pass it to run() as an argument for backwards compatibility.
-        returnValues = self._run(jobGraph, fileStore)
+        returnValues = self._run(fileStore)
         # Clean up state changes made for run()
         self._defer = None
         self._fileStore = None
 
 
         # Serialize the new jobs defined by the run method to the jobStore
-        self._serialiseExistingJob(jobGraph, jobStore, returnValues)
+        self._serialiseExistingJob(jobStore, returnValues)
 
         
 
@@ -2017,13 +2118,31 @@ class ServiceHostJob(Job):
         :param service: The service to wrap in a job.
         :type service: toil.job.Job.Service
         """
-        Job.__init__(self, **service._requirements)
+        
+        # Make sure the service hasn't been given a host already.
+        assert service.hostID is None
+        
+        # Make ourselves with name info from the Service and a
+        # ServiceJobDescription that has the service control flags.
+        super(self, ServiceHostJob).__init__(self, **service.requirements,
+            unitName=service.unitName, descriptionClass=ServiceJobDescription)
+        
+        # Make sure the service knows it has a host now
+        service.hostID = self.jobStoreID
+        
         # service.__module__ is the module defining the class service is an instance of.
+        # Will need to be loaded before unpickling the Service
         self.serviceModule = ModuleDescriptor.forModule(service.__module__).globalize()
 
-        #The service to run - this will be replace before serialization with a pickled version
+        # The service to run, or None if it is still pickled.
+        # We can't just pickle as part of ourselves because we may need to load
+        # an additional module.
         self.service = service
+        # The pickled service, or None if it isn't currently pickled.
+        # We can't just pickle right away because we may owe promises from it.
         self.pickledService = None
+        
+        # Pick up our name form the service.
         self.jobName = service.jobName
         # This references the parent job wrapper. It is initialised just before
         # the job is run. It is used to access the start and terminate flags.
@@ -2031,7 +2150,29 @@ class ServiceHostJob(Job):
 
     @property
     def fileStore(self):
+        """
+        Return the file store, which the Service may need.
+        """
         return self._fileStore
+        
+    def _renameReferences(self, renames):
+        # When the job store finally hads out IDs we have to fix up the
+        # back-reference from our Service to us.
+        super(self, ServiceHostJob)._renameReferences(renamse)
+        if self.service is not None:
+            self.service.hostID = renames[self.service.hostID]
+        
+    # Since the running service has us, make sure they don't try to tack more
+    # stuff onto us.
+        
+    def addChild(self, child):
+        raise RuntimeError("Service host jobs cannot have children, follow-ons, or services")
+        
+    def addFollowOn(self, followOn):
+        raise RuntimeError("Service host jobs cannot have children, follow-ons, or services")
+        
+    def addService(self, service, parentService=None):
+        raise RuntimeError("Service host jobs cannot have children, follow-ons, or services")
 
     def run(self, fileStore):
         # Unpickle the service
@@ -2084,19 +2225,6 @@ class ServiceHostJob(Job):
         finally:
             # The stop function is always called
             service.stop(self)
-
-    def _run(self, jobGraph, fileStore):
-        # Set the jobGraph for the job
-        self.jobGraph = jobGraph
-        #Run the job
-        returnValues = self.run(fileStore)
-        assert jobGraph.stack == []
-        assert jobGraph.services == []
-        # Unset the jobGraph for the job
-        self.jobGraph = None
-        # Set the stack to mimic what would be expected for a non-service job (this is a hack)
-        jobGraph.stack = [[], []]
-        return returnValues
 
     def getUserScript(self):
         return self.serviceModule

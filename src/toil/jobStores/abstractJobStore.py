@@ -128,7 +128,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     in JobDescriptions and not full, executable Jobs.
     
     To actually get ahold of a :class:`toil.job.Job`, use
-    :meth:`toil.job.Job._loadJob` with a JobStore and the information from the
+    :meth:`toil.job.Job.loadJob` with a JobStore and the information from the
     relevant JobDescription.
     """
 
@@ -707,16 +707,21 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     # The following methods deal with creating/loading/updating/writing/checking for the
     # existence of jobs
     ##########################################
-
-    @contextmanager
-    def batch(self):
+    
+    @abstractmethod
+    def assignID(self, jobDescription):
         """
-        All calls to create() with this context manager active will be performed in a batch
-        after the context manager is released.
-
-        :rtype: None
+        Assign a jobStoreID to the given JobDescription.
+        
+        The JobDescription will not be stored until it is passed to update().
+        
+        The JobDescription will be modified in place.
+        
+        Files associated with the assigned ID will be accepted even if the JobDescription has never been updated.
+        
+        :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to.
         """
-        yield
+        raise NotImplementedError()
 
     @abstractmethod
     def create(self, jobDescription):
