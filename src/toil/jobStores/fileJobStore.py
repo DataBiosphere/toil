@@ -130,6 +130,19 @@ class FileJobStore(AbstractJobStore):
     # existence of jobs
     ##########################################
 
+    def assignID(self, jobDescription):
+        # Get the job's name. We want to group jobs with the same name together.
+        # This will be e.g. the function name for wrapped-function jobs.
+        # Make sure to render it filename-safe
+        usefulFilename = self._makeStringFilenameSafe(jobDescription.jobName)
+        
+        # Make a unique temp directory under a directory for this job name,
+        # possibly sprayed across multiple levels of subdirectories.
+        absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
+                                     dir=self._getArbitraryJobsDirForName(usefulFilename))
+                                     
+        jobDescription.jobStoreID = self._getJobIdFromDir(absJobDir)
+
     def create(self, jobNode):
         # Get the job's name. We want to group jobs with the same name together.
         # This will be e.g. the function name for wrapped-function jobs.
