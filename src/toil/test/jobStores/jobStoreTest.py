@@ -94,9 +94,10 @@ class AbstractJobStoreTest(object):
         def setUpClass(cls):
             super(AbstractJobStoreTest.Test, cls).setUpClass()
             logging.basicConfig(level=logging.DEBUG)
-            logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
+            logging.getLogger('boto').setLevel(logging.WARNING)
             logging.getLogger('boto3.resources').setLevel(logging.WARNING)
-            logging.getLogger('s3transfer').setLevel(logging.WARNING)
+            logging.getLogger('botocore.auth').setLevel(logging.WARNING)
+            logging.getLogger('botocore.hooks').setLevel(logging.WARNING)
 
         # The use of @memoize ensures that we only have one instance of per class even with the
         # generative import/export tests attempts to instantiate more. This in turn enables us to
