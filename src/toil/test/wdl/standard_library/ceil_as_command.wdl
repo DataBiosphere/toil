@@ -7,10 +7,10 @@ task get_ceil {
   Float num
 
   command {
-    echo ${ceil(num)} > the_ceiling.txt
+    echo ${ceil(num)} > output.txt
   }
 
  output {
-    File the_ceiling = 'the_ceiling.txt'
+    File the_ceiling = 'output.txt'
  }
 }

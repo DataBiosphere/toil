@@ -16,35 +16,30 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
     All tests should include a simple wdl and json file for toil to run that checks the output.
     """
-    def setUp(self):
-        """Runs anew before each test to create farm fresh temp dirs."""
-        self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
-        os.makedirs(self.output_dir)
-
     @classmethod
     def setUpClass(cls):
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
-    def tearDown(self):
-        if os.path.exists(self.output_dir):
-            shutil.rmtree(self.output_dir)
-        unittest.TestCase.tearDown(self)
+    def check_function(self, function_name, expected_result):
+        wdl_files = [os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}_as_input.wdl'),
+                     os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}_as_command.wdl')]
+        json_file = os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}.json')
+        for wdl_file in wdl_files:
+            with self.subTest(f'Testing: {wdl_file} {json_file}'):
+                self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
+                os.makedirs(self.output_dir)
+                subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', self.output_dir])
+                output = os.path.join(self.output_dir, 'output.txt')
+                with open(output, 'r') as f:
+                    result = f.read().strip()
+                self.assertEqual(result, expected_result)
+                shutil.rmtree(self.output_dir)
 
-    def test_ceil_as_input(self):
-        wdl_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil_as_input.wdl')
-        json_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil.json')
-        subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', self.output_dir])
-        output = os.path.join(self.output_dir, 'the_ceiling.txt')
-        with open(output, 'r') as f:
-            assert float(f.read()) == 12
+    def test_ceil(self):
+        self.check_function('ceil', expected_result='12')
 
-    def test_ceil_as_command(self):
-        wdl_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil_as_command.wdl')
-        json_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil.json')
-        subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', self.output_dir])
-        output = os.path.join(self.output_dir, 'the_ceiling.txt')
-        with open(output, 'r') as f:
-            assert float(f.read()) == 12
+    def test_floor(self):
+        self.check_function('floor', expected_result='11')
 
 
 if __name__ == "__main__":
