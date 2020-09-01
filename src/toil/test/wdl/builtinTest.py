@@ -30,8 +30,16 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
             shutil.rmtree(self.output_dir)
         unittest.TestCase.tearDown(self)
 
-    def test_ceil(self):
-        wdl_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil.wdl')
+    def test_ceil_as_input(self):
+        wdl_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil_as_input.wdl')
+        json_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil.json')
+        subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', self.output_dir])
+        output = os.path.join(self.output_dir, 'the_ceiling.txt')
+        with open(output, 'r') as f:
+            assert float(f.read()) == 12
+
+    def test_ceil_as_command(self):
+        wdl_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil_as_command.wdl')
         json_file = os.path.abspath('src/toil/test/wdl/standard_library/ceil.json')
         subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', self.output_dir])
         output = os.path.join(self.output_dir, 'the_ceiling.txt')
