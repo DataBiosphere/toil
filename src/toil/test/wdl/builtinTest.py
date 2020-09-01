@@ -26,14 +26,14 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
         json_file = os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}.json')
         for wdl_file in wdl_files:
             with self.subTest(f'Testing: {wdl_file} {json_file}'):
-                self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
-                os.makedirs(self.output_dir)
-                subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', self.output_dir])
-                output = os.path.join(self.output_dir, 'output.txt')
+                output_dir = f'/tmp/toil-wdl-test-{uuid.uuid4()}'
+                os.makedirs(output_dir)
+                subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', output_dir])
+                output = os.path.join(output_dir, 'output.txt')
                 with open(output, 'r') as f:
                     result = f.read().strip()
                 self.assertEqual(result, expected_result)
-                shutil.rmtree(self.output_dir)
+                shutil.rmtree(output_dir)
 
     def test_ceil(self):
         self.check_function('ceil', expected_result='12')
