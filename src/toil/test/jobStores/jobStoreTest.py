@@ -94,7 +94,10 @@ class AbstractJobStoreTest(object):
         def setUpClass(cls):
             super(AbstractJobStoreTest.Test, cls).setUpClass()
             logging.basicConfig(level=logging.DEBUG)
-            logging.getLogger('boto').setLevel(logging.CRITICAL)
+            logging.getLogger('boto').setLevel(logging.WARNING)
+            logging.getLogger('boto3.resources').setLevel(logging.WARNING)
+            logging.getLogger('botocore.auth').setLevel(logging.WARNING)
+            logging.getLogger('botocore.hooks').setLevel(logging.WARNING)
 
         # The use of @memoize ensures that we only have one instance of per class even with the
         # generative import/export tests attempts to instantiate more. This in turn enables us to
@@ -1156,7 +1159,7 @@ class FileJobStoreTest(AbstractJobStoreTest.Test):
 
     @travis_test
     def testPreserveFileName(self):
-        "Check that the fileID ends with the given file name."
+        """Check that the fileID ends with the given file name."""
         fh, path = tempfile.mkstemp()
         try:
             os.close(fh)
@@ -1237,23 +1240,21 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         different region with the same name.
         """
         from boto.sdb import connect_to_region
-        from boto.s3.connection import Location, S3Connection
-        from boto.exception import S3ResponseError
         from toil.jobStores.aws.jobStore import BucketLocationConflictException
-        from toil.jobStores.aws.utils import retry_s3
-        externalAWSLocation = Location.USWest
+        from toil.jobStores.aws.jobStore import get_boto3_session
+        externalAWSLocation = 'us-west-1'
         for testRegion in 'us-east-1', 'us-west-2':
             # We run this test twice, once with the default s3 server us-east-1 as the test region
             # and once with another server (us-west-2).  The external server is always us-west-1.
             # This incidentally tests that the BucketLocationConflictException is thrown when using
             # both the default, and a non-default server.
             testJobStoreUUID = str(uuid.uuid4())
+            bucketName = 'domain-test-' + testJobStoreUUID + '--files'
             # Create the bucket at the external region
-            s3 = S3Connection()
-            for attempt in retry_s3(delays=(2, 5, 10, 30, 60), timeout=600):
-                with attempt:
-                    bucket = s3.create_bucket('domain-test-' + testJobStoreUUID + '--files',
-                                              location=externalAWSLocation)
+            client = get_boto3_session().client('s3', region_name=externalAWSLocation)
+            client.create_bucket(Bucket=bucketName,
+                                 CreateBucketConfiguration={'LocationConstraint': externalAWSLocation})
+
             options = Job.Runner.getDefaultOptions('aws:' + testRegion + ':domain-test-' +
                                                    testJobStoreUUID)
             options.logLevel = 'DEBUG'
@@ -1276,19 +1277,7 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             else:
                 self.fail()
             finally:
-                try:
-                    for attempt in retry_s3():
-                        with attempt:
-                            s3.delete_bucket(bucket=bucket)
-                except S3ResponseError as e:
-                    # The actual HTTP code of the error is in status.
-                    # See https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L77-L80
-                    # See also: https://github.com/boto/boto/blob/91ba037e54ef521c379263b0ac769c66182527d7/boto/exception.py#L154-L156
-                    if e.status == 404:
-                        # The bucket doesn't exist; maybe a failed delete actually succeeded.
-                        pass
-                    else:
-                        raise
+                client.delete_bucket(Bucket=bucketName)
 
     @slow
     def testInlinedFiles(self):
@@ -1333,39 +1322,31 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
             return url
         read_type = 'r' if USING_PYTHON2 else 'rb'
         with open('/dev/urandom', read_type) as readable:
-            if USING_PYTHON2:
-                bucket.new_key(fileName).set_contents_from_string(readable.read(size))
-            else:
-                bucket.new_key(fileName).set_contents_from_string(str(readable.read(size)))
-        return url, hashlib.md5(bucket.get_key(fileName).get_contents_as_string()).hexdigest()
+            bucket.put_object(Key=fileName, Body=str(readable.read(size)))
+        return url, hashlib.md5(bucket.Object(fileName).get()['Body'].read()).hexdigest()
 
     def _hashTestFile(self, url):
         from toil.jobStores.aws.jobStore import AWSJobStore
-        key = AWSJobStore._getKeyForUrl(urlparse.urlparse(url), existing=True)
-        try:
-            contents = key.get_contents_as_string()
-        finally:
-            key.bucket.connection.close()
+        key = AWSJobStore._getObjectForUrl(urlparse.urlparse(url), existing=True)
+        contents = key.get()['Body'].read()
         return hashlib.md5(contents).hexdigest()
 
     def _createExternalStore(self):
-        import boto.s3
+        """A S3.Bucket instance is returned"""
         from toil.jobStores.aws.utils import region_to_bucket_location
-        s3 = boto.s3.connect_to_region(self.awsRegion())
-        try:
-            return s3.create_bucket(bucket_name='import-export-test-%s' % uuid.uuid4(),
-                                    location=region_to_bucket_location(self.awsRegion()))
-        except:
-            with panic(log=logger):
-                s3.close()
+        from toil.jobStores.aws.jobStore import get_boto3_session
+        resource = get_boto3_session().resource('s3', region_name=self.awsRegion())
+        bucket = resource.Bucket('import-export-test-%s' % uuid.uuid4())
+        bucket.create(CreateBucketConfiguration={'LocationConstraint': region_to_bucket_location(self.awsRegion())})
+        bucket.wait_until_exists()
+        return bucket
 
     def _cleanUpExternalStore(self, bucket):
         try:
-            for key in bucket.list():
-                key.delete()
+            bucket.objects.all().delete()
             bucket.delete()
-        finally:
-            bucket.connection.close()
+        except:
+            pass
 
     def _largeLogEntrySize(self):
         from toil.jobStores.aws.jobStore import AWSJobStore

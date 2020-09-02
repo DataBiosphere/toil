@@ -19,7 +19,7 @@ from future import standard_library
 standard_library.install_aliases()
 from builtins import str
 from builtins import range
-from contextlib import contextmanager, closing
+from contextlib import contextmanager
 import logging
 
 try:
@@ -30,24 +30,26 @@ except ImportError:
 import re
 import time
 import uuid
-import base64
 import hashlib
 import itertools
 import reprlib
 import urllib.parse
-import urllib.request, urllib.parse, urllib.error
+import urllib.request
+import urllib.error
 from io import BytesIO
 
+from toil import retry
 from toil.lib.memoize import strict_bool
 from toil.lib.exceptions import panic
 from toil.lib.objects import InnerClass
+
 import boto3
 import boto.s3
 import boto.sdb
-from boto.exception import S3CreateError
-from boto.exception import SDBResponseError, S3ResponseError
+from boto.exception import SDBResponseError
 import botocore.session
 import botocore.credentials
+from botocore.exceptions import ClientError
 
 from toil.lib.compatibility import compat_bytes, compat_plain
 from toil.lib.misc import AtomicFileCreate
@@ -63,29 +65,36 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       no_such_sdb_domain,
                                       sdb_unavailable,
                                       monkeyPatchSdbConnection,
-                                      retry_s3,
-                                      retryable_s3_errors,
                                       bucket_location_to_region,
-                                      region_to_bucket_location, copyKeyMultipart,
-                                      uploadFromPath, chunkedFileUpload, fileSizeAndTime)
+                                      region_to_bucket_location, fileSizeAndTime,
+                                      uploadFromPath, uploadFile, copyKeyMultipart)
+
 from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
 from toil.jobGraph import JobGraph
 import toil.lib.encryption as encryption
 
+
+def get_boto3_session():
+    botocore_session = botocore.session.get_session()
+    botocore_session.get_component('credential_provider').get_provider(
+        'assume-role').cache = botocore.credentials.JSONFileCache()
+    return boto3.Session(botocore_session=botocore_session)
+
+
 # Make sure to use credential caching when talking to Amazon via boto3
 # See https://github.com/boto/botocore/pull/1338/
-botocore_session = botocore.session.get_session()
-botocore_session.get_component('credential_provider').get_provider('assume-role').cache = botocore.credentials.JSONFileCache()
-boto3_session = boto3.Session(botocore_session=botocore_session)
+boto3_session = get_boto3_session()
 s3_boto3_resource = boto3_session.resource('s3')
 s3_boto3_client = boto3_session.client('s3')
 log = logging.getLogger(__name__)
+
 
 class ChecksumError(Exception):
     """
     Raised when a download from AWS does not contain the correct data.
     """
     pass
+
 
 class AWSJobStore(AbstractJobStore):
     """
@@ -140,7 +149,8 @@ class AWSJobStore(AbstractJobStore):
         self.filesDomain = None
         self.filesBucket = None
         self.db = self._connectSimpleDB()
-        self.s3 = self._connectS3()
+        self.s3_resource = self._connectS3()
+        self.s3_client = self.s3_resource.meta.client
 
     def initialize(self, config):
         if self._registered:
@@ -392,12 +402,13 @@ class AWSJobStore(AbstractJobStore):
                         self.filesDomain.batch_delete_attributes(itemsDict)
             for item in items:
                 version = item.get('version')
-                for attempt in retry_s3():
-                    with attempt:
-                        if version:
-                            self.filesBucket.delete_key(key_name=compat_bytes(item.name), version_id=version)
-                        else:
-                            self.filesBucket.delete_key(key_name=compat_bytes(item.name))
+                if version:
+                    self.s3_client.delete_object(Bucket=self.filesBucket.name,
+                                                 Key=compat_bytes(item.name),
+                                                 VersionId=version)
+                else:
+                    self.s3_client.delete_object(Bucket=self.filesBucket.name,
+                                                 Key=compat_bytes(item.name))
 
     def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
@@ -410,21 +421,18 @@ class AWSJobStore(AbstractJobStore):
 
     def _importFile(self, otherCls, url, sharedFileName=None, hardlink=False):
         if issubclass(otherCls, AWSJobStore):
-            srcKey = self._getKeyForUrl(url, existing=True)
-            size = srcKey.size
-            try:
-                if sharedFileName is None:
-                    info = self.FileInfo.create(srcKey.name)
-                else:
-                    self._requireValidSharedFileName(sharedFileName)
-                    jobStoreFileID = self._sharedFileID(sharedFileName)
-                    info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
-                                                      ownerID=str(self.sharedFileOwnerID),
-                                                      encrypted=None)
-                info.copyFrom(srcKey)
-                info.save()
-            finally:
-                srcKey.bucket.connection.close() 
+            srcObj = self._getObjectForUrl(url, existing=True)
+            size = srcObj.content_length
+            if sharedFileName is None:
+                info = self.FileInfo.create(srcObj.key)
+            else:
+                self._requireValidSharedFileName(sharedFileName)
+                jobStoreFileID = self._sharedFileID(sharedFileName)
+                info = self.FileInfo.loadOrCreate(jobStoreFileID=jobStoreFileID,
+                                                  ownerID=str(self.sharedFileOwnerID),
+                                                  encrypted=None)
+            info.copyFrom(srcObj)
+            info.save()
             return FileID(info.fileID, size) if sharedFileName is None else None
         else:
             return super(AWSJobStore, self)._importFile(otherCls, url,
@@ -432,104 +440,71 @@ class AWSJobStore(AbstractJobStore):
 
     def _exportFile(self, otherCls, jobStoreFileID, url):
         if issubclass(otherCls, AWSJobStore):
-            dstKey = self._getKeyForUrl(url)
-            try:
-                info = self.FileInfo.loadOrFail(jobStoreFileID)
-                info.copyTo(dstKey)
-            finally:
-                dstKey.bucket.connection.close()
+            dstObj = self._getObjectForUrl(url)
+            info = self.FileInfo.loadOrFail(jobStoreFileID)
+            info.copyTo(dstObj)
         else:
             super(AWSJobStore, self)._defaultExportFile(otherCls, jobStoreFileID, url)
 
     @classmethod
     def getSize(cls, url):
-        key = cls._getKeyForUrl(url, existing=True)
-        try:
-            return key.size
-        finally:
-            key.bucket.connection.close()
+        return cls._getObjectForUrl(url, existing=True).content_length
 
     @classmethod
     def _readFromUrl(cls, url, writable):
-        srcKey = cls._getKeyForUrl(url, existing=True)
-        try:
-            srcKey.get_contents_to_file(writable)
-        finally:
-            srcKey.bucket.connection.close()
-        return srcKey.size
+        srcObj = cls._getObjectForUrl(url, existing=True)
+        srcObj.download_fileobj(writable)
+        return srcObj.content_length
 
     @classmethod
     def _writeToUrl(cls, readable, url):
-        dstKey = cls._getKeyForUrl(url)
-        try:
-            canDetermineSize = True
-            try:
-                readable.seek(0, 2)  # go to the 0th byte from the end of the file, indicated by '2'
-                fileSize = readable.tell()  # tells the current position in file - in this case == size of file
-                readable.seek(0)  # go to the 0th byte from the start of the file
-            except:
-                canDetermineSize = False
-            if canDetermineSize and fileSize > (5 * 1000 * 1000):  # only use multipart when file is above 5 mb
-                log.debug("Uploading %s with size %s, will use multipart uploading", dstKey.name, fileSize)
-                chunkedFileUpload(readable=readable, bucket=dstKey.bucket, fileID=dstKey.name, file_size=fileSize)
-            else:
-                # we either don't know the size, or the size is small
-                log.debug("Can not use multipart uploading for %s, uploading whole file at once", dstKey.name)
-                dstKey.set_contents_from_string(readable.read())
-        finally:
-            dstKey.bucket.connection.close()
+        dstObj = cls._getObjectForUrl(url)
+        resource = get_boto3_session().resource('s3')
+
+        log.debug("Uploading %s", dstObj.key)
+        # uploadFile takes care of using multipart upload if the file is larger than partSize (default to 5MB)
+        uploadFile(readable=readable, resource=resource, bucketName=dstObj.bucket_name,
+                   fileID=dstObj.key, partSize=5 * 1000 * 1000)
 
     @staticmethod
-    def _getKeyForUrl(url, existing=None):
+    def _getObjectForUrl(url, existing=None):
         """
-        Extracts a key from a given s3:// URL. On return, but not on exceptions, this method
-        leaks an S3Connection object. The caller is responsible to close that by calling
-        key.bucket.connection.close().
+        Extracts a key (object) from a given s3:// URL.
 
         :param bool existing: If True, key is expected to exist. If False, key is expected not to
-               exists and it will be created. If None, the key will be created if it doesn't exist.
+        exists and it will be created. If None, the key will be created if it doesn't exist.
 
-        :rtype: Key
+        :rtype: S3.Object
         """
         keyName = url.path[1:]
         bucketName = url.netloc
 
         # Get the bucket's region to avoid a redirect per request
+        region = AWSJobStore.__getBucketRegion(bucketName)
+
+        s3 = get_boto3_session().resource('s3', region_name=region)
+        obj = s3.Object(bucketName, keyName)
+        objExists = True
         try:
-            with closing(boto.connect_s3()) as s3:
-                location = s3.get_bucket(bucketName).get_location()
-                region = bucket_location_to_region(location)
-        except S3ResponseError as e:
-            if e.error_code == 'AccessDenied':
-                s3 = boto.connect_s3()
+            obj.load()
+        except ClientError as e:
+            if e.response.get('Error', {}).get('Code') == '404':
+                objExists = False
             else:
                 raise
+        if existing is True:
+            if not objExists:
+                raise RuntimeError("Key '%s' does not exist in bucket '%s'." % (keyName, bucketName))
+        elif existing is False:
+            if objExists:
+                raise RuntimeError("Key '%s' exists in bucket '%s'." % (keyName, bucketName))
+        elif existing is None:
+            pass
         else:
-            # Note that caller is responsible for closing the connection
-            s3 = boto.s3.connect_to_region(region)
-
-        try:
-            bucket = s3.get_bucket(bucketName)
-            key = bucket.get_key(keyName.encode('utf-8'))
-            if existing is True:
-                if key is None:
-                    raise RuntimeError("Key '%s' does not exist in bucket '%s'." %
-                                       (keyName, bucketName))
-            elif existing is False:
-                if key is not None:
-                    raise RuntimeError("Key '%s' exists in bucket '%s'." %
-                                       (keyName, bucketName))
-            elif existing is None:
-                pass
-            else:
-                assert False
-            if key is None:
-                key = bucket.new_key(keyName)
-        except:
-            with panic():
-                s3.close()
-        else:
-            return key
+            assert False
+        if not objExists:
+            obj.put()  # write an empty file
+        return obj
 
     @classmethod
     def _supportsUrl(cls, url, export=False):
@@ -655,23 +630,30 @@ class AWSJobStore(AbstractJobStore):
         if info.content is not None:
             with info.uploadStream(allowInlining=False) as f:
                 f.write(info.content)
-        for attempt in retry_s3():
-            with attempt:
-                key = self.filesBucket.get_key(key_name=compat_bytes(jobStoreFileID), version_id=info.version)
-                key.set_canned_acl('public-read')
-                url = key.generate_url(query_auth=False,
-                                       expires_in=self.publicUrlExpiration.total_seconds())
-                # boto doesn't properly remove the x-amz-security-token parameter when
-                # query_auth is False when using an IAM role (see issue #2043). Including the
-                # x-amz-security-token parameter without the access key results in a 403,
-                # even if the resource is public, so we need to remove it.
-                scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
-                params = urllib.parse.parse_qs(query)
-                if 'x-amz-security-token' in params:
-                    del params['x-amz-security-token']
-                query = urllib.parse.urlencode(params, doseq=True)
-                url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
-                return url
+
+        self.filesBucket.Object(compat_bytes(jobStoreFileID)).Acl().put(ACL='public-read')
+
+        url = self.s3_client.generate_presigned_url('get_object',
+                                                    Params={'Bucket': self.filesBucket.name,
+                                                            'Key': compat_bytes(jobStoreFileID),
+                                                            'VersionId': info.version},
+                                                    ExpiresIn=self.publicUrlExpiration.total_seconds())
+
+        # boto doesn't properly remove the x-amz-security-token parameter when
+        # query_auth is False when using an IAM role (see issue #2043). Including the
+        # x-amz-security-token parameter without the access key results in a 403,
+        # even if the resource is public, so we need to remove it.
+        scheme, netloc, path, query, fragment = urllib.parse.urlsplit(url)
+        params = urllib.parse.parse_qs(query)
+        if 'x-amz-security-token' in params:
+            del params['x-amz-security-token']
+        if 'AWSAccessKeyId' in params:
+            del params['AWSAccessKeyId']
+        if 'Signature' in params:
+            del params['Signature']
+        query = urllib.parse.urlencode(params, doseq=True)
+        url = urllib.parse.urlunsplit((scheme, netloc, path, query, fragment))
+        return url
 
     def getSharedPublicUrl(self, sharedFileName):
         self._requireValidSharedFileName(sharedFileName)
@@ -689,12 +671,15 @@ class AWSJobStore(AbstractJobStore):
 
     def _connectS3(self):
         """
-        :rtype: S3Connection
+        :return: boto3 resource
         """
+        # Use legacy code to check for connection. There's no clear way in boto3 to do this
         s3 = boto.s3.connect_to_region(self.region)
         if s3 is None:
             raise ValueError("Could not connect to S3. Make sure '%s' is a valid S3 region." % self.region)
-        return s3
+        s3.close()
+
+        return get_boto3_session().resource('s3', region_name=self.region)
 
     def _bindBucket(self, bucket_name, create=False, block=True, versioning=False,
                     check_versioning_consistency=True):
@@ -710,7 +695,7 @@ class AWSJobStore(AbstractJobStore):
                bucket appears. Ignored if `create` is True.
 
         :rtype: Bucket|None
-        :raises S3ResponseError: If `block` is True and the bucket still doesn't exist after the
+        :raises botocore.exceptions.ClientError: If `block` is True and the bucket still doesn't exist after the
                 retry timeout expires.
         """
         assert self.minBucketNameLen <= len(bucket_name) <= self.maxBucketNameLen
@@ -721,60 +706,72 @@ class AWSJobStore(AbstractJobStore):
             # https://github.com/BD2KGenomics/toil/issues/955
             # https://github.com/BD2KGenomics/toil/issues/995
             # https://github.com/BD2KGenomics/toil/issues/1093
-            return (isinstance(e, (S3CreateError, S3ResponseError))
-                    and e.error_code in ('BucketAlreadyOwnedByYou',
-                                         'OperationAborted',
-                                         'NoSuchBucket'))
+
+            # head_bucket() call throws a 404 error if the bucket does not exist
+            # https://boto3.amazonaws.com/v1/documentation/api/latest/guide/migrations3.html?#accessing-a-bucket
+            return (isinstance(e, ClientError)
+                    and e.response.get('Error', {}).get('Code') in ('BucketAlreadyOwnedByYou',
+                                                                    'OperationAborted',
+                                                                    '404',
+                                                                    'NoSuchBucket'))
 
         bucketExisted = True
-        for attempt in retry_s3(predicate=bucket_creation_pending):
+        for attempt in retry(predicate=bucket_creation_pending):
             with attempt:
                 try:
-                    bucket = self.s3.get_bucket(bucket_name, validate=True)
-                except S3ResponseError as e:
-                    if e.error_code == 'NoSuchBucket':
+                    bucket = self.s3_resource.Bucket(bucket_name)
+                    # the head_bucket() call makes sure that the bucket exists and the user can access it
+                    self.s3_client.head_bucket(Bucket=bucket_name)
+                except ClientError as e:
+                    errorCode = e.response.get('Error', {}).get('Code')
+                    if errorCode == '404' or errorCode == 'NoSuchBucket':
                         bucketExisted = False
                         log.debug("Bucket '%s' does not exist.", bucket_name)
                         if create:
                             log.debug("Creating bucket '%s'.", bucket_name)
                             location = region_to_bucket_location(self.region)
-                            bucket = self.s3.create_bucket(bucket_name, location=location)
+                            bucket = self.s3_resource.create_bucket(
+                                Bucket=bucket_name,
+                                CreateBucketConfiguration={'LocationConstraint': location})
+                            # Wait until the bucket exists before checking the region
+                            bucket.wait_until_exists()
                             # It is possible for create_bucket to return but
                             # for an immediate request for the bucket region to
                             # produce an S3ResponseError with code
                             # NoSuchBucket. We let that kick us back up to the
                             # main retry loop.
-                            assert self.__getBucketRegion(bucket) == self.region
+                            assert self.__getBucketRegion(bucket_name) == self.region
                         elif block:
                             raise
                         else:
                             return None
-                    elif e.status == 301:
+                    elif errorCode == '301':
                         # This is raised if the user attempts to get a bucket in a region outside
                         # the specified one, if the specified one is not `us-east-1`.  The us-east-1
                         # server allows a user to use buckets from any region.
-                        bucket = self.s3.get_bucket(bucket_name, validate=False)
-                        raise BucketLocationConflictException(self.__getBucketRegion(bucket))
+                        raise BucketLocationConflictException(self.__getBucketRegion(bucket_name))
                     else:
                         raise
                 else:
-                    if self.__getBucketRegion(bucket) != self.region:
-                        raise BucketLocationConflictException(self.__getBucketRegion(bucket))
+                    bucketRegion = self.__getBucketRegion(bucket_name)
+                    if bucketRegion != self.region:
+                        raise BucketLocationConflictException(bucketRegion)
+
                 if versioning and not bucketExisted:
                     # only call this method on bucket creation
-                    bucket.configure_versioning(True)
+                    bucket.Versioning().enable()
                     # Now wait until versioning is actually on. Some uploads
                     # would come back with no versions; maybe they were
                     # happening too fast and this setting isn't sufficiently
                     # consistent?
                     time.sleep(1)
-                    while self._getBucketVersioning(bucket) != True:
+                    while not self._getBucketVersioning(bucket_name):
                         log.warning("Waiting for versioning activation on bucket '%s'...", bucket_name)
                         time.sleep(1)
                 elif check_versioning_consistency:
                     # now test for versioning consistency
                     # we should never see any of these errors since 'versioning' should always be true
-                    bucket_versioning = self._getBucketVersioning(bucket)
+                    bucket_versioning = self._getBucketVersioning(bucket_name)
                     if bucket_versioning != versioning:
                         assert False, 'Cannot modify versioning on existing bucket'
                     elif bucket_versioning is None:
@@ -782,7 +779,8 @@ class AWSJobStore(AbstractJobStore):
                 if bucketExisted:
                     log.debug("Using pre-existing job store bucket '%s'.", bucket_name)
                 else:
-                    log.debug("Created new job store bucket '%s' with versioning state %s.", bucket_name, str(versioning))
+                    log.debug("Created new job store bucket '%s' with versioning state %s.", bucket_name,
+                              str(versioning))
 
                 return bucket
 
@@ -847,7 +845,7 @@ class AWSJobStore(AbstractJobStore):
         """
 
         def __init__(self, fileID, ownerID, encrypted,
-                     version=None, content=None, numContentChunks=0,  checksum=None):
+                     version=None, content=None, numContentChunks=0, checksum=None):
             """
             :type fileID: str
             :param fileID: the file's ID
@@ -1059,10 +1057,9 @@ class AWSJobStore(AbstractJobStore):
                                                                      expected_value=expected)
                 # clean up the old version of the file if necessary and safe
                 if self.previousVersion and (self.previousVersion != self.version):
-                    for attempt in retry_s3():
-                        with attempt:
-                            self.outer.filesBucket.delete_key(compat_bytes(self.fileID),
-                                                              version_id=self.previousVersion)
+                    self.outer.s3_client.delete_object(Bucket=self.outer.filesBucket.name,
+                                                       Key=compat_bytes(self.fileID),
+                                                       VersionId=self.previousVersion)
                 self._previousVersion = self._version
                 if numNewContentChunks < self._numContentChunks:
                     residualChunks = range(numNewContentChunks, self._numContentChunks)
@@ -1086,67 +1083,69 @@ class AWSJobStore(AbstractJobStore):
                 # Clear out any old checksum in case of overwrite
                 self.checksum = ''
             else:
-                headers = self._s3EncryptionHeaders()
+                headerArgs = self._s3EncryptionArgs()
+                # Create a new Resource in case it needs to be on its own thread
+                resource = get_boto3_session().resource('s3', region_name=self.outer.region)
+
                 self.checksum = self._get_file_checksum(localFilePath) if calculateChecksum else None
-                self.version = uploadFromPath(localFilePath, partSize=self.outer.partSize,
-                                              bucket=self.outer.filesBucket, fileID=compat_bytes(self.fileID),
-                                              headers=headers)
+                self.version = uploadFromPath(localFilePath, resource=resource,
+                                              bucketName=self.outer.filesBucket.name,
+                                              fileID=compat_bytes(self.fileID), headerArgs=headerArgs,
+                                              partSize=self.outer.partSize)
 
         def _start_checksum(self, to_match=None, algorithm='sha1'):
             """
             Get a hasher that can be used with _update_checksum and
             _finish_checksum.
-            
+
             If to_match is set, it is a precomputed checksum which we expect
             the result to match.
-            
+
             The right way to compare checksums is to feed in the checksum to be
             matched, so we can see its algorithm, instead of getting a new one
             and comparing. If a checksum to match is fed in, _finish_checksum()
             will raise a ChecksumError if it isn't matched.
             """
-            
+
             # If we have an expexted result it will go here.
             expected = None
-            
+
             if to_match is not None:
                 parts = to_match.split('$')
                 algorithm = parts[0]
                 expected = parts[1]
-            
+
             wrapped = getattr(hashlib, algorithm)()
-            
+
             log.debug('Starting %s checksum to match %s', algorithm, expected)
-            
+
             return (algorithm, wrapped, expected)
-            
+
         def _update_checksum(self, checksum_in_progress, data):
             """
             Update a checksum in progress from _start_checksum with new data.
             """
             log.debug('Updating checksum with %d bytes', len(data))
             checksum_in_progress[1].update(data)
-        
+
         def _finish_checksum(self, checksum_in_progress):
             """
             Complete a checksum in progress from _start_checksum and return the
             checksum result string.
             """
-            
+
             result_hash = checksum_in_progress[1].hexdigest()
-            
+
             log.debug('Completed checksum with hash %s vs. expected %s', result_hash, checksum_in_progress[2])
-            
+
             if checksum_in_progress[2] is not None:
                 # We expected a particular hash
                 if result_hash != checksum_in_progress[2]:
                     raise ChecksumError('Checksum mismatch. Expected: %s Actual: %s' %
-                        (checksum_in_progress[2], result_hash))
-                    
+                                        (checksum_in_progress[2], result_hash))
+
             return '$'.join([checksum_in_progress[0], result_hash])
-            
-            
-        
+
         def _get_file_checksum(self, localFilePath, to_match=None):
             with open(localFilePath, 'rb') as f:
                 hasher = self._start_checksum(to_match=to_match)
@@ -1176,7 +1175,7 @@ class AWSJobStore(AbstractJobStore):
                     # Get the first block of data we want to put
                     buf = readable.read(store.partSize)
                     assert isinstance(buf, bytes)
-                    
+
                     if allowInlining and len(buf) <= info.maxInlinedSize():
                         log.debug('Inlining content of %d bytes', len(buf))
                         info.content = buf
@@ -1186,24 +1185,31 @@ class AWSJobStore(AbstractJobStore):
                         # We will compute a checksum
                         hasher = info._start_checksum()
                         info._update_checksum(hasher, buf)
-                    
-                        headers = info._s3EncryptionHeaders()
-                        for attempt in retry_s3():
-                            with attempt:
-                                log.debug('Starting multipart upload')
-                                upload = store.filesBucket.initiate_multipart_upload(
-                                    key_name=compat_bytes(info.fileID),
-                                    headers=headers)
+
+                        # Below is using boto3's low level API for uploading parts manually. Note that
+                        # client.upload_file() can automatically upload with multiple parts, though I
+                        # don't want to mess with the checksum logic.
+
+                        log.debug('Starting multipart upload')
+                        # low-level clients are thread safe
+                        client = store.s3_client
+                        bucket_name = store.filesBucket.name
+                        headerArgs = info._s3EncryptionArgs()
+
+                        upload = client.create_multipart_upload(Bucket=bucket_name,
+                                                                Key=compat_bytes(info.fileID), **headerArgs)
+                        uploadId = upload['UploadId']
+                        parts = []
+
                         try:
                             for part_num in itertools.count():
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
-                                        upload.upload_part_from_file(fp=BytesIO(buf),
-                                                                     # part numbers are 1-based
-                                                                     part_num=part_num + 1,
-                                                                     headers=headers)
-                                
+                                log.debug('Uploading part %d of %d bytes', part_num + 1, len(buf))
+                                part = client.upload_part(Bucket=bucket_name, Key=compat_bytes(info.fileID),
+                                                          PartNumber=part_num + 1, UploadId=uploadId,
+                                                          Body=BytesIO(buf), **headerArgs)
+
+                                parts.append({"PartNumber": part_num + 1, "ETag": part["ETag"]})
+
                                 # Get the next block of data we want to put
                                 buf = readable.read(info.outer.partSize)
                                 assert isinstance(buf, bytes)
@@ -1212,34 +1218,35 @@ class AWSJobStore(AbstractJobStore):
                                     break
                                 info._update_checksum(hasher, buf)
                         except:
-                            with panic(log=log):
-                                for attempt in retry_s3():
-                                    with attempt:
-                                        upload.cancel_upload()
+                            client.abort_multipart_upload(Bucket=bucket_name,
+                                                          Key=compat_bytes(info.fileID), UploadId=uploadId)
                         else:
 
-                            while store._getBucketVersioning(store.filesBucket) != True:
-                                log.warning('Versioning does not appear to be enabled yet. Deferring multipart upload completion...')
+                            while not store._getBucketVersioning(store.filesBucket.name):
+                                log.warning('Versioning does not appear to be enabled yet. Deferring multipart upload '
+                                            'completion...')
                                 time.sleep(1)
-                                
+
                             # Save the checksum
                             info.checksum = info._finish_checksum(hasher)
 
-                            for attempt in retry_s3():
-                                with attempt:
-                                    log.debug('Attempting to complete upload...')
-                                    completed = upload.complete_upload()
-                                    log.debug('Completed upload object of type %s: %s', str(type(completed)), repr(completed))
-                                    info.version = completed.version_id
-                                    log.debug('Completed upload with version %s', str(info.version))
+                            log.debug('Attempting to complete upload...')
+                            completed = client.complete_multipart_upload(
+                                Bucket=bucket_name, Key=compat_bytes(info.fileID), UploadId=uploadId,
+                                MultipartUpload={"Parts": parts})
+                            log.debug('Completed upload object of type %s: %s', str(type(completed)),
+                                      repr(completed))
+                            info.version = completed['VersionId']
+                            log.debug('Completed upload with version %s', str(info.version))
 
                             if info.version is None:
                                 # Somehow we don't know the version. Try and get it.
-                                for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
+                                for attempt in retry(predicate=lambda error: isinstance(error, AssertionError)):
                                     with attempt:
-                                        key = store.filesBucket.get_key(compat_bytes(info.fileID), headers=headers)
-                                        log.warning('Loaded key for upload with no version and got version %s', str(key.version_id))
-                                        info.version = key.version_id
+                                        version = client.head_object(Bucket=bucket_name,
+                                                                     Key=compat_bytes(info.fileID), **headerArgs)['VersionId']
+                                        log.warning('Loaded key for upload with no version and got version %s', str(version))
+                                        info.version = version
                                         assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
@@ -1260,32 +1267,34 @@ class AWSJobStore(AbstractJobStore):
                         hasher = info._start_checksum()
                         info._update_checksum(hasher, buf)
                         info.checksum = info._finish_checksum(hasher)
-                        
-                        key = store.filesBucket.new_key(key_name=compat_bytes(info.fileID))
-                        buf = BytesIO(buf)
-                        headers = info._s3EncryptionHeaders()
 
-                        while store._getBucketVersioning(store.filesBucket) != True:
+                        bucket_name = store.filesBucket.name
+                        headerArgs = info._s3EncryptionArgs()
+                        client = store.s3_client
+                        buf = BytesIO(buf)
+
+                        while not store._getBucketVersioning(bucket_name):
                             log.warning('Versioning does not appear to be enabled yet. Deferring single part upload...')
                             time.sleep(1)
-                            
-                        
 
-                        for attempt in retry_s3():
-                            with attempt:
-                                log.debug('Uploading single part of %d bytes', dataLength)
-                                assert dataLength == key.set_contents_from_file(fp=buf,
-                                                                                headers=headers)
-                                log.debug('Upload received version %s', str(key.version_id))
-                        info.version = key.version_id
+                        log.debug('Uploading single part of %d bytes', dataLength)
+                        client.upload_fileobj(Bucket=bucket_name, Key=compat_bytes(info.fileID),
+                                              Fileobj=buf, ExtraArgs=headerArgs)
+
+                        # use head_object with the SSE headers to access version_id and content_length attributes
+                        headObj = client.head_object(Bucket=bucket_name, Key=compat_bytes(info.fileID), **headerArgs)
+                        assert dataLength == headObj.get('ContentLength', None)
+                        info.version = headObj.get('VersionId', None)
+                        log.debug('Upload received version %s', str(info.version))
 
                         if info.version is None:
                             # Somehow we don't know the version
-                            for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, AssertionError)):
+                            for attempt in retry(predicate=lambda error: isinstance(error, AssertionError)):
                                 with attempt:
-                                    key.reload()
-                                    log.warning('Reloaded key with no version and got version %s', str(key.version_id))
-                                    info.version = key.version_id
+                                    headObj = client.head_object(Bucket=bucket_name,
+                                                                 Key=compat_bytes(info.fileID), **headerArgs)
+                                    info.version = headObj.get('VersionId', None)
+                                    log.warning('Reloaded key with no version and got version %s', str(info.version))
                                     assert info.version is not None
 
                     # Make sure we actually wrote something, even if an empty file
@@ -1311,50 +1320,43 @@ class AWSJobStore(AbstractJobStore):
                     log.debug('Version: {} Content: {}'.format(self.version, self.content))
                     raise RuntimeError('Content added and version created')
 
-        def copyFrom(self, srcKey):
+        def copyFrom(self, srcObj):
             """
             Copies contents of source key into this file.
 
-            :param srcKey: The key that will be copied from
+            :param S3.Object srcObj: The key (object) that will be copied from
             """
-            assert srcKey.size is not None
-            if srcKey.size <= self.maxInlinedSize():
-                self.content = srcKey.get_contents_as_string()
+            assert srcObj.content_length is not None
+            if srcObj.content_length <= self.maxInlinedSize():
+                self.content = srcObj.get()['Body'].read()
             else:
-                self.version = copyKeyMultipart(srcBucketName=compat_plain(srcKey.bucket.name),
-                                                srcKeyName=compat_plain(srcKey.name),
-                                                srcKeyVersion=compat_plain(srcKey.version_id),
+                # Create a new Resource in case it needs to be on its own thread
+                resource = get_boto3_session().resource('s3')
+                self.version = copyKeyMultipart(resource, srcBucketName=compat_plain(srcObj.bucket_name),
+                                                srcKeyName=compat_plain(srcObj.key),
+                                                srcKeyVersion=compat_plain(srcObj.version_id),
                                                 dstBucketName=compat_plain(self.outer.filesBucket.name),
                                                 dstKeyName=compat_plain(self._fileID),
-                                                sseAlgorithm='AES256',
-                                                sseKey=self._getSSEKey())
+                                                sseAlgorithm='AES256', sseKey=self._getSSEKey())
 
-        def copyTo(self, dstKey):
+        def copyTo(self, dstObj):
             """
             Copies contents of this file to the given key.
 
-            :param Key dstKey: The key to copy this file's content to
+            :param S3.Object dstObj: The key (object) to copy this file's content to
             """
             if self.content is not None:
-                for attempt in retry_s3():
-                    with attempt:
-                        dstKey.set_contents_from_string(self.content)
+                dstObj.put(Body=self.content)
             elif self.version:
-                for attempt in retry_s3():
-                    encrypted = True if self.outer.sseKeyPath else False
-                    if encrypted:
-                        srcKey = self.outer.filesBucket.get_key(compat_bytes(self.fileID), headers=self._s3EncryptionHeaders())
-                    else:
-                        srcKey = self.outer.filesBucket.get_key(compat_bytes(self.fileID))
-                    srcKey.version_id = self.version
-                    with attempt:
-                        copyKeyMultipart(srcBucketName=compat_plain(srcKey.bucket.name),
-                                         srcKeyName=compat_plain(srcKey.name),
-                                         srcKeyVersion=compat_plain(srcKey.version_id),
-                                         dstBucketName=compat_plain(dstKey.bucket.name),
-                                         dstKeyName=compat_plain(dstKey.name),
-                                         copySourceSseAlgorithm='AES256',
-                                         copySourceSseKey=self._getSSEKey())
+                # Create a new Resource in case it needs to be on its own thread
+                resource = get_boto3_session().resource('s3')
+                copyKeyMultipart(resource, srcBucketName=compat_plain(self.outer.filesBucket.name),
+                                 srcKeyName=compat_plain(self.fileID),
+                                 srcKeyVersion=compat_plain(self.version),
+                                 dstBucketName=compat_plain(dstObj.bucket_name),
+                                 dstKeyName=compat_plain(dstObj.key),
+                                 copySourceSseAlgorithm='AES256',
+                                 copySourceSseKey=self._getSSEKey())
             else:
                 assert False
 
@@ -1364,15 +1366,13 @@ class AWSJobStore(AbstractJobStore):
                     with open(tmpPath, 'wb') as f:
                         f.write(self.content)
             elif self.version:
-                headers = self._s3EncryptionHeaders()
-                key = self.outer.filesBucket.get_key(compat_bytes(self.fileID), validate=False)
-                for attempt in retry_s3(predicate=lambda e: retryable_s3_errors(e) or isinstance(e, ChecksumError)):
+                headerArgs = self._s3EncryptionArgs()
+                obj = self.outer.filesBucket.Object(compat_bytes(self.fileID))
+                for attempt in retry(predicate=lambda error: isinstance(error, ChecksumError)):
                     with attempt:
                         with AtomicFileCreate(localFilePath) as tmpPath:
-                            key.get_contents_to_filename(tmpPath,
-                                                         version_id=self.version,
-                                                         headers=headers)
-                                                         
+                            obj.download_file(Filename=tmpPath, ExtraArgs={'VersionId': self.version, **headerArgs})
+
                         if verifyChecksum and self.checksum:
                             try:
                                 # This automatically compares the result and matches the algorithm.
@@ -1394,25 +1394,21 @@ class AWSJobStore(AbstractJobStore):
                     if info.content is not None:
                         writable.write(info.content)
                     elif info.version:
-                        headers = info._s3EncryptionHeaders()
-                        key = info.outer.filesBucket.get_key(compat_bytes(info.fileID), validate=False)
-                        for attempt in retry_s3():
-                            with attempt:
-                                key.get_contents_to_file(writable,
-                                                         headers=headers,
-                                                         version_id=info.version)
+                        headerArgs = info._s3EncryptionArgs()
+                        obj = info.outer.filesBucket.Object(compat_bytes(info.fileID))
+                        obj.download_fileobj(writable, ExtraArgs={'VersionId': info.version, **headerArgs})
                     else:
                         assert False
-            
+
             class HashingPipe(ReadableTransformingPipe):
                 """
                 Class which checksums all the data read through it. If it
                 reaches EOF and the checksum isn't correct, raises
                 ChecksumError.
-                
+
                 Assumes info actually has a checksum.
                 """
-            
+
                 def transform(self, readable, writable):
                     hasher = info._start_checksum(to_match=info.checksum)
                     contents = readable.read(1024 * 1024)
@@ -1429,7 +1425,7 @@ class AWSJobStore(AbstractJobStore):
                     # Finish checksumming and verify.
                     info._finish_checksum(hasher)
                     # Now stop so EOF happens in the output.
-                    
+
             with DownloadPipe() as readable:
                 if verifyChecksum and self.checksum:
                     # Interpose a pipe to check the hash
@@ -1448,10 +1444,9 @@ class AWSJobStore(AbstractJobStore):
                             compat_bytes(self.fileID),
                             expected_values=['version', self.previousVersion])
                 if self.previousVersion:
-                    for attempt in retry_s3():
-                        with attempt:
-                            store.filesBucket.delete_key(key_name=compat_bytes(self.fileID),
-                                                         version_id=self.previousVersion)
+                    store.s3_client.delete_object(Bucket=store.filesBucket.name,
+                                                  Key=compat_bytes(self.fileID),
+                                                  VersionId=self.previousVersion)
 
         def getSize(self):
             """
@@ -1460,10 +1455,8 @@ class AWSJobStore(AbstractJobStore):
             if self.content is not None:
                 return len(self.content)
             elif self.version:
-                for attempt in retry_s3():
-                    with attempt:
-                        key = self.outer.filesBucket.get_key(compat_bytes(self.fileID), validate=False)
-                        return key.size
+                obj = self.outer.filesBucket.Object(compat_bytes(self.fileID))
+                return obj.content_length
             else:
                 return 0
 
@@ -1476,16 +1469,15 @@ class AWSJobStore(AbstractJobStore):
                     sseKey = f.read()
                     return sseKey
 
-        def _s3EncryptionHeaders(self):
+        def _s3EncryptionArgs(self):
+            # the keys of the returned dictionary are unpacked to the corresponding boto3 optional
+            # parameters and will be used to set the http headers
             if self.encrypted:
                 sseKey = self._getSSEKey()
                 assert sseKey is not None, 'Content is encrypted but no key was provided.'
                 assert len(sseKey) == 32
-                encodedSseKey = base64.b64encode(sseKey).decode('utf-8')
-                encodedSseKeyMd5 = base64.b64encode(hashlib.md5(sseKey).digest()).decode('utf-8')
-                return {'x-amz-server-side-encryption-customer-algorithm': 'AES256',
-                        'x-amz-server-side-encryption-customer-key': encodedSseKey,
-                        'x-amz-server-side-encryption-customer-key-md5': encodedSseKeyMd5}
+                # boto3 encodes the key and calculates the MD5 for us
+                return {'SSECustomerAlgorithm': 'AES256', 'SSECustomerKey': sseKey}
             else:
                 return {}
 
@@ -1504,27 +1496,23 @@ class AWSJobStore(AbstractJobStore):
 
     versionings = dict(Enabled=True, Disabled=False, Suspended=None)
 
-    def _getBucketVersioning(self, bucket):
+    def _getBucketVersioning(self, bucket_name):
         """
-        For newly created buckets get_versioning_status returns an empty dict. In the past we've
-        seen None in this case. We map both to a return value of False.
+        The status attribute of BucketVersioning can be 'Enabled', 'Suspended' or None (Disabled)
+        which we map to True, None and False respectively. Note that we've never seen a versioning
+        status of 'Disabled', only the None return value. Calling BucketVersioning.suspend() will
+        cause BucketVersioning.status to then return 'Suspended' even on a new bucket that never
+        had versioning enabled.
 
-        Otherwise, the 'Versioning' entry in the dictionary returned by get_versioning_status can
-        be 'Enabled', 'Suspended' or 'Disabled' which we map to True, None and False
-        respectively. Note that we've never seen a versioning status of 'Disabled', only the
-        empty dictionary. Calling configure_versioning with False on a bucket will cause
-        get_versioning_status to then return 'Suspended' even on a new bucket that never had
-        versioning enabled.
+        :param bucket_name: str
         """
-        for attempt in retry_s3():
-            with attempt:
-                status = bucket.get_versioning_status()
-                return self.versionings[status['Versioning']] if status else False
+        status = self.s3_resource.BucketVersioning(bucket_name).status
+        return self.versionings[status] if status else False
 
-    def __getBucketRegion(self, bucket):
-        for attempt in retry_s3():
-            with attempt:
-                return bucket_location_to_region(bucket.get_location())
+    @staticmethod
+    def __getBucketRegion(bucket_name):
+        loc = s3_boto3_client.get_bucket_location(Bucket=bucket_name)
+        return bucket_location_to_region(loc.get('LocationConstraint', None))
 
     def destroy(self):
         # FIXME: Destruction of encrypted stores only works after initialize() or .resume()
@@ -1559,21 +1547,24 @@ class AWSJobStore(AbstractJobStore):
                     else:
                         raise
 
-    def _delete_bucket(self, b):
-        for attempt in retry_s3():
-            with attempt:
-                try:
-                    for upload in b.list_multipart_uploads():
-                        upload.cancel_upload()  # TODO: upgrade this portion to boto3
-                    bucket = s3_boto3_resource.Bucket(compat_bytes(b.name))
-                    bucket.objects.all().delete()
-                    bucket.object_versions.delete()
-                    bucket.delete()
-                except s3_boto3_resource.meta.client.exceptions.NoSuchBucket:
-                    pass
-                except S3ResponseError as e:
-                    if e.error_code != 'NoSuchBucket':
-                        raise
+    def _delete_bucket(self, bucket):
+        """
+        :param bucket: S3.Bucket
+        """
+        try:
+            uploads = s3_boto3_client.list_multipart_uploads(Bucket=bucket.name).get('Uploads')
+            if uploads:
+                for u in uploads:
+                    s3_boto3_client.abort_multipart_upload(Bucket=bucket.name, Key=u["Key"], UploadId=u["UploadId"])
+
+            bucket.objects.all().delete()
+            bucket.object_versions.delete()
+            bucket.delete()
+        except s3_boto3_client.exceptions.NoSuchBucket:
+            pass
+        except ClientError as e:
+            if e.response.get('Error', {}).get('Code') != 'NoSuchBucket':
+                raise
 
 
 aRepr = reprlib.Repr()
