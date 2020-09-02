@@ -668,7 +668,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
             for l in jobDescription.services:
                 for serviceID in l:
-                    replaceFlagsIfNeeded(getJobDescription(serviceID)) for s in l
+                    replaceFlagsIfNeeded(getJobDescription(serviceID)) 
 
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True

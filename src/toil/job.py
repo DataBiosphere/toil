@@ -153,6 +153,10 @@ class JobDescription:
         # Mostly fake, not-really-executable command string that encodes how to
         # find the Job body data that this JobDescription describes, and the
         # module(s) needed to unpickle it.
+        #
+        # Gets replaced with/rewritten into the real, executable command when
+        # the leader passes the description off to the batch system to be
+        # executed.
         self.command = None
         
         

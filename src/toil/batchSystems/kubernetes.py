@@ -341,12 +341,12 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
         
     # setEnv is provided by BatchSystemSupport, updates self.environment
     
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc):
         # TODO: get a sensible self.maxCores, etc. so we can checkResourceRequest.
         # How do we know if the cluster will autoscale?
         
         # Try the job as local
-        localID = self.handleLocalJob(jobNode)
+        localID = self.handleLocalJob(jobDesc)
         if localID:
             # It is a local job
             return localID
@@ -354,7 +354,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # We actually want to send to the cluster
             
             # Check resource requirements (managed by BatchSystemSupport)
-            self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+            self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
             
             # Make a batch system scope job ID
             jobID = self.getNextJobID()
@@ -363,7 +363,7 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
 
             # Make a job dict to send to the executor.
             # First just wrap the command and the environment to run it in
-            job = {'command': jobNode.command,
+            job = {'command': jobDesc.command,
                    'environment': self.environment.copy()}
             # TODO: query customDockerInitCmd to respect TOIL_CUSTOM_DOCKER_INIT_COMMAND
             
@@ -394,10 +394,10 @@ class KubernetesBatchSystem(BatchSystemLocalSupport):
             # Kubernetes needs some lower limit of memory to run the pod at all without
             # OOMing. We also want to provision some extra space so that when
             # we test _isPodStuckOOM we never get True unless the job has
-            # exceeded jobNode.memory.
-            requirements_dict = {'cpu': jobNode.cores,
-                                 'memory': jobNode.memory + 1024 * 1024 * 512,
-                                 'ephemeral-storage': jobNode.disk + 1024 * 1024 * 512}
+            # exceeded jobDesc.memory.
+            requirements_dict = {'cpu': jobDesc.cores,
+                                 'memory': jobDesc.memory + 1024 * 1024 * 512,
+                                 'ephemeral-storage': jobDesc.disk + 1024 * 1024 * 512}
             # Use the requirements as the limits, for predictable behavior, and because
             # the UCSC Kubernetes admins want it that way.
             limits_dict = requirements_dict

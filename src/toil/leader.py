@@ -43,7 +43,7 @@ from toil.lib.throttle import LocalThrottle
 from toil.provisioners.clusterScaler import ScalerThread
 from toil.serviceManager import ServiceManager
 from toil.statsAndLogging import StatsAndLogging
-from toil.job import JobNode, ServiceJobNode
+from toil.job import Job, JobDescription, ServiceJobDescription
 from toil.toilState import ToilState
 from toil.common import Toil, ToilMetrics
 

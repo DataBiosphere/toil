@@ -132,14 +132,14 @@ class ParasolBatchSystem(BatchSystemSupport):
 
     parasolOutputPattern = re.compile("your job ([0-9]+).*")
 
-    def issueBatchJob(self, jobNode):
+    def issueBatchJob(self, jobDesc):
         """
         Issues parasol with job commands.
         """
-        self.checkResourceRequest(jobNode.memory, jobNode.cores, jobNode.disk)
+        self.checkResourceRequest(jobDesc.memory, jobDesc.cores, jobDesc.disk)
 
         MiB = 1 << 20
-        truncatedMemory = (old_div(jobNode.memory, MiB)) * MiB
+        truncatedMemory = (old_div(jobDesc.memory, MiB)) * MiB
         # Look for a batch for jobs with these resource requirements, with
         # the memory rounded down to the nearest megabyte. Rounding down
         # meams the new job can't ever decrease the memory requirements
@@ -147,21 +147,21 @@ class ParasolBatchSystem(BatchSystemSupport):
         if len(self.resultsFiles) >= self.maxBatches:
             raise RuntimeError( 'Number of batches reached limit of %i' % self.maxBatches)
         try:
-            results = self.resultsFiles[(truncatedMemory, jobNode.cores)]
+            results = self.resultsFiles[(truncatedMemory, jobDesc.cores)]
         except KeyError:
             results = getTempFile(rootDir=self.parasolResultsDir)
-            self.resultsFiles[(truncatedMemory, jobNode.cores)] = results
+            self.resultsFiles[(truncatedMemory, jobDesc.cores)] = results
 
         # Prefix the command with environment overrides, optionally looking them up from the
         # current environment if the value is None
-        command = ' '.join(concat('env', self.__environment(), jobNode.command))
+        command = ' '.join(concat('env', self.__environment(), jobDesc.command))
         parasolCommand = ['-verbose',
-                          '-ram=%i' % jobNode.memory,
-                          '-cpu=%i' % jobNode.cores,
+                          '-ram=%i' % jobDesc.memory,
+                          '-cpu=%i' % jobDesc.cores,
                           '-results=' + results,
                           'add', 'job', command]
         # Deal with the cpus
-        self.usedCpus += jobNode.cores
+        self.usedCpus += jobDesc.cores
         while True:  # Process finished results with no wait
             try:
                 jobID = self.cpuUsageQueue.get_nowait()
@@ -186,7 +186,7 @@ class ParasolBatchSystem(BatchSystemSupport):
                 time.sleep(5)
             else:
                 jobID = int(match.group(1))
-                self.jobIDsToCpu[jobID] = jobNode.cores
+                self.jobIDsToCpu[jobID] = jobDesc.cores
                 self.runningJobs.add(jobID)
                 logger.debug("Got the parasol job id: %s from line: %s" % (jobID, line))
                 return jobID
