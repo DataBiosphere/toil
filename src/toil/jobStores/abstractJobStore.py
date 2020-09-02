@@ -728,12 +728,6 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         Writes the given JobDescription to the job store.
         
-        If there are jobs in its connected component of the job graph that
-        haven't been written before (including it), assigns them IDs and writes
-        them too.
-        
-        Must call onCreate() on each JobDescription and pass the JobStore.
-
         :rtype: toil.job.JobDescription
         """
         raise NotImplementedError()

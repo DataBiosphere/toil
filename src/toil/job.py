@@ -317,11 +317,11 @@ class JobDescription:
         assert not isinstance(predecessorID, FakeID), f"Unregistered predecessor {predecessorID} finished!"
         self.predecessorsFinished.add(predecessorID)
         
-    def onCreate(self, jobStore):
+    def onRegistration(self, jobStore):
         """
-        Called by the JobStore the first time this JobDescription is saved into it.
+        Called by the Job saving logic when this JobDescription meets the JobStore and has its ID assigned.
         
-        Used to perform setup work (like hooking up flag files for service jobs) that requires the JobStore.
+        Overridden to perform setup work (like hooking up flag files for service jobs) that requires the JobStore.
         
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store we are being placed into
         """
@@ -548,11 +548,11 @@ class ServiceJobDescription(JobDescription):
         # should terminate signaling an error.
         self.errorJobStoreID = None
         
-    def onCreate(self, jobStore):
+    def onRegistration(self, jobStore):
         """
-        When a ServiceJobDescription is placed into the JobStore, it needs to set up its flag files.
+        When a ServiceJobDescription first meets the JobStore, it needs to set up its flag files.
         """
-        super(self, ServiceJobDescription).onCreate(jobStore)
+        super(self, ServiceJobDescription).onRegistration(jobStore)
         
         self.startJobStoreID = jobStore.getEmptyFileStoreID()
         self.terminateJobStoreID = jobStore.getEmptyFileStoreID()
@@ -1549,6 +1549,12 @@ class Job:
         connected jobs) IDs.
         """
         
+        # TODO: If we register all jobs in the component in _saveJobGraph, do
+        # we really need the separate loop over the registry here?
+        
+        # TODO: This doesn't really have much to do with the registry. Rename
+        # the registry.
+        
         if isinstance(self.jobStoreID, FakeID):
             # We need to register the connected component.
             
@@ -1564,6 +1570,9 @@ class Job:
                jobStore.assignID(job.description)
                # Save the mapping
                fakeToReal[fake] = job.jobStoreID
+               # Make sure the JobDescription can do its JobStore-related
+               # setup.
+               job.description.onRegistration(jobStore)
             
             # Remake the registry in place
             self._registry.clear()
