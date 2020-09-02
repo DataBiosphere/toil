@@ -19,8 +19,6 @@ standard_library.install_aliases()
 from builtins import zip
 from builtins import map
 from builtins import str
-from builtins import object
-from builtins import super
 import collections
 import importlib
 import inspect
@@ -77,10 +75,10 @@ class FakeID:
         """
         Assign a unique temporary ID that won't collide with anything.
         """
-        self._value == uuid.uuid4()
+        self._value = uuid.uuid4()
         
     def __str__(self):
-        return __repr__(self)
+        return self.__repr__()
         
     def __repr__(self):
         return f'FakeID({self._value})'
@@ -129,9 +127,6 @@ class JobDescription:
         :param str|None jobName: Name of the kind of job this is. May be used in job
             store IDs and logging. Ought to be the job class's name if no real
             user-defined name is available.
-        :param str|None command: Command that should be run when the job is executed.
-            Generally asks _toil_worker to fetch the actual job data from the
-            JobStore and execute it.
         :param int predecessorNumber: Number of total predecessors
             that must finish before the described Job from being scheduled.
         """
@@ -151,8 +146,14 @@ class JobDescription:
         self.jobName = makeString(jobName)
     
         # Set properties that are not fully filled in on creation.
-        self.command = None
+        
+        # ID of this job description in the JobStore.
         self.jobStoreID = FakeID()
+        
+        # Mostly fake, not-really-executable command string that encodes how to
+        # find the Job body data that this JobDescription describes, and the
+        # module(s) needed to unpickle it.
+        self.command = None
         
         
         # Set scheduling properties that the leader read to think about scheduling.
@@ -230,7 +231,7 @@ class JobDescription:
         """
         Get an iterator over all child, follow-on, and service job IDs
         """
-        return itertools.chain(self.childIDs, jobDesc.self.followOnIDs, self.serviceTree.keys())
+        return itertools.chain(self.childIDs, self.followOnIDs, self.serviceTree.keys())
         
     def clearSuccessorsAndServiceHosts(self):
         """
@@ -342,7 +343,7 @@ class JobDescription:
         to be at least as big as the default memory (in case of exhaustion of memory,
         which is common).
         
-        Requires a configuration to have been associated.
+        Requires a configuration to have been assigned (see :meth:`toil.job.JobDescription.assignConfig`).
         
         :param toil.batchSystems.abstractBatchSystem.BatchJobExitReason exitReason: The configuration for the current workflow run.
         
@@ -353,7 +354,7 @@ class JobDescription:
         
         assert self._config is not None
         
-        if config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
+        if self._config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
             logger.info("*Not* reducing retry count (%s) of job %s with ID %s",
                         self.remainingRetryCount, self, self.jobStoreID)
         else:
@@ -363,13 +364,13 @@ class JobDescription:
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
-        if self.memory < config.defaultMemory:
-            self.memory = config.defaultMemory
+        if self.memory < self._config.defaultMemory:
+            self.memory = self._config.defaultMemory
             logger.warning("We have increased the default memory of the failed job %s to %s bytes",
                            self, self.memory)
             
-        if self.disk < config.defaultDisk:
-            self.disk = config.defaultDisk
+        if self.disk < self._config.defaultDisk:
+            self.disk = self._config.defaultDisk
             logger.warning("We have increased the disk of the failed job %s to the default of %s bytes",
                            self, self.disk)
                            
@@ -429,9 +430,9 @@ class JobDescription:
                 raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
         elif name == 'preemptable':
             if isinstance(value, str):
-                if v.tolower() == 'true':
+                if value.tolower() == 'true':
                     return True
-                elif v.tolower() == 'false':
+                elif value.tolower() == 'false':
                     return False
                 else:
                     raise ValueError(f"The '{name}' requirement must be 'true' or 'false' but is {value}")
@@ -453,7 +454,7 @@ class JobDescription:
         if requirement in self._requirementOverrides:
             return self._requirementOverrides[requirement]
         elif self._config is not None:
-            return getattr(config, 'default' + requirement.capitalize())
+            return getattr(self._config, 'default' + requirement.capitalize())
         else:
             raise AttributeError("Default value for '{}' cannot be determined".format(requirement))
         
@@ -532,7 +533,7 @@ class ServiceJobDescription(JobDescription):
         """
         
         # Make the base JobDescription
-        super(self, ServiceJobDescription).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         
         # Set service-specific properties
     
@@ -552,7 +553,7 @@ class ServiceJobDescription(JobDescription):
         """
         When a ServiceJobDescription first meets the JobStore, it needs to set up its flag files.
         """
-        super(self, ServiceJobDescription).onRegistration(jobStore)
+        super().onRegistration(jobStore)
         
         self.startJobStoreID = jobStore.getEmptyFileStoreID()
         self.terminateJobStoreID = jobStore.getEmptyFileStoreID()
@@ -569,7 +570,7 @@ class CheckpointJobDescription(JobDescription):
         """
         
         # Make the base JobDescription
-        super(self, CheckpointJobDescription).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
         
         # Set checkpoint-specific properties
         
@@ -583,8 +584,9 @@ class CheckpointJobDescription(JobDescription):
         # invocation, starting with this job
         self.chainedJobs = []
         
-     def restartCheckpoint(self, jobStore):
-        """Restart a checkpoint after the total failure of jobs in its subtree.
+    def restartCheckpoint(self, jobStore):
+        """
+        Restart a checkpoint after the total failure of jobs in its subtree.
 
         Writes the changes to the jobStore immediately. All the
         checkpoint's successors will be deleted, but its retry count
@@ -606,8 +608,8 @@ class CheckpointJobDescription(JobDescription):
 
             if self.childIDs or self.followOnIDs or self.serviceTree:
                 # If the subtree of successors is not complete restart everything
-                logger.debug("Checkpoint job has unfinished successor jobs, deleting the jobs on the stack: %s, services: %s " %
-                             (self.stack, self.services))
+                logger.debug("Checkpoint job has unfinished successor jobs, deleting children: %s, followOns: %s, services: %s " %
+                             (self.childIDs, self.followOnIDs, self.serviceTree.keys()))
                 # Delete everything on the stack, as these represent successors to clean
                 # up as we restart the queue
                 def recursiveDelete(jobDesc):
@@ -618,6 +620,7 @@ class CheckpointJobDescription(JobDescription):
                         else:
                             logger.debug("Job %s has already been deleted", otherJobID)
                     if jobDesc.jobStoreID != self.jobStoreID:
+                        # Delete everything under us except us.
                         logger.debug("Checkpoint is deleting old successor job: %s", jobDesc.jobStoreID)
                         jobStore.delete(jobDesc.jobStoreID)
                         successorsDeleted.append(jobDesc.jobStoreID)
@@ -725,6 +728,14 @@ class Job:
         Expose the JobDescription that describes this job.
         """
         return self._description
+        
+    @property
+    def checkpoint(self):
+        """
+        Determine if the job is a checkpoint job or not.
+        """
+        
+        return isinstance(self._description, CheckpointJobDescription)
 
     def assignConfig(self, config):
         """
@@ -749,7 +760,7 @@ class Job:
         """
         pass
         
-    def _jobGraphsJoined(other):
+    def _jobGraphsJoined(self, other):
         """
         Called whenever the job graphs of this job and the other job may have been merged into one connected component.
         
@@ -758,7 +769,7 @@ class Job:
         Merges FakeID registries if needed.
         """
        
-        if self._registry.size() < other._registry.size():
+        if len(self._registry) < len(other._registry):
             # Merge into the other component instead
             other._jobGraphsJoined(self)
         else:
@@ -1258,7 +1269,7 @@ class Job:
     #and defining a service (Job.Service)
     ####################################################
 
-    class Runner(object):
+    class Runner():
         """
         Used to setup and run Toil workflow.
         """
@@ -1661,7 +1672,7 @@ class Job:
         
         # Make sure everybody in the registry is registrered with the job store
         # and has an ID.
-        allJobs = list(self_registry.values())
+        allJobs = list(self._registry.values())
         for job in allJobs:
             job._register(jobStore)
         
@@ -1718,7 +1729,7 @@ class Job:
                 'New checkpoint job %s is not a leaf in the job graph' % self)
 
         # Save the root job and all descendants and services
-        self._saveJobGraph(jobGraph, jobStore, saveSelf=True)
+        self._saveJobGraph(jobStore, saveSelf=True)
         
         # Store the name of the first job in a file in case of restart. Up to this point the
         # root job is not recoverable. FIXME: "root job" or "first job", which one is it?
@@ -1738,7 +1749,7 @@ class Job:
         """
         
         # Grab the command that connects the description to the job body
-        command = JobDescription.command
+        command = jobDescription.command
         
         commandTokens = command.split()
         assert "_toil" == commandTokens[0]
@@ -1860,8 +1871,11 @@ class Job:
         self._fileStore = None
 
 
-        # Serialize the new jobs defined by the run method to the jobStore
-        self._serialiseExistingJob(jobStore, returnValues)
+        # Serialize the new Jobs defined by the run method to the jobStore
+        self._saveJobGraph(jobStore, saveSelf=False, returnValues=returnValues)
+        
+        # TODO: does not update this job's JobDescription to save any new child
+        # or follow-on relationships. Should it?
 
         
 
@@ -1869,7 +1883,7 @@ class Job:
         """
         :rtype : string, used as identifier of the job class in the stats report.
         """
-        return self.displayName
+        return self._description.displayName
 
 
 class JobException(Exception):
@@ -2111,7 +2125,7 @@ class EncapsulatedJob(Job):
         
     def _disablePromiseRegistration(self):
         super()._disablePromiseRegistration()
-        selff.encapsulatedJob._disablePromiseRegistration()
+        self.encapsulatedJob._disablePromiseRegistration()
 
     def getUserScript(self):
         return self.encapsulatedJob.getUserScript()
@@ -2133,7 +2147,7 @@ class ServiceHostJob(Job):
         
         # Make ourselves with name info from the Service and a
         # ServiceJobDescription that has the service control flags.
-        super(self, ServiceHostJob).__init__(self, **service.requirements,
+        super().__init__(self, **service.requirements,
             unitName=service.unitName, descriptionClass=ServiceJobDescription)
         
         # Make sure the service knows it has a host now
@@ -2167,7 +2181,7 @@ class ServiceHostJob(Job):
     def _renameReferences(self, renames):
         # When the job store finally hads out IDs we have to fix up the
         # back-reference from our Service to us.
-        super(self, ServiceHostJob)._renameReferences(renamse)
+        super()._renameReferences(renames)
         if self.service is not None:
             self.service.hostID = renames[self.service.hostID]
         
@@ -2239,7 +2253,7 @@ class ServiceHostJob(Job):
         return self.serviceModule
 
 
-class Promise(object):
+class Promise():
     """
     References a return value from a :meth:`toil.job.Job.run` or
     :meth:`toil.job.Job.Service.start` method as a *promise* before the method itself is run.
@@ -2311,7 +2325,7 @@ class Promise(object):
             return value
 
 
-class PromisedRequirement(object):
+class PromisedRequirement():
     def __init__(self, valueOrCallable, *args):
         """
         Class for dynamically allocating job function resource requirements involving
@@ -2369,7 +2383,7 @@ class PromisedRequirement(object):
         return False
 
 
-class UnfulfilledPromiseSentinel(object):
+class UnfulfilledPromiseSentinel():
     """This should be overwritten by a proper promised value. Throws an
     exception when unpickled."""
     def __init__(self, fulfillingJobName, unpickled):
