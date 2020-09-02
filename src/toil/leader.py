@@ -57,11 +57,11 @@ logger = logging.getLogger( __name__ )
 # Multiple predecessors:
 #   There is special-case handling for jobs with multiple predecessors as a
 #   performance optimization. This minimize number of expensive loads of
-#   jobGraphs from jobStores.  However, this special case could be unnecessary.
-#   The jobGraph is loaded to update predecessorsFinished, in
+#   JobDescriptions from jobStores.  However, this special case could be unnecessary.
+#   The JobDescription is loaded to update predecessorsFinished, in
 #   _checkSuccessorReadyToRunMultiplePredecessors, however it doesn't appear to
-#   write the jobGraph back the jobStore.  Thus predecessorsFinished may really
-#   be leader state and could moved out of the jobGraph.  This would make this
+#   write the JobDescription back the jobStore.  Thus predecessorsFinished may really
+#   be leader state and could moved out of the JobDescription.  This would make this
 #   special-cases handling unnecessary and simplify the leader.
 #   Issue #2136
 ###############################################################################
@@ -77,11 +77,12 @@ class FailedJobsException(Exception):
         self.msg = "The job store '%s' contains %i failed jobs" % (jobStoreLocator, len(failedJobs))
         try:
             self.msg += ": %s" % ", ".join((str(failedJob) for failedJob in failedJobs))
-            for jobNode in failedJobs:
-                job = jobStore.load(jobNode.jobStoreID)
+            for jobDesc in failedJobs:
+                # Reload from JobStore. TODO: avoid this!
+                jobDesc = jobStore.load(jobDesc.jobStoreID)
                 if job.logJobStoreFileID:
                     with job.getLogFileHandle(jobStore) as fH:
-                        self.msg += "\n" + StatsAndLogging.formatLogStream(fH, jobNode)
+                        self.msg += "\n" + StatsAndLogging.formatLogStream(fH, jobDesc)
         # catch failures to prepare more complex details and only return the basics
         except:
             logger.exception('Exception when compiling information about failed jobs')
@@ -108,12 +109,12 @@ class Leader(object):
         """
         :param toil.common.Config config:
         :param toil.batchSystems.abstractBatchSystem.AbstractBatchSystem batchSystem:
-        :param toil.provisioners.abstractProvisioner.AbstractProvisioner provisioner
+        :param toil.provisioners.abstractProvisioner.AbstractProvisioner provisioner:
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore:
-        :param toil.jobGraph.JobGraph rootJob
+        :param toil.job.JobDescription rootJob:
 
         If jobCache is passed, it must be a dict from job ID to pre-existing
-        JobGraph objects. Jobs will be loaded from the cache (which can be
+        JobDescription objects. Jobs will be loaded from the cache (which can be
         downloaded from the jobStore in a batch) during the construction of the ToilState object.
         """
         # Object containing parameters for the run
@@ -147,7 +148,7 @@ class Leader(object):
         self.preemptableServiceJobsIssued = 0
         self.preemptableServiceJobsToBeIssued = []
 
-        # Timing of the jobGraph rescuing method
+        # Timing of the rescuing method
         self.timeSinceJobsLastRescued = None
 
         # Hash to store number of times a job is lost by the batch system,
@@ -280,92 +281,118 @@ class Leader(object):
         if os.path.exists(localLog):  # Bandaid for Jenkins tests failing stochastically and unexplainably.
             os.remove(localLog)
 
-    def _handledFailedSuccessor(self, jobNode, jobGraph, successorJobStoreID):
-        """Deal with the successor having failed. Return True if there are
+    def _handledFailedSuccessor(self, successor, predecessor):
+        """
+        Deal with the successor having failed. Return True if there are
         still active successors. Return False if all successors have failed
-        and the job is queued to run to handle the failed successors."""
+        and the job is queued to run to handle the failed successors.
+        
+        :param toil.job.JobDescription successor: The successor which has failed.
+        :param toil.job.JobDescription predecessor: The job which the successor comes after.
+        
+        """
         logger.debug("Successor job: %s of job: %s has failed """
-                     "predecessors", jobNode, jobGraph)
+                     "predecessors", successor, predecessor)
 
         # Add the job to the set having failed successors
-        self.toilState.hasFailedSuccessors.add(jobGraph.jobStoreID)
+        self.toilState.hasFailedSuccessors.add(predecessor.jobStoreID)
 
         # Reduce active successor count and remove the successor as an active successor of the job
-        self.toilState.successorCounts[jobGraph.jobStoreID] -= 1
-        assert self.toilState.successorCounts[jobGraph.jobStoreID] >= 0
-        self.toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].remove(jobGraph)
-        if len(self.toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID]) == 0:
-            self.toilState.successorJobStoreIDToPredecessorJobs.pop(successorJobStoreID)
+        self.toilState.successorCounts[predecessor.jobStoreID] -= 1
+        assert self.toilState.successorCounts[predecessor.jobStoreID] >= 0
+        self.toilState.successorJobStoreIDToPredecessorJobs[successor.jobStoreID].remove(predecessor)
+        if len(self.toilState.successorJobStoreIDToPredecessorJobs[successor.jobStoreID]) == 0:
+            self.toilState.successorJobStoreIDToPredecessorJobs.pop(successor.jobStoreID)
 
-        # If the job now has no active successors add to active jobs
-        # so it can be processed as a job with failed successors
-        if self.toilState.successorCounts[jobGraph.jobStoreID] == 0:
+        # If the job now has no active successors, add to active jobs
+        # so it can be processed as a job with failed successors.
+        if self.toilState.successorCounts[predecessor.jobStoreID] == 0:
             logger.debug("Job: %s has no successors to run "
                          "and some are failed, adding to list of jobs "
-                         "with failed successors", jobGraph)
-            self.toilState.successorCounts.pop(jobGraph.jobStoreID)
-            if jobGraph.jobStoreID not in self.toilState.updatedJobs:
-                self.toilState.updatedJobs[jobGraph.jobStoreID] = (jobGraph, 0)
+                         "with failed successors", predecessor)
+            self.toilState.successorCounts.pop(predecessor.jobStoreID)
+            if predecessor.jobStoreID not in self.toilState.updatedJobs:
+                self.toilState.updatedJobs[predecessor.jobStoreID] = (predecessor, 0)
             return False
 
 
-    def _checkSuccessorReadyToRunMultiplePredecessors(self, jobGraph, jobNode, successorJobStoreID):
-        """Handle the special cases of checking if a successor job is
-        ready to run when there are multiple predecessors"""
+    def _checkSuccessorReadyToRunMultiplePredecessors(self, successor, predecessor):
+        """
+        Handle the special cases of checking if a successor job is
+        ready to run when there are multiple predecessors.
+        
+        :param toil.job.JobDescription successor: The successor which has failed.
+        :param toil.job.JobDescription predecessor: The job which the successor comes after.
+        
+        """
         # See implementation note at the top of this file for discussion of multiple predecessors
         logger.debug("Successor job: %s of job: %s has multiple "
-                     "predecessors", jobNode, jobGraph)
+                     "predecessors", successor, predecessor)
 
         # Get the successor job graph, which is caches
-        if successorJobStoreID not in self.toilState.jobsToBeScheduledWithMultiplePredecessors:
-            self.toilState.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID] = self.jobStore.load(successorJobStoreID)
-        successorJobGraph = self.toilState.jobsToBeScheduledWithMultiplePredecessors[successorJobStoreID]
+        if successor.jobStoreID not in self.toilState.jobsToBeScheduledWithMultiplePredecessors:
+            # TODO: We're loading from the job store in an ad-hoc way!
+            self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID] = self.jobStore.load(successor.jobStoreID)
+        # TODO: we're clobbering a JobDescription we're passing around by value.
+        successor = self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID]
 
-        # Add the jobGraph as a finished predecessor to the successor
-        successorJobGraph.predecessorsFinished.add(jobGraph.jobStoreID)
+        # Add the predecessor as a finished predecessor to the successor
+        successor.predecessorsFinished.add(jobGraph.jobStoreID)
 
         # If the successor is in the set of successors of failed jobs
         if successorJobStoreID in self.toilState.failedSuccessors:
-            if not self._handledFailedSuccessor(jobNode, jobGraph, successorJobStoreID):
+            if not self._handledFailedSuccessor(successor, predecessor):
                 return False
 
         # If the successor job's predecessors have all not all completed then
-        # ignore the jobGraph as is not yet ready to run
-        assert len(successorJobGraph.predecessorsFinished) <= successorJobGraph.predecessorNumber
-        if len(successorJobGraph.predecessorsFinished) < successorJobGraph.predecessorNumber:
+        # ignore the successor as is not yet ready to run
+        assert len(successor.predecessorsFinished) <= successor.predecessorNumber
+        if len(successor.predecessorsFinished) < successor.predecessorNumber:
             return False
         else:
             # Remove the successor job from the cache
             self.toilState.jobsToBeScheduledWithMultiplePredecessors.pop(successorJobStoreID)
             return True
 
-    def _makeJobSuccessorReadyToRun(self, jobGraph, jobNode):
-        """make a successor job ready to run, returning False if they should
-        not yet be run"""
-        successorJobStoreID = jobNode.jobStoreID
+    def _makeJobSuccessorReadyToRun(self, successor, predecessor):
+        """
+        Make a successor job ready to run if possible, returning False if it should
+        not yet be run or True otherwise.
+        
+        :param toil.job.JobDescription successor: The successor which has failed.
+        :param toil.job.JobDescription predecessor: The job which the successor comes after.
+        """
         #Build map from successor to predecessors.
-        if successorJobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
-            self.toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID] = []
-        self.toilState.successorJobStoreIDToPredecessorJobs[successorJobStoreID].append(jobGraph)
+        if successor.jobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
+            self.toilState.successorJobStoreIDToPredecessorJobs[successor.jobStoreID] = []
+        self.toilState.successorJobStoreIDToPredecessorJobs[successor.jobStoreID].append(predecessor)
 
-        if jobNode.predecessorNumber > 1:
-            return self._checkSuccessorReadyToRunMultiplePredecessors(jobGraph, jobNode, successorJobStoreID)
+        if successor.predecessorNumber > 1:
+            return self._checkSuccessorReadyToRunMultiplePredecessors(successor, predecessor)
         else:
             return True
 
-    def _runJobSuccessors(self, jobGraph):
-        assert len(jobGraph.stack[-1]) > 0
+    def _runJobSuccessors(self, predecessor):
+        """
+        Issue the successors of a job.
+        
+        :param toil.job.JobDescription predecessor: The job which the successors come after.
+        """
+    
+        # TODO: rewrite!
+    
+        assert len(predecessor.stack[-1]) > 0
         logger.debug("Job: %s has %i successors to schedule",
-                     jobGraph.jobStoreID, len(jobGraph.stack[-1]))
+                     predecessor.jobStoreID, len(predecessor.stack[-1]))
         #Record the number of successors that must be completed before
         #the jobGraph can be considered again
         assert jobGraph.jobStoreID not in self.toilState.successorCounts, 'Attempted to schedule successors of the same job twice!'
-        self.toilState.successorCounts[jobGraph.jobStoreID] = len(jobGraph.stack[-1])
+        self.toilState.successorCounts[predecessor.jobStoreID] = len(predecessor.stack[-1])
 
         # For each successor schedule if all predecessors have been completed
         successors = []
-        for jobNode in jobGraph.stack[-1]:
-            if self._makeJobSuccessorReadyToRun(jobGraph, jobNode):
+        for successorID in predecessor.stack[-1]:
+            if self._makeJobSuccessorReadyToRun(predecessor, jobNode):
                 successors.append(jobNode)
         self.issueJobs(successors)
 
@@ -382,7 +409,7 @@ class Leader(object):
             self.serviceManager.killServices(self.toilState.servicesIssued[jobGraph.jobStoreID],
                                              error=True)
         elif jobGraph.jobStoreID in self.toilState.successorCounts:
-            # The job has non-service jobs running wait for them to finish
+            # The job has non-service jobs running; wait for them to finish.
             # the job will be re-added to the updated jobs when these jobs
             # are done
             logger.debug("Job %s with ID: %s with failed successors still has successor jobs running",

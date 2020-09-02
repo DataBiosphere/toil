@@ -22,20 +22,25 @@ logger = logging.getLogger(__name__)
 class ToilState(object):
     """
     Represents a snapshot of the jobs in the jobStore. Used by the leader to manage the batch.
+    
+    Only holds JobDescription objects, not Job objects, and those JobDescription objects only exist in single copies.
+    
+    Everything else in the leader should reference JobDescriptions by ID, and read/write through the ToilState, which maintains a cache.
     """
     def __init__(self, jobStore, rootJob, jobCache=None):
         """
         Loads the state from the jobStore, using the rootJob 
         as the source of the job graph.
 
-        The jobCache is a map from jobStoreIDs to jobGraphs or None. Is used to
-        speed up the building of the state.
+        The jobCache is a map from jobStoreID to JobDescription or None. Is
+        used to speed up the building of the state when loading initially from
+        the JobStore, and is not preserved.
 
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore 
         :param toil.jobWrapper.JobGraph rootJob
         """
-        # This is a hash of jobs, referenced by jobStoreID, to their predecessor jobs.
-        self.successorJobStoreIDToPredecessorJobs = {}
+        # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreID
+        self.successorToPredecessor = {}
         
         # Hash of jobStoreIDs to counts of numbers of successors issued.
         # There are no entries for jobs without successors in this map.
@@ -70,6 +75,14 @@ class ToilState(object):
         
         ##Algorithm to build this information
         self._buildToilState(rootJob, jobStore, jobCache)
+        
+        
+    def reload(self, jobStoreID):
+        """
+        Load the JobDescription with the given ID from the JobStore and replace whatever is in the cache.
+        
+        If the JobDescription no longer exists (for example, because the worker has cleaned it up after successful completion), drops it.
+        """
 
     def _buildToilState(self, jobGraph, jobStore, jobCache=None):
         """
