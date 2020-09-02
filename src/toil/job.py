@@ -173,12 +173,12 @@ class JobDescription:
         # requested deletions.
         self.filesToDelete = [] 
         
-        # The number of direct predecessors of the job.
+        # The number of direct predecessors of the job. Needs to be stored at
+        # the JobDescription to support dynamically-created jobs with multiple
+        # predecessors. Otherwise, we could reach a job by one path down from
+        # the root and decide to schedule it without knowing that it is also
+        # reachable from other paths down from the root.
         self.predecessorNumber = 0
-        
-        # The IDs of predecessors that have finished. When len(predecessorsFinished) ==
-        # predecessorNumber then the job can be run.
-        self.predecessorsFinished = set()
         
         # Note that we don't hold IDs of our predecessors. Predecessors know
         # about us, and not the other way around. Otherwise we wouldn't be able
@@ -294,12 +294,6 @@ class JobDescription:
         
         return serviceID in self.serviceTree
         
-    def addPredecessor(self):
-        """
-        Notify the JobDescription that a predecessor has been added to its Job.
-        """
-        self.predecessorNumber += 1
-        
     def renameReferences(self, renames):
         """
         Apply the given dict of ID renames to all references to jobs. Does not
@@ -313,14 +307,11 @@ class JobDescription:
         self.serviceTree = {renames[parent]: [renames[child] for child in children]
                             for parent, children in self.serviceTree.items()}
         
-    def finishPredecessor(self, predecessorID):
+    def addPredecessor(self):
         """
-        Record that a predecessor has completed.
+        Notify the JobDescription that a predecessor has been added to its Job.
         """
-        
-        assert predecessorID not in self.predecessorsFinished, f"Predecessor {predecessorID} duplicated!"
-        assert not isinstance(predecessorID, FakeID), f"Unregistered predecessor {predecessorID} finished!"
-        self.predecessorsFinished.add(predecessorID)
+        self.predecessorNumber += 1
         
     def onRegistration(self, jobStore):
         """

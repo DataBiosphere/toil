@@ -21,11 +21,15 @@ logger = logging.getLogger(__name__)
 
 class ToilState(object):
     """
-    Represents a snapshot of the jobs in the jobStore. Used by the leader to manage the batch.
+    Holds the leader's scheduling information that does not need to be
+    persisted back to the JobStore (such as information on completed and
+    outstanding predecessors).
     
-    Only holds JobDescription objects, not Job objects, and those JobDescription objects only exist in single copies.
+    Only holds JobDescription objects, not Job objects, and those
+    JobDescription objects only exist in single copies.
     
-    Everything else in the leader should reference JobDescriptions by ID, and read/write through the ToilState, which maintains a cache.
+    Everything else in the leader should reference JobDescriptions by ID
+    instead of moving them around between lists.
     """
     def __init__(self, jobStore, rootJob, jobCache=None):
         """
@@ -39,6 +43,7 @@ class ToilState(object):
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore 
         :param toil.jobWrapper.JobGraph rootJob
         """
+        
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreID
         self.successorToPredecessor = {}
         
