@@ -15,6 +15,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from builtins import str
+from builtins import next
 from builtins import range
 from past.utils import old_div
 from builtins import object
@@ -24,11 +25,13 @@ import os
 import socket
 import logging
 import types
+import itertools
 import errno
 
 from ssl import SSLError
 from six import iteritems
 
+from toil.lib.exceptions import panic
 from toil.lib.compatibility import compat_oldstr, compat_bytes, USING_PYTHON2
 from toil.lib.retry import retry
 from boto.exception import (SDBResponseError,
@@ -36,7 +39,7 @@ from boto.exception import (SDBResponseError,
                             S3ResponseError,
                             S3CreateError,
                             S3CopyError)
-from boto3.s3.transfer import TransferConfig
+import boto3
 
 log = logging.getLogger(__name__)
 
@@ -190,80 +193,78 @@ def fileSizeAndTime(localFilePath):
     return file_stat.st_size, file_stat.st_mtime
 
 
-def uploadFromPath(localFilePath, resource, bucketName, fileID, headerArgs=None, partSize=50 << 20):
+def uploadFromPath(localFilePath, partSize, bucket, fileID, headers):
     """
     Uploads a file to s3, using multipart uploading if applicable
 
     :param str localFilePath: Path of the file to upload to s3
-    :param S3.Resource resource: boto3 resource
-    :param str bucketName: name of the bucket to upload to
-    :param str fileID: the name of the file to upload to
-    :param dict headerArgs: http headers to use when uploading - generally used for encryption purposes
     :param int partSize: max size of each part in the multipart upload, in bytes
-
+    :param boto.s3.Bucket bucket: the s3 bucket to upload to
+    :param str fileID: the name of the file to upload to
+    :param headers: http headers to use when uploading - generally used for encryption purposes
     :return: version of the newly uploaded file
     """
-    if headerArgs is None:
-        headerArgs = {}
-
-    client = resource.meta.client
     file_size, file_time = fileSizeAndTime(localFilePath)
-
-    version = uploadFile(localFilePath, resource, bucketName, fileID, headerArgs, partSize)
-    info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), VersionId=version, **headerArgs)
-    size = info.get('ContentLength')
-
-    assert size == file_size
+    if file_size <= partSize:
+        key = bucket.new_key(key_name=compat_bytes(fileID))
+        key.name = fileID
+        for attempt in retry_s3():
+            with attempt:
+                key.set_contents_from_filename(localFilePath, headers=headers)
+        version = key.version_id
+    else:
+        with open(localFilePath, 'rb') as f:
+            version = chunkedFileUpload(f, bucket, fileID, file_size, headers, partSize)
+    for attempt in retry_s3():
+        with attempt:
+            key = bucket.get_key(compat_bytes(fileID),
+                                 headers=headers,
+                                 version_id=version)
+    assert key.size == file_size
     # Make reasonably sure that the file wasn't touched during the upload
     assert fileSizeAndTime(localFilePath) == (file_size, file_time)
     return version
 
 
-def uploadFile(readable, resource, bucketName, fileID, headerArgs=None, partSize=50 << 20):
-    """
-    Upload a readable object to s3, using multipart uploading if applicable.
-
-    :param readable: a readable stream or a file path to upload to s3
-    :param S3.Resource resource: boto3 resource
-    :param str bucketName: name of the bucket to upload to
-    :param str fileID: the name of the file to upload to
-    :param dict headerArgs: http headers to use when uploading - generally used for encryption purposes
-    :param int partSize: max size of each part in the multipart upload, in bytes
-
-    :return: version of the newly uploaded file
-    """
-    if headerArgs is None:
-        headerArgs = {}
-
-    client = resource.meta.client
-    config = TransferConfig(
-        multipart_threshold=partSize,
-        multipart_chunksize=partSize,
-        use_threads=True
-    )
-    if isinstance(readable, str):
-        client.upload_file(Filename=readable, Bucket=bucketName, Key=compat_bytes(fileID),
-                           ExtraArgs=headerArgs, Config=config)
+def chunkedFileUpload(readable, bucket, fileID, file_size, headers=None, partSize=50 << 20):
+    for attempt in retry_s3():
+        with attempt:
+            upload = bucket.initiate_multipart_upload(
+                key_name=compat_bytes(fileID),
+                headers=headers)
+    try:
+        start = 0
+        part_num = itertools.count()
+        while start < file_size:
+            end = min(start + partSize, file_size)
+            assert readable.tell() == start
+            for attempt in retry_s3():
+                with attempt:
+                    upload.upload_part_from_file(fp=readable,
+                                                 part_num=next(part_num) + 1,
+                                                 size=end - start,
+                                                 headers=headers)
+            start = end
+        assert readable.tell() == file_size == start
+    except:
+        with panic(log=log):
+            for attempt in retry_s3():
+                with attempt:
+                    upload.cancel_upload()
     else:
-        client.upload_fileobj(Fileobj=readable, Bucket=bucketName, Key=compat_bytes(fileID),
-                              ExtraArgs=headerArgs, Config=config)
-
-    # Wait until the object exists before calling head_object
-    object_summary = resource.ObjectSummary(bucketName, compat_bytes(fileID))
-    object_summary.wait_until_exists(**headerArgs)
-
-    info = client.head_object(Bucket=bucketName, Key=compat_bytes(fileID), **headerArgs)
-    return info.get('VersionId', None)
+        for attempt in retry_s3():
+            with attempt:
+                version = upload.complete_upload().version_id
+    return version
 
 
-def copyKeyMultipart(resource, srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName,
-                     sseAlgorithm=None, sseKey=None, copySourceSseAlgorithm=None, copySourceSseKey=None):
+def copyKeyMultipart(srcBucketName, srcKeyName, srcKeyVersion, dstBucketName, dstKeyName, sseAlgorithm=None, sseKey=None,
+                     copySourceSseAlgorithm=None, copySourceSseKey=None):
     """
     Copies a key from a source key to a destination key in multiple parts. Note that if the
     destination key exists it will be overwritten implicitly, and if it does not exist a new
     key will be created. If the destination bucket does not exist an error will be raised.
 
-    :param S3.Resource resource: boto3 resource
     :param str srcBucketName: The name of the bucket to be copied from.
     :param str srcKeyName: The name of the key to be copied from.
     :param str srcKeyVersion: The version of the key to be copied from.
@@ -273,10 +274,12 @@ def copyKeyMultipart(resource, srcBucketName, srcKeyName, srcKeyVersion, dstBuck
     :param str sseKey: Server-side encryption key for the destination.
     :param str copySourceSseAlgorithm: Server-side encryption algorithm for the source.
     :param str copySourceSseKey: Server-side encryption key for the source.
+
     :rtype: str
     :return: The version of the copied file (or None if versioning is not enabled for dstBucket).
     """
-    dstBucket = resource.Bucket(compat_oldstr(dstBucketName))
+    s3 = boto3.resource('s3')
+    dstBucket = s3.Bucket(compat_oldstr(dstBucketName))
     dstObject = dstBucket.Object(compat_oldstr(dstKeyName))
     copySource = {'Bucket': compat_oldstr(srcBucketName), 'Key': compat_oldstr(srcKeyName)}
     if srcKeyVersion is not None:
@@ -299,7 +302,7 @@ def copyKeyMultipart(resource, srcBucketName, srcKeyName, srcKeyVersion, dstBuck
     dstObject.copy(copySource, ExtraArgs=copyEncryptionArgs)
 
     # Wait until the object exists before calling head_object
-    object_summary = resource.ObjectSummary(dstObject.bucket_name, dstObject.key)
+    object_summary = s3.ObjectSummary(dstObject.bucket_name, dstObject.key)
     object_summary.wait_until_exists(**destEncryptionArgs)
 
     # Unfortunately, boto3's managed copy doesn't return the version
@@ -307,9 +310,9 @@ def copyKeyMultipart(resource, srcBucketName, srcKeyName, srcKeyVersion, dstBuck
     # after, leaving open the possibility that it may have been
     # modified again in the few seconds since the copy finished. There
     # isn't much we can do about it.
-    info = resource.meta.client.head_object(Bucket=dstObject.bucket_name, Key=dstObject.key, **destEncryptionArgs)
+    info = boto3.client('s3').head_object(Bucket=dstObject.bucket_name, Key=dstObject.key,
+                                          **destEncryptionArgs)
     return info.get('VersionId', None)
-
 
 def _put_attributes_using_post(self, domain_or_name, item_name, attributes,
                                replace=True, expected_value=None):
