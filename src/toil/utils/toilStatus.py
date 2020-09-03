@@ -205,6 +205,8 @@ class ToilStatus():
             jobstore = Toil.resumeJobStore(jobStoreName)
         except NoSuchJobStoreException:
             return 'QUEUED'
+        except NoSuchFileException:
+            return 'QUEUED'
 
         try:
             with jobstore.readSharedFileStream('succeeded.log') as successful:
