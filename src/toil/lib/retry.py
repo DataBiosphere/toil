@@ -99,7 +99,7 @@ def retry(intervals: Optional[List] = None,
 
     error_conditions = set([error for error in errors if isinstance(error, ErrorCondition)])
     retriable_errors = set([error for error in errors if isinstance(error, BaseException)])
-    assert len(set(errors)) == len(error_conditions) + len(retriable_errors)
+    assert len(set(errors)) == len(error_conditions) + len(retriable_errors), f'{set(errors)} != {error_conditions} + {retriable_errors}'
 
     if log_message:
         post_message_function = log_message[0]
