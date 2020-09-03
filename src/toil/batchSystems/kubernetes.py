@@ -49,12 +49,12 @@ from toil.lib.bioio import setLogLevel
 from toil.lib.humanize import human2bytes
 from toil.resource import Resource
 
-from toil.lib.retry import retry_decorator, ErrorCondition
+from toil.lib.retry import retry, ErrorCondition
 
 logger = logging.getLogger(__name__)
-retryable_kubernetes_errors = {urllib3.exceptions.MaxRetryError,
+retryable_kubernetes_errors = [urllib3.exceptions.MaxRetryError,
                                urllib3.exceptions.ProtocolError,
-                               ApiException}
+                               ApiException]
 
 
 def is_retryable_kubernetes_error(e):
@@ -238,8 +238,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             except KeyError: 
                 raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
 
-    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors=retryable_kubernetes_errors)
+    @retry(errors=retryable_kubernetes_errors)
     def _try_kubernetes(self, method, *args, **kwargs):
         """
         Kubernetes API can end abruptly and fail when it could dynamically backoff and retry.
@@ -252,14 +251,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         """
         return method(*args, **kwargs)
 
-    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors=retryable_kubernetes_errors,
-                     error_conditions=[
-                         ErrorCondition(
-                             error=ApiException,
-                             error_codes=[404],
-                             retry_on_this_condition=False
-                         )])
+    @retry(errors=retryable_kubernetes_errors + [
+               ErrorCondition(
+                   error=ApiException,
+                   error_codes=[404],
+                   retry_on_this_condition=False
+               )])
     def _try_kubernetes_expecting_gone(self, method, *args, **kwargs):
         """
         Same as _try_kubernetes, but raises 404 errors as soon as they are

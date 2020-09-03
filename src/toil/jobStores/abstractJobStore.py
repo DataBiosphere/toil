@@ -27,7 +27,7 @@ from six import itervalues
 from six.moves.urllib.request import urlopen
 import six.moves.urllib.parse as urlparse
 
-from toil.lib.retry import retry_decorator, ErrorCondition
+from toil.lib.retry import retry, ErrorCondition
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
@@ -1075,9 +1075,7 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
-    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors={HTTPError, BadStatusLine},
-                     error_conditions=[
+    @retry(errors=[BadStatusLine] + [
                          ErrorCondition(
                              error=HTTPError,
                              error_codes=[408, 500, 503]
@@ -1092,9 +1090,7 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
             return int(size) if size is not None else None
 
     @classmethod
-    @retry_decorator(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
-                     errors={HTTPError, BadStatusLine},
-                     error_conditions=[
+    @retry(errors=[BadStatusLine] + [
                          ErrorCondition(
                              error=HTTPError,
                              error_codes=[408, 500, 503]

@@ -30,7 +30,7 @@ from urllib.error import HTTPError
 from zipfile import ZipFile
 from six.moves.urllib.request import urlopen
 
-from toil.lib.retry import retry_decorator, ErrorCondition
+from toil.lib.retry import retry, ErrorCondition
 from toil.lib.memoize import strict_bool
 from toil.lib.iterables import concat
 from toil.version import exactPython
@@ -226,7 +226,7 @@ class Resource(namedtuple('Resource', ('name', 'pathHash', 'url', 'contentHash')
         """
         raise NotImplementedError()
 
-    @retry_decorator(error_conditions=[
+    @retry(errors=[
         ErrorCondition(
              error=HTTPError,
              error_codes=[400])

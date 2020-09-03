@@ -11,14 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import, print_function
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
 from contextlib import contextmanager
 import errno
 import hashlib
@@ -37,17 +29,12 @@ from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree, atomic_copy, atomic_copyobj
-from toil.lib.retry import retry_decorator, ErrorCondition
+from toil.lib.retry import retry, ErrorCondition
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
-
-if sys.version_info[0] < 3:
-    # Define a usable FileNotFoundError as will be raised by os.remove on a
-    # nonexistent file.
-    FileNotFoundError = OSError
 
 
 # Use longer timeout to avoid hitting 'database is locked' errors.
@@ -260,8 +247,8 @@ class CachingFileStore(AbstractFileStore):
 
     
     @staticmethod
-    @retry_decorator(infinite_retries=True,
-                     error_conditions=[
+    @retry(infinite_retries=True,
+           errors=[
                          ErrorCondition(
                              error=sqlite3.OperationalError,
                              error_message_must_include='is locked')

@@ -26,7 +26,7 @@ from six import iteritems
 
 from toil.lib.exceptions import panic
 from toil.lib.compatibility import compat_oldstr, compat_bytes, USING_PYTHON2
-from toil.lib.retry import retry
+from toil.lib.retry import old_retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
@@ -368,7 +368,7 @@ def retryable_sdb_errors(e):
 
 
 def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryable_sdb_errors):
-    return retry(delays=delays, timeout=timeout, predicate=predicate)
+    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
 def retryable_s3_errors(e):
@@ -383,7 +383,7 @@ def retryable_s3_errors(e):
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
-    return retry(delays=delays, timeout=timeout, predicate=predicate)
+    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
 def region_to_bucket_location(region):
