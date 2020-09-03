@@ -797,8 +797,6 @@ class Toil(object):
         """
         Clean up after a workflow invocation. Depending on the configuration, delete the job store.
         """
-        from toil.utils.toilStatus import ToilStatus
-        
         try:
             if (exc_type is not None and self.config.clean == "onError" or
                             exc_type is None and self.config.clean == "onSuccess" or
