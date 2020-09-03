@@ -3,9 +3,30 @@ import os
 import subprocess
 import shutil
 import uuid
+from toil.wdl.wdl_functions import ceil
+from toil.wdl.wdl_functions import floor
 
 from toil.version import exactPython
 from toil.test import ToilTest
+
+
+class WdlStandardLibraryFunctionsTest(ToilTest):
+    """ A set of test cases for toil's wdl functions."""
+    @classmethod
+    def setUpClass(cls):
+        pass
+
+    def testFn_Ceil(self):
+        """Test the wdl built-in functional equivalent of 'ceil()', which converts
+        a Float value into an Int by rounding up to the next higher integer"""
+        assert ceil(1.999) == 2
+        assert ceil(-1.5) == -1
+
+    def testFn_Floor(self):
+        """Test the wdl built-in functional equivalent of 'floor()', which converts
+        a Float value into an Int by rounding down to the next lower integer"""
+        assert floor(1.999) == 1
+        assert floor(-1.5) == -2
 
 
 class WdlStandardLibraryWorkflowsTest(ToilTest):

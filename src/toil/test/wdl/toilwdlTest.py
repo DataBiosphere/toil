@@ -27,8 +27,6 @@ from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv
 from toil.wdl.wdl_functions import basename
-from toil.wdl.wdl_functions import floor
-from toil.wdl.wdl_functions import ceil
 from toil.test import ToilTest, slow, needs_docker
 from toil import urlretrieve
 import zipfile
@@ -222,18 +220,6 @@ class ToilWdlIntegrationTest(ToilTest):
         assert parse_disk('local-disk 10 SSD') == 10000000000, str(parse_disk('local-disk 10 SSD'))
         assert parse_disk('/mnt/ 10 HDD') == 10000000000, str(parse_disk('/mnt/ 10 HDD'))
         assert parse_disk('/mnt/ 1000 HDD') == 1000000000000, str(parse_disk('/mnt/ 1000 HDD'))
-
-    def testFn_Floor(self):
-        """Test the wdl built-in functional equivalent of 'floor()', which converts
-        a Float value into an Int by rounding down to the next lower integer"""
-        assert floor(1.999) == 1
-        assert floor(-1.5) == -2
-
-    def testFn_Ceil(self):
-        """Test the wdl built-in functional equivalent of 'ceil()', which converts
-        a Float value into an Int by rounding up to the next higher integer"""
-        assert ceil(1.999) == 2
-        assert ceil(-1.5) == -1
 
     # estimated run time <1 sec
     def testPrimitives(self):
