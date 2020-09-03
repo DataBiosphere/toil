@@ -27,7 +27,7 @@ import sqlite3
 import kubernetes.client.rest
 import botocore.exceptions
 from contextlib import contextmanager
-from typing import List, Set, Optional, Tuple, Callable, Any, Union
+from typing import List, Optional, Tuple, Callable, Any, Union
 
 log = logging.getLogger(__name__)
 
