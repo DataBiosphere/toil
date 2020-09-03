@@ -23,6 +23,7 @@ import requests.exceptions
 import http.client
 import urllib.error
 import urllib3.exceptions
+import kubernetes.client.rest
 import botocore.exceptions
 from contextlib import contextmanager
 from typing import List, Set, Optional, Tuple, Callable, Any, Union
@@ -32,7 +33,8 @@ log = logging.getLogger(__name__)
 SUPPORTED_HTTP_ERRORS = {http.client.HTTPException,
                          urllib.error.HTTPError,
                          urllib3.exceptions.HTTPError,
-                         requests.exceptions.RequestException,
+                         requests.exceptions.HTTPError,
+                         kubernetes.client.rest.ApiException,
                          botocore.exceptions.ClientError}
 
 
@@ -98,8 +100,7 @@ def retry(intervals: Optional[List] = None,
     errors = errors if errors else [Exception]
 
     error_conditions = set([error for error in errors if isinstance(error, ErrorCondition)])
-    retriable_errors = set([error for error in errors if isinstance(error, BaseException)])
-    assert len(set(errors)) == len(error_conditions) + len(retriable_errors), f'{set(errors)} != {error_conditions} + {retriable_errors}'
+    retriable_errors = set([error for error in errors if not isinstance(error, ErrorCondition)])
 
     if log_message:
         post_message_function = log_message[0]
@@ -145,9 +146,11 @@ def retry(intervals: Optional[List] = None,
 
 
 def return_status_code(e):
-    if isinstance(e, requests.exceptions.RequestException):
+    if isinstance(e, requests.exceptions.HTTPError):
         return e.response.status_code
-    elif isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.error.HTTPError):
+    elif isinstance(e, http.client.HTTPException) or \
+            isinstance(e, urllib3.error.HTTPError) or \
+            isinstance(e, kubernetes.client.rest.ApiException):
         return e.status
     elif isinstance(e, urllib.error.HTTPError):
         return e.code
@@ -159,11 +162,13 @@ def return_status_code(e):
 
 def meets_error_message_condition(e: Exception, error_message: Optional[str]):
     if error_message:
-        if isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.error.HTTPError):
+        if isinstance(e, http.client.HTTPException) or \
+                isinstance(e, urllib3.error.HTTPError) or \
+                isinstance(e, kubernetes.client.rest.ApiException):
             return error_message in e.reason
         elif isinstance(e, urllib.error.HTTPError) or isinstance(e, botocore.exceptions.ClientError):
             return error_message in e.msg
-        elif isinstance(e, requests.exceptions.RequestException):
+        elif isinstance(e, requests.exceptions.HTTPError):
             return error_message in e.raw
         else:
             return error_message in traceback.format_exc()

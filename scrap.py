@@ -7,3 +7,6 @@ try:
 except OperationalError as e:
     print(e.__cause__)
     print(traceback.format_exc())
+
+e = AssertionError()
+assert isinstance(e, Exception)
