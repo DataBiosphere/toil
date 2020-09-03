@@ -23,6 +23,7 @@ import requests.exceptions
 import http.client
 import urllib.error
 import urllib3.exceptions
+import sqlite3
 import kubernetes.client.rest
 import botocore.exceptions
 from contextlib import contextmanager
@@ -162,10 +163,10 @@ def return_status_code(e):
 
 def meets_error_message_condition(e: Exception, error_message: Optional[str]):
     if error_message:
-        if isinstance(e, http.client.HTTPException) or \
-                isinstance(e, urllib3.error.HTTPError) or \
-                isinstance(e, kubernetes.client.rest.ApiException):
+        if isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.error.HTTPError):
             return error_message in e.reason
+        elif isinstance(e, kubernetes.client.rest.ApiException) or isinstance(sqlite3.OperationalError):
+            return error_message in str(e)
         elif isinstance(e, urllib.error.HTTPError) or isinstance(e, botocore.exceptions.ClientError):
             return error_message in e.msg
         elif isinstance(e, requests.exceptions.HTTPError):
