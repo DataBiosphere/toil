@@ -41,6 +41,9 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
     def test_floor(self):
         self.check_function('floor', expected_result='11')
 
+    def test_round(self):
+        self.check_function('round', expected_result='11')
+
 
 if __name__ == "__main__":
     unittest.main()
