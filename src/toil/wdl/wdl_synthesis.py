@@ -755,7 +755,8 @@ class SynthesizeWDL:
             f.write(stdout)
         
         # TODO: is stderr part of stdout in apiDockerCall??
-        stderr = b''\n''', docker_dict, indent='        ')[1:]
+        stderr = b''
+        ''', docker_dict, indent='        ')[1:]
 
         return docker_template
 
