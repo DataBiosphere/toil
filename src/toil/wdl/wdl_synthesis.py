@@ -82,6 +82,7 @@ class SynthesizeWDL:
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
+                    from toil.wdl.wdl_functions import generate_stdout_file
                     from toil.wdl.wdl_functions import select_first
                     from toil.wdl.wdl_functions import sub
                     from toil.wdl.wdl_functions import size
@@ -752,7 +753,9 @@ class SynthesizeWDL:
         writetype = 'wb' if isinstance(stdout, bytes) else 'w'
         with open(os.path.join(asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir, '{job_task_reference}.log'), writetype) as f:
             f.write(stdout)
-            ''', docker_dict, indent='        ')[1:]
+        
+        # TODO: is stderr part of stdout in apiDockerCall??
+        stderr = b''\n''', docker_dict, indent='        ')[1:]
 
         return docker_template
 
@@ -820,6 +823,12 @@ class SynthesizeWDL:
         '''
 
         fn_section = ''
+
+        fn_section += heredoc_wdl('''
+            stdout_file = generate_stdout_file(stdout, tempDir, fileStore=fileStore)
+            stderr_file = generate_stdout_file(stderr, tempDir, stderr=True, fileStore=fileStore)
+        ''', indent='        ')[1:]
+
         if 'outputs' in self.tasks_dictionary[job]:
             return_values = []
             for output in self.tasks_dictionary[job]['outputs']:

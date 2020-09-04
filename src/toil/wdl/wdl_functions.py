@@ -336,7 +336,7 @@ def read_file(f, tempDir, fileStore, docker=False):
     elif isinstance(f, list):
         return read_array_file(f, tempDir, fileStore, docker=docker)
     else:
-        raise RuntimeError('Error processing file: '.format(str(f)))
+        raise RuntimeError('Error processing file: {}'.format(str(f)))
 
 
 def process_and_read_file(f, tempDir, fileStore, docker=False):
@@ -346,6 +346,37 @@ def process_and_read_file(f, tempDir, fileStore, docker=False):
         return None
     processed_file = process_infile(f, fileStore)
     return read_file(processed_file, tempDir, fileStore, docker=docker)
+
+
+def generate_stdout_file(stdout, tempDir, stderr=False, fileStore=None):
+    """
+    Create a stdout (or stderr) file from a string or bytes object.
+    Returns a file path.
+
+    :param stdout: str|bytes
+    :param tempDir: str directory
+    :param stderr: bool
+    :param fileStore:
+    """
+    if stdout is None:
+        raise RuntimeError(f'Error generating stdout file to {tempDir}')
+
+    # TODO: Not sure if this is the best way, but we probably need to differentiate the different
+    # stdout files since we move the outputs to the current working directory.
+    # Cromwell generates a folder for each task so the file is simply named stdout and lives in
+    # the task execution folder.
+
+    # the generated file would have a name like 'ten6l91dw_stdout'
+    prefix = tempDir.split('/')[-1]
+    path = os.path.join(tempDir, 'execution', '{}_{}'.format(prefix, 'stderr' if stderr else 'stdout'))
+    with open(path, 'ab+') as f:
+        f.write(stdout)
+
+    # should we import to filestore?
+    # if fileStore:
+    #     fileStore.importFile('file://' + path)
+
+    return path
 
 
 def return_bytes(unit='B'):
