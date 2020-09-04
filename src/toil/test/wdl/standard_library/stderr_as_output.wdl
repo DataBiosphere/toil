@@ -1,7 +1,7 @@
 workflow stderrWorkflow {
   String message
-  call get_stderr as s1 { input: message=message }
-  call copy_output { input: in_file=s1.check_this }
+  call get_stderr { input: message=message }
+  call copy_output { input: in_file=get_stderr.check_this }
 }
 
 task get_stderr {
@@ -11,9 +11,9 @@ task get_stderr {
     >&2 echo "${message}"
   }
 
- output {
+  output {
     File check_this = stderr()
- }
+  }
 }
 
 # comply with builtinTest
