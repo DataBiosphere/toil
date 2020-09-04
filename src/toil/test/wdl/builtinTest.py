@@ -66,6 +66,7 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
     def test_stdout(self):
         self.check_function('stdout', cases=['as_output'], expected_result='A Whale of a Tale.')
+        self.check_function('stderr', cases=['as_output'], expected_result='a journey straight to stderr')
 
 
 if __name__ == "__main__":
