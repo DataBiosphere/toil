@@ -231,6 +231,22 @@ def customDockerInitCmd():
     return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
 
 
+def customInitCmd():
+    """
+    Returns the custom command (if any) provided through the ``TOIL_CUSTOM_INIT_COMMAND``
+    environment variable to run prior to running Toil appliance itself in workers and/or the
+    primary node (i.e. this is run one stage before ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``).
+    This can be useful for doing any custom initialization on instances (e.g. authenticating to
+    private docker registries). An empty string is returned if the environment variable is not
+    set.
+    :rtype: str
+    """
+    command = lookupEnvVar(name='user-defined custom init command',
+                           envName='TOIL_CUSTOM_INIT_COMMAND',
+                           defaultValue='')
+    return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
 def lookupEnvVar(name, envName, defaultValue):
     """
     Use this for looking up environment variables that control Toil and are important enough to
