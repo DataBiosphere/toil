@@ -666,6 +666,9 @@ class SynthesizeWDL:
                                  fileStore.logToMaster("{jobname}")
                                  tempDir = fileStore.getLocalTempDir()
                                  
+                                 stdout_file = os.path.join(tempDir, 'stdout')
+                                 stderr_file = os.path.join(tempDir, 'stderr')
+                                 
                                  try:
                                      os.makedirs(os.path.join(tempDir, 'execution'))
                                  except OSError as e:
