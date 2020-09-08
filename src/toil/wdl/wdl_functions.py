@@ -365,16 +365,15 @@ def generate_stdout_file(stdout, tempDir, stderr=False, fileStore=None):
     # Cromwell generates a folder for each task so the file is simply named stdout and lives in
     # the task execution folder. This is not the case with Toil. Though, this would not be a
     # problem with intermediate stdout files as each task has its own temp folder.
+    name = 'stderr' if stderr else 'stdout'
+    local_path = os.path.join(tempDir, 'execution', name)
 
-    path = os.path.join(tempDir, 'execution', 'stderr' if stderr else 'stdout')
-    with open(path, 'ab+') as f:
-        f.write(stdout)
+    # import to fileStore then read to local temp file
+    with fileStore.writeGlobalFileStream(cleanup=True, basename=name) as (stream, file_id):
+        stream.write(stdout)
+        fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
 
-    # should we import to filestore?
-    # if fileStore:
-    #     fileStore.importFile('file://' + path)
-
-    return path
+    return local_path
 
 
 def return_bytes(unit='B'):
