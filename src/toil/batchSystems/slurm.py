@@ -169,7 +169,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             if mem is not None:
                 # memory passed in is in bytes, but slurm expects megabytes
-                sbatch_line.append(f'--mem={int(mem / 2 ** 20)}')
+                sbatch_line.append(f'--mem={math.ceil(mem / 2 ** 20)}')
             if cpu is not None:
                 sbatch_line.append(f'--cpus-per-task={int(math.ceil(cpu))}')
 
