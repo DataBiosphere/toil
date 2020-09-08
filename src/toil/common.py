@@ -1238,7 +1238,7 @@ class ToilMetrics:
                                                           "-v", "/proc:/host/proc",
                                                           "-v", "/sys:/host/sys",
                                                           "-v", "/:/rootfs",
-                                                          "prom/node-exporter:0.12.0",
+                                                          "quay.io/prometheus/node-exporter:0.15.2",
                                                           "-collector.procfs", "/host/proc",
                                                           "-collector.sysfs", "/host/sys",
                                                           "-collector.filesystem.ignored-mount-points",
