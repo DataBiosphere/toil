@@ -1712,12 +1712,17 @@ class CachingFileStore(AbstractFileStore):
 
     def waitForCommit(self):
         # We need to block on the upload thread.
+
         # We may be called even if startCommit is not called. In that
         # case, a new instance of this class should have been created by the
         # worker and ought to pick up all our work by PID via the database, and
         # this instance doesn't actually have to commit.
 
-        if self.commitThread is not None:
+        # If running in the destructor, we may already *be* in the commit
+        # thread. It can do some destructor work after it finishes its real
+        # work.
+
+        if self.commitThread is not None and self.commitThread is not threading.current_thread():
             self.commitThread.join()
 
         return True
