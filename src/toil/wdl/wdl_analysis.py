@@ -905,9 +905,9 @@ class AnalyzeWDL:
                 elif name.source_string == 'stdout':
                     # stdout is a str or bytes object. Since stdout() expects a File return
                     # value, we replace it with our generated stdout file path.
-                    return es + 'stdout_file'
+                    return es + 'b3a2e464d6a4464cb138952a7d042595_stdout_file'
                 elif name.source_string == 'stderr':
-                    return es + 'stderr_file'
+                    return es + 'b3a2e464d6a4464cb138952a7d042595_stderr_file'
                 else:
                     es = es + name.source_string + '('
             else:
