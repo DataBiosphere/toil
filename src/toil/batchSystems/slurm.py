@@ -11,21 +11,11 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from __future__ import division
-from builtins import str
-from past.utils import old_div
 import logging
 import os
 from pipes import quote
-import time
 import math
 from toil.lib.misc import call_command, CalledProcessErrorStderr
-
-# Python 3 compatibility imports
-from six.moves.queue import Empty, Queue
-from six import iteritems
 
 from toil.batchSystems import MemoryString
 from toil.batchSystems.abstractGridEngineBatchSystem import AbstractGridEngineBatchSystem
@@ -124,7 +114,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     'job',
                     str(slurmJobID)]
 
-            stderr = call_command(args)
+            stdout = call_command(args)
             job = dict()
             for line in stdout:
                 logger.debug("%s output %s", args[0], line)
@@ -179,9 +169,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
 
             if mem is not None:
                 # memory passed in is in bytes, but slurm expects megabytes
-                sbatch_line.append('--mem={}'.format(old_div(int(mem), 2 ** 20)))
+                sbatch_line.append(f'--mem={int(mem / 2 ** 20)}')
             if cpu is not None:
-                sbatch_line.append('--cpus-per-task={}'.format(int(math.ceil(cpu))))
+                sbatch_line.append(f'--cpus-per-task={int(math.ceil(cpu))}')
 
             stdoutfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_output')
             stderrfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_error')
