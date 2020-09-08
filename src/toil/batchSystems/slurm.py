@@ -104,9 +104,9 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                     # A non-zero signal may indicate e.g. an out-of-memory killed job
                     status = 128 + signal
                 logger.debug("sacct exit code is %s, returning status %d", exitcode, status)
-                return (state, status)
+                return state, status
             logger.debug("Did not find exit code for job in sacct output")
-            return (None, None)
+            return None, None
 
         def _getJobDetailsFromScontrol(self, slurmJobID):
             args = ['scontrol',
@@ -118,12 +118,12 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             job = dict()
             for line in stdout:
                 logger.debug("%s output %s", args[0], line)
-                values = line.decode('utf-8').strip().split()
+                values = line.strip().split()
 
                 # If job information is not available an error is issued:
                 # slurm_load_jobs error: Invalid job id specified
                 # There is no job information, so exit.
-                if len(values)>0 and values[0] == 'slurm_load_jobs':
+                if len(values) > 0 and values[0] == 'slurm_load_jobs':
                     return (None, None)
 
                 # Output is in the form of many key=value pairs, multiple pairs on each line
@@ -148,7 +148,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
             except KeyError:
                 rc = None
 
-            return (state, rc)
+            return state, rc
 
         """
         Implementation-specific helper methods
@@ -171,7 +171,7 @@ class SlurmBatchSystem(AbstractGridEngineBatchSystem):
                 # memory passed in is in bytes, but slurm expects megabytes
                 sbatch_line.append(f'--mem={math.ceil(mem / 2 ** 20)}')
             if cpu is not None:
-                sbatch_line.append(f'--cpus-per-task={int(math.ceil(cpu))}')
+                sbatch_line.append(f'--cpus-per-task={math.ceil(cpu)}')
 
             stdoutfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_output')
             stderrfile = self.boss.formatStdOutErrPath(jobID, 'slurm', '%j', 'std_error')
