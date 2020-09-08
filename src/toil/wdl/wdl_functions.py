@@ -361,14 +361,12 @@ def generate_stdout_file(stdout, tempDir, stderr=False, fileStore=None):
     if stdout is None:
         raise RuntimeError(f'Error generating stdout file to {tempDir}')
 
-    # TODO: Not sure if this is the best way, but we probably need to differentiate the different
-    # stdout files since we move the outputs to the current working directory.
+    # TODO: we need a way to differentiate the stdout/stderr files in the workflow after execution.
     # Cromwell generates a folder for each task so the file is simply named stdout and lives in
-    # the task execution folder.
+    # the task execution folder. This is not the case with Toil. Though, this would not be a
+    # problem with intermediate stdout files as each task has its own temp folder.
 
-    # the generated file would have a name like 'ten6l91dw_stdout'
-    prefix = tempDir.split('/')[-1]
-    path = os.path.join(tempDir, 'execution', '{}_{}'.format(prefix, 'stderr' if stderr else 'stdout'))
+    path = os.path.join(tempDir, 'execution', 'stderr' if stderr else 'stdout')
     with open(path, 'ab+') as f:
         f.write(stdout)
 
