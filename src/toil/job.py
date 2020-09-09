@@ -20,6 +20,7 @@ from builtins import zip
 from builtins import map
 from builtins import str
 import collections
+import enum
 import importlib
 import inspect
 import itertools
@@ -91,6 +92,20 @@ class FakeID:
         
     def __ne__(self, other):
         return not isinstance(other, FakeID) or self._value != other._value
+
+class Phase(enum.IntEnum):
+    """
+    Successor-running phases that a described job can be in.
+    
+    Increases in value as the job becomes more complete, so you can use >
+    to test if a phase is complete, and <= to test if it isn't.
+    """
+    # Job or its children need to run
+    children = 1
+    # All children are done, follow-ons need to run
+    followOns = 2
+    # All children and follow-ons are done
+    done = 3
 
 class JobDescription:
     """
@@ -186,10 +201,15 @@ class JobDescription:
         # but they'd also be waiting on us.
        
         # The IDs of all child jobs of the described job.
+        # Children which are done may have been removed.
         self.childIDs = set()
         
         # The IDs of all follow-on jobs of the described job.
+        # Follow-ons which are done may have been removed.
         self.followOnIDs = set()
+        
+        # Phase we are at in running this job and its successors.
+        self._successorPhase = Phase.children
         
         # Dict from ServiceHostJob ID to list of child ServiceHostJobs that start after it.
         # All services must have an entry, if only to an empty list.
@@ -218,7 +238,9 @@ class JobDescription:
             for child in children:
                 roots.remove(child)
         batch = list(roots)
-        yield batch
+        if len(batch) > 0:
+            # If there's a first batch, yield it
+            yield batch
         
         while len(batch) > 0:
             nextBatch = []
@@ -227,15 +249,115 @@ class JobDescription:
                 for child in self.serviceTree[started]:
                     nextBatch.append(child)
             
-            # Emit the batch
             batch = nextBatch
-            yield batch
+            if len(batch) > 0:
+                # Emit the batch if nonempty
+                yield batch
             
     def successorsAndServiceHosts(self):
         """
         Get an iterator over all child, follow-on, and service job IDs
         """
         return itertools.chain(self.childIDs, self.followOnIDs, self.serviceTree.keys())
+        
+    @property
+    def services(self):
+        """
+        Get a collection of the IDs of service host jobs for this job, in arbitrary order.
+        
+        Will be empty if the job has no unfinished services.
+        """
+        
+        return self.serviceTree.keys()
+        
+    def nextSuccessors(self):
+        """
+        Return the collection of job IDs for the successors of this job that,
+        according to this job, are ready to run.
+        
+        If those jobs have multiple predecessor relationships, they may still
+        be blocked on other jobs.
+        
+        Returns None when at the final phase (all successors done), and an
+        empty collection when no successors remain in the current phase and the
+        phase can be completed.
+        
+        See completePhase().
+        """
+        
+        if self._successorPhase == Phase.followOns:
+            return self.followOnIDs
+        elif self._successorPhase == Phase.children:
+            return self.childIDs
+        elif self._successorPhase == Phase.done:
+            return None
+        else:
+            raise RuntimeError("Unknown phase: {}".format(self._successorPhase))
+            
+    @property
+    def stack(self):
+        """
+        Get an immutable collection of immutable collections of IDs of successors that need to run still.
+        
+        Batches of successors are in reverse order of the order they need to run in.
+        
+        Some successors in each batch may have already been finished. Batches may be empty.
+        
+        Exists so that code that used the old stack list immutably can work
+        still. New development should use nextSuccessors(), and all
+        mutations should use filterSuccessors() and completePhase().
+        
+        :return: Batches of successors that still need to run, in reverse order. 
+        :rtype: tuple(tuple(str))
+        """
+        
+        result = []
+        if self._successorPhase <= Phase.followOns:
+            # Follow-ons haven't all finished yet
+            result.append(tuple(self.followOnIDs))
+        if self._successorPhase <= Phase.children:
+            # Children haven't all finished yet
+            result.append(tuple(self.childIDs))
+        return tuple(result)
+        
+    def filterSuccessors(self, predicate):
+       """
+       Keep only successor jobs for which the given predicate function returns True when called with the job's ID.
+       
+       Treats all other successors as complete and forgets them.
+       """
+       
+       self.childIDs = {x for x in self.childIDs if predicate(x)}
+       self.followOnIDs = {x for x in self.followOnIDs if predicate(x)}
+       
+    def filterServiceHosts(self, predicate):
+       """
+       Keep only services for which the given predicate function returns True when called with the service host job's ID.
+       
+       Treats all other services as complete and forgets them.
+       """
+       
+       # TODO: avoid duplicate predicate calls here when services are referenced?
+       self.serviceTree = {k: [x for x in v if predicate(x)] for k, v in self.serviceTree.items() if predicate(k)}
+       
+    def completePhase(self):
+        """
+        Advance to the next phase of successors to run. (Start follow-ons after children are done, or mark that all follow-ons are done.)
+        
+        Can only be called when nextSuccessors() is an empty collection.
+        """
+        
+        if self._successorPhase == Phase.done:
+            raise RuntimeError("Cannot advance {} past done phase".format(self))
+        
+        # We can't be done so this can't be None
+        todo = self.nextSuccessors()
+        
+        if len(todo) > 0:
+            raise RuntimeError("Cannot complete phase {} on {} with outstanding successors: {}".format(self._successorPhase, self, todo))
+        
+        # Go to the next phase in the enum, possibly readying more successors to run.
+        self._successorPhase += 1
         
     def clearSuccessorsAndServiceHosts(self):
         """
@@ -244,6 +366,20 @@ class JobDescription:
         self.childIDs = set()
         self.followOnIDs = set()
         self.serviceTree = {}
+        
+    
+    def replace(self, other):
+        """
+        Take on the ID of another JobDescription, while retaining our own state and type.
+        
+        When updated in the JobStore, we will save over the other JobDescription.
+        
+        Useful for chaining jobs: the cahined job can replace the parent job.
+        
+        :param toil.job.JobDescription other: Job description to replace.
+        """
+    
+        self.jobStoreID = other.jobStoreID
         
     def addChild(self, childID):
         """
@@ -1800,11 +1936,13 @@ class Job:
         return self.run(fileStore)
 
     @contextmanager
-    def _executor(self, jobGraph, stats, fileStore):
+    def _executor(self, stats, fileStore):
         """
         This is the core wrapping method for running the job within a worker.  It sets up the stats
         and logging before yielding. After completion of the body, the function will finish up the
         stats and logging, and starts the async update process for the job.
+        
+        Will modify the job's description with changes that need to be committed back to the JobStore.
         """
         if stats is not None:
             startTime = time.time()
@@ -1815,14 +1953,15 @@ class Job:
 
         # If the job is not a checkpoint job, add the promise files to delete
         # to the list of jobStoreFileIDs to delete
+        # TODO: why is Promise holding a global list here???
         if not self.checkpoint:
             for jobStoreFileID in Promise.filesToDelete:
                 # Make sure to wrap the job store ID in a FileID object so the file store will accept it
                 # TODO: talk directly to the job sotre here instead.
                 fileStore.deleteGlobalFile(FileID(jobStoreFileID, 0))
         else:
-            # Else copy them to the job wrapper to delete later
-            jobGraph.checkpointFilesToDelete = list(Promise.filesToDelete)
+            # Else copy them to the job description to delete later
+            self.description.checkpointFilesToDelete = list(Promise.filesToDelete)
         Promise.filesToDelete.clear()
         # Now indicate the asynchronous update of the job can happen
         fileStore.startCommit(jobState=True)

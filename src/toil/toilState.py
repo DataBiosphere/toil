@@ -45,7 +45,7 @@ class ToilState(object):
         """
         
         # Maps from successor (child or follow-on) jobStoreID to predecessor jobStoreID
-        self.successorToPredecessor = {}
+        self.successorJobStoreIDToPredecessorJobs = {}
         
         # Hash of jobStoreIDs to counts of numbers of successors issued.
         # There are no entries for jobs without successors in this map.
