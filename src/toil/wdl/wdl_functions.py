@@ -371,9 +371,9 @@ def generate_stdout_file(stdout, tempDir, stderr=False, fileStore=None):
     # import to fileStore then read to local temp file
     with fileStore.writeGlobalFileStream(cleanup=True, basename=name) as (stream, file_id):
         stream.write(stdout)
-        fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
 
-    return local_path
+    assert file_id is not None
+    return fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
 
 
 def return_bytes(unit='B'):
