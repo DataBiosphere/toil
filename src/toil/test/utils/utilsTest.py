@@ -71,6 +71,9 @@ class UtilsTest(ToilTest):
                                   'file:' + self.toilDir,
                                   '--clean=never',
                                   '--numLines=1', '--lineLength=1']
+        
+        self.restart_sort_workflow_cmd = [python, '-m', 'toil.test.sort.restart_sort',
+                                  'file:' + self.toilDir]
 
     def tearDown(self):
         if os.path.exists(self.tempDir):
@@ -403,7 +406,28 @@ class UtilsTest(ToilTest):
         # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
+    
+    def testRestartAttribute(self):
+        """
+        Test that job store is not destroyed when --restart flag is used without calling restart().
+        """
+        # Run a workflow that will always fail
+        cmd = self.restart_sort_workflow_cmd + ['--badWorker=1']
+        subprocess.run(cmd)
+        
+        restart_cmd = self.restart_sort_workflow_cmd + ['--badWorker=0', '--restart']
+        subprocess.run(restart_cmd)
 
+        # Check the job store exists after restart attempt
+        self.assertTrue(os.path.exists(self.toilDir))
+
+        successful_cmd = [python, '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, 
+                                  '--restart']
+        subprocess.run(successful_cmd)
+
+        # Check the job store is destroyed after calling restart()
+        self.assertFalse(os.path.exists(self.toilDir))
+        
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of
