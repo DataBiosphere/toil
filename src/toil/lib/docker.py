@@ -115,7 +115,8 @@ def apiDockerCall(job,
     :param bool stream: If True and detach=False, return a log generator instead
                         of a string. Ignored if detach=True. (default: False).
     :param bool demux: Similar to `demux` in container.exec_run(). If True and
-                       detach=False, returns a log generator with tuples of
+                       detach=False, returns a tuple of (stdout, stderr). If
+                       stream=True, returns a log generator with tuples of
                        (stdout, stderr). Ignored if detach=True. (default: False).
     :param str streamfile: Collect container output to this file if detach=True and
                         stderr and/or stdout are True. Defaults to "output.log".
