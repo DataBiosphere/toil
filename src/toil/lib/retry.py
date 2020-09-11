@@ -150,7 +150,7 @@ def return_status_code(e):
     if isinstance(e, requests.exceptions.HTTPError):
         return e.response.status_code
     elif isinstance(e, http.client.HTTPException) or \
-            isinstance(e, urllib3.error.HTTPError) or \
+            isinstance(e, urllib3.exceptions.HTTPError) or \
             isinstance(e, kubernetes.client.rest.ApiException):
         return e.status
     elif isinstance(e, urllib.error.HTTPError):
@@ -163,7 +163,7 @@ def return_status_code(e):
 
 def meets_error_message_condition(e: Exception, error_message: Optional[str]):
     if error_message:
-        if isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.error.HTTPError):
+        if isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.exceptions.HTTPError):
             return error_message in e.reason
         elif isinstance(e, kubernetes.client.rest.ApiException) or isinstance(sqlite3.OperationalError):
             return error_message in str(e)
