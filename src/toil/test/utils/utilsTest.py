@@ -409,7 +409,9 @@ class UtilsTest(ToilTest):
     
     def testRestartAttribute(self):
         """
-        Test that job store is not destroyed when --restart flag is used without calling restart().
+        Test that the job store is only destroyed when we observe a succcessful workflow run.
+        The following simulates a failing workflow that attempts to resume without restart().
+        In this case, the job store should not be destroyed until restart() is called.
         """
         # Run a workflow that will always fail
         cmd = self.restart_sort_workflow_cmd + ['--badWorker=1']

@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
+"""
+A demonstration of toil. Sorts the lines of a file into ascending order by doing a parallel merge sort.
+This is an intentionally buggy version that doesn't include restart() for testing purposes.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -258,6 +260,9 @@ def main(options=None):
                                                         options.downCheckpoints,
                                                         options=options,
                                                         memory=sortMemory))
-
+        """
+        The else block is removed here to test that the job store is not
+        destroyed when attempting to resume without restart().
+        """
 if __name__ == '__main__':
     main()
