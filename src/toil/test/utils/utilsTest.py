@@ -71,6 +71,9 @@ class UtilsTest(ToilTest):
                                   'file:' + self.toilDir,
                                   '--clean=never',
                                   '--numLines=1', '--lineLength=1']
+        
+        self.restart_sort_workflow_cmd = [python, '-m', 'toil.test.sort.restart_sort',
+                                  'file:' + self.toilDir]
 
     def tearDown(self):
         if os.path.exists(self.tempDir):
@@ -355,7 +358,6 @@ class UtilsTest(ToilTest):
     def testGetStatusFailedToilWF(self):
         """
         Test that ToilStatus.getStatus() behaves as expected with a failing Toil workflow.
-
         While this workflow could be called by importing and evoking its main function, doing so would remove the
         opportunity to test the 'RUNNING' functionality of getStatus().
         """
@@ -404,7 +406,30 @@ class UtilsTest(ToilTest):
         # Make sure it printed some kind of complaint about the missing command.
         args, kwargs = mock_print.call_args
         self.assertIn('invalidcommand', args[0])
+    
+    def testRestartAttribute(self):
+        """
+        Test that the job store is only destroyed when we observe a succcessful workflow run.
+        The following simulates a failing workflow that attempts to resume without restart().
+        In this case, the job store should not be destroyed until restart() is called.
+        """
+        # Run a workflow that will always fail
+        cmd = self.restart_sort_workflow_cmd + ['--badWorker=1']
+        subprocess.run(cmd)
+        
+        restart_cmd = self.restart_sort_workflow_cmd + ['--badWorker=0', '--restart']
+        subprocess.run(restart_cmd)
 
+        # Check the job store exists after restart attempt
+        self.assertTrue(os.path.exists(self.toilDir))
+
+        successful_cmd = [python, '-m', 'toil.test.sort.sort', 'file:' + self.toilDir, 
+                                  '--restart']
+        subprocess.run(successful_cmd)
+
+        # Check the job store is destroyed after calling restart()
+        self.assertFalse(os.path.exists(self.toilDir))
+        
 
 def printUnicodeCharacter():
     # We want to get a unicode character to stdout but we can't print it directly because of

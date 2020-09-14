@@ -186,7 +186,7 @@ class ToilStatus():
         except NoSuchFileException:
             pass
         return 'QUEUED'
-
+    
     @staticmethod
     def getStatus(jobStoreName):
         """
@@ -291,7 +291,6 @@ class ToilStatus():
                     jobsToReport.append(self.jobStore.load(serviceJobStoreID))
 
         return jobsToReport
-
 
 def main():
     """Reports the state of a Toil workflow."""
