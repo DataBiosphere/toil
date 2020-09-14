@@ -17,6 +17,7 @@ from __future__ import absolute_import
 import errno
 import logging
 import os
+import re
 import requests
 import socket
 import sys
@@ -220,15 +221,41 @@ def customDockerInitCmd():
     Returns the custom command (if any) provided through the ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``
     environment variable to run prior to running the workers and/or the primary node's services.
     This can be useful for doing any custom initialization on instances (e.g. authenticating to
-    private docker registries). An empty string is returned if the environment variable is not
-    set.
+    private docker registries). Any single quotes are escaped and the command cannot contain a
+    set of blacklisted chars (newline or tab). An empty string is returned if the environment
+    variable is not set.
 
     :rtype: str
     """
     command = lookupEnvVar(name='user-defined custom docker init command',
                            envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
                            defaultValue='')
+    _check_custom_bash_cmd(command)
     return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
+def customInitCmd():
+    """
+    Returns the custom command (if any) provided through the ``TOIL_CUSTOM_INIT_COMMAND``
+    environment variable to run prior to running Toil appliance itself in workers and/or the
+    primary node (i.e. this is run one stage before ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``).
+    This can be useful for doing any custom initialization on instances (e.g. authenticating to
+    private docker registries). Any single quotes are escaped and the command cannot contain a
+    set of blacklisted chars (newline or tab). An empty string is returned if the environment
+    variable is not set.
+
+    :rtype: str
+    """
+    command = lookupEnvVar(name='user-defined custom init command',
+                           envName='TOIL_CUSTOM_INIT_COMMAND',
+                           defaultValue='')
+    _check_custom_bash_cmd(command)
+    return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
+def _check_custom_bash_cmd(cmd_str):
+    """Ensures that the bash command doesn't contain blacklisted characters."""
+    assert not re.search(r'[\n\r\t]', cmd_str), f'"{cmd_str}" contains invalid characters (newline and/or tab).'
 
 
 def lookupEnvVar(name, envName, defaultValue):

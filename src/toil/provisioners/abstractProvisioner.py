@@ -19,7 +19,7 @@ import logging
 import os.path
 
 import subprocess
-from toil import applianceSelf, customDockerInitCmd
+from toil import applianceSelf, customDockerInitCmd, customInitCmd
 from toil.lib.retry import never
 
 a_short_time = 5
@@ -337,6 +337,7 @@ coreos:
         Restart=on-failure
         RestartSec=2
         ExecStartPre=-/usr/bin/docker rm toil_{role}
+        ExecStartPre=-/usr/bin/bash -c '{customInitCommand}'
         ExecStart=/usr/bin/docker run \
             --entrypoint={entrypoint} \
             --net=host \
@@ -367,7 +368,7 @@ coreos:
             -v /:/rootfs \
             --name node-exporter \
             --restart always \
-            prom/node-exporter:v0.15.2 \
+            quay.io/prometheus/node-exporter:v0.15.2 \
             --path.procfs /host/proc \
             --path.sysfs /host/sys \
             --collector.filesystem.ignored-mount-points ^/(sys|proc|dev|host|etc)($|/)
@@ -418,6 +419,7 @@ coreos:
                             dockerImage=applianceSelf(),
                             entrypoint=entryPoint,
                             sshKey=masterPublicKey,   # ignored if None
-                            mesosArgs=mesosArgs)
+                            mesosArgs=mesosArgs,
+                            customInitCommand=customInitCmd())
         userData = template.format(**templateArgs)
         return userData
