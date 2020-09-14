@@ -119,9 +119,9 @@ def setOptions(config, setOption):
 
 
 def addOptions(addOptionFn, config):
-    addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(),
+    addOptionFn("--batchSystem", dest="batchSystem", default=defaultBatchSystem(), choices = uniqueNames(),
                 help=("The type of batch system to run the job(s) with, currently can be one "
-                      "of %s'. default=%s" % (', '.join(choices = uniqueNames()), defaultBatchSystem())))
+                      "of %s'. default=%s" % (', '.join(uniqueNames()), defaultBatchSystem())))
     addOptionFn("--disableHotDeployment", dest="disableAutoDeployment",
                 action='store_true', default=None,
                 help=("Hot-deployment was renamed to auto-deployment.  Option now redirects to "
