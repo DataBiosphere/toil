@@ -159,7 +159,7 @@ def setDefaultOptions(config):
     Set default options for builtin batch systems. This is required if a Config
     object is not constructed from an Options object.
     """
-    config.batchSystem = "singleMachine"
+    config.batchSystem = "single_machine"
     config.disableAutoDeployment = False
     config.environment = {}
     config.statePollingWait = None  # if not set, will default to seconds in getWaitDuration()
