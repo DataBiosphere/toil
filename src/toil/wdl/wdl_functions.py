@@ -348,18 +348,21 @@ def process_and_read_file(f, tempDir, fileStore, docker=False):
     return read_file(processed_file, tempDir, fileStore, docker=docker)
 
 
-def generate_stdout_file(stdout, tempDir, stderr=False, fileStore=None):
+def generate_stdout_file(output, tempDir, fileStore, stderr=False):
     """
     Create a stdout (or stderr) file from a string or bytes object.
-    Returns a file path.
 
-    :param stdout: str|bytes
-    :param tempDir: str directory
-    :param stderr: bool
-    :param fileStore:
+    :param str|bytes output: A str or bytes object that holds the stdout/stderr text.
+    :param str tempDir: The directory to write the stdout file.
+    :param fileStore: A fileStore object.
+    :param bool stderr: If True, a stderr instead of a stdout file is generated.
+    :return: The file path to the generated file.
     """
-    if stdout is None:
-        raise RuntimeError(f'Error generating stdout file to {tempDir}')
+    if output is None:
+        # write an empty file if there's no stdout/stderr.
+        output = b''
+    elif isinstance(output, str):
+        output = bytes(output, encoding='utf-8')
 
     # TODO: we need a way to differentiate the stdout/stderr files in the workflow after execution.
     # Cromwell generates a folder for each task so the file is simply named stdout and lives in
@@ -370,7 +373,7 @@ def generate_stdout_file(stdout, tempDir, stderr=False, fileStore=None):
 
     # import to fileStore then read to local temp file
     with fileStore.writeGlobalFileStream(cleanup=True, basename=name) as (stream, file_id):
-        stream.write(stdout)
+        stream.write(output)
 
     assert file_id is not None
     return fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
