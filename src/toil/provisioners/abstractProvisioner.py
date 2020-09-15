@@ -164,7 +164,7 @@ class AbstractProvisioner(with_metaclass(ABCMeta, object)):
         return never(e)
 
     @abstractmethod
-    def launchCluster(self, leaderNodeType, leaderStorage, owner, **kwargs):
+    def launchCluster(self, *args, **kwargs):
         """
         Initialize a cluster and create a leader node.
 
