@@ -115,7 +115,7 @@ class SynthesizeWDL:
                     import uuid
                     import logging
                     
-                    asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir = os.getcwd()
+                    _toil_wdl_internal__current_working_dir = os.getcwd()
 
                     logger = logging.getLogger(__name__)
 
@@ -681,7 +681,7 @@ class SynthesizeWDL:
                 var_type = i[1]
                 docker_bool = str(self.needsdocker(job))
                 if var_type == 'File':
-                    fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
+                    fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, _toil_wdl_internal__current_working_dir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
                 else:
                     fn_section += '        {} = self.id_{}\n'.format(var, var)
 
@@ -756,7 +756,7 @@ class SynthesizeWDL:
                           stderr=True, 
                           demux=True, 
                           volumes={{tempDir: {{"bind": tempDir}}}})
-        with open(os.path.join(asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir, '{job_task_reference}.log'), 'wb') as f:
+        with open(os.path.join(_toil_wdl_internal__current_working_dir, '{job_task_reference}.log'), 'wb') as f:
             if _toil_wdl_internal__stdout:
                 f.write(_toil_wdl_internal__stdout)
             if _toil_wdl_internal__stderr:
