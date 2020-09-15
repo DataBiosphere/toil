@@ -336,7 +336,7 @@ def read_file(f, tempDir, fileStore, docker=False):
     elif isinstance(f, list):
         return read_array_file(f, tempDir, fileStore, docker=docker)
     else:
-        raise RuntimeError('Error processing file: '.format(str(f)))
+        raise RuntimeError('Error processing file: {}'.format(str(f)))
 
 
 def process_and_read_file(f, tempDir, fileStore, docker=False):
@@ -346,6 +346,37 @@ def process_and_read_file(f, tempDir, fileStore, docker=False):
         return None
     processed_file = process_infile(f, fileStore)
     return read_file(processed_file, tempDir, fileStore, docker=docker)
+
+
+def generate_stdout_file(output, tempDir, fileStore, stderr=False):
+    """
+    Create a stdout (or stderr) file from a string or bytes object.
+
+    :param str|bytes output: A str or bytes object that holds the stdout/stderr text.
+    :param str tempDir: The directory to write the stdout file.
+    :param fileStore: A fileStore object.
+    :param bool stderr: If True, a stderr instead of a stdout file is generated.
+    :return: The file path to the generated file.
+    """
+    if output is None:
+        # write an empty file if there's no stdout/stderr.
+        output = b''
+    elif isinstance(output, str):
+        output = bytes(output, encoding='utf-8')
+
+    # TODO: we need a way to differentiate the stdout/stderr files in the workflow after execution.
+    # Cromwell generates a folder for each task so the file is simply named stdout and lives in
+    # the task execution folder. This is not the case with Toil. Though, this would not be a
+    # problem with intermediate stdout files as each task has its own temp folder.
+    name = 'stderr' if stderr else 'stdout'
+    local_path = os.path.join(tempDir, 'execution', name)
+
+    # import to fileStore then read to local temp file
+    with fileStore.writeGlobalFileStream(cleanup=True, basename=name) as (stream, file_id):
+        stream.write(output)
+
+    assert file_id is not None
+    return fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
 
 
 def return_bytes(unit='B'):
