@@ -120,6 +120,24 @@ class hidden(object):
             :rtype: toil.common.Config
             """
             return self.createConfig()
+            
+        def _mockJobDescription(self, jobStoreID=None, command=None, **kwargs):
+            """
+            Create a mock-up JobDescription with the given ID, command, and other parameters.
+            """
+           
+            # TODO: Use a real unittest.Mock? For now we make a real instance and just hack it up.
+            
+            desc = JobDescription(**kwargs)
+            # Normally we can't pass in a command or ID, and the job
+            # serialization logic takes care of filling them in. We set them
+            # here.
+            if command is not None:
+                desc.command = command
+            if jobStoreID is not None:
+                desc.jobStoreID = jobStoreID
+                
+            return desc
 
         @classmethod
         def setUpClass(cls):
@@ -140,10 +158,10 @@ class hidden(object):
             self.assertTrue(cpu_count() >= numCores)
         
         def testRunJobs(self):
-            jobDesc1 = JobDescription(command='sleep 1000', jobName='test1', unitName=None,
-                                      jobStoreID='1', requirements=defaultRequirements)
-            jobDesc2 = JobDescription(command='sleep 1000', jobName='test2', unitName=None,
-                                      jobStoreID='2', requirements=defaultRequirements)
+            jobDesc1 = self._mockJobDescription(command='sleep 1000', jobName='test1', unitName=None,
+                                                jobStoreID='1', requirements=defaultRequirements)
+            jobDesc2 = self._mockJobDescription(command='sleep 1000', jobName='test2', unitName=None,
+                                                jobStoreID='2', requirements=defaultRequirements)
             job1 = self.batchSystem.issueBatchJob(jobDesc1)
             job2 = self.batchSystem.issueBatchJob(jobDesc2)
 
@@ -174,8 +192,8 @@ class hidden(object):
             # then check for it having happened, but we can't guarantee that
             # the batch system will run against the same filesystem we are
             # looking at.
-            jobDesc3 = JobDescription(command="mktemp -d", jobName='test3', unitName=None,
-                                      jobStoreID='3', requirements=defaultRequirements)
+            jobDesc3 = self._mockJobDescription(command="mktemp -d", jobName='test3', unitName=None,
+                                                jobStoreID='3', requirements=defaultRequirements)
             job3 = self.batchSystem.issueBatchJob(jobDesc3)
 
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
@@ -206,12 +224,12 @@ class hidden(object):
             script_shell = 'if [ "x${FOO}" == "xbar" ] ; then exit 23 ; else exit 42 ; fi'
 
             # Escape the semicolons
-            script_protected = script_shell.replace(';', '\;') 
+            script_protected = script_shell.replace(';', r'\;') 
              
             # Turn into a string which convinces bash to take all args and paste them back together and run them
             command = "bash -c \"\\${@}\" bash eval " + script_protected
-            jobDesc4 = JobDescription(command=command, jobName='test4', unitName=None,
-                                      jobStoreID='4', requirements=defaultRequirements)
+            jobDesc4 = self._mockJobDescription(command=command, jobName='test4', unitName=None,
+                                                jobStoreID='4', requirements=defaultRequirements)
             job4 = self.batchSystem.issueBatchJob(jobDesc4)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
@@ -219,8 +237,8 @@ class hidden(object):
             self.assertEqual(jobID, job4)
             # Now set the variable and ensure that it is present
             self.batchSystem.setEnv('FOO', 'bar')
-            jobDesc5 = JobDescription(command=command, jobName='test5', unitName=None,
-                                      jobStoreID='5', requirements=defaultRequirements)
+            jobDesc5 = self._mockJobDescription(command=command, jobName='test5', unitName=None,
+                                                jobStoreID='5', requirements=defaultRequirements)
             job5 = self.batchSystem.issueBatchJob(jobDesc5)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(jobUpdateInfo.exitStatus, 23)
@@ -395,8 +413,8 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
     def testIgnoreNode(self):
         self.batchSystem.ignoreNode('localhost')
-        jobDesc = JobDescription(command='sleep 1000', jobName='test2', unitName=None,
-                                 jobStoreID='1', requirements=defaultRequirements)
+        jobDesc = self._mockJobDescription(command='sleep 1000', jobName='test2', unitName=None,
+                                           jobStoreID='1', requirements=defaultRequirements)
         job = self.batchSystem.issueBatchJob(jobDesc)
 
         issuedID = self._waitForJobsToIssue(1)
@@ -654,7 +672,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
     def _parseBatchString(self, batchString):
         import re
         batchInfo = dict()
-        memPattern = re.compile("(\d+\.\d+)([kgmbt])")
+        memPattern = re.compile(r"(\d+\.\d+)([kgmbt])")
         items = batchString.split()
         batchInfo["cores"] = int(items[7])
         memMatch = memPattern.match(items[8])

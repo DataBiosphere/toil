@@ -143,9 +143,6 @@ class JobDescription:
             store IDs and logging. Also used to let the cluster scaler learn a
             model for how long the job will take. Ought to be the job class's
             name if no real user-defined name is available.
-        :param str|None command: Initial command to store. Used to create
-            JobDescriptions that describe running bare, non-Toil commands on a
-            batch system.
         """
         
         # Fill in default values
@@ -174,12 +171,7 @@ class JobDescription:
         # Gets replaced with/rewritten into the real, executable command when
         # the leader passes the description off to the batch system to be
         # executed.
-        #
-        # TODO: To satisfy the batch system tests, we need to be able to wrap a
-        # user-provided command that the batch system will actually execute,
-        # without a Job object in the mix. We should change that because this
-        # functionality is never used in workflows.
-        self.command = command
+        self.command = None
         
         
         # Set scheduling properties that the leader read to think about scheduling.
@@ -2490,9 +2482,9 @@ class PromisedRequirement():
         C = B.addChildFn(h, cores=PromisedRequirement(lambda x: 2*x, B.rv()))
 
         :param valueOrCallable: A single Promise instance or a function that
-                                takes \*args as input parameters.
-        :param \*args: variable length argument list
-        :type \*args: int or .Promise
+                                takes args as input parameters.
+        :param args: variable length argument list
+        :type args: int or .Promise
         """
         if hasattr(valueOrCallable, '__call__'):
             assert len(args) != 0, 'Need parameters for PromisedRequirement function.'
