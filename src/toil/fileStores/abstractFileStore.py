@@ -64,13 +64,13 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
     _pendingFileWrites = set()
     _terminateEvent = Event()  # Used to signify crashes in threads
 
-    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
+    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
         """
         Create a new file store object.
 
         :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: the job store
                in use for the current Toil run.
-        :param toil.jobGraph.JobGraph jobGraph: the job graph object for the currently
+        :param toil.job.JobDescription jobDesc: the JobDescription object for the currently
                running job.
         :param str localTempDir: the per-worker local temporary directory, under which
                per-job directories will be created. Assumed to be inside the
@@ -84,11 +84,11 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
                marked as completed in the job store before the eralier job was.
         """
         self.jobStore = jobStore
-        self.jobGraph = jobGraph
+        self.jobDesc = jobDesc
         self.localTempDir = os.path.abspath(localTempDir)
         self.workFlowDir = os.path.dirname(self.localTempDir)
         self.workDir = os.path.dirname(self.localTempDir)
-        self.jobName = self.jobGraph.command.split()[1]
+        self.jobName = self.jobDesc.command.split()[1]
         self.waitForPreviousCommit = waitForPreviousCommit
         self.loggingMessages = []
         # Records file IDs of files deleted during the current job. Doesn't get
@@ -102,12 +102,12 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         self.jobsToDelete = set()
 
     @staticmethod
-    def createFileStore(jobStore, jobGraph, localTempDir, waitForPreviousCommit, caching):
+    def createFileStore(jobStore, jobDesc, localTempDir, waitForPreviousCommit, caching):
         # Defer these imports until runtime, since these classes depend on us
         from toil.fileStores.cachingFileStore import CachingFileStore
         from toil.fileStores.nonCachingFileStore import NonCachingFileStore
         fileStoreCls = CachingFileStore if caching else NonCachingFileStore
-        return fileStoreCls(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
+        return fileStoreCls(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
 
     @staticmethod
     def shutdownFileStore(workflowDir, workflowID):
@@ -217,7 +217,7 @@ class AbstractFileStore(with_metaclass(ABCMeta, object)):
         """
         
         # TODO: Make this work with FileID
-        with self.jobStore.writeFileStream(None if not cleanup else self.jobGraph.jobStoreID) as (backingStream, fileStoreID):
+        with self.jobStore.writeFileStream(None if not cleanup else self.jobDesc.jobStoreID) as (backingStream, fileStoreID):
             # We have a string version of the file ID, and the backing stream.
             # We need to yield a stream the caller can write to, and a FileID
             # that accurately reflects the size of the data written to the
