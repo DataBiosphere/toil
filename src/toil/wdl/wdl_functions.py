@@ -1,4 +1,4 @@
-# Copyright (C) 2018 UCSC Computational Genomics Lab
+# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,11 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
-from past.builtins import basestring
-
 import fnmatch
 import os
 import logging
@@ -26,7 +21,6 @@ import math
 import subprocess
 
 wdllogger = logging.getLogger(__name__)
-
 
 
 def glob(glob_pattern, directoryname):
@@ -190,7 +184,7 @@ def process_single_infile(f, fileStore):
     else:
         filepath = fileStore.importFile("file://" + os.path.abspath(f))
         preserveThisFilename = os.path.basename(f)
-    return (filepath, preserveThisFilename)
+    return filepath, preserveThisFilename
 
 
 def process_array_infile(af, fileStore):
@@ -218,7 +212,7 @@ def process_infile(f, fileStore):
         return f
     elif isinstance(f, list):
         return process_array_infile(f, fileStore)
-    elif isinstance(f, basestring):
+    elif isinstance(f, str):
         return process_single_infile(f, fileStore)
     else:
         raise RuntimeError('Error processing file: '.format(str(f)))
@@ -261,7 +255,7 @@ def process_single_outfile(f, fileStore, workDir, outDir):
     output_file = fileStore.writeGlobalFile(output_f_path)
     preserveThisFilename = os.path.basename(output_f_path)
     fileStore.exportFile(output_file, "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename))
-    return (output_file, preserveThisFilename)
+    return output_file, preserveThisFilename
 
 
 def process_array_outfile(af, fileStore, workDir, outDir):
@@ -274,7 +268,7 @@ def process_array_outfile(af, fileStore, workDir, outDir):
 def process_outfile(f, fileStore, workDir, outDir):
     if isinstance(f, list):
         return process_array_outfile(f, fileStore, workDir, outDir)
-    elif isinstance(f, basestring):
+    elif isinstance(f, str):
         return process_single_outfile(f, fileStore, workDir, outDir)
     else:
         raise RuntimeError('Error processing file: '.format(str(f)))
@@ -304,7 +298,7 @@ def abspath_file(f, cwd):
         return f
     if isinstance(f, list):
         return abspath_array_file(f, cwd)
-    elif isinstance(f, basestring):
+    elif isinstance(f, str):
         if f.startswith('s3://') or f.startswith('http://') or f.startswith('https://') or \
                 f.startswith('file://') or f.startswith('wasb://') or f.startswith('gs://'):
             return f
@@ -411,7 +405,7 @@ def parse_memory(memory):
     """
     memory = str(memory)
     if 'None' in memory:
-        return 2147483648 # toil's default
+        return 2147483648  # toil's default
     try:
         import re
         raw_mem_split = re.split('([a-zA-Z]+)', memory)
@@ -431,13 +425,13 @@ def parse_memory(memory):
         else:
             raise RuntimeError('Memory parsing failed: {}'.format(memory))
     except:
-        return 2147483648 # toil's default
+        return 2147483648  # toil's default
 
 
 def parse_cores(cores):
     cores = str(cores)
     if 'None' in cores:
-        return 1 # toil's default
+        return 1  # toil's default
     if cores:
         return float(cores)
     else:
@@ -447,7 +441,7 @@ def parse_cores(cores):
 def parse_disk(disk):
     disk = str(disk)
     if 'None' in disk:
-        return 2147483648 # toil's default
+        return 2147483648  # toil's default
     try:
         total_disk = 0
         disks = disk.split(',')
