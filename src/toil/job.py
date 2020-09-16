@@ -122,7 +122,7 @@ class JobDescription:
     their specific parameters.
     """
     
-    def __init__(self, requirements=None, unitName='', displayName='', jobName=''):
+    def __init__(self, requirements=None, unitName='', displayName='', jobName='', command=None):
         """
         Create a new JobDescription.
         
@@ -143,8 +143,9 @@ class JobDescription:
             store IDs and logging. Also used to let the cluster scaler learn a
             model for how long the job will take. Ought to be the job class's
             name if no real user-defined name is available.
-        :param int predecessorNumber: Number of total predecessors
-            that must finish before the described Job from being scheduled.
+        :param str|None command: Initial command to store. Used to create
+            JobDescriptions that describe running bare, non-Toil commands on a
+            batch system.
         """
         
         # Fill in default values
@@ -173,7 +174,12 @@ class JobDescription:
         # Gets replaced with/rewritten into the real, executable command when
         # the leader passes the description off to the batch system to be
         # executed.
-        self.command = None
+        #
+        # TODO: To satisfy the batch system tests, we need to be able to wrap a
+        # user-provided command that the batch system will actually execute,
+        # without a Job object in the mix. We should change that because this
+        # functionality is never used in workflows.
+        self.command = command
         
         
         # Set scheduling properties that the leader read to think about scheduling.
