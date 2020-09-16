@@ -195,6 +195,13 @@ class JobDescription:
         # reachable from other paths down from the root.
         self.predecessorNumber = 0
         
+        # The IDs of predecessor jobs that have finished. Managed by the Leader
+        # and ToilState, and just stored in the JobDescription. Never changed
+        # after the job is scheduled, so we don't ahve to worry about
+        # conflicting updates from workers.
+        # TODO: Move into ToilState itself so leader stops mutating us so much?
+        self.predecessorsFinished = set()
+        
         # Note that we don't hold IDs of our predecessors. Predecessors know
         # about us, and not the other way around. Otherwise we wouldn't be able
         # to save ourselves to the job store until our predecessors were saved,
