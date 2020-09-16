@@ -329,7 +329,7 @@ class Leader(object):
         logger.debug("Successor job: %s of job: %s has multiple "
                      "predecessors", successor, predecessor)
 
-        # Get the successor job graph, which is caches
+        # Get the successor JobDescription, which is cached
         if successor.jobStoreID not in self.toilState.jobsToBeScheduledWithMultiplePredecessors:
             # TODO: We're loading from the job store in an ad-hoc way!
             self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID] = self.jobStore.load(successor.jobStoreID)
@@ -385,7 +385,7 @@ class Leader(object):
         logger.debug("Job: %s has %i successors to schedule",
                      predecessor.jobStoreID, len(predecessor.stack[-1]))
         #Record the number of successors that must be completed before
-        #the jobGraph can be considered again
+        #the job can be considered again
         assert predecessor.jobStoreID not in self.toilState.successorCounts, 'Attempted to schedule successors of the same job twice!'
         self.toilState.successorCounts[predecessor.jobStoreID] = len(predecessor.stack[-1])
 
@@ -439,7 +439,7 @@ class Leader(object):
         logger.debug('Updating status of job %s with ID %s: with result status: %s',
                      readyJob, readyJob.jobStoreID, resultStatus)
 
-        if readyJob in self.serviceManager.jobGraphsWithServicesBeingStarted:
+        if readyJob in self.serviceManager.jobDescriptionsWithServicesBeingStarted:
             # This stops a job with services being issued by the serviceManager from
             # being considered further in this loop. This catch is necessary because
             # the job's service's can fail while being issued, causing the job to be
@@ -531,16 +531,17 @@ class Leader(object):
     def _processJobsWithRunningServices(self):
         """Get jobs whose services have started"""
         while True:
-            jobGraph = self.serviceManager.getJobGraphWhoseServicesAreRunning(0)
-            if jobGraph is None: # Stop trying to get jobs when function returns None
+            jobDesc = self.serviceManager.getJobDescriptionWhoseServicesAreRunning(0)
+            if jobDesc is None: # Stop trying to get jobs when function returns None
                 break
-            logger.debug('Job: %s has established its services.', jobGraph.jobStoreID)
-            jobGraph.services = []
-            if jobGraph.jobStoreID not in self.toilState.updatedJobs:
-                self.toilState.updatedJobs[jobGraph.jobStoreID] = (jobGraph, 0)
+            logger.debug('Job: %s has established its services.', jobDesc.jobStoreID)
+            # Drop all service relationships
+            jobDesc.filterServiceHosts(lambda ignored: False)
+            if jobDesc.jobStoreID not in self.toilState.updatedJobs:
+                self.toilState.updatedJobs[jobDesc.jobStoreID] = (jobDesc, 0)
     
     def _gatherUpdatedJobs(self, updatedJobTuple):
-        """Gather any new, updated jobGraph from the batch system"""
+        """Gather any new, updated JobDescriptions from the batch system"""
         jobID, exitStatus, exitReason, wallTime = (
             updatedJobTuple.jobID, updatedJobTuple.exitStatus, updatedJobTuple.exitReason,
             updatedJobTuple.wallTime)
@@ -570,7 +571,7 @@ class Leader(object):
         # gone missing from the batch system (see self.reissueMissingJobs)
         if ((time.time() - self.timeSinceJobsLastRescued) >= self.config.rescueJobsFrequency):
             # We only rescue jobs every N seconds, and when we have apparently
-            # exhausted the current jobGraph supply
+            # exhausted the current job supply
             self.reissueOverLongJobs()
 
             hasNoMissingJobs = self.reissueMissingJobs()
@@ -923,7 +924,7 @@ class Leader(object):
 
     def processFinishedJob(self, batchSystemID, resultStatus, wallTime=None, exitReason=None):
         """
-        Function reads a processed jobGraph file and updates its state.
+        Function reads a processed JobDescription file and updates its state.
         
         Return True if the job is going to run again, and False if the job is
         fully done or completely failed.
@@ -991,8 +992,8 @@ class Leader(object):
                                 if self.config.writeLogs or self.config.writeLogsGzip:
                                     batchSystemFileRoot, _ = os.path.splitext(os.path.basename(batchSystemFile))
                                     jobNames = replacementJob.chainedJobs
-                                    if jobNames is None:   # For jobs that fail this way, jobGraph.chainedJobs is not guaranteed to be set
-                                        jobNames = [str(jobGraph)]
+                                    if jobNames is None:   # For jobs that fail this way, replacementJob.chainedJobs is not guaranteed to be set
+                                        jobNames = [str(replacementJob)]
                                     jobNames = [jobName + '_' + batchSystemFileRoot for jobName in jobNames]
                                     batchSystemFileStream.seek(0)
                                     StatsAndLogging.writeLogFiles(jobNames, batchSystemFileStream, self.config, failed=True)
