@@ -43,7 +43,7 @@ from toil.batchSystems.parasol import ParasolBatchSystem
 from toil.batchSystems.singleMachine import SingleMachineBatchSystem
 from toil.batchSystems.abstractBatchSystem import (InsufficientSystemResources,
                                                    BatchSystemSupport)
-from toil.job import Job, JobNode
+from toil.job import Job, JobDescription
 from toil.lib.threading import cpu_count
 from toil.test import (ToilTest,
                        needs_aws_s3,
@@ -140,12 +140,12 @@ class hidden(object):
             self.assertTrue(cpu_count() >= numCores)
         
         def testRunJobs(self):
-            jobNode1 = JobNode(command='sleep 1000', jobName='test1', unitName=None,
-                               jobStoreID='1', requirements=defaultRequirements)
-            jobNode2 = JobNode(command='sleep 1000', jobName='test2', unitName=None,
-                               jobStoreID='2', requirements=defaultRequirements)
-            job1 = self.batchSystem.issueBatchJob(jobNode1)
-            job2 = self.batchSystem.issueBatchJob(jobNode2)
+            jobDesc1 = JobDescription(command='sleep 1000', jobName='test1', unitName=None,
+                                      jobStoreID='1', requirements=defaultRequirements)
+            jobDesc2 = JobDescription(command='sleep 1000', jobName='test2', unitName=None,
+                                      jobStoreID='2', requirements=defaultRequirements)
+            job1 = self.batchSystem.issueBatchJob(jobDesc1)
+            job2 = self.batchSystem.issueBatchJob(jobDesc2)
 
             issuedIDs = self._waitForJobsToIssue(2)
             self.assertEqual(set(issuedIDs), {job1, job2})
@@ -174,9 +174,9 @@ class hidden(object):
             # then check for it having happened, but we can't guarantee that
             # the batch system will run against the same filesystem we are
             # looking at.
-            jobNode3 = JobNode(command="mktemp -d", jobName='test3', unitName=None,
-                               jobStoreID='3', requirements=defaultRequirements)
-            job3 = self.batchSystem.issueBatchJob(jobNode3)
+            jobDesc3 = JobDescription(command="mktemp -d", jobName='test3', unitName=None,
+                                      jobStoreID='3', requirements=defaultRequirements)
+            job3 = self.batchSystem.issueBatchJob(jobDesc3)
 
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
@@ -210,18 +210,18 @@ class hidden(object):
              
             # Turn into a string which convinces bash to take all args and paste them back together and run them
             command = "bash -c \"\\${@}\" bash eval " + script_protected
-            jobNode4 = JobNode(command=command, jobName='test4', unitName=None,
-                               jobStoreID='4', requirements=defaultRequirements)
-            job4 = self.batchSystem.issueBatchJob(jobNode4)
+            jobDesc4 = JobDescription(command=command, jobName='test4', unitName=None,
+                                      jobStoreID='4', requirements=defaultRequirements)
+            job4 = self.batchSystem.issueBatchJob(jobDesc4)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             jobID, exitStatus, wallTime = jobUpdateInfo.jobID, jobUpdateInfo.exitStatus, jobUpdateInfo.wallTime
             self.assertEqual(exitStatus, 42)
             self.assertEqual(jobID, job4)
             # Now set the variable and ensure that it is present
             self.batchSystem.setEnv('FOO', 'bar')
-            jobNode5 = JobNode(command=command, jobName='test5', unitName=None,
-                               jobStoreID='5', requirements=defaultRequirements)
-            job5 = self.batchSystem.issueBatchJob(jobNode5)
+            jobDesc5 = JobDescription(command=command, jobName='test5', unitName=None,
+                                      jobStoreID='5', requirements=defaultRequirements)
+            job5 = self.batchSystem.issueBatchJob(jobDesc5)
             jobUpdateInfo = self.batchSystem.getUpdatedBatchJob(maxWait=1000)
             self.assertEqual(jobUpdateInfo.exitStatus, 23)
             self.assertEqual(jobUpdateInfo.jobID, job5)
@@ -395,9 +395,9 @@ class MesosBatchSystemTest(hidden.AbstractBatchSystemTest, MesosTestSupport):
 
     def testIgnoreNode(self):
         self.batchSystem.ignoreNode('localhost')
-        jobNode = JobNode(command='sleep 1000', jobName='test2', unitName=None,
-                           jobStoreID='1', requirements=defaultRequirements)
-        job = self.batchSystem.issueBatchJob(jobNode)
+        jobDesc = JobDescription(command='sleep 1000', jobName='test2', unitName=None,
+                                 jobStoreID='1', requirements=defaultRequirements)
+        job = self.batchSystem.issueBatchJob(jobDesc)
 
         issuedID = self._waitForJobsToIssue(1)
         self.assertEqual(set(issuedID), {job})
@@ -625,19 +625,19 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
 
     def testBatchResourceLimits(self):
-        jobNode1 = JobNode(command="sleep 1000",
+        jobDesc1 = JobNode(command="sleep 1000",
                            requirements=dict(memory=1 << 30, cores=1,
                                              disk=1000, preemptable=preemptable),
                            jobName='testResourceLimits', unitName=None,
                            jobStoreID='1')
-        job1 = self.batchSystem.issueBatchJob(jobNode1)
+        job1 = self.batchSystem.issueBatchJob(jobDesc1)
         self.assertIsNotNone(job1)
-        jobNode2 = JobNode(command="sleep 1000",
+        jobDesc2 = JobNode(command="sleep 1000",
                            requirements=dict(memory=2 << 30, cores=1,
                                              disk=1000, preemptable=preemptable),
                            jobName='testResourceLimits', unitName=None,
                            jobStoreID='2')
-        job2 = self.batchSystem.issueBatchJob(jobNode2)
+        job2 = self.batchSystem.issueBatchJob(jobDesc2)
         self.assertIsNotNone(job2)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 2)
@@ -646,7 +646,7 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self.assertNotEqual(batches[0]['ram'], batches[1]['ram'])
         # Need to kill one of the jobs because there are only two cores available
         self.batchSystem.killBatchJobs([job2])
-        job3 = self.batchSystem.issueBatchJob(jobNode1)
+        job3 = self.batchSystem.issueBatchJob(jobDesc1)
         self.assertIsNotNone(job3)
         batches = self._getBatchList()
         self.assertEqual(len(batches), 1)
