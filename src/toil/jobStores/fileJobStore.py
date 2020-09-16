@@ -142,7 +142,7 @@ class FileJobStore(AbstractJobStore):
                                      dir=self._getArbitraryJobsDirForName(usefulFilename))
                                      
         return self._getJobIdFromDir(absJobDir)
-
+        
     def create(self, jobDescription):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
             # Save it later
@@ -160,8 +160,17 @@ class FileJobStore(AbstractJobStore):
             self.update(jobDescription)
         self._batchedUpdates = None
 
-    def waitForExists(self, jobStoreID, maxTries=35, sleepTime=1):
-        """Spin-wait and block for a file to appear before returning False if it does not.
+    def _waitForExists(self, jobStoreID, maxTries=35, sleepTime=1):
+        """
+        Spin-wait and block for a job to appear before returning
+        False if it does not.
+        """
+        return self._waitForFile(self._getJobFileName(jobStoreID), maxTries=maxTries, sleepTime=sleepTime)
+
+    def _waitForFile(self, fileName, maxTries=35, sleepTime=1):
+        """
+        Spin-wait and block for a file or directory to appear before returning
+        False if it does not.
 
         The total max wait time is maxTries * sleepTime. The current default is
         tuned to match Linux NFS defaults where the client's cache of the directory
@@ -172,16 +181,16 @@ class FileJobStore(AbstractJobStore):
         The warning will be sent to the log only on the first retry.
 
         In practice, the need for retries happens rarely, but it does happen
-        over the course of large workflows with a jobStore on a busy NFS."""
+        over the course of large workflows with a jobStore on a busy NFS.
+        """
         for iTry in range(1,maxTries+1):
-            jobFile = self._getJobFileName(jobStoreID)
-            if os.path.exists(jobFile):
+            if os.path.exists(fileName):
                 return True
             if iTry >= maxTries:
                 return False
             elif iTry == 1:
-                logger.warning(("Job file `{}` for job `{}` does not exist (yet). We will try #{} more times with {}s "
-                        "intervals.").format(jobFile, jobStoreID, maxTries - iTry, sleepTime))
+                logger.warning(("Path `{}` does not exist (yet). We will try #{} more times with {}s "
+                        "intervals.").format(fileName, maxTries - iTry, sleepTime))
             time.sleep(sleepTime)
         return False
 
@@ -204,7 +213,7 @@ class FileJobStore(AbstractJobStore):
             raise NoSuchFileException(sharedFileName)
 
     def load(self, jobStoreID):
-        self._checkJobStoreId(jobStoreID)
+        self._checkJobStoreIdExists(jobStoreID)
         # Load a valid version of the job
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'rb') as fileHandle:
@@ -646,11 +655,25 @@ class FileJobStore(AbstractJobStore):
 
         return os.path.join(self.jobFilesDir, jobStoreID, "cleanup")
 
-    def _checkJobStoreId(self, jobStoreID):
+    def _checkJobStoreIdAssigned(self, jobStoreID):
+        """
+        Do nothing if the given job store ID has been assigned by
+        :meth:`assignID`, and the corresponding job has not yet been
+        deleted, even if the JobDescription hasn't yet been saved for the first
+        time.
+        
+        If the ID has not been assigned, raises a NoSuchJobException.
+        """
+        
+        if not self._waitForFile(self._getJobDirFromId(jobStoreID)):
+            raise NoSuchJobException(jobStoreID)
+
+
+    def _checkJobStoreIdExists(self, jobStoreID):
         """
         Raises a NoSuchJobException if the job with ID jobStoreID does not exist.
         """
-        if not self.waitForExists(jobStoreID,30):
+        if not self._waitForExists(jobStoreID, 30):
             raise NoSuchJobException(jobStoreID)
 
     def _getFilePathFromId(self, jobStoreFileID):
@@ -892,7 +915,7 @@ class FileJobStore(AbstractJobStore):
             # Make a temporary file within the job's files directory
 
             # Make sure the job is legit
-            self._checkJobStoreId(jobStoreID)
+            self._checkJobStoreIdAssigned(jobStoreID)
             # Find where all its created files should live, depending on if
             # they need to go away when the job is deleted or not.
             jobFilesDir = self._getJobFilesDir(jobStoreID) if not cleanup \

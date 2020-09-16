@@ -14,11 +14,10 @@
 import pickle
 
 from toil.common import Config
-from toil.job import Job
-from toil.jobGraph import JobGraph
+from toil.job import JobDescription, CheckpointJobDescription
 from toil.jobStores.fileJobStore import FileJobStore
 from toil.test import ToilTest, travis_test
-from toil.worker import nextChainableJobGraph
+from toil.worker import nextChainable
 
 class WorkerTests(ToilTest):
     """Test miscellaneous units of the worker."""
@@ -29,65 +28,68 @@ class WorkerTests(ToilTest):
         self.config = Config()
         self.config.jobStore = 'file:%s' % path
         self.jobStore.initialize(self.config)
-        self.jobGraphNumber = 0
+        self.jobNumber = 0
     
     @travis_test
-    def testNextChainableJobGraph(self):
+    def testNextChainable(self):
         """Make sure chainable/non-chainable jobs are identified correctly."""
-        def createJobGraph(memory, cores, disk, preemptable, checkpoint):
-            """Create a fake-ish Job and JobGraph pair, and return the
-            jobGraph."""
-            name = 'jobGraph%d' % self.jobGraphNumber
-            self.jobGraphNumber += 1
+        def createTestJobDesc(memory, cores, disk, preemptable, checkpoint):
+            """
+            Create a JobDescription with no command (representing a Job that
+            has already run) and return the JobDescription.
+            """
+            name = 'job%d' % self.jobNumber
+            self.jobNumber += 1
+            
+            descClass = CheckpointJobDescription if checkpoint else JobDescription
+            jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable}, unitName=name)
+            
+            # Assign an ID
+            jobDesc.jobStoreID = self.jobStore.assignID(jobDesc)
+           
+            # Save and return the JobDescription
+            return self.jobStore.create(jobDesc)
+            
+        for successorType in ['addChild', 'addFollowOn']:
+            # Try with the branch point at both child and follow-on stages
+            
+            # Identical non-checkpoint jobs should be chainable.
+            jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
+            jobDesc2 = createTestJobDesc(1, 2, 3, True, False)
+            getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
+            chainable = nextChainable(jobDesc1, self.jobStore)
+            self.assertNotEqual(chainable, None)
+            self.assertEqual(jobDesc2.jobStoreID, chainable.jobStoreID)
 
-            job = Job()
-            job.checkpoint = checkpoint
-            # The job doesn't have a jobStoreID yet, so we can't tag the file
-            with self.jobStore.writeFileStream() as (f, fileStoreID):
-                pickle.dump(job, f, pickle.HIGHEST_PROTOCOL)
-            command = '_toil %s fooCommand toil True' % fileStoreID
-            jobGraph = JobGraph(command=command, memory=memory, cores=cores,
-                                disk=disk, unitName=name,
-                                jobName=name, preemptable=preemptable,
-                                jobStoreID=name, remainingRetryCount=1,
-                                predecessorNumber=1)
-            return self.jobStore.create(jobGraph)
+            # Identical checkpoint jobs should not be chainable.
+            jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
+            jobDesc2 = createTestJobDesc(1, 2, 3, True, True)
+            getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
+            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
 
-        # Identical non-checkpoint jobs should be chainable.
-        jobGraph1 = createJobGraph(1, 2, 3, True, False)
-        jobGraph2 = createJobGraph(1, 2, 3, True, False)
-        jobGraph1.stack = [[jobGraph2]]
-        self.assertEqual(jobGraph2, nextChainableJobGraph(jobGraph1, self.jobStore))
+            # If there is no child we should get nothing to chain.
+            jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
+            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
 
-        # Identical checkpoint jobs should not be chainable.
-        jobGraph1 = createJobGraph(1, 2, 3, True, False)
-        jobGraph2 = createJobGraph(1, 2, 3, True, True)
-        jobGraph1.stack = [[jobGraph2]]
-        self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
+            # If there are 2 or more children we should get nothing to chain.
+            jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
+            jobDesc2 = createTestJobDesc(1, 2, 3, True, False)
+            jobDesc3 = createTestJobDesc(1, 2, 3, True, False)
+            getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
+            getattr(jobDesc1, successorType)(jobDesc3.jobStoreID)
+            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
 
-        # If there is no child we should get nothing to chain.
-        jobGraph1 = createJobGraph(1, 2, 3, True, False)
-        jobGraph1.stack = []
-        self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
+            # If there is an increase in resource requirements we should get nothing to chain.
+            reqs = {'memory': 1, 'cores': 2, 'disk': 3, 'preemptable': True, 'checkpoint': False}
+            for increased_attribute in ('memory', 'cores', 'disk'):
+                jobDesc1 = createTestJobDesc(**reqs)
+                reqs[increased_attribute] += 1
+                jobDesc2 = createTestJobDesc(**reqs)
+                getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
+                self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
 
-        # If there are 2 or more children we should get nothing to chain.
-        jobGraph1 = createJobGraph(1, 2, 3, True, False)
-        jobGraph2 = createJobGraph(1, 2, 3, True, False)
-        jobGraph3 = createJobGraph(1, 2, 3, True, False)
-        jobGraph1.stack = [[jobGraph2, jobGraph3]]
-        self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
-
-        # If there is an increase in resource requirements we should get nothing to chain.
-        reqs = {'memory': 1, 'cores': 2, 'disk': 3, 'preemptable': True, 'checkpoint': False}
-        for increased_attribute in ('memory', 'cores', 'disk'):
-            jobGraph1 = createJobGraph(**reqs)
-            reqs[increased_attribute] += 1
-            jobGraph2 = createJobGraph(**reqs)
-            jobGraph1.stack = [[jobGraph2]]
-            self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
-
-        # A change in preemptability from True to False should be disallowed.
-        jobGraph1 = createJobGraph(1, 2, 3, True, False)
-        jobGraph2 = createJobGraph(1, 2, 3, False, True)
-        jobGraph1.stack = [[jobGraph2]]
-        self.assertEqual(None, nextChainableJobGraph(jobGraph1, self.jobStore))
+            # A change in preemptability from True to False should be disallowed.
+            jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
+            jobDesc2 = createTestJobDesc(1, 2, 3, False, True)
+            getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
+            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))

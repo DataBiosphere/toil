@@ -54,8 +54,6 @@ def nextChainable(predecessor, jobStore):
     Returns the next chainable job's JobDescription after the given predecessor
     JobDescription, if one exists, or None if the chain must terminate.
     
-    Job must not have an empty collection of successors at the top of its stack.
-    
     :param toil.job.JobDescription predecessor: The job to chain from
     :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The JobStore to fetch JobDescriptions from.
     :rtype: toil.job.JobDescription or None
@@ -76,8 +74,11 @@ def nextChainable(predecessor, jobStore):
         return None
 
     #Get the next set of jobs to run
-    jobs = predecessor.stack[-1]
-    assert len(jobs) > 0
+    jobs = predecessor.nextSuccessors()
+    if len(jobs) == 0:
+        # If there are no jobs, we might just not have any children.
+        logger.debug("Stopping running chain of jobs because job has no ready children or follow-ons")
+        return None
 
     #If there are 2 or more jobs to run in parallel we quit
     if len(jobs) >= 2:
@@ -85,8 +86,8 @@ def nextChainable(predecessor, jobStore):
                     " it's got %i children", len(jobs)-1)
         return None
 
-    
-    successorID = jobs[0]
+    # Grab the only job that should be there.
+    successorID = next(iter(jobs))
     
     # Load the successor JobDescription
     successor = jobStore.load(successorID)
@@ -310,10 +311,6 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             predicate = lambda jID: jobStore.exists(jID)
             jobDesc.filterSuccessors(predicate)
             jobDesc.filterServiceHosts(predicate)
-            if len(jobDesc.stack) > 0 and len(jobDesc.stack[-1]) == 0:
-                # A phase of successors is complete, so advance
-                jobDesc.completePhase()
-            
             logger.debug("Cleaned up any references to completed successor jobs")
 
         # This cleans the old log file which may 

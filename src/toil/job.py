@@ -93,20 +93,6 @@ class FakeID:
     def __ne__(self, other):
         return not isinstance(other, FakeID) or self._value != other._value
 
-class Phase(enum.IntEnum):
-    """
-    Successor-running phases that a described job can be in.
-    
-    Increases in value as the job becomes more complete, so you can use >
-    to test if a phase is complete, and <= to test if it isn't.
-    """
-    # Job or its children need to run
-    children = 1
-    # All children are done, follow-ons need to run
-    followOns = 2
-    # All children and follow-ons are done
-    done = 3
-
 class JobDescription:
     """
     Stores all the information that the Toil Leader ever needs to know about a
@@ -149,8 +135,9 @@ class JobDescription:
         if requirements is None:
             requirements = {}
         
-        # Save requirements, parsing and validating anything that needs parsing or validating
-        self._requirementOverrides = {k: self._parseResource(k, v) for (k, v) in requirements.items()}
+        # Save requirements, parsing and validating anything that needs parsing or validating.
+        # Don't save Nones.
+        self._requirementOverrides = {k: self._parseResource(k, v) for (k, v) in requirements.items() if v is not None}
         
         # Save names, making sure they are strings and not e.g. bytes.
         def makeString(x):
@@ -207,15 +194,12 @@ class JobDescription:
         # but they'd also be waiting on us.
        
         # The IDs of all child jobs of the described job.
-        # Children which are done may have been removed.
+        # Children which are done must be removed with filterSuccessors.
         self.childIDs = set()
         
         # The IDs of all follow-on jobs of the described job.
-        # Follow-ons which are done may have been removed.
+        # Follow-ons which are done must be removed with filterSuccessors.
         self.followOnIDs = set()
-        
-        # Phase we are at in running this job and its successors.
-        self._successorPhase = Phase.children
         
         # Dict from ServiceHostJob ID to list of child ServiceHostJobs that start after it.
         # All services must have an entry, if only to an empty list.
@@ -285,20 +269,22 @@ class JobDescription:
         be blocked on other jobs.
         
         Returns None when at the final phase (all successors done), and an
-        empty collection when no successors remain in the current phase and the
-        phase can be completed.
-        
-        See completePhase().
+        empty collection if there are more phases but they can't be entered yet
+        (e.g. because we are waiting for the job itself to run).
         """
-        
-        if self._successorPhase == Phase.followOns:
-            return self.followOnIDs
-        elif self._successorPhase == Phase.children:
+       
+        if self.command is not None:
+            # We ourselves need to run. So there's not nothing to do but no successors are ready.
+            return []
+        elif len(self.childIDs) != 0:
+            # Our children need to run
             return self.childIDs
-        elif self._successorPhase == Phase.done:
-            return None
+        elif len(self.followOnIDs) != 0:
+            # Our follow-ons need to run
+            return self.followOnIDs
         else:
-            raise RuntimeError("Unknown phase: {}".format(self._successorPhase))
+            # Everything is done.
+            return None
             
     @property
     def stack(self):
@@ -310,18 +296,21 @@ class JobDescription:
         Some successors in each batch may have already been finished. Batches may be empty.
         
         Exists so that code that used the old stack list immutably can work
-        still. New development should use nextSuccessors(), and all
-        mutations should use filterSuccessors() and completePhase().
+        still. New development should use nextSuccessors(), and all mutations
+        should use filterSuccessors() (which automatically removes completed
+        phases). 
         
-        :return: Batches of successors that still need to run, in reverse order. 
+        :return: Batches of successors that still need to run, in reverse
+                 order. An empty batch may exist under a non-empty batch, or at the top
+                 when the job itself is not done.
         :rtype: tuple(tuple(str))
         """
         
         result = []
-        if self._successorPhase <= Phase.followOns:
+        if self.command is not None or len(self.childIDs) != 0 or len(self.followOnIDs) != 0:
             # Follow-ons haven't all finished yet
             result.append(tuple(self.followOnIDs))
-        if self._successorPhase <= Phase.children:
+        if self.command is not None or len(self.childIDs) != 0:
             # Children haven't all finished yet
             result.append(tuple(self.childIDs))
         return tuple(result)
@@ -346,25 +335,6 @@ class JobDescription:
        # TODO: avoid duplicate predicate calls here when services are referenced?
        self.serviceTree = {k: [x for x in v if predicate(x)] for k, v in self.serviceTree.items() if predicate(k)}
        
-    def completePhase(self):
-        """
-        Advance to the next phase of successors to run. (Start follow-ons after children are done, or mark that all follow-ons are done.)
-        
-        Can only be called when nextSuccessors() is an empty collection.
-        """
-        
-        if self._successorPhase == Phase.done:
-            raise RuntimeError("Cannot advance {} past done phase".format(self))
-        
-        # We can't be done so this can't be None
-        todo = self.nextSuccessors()
-        
-        if len(todo) > 0:
-            raise RuntimeError("Cannot complete phase {} on {} with outstanding successors: {}".format(self._successorPhase, self, todo))
-        
-        # Go to the next phase in the enum, possibly readying more successors to run.
-        self._successorPhase += 1
-        
     def clearSuccessorsAndServiceHosts(self):
         """
         Remove all references to child, follow-on, and service jobs associated with the described job.
@@ -589,11 +559,17 @@ class JobDescription:
         AttributeError.
         """
         if requirement in self._requirementOverrides:
-            return self._requirementOverrides[requirement]
+            value = self._requirementOverrides[requirement]
+            if value is None:
+             raise AttributeError(f"Encountered explicit None for '{requirement}' requirement of {self}")
+            return value
         elif self._config is not None:
-            return getattr(self._config, 'default' + requirement.capitalize())
+            value = getattr(self._config, 'default' + requirement.capitalize())
+            if value is None:
+                raise AttributeError(f"Encountered None for default '{requirement}' requirement in config: {self._config}")
+            return value
         else:
-            raise AttributeError("Default value for '{}' cannot be determined".format(requirement))
+            raise AttributeError(f"Default value for '{requirement}' requirement of {self} cannot be determined")
         
     @property
     def disk(self):
@@ -1745,13 +1721,22 @@ class Job:
         # Do renames in the description
         self._description.renameReferences(renames)
         
-    def _saveBody(self, jobStore):
+    def saveBody(self, jobStore):
         """
         Save the execution data for just this job to the JobStore, and fill in
         the JobDescription with the information needed to retrieve it.
         
+        The Job's JobDescription must have already had a real jobStoreID assigned to it.
+        
         Does not save the JobDescription.
+        
+        :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The job store
+            to save the job body into.
         """
+        
+        # We can't save the job in the right place for cleanup unless the
+        # description has a real ID.
+        assert not isinstance(self.jobStoreID, FakeID), "Tried to save job {} without ID assigned!".format(self)
         
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
@@ -1768,7 +1753,6 @@ class Job:
         self._description = None
         
         # Save the body of the job
-        # TODO: we need a job store ID in the description to save the job data for cleanup, but we don't want to commit the description until the job data is on disk...
         with jobStore.writeFileStream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
             pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
             
@@ -1838,10 +1822,10 @@ class Job:
                     # Find the actual job
                     serviceJob = self._registry[serviceID]
                     # Pickle the service body, which triggers all the promise stuff
-                    serviceJob._saveBody(jobStore)
+                    serviceJob.saveBody(jobStore)
             if job != self or saveSelf:
                 # Now pickle the job itself
-                job._saveBody(jobStore)
+                job.saveBody(jobStore)
             
         # Now that the job data is on disk, commit the JobDescriptions in reverse execution order
         for job in ordering:

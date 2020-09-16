@@ -1175,19 +1175,19 @@ class Leader(object):
             # For each predecessor
             for predecessorJob in self.toilState.successorJobStoreIDToPredecessorJobs.pop(jobStoreID):
 
-                # Reduce the predecessor's number of successors by one to indicate the
-                # completion of the jobStoreID job
+                # Tell the predecessor that this job is done (keep only other successor jobs)
+                predecessorJob.filterSuccessors(lambda jID: jID != jobStoreID)
+
+                # Reduce the predecessor's number of successors by one, as
+                # tracked by us, to indicate the completion of the jobStoreID
+                # job
                 self.toilState.successorCounts[predecessorJob.jobStoreID] -= 1
 
                 # If the predecessor job is done and all the successors are complete
                 if self.toilState.successorCounts[predecessorJob.jobStoreID] == 0:
-
+                
                     # Remove it from the set of jobs with active successors
                     self.toilState.successorCounts.pop(predecessorJob.jobStoreID)
-
-                    if predecessorJob.jobStoreID not in self.toilState.hasFailedSuccessors:
-                        # Finish the phase on top of the stack
-                        predecessorJob.completePhase()
 
                     # Now we know the job is done we can add it to the list of updated job files
                     assert predecessorJob.jobStoreID not in self.toilState.updatedJobs
