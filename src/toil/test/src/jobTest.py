@@ -31,6 +31,7 @@ from toil.leader import FailedJobsException
 from toil.lib.bioio import getTempFile
 from toil.job import Job, JobGraphDeadlockException, JobFunctionWrappingJob
 from toil.test import ToilTest, slow, travis_test
+import pytest
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,7 @@ class JobTest(ToilTest):
                 self.fail()
     
     @travis_test
+    @pytest.mark.timeout(15)
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'
