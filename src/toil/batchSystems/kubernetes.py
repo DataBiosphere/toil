@@ -180,7 +180,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Set this to True to enable the experimental wait-for-job-update code
         # TODO: Make this an environment variable?
-        self.enableWatching = False
+        self.enableWatching = os.environ.get("KUBE_WATCH_ENABLED", False)
 
         self.jobIds = set()
     
@@ -685,44 +685,41 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             return result
 
         # Otherwise we need to maybe wait.
-
         if self.enableWatching:
             # Try watching for something to happen and use that.
+            for j in self._ourJobObjects():
+                for event in self._try_kubernetes_stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
+                    # For each event from the stream until it times out or just disconnects
+                    pod = event['object']
+                    if pod.metadata.name.startswith(self.jobPrefix):
+                        if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
+                            containerStatuses =  pod.status.container_statuses
+                            logger.debug("FINISHED")
+                            if containerStatuses is None or len(containerStatuses) == 0: 
+                                logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
+                                return UpdatedBatchJobInfo(jobID=int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None)
 
-            if self.enableWatching:
-                for j in self._ourJobObjects():
-                    for event in self._try_kubernetes_stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
-                        # For each event from the stream until it times out or just disconnects
-                        pod = event['object']
-                        if pod.metadata.name.startswith(self.jobPrefix):
-                            if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
-                                containerStatuses =  pod.status.container_statuses
-                                logger.debug("FINISHED")
-                                if containerStatuses is None or len(containerStatuses) == 0: 
-                                    logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
-                                    return UpdatedBatchJobInfo(jobID=int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None)
+                            # Get termination onformation from the pod
+                            termination = pod.status.container_statuses[0].state.terminated
+                            logger.info("REASON: %s Exit Code: %s", termination.reason, termination.exit_code)
+                            
+                            if termination.exit_code != 0:
+                                # The pod failed. Dump information about it.
+                                logger.debug('Failed pod information: %s', str(pod))
+                                logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
+                            jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
+                            terminated = pod.status.container_statuses[0].state.terminated
+                            runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
+                            result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=terminated.exit_code, wallTime=runtime, exitReason=None)
+                            self._try_kubernetes(self._api('batch').delete_namespaced_job, 
+                                        pod.metadata.owner_references[0].name,
+                                        self.namespace,
+                                        propagation_policy='Foreground')
 
-                                # Get termination onformation from the pod
-                                termination = pod.status.container_statuses[0].state.terminated
-                                logger.info("REASON: %s Exit Code: %s", termination.reason, termination.exit_code)
-                                
-                                if termination.exit_code != 0:
-                                    # The pod failed. Dump information about it.
-                                    logger.debug('Failed pod information: %s', str(pod))
-                                    logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
-                                jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
-                                terminated = pod.status.container_statuses[0].state.terminated
-                                runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
-                                result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=terminated.exit_code, wallTime=runtime, exitReason=None)
-                                self._try_kubernetes(self._api('batch').delete_namespaced_job, 
-                                            pod.metadata.owner_references[0].name,
-                                            self.namespace,
-                                            propagation_policy='Foreground')
-
-                                self._waitForJobDeath(pod.metadata.owner_references[0].name)
-                                return result
-                            else:
-                                continue
+                            self._waitForJobDeath(pod.metadata.owner_references[0].name)
+                            return result
+                        else:
+                            continue
         else:
             # Try polling instead
             while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:
