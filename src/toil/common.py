@@ -838,12 +838,12 @@ class Toil(object):
                 promise = rootJob.rv()
                 pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
 
-            # Setup the first wrapper and cache it
-            rootJobGraph = rootJob._serialiseFirstJob(self._jobStore)
-            self._cacheJob(rootJobGraph)
+            # Setup the first JobDescription and cache it
+            rootJobDescription = rootJob._serialiseFirstJob(self._jobStore)
+            self._cacheJob(rootJobDescription)
 
             self._setProvisioner()
-            return self._runMainLoop(rootJobGraph)
+            return self._runMainLoop(rootJobDescription)
         finally:
             self._shutdownBatchSystem()
 
@@ -874,8 +874,8 @@ class Toil(object):
             self._serialiseEnv()
             self._cacheAllJobs()
             self._setProvisioner()
-            rootJobGraph = self._jobStore.clean(jobCache=self._jobCache)
-            return self._runMainLoop(rootJobGraph)
+            rootJobDescription = self._jobStore.clean(jobCache=self._jobCache)
+            return self._runMainLoop(rootJobDescription)
         finally:
             self._shutdownBatchSystem()
 
@@ -1057,14 +1057,14 @@ class Toil(object):
         Downloads all jobs in the current job store into self.jobCache.
         """
         logger.debug('Caching all jobs in job store')
-        self._jobCache = {jobGraph.jobStoreID: jobGraph for jobGraph in self._jobStore.jobs()}
+        self._jobCache = {jobDesc.jobStoreID: jobDesc for jobDesc in self._jobStore.jobs()}
         logger.debug('{} jobs downloaded.'.format(len(self._jobCache)))
 
     def _cacheJob(self, job):
         """
         Adds given job to current job cache.
 
-        :param toil.jobGraph.JobGraph job: job to be added to current job cache
+        :param toil.job.JobDescription job: job to be added to current job cache
         """
         self._jobCache[job.jobStoreID] = job
 
