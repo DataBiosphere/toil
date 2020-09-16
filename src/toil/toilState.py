@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from toil.job import CheckpointJobDescription
+from toil.job import JobDescription, CheckpointJobDescription
 
-from builtins import object
+import itertools
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-class ToilState(object):
+class ToilState():
     """
     Holds the leader's scheduling information that does not need to be
     persisted back to the JobStore (such as information on completed and
@@ -55,7 +55,7 @@ class ToilState(object):
         # This is a hash of service jobs, referenced by jobStoreID, to their predecessor job
         self.serviceJobStoreIDToPredecessorJob = {}
 
-        # Hash of jobStoreIDs mapping to services issued for the job
+        # Hash of jobStoreIDs mapping to dict from service ID to service host JobDescription for issued services
         self.servicesIssued = {}
         
         # Jobs that are ready to be processed.
@@ -83,13 +83,32 @@ class ToilState(object):
         self._buildToilState(rootJob, jobStore, jobCache)
         
         
-    def reload(self, jobStoreID):
+    def allJobDescriptions(self):
         """
-        Load the JobDescription with the given ID from the JobStore and replace whatever is in the cache.
+        Returns an iterator over all JobDescription objects referenced by the
+        ToilState, with some possibly being visited multiple times.
+        """
         
-        If the JobDescription no longer exists (for example, because the worker has cleaned it up after successful completion), drops it.
-        """
-
+        for item in self.serviceJobStoreIDToPredecessorJob.values():
+            assert isinstance(item, JobDescription)
+            yield item
+            
+        for item in (desc for mapping in self.servicesIssued.values() for desc in mapping.values()):
+            assert isinstance(item, JobDescription)
+            yield item
+            
+        for item in (pair[0] for pair in self.updatedJobs.values()):
+            assert isinstance(item, JobDescription)
+            yield item
+            
+        for item in self.totalFailedJobs:
+            assert isinstance(item, JobDescription)
+            yield item
+            
+        for item in self.jobsToBeScheduledWithMultiplePredecessors.values():
+            assert isinstance(item, JobDescription)
+            yield item
+        
     def _buildToilState(self, jobDesc, jobStore, jobCache=None):
         """
         Traverses tree of jobs from the root JobDescription (rootJob) building the

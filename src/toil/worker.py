@@ -361,7 +361,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 assert jobDesc.command.startswith("_toil ")
                 logger.debug("Got a command to run: %s" % jobDesc.command)
                 # Load the job. It will use the same JobDescription we have been using.
-                job = Job._loadJob(jobDesc.command, jobStore)
+                job = Job.loadJob(jobStore, jobDesc)
                 if isinstance(jobDesc, CheckpointJobDescription):
                     # If it is a checkpoint job, save the command
                     jobDesc.checkpoint = jobDesc.command

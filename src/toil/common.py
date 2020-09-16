@@ -839,7 +839,7 @@ class Toil(object):
                 pickle.dump(promise, fH, protocol=pickle.HIGHEST_PROTOCOL)
 
             # Setup the first JobDescription and cache it
-            rootJobDescription = rootJob._serialiseFirstJob(self._jobStore)
+            rootJobDescription = rootJob.saveAsRootJob(self._jobStore)
             self._cacheJob(rootJobDescription)
 
             self._setProvisioner()

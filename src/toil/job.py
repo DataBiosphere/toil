@@ -163,10 +163,11 @@ class JobDescription:
         
         # Set scheduling properties that the leader read to think about scheduling.
         
-        # The number of times the job should be retried if it fails This number is reduced by
-        # retries until it is zero and then no further retries are made. If
-        # None, taken as the default value for this workflow execution.
-        self.remainingRetryCount = None
+        # The number of times the job should be retried if it fails.
+        # This number is reduced by retries until it is zero and then no
+        # further retries are made. If None, taken as the default value for
+        # this workflow execution.
+        self._remainingRetryCount = None
         
         # Holds FileStore FileIDs of the files that this job has deleted. Used
         # to journal deletions of files and recover from a worker crash between
@@ -249,6 +250,12 @@ class JobDescription:
         Get an iterator over all child, follow-on, and service job IDs
         """
         return itertools.chain(self.childIDs, self.followOnIDs, self.serviceTree.keys())
+        
+    def allSuccessors(self):
+        """
+        Get an iterator over all child and follow-on job IDs
+        """
+        return itertools.chain(self.childIDs, self.followOnIDs) 
         
     @property
     def services(self):
@@ -610,7 +617,24 @@ class JobDescription:
     @preemptable.setter
     def set_preemptable(self, val):
          self._requirementOverrides['preemptable'] = self._parseResource('preemptable', val)
-        
+    
+    @property
+    def remainingRetryCount(self):
+        """
+        The retry count set on the JobDescription, or the default from the
+        config if none is set.
+        """
+        if self._remainingRetryCount is not None:
+            return self._remainingRetryCount
+        elif self._config is not None:
+            return self._config.retryCount
+        else:
+            raise AttributeError(f"Retry count for {self} cannot be determined")
+    @remainingRetryCount.setter
+    def set_remainingRetryCount(self, val):
+        self._remainingRetryCount = val
+            
+    
     def __str__(self):
         """
         Produce a useful logging string identifying this job.
@@ -803,7 +827,8 @@ class Job:
         # This dict holds a mapping from FakeIDs to the job objects they represent.
         # Will be shared among all jobs in a disconnected piece of the job
         # graph that hasn't been registered with a JobStore yet.
-        self._registry = {}
+        # Make sure to initially register ourselves.
+        self._registry = {self._description.jobStoreID: self}
         
         # Job relationships are all stored exactly once in the JobDescription.
         # Except for predecessor relationships which are stored here, just
@@ -841,6 +866,46 @@ class Job:
         Expose the JobDescription that describes this job.
         """
         return self._description
+        
+    @property
+    def disk(self):
+        """
+        The maximum number of bytes of disk the job will require to run.
+        """
+        return self.description.disk
+    @disk.setter
+    def set_disk(self, val):
+         self.description.disk = val
+
+    @property
+    def memory(self):
+        """
+        The maximum number of bytes of memory the job will require to run.
+        """
+        return self.description.memory
+    @memory.setter
+    def set_memory(self, val):
+         self.description.memory = val
+
+    @property
+    def cores(self):
+        """
+        The number of CPU cores required.
+        """
+        return self.description.cores
+    @cores.setter
+    def set_cores(self, val):
+         self.description.cores = val
+
+    @property
+    def preemptable(self):
+        """
+        Whether the job can be run on a preemptable node.
+        """
+        return self.description.preemptable
+    @preemptable.setter
+    def set_preemptable(self, val):
+         self.description.preemptable = val
         
     @property
     def checkpoint(self):
@@ -892,7 +957,7 @@ class Job:
                 # Steal everything from the other connected component's registry
                 self._registry.update(other._registry)
                 
-                for job in other._registry.items():
+                for job in other._registry.values():
                     # Point all their jobs at the new combined registry
                     job._registry = self._registry
 
@@ -905,6 +970,8 @@ class Job:
         :return: childJob
         :rtype: toil.job.Job
         """
+        
+        assert isinstance(childJob, Job)
         
         # Join the job graphs
         self._jobGraphsJoined(childJob)
@@ -934,6 +1001,8 @@ class Job:
         :return: followOnJob
         :rtype: toil.job.Job
         """
+        
+        assert isinstance(followOnJob, Job)
         
         # Join the job graphs
         self._jobGraphsJoined(followOnJob)
@@ -1223,9 +1292,12 @@ class Job:
         # Start assuming all jobs are roots
         roots = set(self._registry.keys())
         
-        for job in self._registry:
-            for other in itertools.chain(job._children, job._followOns, job._services):
-                roots.remove(other)
+        for job in self._registry.values():
+            for otherID in job.description.successorsAndServiceHosts():
+                # If anything is a successor or service of anything else, it isn't a root.
+                if otherID in roots:
+                    # Remove it if we still think it is
+                    roots.remove(otherID)
                 
         return {self._registry[jid] for jid in roots}
             
@@ -1284,7 +1356,7 @@ class Job:
         if self not in visited:
             visited.add(self)
             stack.append(self)
-            for successor in self._children + self._followOns + extraEdges[self]:
+            for successor in [self._registry[jID] for jID in self.description.allSuccessors()] + extraEdges[self]:
                 successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
             assert stack.pop() == self
         if self in stack:
@@ -1306,15 +1378,23 @@ class Job:
         #connected by an implied edge
         extraEdges = dict([(n, []) for n in nodes])
         for job in nodes:
-            if len(job._followOns) > 0:
-                #Get set of jobs connected by a directed path to job, starting
-                #with a child edge
+            for depth in range(1, len(job.description.stack)):
+                # Add edges from all jobs in the earlier/upper subtrees to all
+                # the roots of the later/lower subtrees
+                
+                upper = job.description.stack[depth]
+                lower = job.description.stack[depth - 1]
+                
+                # Find everything in the upper subtree
                 reacheable = set()
-                for child in job._children:
-                    child._collectAllSuccessors(reacheable)
-                #Now add extra edges
-                for descendant in reacheable:
-                    extraEdges[descendant] += job._followOns[:]
+                for upperID in upper:
+                    upperJob = job._registry[upperID]
+                    upperJob._collectAllSuccessors(reacheable)
+                    
+                for inUpper in reacheable:
+                    # Add extra edges to the roots of all the lower subtrees
+                    extraEdges[inUpper] += [job._registry[lowerID] for lowerID in lower]
+        
         return extraEdges
 
     def checkNewCheckpointsAreLeafVertices(self):
@@ -1521,9 +1601,7 @@ class Job:
 
     @staticmethod
     def _isLeafVertex(job):
-        return len(job._children) == 0 \
-               and len(job._followOns) == 0 \
-               and len(job._services) == 0
+        return len(job.description.successorsAndServiceHosts()) == 0
 
     @classmethod
     def _loadUserModule(cls, userModule):
@@ -1535,7 +1613,7 @@ class Job:
         return userModule.load()
 
     @classmethod
-    def _unpickle(cls, userModule, fileHandle, config):
+    def _unpickle(cls, userModule, fileHandle):
         """
         Unpickles an object graph from the given file handle while loading symbols \
         referencing the __main__ module from the given userModule instead.
@@ -1566,7 +1644,7 @@ class Job:
 
         runnable = unpickler.load()
         assert isinstance(runnable, Job)
-        runnable.assignConfig(config)
+        
         return runnable
 
     def getUserScript(self):
@@ -1617,8 +1695,8 @@ class Job:
             todo.pop()
             if job not in visited:
                 visited.add(job)
-                for successor in itertools.chain(job._children, job._followOns):
-                    todo.append(successor)
+                for successorID in job.description.allSuccessors():
+                    todo.append(self._registry[successorID])
 
     def getTopologicalOrderingOfJobs(self):
         """
@@ -1685,7 +1763,7 @@ class Job:
             allJobs = list(self._registry.values())
             
             # We use one big dict from fake ID to corresponding real ID
-            fakeToReal = []
+            fakeToReal = {}
             
             for job in allJobs:
                # Save the fake ID
@@ -1716,7 +1794,7 @@ class Job:
         :param dict(FakeID, str) renames: Rename operations to apply.
         """
         
-        # Rename predecessors
+        # Rename direct predecessors
         self._directPredecessors = {renames[old] for old in self._directPredecessors}
         # Do renames in the description
         self._description.renameReferences(renames)
@@ -1741,22 +1819,25 @@ class Job:
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
   
-        # Drop out the children/followOns/predecessors/services/description - which are
-        # all recorded within the jobStore and do not need to be stored within
-        # the job. Set to None so we know if we try to actually use them.
-        # ID references shouldn't appear in the body.
-        self._children = None
-        self._followOns = None
-        self._services = None 
-        self._directPredecessors = None
+        # Drop out the description, which the job store will manage separately
         description = self._description
         self._description = None
         
+        # Fix up the registry and direct predecessors for when the job is
+        # loaded to be run: the registry should contain just the job itself and
+        # there should be no predecessors available when the job actually runs.
+        registry = self._registry
+        self._registry = {description.jobStoreID: self}
+        directPredecessors = self._directPredecessors
+        self._directPredecessors = set()
+  
         # Save the body of the job
         with jobStore.writeFileStream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
             pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
             
         # Restore important fields
+        self._directPredecessors = directPredecessors 
+        self._registry = registry
         self._description = description
             
         # Find the user script.
@@ -1816,7 +1897,7 @@ class Job:
             self._fulfillPromises(returnValues, jobStore)
         
         for job in ordering:
-            for serviceBatch in reversed(job.description.serviceHostIDsInBatches()):
+            for serviceBatch in reversed(list(job.description.serviceHostIDsInBatches())):
                 # For each batch of service host jobs in reverse order they start
                 for serviceID in serviceBatch:
                     # Find the actual job
@@ -1901,11 +1982,19 @@ class Job:
 
             # Open and unpickle
             with open(filename, 'rb') as fileHandle:
-                job = cls._unpickle(userModule, fileHandle, jobStore.config)
+                job = cls._unpickle(userModule, fileHandle)
                 # Fill in the current description
                 job._description = jobDescription
+                # Once the description is set we can assign the config, in case it wasn't set.
+                # TODO: may be redundant?
+                job.assignConfig(jobStore.config)
+                
+                # Set up the registry again, so children and follow-ons can be added on the worker
+                job._registry = {job.jobStoreID: job}
+                
+                return job
 
-            # TODO: We ought to just unpickle straight from a streaming read
+                # TODO: We ought to just unpickle straight from a streaming read
         finally:
             # Clean up the file
             if os.path.exists(filename):

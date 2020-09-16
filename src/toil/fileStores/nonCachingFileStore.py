@@ -45,8 +45,8 @@ if sys.version_info[0] < 3:
     FileNotFoundError = OSError
 
 class NonCachingFileStore(AbstractFileStore):
-    def __init__(self, jobStore, jobGraph, localTempDir, waitForPreviousCommit):
-        super(NonCachingFileStore, self).__init__(jobStore, jobGraph, localTempDir, waitForPreviousCommit)
+    def __init__(self, jobStore, jobDesc, localTempDir, waitForPreviousCommit):
+        super(NonCachingFileStore, self).__init__(jobStore, jobDesc, localTempDir, waitForPreviousCommit)
         # This will be defined in the `open` method.
         self.jobStateFile = None
         self.localFileMap = defaultdict(list)
@@ -87,7 +87,7 @@ class NonCachingFileStore(AbstractFileStore):
 
     def writeGlobalFile(self, localFileName, cleanup=False):
         absLocalFileName = self._resolveAbsoluteLocalPath(localFileName)
-        creatorID = self.jobGraph.jobStoreID
+        creatorID = self.jobDesc.jobStoreID
         fileStoreID = self.jobStore.writeFile(absLocalFileName, creatorID, cleanup)
         self.localFileMap[fileStoreID].append(absLocalFileName)
         return FileID.forPath(fileStoreID, absLocalFileName)
@@ -148,18 +148,18 @@ class NonCachingFileStore(AbstractFileStore):
         try:
             # Indicate any files that should be deleted once the update of
             # the job wrapper is completed.
-            self.jobGraph.filesToDelete = list(self.filesToDelete)
+            self.jobDesc.filesToDelete = list(self.filesToDelete)
             # Complete the job
-            self.jobStore.update(self.jobGraph)
+            self.jobStore.update(self.jobDesc)
             # Delete any remnant jobs
             list(map(self.jobStore.delete, self.jobsToDelete))
             # Delete any remnant files
             list(map(self.jobStore.deleteFile, self.filesToDelete))
             # Remove the files to delete list, having successfully removed the files
             if len(self.filesToDelete) > 0:
-                self.jobGraph.filesToDelete = []
+                self.jobDesc.filesToDelete = []
                 # Update, removing emptying files to delete
-                self.jobStore.update(self.jobGraph)
+                self.jobStore.update(self.jobDesc)
         except:
             self._terminateEvent.set()
             raise
