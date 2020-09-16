@@ -40,7 +40,7 @@ class TorqueBatchSystem(AbstractGridEngineBatchSystem):
     class Worker(AbstractGridEngineBatchSystem.Worker):
 
         def __init__(self, newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss):
-            super(self.__class__, self).__init__(newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss)
+            super().__init__(newJobsQueue, updatedJobsQueue, killQueue, killedJobsQueue, boss)
             self._version = self._pbsVersion()
 
         def _pbsVersion(self):
