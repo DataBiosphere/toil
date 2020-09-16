@@ -69,7 +69,7 @@ from toil.jobStores.aws.utils import (SDBHelper,
                                       region_to_bucket_location, copyKeyMultipart,
                                       uploadFromPath, chunkedFileUpload, fileSizeAndTime)
 from toil.jobStores.utils import WritablePipe, ReadablePipe, ReadableTransformingPipe
-from toil.jobGraph import JobGraph
+from toil.job import JobDescription
 import toil.lib.encryption as encryption
 
 # Make sure to use credential caching when talking to Amazon via boto3
@@ -289,32 +289,33 @@ class AWSJobStore(AbstractJobStore):
 
     @contextmanager
     def batch(self):
-        self._batchedJobGraphs = []
+        self._batchedUpdates = []
         yield
-        batches = [self._batchedJobGraphs[i:i + self.jobsPerBatchInsert] for i in
-                   range(0, len(self._batchedJobGraphs), self.jobsPerBatchInsert)]
+        batches = [self._batchedUpdates[i:i + self.jobsPerBatchInsert] for i in
+                   range(0, len(self._batchedUpdates), self.jobsPerBatchInsert)]
 
         for batch in batches:
-            items = {jobGraph.jobStoreID: self._awsJobToItem(jobGraph) for jobGraph in batch}
+            items = {jobDescription.jobStoreID: self._awsJobToItem(jobDescription) for jobDescription in batch}
             for attempt in retry_sdb():
                 with attempt:
                     assert self.jobsDomain.batch_put_attributes(items)
-        self._batchedJobGraphs = None
+        self._batchedUpdates = None
 
-    def create(self, jobNode):
+    def assignID(self, jobDescription):
         jobStoreID = self._newJobID()
-        log.debug("Creating job %s for '%s'",
-                  jobStoreID, '<no command>' if jobNode.command is None else jobNode.command)
-        job = JobGraph.fromJobNode(jobNode, jobStoreID=jobStoreID, tryCount=self._defaultTryCount())
+        log.debug("Assigning ID to job %s for '%s'",
+                  jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
+        return jobStoreID
 
-        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
-            self._batchedJobGraphs.append(job)
+    def create(self, jobDescription):
+        if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
+            self._batchedUpdates.append(jobDescription)
         else:
-            item = self._awsJobToItem(job)
+            item = self._awsJobToItem(jobDescription)
             for attempt in retry_sdb():
                 with attempt:
-                    assert self.jobsDomain.put_attributes(job.jobStoreID, item)
-        return job
+                    assert self.jobsDomain.put_attributes(jobDescription.jobStoreID, item)
+        return jobDescription
 
     def exists(self, jobStoreID):
         for attempt in retry_sdb():

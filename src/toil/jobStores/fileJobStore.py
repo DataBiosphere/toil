@@ -41,7 +41,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              JobStoreExistsException,
                                              NoSuchJobStoreException)
-from toil.jobGraph import JobGraph
+from toil.job import JobDescription
 
 logger = logging.getLogger( __name__ )
 
@@ -141,36 +141,24 @@ class FileJobStore(AbstractJobStore):
         absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
                                      dir=self._getArbitraryJobsDirForName(usefulFilename))
                                      
-        jobDescription.jobStoreID = self._getJobIdFromDir(absJobDir)
+        return self._getJobIdFromDir(absJobDir)
 
-    def create(self, jobNode):
-        # Get the job's name. We want to group jobs with the same name together.
-        # This will be e.g. the function name for wrapped-function jobs.
-        # Make sure to render it filename-safe
-        usefulFilename = self._makeStringFilenameSafe(jobNode.jobName)
-
-        # Make a unique temp directory under a directory for this job name,
-        # possibly sprayed across multiple levels of subdirectories.
-        absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
-                                     dir=self._getArbitraryJobsDirForName(usefulFilename))
-        # Make the job to save
-        job = JobGraph.fromJobNode(jobNode, jobStoreID=self._getJobIdFromDir(absJobDir),
-                                   tryCount=self._defaultTryCount())
-        if hasattr(self, "_batchedJobGraphs") and self._batchedJobGraphs is not None:
+    def create(self, jobDescription):
+        if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
             # Save it later
-            self._batchedJobGraphs.append(job)
+            self._batchedUpdates.append(jobDescription)
         else:
             # Save it now
-            self.update(job)
-        return job
+            self.update(jobDescription)
+        return jobDescription
 
     @contextmanager
     def batch(self):
-        self._batchedJobGraphs = []
+        self._batchedUpdates = []
         yield
-        for jobGraph in self._batchedJobGraphs:
-            self.update(jobGraph)
-        self._batchedJobGraphs = None
+        for jobDescription in self._batchedUpdates:
+            self.update(jobDescription)
+        self._batchedUpdates = None
 
     def waitForExists(self, jobStoreID, maxTries=35, sleepTime=1):
         """Spin-wait and block for a file to appear before returning False if it does not.
@@ -623,7 +611,7 @@ class FileJobStore(AbstractJobStore):
 
     def _getJobFileName(self, jobStoreID):
         """
-        Return the path to the file containing the serialised JobGraph instance for the given
+        Return the path to the file containing the serialised JobDescription instance for the given
         job.
 
         :rtype: str

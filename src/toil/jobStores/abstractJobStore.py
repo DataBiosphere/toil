@@ -36,7 +36,7 @@ from toil.lib.retry import retry_http
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
-from toil.job import JobException
+from toil.job import JobException, CheckpointJobDescription, ServiceJobDescription
 from toil.lib.memoize import memoize
 from toil.lib.misc import WriteWatchingStream
 from toil.lib.objects import abstractclassmethod
@@ -197,7 +197,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         with self.writeSharedFileStream(self.rootJobStoreIDFileName) as f:
             f.write(rootJobStoreID.encode('utf-8'))
 
-    def loadRootJobDescription(self):
+    def loadRootJob(self):
         """
         Loads the JobDescription for the root job in the current job store.
 
@@ -220,7 +220,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     def createRootJob(self, desc):
         """
-        Create a new job and set it as the root job in this job store
+        Create the given JobDescription and set it as the root job in this job store
 
         :param toil.job.JobDescription desc: JobDescription to save and make the root job.
         :rtype: toil.job.JobDescription
@@ -657,14 +657,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 serviceJobDescription.terminateJobStoreID = subFlagFile(serviceJobDescription.jobStoreID, serviceJobDescription.terminateJobStoreID, 2)
                 serviceJobDescription.errorJobStoreID = subFlagFile(serviceJobDescription.jobStoreID, serviceJobDescription.errorJobStoreID, 3)
 
-            # jobDescription.services is a list of lists containing serviceNodes
             # remove all services that no longer exist
-            services = jobDescription.services
-            jobDescription.services = []
-            for serviceList in services:
-                existingServices = [service for service in serviceList if haveJob(service)]
-                if existingServices:
-                    jobDescription.services.append(existingServices)
+            jobDescription.filterServiceHosts(haveJob)
 
             for l in jobDescription.services:
                 for serviceID in l:
@@ -711,23 +705,22 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def assignID(self, jobDescription):
         """
-        Assign a jobStoreID to the given JobDescription.
+        Get a new jobStoreID to be used by the described job.
         
-        The JobDescription will not be stored until it is passed to update().
+        Files associated with the assigned ID will be accepted even if the JobDescription has never been created or updated.
         
-        The JobDescription will be modified in place.
-        
-        Files associated with the assigned ID will be accepted even if the JobDescription has never been updated.
-        
-        :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to.
+        :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to
+        :return: An ID that can be used by the JobDescription
+        :rtype: str
         """
         raise NotImplementedError()
 
     @abstractmethod
     def create(self, jobDescription):
         """
-        Writes the given JobDescription to the job store.
-        
+        Writes the given JobDescription to the job store. The job must have an ID assigned already.
+       
+        :return: The JobDescription passed.
         :rtype: toil.job.JobDescription
         """
         raise NotImplementedError()

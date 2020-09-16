@@ -1709,7 +1709,7 @@ class Job:
                # Save the fake ID
                fake = job.jobStoreID
                # Assign a real one
-               jobStore.assignID(job.description)
+               job.description.jobStoreID = jobStore.assignID(job.description)
                # Save the mapping
                fakeToReal[fake] = job.jobStoreID
                # Make sure the JobDescription can do its JobStore-related
