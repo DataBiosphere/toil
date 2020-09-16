@@ -140,8 +140,9 @@ class JobDescription:
             particular job instance. Ought to be the job class's name
             if no real user-defined name is available.
         :param str|None jobName: Name of the kind of job this is. May be used in job
-            store IDs and logging. Ought to be the job class's name if no real
-            user-defined name is available.
+            store IDs and logging. Also used to let the cluster scaler learn a
+            model for how long the job will take. Ought to be the job class's
+            name if no real user-defined name is available.
         :param int predecessorNumber: Number of total predecessors
             that must finish before the described Job from being scheduled.
         """
