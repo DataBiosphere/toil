@@ -210,7 +210,7 @@ class Leader(object):
         :return: The return value of the root job's run function.
         :rtype: Any
         """
-        
+        #logger.debug("ENTER run()")
         with enlighten.get_manager(stream=sys.stderr, enabled=not self.config.disableProgress) as manager:
             # Set up the fancy console UI if desirable
             self.progress_overall = manager.counter(total=0, desc='Workflow Progress', unit='jobs',
@@ -234,6 +234,7 @@ class Leader(object):
 
                     try:
                         # Run the main loop
+
                         self.innerLoop()
                     finally:
                         if self.clusterScaler is not None:
@@ -552,6 +553,8 @@ class Leader(object):
         """
         self.timeSinceJobsLastRescued = time.time()
 
+        #logger.debug("ENTER innerLoop()")
+
         while self.toilState.updatedJobs or \
               self.getNumberOfJobsIssued() or \
               self.serviceManager.jobsIssuedToServiceManager:
@@ -564,9 +567,9 @@ class Leader(object):
             self._processJobsWithRunningServices()
 
             # check in with the batch system
-            logger.debug(f"INNERLOOP self.batchSystem: {self.batchSystem}")
+            #logger.debug(f"INNERLOOP self.batchSystem: {self.batchSystem}")
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
-            logger.debug("INNERLOOP GETTING UPDATED JOBS")
+            #logger.debug("INNERLOOP GETTING UPDATED JOBS")
             if updatedJobTuple is not None:
                 self._gatherUpdatedJobs(updatedJobTuple)
             else:
