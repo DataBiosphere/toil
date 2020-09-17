@@ -675,7 +675,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     
 
     def getUpdatedBatchJob(self, maxWait):
-
+        
+        logger.debug("ENTERED getUpdatedBatchJob")
         entry = datetime.datetime.now()
 
         result = self._getUpdatedBatchJobImmediately()
@@ -737,6 +738,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     time.sleep(min(maxWait/2, 1.0))
 
             # When we get here, either we found something or we ran out of time
+            logger.debug("getUpdatedBatchJob: either we found something or we ran out of time")
             return result
 
 
@@ -745,11 +747,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         Return None if no updated (completed or failed) batch job is currently
         available, and jobID, exitCode, runtime if such a job can be found.
         """
-
+        
+        logger.debug("ENTERED _getUpdatedBatchJobImmediately")
         # See if a local batch job has updated and is available immediately
         local_tuple = self.getUpdatedLocalJob(0)
         if local_tuple:
             # If so, use it
+            logger.debug("_getUpdatedBatchJobImmediately: local batch job has updated")
             return local_tuple
 
         # Otherwise we didn't get a local job.
@@ -938,6 +942,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Otherwise everything is fine and the job is gone. 
 
         # Return the one finished job we found
+        logger.debug("EXITING _getUpdatedBatchJobImmediately")
         return UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=None)
 
     def _waitForJobDeath(self, jobName):
