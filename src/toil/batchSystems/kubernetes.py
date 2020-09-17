@@ -682,6 +682,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         if result is not None or maxWait == 0:
             # We got something on the first try, or we only get one try
+            logger.debug("TESTING")
             return result
 
         # Otherwise we need to maybe wait.
