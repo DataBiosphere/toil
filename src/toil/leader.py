@@ -520,7 +520,7 @@ class Leader(object):
             if exitStatus == 0:
                 cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
                               else logger.info)
-                cur_logger('Job ENDED: %s', updatedJob)
+                cur_logger('Job ended: %s', updatedJob)
             else:
                 logger.warning('Job failed with exit value %i: %s',
                                exitStatus, updatedJob)
@@ -564,7 +564,9 @@ class Leader(object):
             self._processJobsWithRunningServices()
 
             # check in with the batch system
+            logger.debug(f"INNERLOOP self.batchSystem: {self.batchSystem}")
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
+            logger.debug("INNERLOOP GETTING UPDATED JOBS")
             if updatedJobTuple is not None:
                 self._gatherUpdatedJobs(updatedJobTuple)
             else:
