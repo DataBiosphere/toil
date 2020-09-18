@@ -558,23 +558,34 @@ class Leader(object):
         while self.toilState.updatedJobs or \
               self.getNumberOfJobsIssued() or \
               self.serviceManager.jobsIssuedToServiceManager:
-
+            
             if self.toilState.updatedJobs:
+                logger.warning("BEFORE self._processReadyJobs()")
                 self._processReadyJobs()
+            logger.warning("AFTER self._processReadyJobs()")
 
             # deal with service-related jobs
+            logger.warning("BEFORE self._startServiceJobs()")
             self._startServiceJobs()
+            logger.warning("AFTER self._startServiceJobs()")
+
+            logger.warning("BEFORE self._processJobsWithRunningServices()")
             self._processJobsWithRunningServices()
+            logger.warning("AFTER self._processJobsWithRunningServices()")
 
             # check in with the batch system
-            #logger.debug(f"INNERLOOP self.batchSystem: {self.batchSystem}")
+            logger.warning(f"INNERLOOP self.batchSystem: {self.batchSystem}")
+            logger.warning(f"BEFORE self.batchSystem.getUpdatedBatchJob(maxWait=2)")
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
-            #logger.debug("INNERLOOP GETTING UPDATED JOBS")
+            logger.warning(f"AFTER self.batchSystem.getUpdatedBatchJob(maxWait=2)")
             if updatedJobTuple is not None:
+                logger.warning(f"BEFORE self._gatherUpdatedJobs(updatedJobTuple)")
                 self._gatherUpdatedJobs(updatedJobTuple)
+                logger.warning(f"AFTER self._gatherUpdatedJobs(updatedJobTuple)")
             else:
                 # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
+            
 
             # Check on the associated threads and exit if a failure is detected
             self.statsAndLogging.check()
@@ -594,6 +605,8 @@ class Leader(object):
                 
             # Make sure to keep elapsed time and ETA up to date even when no jobs come in
             self.progress_overall.update(incr=0)
+
+            logger.warning("END OF WHILE LOOP")
 
         logger.debug("Finished the main loop: no jobs left to run.")
 
