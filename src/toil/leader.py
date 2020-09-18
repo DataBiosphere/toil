@@ -559,24 +559,28 @@ class Leader(object):
               self.getNumberOfJobsIssued() or \
               self.serviceManager.jobsIssuedToServiceManager:
             
+            logger.warning(f"self.toilState.updatedJobs: {self.toilState.updatedJobs}")
+            logger.warning(f"self.getNumberOfJobsIssued(): {self.getNumberOfJobsIssued()}")
+            logger.warning(f"self.serviceManager.jobsIssuedToServiceManager: {self.serviceManager.jobsIssuedToServiceManager}")
+            
             if self.toilState.updatedJobs:
                 logger.warning("BEFORE self._processReadyJobs()")
                 self._processReadyJobs()
             logger.warning("AFTER self._processReadyJobs()")
 
             # deal with service-related jobs
-            logger.warning("BEFORE self._startServiceJobs()")
+            #logger.warning("BEFORE self._startServiceJobs()")
             self._startServiceJobs()
-            logger.warning("AFTER self._startServiceJobs()")
+            #logger.warning("AFTER self._startServiceJobs()")
 
-            logger.warning("BEFORE self._processJobsWithRunningServices()")
+            #logger.warning("BEFORE self._processJobsWithRunningServices()")
             self._processJobsWithRunningServices()
-            logger.warning("AFTER self._processJobsWithRunningServices()")
+            #logger.warning("AFTER self._processJobsWithRunningServices()")
 
             # check in with the batch system
-            logger.warning(f"INNERLOOP self.batchSystem: {self.batchSystem}")
             logger.warning(f"BEFORE self.batchSystem.getUpdatedBatchJob(maxWait=2)")
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
+            logger.warning(f"updatedJobTuple: {updatedJobTuple}")
             logger.warning(f"AFTER self.batchSystem.getUpdatedBatchJob(maxWait=2)")
             if updatedJobTuple is not None:
                 logger.warning(f"BEFORE self._gatherUpdatedJobs(updatedJobTuple)")
@@ -588,37 +592,32 @@ class Leader(object):
             
 
             # Check on the associated threads and exit if a failure is detected
-            logger.warning("BEFORE self.statsAndLogging.check()")
+            #logger.warning("BEFORE self.statsAndLogging.check()")
             self.statsAndLogging.check()
-            logger.warning("AFTER self.statsAndLogging.check()")
+            #logger.warning("AFTER self.statsAndLogging.check()")
 
-            logger.warning("BEFORE serviceManager.check()")
+            #logger.warning("BEFORE serviceManager.check()")
             self.serviceManager.check()
-            logger.warning("AFTER serviceManager.check()")
+            #logger.warning("AFTER serviceManager.check()")
 
             # the cluster scaler object will only be instantiated if autoscaling is enabled
             if self.clusterScaler is not None:
-                logger.warning("BEFORE self.clusterScaler.check()")
                 self.clusterScaler.check()
-                logger.warning("AFTER self.clusterScaler.check()")
-            
+
             if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
                 # Nothing happened this round and it's been long
                 # enough since we last checked. Check for deadlocks.
                 logger.warning("BEFORE self.checkForDeadlocks()")
+                logger.warning(f"self.toilState.updatedJobs: {self.toilState.updatedJobs} {self.deadlockThrottler.throttle(wait=False)}")
                 self.checkForDeadlocks()
                 logger.warning("AFTER self.checkForDeadlocks()")
                 
             if self.statusThrottler.throttle(wait=False):
                 # Time to tell the user how things are going
-                logger.warning("BEFORE self._reportWorkflowStatus()")
                 self._reportWorkflowStatus()
-                logger.warning("AFTER self._reportWorkflowStatus()")
                 
             # Make sure to keep elapsed time and ETA up to date even when no jobs come in
-            logger.warning("BEFORE self.progress_overall.update(incr=0)")
             self.progress_overall.update(incr=0)
-            logger.warning("AFTER self.progress_overall.update(incr=0)")
 
             logger.warning("END OF WHILE LOOP")
 
@@ -637,7 +636,7 @@ class Leader(object):
         """
         Checks if the system is deadlocked running service jobs.
         """
-        
+        logger.warning("IN checkForDeadlocks()")
         totalRunningJobs = len(self.batchSystem.getRunningBatchJobIDs())
         totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
         
@@ -699,6 +698,7 @@ class Leader(object):
             
             self.potentialDeadlockedJobs = set()
             self.potentialDeadlockTime = 0
+        logger.warning("END checkForDeadlocks()")
 
     def issueJob(self, jobNode):
         """Add a job to the queue of jobs."""

@@ -1018,6 +1018,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def getRunningBatchJobIDs(self):
         # We need a dict from jobID (integer) to seconds it has been running
+        logger.warning("IN getRunningBatchJobIDs()")
         secondsPerJob = dict()
         for job in self._ourJobObjects():
             # Grab the pod for each job
@@ -1036,6 +1037,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                 # Save it under the stringified job ID
                 secondsPerJob[self._getIDForOurJob(job)] = runtime
+        logger.warning("AFTER GRAB PODS FOR EACH JOB")
         # Mix in the local jobs
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
