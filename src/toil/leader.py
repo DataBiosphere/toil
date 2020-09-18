@@ -585,6 +585,14 @@ class Leader(object):
             else:
                 # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
+
+                if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
+                    # Nothing happened this round and it's been long
+                    # enough since we last checked. Check for deadlocks.
+                    logger.warning("BEFORE self.checkForDeadlocks()")
+                    logger.warning(f"self.toilState.updatedJobs: {self.toilState.updatedJobs} {self.deadlockThrottler.throttle(wait=False)}")
+                    self.checkForDeadlocks()
+                    logger.warning("AFTER self.checkForDeadlocks()")
             
 
             # Check on the associated threads and exit if a failure is detected
@@ -599,14 +607,6 @@ class Leader(object):
             # the cluster scaler object will only be instantiated if autoscaling is enabled
             if self.clusterScaler is not None:
                 self.clusterScaler.check()
-
-            if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
-                # Nothing happened this round and it's been long
-                # enough since we last checked. Check for deadlocks.
-                logger.warning("BEFORE self.checkForDeadlocks()")
-                logger.warning(f"self.toilState.updatedJobs: {self.toilState.updatedJobs} {self.deadlockThrottler.throttle(wait=False)}")
-                self.checkForDeadlocks()
-                logger.warning("AFTER self.checkForDeadlocks()")
                 
             if self.statusThrottler.throttle(wait=False):
                 # Time to tell the user how things are going
