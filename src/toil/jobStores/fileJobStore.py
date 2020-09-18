@@ -27,6 +27,7 @@ import tempfile
 import stat
 import errno
 import time
+import uuid
 try:
     import cPickle as pickle
 except ImportError:
@@ -565,11 +566,11 @@ class FileJobStore(AbstractJobStore):
 
     def writeStatsAndLogging(self, statsAndLoggingString):
         # Temporary files are placed in the stats directory tree
-        fd, tempStatsFile = tempfile.mkstemp(prefix="stats", suffix=".new", dir=self._getArbitraryStatsDir())
+        tempStatsFileName = "stats" + str(uuid.uuid4().hex) + ".new"
+        tempStatsFile = os.path.join(self._getArbitraryStatsDir, tempStatsFileName)
         writeFormat = 'w' if isinstance(statsAndLoggingString, str) else 'wb'
         with open(tempStatsFile, writeFormat) as f:
             f.write(statsAndLoggingString)
-        os.close(fd)
         os.rename(tempStatsFile, tempStatsFile[:-4])  # This operation is atomic
 
     def readStatsAndLogging(self, callback, readAll=False):
@@ -904,7 +905,11 @@ class FileJobStore(AbstractJobStore):
             os.makedirs(jobFilesDir, exist_ok=True)
 
             # Then make a temp directory inside it
-            return tempfile.mkdtemp(prefix='file-', dir=jobFilesDir)
+            filesDir = os.path.join(jobFilesDir, 'file-' + uuid.uuid4().hex)
+            os.mkdir(filesDir)
+            return filesDir
         else:
             # Make a temporary file within the non-job-associated files hierarchy
-            return tempfile.mkdtemp(prefix='file-', dir=self._getArbitraryFilesDir())
+            filesDir = os.path.join(self._getArbitraryFilesDir(), 'file-' + uuid.uuid4().hex)
+            os.mkdir(filesDir)
+            return filesDir
