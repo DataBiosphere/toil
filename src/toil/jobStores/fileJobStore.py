@@ -567,7 +567,7 @@ class FileJobStore(AbstractJobStore):
     def writeStatsAndLogging(self, statsAndLoggingString):
         # Temporary files are placed in the stats directory tree
         tempStatsFileName = "stats" + str(uuid.uuid4().hex) + ".new"
-        tempStatsFile = os.path.join(self._getArbitraryStatsDir, tempStatsFileName)
+        tempStatsFile = os.path.join(self._getArbitraryStatsDir(), tempStatsFileName)
         writeFormat = 'w' if isinstance(statsAndLoggingString, str) else 'wb'
         with open(tempStatsFile, writeFormat) as f:
             f.write(statsAndLoggingString)
