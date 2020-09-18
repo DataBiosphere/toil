@@ -559,10 +559,6 @@ class Leader(object):
               self.getNumberOfJobsIssued() or \
               self.serviceManager.jobsIssuedToServiceManager:
             
-            logger.warning(f"self.toilState.updatedJobs: {self.toilState.updatedJobs}")
-            logger.warning(f"self.getNumberOfJobsIssued(): {self.getNumberOfJobsIssued()}")
-            logger.warning(f"self.serviceManager.jobsIssuedToServiceManager: {self.serviceManager.jobsIssuedToServiceManager}")
-            
             if self.toilState.updatedJobs:
                 logger.warning("BEFORE self._processReadyJobs()")
                 self._processReadyJobs()
