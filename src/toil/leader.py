@@ -588,23 +588,37 @@ class Leader(object):
             
 
             # Check on the associated threads and exit if a failure is detected
+            logger.warning("BEFORE self.statsAndLogging.check()")
             self.statsAndLogging.check()
+            logger.warning("AFTER self.statsAndLogging.check()")
+
+            logger.warning("BEFORE serviceManager.check()")
             self.serviceManager.check()
+            logger.warning("AFTER serviceManager.check()")
+
             # the cluster scaler object will only be instantiated if autoscaling is enabled
             if self.clusterScaler is not None:
+                logger.warning("BEFORE self.clusterScaler.check()")
                 self.clusterScaler.check()
+                logger.warning("AFTER self.clusterScaler.check()")
             
             if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
                 # Nothing happened this round and it's been long
                 # enough since we last checked. Check for deadlocks.
+                logger.warning("BEFORE self.checkForDeadlocks()")
                 self.checkForDeadlocks()
+                logger.warning("AFTER self.checkForDeadlocks()")
                 
             if self.statusThrottler.throttle(wait=False):
                 # Time to tell the user how things are going
+                logger.warning("BEFORE self._reportWorkflowStatus()")
                 self._reportWorkflowStatus()
+                logger.warning("AFTER self._reportWorkflowStatus()")
                 
             # Make sure to keep elapsed time and ETA up to date even when no jobs come in
+            logger.warning("BEFORE self.progress_overall.update(incr=0)")
             self.progress_overall.update(incr=0)
+            logger.warning("AFTER self.progress_overall.update(incr=0)")
 
             logger.warning("END OF WHILE LOOP")
 
