@@ -772,16 +772,15 @@ class SynthesizeWDL:
         cmd_array = []
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
-                if cmd.startswith("r'''"):
-                    fn_section += heredoc_wdl('''
+                if not cmd.startswith("r'''"):
+                    cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
+                fn_section = fn_section + heredoc_wdl('''
+                        try:
+                            # Intended to deal with "optional" inputs that may not exist
+                            # TODO: handle this better
                             command{num} = {cmd}
-                            ''', {'cmd': cmd, 'num': self.cmd_num}, indent='        ')
-                else:
-                    fn_section += heredoc_wdl('''
-                            command{num}_var = {cmd}
-                            command{num} = str(command{num}_var if not isinstance(command{num}_var, tuple) 
-                                           else process_and_read_file(command{num}_var, tempDir, fileStore)).strip("\\n")
-                            ''', {'cmd': cmd, 'num': self.cmd_num}, indent='        ')
+                        except:
+                            command{num} = ''\n''', {'cmd': cmd, 'num': self.cmd_num}, indent='        ')
                 cmd_array.append('command' + str(self.cmd_num))
                 self.cmd_num = self.cmd_num + 1
 
