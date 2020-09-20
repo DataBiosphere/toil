@@ -750,7 +750,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         logger.warning("ENTERED: _getUpdatedBatchJobImmediately")
         # See if a local batch job has updated and is available immediately
+        logger.warning("ENTER: self.getUpdatedLocalJob(0)")
         local_tuple = self.getUpdatedLocalJob(0)
+        logger.warning("AFTER: self.getUpdatedLocalJob(0)")
         if local_tuple:
             # If so, use it
             logger.warning("_getUpdatedBatchJobImmediately: local batch job has updated")
