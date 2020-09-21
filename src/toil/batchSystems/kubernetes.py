@@ -519,9 +519,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if token is not None:
                 kwargs['_continue'] = token
             
-            logger.warning("BEFORE self._try_kubernetes(self._api('batch'))")
+            #logger.warning("BEFORE self._try_kubernetes(self._api('batch'))")
             results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs)
-            logger.warning("AFTER self._try_kubernetes(self._api('batch'))")
+            #logger.warning("AFTER self._try_kubernetes(self._api('batch'))")
 
             for job in results.items:
                 if self._isJobOurs(job):
@@ -678,14 +678,14 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def getUpdatedBatchJob(self, maxWait):
         
-        logger.warning("ENTERED getUpdatedBatchJob")
+        #logger.warning("ENTERED getUpdatedBatchJob")
         entry = datetime.datetime.now()
 
         result = self._getUpdatedBatchJobImmediately()
 
         if result is not None or maxWait == 0:
             # We got something on the first try, or we only get one try
-            logger.warning("getUpdatedBatchJob: Found updated job on first try")
+            #logger.warning("getUpdatedBatchJob: Found updated job on first try")
             return result
 
         # Otherwise we need to maybe wait.
@@ -750,11 +750,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         available, and jobID, exitCode, runtime if such a job can be found.
         """
         
-        logger.warning("ENTERED: _getUpdatedBatchJobImmediately")
+        #logger.warning("ENTERED: _getUpdatedBatchJobImmediately")
         # See if a local batch job has updated and is available immediately
-        logger.warning("ENTER: self.getUpdatedLocalJob(0)")
+        #logger.warning("ENTER: self.getUpdatedLocalJob(0)")
         local_tuple = self.getUpdatedLocalJob(0)
-        logger.warning("ENTER: self.getUpdatedLocalJob(0)")
+        #logger.warning("ENTER: self.getUpdatedLocalJob(0)")
         if local_tuple:
             # If so, use it
             logger.warning("_getUpdatedBatchJobImmediately: local batch job has updated")
@@ -772,15 +772,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         jobObject = None
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
-        logger.warning("ENTER ourJobObjects()")
+        #logger.warning("ENTER ourJobObjects()")
         for j in self._ourJobObjects(onlySucceeded=True, limit=1):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
-        logger.warning("EXIT ourJobObjects()")
+        #logger.warning("EXIT ourJobObjects()")
 
         if jobObject is None:
-            logger.warning("ENTER FOR LOOP #1 _getUpdatedBatchJobImmediately")
+            #logger.warning("ENTER FOR LOOP #1 _getUpdatedBatchJobImmediately")
             for j in self._ourJobObjects():
                 # If there aren't any succeeded jobs, scan all jobs
                 # See how many times each failed

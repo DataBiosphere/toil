@@ -560,9 +560,9 @@ class Leader(object):
               self.serviceManager.jobsIssuedToServiceManager:
             
             if self.toilState.updatedJobs:
-                logger.warning("BEFORE self._processReadyJobs()")
+                #logger.warning("BEFORE self._processReadyJobs()")
                 self._processReadyJobs()
-            logger.warning("AFTER self._processReadyJobs()")
+            #logger.warning("AFTER self._processReadyJobs()")
 
             # deal with service-related jobs
             #logger.warning("BEFORE self._startServiceJobs()")
@@ -574,14 +574,14 @@ class Leader(object):
             #logger.warning("AFTER self._processJobsWithRunningServices()")
 
             # check in with the batch system
-            logger.warning(f"BEFORE self.batchSystem.getUpdatedBatchJob(maxWait=2)")
+            #logger.warning(f"BEFORE self.batchSystem.getUpdatedBatchJob(maxWait=2)")
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
-            logger.warning(f"updatedJobTuple: {updatedJobTuple}")
-            logger.warning(f"AFTER self.batchSystem.getUpdatedBatchJob(maxWait=2)")
+            #logger.warning(f"updatedJobTuple: {updatedJobTuple}")
+            #logger.warning(f"AFTER self.batchSystem.getUpdatedBatchJob(maxWait=2)")
             if updatedJobTuple is not None:
-                logger.warning(f"BEFORE self._gatherUpdatedJobs(updatedJobTuple)")
+                #logger.warning(f"BEFORE self._gatherUpdatedJobs(updatedJobTuple)")
                 self._gatherUpdatedJobs(updatedJobTuple)
-                logger.warning(f"AFTER self._gatherUpdatedJobs(updatedJobTuple)")
+                #logger.warning(f"AFTER self._gatherUpdatedJobs(updatedJobTuple)")
             else:
                 # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
@@ -589,10 +589,10 @@ class Leader(object):
                 if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
                     # Nothing happened this round and it's been long
                     # enough since we last checked. Check for deadlocks.
-                    logger.warning("BEFORE self.checkForDeadlocks()")
-                    logger.warning(f"self.toilState.updatedJobs: {self.toilState.updatedJobs} {self.deadlockThrottler.throttle(wait=False)}")
+                    #logger.warning("BEFORE self.checkForDeadlocks()")
+                    #logger.warning(f"self.toilState.updatedJobs: {self.toilState.updatedJobs} {self.deadlockThrottler.throttle(wait=False)}")
                     self.checkForDeadlocks()
-                    logger.warning("AFTER self.checkForDeadlocks()")
+                    #logger.warning("AFTER self.checkForDeadlocks()")
             
 
             # Check on the associated threads and exit if a failure is detected
@@ -615,7 +615,7 @@ class Leader(object):
             # Make sure to keep elapsed time and ETA up to date even when no jobs come in
             self.progress_overall.update(incr=0)
 
-            logger.warning("END OF WHILE LOOP")
+            #logger.warning("END OF WHILE LOOP")
 
         logger.debug("Finished the main loop: no jobs left to run.")
 
@@ -632,7 +632,7 @@ class Leader(object):
         """
         Checks if the system is deadlocked running service jobs.
         """
-        logger.warning("IN checkForDeadlocks()")
+        #logger.warning("IN checkForDeadlocks()")
         totalRunningJobs = len(self.batchSystem.getRunningBatchJobIDs())
         totalServicesIssued = self.serviceJobsIssued + self.preemptableServiceJobsIssued
         
@@ -694,7 +694,7 @@ class Leader(object):
             
             self.potentialDeadlockedJobs = set()
             self.potentialDeadlockTime = 0
-        logger.warning("END checkForDeadlocks()")
+        #logger.warning("END checkForDeadlocks()")
 
     def issueJob(self, jobNode):
         """Add a job to the queue of jobs."""
