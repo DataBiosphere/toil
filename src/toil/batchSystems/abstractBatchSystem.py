@@ -436,7 +436,6 @@ class BatchSystemLocalSupport(BatchSystemSupport):
     def getUpdatedLocalJob(self, maxWait):
         # type: (int) -> Optional[Tuple[int, int, int]]
         """To be called by getUpdatedBatchJob()"""
-        logger.warning('IN getUpdatedLocalJob()')
         return self.localBatch.getUpdatedBatchJob(maxWait)
 
     def getNextJobID(self):  # type: () -> int
