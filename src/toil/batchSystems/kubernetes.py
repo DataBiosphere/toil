@@ -182,6 +182,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # TODO: Make this an environment variable?
         self.enableWatching = False
 
+        self.runID = uuid.uuid4()
+
         self.jobIds = set()
     
    
@@ -355,7 +357,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Make a batch system scope job ID
             jobID = self.getNextJobID()
             # Make a unique name
-            jobName = self.jobPrefix + str(jobID)
+            jobName = self.runID + str(jobID)
 
             # Make a job dict to send to the executor.
             # First just wrap the command and the environment to run it in
@@ -447,7 +449,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=0)
             # Make metadata to tag the job with info.
             # We use generate_name to ensure a unique name
-            metadata = kubernetes.client.V1ObjectMeta(name=jobName)
+            metadata = kubernetes.client.V1ObjectMeta(name=jobName
+                                                    ,labels={"toil_run": self.runID})
             # And make the actual job
             job = kubernetes.client.V1Job(spec=job_spec,
                                           metadata=metadata,
