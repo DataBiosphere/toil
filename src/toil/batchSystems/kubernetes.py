@@ -552,7 +552,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         token = None
         
-        # Work out what the return code was (which ject.metadata.name)
+        # Work out what the return code was (which we need to get from the
+        # pods) We get the associated pods by querying on the label selector
+        # `job-name=JOBNAME`
+        query = 'job-name={}'.format(jobObject.metadata.name)
         
         while True:
             # We can't just pass e.g. a None continue token when there isn't
@@ -749,7 +752,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # See if a local batch job has updated and is available immediately
         logger.warning("ENTER: self.getUpdatedLocalJob(0)")
         local_tuple = self.getUpdatedLocalJob(0)
-        logger.warning("AFTER: self.getUpdatedLocalJob(0)")
+        logger.warning("ENTER: self.getUpdatedLocalJob(0)")
         if local_tuple:
             # If so, use it
             logger.warning("_getUpdatedBatchJobImmediately: local batch job has updated")
@@ -767,12 +770,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         jobObject = None
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
-        logger.warning("ENTER self._ourJobObjects()")
+        logger.warning("ENTER ourJobObjects()")
         for j in self._ourJobObjects(onlySucceeded=True, limit=1):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
-        logger.warning("EXIT self._ourJobObjects()")
+        logger.warning("EXIT ourJobObjects()")
+
         if jobObject is None:
             logger.warning("ENTER FOR LOOP #1 _getUpdatedBatchJobImmediately")
             for j in self._ourJobObjects():
