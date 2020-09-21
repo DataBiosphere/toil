@@ -519,8 +519,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if token is not None:
                 kwargs['_continue'] = token
             
+            logger.warning("BEFORE self._try_kubernetes(self._api('batch'))")
             results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs)
-            
+            logger.warning("AFTER self._try_kubernetes(self._api('batch'))")
+
             for job in results.items:
                 if self._isJobOurs(job):
                     # This job belongs to us
