@@ -552,10 +552,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         token = None
         
-        # Work out what the return code was (which we need to get from the
-        # pods) We get the associated pods by querying on the label selector
-        # `job-name=JOBNAME`
-        query = 'job-name={}'.format(jobObject.metadata.name)
+        # Work out what the return code was (which ject.metadata.name)
         
         while True:
             # We can't just pass e.g. a None continue token when there isn't
@@ -770,11 +767,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         jobObject = None
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
+        logger.warning("ENTER self._ourJobObjects()")
         for j in self._ourJobObjects(onlySucceeded=True, limit=1):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
-
+        logger.warning("EXIT self._ourJobObjects()")
         if jobObject is None:
             logger.warning("ENTER FOR LOOP #1 _getUpdatedBatchJobImmediately")
             for j in self._ourJobObjects():
