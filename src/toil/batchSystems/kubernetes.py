@@ -794,10 +794,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     chosenFor = 'failed'
                     break
 
-            logger.warning("EXIT FOR LOOP #1 _getUpdatedBatchJobImmediately")
+            #logger.warning("EXIT FOR LOOP #1 _getUpdatedBatchJobImmediately")
         if jobObject is None:
             # If no jobs are failed, look for jobs with pods that are stuck for various reasons.
-            logger.warning("ENTER FOR LOOP #2 _getUpdatedBatchJobImmediately")
+            #logger.warning("ENTER FOR LOOP #2 _getUpdatedBatchJobImmediately")
             for j in self._ourJobObjects():
                 pod = self._getPodForJob(j)
 
@@ -838,7 +838,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     chosenFor = 'stuck'
                     break
 
-            logger.warning("EXIT FOR LOOP #2 _getUpdatedBatchJobImmediately")    
+            #logger.warning("EXIT FOR LOOP #2 _getUpdatedBatchJobImmediately")    
 
         if jobObject is None:
             # Say we couldn't find anything
@@ -857,10 +857,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # If somehow this is unset, say it was just now.
             jobSubmitTime = utc_now() 
 
-        logger.warning("BEFORE GRAB POD _getUpdatedBatchJobImmediately")    
+        #logger.warning("BEFORE GRAB POD _getUpdatedBatchJobImmediately")    
         # Grab the pod
         pod = self._getPodForJob(jobObject)
-        logger.warning("AFTER POD _getUpdatedBatchJobImmediately") 
+        #logger.warning("AFTER POD _getUpdatedBatchJobImmediately") 
 
         if pod is not None:
             if chosenFor == 'done' or chosenFor == 'failed':
@@ -933,7 +933,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         
         try:
-            logger.warning("ENTER TRY _getUpdatedBatchJobImmediately")
+            #logger.warning("ENTER TRY _getUpdatedBatchJobImmediately")
             # Delete the job and all dependents (pods), hoping to get a 404 if it's magically gone
             self._try_kubernetes_expecting_gone(self._api('batch').delete_namespaced_job, jobObject.metadata.name,
                                                 self.namespace,
@@ -948,7 +948,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # on our query for succeeded jobs. So we poll for the job's
             # non-existence.
             self._waitForJobDeath(jobObject.metadata.name)
-            logger.warning("END TRY _getUpdatedBatchJobImmediately")        
+            #logger.warning("END TRY _getUpdatedBatchJobImmediately")        
         except ApiException as e:
             if e.status != 404:
                 # Something is wrong, other than the job already being deleted.
@@ -956,7 +956,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Otherwise everything is fine and the job is gone. 
 
         # Return the one finished job we found
-        logger.warning("EXITING _getUpdatedBatchJobImmediately")
+        #logger.warning("EXITING _getUpdatedBatchJobImmediately")
         return UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=None)
 
     def _waitForJobDeath(self, jobName):
@@ -1032,7 +1032,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
     def getRunningBatchJobIDs(self):
         # We need a dict from jobID (integer) to seconds it has been running
-        logger.warning("IN getRunningBatchJobIDs()")
+        #logger.warning("IN getRunningBatchJobIDs()")
         secondsPerJob = dict()
         for job in self._ourJobObjects():
             # Grab the pod for each job
@@ -1051,7 +1051,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                 # Save it under the stringified job ID
                 secondsPerJob[self._getIDForOurJob(job)] = runtime
-        logger.warning("AFTER GRAB PODS FOR EACH JOB")
+        #logger.warning("AFTER GRAB PODS FOR EACH JOB")
         # Mix in the local jobs
         secondsPerJob.update(self.getRunningLocalJobIDs())
         return secondsPerJob
