@@ -446,10 +446,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Make metadata to labl the job/pod with info.
             metadata = kubernetes.client.V1ObjectMeta(name=jobName
                                                     ,labels={"toil_run": self.runID})
+            
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
+            
             # Make another spec for the job, asking to run the template with no backoff
             job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=0)
+            
             # And make the actual job
             job = kubernetes.client.V1Job(spec=job_spec,
                                           metadata=metadata,
@@ -480,7 +483,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     
     def _ourJobObjects(self, onlySucceeded=False, limit=None):
         """
-        Yield all Kubernetes V1Job objects that we are responsible for that the
+        Return Kubernetes V1Job objects that we are responsible for that the
         cluster knows about.
 
         Doesn't support a free-form selector, because there's only about 3
@@ -499,46 +502,14 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # https://github.com/kubernetes-client/python/issues/953. For now we
         # will just throw an error if we don't get to the end of the list in
         # time.
-        token = None
         
-        # Do our own limiting since we need to apply a filter that the server
-        # can't.
-        seen = 0
-        
-        # TODO: We ought to label our jobs by owning Toil workflow so we can
-        # look them up instead of filtering down later.
-        
-        while True:
-            # We can't just pass e.g. a None continue token when there isn't
-            # one, because the Kubernetes module reads its kwargs dict and
-            # cares about presence/absence. So we build a dict to send.
-            kwargs = {}
-            if onlySucceeded:
-                # Check only successful jobs.
-                # Note that for selectors it is "successful" while for the
-                # actual object field it is "succeeded".
-                kwargs['field_selector'] = 'status.successful==1'
-            if token is not None:
-                kwargs['_continue'] = token
-            
-            results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, **kwargs)
-            
-            for job in results.items:
-                if self._isJobOurs(job):
-                    # This job belongs to us
-                    yield job
-                    
-                    # Don't go over the limit
-                    seen += 1
-                    if limit is not None and seen >= limit:
-                        return
-                    
-            # Remember the continuation token, if any
-            token = getattr(results.metadata, 'continue', None)
-
-            if token is None:
-                # There isn't one. We got everything.
-                break
+        if onlySucceeded: 
+            return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
+                                            label_selector="toil_run={}".format(self.runID), field_slector="status.successful==1")
+ 
+        return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
+                                            label_selector="toil_run={}".format(self.runID))
+       
                 
     def _getPodForJob(self, jobObject):
         """
@@ -767,7 +738,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         chosenFor = ''
         # Grab our job objects via toil_run label
         ourJobObjects  = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                            label_selector="toil_run={}".format(self.runID),**kwargs)
+                                            label_selector="toil_run={}".format(self.runID))
 
         for j in self._ourJobObjects(onlySucceeded=True, limit=1):
             # Look for succeeded jobs because that's the only filter Kubernetes has
