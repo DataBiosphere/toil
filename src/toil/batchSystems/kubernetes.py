@@ -182,7 +182,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # TODO: Make this an environment variable?
         self.enableWatching = False
 
-        self.runID = uuid.uuid4()
+        self.runID = 'toil-{}'.format(uuid.uuid4())
 
         self.jobIds = set()
     
@@ -443,14 +443,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             pod_spec = kubernetes.client.V1PodSpec(containers=[container],
                                                    volumes=volumes,
                                                    restart_policy="Never")
-            # Wrap the spec in a template
-            template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec)
-            # Make another spec for the job, asking to run the template with no backoff
-            job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=0)
-            # Make metadata to tag the job with info.
-            # We use generate_name to ensure a unique name
+            # Make metadata to labl the job/pod with info.
             metadata = kubernetes.client.V1ObjectMeta(name=jobName
                                                     ,labels={"toil_run": self.runID})
+            # Wrap the spec in a template
+            template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
+            # Make another spec for the job, asking to run the template with no backoff
+            job_spec = kubernetes.client.V1JobSpec(template=template, backoff_limit=0)
             # And make the actual job
             job = kubernetes.client.V1Job(spec=job_spec,
                                           metadata=metadata,
@@ -766,6 +765,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         jobObject = None
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
+        # Grab our job objects via toil_run label
+        ourJobObjects  = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
+                                            label_selector="toil_run={}".format(self.runID),**kwargs)
+
         for j in self._ourJobObjects(onlySucceeded=True, limit=1):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
