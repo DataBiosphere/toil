@@ -41,9 +41,8 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
     def setUpClass(cls):
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
-    def check_function(self, function_name, expected_result):
-        wdl_files = [os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}_as_input.wdl'),
-                     os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}_as_command.wdl')]
+    def check_function(self, function_name, cases, expected_result):
+        wdl_files = [os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}_{case}.wdl') for case in cases]
         json_file = os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}.json')
         for wdl_file in wdl_files:
             with self.subTest(f'Testing: {wdl_file} {json_file}'):
@@ -57,13 +56,17 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
                 shutil.rmtree(output_dir)
 
     def test_ceil(self):
-        self.check_function('ceil', expected_result='12')
+        self.check_function('ceil', cases=['as_input', 'as_command'], expected_result='12')
 
     def test_floor(self):
-        self.check_function('floor', expected_result='11')
+        self.check_function('floor', cases=['as_input', 'as_command'], expected_result='11')
 
     def test_round(self):
-        self.check_function('round', expected_result='11')
+        self.check_function('round', cases=['as_input', 'as_command'], expected_result='11')
+
+    def test_stdout(self):
+        self.check_function('stdout', cases=['as_output'], expected_result='A Whale of a Tale.')
+        self.check_function('stderr', cases=['as_output'], expected_result='a journey straight to stderr')
 
 
 if __name__ == "__main__":

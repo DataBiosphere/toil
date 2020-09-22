@@ -903,7 +903,10 @@ class AnalyzeWDL:
                 if name.source_string == 'length':
                     es = es + 'len('
                 elif name.source_string == 'stdout':
-                    return es + 'stdout'
+                    # let the stdout() function reference the generated stdout file path.
+                    return es + '_toil_wdl_internal__stdout_file'
+                elif name.source_string == 'stderr':
+                    return es + '_toil_wdl_internal__stderr_file'
                 else:
                     es = es + name.source_string + '('
             else:

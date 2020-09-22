@@ -203,18 +203,6 @@ def _get_spot_history(ctx, instance_type):
     spot_data.sort(key=attrgetter("timestamp"), reverse=True)
     return spot_data
 
-ec2FullPolicy = dict(Version="2012-10-17", Statement=[
-    dict(Effect="Allow", Resource="*", Action="ec2:*")])
-
-s3FullPolicy = dict(Version="2012-10-17", Statement=[
-    dict(Effect="Allow", Resource="*", Action="s3:*")])
-
-sdbFullPolicy = dict(Version="2012-10-17", Statement=[
-    dict(Effect="Allow", Resource="*", Action="sdb:*")])
-
-iamFullPolicy = dict(Version="2012-10-17", Statement=[
-    dict(Effect="Allow", Resource="*", Action="iam:*")])
-
 
 def checkValidNodeTypes(provisioner, nodeTypes):
     """

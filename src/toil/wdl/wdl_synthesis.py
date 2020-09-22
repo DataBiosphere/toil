@@ -82,6 +82,7 @@ class SynthesizeWDL:
                     from toil.common import Toil
                     from toil.lib.docker import apiDockerCall
                     from toil.wdl.wdl_functions import generate_docker_bashscript_file
+                    from toil.wdl.wdl_functions import generate_stdout_file
                     from toil.wdl.wdl_functions import select_first
                     from toil.wdl.wdl_functions import sub
                     from toil.wdl.wdl_functions import size
@@ -114,7 +115,7 @@ class SynthesizeWDL:
                     import uuid
                     import logging
                     
-                    asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir = os.getcwd()
+                    _toil_wdl_internal__current_working_dir = os.getcwd()
 
                     logger = logging.getLogger(__name__)
 
@@ -665,6 +666,9 @@ class SynthesizeWDL:
                                  fileStore.logToMaster("{jobname}")
                                  tempDir = fileStore.getLocalTempDir()
                                  
+                                 _toil_wdl_internal__stdout_file = os.path.join(tempDir, 'stdout')
+                                 _toil_wdl_internal__stderr_file = os.path.join(tempDir, 'stderr')
+                                 
                                  try:
                                      os.makedirs(os.path.join(tempDir, 'execution'))
                                  except OSError as e:
@@ -677,7 +681,7 @@ class SynthesizeWDL:
                 var_type = i[1]
                 docker_bool = str(self.needsdocker(job))
                 if var_type == 'File':
-                    fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
+                    fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, _toil_wdl_internal__current_working_dir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
                 else:
                     fn_section += '        {} = self.id_{}\n'.format(var, var)
 
@@ -741,18 +745,23 @@ class SynthesizeWDL:
                        "job_task_reference": job,
                        "docker_user": str(self.docker_user)}
         docker_template = heredoc_wdl('''
-        stdout = apiDockerCall(self, 
-                               image={docker_image}, 
-                               working_dir=tempDir, 
-                               parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")], 
-                               entrypoint="/bin/bash", 
-                               user={docker_user}, 
-                               stderr=True, 
-                               volumes={{tempDir: {{"bind": tempDir}}}})
-        writetype = 'wb' if isinstance(stdout, bytes) else 'w'
-        with open(os.path.join(asldijoiu23r8u34q89fho934t8u34fcurrentworkingdir, '{job_task_reference}.log'), writetype) as f:
-            f.write(stdout)
-            ''', docker_dict, indent='        ')[1:]
+        # apiDockerCall() with demux=True returns a tuple of bytes objects (stdout, stderr).
+        _toil_wdl_internal__stdout, _toil_wdl_internal__stderr = \\
+            apiDockerCall(self, 
+                          image={docker_image}, 
+                          working_dir=tempDir, 
+                          parameters=[os.path.join(tempDir, "{job_task_reference}_script.sh")], 
+                          entrypoint="/bin/bash", 
+                          user={docker_user}, 
+                          stderr=True, 
+                          demux=True, 
+                          volumes={{tempDir: {{"bind": tempDir}}}})
+        with open(os.path.join(_toil_wdl_internal__current_working_dir, '{job_task_reference}.log'), 'wb') as f:
+            if _toil_wdl_internal__stdout:
+                f.write(_toil_wdl_internal__stdout)
+            if _toil_wdl_internal__stderr:
+                f.write(_toil_wdl_internal__stderr)
+        ''', docker_dict, indent='        ')[1:]
 
         return docker_template
 
@@ -804,7 +813,7 @@ class SynthesizeWDL:
         '''
         fn_section = heredoc_wdl('''
                 this_process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = this_process.communicate()\n''', indent='        ')
+                _toil_wdl_internal__stdout, _toil_wdl_internal__stderr = this_process.communicate()\n''', indent='        ')
 
         return fn_section
 
@@ -820,6 +829,17 @@ class SynthesizeWDL:
         '''
 
         fn_section = ''
+
+        fn_section += heredoc_wdl('''
+            _toil_wdl_internal__stdout_file = generate_stdout_file(_toil_wdl_internal__stdout, 
+                                                                   tempDir, 
+                                                                   fileStore=fileStore)
+            _toil_wdl_internal__stderr_file = generate_stdout_file(_toil_wdl_internal__stderr, 
+                                                                   tempDir, 
+                                                                   fileStore=fileStore, 
+                                                                   stderr=True)
+        ''', indent='        ')[1:]
+
         if 'outputs' in self.tasks_dictionary[job]:
             return_values = []
             for output in self.tasks_dictionary[job]['outputs']:

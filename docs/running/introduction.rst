@@ -12,7 +12,7 @@ Toil is built in a modular way so that it can be used on lots of different syste
 The three configurable pieces are the
 
  - :ref:`jobStoreInterface`: A filepath or url that can host and centralize all files for a workflow (e.g. a local folder, or an AWS s3 bucket url).
- - :ref:`batchSystemInterface`: Specifies either a local single-machine or a currently supported HPC environment (lsf, parasol, mesos, slurm, torque, htcondor, or gridengine).  Mesos is a special case, and is launched for cloud environments.
+ - :ref:`batchSystemInterface`: Specifies either a local single-machine or a currently supported HPC environment (lsf, parasol, mesos, slurm, torque, htcondor, kubernetes, or grid_engine).  Mesos is a special case, and is launched for cloud environments.
  - :ref:`provisionerOverview`: For running in the cloud only.  This specifies which cloud provider provides instances to do the "work" of your workflow.
 
 .. _jobStoreOverview:
@@ -53,7 +53,7 @@ Batch System
 ------------
 
 A Toil batch system is either a local single-machine (one computer) or a currently supported
-HPC cluster of computers (lsf, parasol, mesos, slurm, torque, htcondor, or gridengine).  Mesos
+HPC cluster of computers (lsf, parasol, mesos, slurm, torque, htcondor, or grid_engine).  Mesos
 is a special case, and is launched for cloud environments.  These environments manage individual
 worker nodes under a leader node to process the work required in a workflow.  The leader and its
 workers all coordinate their tasks and files through a centralized job store location.
