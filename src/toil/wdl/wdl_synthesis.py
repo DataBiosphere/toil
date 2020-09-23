@@ -1,4 +1,4 @@
-# Copyright (C) 2018 UCSC Computational Genomics Lab
+# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,9 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
 from six import iteritems
 
 import os
@@ -366,8 +363,6 @@ class SynthesizeWDL:
                     return inputs_list, False
         return inputs_list, True
 
-
-
     def write_main_jobwrappers_call(self, task):
         main_section = '        {} = job0.addChild({}Cls('.format(task['alias'], task['task'])
         for var in task['io']:
@@ -423,7 +418,6 @@ class SynthesizeWDL:
                 fn_section += self.write_scatterfunctions_within_if(ifstatement[assignment]['body'])
         return fn_section
 
-
     def write_scatterfunction(self, job, scattername):
         '''
         Writes out a python function for each WDL "scatter" object.
@@ -444,7 +438,6 @@ class SynthesizeWDL:
         fn_section += self.write_scatterfunction_outputreturn(scatter_outputs)
 
         return fn_section
-
 
     def write_scatterfunction_header(self, scattername):
         """
@@ -504,7 +497,6 @@ class SynthesizeWDL:
             fn_section += '        {var} = []\n'.format(var=var['task'] + '_' + var['output'])
 
         return fn_section
-
 
     def write_scatterfunction_loop(self, job, scatter_outputs):
         """
@@ -994,6 +986,7 @@ class SynthesizeWDL:
             f.write(pretty(i.tasks_dictionary))
             f.write('\n\n\n\n\n\n')
             f.write(pretty(i.workflows_dictionary))
+
 
 def write_AST(wdl_file, outdir=None):
     '''
