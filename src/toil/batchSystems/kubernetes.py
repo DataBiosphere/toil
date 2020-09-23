@@ -149,8 +149,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         else:    
             username = ''.join([c for c in getpass.getuser().lower() if c in acceptableChars])[:100]
         
+        self.uniqueID = uuid.uuid4()
+
         # Create a prefix for jobs, starting with our username
-        self.jobPrefix = '{}-toil-{}-'.format(username, uuid.uuid4())
+        self.jobPrefix = '{}-toil-{}-'.format(username, self.uniqueID)
         
         # Instead of letting Kubernetes assign unique job names, we assign our
         # own based on a numerical job ID. This functionality is managed by the
@@ -182,7 +184,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # TODO: Make this an environment variable?
         self.enableWatching = False
 
-        self.runID = 'toil-{}'.format(uuid.uuid4())
+        self.runID = 'toil-{}'.format(self.uniqueID)
 
         self.jobIds = set()
     
@@ -357,7 +359,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Make a batch system scope job ID
             jobID = self.getNextJobID()
             # Make a unique name
-            jobName = self.runID + str(jobID)
+            jobName = self.jobPrefix + str(jobID)
 
             # Make a job dict to send to the executor.
             # First just wrap the command and the environment to run it in
@@ -731,7 +733,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             chosenFor = 'done'
 
         if jobObject is None:
-            for j in self._ourJobObjects():
+            for j in self._ourJobObjects().items:
                 # If there aren't any succeeded jobs, scan all jobs
                 # See how many times each failed
                 failCount = getattr(j.status, 'failed', 0)
@@ -971,30 +973,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     def getIssuedBatchJobIDs(self):
         # Make sure to send the local jobs also
         return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
-
-    def getRunningBatchJobIDs(self):
-        # We need a dict from jobID (integer) to seconds it has been running
-        secondsPerJob = dict()
-        for job in self._ourJobObjects().items:
-            # Grab the pod for each job
-            pod = self._getPodForJob(job)
-
-            if pod is None:
-                # Jobs whose pods are gone are not running
-                continue
-
-            if pod.status.phase == 'Running':
-                # The job's pod is running
-
-                # The only time we have handy is when the pod got assigned to a
-                # kubelet, which is technically before it started running.
-                runtime = (utc_now() - pod.status.start_time).total_seconds()
-
-                # Save it under the stringified job ID
-                secondsPerJob[self._getIDForOurJob(job)] = runtime
-        # Mix in the local jobs
-        secondsPerJob.update(self.getRunningLocalJobIDs())
-        return secondsPerJob
             
     def killBatchJobs(self, jobIDs):
         
