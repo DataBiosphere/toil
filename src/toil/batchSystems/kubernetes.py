@@ -648,7 +648,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Try watching for something to happen and use that.
 
             if self.enableWatching:
-                for j in self._ourJobObjects():
+                for j in self._ourJobObjects().items:
                     for event in self._try_kubernetes_stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
                         # For each event from the stream until it times out or just disconnects
                         pod = event['object']
@@ -725,7 +725,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         ourJobObjects  = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
                                             label_selector="toil_run={}".format(self.runID))
 
-        for j in self._ourJobObjects(onlySucceeded=True, limit=1):
+        for j in self._ourJobObjects(onlySucceeded=True, limit=1).items:
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
@@ -746,7 +746,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         if jobObject is None:
             # If no jobs are failed, look for jobs with pods that are stuck for various reasons.
-            for j in self._ourJobObjects():
+            for j in self._ourJobObjects().items:
                 pod = self._getPodForJob(j)
 
                 if pod is None:
@@ -932,7 +932,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.shutdownLocal()
         
         # Clears jobs belonging to this run
-        for job in self._ourJobObjects():
+        for job in self._ourJobObjects().items:
             jobName = job.metadata.name
 
             try:
@@ -962,7 +962,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         Get the issued batch job IDs that are not for local jobs.
         """
         jobIDs = []
-        got_list = self._ourJobObjects()
+        got_list = self._ourJobObjects().items
         for job in got_list:
             # Get the ID for each job
             jobIDs.append(self._getIDForOurJob(job))
@@ -975,7 +975,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     def getRunningBatchJobIDs(self):
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
-        for job in self._ourJobObjects():
+        for job in self._ourJobObjects().items:
             # Grab the pod for each job
             pod = self._getPodForJob(job)
 
