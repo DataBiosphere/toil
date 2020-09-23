@@ -355,7 +355,7 @@ class FileJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'file'
 
-    def _makeStringFilenameSafe(self, arbitraryString):
+    def _makeStringFilenameSafe(self, arbitraryString, maxLength=240):
         """
         Given an arbitrary string, produce a filename-safe though not
         necessarily unique string based on it.
@@ -364,6 +364,9 @@ class FileJobStore(AbstractJobStore):
         other nonempty filename-safe string.
 
         :param str arbitraryString: An arbitrary string
+        :param int maxLength: Maximum length of the result, to keep it plus
+                              any prefix or suffix under the filesystem's
+                              path component length limit
 
         :return: A filename-safe string
         """
@@ -378,8 +381,8 @@ class FileJobStore(AbstractJobStore):
         if len(parts) == 0:
             parts.append("UNPRINTABLE")
 
-        # Glue it all together
-        return '_'.join(parts)
+        # Glue it all together, and truncate to length
+        return '_'.join(parts)[:maxLength]
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         absPath = self._getUniqueFilePath(localFilePath, jobStoreID, cleanup)
