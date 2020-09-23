@@ -21,6 +21,14 @@ import math
 
 import subprocess
 import uuid
+from typing import (Optional,
+                    List,
+                    Tuple,
+                    Dict,
+                    Union,
+                    Any)
+
+from toil.fileStores.abstractFileStore import AbstractFileStore
 
 wdllogger = logging.getLogger(__name__)
 
@@ -599,7 +607,7 @@ def ceil(i):
     return math.ceil(i)
 
 
-def _get_temp_file_path(function_name, temp_dir=None):
+def _get_temp_file_path(function_name: str, temp_dir: Optional[str] = None) -> str:
     """
     Get a unique path with basename in the format of "{function_name}_{UUID}.tmp".
     """
@@ -616,14 +624,16 @@ def _get_temp_file_path(function_name, temp_dir=None):
     return os.path.join(temp_dir, 'execution', name)
 
 
-def write_lines(in_lines, temp_dir=None, file_store=None):
+def write_lines(in_lines: List[str],
+                temp_dir: Optional[str] = None,
+                file_store: Optional[AbstractFileStore] = None) -> str:
     """
     Given something that's compatible with `Array[String]`, this writes each element
     to it's own line on a file.  with newline `\n` characters as line separators.
 
     WDL syntax: File write_lines(Array[String])
     """
-    assert isinstance(in_lines, list)
+    assert isinstance(in_lines, list), f'write_lines() requires "{in_lines}" to be a list!  Not: {type(in_lines)}'
 
     path = _get_temp_file_path('write_lines', temp_dir)
 
@@ -637,14 +647,17 @@ def write_lines(in_lines, temp_dir=None, file_store=None):
     return path
 
 
-def write_tsv(in_tsv, delimiter='\t', temp_dir=None, file_store=None):
+def write_tsv(in_tsv: List[List[str]],
+              delimiter: str = '\t',
+              temp_dir: Optional[str] = None,
+              file_store: Optional[AbstractFileStore] = None) -> str:
     """
     Given something that's compatible with `Array[Array[String]]`, this writes a TSV
     file of the data structure.
 
     WDL syntax: File write_tsv(Array[Array[String]])
     """
-    assert isinstance(in_tsv, list)
+    assert isinstance(in_tsv, list), f'write_tsv() requires "{in_tsv}" to be a list!  Not: {type(in_tsv)}'
 
     path = _get_temp_file_path('write_tsv', temp_dir)
 
@@ -659,7 +672,11 @@ def write_tsv(in_tsv, delimiter='\t', temp_dir=None, file_store=None):
     return path
 
 
-def write_json(in_json, indent=None, separators=(',', ':'), temp_dir=None, file_store=None):
+def write_json(in_json: Any,
+               indent: Union[None, int, str] = None,
+               separators: Optional[Tuple[str, str]] = (',', ':'),
+               temp_dir: Optional[str] = None,
+               file_store: Optional[AbstractFileStore] = None) -> str:
     """
     Given something with any type, this writes the JSON equivalent to a file. See
     the table in the definition of
@@ -679,14 +696,16 @@ def write_json(in_json, indent=None, separators=(',', ':'), temp_dir=None, file_
     return path
 
 
-def write_map(in_map, temp_dir=None, file_store=None):
+def write_map(in_map: Dict[str, str],
+              temp_dir: Optional[str] = None,
+              file_store: Optional[AbstractFileStore] = None) -> str:
     """
     Given something that's compatible with `Map[String, String]`, this writes a TSV
      file of the data structure.
 
     WDL syntax: File write_map(Map[String, String])
     """
-    assert isinstance(in_map, dict)
+    assert isinstance(in_map, dict), f'write_map() requires "{in_map}" to be a dict!  Not: {type(in_map)}'
 
     path = _get_temp_file_path('write_map', temp_dir)
 
