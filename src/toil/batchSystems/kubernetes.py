@@ -497,7 +497,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
                                             label_selector="toil_run={}".format(self.runID))
        
-                
+    
+    def _getOurPodObjects(self):
+        return self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID))
+
+
     def _getPodForJob(self, jobObject):
         """
         Get the pod that belongs to the given job, or None if the job's pod is
@@ -934,12 +938,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.shutdownLocal()
         
         # Clears jobs belonging to this run
-        for job in self._ourJobObjects().items:
-            jobName = job.metadata.name
-
+        for pod in self._getOurPodObjects().items:
             try:
                 # Look at the pods and log why they failed, if they failed, for debugging.
-                pod = self._getPodForJob(job)
                 if pod.status.phase == 'Failed':
                     logger.debug('Failed pod encountered at shutdown: %s', str(pod))
             except:
@@ -973,6 +974,30 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     def getIssuedBatchJobIDs(self):
         # Make sure to send the local jobs also
         return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
+
+            def getRunningBatchJobIDs(self):
+        # We need a dict from jobID (integer) to seconds it has been running
+        secondsPerJob = dict()
+        for job in self._ourJobObjects().items:
+            # Grab the pod for each job
+            pod = self._getPodForJob(job)
+
+            if pod is None:
+                # Jobs whose pods are gone are not running
+                continue
+
+            if pod.status.phase == 'Running':
+                # The job's pod is running
+
+                # The only time we have handy is when the pod got assigned to a
+                # kubelet, which is technically before it started running.
+                runtime = (utc_now() - pod.status.start_time).total_seconds()
+
+                # Save it under the stringified job ID
+                secondsPerJob[self._getIDForOurJob(job)] = runtime
+        # Mix in the local jobs
+        secondsPerJob.update(self.getRunningLocalJobIDs())
+        return secondsPerJob
             
     def killBatchJobs(self, jobIDs):
         
