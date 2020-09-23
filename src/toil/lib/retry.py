@@ -13,6 +13,112 @@
 # limitations under the License.
 
 # 5.14.2018: copied into Toil from https://github.com/BD2KGenomics/bd2k-python-lib
+"""
+This file holds the retry() decorator function and RetryCondition object.
+
+retry() can be used to decorate any function based on the list of errors one wishes to retry on.
+
+This list of errors can contain normal Exception objects, and/or RetryCondition objects wrapping Exceptions to
+include additional conditions.
+
+For example, retrying on a one Exception (HTTPError)::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[HTTPError])
+    def update_my_wallpaper():
+        return get('https://www.deviantart.com/')
+
+Or::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[HTTPError, ValueError])
+    def update_my_wallpaper():
+        return get('https://www.deviantart.com/')
+
+The examples above will retry for the default interval on any errors specified the "errors=" arg list.
+
+To retry on specifically 500/502/503/504 errors, you could specify an ErrorCondition object instead, for example::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        ErrorCondition(
+                   error=HTTPError,
+                   error_codes=[500, 502, 503, 504]
+               )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on specifically errors containing the phrase "NotFound"::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        ErrorCondition(
+            error=HTTPError,
+            error_message_must_include="NotFound"
+        )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on all HTTPError errors EXCEPT an HTTPError containing the phrase "NotFound"::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        HTTPError,
+        ErrorCondition(
+                   error=HTTPError,
+                   error_message_must_include="NotFound",
+                   retry_on_this_condition=False
+               )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on boto3's specific status errors, an example of the implementation is::
+
+    import boto3
+    from botocore.exceptions import ClientError
+
+    @retry(errors=[
+        ErrorCondition(
+                   error=ClientError,
+                   boto_error_codes=["BucketNotFound"]
+               )])
+    def boto_bucket(bucket_name):
+        boto_session = boto3.session.Session()
+        s3_resource = boto_session.resource('s3')
+        return s3_resource.Bucket(bucket_name)
+
+Any combination of these will also work, provided the codes are matched to the correct exceptions.  A ValueError will
+not return a 404, for example.
+
+The retry function as a decorator should make retrying functions easier and clearer.  It also encourages
+smaller independent functions, as opposed to lumping many different things that may need to be retried on
+different conditions in the same function.
+
+The ErrorCondition object tries to take some of the heavy lifting of writing specific retry conditions
+and boil it down to an API that covers all common use-cases without the user having to write
+any new bespoke functions.
+
+Use-cases covered currently:
+
+1. Retrying on a normal error, like a KeyError.
+2. Retrying on HTTP error codes (use ErrorCondition).
+3. Retrying on boto's specific status errors, like "BucketNotFound" (use ErrorCondition).
+4. Retrying when an error message contains a certain phrase (use ErrorCondition).
+5. Explicitly NOT retrying on a condition (use ErrorCondition).
+
+If new functionality is needed, it's currently best practice in Toil to add
+functionality to the ErrorCondition itself rather than making a new custom retry method.
+"""
 import time
 import copy
 import functools
@@ -46,7 +152,10 @@ class ErrorCondition:
     ErrorCondition events may be used to define errors in more detail to determine whether to retry.
 
     :param error: An Exception (required)
-    :param error_codes: Error codes that must match to be retried (optional; defaults to not checking)
+    :param error_codes: Numeric error codes (e.g. 404, 500, etc.) that must match to be retried
+        (optional; defaults to not checking).
+    :param boto_error_codes: Human-readable error codes (e.g. "BucketNotFound", "ClientError", etc.) that
+        are specific to boto and must match to be retried (optional; defaults to not checking).
     :param error_message_must_include: A string that must be in the error message to be retried
         (optional; defaults to not checking)
     :param retry_on_this_condition: This can be set to False to always error on this condition.
@@ -210,7 +319,7 @@ def error_meets_conditions(e, error_conditions):
     return condition_met
 
 
-# TODO: Replace the use of this with retry_decorator
+# TODO: Replace the use of this with retry()
 #  The aws provisioner and jobstore need a large refactoring to be boto3 compliant, so this is
 #  still used there to avoid the duplication of future work
 def old_retry(delays=(0, 1, 1, 4, 16, 64), timeout=300, predicate=lambda e: False):
