@@ -465,21 +465,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             logger.debug('Launched job: %s', jobName)
             
             return jobID
-            
-            
-    def _isJobOurs(self, jobObject):
-        """
-        Determine if a Kubernetes job belongs to us.
-        
-        :param kubernetes.client.V1Job jobObject: a Kubernetes job being considered.
-
-        :return: True if the job is our responsibility, and false otherwise.
-        :rtype: bool
-        """
-        
-        return jobObject.metadata.name.startswith(self.jobPrefix)
-        
-        
     
     def _ourJobObjects(self, onlySucceeded=False, limit=None):
         """
@@ -505,7 +490,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         if onlySucceeded: 
             return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                            label_selector="toil_run={}".format(self.runID), field_slector="status.successful==1")
+                                            label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1")
  
         return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
                                             label_selector="toil_run={}".format(self.runID))
