@@ -921,6 +921,8 @@ class AnalyzeWDL:
             return es + es_params + ', tempDir)'
         elif name.source_string == 'size':
             return es + es_params + ', fileStore=fileStore)'
+        elif name.source_string in ('write_lines', 'write_tsv', 'write_json', 'write_map'):
+            return es + es_params + ', temp_dir=tempDir, file_store=fileStore)'
         else:
             return es + es_params + ')'
 
