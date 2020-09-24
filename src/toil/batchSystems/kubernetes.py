@@ -964,7 +964,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 pass
             try:
                 logger.debug('Cleaning up pod at shutdown: %s', str(pod))
-                respone = self._api('core').delete_namespaced_pod,  pod.metadata.name,
+                respone = self._try_kubernetes_expecting_gone(self._api('core').delete_namespaced_pod,  pod.metadata.name,
                                     self.namespace, 
                                     propagation_policy='Background')
             except ApiException as e:
