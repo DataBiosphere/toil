@@ -988,7 +988,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Make sure to send the local jobs also
         return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
 
-    
+    def getRunningBatchJobIDs(self):
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
         for job in self._ourJobObjectList():
