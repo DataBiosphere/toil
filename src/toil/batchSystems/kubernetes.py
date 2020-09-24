@@ -468,7 +468,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             
             return jobID
     
-    def _ourJobObjects(self, onlySucceeded=False, limit=None):
+    def _ourJobObjectList(self, onlySucceeded=False, limit=None):
         """
         Return Kubernetes V1Job objects that we are responsible for that the
         cluster knows about.
@@ -492,14 +492,14 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         if onlySucceeded: 
             return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                            label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1")
+                                            label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1").items
  
         return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                            label_selector="toil_run={}".format(self.runID))
+                                            label_selector="toil_run={}".format(self.runID)).items
        
     
-    def _getOurPodObjects(self):
-        return self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID))
+    def _getOurPodObjectList(self):
+        return self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID)).items
 
 
     def _getPodForJob(self, jobObject):
@@ -654,7 +654,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Try watching for something to happen and use that.
 
             if self.enableWatching:
-                for j in self._ourJobObjects().items:
+                for j in self._ourJobObjectList():
                     for event in self._try_kubernetes_stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
                         # For each event from the stream until it times out or just disconnects
                         pod = event['object']
@@ -731,13 +731,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         ourJobObjects  = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
                                             label_selector="toil_run={}".format(self.runID))
 
-        for j in self._ourJobObjects(onlySucceeded=True, limit=1).items:
+        for j in self._ourJobObjectList(onlySucceeded=True, limit=1):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
 
         if jobObject is None:
-            for j in self._ourJobObjects().items:
+            for j in self._ourJobObjectList():
                 # If there aren't any succeeded jobs, scan all jobs
                 # See how many times each failed
                 failCount = getattr(j.status, 'failed', 0)
@@ -752,7 +752,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         if jobObject is None:
             # If no jobs are failed, look for jobs with pods that are stuck for various reasons.
-            for j in self._ourJobObjects().items:
+            for j in self._ourJobObjectList():
                 pod = self._getPodForJob(j)
 
                 if pod is None:
@@ -936,28 +936,41 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         # Shutdown local processes first
         self.shutdownLocal()
+       
+        # Kill jobs whether they succeeded or failed and clean up pods
+        try:
+            # Delete with background poilicy so we can quickly issue lots of commands
+            self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job, 
+                                                            self.namespace, 
+                                                            label_selector="toil_run={}".format(self.runID),
+                                                            propagation_policy='Background')
+            logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
+        except ApiException as e:
+            if e.status != 404:
+                # Anything other than a 404 is weird here.
+                logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
         
-        # Clears jobs belonging to this run
-        for pod in self._getOurPodObjects().items:
+        # aggregate all pods and check if any pod has failed to cleanup or is orphaned. 
+        ourPods = self._getOurPodObjectList()
+
+        for pod in ourPods:
             try:
-                # Look at the pods and log why they failed, if they failed, for debugging.
                 if pod.status.phase == 'Failed':
-                    logger.debug('Failed pod encountered at shutdown: %s', str(pod))
+                        logger.debug('Failed pod encountered at shutdown: %s', str(pod))
+                if pod.status.phase == 'Orphaned':
+                        logger.debug('Orphaned pod encountered at shutdown: %s', str(pod))
             except:
                 # Don't get mad if that doesn't work.
                 pass
-
-            # Kill jobs whether they succeeded or failed
             try:
-                # Delete with background poilicy so we can quickly issue lots of commands
-                response = self._try_kubernetes_expecting_gone(self._api('batch').delete_namespaced_job, jobName, 
-                                                               self.namespace, 
-                                                               propagation_policy='Background')
-                logger.debug('Killed job for shutdown: %s', jobName)
+                logger.debug('Cleaning up pod at shutdown: %s', str(pod))
+                respone = self._api('core').delete_namespaced_pod,  pod.metadata.name,
+                                    self.namespace, 
+                                    propagation_policy='Background')
             except ApiException as e:
                 if e.status != 404:
                     # Anything other than a 404 is weird here.
-                    logger.error("Exception when calling BatchV1Api->delte_namespaced_job: %s" % e)
+                    logger.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s" % e)
 
 
     def _getIssuedNonLocalBatchJobIDs(self):
@@ -965,7 +978,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         Get the issued batch job IDs that are not for local jobs.
         """
         jobIDs = []
-        got_list = self._ourJobObjects().items
+        got_list = self._ourJobObjectList()
         for job in got_list:
             # Get the ID for each job
             jobIDs.append(self._getIDForOurJob(job))
@@ -975,10 +988,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Make sure to send the local jobs also
         return self._getIssuedNonLocalBatchJobIDs() + list(self.getIssuedLocalJobIDs())
 
-            def getRunningBatchJobIDs(self):
+    
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
-        for job in self._ourJobObjects().items:
+        for job in self._ourJobObjectList():
             # Grab the pod for each job
             pod = self._getPodForJob(job)
 
