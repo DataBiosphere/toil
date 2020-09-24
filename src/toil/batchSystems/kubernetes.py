@@ -937,13 +937,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Shutdown local processes first
         self.shutdownLocal()
        
-        # Kill jobs whether they succeeded or failed and clean up pods
+        # Kill jobs whether they succeeded or failed and clean up pods that are associated with those jobs
         try:
-            # Delete with background poilicy so we can quickly issue lots of commands
             self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job, 
                                                             self.namespace, 
-                                                            label_selector="toil_run={}".format(self.runID),
-                                                            propagation_policy='Background')
+                                                            label_selector="toil_run={}".format(self.runID))
             logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
         except ApiException as e:
             if e.status != 404:
