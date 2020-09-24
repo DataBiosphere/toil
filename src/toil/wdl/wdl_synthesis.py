@@ -97,6 +97,10 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import read_float
                     from toil.wdl.wdl_functions import read_tsv
                     from toil.wdl.wdl_functions import read_csv
+                    from toil.wdl.wdl_functions import write_lines
+                    from toil.wdl.wdl_functions import write_tsv
+                    from toil.wdl.wdl_functions import write_json
+                    from toil.wdl.wdl_functions import write_map
                     from toil.wdl.wdl_functions import defined
                     from toil.wdl.wdl_functions import basename
                     from toil.wdl.wdl_functions import floor

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import fnmatch
+import json
 import os
 import logging
 import textwrap
@@ -19,6 +20,15 @@ import csv
 import math
 
 import subprocess
+import uuid
+from typing import (Optional,
+                    List,
+                    Tuple,
+                    Dict,
+                    Union,
+                    Any)
+
+from toil.fileStores.abstractFileStore import AbstractFileStore
 
 wdllogger = logging.getLogger(__name__)
 
@@ -596,3 +606,114 @@ def floor(i):
 def ceil(i):
     return math.ceil(i)
 
+
+def _get_temp_file_path(function_name: str, temp_dir: Optional[str] = None) -> str:
+    """
+    Get a unique path with basename in the format of "{function_name}_{UUID}.tmp".
+    """
+
+    if not temp_dir:
+        temp_dir = os.getcwd()
+
+    # Cromwell uses the MD5 checksum of the content as part of the file name. We use a UUID instead
+    # for now, since we're writing line by line via a context manager.
+    # md5sum = hashlib.md5(content).hexdigest()
+    # name = f'{function_name}_{md5sum}.tmp'
+
+    name = f'{function_name}_{uuid.uuid4()}.tmp'
+    return os.path.join(temp_dir, 'execution', name)
+
+
+def write_lines(in_lines: List[str],
+                temp_dir: Optional[str] = None,
+                file_store: Optional[AbstractFileStore] = None) -> str:
+    """
+    Given something that's compatible with `Array[String]`, this writes each element
+    to it's own line on a file.  with newline `\n` characters as line separators.
+
+    WDL syntax: File write_lines(Array[String])
+    """
+    assert isinstance(in_lines, list), f'write_lines() requires "{in_lines}" to be a list!  Not: {type(in_lines)}'
+
+    path = _get_temp_file_path('write_lines', temp_dir)
+
+    with open(path, 'w') as file:
+        for line in in_lines:
+            file.write(line + '\n')
+
+    if file_store:
+        file_store.writeGlobalFile(path, cleanup=True)
+
+    return path
+
+
+def write_tsv(in_tsv: List[List[str]],
+              delimiter: str = '\t',
+              temp_dir: Optional[str] = None,
+              file_store: Optional[AbstractFileStore] = None) -> str:
+    """
+    Given something that's compatible with `Array[Array[String]]`, this writes a TSV
+    file of the data structure.
+
+    WDL syntax: File write_tsv(Array[Array[String]])
+    """
+    assert isinstance(in_tsv, list), f'write_tsv() requires "{in_tsv}" to be a list!  Not: {type(in_tsv)}'
+
+    path = _get_temp_file_path('write_tsv', temp_dir)
+
+    with open(path, 'w') as file:
+        tsv_writer = csv.writer(file, delimiter=delimiter)
+        for row in in_tsv:
+            tsv_writer.writerow(row)
+
+    if file_store:
+        file_store.writeGlobalFile(path, cleanup=True)
+
+    return path
+
+
+def write_json(in_json: Any,
+               indent: Union[None, int, str] = None,
+               separators: Optional[Tuple[str, str]] = (',', ':'),
+               temp_dir: Optional[str] = None,
+               file_store: Optional[AbstractFileStore] = None) -> str:
+    """
+    Given something with any type, this writes the JSON equivalent to a file. See
+    the table in the definition of
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#mixed-read_jsonstringfile
+
+    WDL syntax: File write_json(mixed)
+    """
+
+    path = _get_temp_file_path('write_json', temp_dir)
+
+    with open(path, 'w') as file:
+        file.write(json.dumps(in_json, indent=indent, separators=separators))
+
+    if file_store:
+        file_store.writeGlobalFile(path, cleanup=True)
+
+    return path
+
+
+def write_map(in_map: Dict[str, str],
+              temp_dir: Optional[str] = None,
+              file_store: Optional[AbstractFileStore] = None) -> str:
+    """
+    Given something that's compatible with `Map[String, String]`, this writes a TSV
+     file of the data structure.
+
+    WDL syntax: File write_map(Map[String, String])
+    """
+    assert isinstance(in_map, dict), f'write_map() requires "{in_map}" to be a dict!  Not: {type(in_map)}'
+
+    path = _get_temp_file_path('write_map', temp_dir)
+
+    with open(path, 'w') as file:
+        for key, val in in_map.items():
+            file.write(f'{key}\t{val}\n')
+
+    if file_store:
+        file_store.writeGlobalFile(path, cleanup=True)
+
+    return path
