@@ -937,38 +937,41 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Shutdown local processes first
         self.shutdownLocal()
        
-        # Kill jobs whether they succeeded or failed and clean up pods that are associated with those jobs
-        try:
-            self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job, 
-                                                            self.namespace, 
-                                                            label_selector="toil_run={}".format(self.runID))
-            logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
-        except ApiException as e:
-            if e.status != 404:
-                # Anything other than a 404 is weird here.
-                logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
-        
-        # aggregate all pods and check if any pod has failed to cleanup or is orphaned. 
-        ourPods = self._getOurPodObjectList()
-
-        for pod in ourPods:
+       logger.debug("THERE ARE THESE JOBS LEFT: " + str(self._ourJobObjectList))
+        # if there is any of our job left ; clean it up 
+        if len(self._ourJobObjectList) > 0:
+            # Kill jobs whether they succeeded or failed and clean up pods that are associated with those jobs
             try:
-                if pod.status.phase == 'Failed':
-                        logger.debug('Failed pod encountered at shutdown: %s', str(pod))
-                if pod.status.phase == 'Orphaned':
-                        logger.debug('Orphaned pod encountered at shutdown: %s', str(pod))
-            except:
-                # Don't get mad if that doesn't work.
-                pass
-            try:
-                logger.debug('Cleaning up pod at shutdown: %s', str(pod))
-                respone = self._try_kubernetes_expecting_gone(self._api('core').delete_namespaced_pod,  pod.metadata.name,
-                                    self.namespace, 
-                                    propagation_policy='Background')
+                self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job, 
+                                                                self.namespace, 
+                                                                label_selector="toil_run={}".format(self.runID))
+                logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
             except ApiException as e:
                 if e.status != 404:
                     # Anything other than a 404 is weird here.
-                    logger.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s" % e)
+                    logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
+            
+            # aggregate all pods and check if any pod has failed to cleanup or is orphaned. 
+            ourPods = self._getOurPodObjectList()
+
+            for pod in ourPods:
+                try:
+                    if pod.status.phase == 'Failed':
+                            logger.debug('Failed pod encountered at shutdown: %s', str(pod))
+                    if pod.status.phase == 'Orphaned':
+                            logger.debug('Orphaned pod encountered at shutdown: %s', str(pod))
+                except:
+                    # Don't get mad if that doesn't work.
+                    pass
+                try:
+                    logger.debug('Cleaning up pod at shutdown: %s', str(pod))
+                    respone = self._try_kubernetes_expecting_gone(self._api('core').delete_namespaced_pod,  pod.metadata.name,
+                                        self.namespace, 
+                                        propagation_policy='Background')
+                except ApiException as e:
+                    if e.status != 404:
+                        # Anything other than a 404 is weird here.
+                        logger.error("Exception when calling CoreV1Api->delete_namespaced_pod: %s" % e)
 
 
     def _getIssuedNonLocalBatchJobIDs(self):
