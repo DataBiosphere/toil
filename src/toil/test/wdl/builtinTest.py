@@ -5,6 +5,10 @@ import shutil
 import uuid
 from toil.wdl.wdl_functions import ceil
 from toil.wdl.wdl_functions import floor
+from toil.wdl.wdl_functions import read_int
+from toil.wdl.wdl_functions import read_string
+from toil.wdl.wdl_functions import read_float
+from toil.wdl.wdl_functions import read_boolean
 from toil.wdl.wdl_functions import write_lines
 from toil.wdl.wdl_functions import write_tsv
 from toil.wdl.wdl_functions import write_json
@@ -43,7 +47,7 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         """ Write content to a temp file."""
         path = os.path.join(self.output_dir, f'{function_name}_{uuid.uuid4()}.tmp')
         with open(path, 'w') as f:
-            f.write(content)
+            f.write(content + '\n')
         return path
 
     def testFn_Ceil(self):
@@ -57,6 +61,46 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         a Float value into an Int by rounding down to the next lower integer"""
         assert floor(1.999) == 1
         assert floor(-1.5) == -2
+
+    def testFn_ReadInt(self):
+        """Test the wdl built-in functional equivalent of 'read_int()'."""
+        num = 10
+        path = self._write_temp_file('read_int', content=str(num))
+        self.assertEqual(num, read_int(path))
+
+        num = 10.5
+        path = self._write_temp_file('read_int', content=str(num))
+        self.assertRaises(ValueError, read_int, path)
+
+    def testFn_ReadString(self):
+        """Test the wdl built-in functional equivalent of 'read_string()'."""
+        some_str = 'some string'
+        path = self._write_temp_file('read_string', content=some_str)
+        self.assertEqual(some_str, read_string(path))
+
+        # with new line characters
+        path = self._write_temp_file('read_string', content=some_str + '\n\n')
+        self.assertEqual(some_str, read_string(path))
+
+    def testFn_ReadFloat(self):
+        """Test the wdl built-in functional equivalent of 'read_float()'."""
+        num = 2.718281828459045
+        path = self._write_temp_file('read_float', content=str(num))
+        self.assertEqual(num, read_float(path))
+
+    def testFn_ReadBoolean(self):
+        """Test the wdl built-in functional equivalent of 'read_boolean()'."""
+        for val in (True, False):
+            path = self._write_temp_file('read_boolean', content=str(val))
+            self.assertEqual(val, read_boolean(path))
+
+            # upper
+            path = self._write_temp_file('read_boolean', content=str(val).upper())
+            self.assertEqual(val, read_boolean(path))
+
+            # lower
+            path = self._write_temp_file('read_boolean', content=str(val).lower())
+            self.assertEqual(val, read_boolean(path))
 
     def testFn_WriteLines(self):
         """Test the wdl built-in functional equivalent of 'write_lines()'."""
@@ -143,6 +187,14 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
     def test_stdout(self):
         self.check_function('stdout', cases=['as_output'], expected_result='A Whale of a Tale.')
         self.check_function('stderr', cases=['as_output'], expected_result='a journey straight to stderr')
+
+    def test_read(self):
+        """ Test the set of WDL read functions."""
+        # primitives
+        self.check_function('read_int', cases=['as_command'], expected_result='11')
+        self.check_function('read_string', cases=['as_command'], expected_result='A Whale of a Tale.')
+        self.check_function('read_float', cases=['as_command'], expected_result='11.2345')
+        self.check_function('read_boolean', cases=['as_command'], expected_result='True')
 
     def test_write(self):
         """ Test the set of WDL write functions."""

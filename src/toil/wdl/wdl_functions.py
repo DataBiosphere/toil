@@ -496,24 +496,6 @@ def select_first(values):
     raise ValueError('No defined variables found for select_first array: {}'.format(str(values)))
 
 
-def read_string(inputstring):
-    if isinstance(inputstring, tuple):
-        inputstring = inputstring[0]
-    return str(inputstring)
-
-
-def read_float(inputstring):
-    if isinstance(inputstring, tuple):
-        inputstring = inputstring[0]
-    return float(inputstring)
-
-
-def read_int(inputstring):
-    if isinstance(inputstring, tuple):
-        inputstring = inputstring[0]
-    return int(inputstring)
-
-
 def combine_dicts(dict1, dict2):
     from six import iteritems
     combineddict= {}
@@ -605,6 +587,63 @@ def floor(i):
 
 def ceil(i):
     return math.ceil(i)
+
+
+def read_int(path: Union[str, tuple]) -> int:
+    """
+    The `read_int()` function takes a file path which is expected to contain 1
+    line with 1 integer on it. This function returns that integer.
+
+    WDL syntax: Int read_int(String|File)
+    """
+    if isinstance(path, tuple):
+        path = path[0]
+
+    with open(path, 'r') as f:
+        return int(f.read().strip())
+
+
+def read_string(path: Union[str, tuple]) -> str:
+    """
+    The `read_string()` function takes a file path which is expected to contain 1
+    line with 1 string on it. This function returns that string.
+
+    WDL syntax: String read_string(String|File)
+    """
+    if isinstance(path, tuple):
+        path = path[0]
+
+    with open(path, 'r') as f:
+        return str(f.read().strip())
+
+
+def read_float(path: Union[str, tuple]) -> float:
+    """
+    The `read_float()` function takes a file path which is expected to contain 1
+    line with 1 floating point number on it. This function returns that float.
+
+    WDL syntax: Float read_float(String|File)
+    """
+    if isinstance(path, tuple):
+        path = path[0]
+
+    with open(path, 'r') as f:
+        return float(f.read().strip())
+
+
+def read_boolean(path: Union[str, tuple]) -> bool:
+    """
+    The `read_boolean()` function takes a file path which is expected to contain 1
+    line with 1 Boolean value (either "true" or "false" on it). This function
+    returns that Boolean value.
+
+    WDL syntax: Boolean read_boolean(String|File)
+    """
+    if isinstance(path, tuple):
+        path = path[0]
+
+    with open(path, 'r') as f:
+        return f.read().strip().lower() == 'true'
 
 
 def _get_temp_file_path(function_name: str, temp_dir: Optional[str] = None) -> str:
