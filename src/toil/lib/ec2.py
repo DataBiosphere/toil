@@ -271,7 +271,7 @@ def create_instances(ec2: ServiceResource,
                      security_group_ids: Optional[List] = None,
                      user_data: Optional[bytes] = None,
                      block_device_map: Optional[List[Dict]] = None,
-                     instance_profile_arn: Optional[str] = None,
+                     instance_profile_arn: Optional[Dict] = None,
                      placement: Optional[Dict] = None,
                      subnet_id: str = None):
     """
