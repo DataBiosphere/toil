@@ -937,21 +937,18 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Shutdown local processes first
         self.shutdownLocal()
        
-        logger.debug("THERE ARE THESE JOBS LEFT: " + str(self._ourJobObjectList))
-        # if there is any of our job left ; clean it up 
-        if len(self._ourJobObjectList) > 0:
-            # Kill succeded jobs and clean up pods that are associated with those jobs
-            try:
-                self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job, 
-                                                                self.namespace, 
-                                                                label_selector="toil_run={}".format(self.runID),
-                                                                field_selector="status.successful==1")
-                logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
-            except ApiException as e:
-                if e.status != 404:
-                    # Anything other than a 404 is weird here.
-                    logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
-            
+    
+        # Kill all of our jobs and clean up pods that are associated with those jobs
+        try:
+            self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job, 
+                                                            self.namespace, 
+                                                            label_selector="toil_run={}".format(self.runID))
+            logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
+        except ApiException as e:
+            if e.status != 404:
+                # Anything other than a 404 is weird here.
+                logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
+        
             # aggregate all pods and check if any pod has failed to cleanup or is orphaned. 
             ourPods = self._getOurPodObjectList()
 
