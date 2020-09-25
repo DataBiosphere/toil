@@ -571,6 +571,11 @@ class Leader(object):
                 # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
 
+                if self.deadlockThrottler.throttle(wait=False):
+                    # Nothing happened this round and it's been long
+                    # enough since we last checked. Check for deadlocks.
+                    self.checkForDeadlocks()
+
             # Check on the associated threads and exit if a failure is detected
             self.statsAndLogging.check()
             self.serviceManager.check()
@@ -578,11 +583,6 @@ class Leader(object):
             if self.clusterScaler is not None:
                 self.clusterScaler.check()
             
-            if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
-                # Nothing happened this round and it's been long
-                # enough since we last checked. Check for deadlocks.
-                self.checkForDeadlocks()
-                
             if self.statusThrottler.throttle(wait=False):
                 # Time to tell the user how things are going
                 self._reportWorkflowStatus()
