@@ -160,7 +160,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         self.awsSecretName = os.environ.get("TOIL_AWS_SECRET_NAME", None)
 
         # Set this to True to enable the experimental wait-for-job-update code
-        self.enableWatching = True
+        # TODO: Make this an environment variable?
+        self.enableWatching = False
 
         self.jobIds = set()
     

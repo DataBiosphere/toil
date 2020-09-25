@@ -40,10 +40,9 @@ def runSetup():
     six = 'six>=1.10.0'
     future = 'future'
     requests = 'requests>=2, <3'
-    docker = 'docker>=2.7.0, <3'
+    docker = 'docker==4.3.1'
     dateutil = 'python-dateutil'
     addict = 'addict>=2.2.1, <2.3'
-    pathlib2 = 'pathlib2>=2.3.5, <3'
     enlighten = 'enlighten>=1.5.2, <2'
 
     core_reqs = [
@@ -55,7 +54,6 @@ def runSetup():
         dateutil,
         psutil,
         addict,
-        pathlib2,
         pytz,
         enlighten]
 

@@ -1,4 +1,4 @@
-# Copyright (C) 2018 UCSC Computational Genomics Lab
+# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,21 +11,26 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
-from past.builtins import basestring
-
 import fnmatch
+import json
 import os
 import logging
 import textwrap
 import csv
+import math
 
 import subprocess
+import uuid
+from typing import (Optional,
+                    List,
+                    Tuple,
+                    Dict,
+                    Union,
+                    Any)
+
+from toil.fileStores.abstractFileStore import AbstractFileStore
 
 wdllogger = logging.getLogger(__name__)
-
 
 
 def glob(glob_pattern, directoryname):
@@ -189,7 +194,7 @@ def process_single_infile(f, fileStore):
     else:
         filepath = fileStore.importFile("file://" + os.path.abspath(f))
         preserveThisFilename = os.path.basename(f)
-    return (filepath, preserveThisFilename)
+    return filepath, preserveThisFilename
 
 
 def process_array_infile(af, fileStore):
@@ -217,7 +222,7 @@ def process_infile(f, fileStore):
         return f
     elif isinstance(f, list):
         return process_array_infile(f, fileStore)
-    elif isinstance(f, basestring):
+    elif isinstance(f, str):
         return process_single_infile(f, fileStore)
     else:
         raise RuntimeError('Error processing file: '.format(str(f)))
@@ -260,7 +265,7 @@ def process_single_outfile(f, fileStore, workDir, outDir):
     output_file = fileStore.writeGlobalFile(output_f_path)
     preserveThisFilename = os.path.basename(output_f_path)
     fileStore.exportFile(output_file, "file://" + os.path.join(os.path.abspath(outDir), preserveThisFilename))
-    return (output_file, preserveThisFilename)
+    return output_file, preserveThisFilename
 
 
 def process_array_outfile(af, fileStore, workDir, outDir):
@@ -273,7 +278,7 @@ def process_array_outfile(af, fileStore, workDir, outDir):
 def process_outfile(f, fileStore, workDir, outDir):
     if isinstance(f, list):
         return process_array_outfile(f, fileStore, workDir, outDir)
-    elif isinstance(f, basestring):
+    elif isinstance(f, str):
         return process_single_outfile(f, fileStore, workDir, outDir)
     else:
         raise RuntimeError('Error processing file: '.format(str(f)))
@@ -303,7 +308,7 @@ def abspath_file(f, cwd):
         return f
     if isinstance(f, list):
         return abspath_array_file(f, cwd)
-    elif isinstance(f, basestring):
+    elif isinstance(f, str):
         if f.startswith('s3://') or f.startswith('http://') or f.startswith('https://') or \
                 f.startswith('file://') or f.startswith('wasb://') or f.startswith('gs://'):
             return f
@@ -335,7 +340,7 @@ def read_file(f, tempDir, fileStore, docker=False):
     elif isinstance(f, list):
         return read_array_file(f, tempDir, fileStore, docker=docker)
     else:
-        raise RuntimeError('Error processing file: '.format(str(f)))
+        raise RuntimeError('Error processing file: {}'.format(str(f)))
 
 
 def process_and_read_file(f, tempDir, fileStore, docker=False):
@@ -345,6 +350,37 @@ def process_and_read_file(f, tempDir, fileStore, docker=False):
         return None
     processed_file = process_infile(f, fileStore)
     return read_file(processed_file, tempDir, fileStore, docker=docker)
+
+
+def generate_stdout_file(output, tempDir, fileStore, stderr=False):
+    """
+    Create a stdout (or stderr) file from a string or bytes object.
+
+    :param str|bytes output: A str or bytes object that holds the stdout/stderr text.
+    :param str tempDir: The directory to write the stdout file.
+    :param fileStore: A fileStore object.
+    :param bool stderr: If True, a stderr instead of a stdout file is generated.
+    :return: The file path to the generated file.
+    """
+    if output is None:
+        # write an empty file if there's no stdout/stderr.
+        output = b''
+    elif isinstance(output, str):
+        output = bytes(output, encoding='utf-8')
+
+    # TODO: we need a way to differentiate the stdout/stderr files in the workflow after execution.
+    # Cromwell generates a folder for each task so the file is simply named stdout and lives in
+    # the task execution folder. This is not the case with Toil. Though, this would not be a
+    # problem with intermediate stdout files as each task has its own temp folder.
+    name = 'stderr' if stderr else 'stdout'
+    local_path = os.path.join(tempDir, 'execution', name)
+
+    # import to fileStore then read to local temp file
+    with fileStore.writeGlobalFileStream(cleanup=True, basename=name) as (stream, file_id):
+        stream.write(output)
+
+    assert file_id is not None
+    return fileStore.readGlobalFile(fileStoreID=file_id, userPath=local_path)
 
 
 def return_bytes(unit='B'):
@@ -379,7 +415,7 @@ def parse_memory(memory):
     """
     memory = str(memory)
     if 'None' in memory:
-        return 2147483648 # toil's default
+        return 2147483648  # toil's default
     try:
         import re
         raw_mem_split = re.split('([a-zA-Z]+)', memory)
@@ -399,13 +435,13 @@ def parse_memory(memory):
         else:
             raise RuntimeError('Memory parsing failed: {}'.format(memory))
     except:
-        return 2147483648 # toil's default
+        return 2147483648  # toil's default
 
 
 def parse_cores(cores):
     cores = str(cores)
     if 'None' in cores:
-        return 1 # toil's default
+        return 1  # toil's default
     if cores:
         return float(cores)
     else:
@@ -415,7 +451,7 @@ def parse_cores(cores):
 def parse_disk(disk):
     disk = str(disk)
     if 'None' in disk:
-        return 2147483648 # toil's default
+        return 2147483648  # toil's default
     try:
         total_disk = 0
         disks = disk.split(',')
@@ -562,3 +598,122 @@ def read_csv(f):
     '''
     return read_tsv(f, delimiter=",")
 
+
+def floor(i):
+    return math.floor(i)
+
+
+def ceil(i):
+    return math.ceil(i)
+
+
+def _get_temp_file_path(function_name: str, temp_dir: Optional[str] = None) -> str:
+    """
+    Get a unique path with basename in the format of "{function_name}_{UUID}.tmp".
+    """
+
+    if not temp_dir:
+        temp_dir = os.getcwd()
+
+    # Cromwell uses the MD5 checksum of the content as part of the file name. We use a UUID instead
+    # for now, since we're writing line by line via a context manager.
+    # md5sum = hashlib.md5(content).hexdigest()
+    # name = f'{function_name}_{md5sum}.tmp'
+
+    name = f'{function_name}_{uuid.uuid4()}.tmp'
+    return os.path.join(temp_dir, 'execution', name)
+
+
+def write_lines(in_lines: List[str],
+                temp_dir: Optional[str] = None,
+                file_store: Optional[AbstractFileStore] = None) -> str:
+    """
+    Given something that's compatible with `Array[String]`, this writes each element
+    to it's own line on a file.  with newline `\n` characters as line separators.
+
+    WDL syntax: File write_lines(Array[String])
+    """
+    assert isinstance(in_lines, list), f'write_lines() requires "{in_lines}" to be a list!  Not: {type(in_lines)}'
+
+    path = _get_temp_file_path('write_lines', temp_dir)
+
+    with open(path, 'w') as file:
+        for line in in_lines:
+            file.write(line + '\n')
+
+    if file_store:
+        file_store.writeGlobalFile(path, cleanup=True)
+
+    return path
+
+
+def write_tsv(in_tsv: List[List[str]],
+              delimiter: str = '\t',
+              temp_dir: Optional[str] = None,
+              file_store: Optional[AbstractFileStore] = None) -> str:
+    """
+    Given something that's compatible with `Array[Array[String]]`, this writes a TSV
+    file of the data structure.
+
+    WDL syntax: File write_tsv(Array[Array[String]])
+    """
+    assert isinstance(in_tsv, list), f'write_tsv() requires "{in_tsv}" to be a list!  Not: {type(in_tsv)}'
+
+    path = _get_temp_file_path('write_tsv', temp_dir)
+
+    with open(path, 'w') as file:
+        tsv_writer = csv.writer(file, delimiter=delimiter)
+        for row in in_tsv:
+            tsv_writer.writerow(row)
+
+    if file_store:
+        file_store.writeGlobalFile(path, cleanup=True)
+
+    return path
+
+
+def write_json(in_json: Any,
+               indent: Union[None, int, str] = None,
+               separators: Optional[Tuple[str, str]] = (',', ':'),
+               temp_dir: Optional[str] = None,
+               file_store: Optional[AbstractFileStore] = None) -> str:
+    """
+    Given something with any type, this writes the JSON equivalent to a file. See
+    the table in the definition of
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#mixed-read_jsonstringfile
+
+    WDL syntax: File write_json(mixed)
+    """
+
+    path = _get_temp_file_path('write_json', temp_dir)
+
+    with open(path, 'w') as file:
+        file.write(json.dumps(in_json, indent=indent, separators=separators))
+
+    if file_store:
+        file_store.writeGlobalFile(path, cleanup=True)
+
+    return path
+
+
+def write_map(in_map: Dict[str, str],
+              temp_dir: Optional[str] = None,
+              file_store: Optional[AbstractFileStore] = None) -> str:
+    """
+    Given something that's compatible with `Map[String, String]`, this writes a TSV
+     file of the data structure.
+
+    WDL syntax: File write_map(Map[String, String])
+    """
+    assert isinstance(in_map, dict), f'write_map() requires "{in_map}" to be a dict!  Not: {type(in_map)}'
+
+    path = _get_temp_file_path('write_map', temp_dir)
+
+    with open(path, 'w') as file:
+        for key, val in in_map.items():
+            file.write(f'{key}\t{val}\n')
+
+    if file_store:
+        file_store.writeGlobalFile(path, cleanup=True)
+
+    return path
