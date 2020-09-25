@@ -937,14 +937,15 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Shutdown local processes first
         self.shutdownLocal()
        
-       logger.debug("THERE ARE THESE JOBS LEFT: " + str(self._ourJobObjectList))
+        logger.debug("THERE ARE THESE JOBS LEFT: " + str(self._ourJobObjectList))
         # if there is any of our job left ; clean it up 
         if len(self._ourJobObjectList) > 0:
-            # Kill jobs whether they succeeded or failed and clean up pods that are associated with those jobs
+            # Kill succeded jobs and clean up pods that are associated with those jobs
             try:
                 self._try_kubernetes_expecting_gone(self._api('batch').delete_collection_namespaced_job, 
                                                                 self.namespace, 
-                                                                label_selector="toil_run={}".format(self.runID))
+                                                                label_selector="toil_run={}".format(self.runID),
+                                                                field_selector="status.successful==1")
                 logger.debug('Killed jobs with delete_collection_namespaced_job; cleaned up')
             except ApiException as e:
                 if e.status != 404:
