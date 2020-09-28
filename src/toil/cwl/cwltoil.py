@@ -1461,6 +1461,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     config.disableChaining = True
     config.cwl = True
     parser = argparse.ArgumentParser()
+    logger.info("TESTING")
     addOptions(parser, config)
     parser.add_argument("cwltool", type=str)
     parser.add_argument("cwljob", nargs=argparse.REMAINDER)
@@ -1546,8 +1547,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     parser.add_argument("--default-container",
                         help="Specify a default docker container that will be "
                         "used if the workflow fails to specify one.")
+    logger.info(f"args: {args}")
+
     if args is None:
         args = sys.argv[1:]
+        print(f"args: {args}\n")
 
     provgroup = parser.add_argument_group("Options for recording provenance "
                                           "information of the execution")
@@ -1601,6 +1605,12 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
 
     # we use workdir as default default jobStore:
     options = parser.parse_args([workdir] + args)
+    logger.info(f"options: {options}\n\n\n")
+
+    if options.batchSystem == 'kubernetes':
+        options.singularity = True
+    
+    logger.info(f"options: {options}\n\n\n")
 
     # if tmpdir_prefix is not the default value, set workDir if unset, and move
     # workdir and the job store under it
