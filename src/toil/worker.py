@@ -357,6 +357,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             #Run the job body, if there is one
             ##########################################
             
+            logger.info("Working on job %s", jobDesc)
+            
             if jobDesc.command is not None:
                 assert jobDesc.command.startswith("_toil ")
                 logger.debug("Got a command to run: %s" % jobDesc.command)
@@ -365,6 +367,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 if isinstance(jobDesc, CheckpointJobDescription):
                     # If it is a checkpoint job, save the command
                     jobDesc.checkpoint = jobDesc.command
+
+                logger.info("Loaded body for %s from description %s", job, jobDesc)
 
                 # Create a fileStore object for the job
                 fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
@@ -376,7 +380,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                             # Get the next block function to wait on committing this job
                             blockFn = fileStore.waitForCommit
                             
-                            # Run the job and save new successors
+                            # Run the job, save new successors, and set up
+                            # locally (but don't commit) successor
+                            # relationships and job completion
                             job._runner(jobStore=jobStore, fileStore=fileStore, defer=defer)
 
                 # Accumulate messages from this job & any subsequent chained jobs
@@ -397,12 +403,19 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             ##########################################
             successor = nextChainable(jobDesc, jobStore)
             if successor is None or config.disableChaining:
-                # Can't chain any more jobs.
-                # TODO: why don't we commit the last job's file store? Won't
-                # its async uploads never necessarily finish?
-                # If we do call startCommit here it messes with the job
-                # itself and Toil thinks the job needs to run again.
+                # Can't chain any more jobs. We are going to stop.
+                
+                logger.info("Not chaining from job %s", jobDesc)
+                
+                # We shouldn't exit until commit is complete.
+                blockFn = fileStore.waitForCommit
+
+                # Save job file changes and new state.
+                fileStore.startCommit(jobState=True)    
+                
                 break
+                
+            logger.info("Chaining from %s to %s", jobDesc, successor)
 
             ##########################################
             # We have a single successor job that is not a checkpoint job. We
@@ -475,7 +488,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     ##########################################
     #Wait for the asynchronous chain of writes/updates to finish
     ########################################## 
-       
+    
     blockFn() 
     
     ##########################################
@@ -557,10 +570,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         statsDict.logs.messages = logMessages
 
     if (debugging or config.stats or statsDict.workers.logsToMaster) and not jobAttemptFailed:  # We have stats/logging to report back
-        if USING_PYTHON2:
-            jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True))
-        else:
-            jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True).encode())
+        jobStore.writeStatsAndLogging(json.dumps(statsDict, ensure_ascii=True).encode())
 
     #Remove the temp dir
     cleanUp = config.cleanWorkDir
@@ -568,7 +578,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         shutil.rmtree(localWorkerTempDir)
     
     #This must happen after the log file is done with, else there is no place to put the log
-    if (not jobAttemptFailed) and jobDesc.command == None and len(jobDesc.successorsAndServiceHosts()) == 0:
+    if (not jobAttemptFailed) and jobDesc.command == None and next(jobDesc.successorsAndServiceHosts(), None) is None:
         # We can now safely get rid of the JobDescription
         jobStore.delete(jobDesc.jobStoreID)
         

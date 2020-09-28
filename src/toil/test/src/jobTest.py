@@ -147,7 +147,7 @@ class JobTest(ToilTest):
                 self.fail()
     
     @travis_test
-    @pytest.mark.timeout(15)
+    @pytest.mark.timeout(5)
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'

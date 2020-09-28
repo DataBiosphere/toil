@@ -418,12 +418,14 @@ class JobDescription:
         Apply the given dict of ID renames to all references to jobs. Does not
         modify our own ID or those of finished predecessors.
         
+        IDs not present in the renames dict are left as-is.
+        
         :param dict(FakeID, str) renames: Rename operations to apply.
         """
         
-        self.childIDs = {renames[old] for old in self.childIDs}
-        self.followOnIDs = {renames[old] for old in self.followOnIDs}
-        self.serviceTree = {renames[parent]: [renames[child] for child in children]
+        self.childIDs = {renames.get(old, old) for old in self.childIDs}
+        self.followOnIDs = {renames.get(old, old) for old in self.followOnIDs}
+        self.serviceTree = {renames.get(parent, parent): [renames.get(child, child) for child in children]
                             for parent, children in self.serviceTree.items()}
         
     def addPredecessor(self):
@@ -647,7 +649,7 @@ class JobDescription:
             printedName += ' ' + '(unnamed)'
         
         if self.jobStoreID is not None:
-            printedName += ' ' + self.jobStoreID
+            printedName += ' ' + str(self.jobStoreID)
         
         return printedName
         
@@ -1747,55 +1749,47 @@ class Job:
     
     def _register(self, jobStore):
         """
-        If this job lacks a JobStore-assigned ID, assign this job (and all
-        connected jobs) IDs.
-        """
+        If this job lacks a JobStore-assigned ID, assign this job an ID.
+        Must be called for each job before it is saved to the JobStore for the first time.
         
-        # TODO: If we register all jobs in the component in _saveJobGraph, do
-        # we really need the separate loop over the registry here?
+        :returns: A list with either one old ID, new ID pair, or an empty list
+        :rtype: list
+        """
         
         # TODO: This doesn't really have much to do with the registry. Rename
         # the registry.
         
         if isinstance(self.jobStoreID, FakeID):
-            # We need to register the connected component.
+            # We need to get an ID.
+       
+            # Save our fake ID
+            fake = self.jobStoreID
             
-            allJobs = list(self._registry.values())
+            # Replace it with a real ID
+            self.description.jobStoreID = jobStore.assignID(self.description)
             
-            # We use one big dict from fake ID to corresponding real ID
-            fakeToReal = {}
+            # Make sure the JobDescription can do its JobStore-related setup.
+            self.description.onRegistration(jobStore)
             
-            for job in allJobs:
-               # Save the fake ID
-               fake = job.jobStoreID
-               # Assign a real one
-               job.description.jobStoreID = jobStore.assignID(job.description)
-               # Save the mapping
-               fakeToReal[fake] = job.jobStoreID
-               # Make sure the JobDescription can do its JobStore-related
-               # setup.
-               job.description.onRegistration(jobStore)
-            
-            # Remake the registry in place
-            self._registry.clear()
-            self._registry.update({job.jobStoreID: job for job in allJobs})
-            
-            for job in allJobs:
-                # Tell all the jobs (and thus their descriptions and services)
-                # about the renames.
-                job._renameReferences(fakeToReal)
-                
+            # Return the fake to real mapping
+            return [(fake, self.description.jobStoreID)]
+        else:
+            # We already have an ID. No assignment or reference rewrite necessary.
+            return []
+       
     def _renameReferences(self, renames):
         """
         Apply the given dict of ID renames to all references to other jobs.
         
         Ignores the registry, which is shared and assumed to already be updated.
         
+        IDs not present in the renames dict are left as-is.
+        
         :param dict(FakeID, str) renames: Rename operations to apply.
         """
         
         # Rename direct predecessors
-        self._directPredecessors = {renames[old] for old in self._directPredecessors}
+        self._directPredecessors = {renames.get(old, old) for old in self._directPredecessors}
         # Do renames in the description
         self._description.renameReferences(renames)
         
@@ -1873,11 +1867,25 @@ class Job:
         self.checkJobGraphForDeadlocks()
         
         # Make sure everybody in the registry is registrered with the job store
-        # and has an ID.
+        # and has an ID. Also rewrite ID references.
         allJobs = list(self._registry.values())
+        # We use one big dict from fake ID to corresponding real ID to rewrite references.
+        fakeToReal = {}
         for job in allJobs:
-            job._register(jobStore)
-        
+            # Register the job, get the old ID to new ID pair if any, and save that in the fake to real mapping
+            fakeToReal.update(job._register(jobStore))
+        if len(fakeToReal) > 0:
+            # Some jobs changed ID. We need to rebuild the registry and apply the reference rewrites.
+            
+            # Remake the registry in place
+            self._registry.clear()
+            self._registry.update({job.jobStoreID: job for job in allJobs})
+            
+            for job in allJobs:
+                # Tell all the jobs (and thus their descriptions and services)
+                # about the renames.
+                job._renameReferences(fakeToReal)
+            
         # Make sure the whole component is ready for promise registration
         for job in allJobs:
             job.prepareForPromiseRegistration(jobStore)
@@ -1895,7 +1903,7 @@ class Job:
         if not saveSelf:
             # Fulfil promises for return values (even if value is None)
             self._fulfillPromises(returnValues, jobStore)
-        
+            
         for job in ordering:
             for serviceBatch in reversed(list(job.description.serviceHostIDsInBatches())):
                 # For each batch of service host jobs in reverse order they start
@@ -2062,6 +2070,10 @@ class Job:
     def _runner(self, jobStore, fileStore, defer):
         """
         This method actually runs the job, and serialises the next jobs.
+        
+        It marks the job as completed (by clearing its command) and creates the
+        successor relationships to new successors, but it doesn't actually
+        commit those updates to the current job into the JobStore.
 
         :param class jobGraph: Instance of a jobGraph object
         :param class jobStore: Instance of the job store
@@ -2072,13 +2084,14 @@ class Job:
                register deferred functions.
         :return:
         """
-
+        
         # Make deferred function registration available during run().
         self._defer = defer
         # Make fileStore available as an attribute during run() ...
         self._fileStore = fileStore
         # ... but also pass it to run() as an argument for backwards compatibility.
         returnValues = self._run(fileStore)
+        
         # Clean up state changes made for run()
         self._defer = None
         self._fileStore = None
@@ -2087,8 +2100,11 @@ class Job:
         # Serialize the new Jobs defined by the run method to the jobStore
         self._saveJobGraph(jobStore, saveSelf=False, returnValues=returnValues)
         
-        # TODO: does not update this job's JobDescription to save any new child
-        # or follow-on relationships. Should it?
+        # Clear out the command, because the job is done.
+        self.description.command = None
+        
+        # That and the new child/follow-on relationships will need to be
+        # recorded later by an update() of the JobDescription.
 
         
 
