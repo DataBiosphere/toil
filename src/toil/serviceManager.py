@@ -191,7 +191,7 @@ class ServiceManager( object ):
                     break
                 try:
                     jobDesc = jobDescriptionsWithServicesToStart.get_nowait()
-                    if len(jobDesc.serviceHostIDsInBatches()) > 1:
+                    if len(list(jobDesc.serviceHostIDsInBatches())) > 1:
                         # Have to fall back to the old blocking behavior to
                         # ensure entire service "groups" are issued as a whole.
                         blockUntilServiceGroupIsStarted(jobDesc,
@@ -212,7 +212,8 @@ class ServiceManager( object ):
                             # it has started yet.
                             servicesThatAreStarting.add(serviceJobDesc)
                             # Send the service JobDescription off to be started
-                            logger.debug("Service manager is starting service job: %s, start ID: %s", serviceJobDesc, serviceJobDesc.startJobStoreID)
+                            logger.debug('Service manager is starting service job: %s, start ID: %s', serviceJobDesc, serviceJobDesc.startJobStoreID)
+                            assert jobStore.fileExists(serviceJobDesc.startJobStoreID)
                             serviceJobsToStart.put(serviceJobDesc)
                 except Empty:
                     # No new jobs that need services scheduled.
@@ -221,6 +222,7 @@ class ServiceManager( object ):
                 for serviceJobDesc in list(servicesThatAreStarting):
                     if not jobStore.fileExists(serviceJobDesc.startJobStoreID):
                         # Service has started!
+                        logger.debug('Service %s has removed %s and is therefore started', serviceJobDesc, serviceJobDesc.startJobStoreID)
                         servicesThatAreStarting.remove(serviceJobDesc)
                         parentJob = serviceToParentJobDescription[serviceJobDesc]
                         servicesRemainingToStartForJob[parentJob] -= 1
@@ -231,6 +233,7 @@ class ServiceManager( object ):
                 jobDescriptionsToRemove = set()
                 for jobDesc, remainingServices in servicesRemainingToStartForJob.items():
                     if remainingServices == 0:
+                        logger.debug('Job %s has all its services started', jobDesc)
                         jobDescriptionsWithServicesThatHaveStarted.put(jobDesc)
                         jobDescriptionsToRemove.add(jobDesc)
                 for jobDesc in jobDescriptionsToRemove:

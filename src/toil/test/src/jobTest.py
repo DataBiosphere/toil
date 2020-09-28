@@ -48,7 +48,7 @@ class JobTest(ToilTest):
 
     @slow
     def testStatic(self):
-        """
+        r"""
         Create a DAG of jobs non-dynamically and run it. DAG is:
         
         A -> F
@@ -93,7 +93,7 @@ class JobTest(ToilTest):
     
     @travis_test
     def testStatic2(self):
-        """
+        r"""
         Create a DAG of jobs non-dynamically and run it. DAG is:
         
         A -> F
@@ -386,6 +386,7 @@ class JobTest(ToilTest):
                 logger.debug("The expected exception was thrown: %s", repr(ex))
 
     @slow
+    @pytest.mark.timeout(30)
     def testEvaluatingRandomDAG(self):
         """
         Randomly generate test input then check that the job graph can be 

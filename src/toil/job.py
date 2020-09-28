@@ -225,7 +225,7 @@ class JobDescription:
       
         # First start all the jobs with no parent
         roots = set(self.serviceTree.keys())
-        for parent, children in self.serviceTree:
+        for parent, children in self.serviceTree.items():
             for child in children:
                 roots.remove(child)
         batch = list(roots)
@@ -635,6 +635,22 @@ class JobDescription:
     @remainingRetryCount.setter
     def remainingRetryCount(self, val):
         self._remainingRetryCount = val
+        
+    def clearRemainingRetryCount(self):
+        """
+        Clear remainingRetryCount and set it back to its default value.
+        
+        :returns: True if a modification to the JobDescription was made, and
+                  False otherwise.
+        :rtype: bool
+        """
+        if self._remainingRetryCount is not None:
+            # We had a value stored
+            self._remainingRetryCount = None
+            return True
+        else:
+            # No change needed
+            return False
             
     
     def __str__(self):
@@ -1233,7 +1249,7 @@ class Job:
                                'predecessor of the job receiving the promise')
         # TODO: can we guarantee self.jobStoreID is populated and so pass that here?
         with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
-            promise = UnfulfilledPromiseSentinel(str(self), False)
+            promise = UnfulfilledPromiseSentinel(str(self.description), False)
             pickle.dump(promise, fileHandle, pickle.HIGHEST_PROTOCOL)
         self._rvs[path].append(jobStoreFileID)
         return self._promiseJobStore.config.jobStore, jobStoreFileID
@@ -1609,7 +1625,7 @@ class Job:
 
     @staticmethod
     def _isLeafVertex(job):
-        return len(job.description.successorsAndServiceHosts()) == 0
+        return next(job.description.successorsAndServiceHosts(), None) is None
 
     @classmethod
     def _loadUserModule(cls, userModule):
@@ -1735,11 +1751,14 @@ class Job:
             job = todo[-1]
             todo.pop()
             
+            logger.debug("Consider job %s", job.jobStoreID)
+            
             #Do not add the job to the ordering until all its predecessors have been
             #added to the ordering
             outstandingPredecessor = False
             for predID in job._directPredecessors:
                 if predID not in visited:
+                    logger.debug("Has outstanding predecessor that will account for it: %s", predID)
                     outstandingPredecessor = True
                     break
             if outstandingPredecessor:
@@ -1749,11 +1768,16 @@ class Job:
                 visited.add(job.jobStoreID)
                 ordering.append(job)
                 
+                logger.debug("Visit job %s", job.jobStoreID)
+                
                 for otherID in itertools.chain(job.description.followOnIDs, job.description.childIDs):
                     if otherID in self._registry:
                         # Stack up descendants so we process children and then follow-ons.
                         # So stack up follow-ons deeper
                         todo.append(self._registry[otherID])
+                        logger.debug("Queue successor %s", otherID)
+                    else:
+                        logger.debug("Unregistered successor %s", otherID)
 
         return ordering
         
@@ -1904,8 +1928,9 @@ class Job:
         for job in allJobs:
             job.prepareForPromiseRegistration(jobStore)
         
-        # Get an ordering on the jobs which we use for pickling the jobs in the
-        # correct order to ensure the promises are properly established
+        # Get an ordering on the non-service jobs which we use for pickling the
+        # jobs in the correct order to ensure the promises are properly
+        # established
         ordering = self.getTopologicalOrderingOfJobs()
         
         # Set up to save last job first, so promises flow the right way
@@ -1915,9 +1940,9 @@ class Job:
         
         # Make sure we're the root
         assert ordering[-1] == self
-        # All the jobs have to end up in the ordering
-        assert len(ordering) == len(allJobs)
-        
+       
+        # Don't verify the ordering length: it excludes service host jobs.
+       
         if not saveSelf:
             # Fulfil promises for return values (even if value is None)
             self._fulfillPromises(returnValues, jobStore)
@@ -1926,10 +1951,13 @@ class Job:
             for serviceBatch in reversed(list(job.description.serviceHostIDsInBatches())):
                 # For each batch of service host jobs in reverse order they start
                 for serviceID in serviceBatch:
-                    # Find the actual job
-                    serviceJob = self._registry[serviceID]
-                    # Pickle the service body, which triggers all the promise stuff
-                    serviceJob.saveBody(jobStore)
+                    if serviceID in self._registry:
+                        # It's a new service
+                        
+                        # Find the actual job
+                        serviceJob = self._registry[serviceID]
+                        # Pickle the service body, which triggers all the promise stuff
+                        serviceJob.saveBody(jobStore)
             if job != self or saveSelf:
                 # Now pickle the job itself
                 job.saveBody(jobStore)
@@ -1938,7 +1966,8 @@ class Job:
         for job in ordering:
             for serviceBatch in job.description.serviceHostIDsInBatches():
                 for serviceID in serviceBatch:
-                    jobStore.update(self._registry[serviceID].description)
+                    if serviceID in self._registry:
+                        jobStore.update(self._registry[serviceID].description)
             if job != self or saveSelf:
                 jobStore.update(job.description)
         
@@ -2447,7 +2476,9 @@ class ServiceHostJob(Job):
         # Unpickle the service
         logger.debug('Loading service module %s.', self.serviceModule)
         userModule = self._loadUserModule(self.serviceModule)
-        service = self._unpickle( userModule, BytesIO( self.pickledService ), fileStore.jobStore.config )
+        service = self._unpickle(userModule, BytesIO(self.pickledService))
+        # Make sure it has the config
+        service.assignConfig(fileStore.jobStore.config)
         #Start the service
         startCredentials = service.start(self)
         try:

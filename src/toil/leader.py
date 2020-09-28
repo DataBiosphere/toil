@@ -80,8 +80,8 @@ class FailedJobsException(Exception):
             for jobDesc in failedJobs:
                 # Reload from JobStore. TODO: avoid this!
                 jobDesc = jobStore.load(jobDesc.jobStoreID)
-                if job.logJobStoreFileID:
-                    with job.getLogFileHandle(jobStore) as fH:
+                if jobDesc.logJobStoreFileID:
+                    with jobDesc.getLogFileHandle(jobStore) as fH:
                         self.msg += "\n" + StatsAndLogging.formatLogStream(fH, jobDesc)
         # catch failures to prepare more complex details and only return the basics
         except:
@@ -534,6 +534,11 @@ class Leader(object):
             # Stop trying to get jobs when function returns None
             if serviceJob is None:
                 break
+                
+            # JobDescriptions coming from the ServiceManager may not have a
+            # reference to the current config.
+            serviceJob.assignConfig(self.config)
+                
             logger.debug('Launching service job: %s', serviceJob)
             self.issueServiceJob(serviceJob)
 
@@ -544,6 +549,11 @@ class Leader(object):
             if jobDesc is None: # Stop trying to get jobs when function returns None
                 break
             logger.debug('Job: %s has established its services.', jobDesc.jobStoreID)
+            
+            # JobDescriptions coming from the ServiceManager may not have a
+            # reference to the current config.
+            jobDesc.assignConfig(self.config)
+            
             # Drop all service relationships
             jobDesc.filterServiceHosts(lambda ignored: False)
             if jobDesc.jobStoreID not in self.toilState.updatedJobs:

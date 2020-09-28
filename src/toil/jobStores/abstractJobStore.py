@@ -602,9 +602,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 stackSizeFn = lambda: sum(map(len, jobDescription.stack))
                 startStackSize = stackSizeFn()
                 # Remove deleted jobs
-                jobDescription.stack = [[y for y in x if haveJob(y)] for x in jobDescription.stack]
-                # Remove empty stuff from the stack
-                jobDescription.stack = [x for x in jobDescription.stack if len(x) > 0]
+                jobDescription.filterSuccessors(haveJob)
                 # Check if anything got removed
                 if stackSizeFn() != startStackSize:
                     changed[0] = True
@@ -667,10 +665,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 
-            # Reset the retry count of the JobDescription
-            if jobDescription.remainingRetryCount != self._defaultTryCount():
-                jobDescription.remainingRetryCount = self._defaultTryCount()
-                changed[0] = True
+            # Reset the retry count of the JobDescription so it will use the default.
+            changed[0] |= jobDescription.clearRemainingRetryCount()
 
             # This cleans the old log file which may
             # have been left if the job is being retried after a failure.
