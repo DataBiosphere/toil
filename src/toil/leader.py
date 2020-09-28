@@ -365,13 +365,14 @@ class Leader(object):
         Make a successor job ready to run if possible, returning False if it should
         not yet be run or True otherwise.
         
-        :param toil.job.JobDescription successor: The successor which has failed.
+        :param toil.job.JobDescription successor: The successor which should become ready.
         :param toil.job.JobDescription predecessor: The job which the successor comes after.
         """
         #Build map from successor to predecessors.
         if successor.jobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
             self.toilState.successorJobStoreIDToPredecessorJobs[successor.jobStoreID] = []
         self.toilState.successorJobStoreIDToPredecessorJobs[successor.jobStoreID].append(predecessor)
+        logger.debug("Added job %s as coming after job %s", successor, predecessor)
 
         if successor.predecessorNumber > 1:
             return self._checkSuccessorReadyToRunMultiplePredecessors(successor, predecessor)
@@ -406,7 +407,7 @@ class Leader(object):
                 logger.warning("Job %s is a successor of %s but is already done and gone.", successorID, predecessor.jobStoreID)
                 # Don't try and run it
                 continue
-            if self._makeJobSuccessorReadyToRun(predecessor, successor):
+            if self._makeJobSuccessorReadyToRun(successor, predecessor):
                 successors.append(successor)
         self.issueJobs(successors)
 
@@ -1009,7 +1010,7 @@ class Leader(object):
                             else:
                                 logger.warning('The batch system left an empty file %s' % batchSystemFile)
 
-                replacementJob.setupJobAfterFailure(self.config, exitReason=exitReason)
+                replacementJob.setupJobAfterFailure(exitReason=exitReason)
                 self.jobStore.update(replacementJob)
                 
                 # Show job as failed in progress (and take it from completed)
@@ -1174,7 +1175,9 @@ class Leader(object):
         elif jobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
             #We have reach the root job
             assert len(self.toilState.updatedJobs) == 0
-            assert len(self.toilState.successorJobStoreIDToPredecessorJobs) == 0
+            assert len(self.toilState.successorJobStoreIDToPredecessorJobs) == 0, \
+                ("Job {} is finished and had no predecessor, but we have other outstanding jobs "
+                 "with predecessors: {}".format(jobStoreID, self.toilState.successorJobStoreIDToPredecessorJobs.keys()))
             assert len(self.toilState.successorCounts) == 0
             logger.debug("Reached root job %s so no predecessors to clean up" % jobStoreID)
 

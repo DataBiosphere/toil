@@ -151,6 +151,7 @@ class JobTest(ToilTest):
     def testDAGConsistency(self):
         options = Job.Runner.getDefaultOptions(self._createTempDir() + '/jobStore')
         options.clean = 'always'
+        options.logLevel = 'debug'
         i = Job.wrapJobFn(parent)
         with Toil(options) as toil:
             try:

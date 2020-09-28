@@ -587,7 +587,7 @@ class JobDescription:
         """
         return self._fetchRequirement('disk')
     @disk.setter
-    def set_disk(self, val):
+    def disk(self, val):
          self._requirementOverrides['disk'] = self._parseResource('disk', val)
 
     @property
@@ -597,7 +597,7 @@ class JobDescription:
         """
         return self._fetchRequirement('memory')
     @memory.setter
-    def set_memory(self, val):
+    def memory(self, val):
          self._requirementOverrides['memory'] = self._parseResource('memory', val)
 
     @property
@@ -607,7 +607,7 @@ class JobDescription:
         """
         return self._fetchRequirement('cores')
     @cores.setter
-    def set_cores(self, val):
+    def cores(self, val):
          self._requirementOverrides['cores'] = self._parseResource('cores', val)
 
     @property
@@ -617,7 +617,7 @@ class JobDescription:
         """
         return self._fetchRequirement('preemptable')
     @preemptable.setter
-    def set_preemptable(self, val):
+    def preemptable(self, val):
          self._requirementOverrides['preemptable'] = self._parseResource('preemptable', val)
     
     @property
@@ -633,7 +633,7 @@ class JobDescription:
         else:
             raise AttributeError(f"Retry count for {self} cannot be determined")
     @remainingRetryCount.setter
-    def set_remainingRetryCount(self, val):
+    def remainingRetryCount(self, val):
         self._remainingRetryCount = val
             
     
@@ -876,7 +876,7 @@ class Job:
         """
         return self.description.disk
     @disk.setter
-    def set_disk(self, val):
+    def disk(self, val):
          self.description.disk = val
 
     @property
@@ -886,7 +886,7 @@ class Job:
         """
         return self.description.memory
     @memory.setter
-    def set_memory(self, val):
+    def memory(self, val):
          self.description.memory = val
 
     @property
@@ -896,7 +896,7 @@ class Job:
         """
         return self.description.cores
     @cores.setter
-    def set_cores(self, val):
+    def cores(self, val):
          self.description.cores = val
 
     @property
@@ -906,7 +906,7 @@ class Job:
         """
         return self.description.preemptable
     @preemptable.setter
-    def set_preemptable(self, val):
+    def preemptable(self, val):
          self.description.preemptable = val
         
     @property
