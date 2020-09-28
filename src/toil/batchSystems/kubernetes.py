@@ -445,9 +445,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             pod_spec = kubernetes.client.V1PodSpec(containers=[container],
                                                    volumes=volumes,
                                                    restart_policy="Never")
-            # Make metadata to labl the job/pod with info.
-            metadata = kubernetes.client.V1ObjectMeta(name=jobName
-                                                    ,labels={"toil_run": self.runID})
+            # Make metadata to label the job/pod with info.
+            metadata = kubernetes.client.V1ObjectMeta(name=jobName,
+                                                    labels={"toil_run": self.runID})
             
             # Wrap the spec in a template
             template = kubernetes.client.V1PodTemplateSpec(spec=pod_spec, metadata=metadata)
@@ -470,7 +470,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     
     def _ourJobObjectList(self, onlySucceeded=False, limit=None):
         """
-        Return Kubernetes V1Job objects that we are responsible for that the
+        Yield Kubernetes V1Job objects that we are responsible for that the
         cluster knows about.
 
         Doesn't support a free-form selector, because there's only about 3
@@ -489,17 +489,59 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # https://github.com/kubernetes-client/python/issues/953. For now we
         # will just throw an error if we don't get to the end of the list in
         # time.
-        
-        if onlySucceeded: 
-            return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                            label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1").items
- 
-        return self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                            label_selector="toil_run={}".format(self.runID)).items
+
+        token = None
+
+        while True:
+            # We can't just pass e.g. a None continue token when there isn't
+            # one, because the Kubernetes module reads its kwargs dict and
+            # cares about presence/absence. So we build a dict to send.
+            kwargs = {}
+            
+            if token is not None:
+                kwargs['_continue'] = token
+
+            if onlySucceeded: 
+                results =  self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
+                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs).items
+            else:
+                results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
+                                                label_selector="toil_run={}".format(self.runID), **kwargs).items
+            yield results
+            
+            # Remember the continuation token, if any
+            token = getattr(results.metadata, 'continue', None)
+
+            if token is None:
+                # There isn't one. We got everything.
+                break
        
     
-    def _getOurPodObjectList(self):
-        return self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID)).items
+    def _ourPodObjectList(self):
+        """
+        Yield Kubernetes V1Pod objects that we are responsible for that the
+        cluster knows about.                                        
+        """
+
+        token = None
+
+        while True:
+            # We can't just pass e.g. a None continue token when there isn't
+            # one, because the Kubernetes module reads its kwargs dict and
+            # cares about presence/absence. So we build a dict to send.
+            kwargs = {}
+            
+            if token is not None:
+                kwargs['_continue'] = token
+
+            yield self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs).items
+            
+            # Remember the continuation token, if any
+            token = getattr(results.metadata, 'continue', None)
+
+            if token is None:
+                # There isn't one. We got everything.
+                break
 
 
     def _getPodForJob(self, jobObject):
@@ -727,9 +769,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         jobObject = None
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
-        # Grab our job objects via toil_run label
-        ourJobObjects  = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                            label_selector="toil_run={}".format(self.runID))
 
         for j in self._ourJobObjectList(onlySucceeded=True, limit=1):
             # Look for succeeded jobs because that's the only filter Kubernetes has
@@ -950,7 +989,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
         
             # aggregate all pods and check if any pod has failed to cleanup or is orphaned. 
-            ourPods = self._getOurPodObjectList()
+            ourPods = self._OurPodObjectList()
 
             for pod in ourPods:
                 try:
