@@ -1286,7 +1286,7 @@ class Job:
         :return: The roots of the connected component of jobs that contains this job.
         A root is a job with no predecessors.
         
-        Only works on connected components of jobs not yet added to the JobStore.
+        Only deals with jobs created here, rather than loaded from the job store.
 
         :rtype : set of Job objects with no predecessors (i.e. which are not children, follow-ons, or services)
         """
@@ -1311,7 +1311,7 @@ class Job:
         As execution always starts from one root job, having multiple root jobs will \
         cause a deadlock to occur.
         
-        Only works on connected components of jobs not yet added to the JobStore.
+        Only deals with jobs created here, rather than loaded from the job store.
         """
         rootJobs = self.getRootJobs()
         if len(rootJobs) != 1:
@@ -1325,8 +1325,6 @@ class Job:
         in the *augmented job graph* (see below). Such cycles are not allowed \
         in valid job graphs.
         
-        Only works on connected components of jobs not yet added to the JobStore.
-
         A follow-on edge (A, B) between two jobs A and B is equivalent \
         to adding a child edge to B from (1) A, (2) from each child of A, \
         and (3) from the successors of each child of A. We call each such edge \
@@ -1336,7 +1334,7 @@ class Job:
         For a job graph G = (V, E) the algorithm is ``O(|V|^2)``. It is ``O(|V| + |E|)`` for \
         a graph with no follow-ons. The former follow-on case could be improved!
         
-        Only works on connected components of jobs not yet added to the JobStore.
+        Only deals with jobs created here, rather than loaded from the job store.
         """
         #Get the root jobs
         roots = self.getRootJobs()
@@ -1358,7 +1356,8 @@ class Job:
         if self not in visited:
             visited.add(self)
             stack.append(self)
-            for successor in [self._registry[jID] for jID in self.description.allSuccessors()] + extraEdges[self]:
+            for successor in [self._registry[jID] for jID in self.description.allSuccessors() if jID in self._registry] + extraEdges[self]:
+                # Grab all the successors in the current registry (i.e. added form this node) and look at them.
                 successor._checkJobGraphAcylicDFS(stack, visited, extraEdges)
             assert stack.pop() == self
         if self in stack:
@@ -1368,9 +1367,13 @@ class Job:
     @staticmethod
     def _getImpliedEdges(roots):
         """
-        Gets the set of implied edges (between children and follow-ons of a common job). See Job.checkJobGraphAcylic
+        Gets the set of implied edges (between children and follow-ons of a common job). Used in Job.checkJobGraphAcylic.
+        
+        Only deals with jobs created here, rather than loaded from the job store.
+        
+        :returns: dict from Job object to list of Job objects that must be done before it can start.
         """
-        #Get nodes in job graph
+        #Get nodes (Job objects) in job graph
         nodes = set()
         for root in roots:
             root._collectAllSuccessors(nodes)
@@ -1395,7 +1398,8 @@ class Job:
                     
                 for inUpper in reacheable:
                     # Add extra edges to the roots of all the lower subtrees
-                    extraEdges[inUpper] += [job._registry[lowerID] for lowerID in lower]
+                    # But skip anything in the lower subtree not in the current _registry (i.e. not created hear)
+                    extraEdges[inUpper] += [job._registry[lowerID] for lowerID in lower if lowerID in job._registry]
         
         return extraEdges
 
