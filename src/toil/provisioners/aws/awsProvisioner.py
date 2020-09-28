@@ -33,7 +33,7 @@ from toil.lib.misc import truncExpBackoff
 from toil.provisioners.abstractProvisioner import AbstractProvisioner, Shape
 from toil.provisioners.aws import zoneToRegion, getCurrentAWSZone, getSpotZone
 from toil.lib.context import Context
-from toil.lib.retry import retry
+from toil.lib.retry import old_retry
 from toil.lib.memoize import less_strict_bool
 from toil.provisioners import NoSuchClusterException
 from toil.provisioners.node import Node
@@ -88,9 +88,9 @@ def awsRetry(f):
     """
     @wraps(f)
     def wrapper(*args, **kwargs):
-        for attempt in retry(delays=truncExpBackoff(),
-                             timeout=300,
-                             predicate=awsRetryPredicate):
+        for attempt in old_retry(delays=truncExpBackoff(),
+                                 timeout=300,
+                                 predicate=awsRetryPredicate):
             with attempt:
                 return f(*args, **kwargs)
     return wrapper
@@ -282,7 +282,7 @@ class AWSProvisioner(AbstractProvisioner):
         if len(instances) == len(instancesToTerminate):
             logger.debug('Deleting security group...')
             removed = False
-            for attempt in retry(timeout=300, predicate=expectedShutdownErrors):
+            for attempt in old_retry(timeout=300, predicate=expectedShutdownErrors):
                 with attempt:
                     for sg in self._ctx.ec2.get_all_security_groups():
                         if sg.name == self.clusterName and vpcId and sg.vpc_id == vpcId:
@@ -333,7 +333,7 @@ class AWSProvisioner(AbstractProvisioner):
 
         instancesLaunched = []
 
-        for attempt in retry(predicate=awsRetryPredicate):
+        for attempt in old_retry(predicate=awsRetryPredicate):
             with attempt:
                 # after we start launching instances we want to ensure the full setup is done
                 # the biggest obstacle is AWS request throttling, so we retry on these errors at
@@ -357,7 +357,7 @@ class AWSProvisioner(AbstractProvisioner):
                     # flatten the list
                     instancesLaunched = [item for sublist in instancesLaunched for item in sublist]
 
-        for attempt in retry(predicate=awsRetryPredicate):
+        for attempt in old_retry(predicate=awsRetryPredicate):
             with attempt:
                 wait_instances_running(self._ctx.ec2, instancesLaunched)
 
@@ -423,7 +423,7 @@ class AWSProvisioner(AbstractProvisioner):
         # What region do we care about?
         region = zoneToRegion(self._zone)
         
-        for attempt in retry(predicate=lambda e: True):
+        for attempt in old_retry(predicate=lambda e: True):
             # Until we get parseable JSON
             # TODO: What errors do we get for timeout, JSON parse failure, etc?
             with attempt:
@@ -648,15 +648,15 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 raise
         else:
-            for attempt in retry(predicate=groupNotFound, timeout=300):
+            for attempt in old_retry(predicate=groupNotFound, timeout=300):
                 with attempt:
                     # open port 22 for ssh-ing
                     web.authorize(ip_protocol='tcp', from_port=22, to_port=22, cidr_ip='0.0.0.0/0')
-            for attempt in retry(predicate=groupNotFound, timeout=300):
+            for attempt in old_retry(predicate=groupNotFound, timeout=300):
                 with attempt:
                     # the following authorizes all TCP access within the web security group
                     web.authorize(ip_protocol='tcp', from_port=0, to_port=65535, src_group=web)
-            for attempt in retry(predicate=groupNotFound, timeout=300):
+            for attempt in old_retry(predicate=groupNotFound, timeout=300):
                 with attempt:
                     # We also want to open up UDP, both for user code and for the RealtimeLogger
                     web.authorize(ip_protocol='udp', from_port=0, to_port=65535, src_group=web)
@@ -698,7 +698,7 @@ class AWSProvisioner(AbstractProvisioner):
             else:
                 self._ctx.iam.remove_role_from_instance_profile(iamRoleName,
                                                                 profile.roles.member.role_name)
-        for attempt in retry(predicate=lambda err: err.status == 404):
+        for attempt in old_retry(predicate=lambda err: err.status == 404):
             with attempt:
                 self._ctx.iam.add_role_to_instance_profile(iamRoleName, iamRoleName)
         return profile_arn

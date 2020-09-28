@@ -6,7 +6,7 @@ from collections import Iterator
 from operator import attrgetter
 from past.builtins import map
 from toil.lib.exceptions import panic
-from toil.lib.retry import retry
+from toil.lib.retry import old_retry
 from boto.ec2.instance import Instance
 from boto.ec2.spotinstancerequest import SpotInstanceRequest
 from boto.exception import EC2ResponseError
@@ -31,9 +31,9 @@ def not_found(e):
 
 
 def retry_ec2(t=a_short_time, retry_for=10 * a_short_time, retry_while=not_found):
-    return retry(delays=(t, t, t * 2, t * 4),
-                 timeout=retry_for,
-                 predicate=retry_while)
+    return old_retry(delays=(t, t, t * 2, t * 4),
+                     timeout=retry_for,
+                     predicate=retry_while)
 
 
 class UnexpectedResourceState(Exception):
