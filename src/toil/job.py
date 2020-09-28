@@ -1393,8 +1393,10 @@ class Job:
                 # Find everything in the upper subtree
                 reacheable = set()
                 for upperID in upper:
-                    upperJob = job._registry[upperID]
-                    upperJob._collectAllSuccessors(reacheable)
+                    if upperID in job._registry:
+                        # This is a locally added job, not an already-saved job
+                        upperJob = job._registry[upperID]
+                        upperJob._collectAllSuccessors(reacheable)
                     
                 for inUpper in reacheable:
                     # Add extra edges to the roots of all the lower subtrees
@@ -1690,6 +1692,8 @@ class Job:
     def _collectAllSuccessors(self, visited):
         """
         Adds the job and all jobs reachable on a directed path from current node to the given set.
+        
+        Only considers jobs in this job's subgraph that are newly added, not loaded from the job store.
         """
         
         # Keep our own stack since we may have a stick in the graph long enough
@@ -1702,7 +1706,9 @@ class Job:
             if job not in visited:
                 visited.add(job)
                 for successorID in job.description.allSuccessors():
-                    todo.append(self._registry[successorID])
+                    if successorID in self._registry:
+                        # We added this successor locally
+                        todo.append(self._registry[successorID])
 
     def getTopologicalOrderingOfJobs(self):
         """
@@ -1744,9 +1750,10 @@ class Job:
                 ordering.append(job)
                 
                 for otherID in itertools.chain(job.description.followOnIDs, job.description.childIDs):
-                    # Stack up descendants so we process children and then follow-ons.
-                    # So stack up follow-ons deeper
-                    todo.append(self._registry[otherID])
+                    if otherID in self._registry:
+                        # Stack up descendants so we process children and then follow-ons.
+                        # So stack up follow-ons deeper
+                        todo.append(self._registry[otherID])
 
         return ordering
         
