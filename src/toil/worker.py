@@ -49,13 +49,14 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-def nextChainable(predecessor, jobStore):
+def nextChainable(predecessor, jobStore, config):
     """
     Returns the next chainable job's JobDescription after the given predecessor
     JobDescription, if one exists, or None if the chain must terminate.
     
     :param toil.job.JobDescription predecessor: The job to chain from
     :param toil.jobStores.abstractJobStore.AbstractJobStore jobStore: The JobStore to fetch JobDescriptions from.
+    :param toil.common.Config config: The configuration for the current run.
     :rtype: toil.job.JobDescription or None
     """
     #If no more jobs to run or services not finished, quit
@@ -91,6 +92,8 @@ def nextChainable(predecessor, jobStore):
     
     # Load the successor JobDescription
     successor = jobStore.load(successorID)
+    # AMke sure it has access to the config to default its resources
+    successor.assignConfig(config)
 
     #We check the requirements of the successor to see if we can run it
     #within the current worker
@@ -403,7 +406,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             ##########################################
             #Establish if we can run another job within the worker
             ##########################################
-            successor = nextChainable(jobDesc, jobStore)
+            successor = nextChainable(jobDesc, jobStore, config)
             if successor is None or config.disableChaining:
                 # Can't chain any more jobs. We are going to stop.
                 

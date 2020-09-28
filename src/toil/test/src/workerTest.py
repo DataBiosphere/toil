@@ -57,7 +57,7 @@ class WorkerTests(ToilTest):
             jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
             jobDesc2 = createTestJobDesc(1, 2, 3, True, False)
             getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
-            chainable = nextChainable(jobDesc1, self.jobStore)
+            chainable = nextChainable(jobDesc1, self.jobStore, self.config)
             self.assertNotEqual(chainable, None)
             self.assertEqual(jobDesc2.jobStoreID, chainable.jobStoreID)
 
@@ -65,11 +65,11 @@ class WorkerTests(ToilTest):
             jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
             jobDesc2 = createTestJobDesc(1, 2, 3, True, True)
             getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
-            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
+            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore, self.config))
 
             # If there is no child we should get nothing to chain.
             jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
-            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
+            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore, self.config))
 
             # If there are 2 or more children we should get nothing to chain.
             jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
@@ -77,7 +77,7 @@ class WorkerTests(ToilTest):
             jobDesc3 = createTestJobDesc(1, 2, 3, True, False)
             getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
             getattr(jobDesc1, successorType)(jobDesc3.jobStoreID)
-            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
+            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore, self.config))
 
             # If there is an increase in resource requirements we should get nothing to chain.
             reqs = {'memory': 1, 'cores': 2, 'disk': 3, 'preemptable': True, 'checkpoint': False}
@@ -86,10 +86,10 @@ class WorkerTests(ToilTest):
                 reqs[increased_attribute] += 1
                 jobDesc2 = createTestJobDesc(**reqs)
                 getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
-                self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
+                self.assertEqual(None, nextChainable(jobDesc1, self.jobStore, self.config))
 
             # A change in preemptability from True to False should be disallowed.
             jobDesc1 = createTestJobDesc(1, 2, 3, True, False)
             jobDesc2 = createTestJobDesc(1, 2, 3, False, True)
             getattr(jobDesc1, successorType)(jobDesc2.jobStoreID)
-            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore))
+            self.assertEqual(None, nextChainable(jobDesc1, self.jobStore, self.config))
