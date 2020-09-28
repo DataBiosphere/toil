@@ -108,7 +108,7 @@ class AWSProvisioner(AbstractProvisioner):
         self._zone = zone if zone else getCurrentAWSZone()
 
         # establish boto3 clients
-        self.session = boto3.Session(region_name=zoneToRegion(zone))
+        self.session = boto3.Session(region_name=zoneToRegion(self._zone))
         self.ec2 = self.session.resource('ec2')
 
         if clusterName:
@@ -193,7 +193,7 @@ class AWSProvisioner(AbstractProvisioner):
                                      instance_type=leaderNodeType,
                                      user_data=userData,
                                      block_device_map=bdm,
-                                     # instance_profile_arn={'Arn': profileArn},
+                                     instance_profile_arn={'Arn': profileArn},
                                      placement={'AvailabilityZone': self._zone},
                                      subnet_id=self._vpcSubnet)
 
