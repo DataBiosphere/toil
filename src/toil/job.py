@@ -1705,35 +1705,38 @@ class Job:
         :returns: a list of jobs such that for all pairs of indices i, j for which i < j, \
         the job at index i can be run before the job at index j.
         
-        Only works on jobs in this job's subgraph that hasn't yet been added to the job store.
+        Only considers jobs in this job's subgraph that are newly added, not loaded from the job store.
         
         Ignores service jobs.
         
-        :rtype: list
+        :rtype: list[Job]
         """
+        
+        # List of Job objects in order.
         ordering = []
+        # Set of IDs of visited jobs.
         visited = set()
 
         # We need to recurse and traverse the graph without exhausting Python's
-        # stack, so we keep our own stack.
+        # stack, so we keep our own stack of Job objects
         todo = [self]
 
         while len(todo) > 0:
             job = todo[-1]
             todo.pop()
-
+            
             #Do not add the job to the ordering until all its predecessors have been
             #added to the ordering
             outstandingPredecessor = False
-            for p in job._directPredecessors:
-                if p not in visited:
+            for predID in job._directPredecessors:
+                if predID not in visited:
                     outstandingPredecessor = True
                     break
             if outstandingPredecessor:
                 continue
 
-            if job not in visited:
-                visited.add(job)
+            if job.jobStoreID not in visited:
+                visited.add(job.jobStoreID)
                 ordering.append(job)
                 
                 for otherID in itertools.chain(job.description.followOnIDs, job.description.childIDs):
@@ -1885,7 +1888,7 @@ class Job:
                 # Tell all the jobs (and thus their descriptions and services)
                 # about the renames.
                 job._renameReferences(fakeToReal)
-            
+
         # Make sure the whole component is ready for promise registration
         for job in allJobs:
             job.prepareForPromiseRegistration(jobStore)
@@ -1897,8 +1900,12 @@ class Job:
         # Set up to save last job first, so promises flow the right way
         ordering.reverse()
         
+        logger.info("Saving graph of %d jobs, %d new", len(allJobs), len(fakeToReal))
+        
         # Make sure we're the root
         assert ordering[-1] == self
+        # All the jobs have to end up in the ordering
+        assert len(ordering) == len(allJobs)
         
         if not saveSelf:
             # Fulfil promises for return values (even if value is None)

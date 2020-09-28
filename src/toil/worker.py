@@ -368,7 +368,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                     # If it is a checkpoint job, save the command
                     jobDesc.checkpoint = jobDesc.command
 
-                logger.info("Loaded body for %s from description %s", job, jobDesc)
+                logger.info("Loaded body %s from description %s", job, jobDesc)
 
                 # Create a fileStore object for the job
                 fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
@@ -387,6 +387,8 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
+                
+                logger.info("Completed body for %s", jobDesc)
 
             else:
                 #The command may be none, in which case
@@ -407,11 +409,7 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                 
                 logger.info("Not chaining from job %s", jobDesc)
                 
-                # We shouldn't exit until commit is complete.
-                blockFn = fileStore.waitForCommit
-
-                # Save job file changes and new state.
-                fileStore.startCommit(jobState=True)    
+                # TODO: Somehow the commit happens even if we don't start it here. 
                 
                 break
                 

@@ -471,7 +471,7 @@ class Leader(object):
             else:
                 # Otherwise try the job again
                 self.issueJob(readyJob)
-        elif len(readyJob.serviceHostIDsInBatches()) > 0:
+        elif next(readyJob.serviceHostIDsInBatches(), None) is not None:
             # the job has services to run, which have not been started, start them
             # Build a map from the service jobs to the job and a map
             # of the services created for the job
