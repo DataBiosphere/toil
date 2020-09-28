@@ -2193,13 +2193,12 @@ class FunctionWrappingJob(Job):
                 value = human2bytes(value)
             return value
 
-        Job.__init__(self,
-                     memory=resolve('memory', dehumanize=True),
-                     cores=resolve('cores', dehumanize=True),
-                     disk=resolve('disk', dehumanize=True),
-                     preemptable=resolve('preemptable'),
-                     checkpoint=resolve('checkpoint', default=False),
-                     unitName=resolve('name', default=None))
+        super().__init__(memory=resolve('memory', dehumanize=True),
+                         cores=resolve('cores', dehumanize=True),
+                         disk=resolve('disk', dehumanize=True),
+                         preemptable=resolve('preemptable'),
+                         checkpoint=resolve('checkpoint', default=False),
+                         unitName=resolve('name', default=None))
 
         self.userFunctionModule = ModuleDescriptor.forModule(userFunction.__module__).globalize()
         self.userFunctionName = str(userFunction.__name__)
@@ -2341,7 +2340,7 @@ class EncapsulatedJob(Job):
         :param toil.job.Job job: the job to encapsulate.
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
-        Job.__init__(self, **job._requirements)
+        super().__init__(**job._requirements)
         # Ensure that the encapsulated job has the same direct predecessors as the job
         # being encapsulated.
         if job._directPredecessors:
@@ -2394,7 +2393,7 @@ class ServiceHostJob(Job):
         
         # Make ourselves with name info from the Service and a
         # ServiceJobDescription that has the service control flags.
-        super().__init__(self, **service.requirements,
+        super().__init__(**service.requirements,
             unitName=service.unitName, descriptionClass=ServiceJobDescription)
         
         # Make sure the service knows it has a host now
