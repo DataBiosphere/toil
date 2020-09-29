@@ -499,6 +499,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 return self.load(jobId)
 
         def haveJob(jobId):
+            assert len(jobId) > 1, "Job ID {} too short; is a string being used as a list?".format(jobId)
             if jobCache is not None:
                 if jobId in jobCache:
                     return True
@@ -538,11 +539,10 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                         and haveJob(successorJobStoreID)):
                         getConnectedJobs(getJobDescription(successorJobStoreID))
             # Traverse service jobs
-            for jobs in jobDescription.services:
-                for serviceJobStoreID in jobs:
-                    if haveJob(serviceJobStoreID):
-                        assert serviceJobStoreID not in reachableFromRoot
-                        reachableFromRoot.add(serviceJobStoreID)
+            for serviceJobStoreID in jobDescription.services:
+                if haveJob(serviceJobStoreID):
+                    assert serviceJobStoreID not in reachableFromRoot
+                    reachableFromRoot.add(serviceJobStoreID)
 
         logger.debug("Checking job graph connectivity...")
         getConnectedJobs(self.loadRootJob())
@@ -645,7 +645,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
                 return newFlag
 
-            servicesSizeFn = lambda: sum(map(len, jobDescription.services))
+            servicesSizeFn = lambda: len(jobDescription.services)
             startServicesSize = servicesSizeFn()
 
             def replaceFlagsIfNeeded(serviceJobDescription):
@@ -658,9 +658,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             # remove all services that no longer exist
             jobDescription.filterServiceHosts(haveJob)
 
-            for l in jobDescription.services:
-                for serviceID in l:
-                    replaceFlagsIfNeeded(getJobDescription(serviceID)) 
+            for serviceID in jobDescription.services:
+                replaceFlagsIfNeeded(getJobDescription(serviceID)) 
 
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True

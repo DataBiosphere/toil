@@ -574,10 +574,7 @@ class Leader(object):
             # Make sure services still want to run
             assert next(jobDesc.serviceHostIDsInBatches(), None) is not None
             
-            if jobDesc.jobStoreID not in self.toilState.updatedJobs:
-                # Treat it as updated and also failed, because we should try
-                # to make the services again, or fail completely.
-                self.toilState.updatedJobs[jobDesc.jobStoreID] = (jobDesc, 1)
+            # Don't touch anything.
     
     def _gatherUpdatedJobs(self, updatedJobTuple):
         """Gather any new, updated JobDescriptions from the batch system"""
@@ -1111,9 +1108,9 @@ class Leader(object):
             logger.debug("Service job is being processed as a totally failed job: %s", jobDesc)
 
             assert isinstance(jobDesc, ServiceJobDescription) 
-
-            # No longer is here to have a predecessor
-            predecesssor = self.toilState.serviceJobStoreIDToPredecessorJob.pop(jobDesc.jobStoreID)
+            
+            # Grab the predecessor
+            predecesssor = self.toilState.serviceJobStoreIDToPredecessorJob[jobDesc.jobStoreID]
 
             # Signal to all services (including this one) in the group that they should
             # terminate. We do this to prevent other services in the set
@@ -1126,10 +1123,14 @@ class Leader(object):
                 
             # Leave the service job as a service of ist predecessor, because it
             # didn't work.
-
+            
             # This ensures that the job will not attempt to run any of it's
             # successors on the stack
             self.toilState.hasFailedSuccessors.add(predecesssor.jobStoreID) 
+            
+            # Poke predecessor job that had the service, and drop predecessor
+            # relationship from ToilState
+            self._updatePredecessorStatus(jobDesc.jobStoreID)
             
             # Remove the start flag, if it still exists. This indicates
             # to the service manager that the job has "started", and prevents
@@ -1193,7 +1194,7 @@ class Leader(object):
 
     def _updatePredecessorStatus(self, jobStoreID):
         """
-        Update status of predecessors for finished successor job.
+        Update status of predecessors for finished (possibly failed) successor job.
         """
         if jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob:
             # Is a service job

@@ -265,7 +265,7 @@ class JobDescription:
         Will be empty if the job has no unfinished services.
         """
         
-        return self.serviceTree.keys()
+        return list(self.serviceTree.keys())
         
     def nextSuccessors(self):
         """
@@ -333,14 +333,20 @@ class JobDescription:
        self.followOnIDs = {x for x in self.followOnIDs if predicate(x)}
        
     def filterServiceHosts(self, predicate):
-       """
-       Keep only services for which the given predicate function returns True when called with the service host job's ID.
+        """
+        Keep only services for which the given predicate function returns True when called with the service host job's ID.
+         
+        Treats all other services as complete and forgets them.
+        """
        
-       Treats all other services as complete and forgets them.
-       """
-       
-       # TODO: avoid duplicate predicate calls here when services are referenced?
-       self.serviceTree = {k: [x for x in v if predicate(x)] for k, v in self.serviceTree.items() if predicate(k)}
+        # Get all the services we shouldn't have anymore
+        toRemove = set()
+        for serviceID in self.services:
+            if not predicate(serviceID):
+                toRemove.add(serviceID)
+        
+        # Drop everything from that set as a value and a key
+        self.serviceTree = {k: [x for x in v if x not in toRemove] for k, v in self.serviceTree.items() if k not in toRemove}
        
     def clearSuccessorsAndServiceHosts(self):
         """
