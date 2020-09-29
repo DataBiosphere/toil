@@ -799,8 +799,8 @@ class CheckpointJobDescription(JobDescription):
         """
         assert self.checkpoint is not None
         successorsDeleted = []
-        if self.childIDs or self.followOnIDs or self.serviceTree or self.command != None:
-            if self.command != None:
+        if self.childIDs or self.followOnIDs or self.serviceTree or self.command is not None:
+            if self.command is not None:
                 assert self.command == self.checkpoint
                 logger.debug("Checkpoint job already has command set to run")
             else:

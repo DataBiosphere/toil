@@ -332,14 +332,14 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
         # If a checkpoint exists, restart from the checkpoint
         ##########################################
 
-        if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint != None:
+        if isinstance(jobDesc, CheckpointJobDescription) and jobDesc.checkpoint is not None:
             # The job is a checkpoint, and is being restarted after previously completing
             logger.debug("Job is a checkpoint")
             # If the checkpoint still has extant successors or services, its
             # subtree didn't complete properly. We handle the restart of the
             # checkpoint here, removing its previous subtree.
-            if len(jobDesc.successorsAndServiceHosts()) > 0:
-                logger.debug("Checkpoint has failed.")
+            if next(jobDesc.successorsAndServiceHosts(), None) is not None:
+                logger.debug("Checkpoint has failed; restoring")
                 # Reduce the retry count
                 assert jobDesc.remainingRetryCount >= 0
                 jobDesc.remainingRetryCount = max(0, jobDesc.remainingRetryCount - 1)

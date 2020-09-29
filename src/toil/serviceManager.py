@@ -23,7 +23,7 @@ from threading import Thread, Event
 from queue import Empty, Queue
 
 from toil.job import ServiceJobDescription
-from toil.lib.throttle import throttle
+from toil.lib.throttle import throttle, LocalThrottle
 
 
 logger = logging.getLogger( __name__ )
@@ -71,6 +71,8 @@ class ServiceManager( object ):
                                             self.serviceJobDescriptionsToStart, self._terminate,
                                             self.jobStore),
                                       daemon=True)
+                                      
+                        
         
     def start(self): 
         """
@@ -149,6 +151,7 @@ class ServiceManager( object ):
         """
         for serviceJobStoreID in services:
             serviceJob = services[serviceJobStoreID]
+            logger.debug('Kill service: %s', serviceJob)
             if error:
                 self.jobStore.deleteFile(serviceJob.errorJobStoreID)
             self.jobStore.deleteFile(serviceJob.terminateJobStoreID)
@@ -202,6 +205,10 @@ class ServiceManager( object ):
         """
         Thread used to schedule services.
         """
+        
+        # Keep the user informed, but not too informed, as services start up
+        logLimiter = LocalThrottle(60)
+        
         # These are all keyed by service JobDescription object, not ID
         # TODO: refactor!
         servicesThatAreStarting = set()
@@ -242,6 +249,10 @@ class ServiceManager( object ):
                 except Empty:
                     # No new jobs that need services scheduled.
                     pass
+                    
+                pendingServiceCount = len(servicesThatAreStarting)
+                if pendingServiceCount > 0 and logLimiter.throttle(False):
+                    logger.info('%d services are starting...', pendingServiceCount)
 
                 for serviceJobDesc in list(servicesThatAreStarting):
                     if not jobStore.fileExists(serviceJobDesc.startJobStoreID):
@@ -272,6 +283,10 @@ class ServiceManager( object ):
                     del servicesRemainingToStartForJob[jobDesc]
 
 def blockUntilServiceGroupIsStarted(jobDesc, jobDescriptionsWithServicesThatHaveStarted, jobDescriptionsWithServicesThatHaveFailedToStart, serviceJobsToStart, terminate, jobStore):
+    
+    # Keep the user informed, but not too informed, as services start up
+    logLimiter = LocalThrottle(60)
+    
     # Start the service jobs in batches, waiting for each batch
     # to become established before starting the next batch
     for serviceJobList in jobDesc.serviceHostIDsInBatches():
@@ -293,14 +308,24 @@ def blockUntilServiceGroupIsStarted(jobDesc, jobDescriptionsWithServicesThatHave
             while jobStore.fileExists(serviceJobDesc.startJobStoreID):
                 # Sleep to avoid thrashing
                 time.sleep(1.0)
+                
+                if logLimiter.throttle(False):
+                    logger.info('Service %s is starting...', serviceJobDesc)
 
                 # Check if the thread should quit
                 if terminate.is_set():
                     return
-            if not jobStore.fileExists(serviceJobDesc.errorJobStoreID):
-                # Fail as soon a s a service can't start
-                jobDescriptionsWithServicesThatHaveFailedToStart.put(jobDesc)
-                return
+                    
+            # We don't bail out early here.
+            
+            # We need to try and fail to start *all* the services, so they
+            # *all* come back to the leaser as expected, or the leader will get
+            # stuck waiting to hear about a later dependent service failing. So
+            # we have to *try* to start all the services, even if the services
+            # they depend on failed. They should already have been killed,
+            # though, so they should stop immediately when we run them. TODO:
+            # this is a bad design!
+            
 
     # Add the JobDescription to the output queue of jobs whose services have been started
     jobDescriptionsWithServicesThatHaveStarted.put(jobDesc)

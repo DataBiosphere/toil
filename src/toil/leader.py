@@ -416,11 +416,11 @@ class Leader(object):
         or restart it if it has retries left and is a checkpoint job"""
 
         if predecessor.jobStoreID in self.toilState.servicesIssued:
-            # The job has services running, signal for them to be killed
-            # once they are killed then the job will be re-added to
-            # the updatedJobs dict and then scheduled to be removed
-            logger.debug("Telling job: %s to terminate its services due to successor failure",
-                         predecessor.jobStoreID)
+            # The job has services running; signal for them to be killed.
+            # Once they are killed, then the job will be re-added to
+            # the updatedJobs dict and then scheduled to be removed.
+            logger.debug("Telling job %s to terminate its services due to successor failure",
+                         predecessor)
             self.serviceManager.killServices(self.toilState.servicesIssued[predecessor.jobStoreID],
                                              error=True)
         elif predecessor.jobStoreID in self.toilState.successorCounts:
@@ -444,8 +444,8 @@ class Leader(object):
             self.processTotallyFailedJob(predecessor)
 
     def _processReadyJob(self, readyJob, resultStatus):
-        logger.debug('Updating status of job %s with ID %s: with result status: %s',
-                     readyJob, readyJob.jobStoreID, resultStatus)
+        logger.debug('Updating status of job %s with result status: %s',
+                     readyJob, resultStatus)
 
         if readyJob in self.serviceManager.jobDescriptionsWithServicesBeingStarted:
             # This stops a job with services being issued by the serviceManager from
@@ -1123,11 +1123,6 @@ class Leader(object):
             # and drop predecessor relationship from ToilState.
             self._updatePredecessorStatus(jobDesc.jobStoreID)
             
-            # Remove the start flag, if it still exists. This indicates
-            # to the service manager that the job has "started", and prevents
-            # the service manager from waiting for it to start forever
-            self.jobStore.deleteFile(jobDesc.startJobStoreID)
-            
             # Signal to all other services in the group that they should
             # terminate. We do this to prevent other services in the set
             # of services from deadlocking waiting for this service to start
@@ -1140,6 +1135,14 @@ class Leader(object):
             # This ensures that the job will not attempt to run any of it's
             # successors on the stack
             self.toilState.hasFailedSuccessors.add(predecesssor.jobStoreID)
+            
+            # Remove the start flag, if it still exists. This indicates
+            # to the service manager that the job has "started", and prevents
+            # the service manager from waiting for it to start forever. It also
+            # lets it continue, now that we have issued kill orders for them,
+            # to start dependent services, which all need to actually fail
+            # before we can finish up with the services' predecessor job.
+            self.jobStore.deleteFile(jobDesc.startJobStoreID)
         else:
             # Is a non-service job
             assert jobDesc.jobStoreID not in self.toilState.servicesIssued
@@ -1207,10 +1210,14 @@ class Leader(object):
                 # all its services terminated
                 self.toilState.servicesIssued.pop(predecessorJob.jobStoreID) # The job has no running services
                 
+                logger.debug('Job %s is no longer waiting on services', predecessorJob)
+                
                 if predecessorJob.jobStoreID not in self.toilState.updatedJobs:
                     # Now we know the job is done we can add it to the list of
                     # updated job files
-                    self.toilState.updatedJobs[predecessorJob.jobStoreID] = (predecessorJob, 0) 
+                    self.toilState.updatedJobs[predecessorJob.jobStoreID] = (predecessorJob, 0)
+            else:
+                logger.debug('Job %s is still waiting on %d services', predecessorJob, len(self.toilState.servicesIssued[predecessorJob.jobStoreID]))
         elif jobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
             #We have reach the root job
             assert len(self.toilState.updatedJobs) == 0
