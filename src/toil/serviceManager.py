@@ -151,7 +151,6 @@ class ServiceManager( object ):
         """
         for serviceJobStoreID in services:
             serviceJob = services[serviceJobStoreID]
-            logger.debug('Kill service: %s', serviceJob)
             if error:
                 self.jobStore.deleteFile(serviceJob.errorJobStoreID)
             self.jobStore.deleteFile(serviceJob.terminateJobStoreID)
