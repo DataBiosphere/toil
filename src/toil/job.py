@@ -93,7 +93,187 @@ class FakeID:
     def __ne__(self, other):
         return not isinstance(other, FakeID) or self._value != other._value
 
-class JobDescription:
+class ConfigClient:
+    """
+    Base class for objects that need to talk to the current Toil configuration
+    to pick up their default values.
+    
+    Provides an _config to be used internally by derived calsses, and an
+    :meth:`toil.job.ConfigClient.assignConfig` to be used to associate a
+    configuration whan an object is loaded.
+    """
+    
+    def __init__(self):
+        """
+        Make a new ConfigClient with no associated configuration.
+        """
+        # We can have a toil.common.Config assigned to fill in default values
+        # for e.g. job requirements not explicitly specified.
+        self._config = None
+        
+    def assignConfig(self, config):
+        """
+        Assign the given config object to be used to provide default values.
+        
+        :param toil.common.Config config: Config object to query
+        """
+        self._config = config
+        
+class Requirer(ConfigClient):
+    """
+    Base class implementing the storage and presentation of requirements for cores, memory, disk, and preemptability as properties.
+    """
+    
+    def __init__(self, requirements):
+        """
+        Parse and save the given requirements.
+        
+        :param dict requirements: Dict from string to number, string, or bool
+            describing a set of resource requirments. 'cores', 'memory',
+            'disk', and 'preemptable' fields, if set, are parsed and broken out
+            into properties. If unset, the relevant property will be
+            unspecified, and will be pulled from the assigned Config object if
+            queried (see :meth:`toil.job.ConfigClient.assignConfig`). If
+            unspecified and no Config object is assigned, an AttributeError
+            will be raised at query time.
+        """
+        
+        super().__init__()
+        
+        # Save requirements, parsing and validating anything that needs parsing or validating.
+        # Don't save Nones.
+        self._requirementOverrides = {k: self._parseResource(k, v) for (k, v) in requirements.items() if v is not None}
+        
+        
+    @staticmethod
+    def _parseResource(name, value):
+        """
+        Parse a Toil resource requirement value and apply resource-specific type checks. If the
+        value is a string, a binary or metric unit prefix in it will be evaluated and the
+        corresponding integral value will be returned.
+
+        :param str name: The name of the resource
+        :param None|str|float|int value: The resource value
+        :rtype: int|float|None
+
+        >>> Requirer._parseResource('cores', None)
+        >>> Requirer._parseResource('cores', 1), Requirer._parseResource('disk', 1), \
+        Requirer._parseResource('memory', 1)
+        (1, 1, 1)
+        >>> Requirer._parseResource('cores', '1G'), Requirer._parseResource('disk', '1G'), \
+        Requirer._parseResource('memory', '1G')
+        (1073741824, 1073741824, 1073741824)
+        >>> Requirer._parseResource('cores', 1.1)
+        1.1
+        >>> Requirer._parseResource('disk', 1.1) # doctest: +IGNORE_EXCEPTION_DETAIL
+        Traceback (most recent call last):
+        ...
+        TypeError: The 'disk' requirement does not accept values that are of <type 'float'>
+        >>> Requirer._parseResource('memory', object()) # doctest: +IGNORE_EXCEPTION_DETAIL
+        Traceback (most recent call last):
+        ...
+        TypeError: The 'memory' requirement does not accept values that are of ...
+        """
+        
+        if value is None:
+            # Anything can be None.
+            return value
+        
+        if name in ('memory', 'disk', 'cores'):
+            # These should be numbers that accept things like "5G".
+            if isinstance(value, (str, bytes)):
+                value = human2bytes(value)
+            if isinstance(value, int):
+                return value
+            elif isinstance(value, float) and name == 'cores':
+                # But only cores can be fractional.
+                return value
+            else:
+                raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
+        elif name == 'preemptable':
+            if isinstance(value, str):
+                if value.tolower() == 'true':
+                    return True
+                elif value.tolower() == 'false':
+                    return False
+                else:
+                    raise ValueError(f"The '{name}' requirement must be 'true' or 'false' but is {value}")
+            elif isinstance(value, bool):
+                return value
+            else:
+                raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
+        else:
+            # Anything else we just pass along without opinons
+            return value
+        
+    def _fetchRequirement(self, requirement):
+        """
+        Get the value of the specified requirement ('blah') by looking it up in
+        our requirement storage and querying 'defaultBlah' on the config if it
+        isn't set. If the config would be queried but isn't associated, raises
+        AttributeError.
+        """
+        if requirement in self._requirementOverrides:
+            value = self._requirementOverrides[requirement]
+            if value is None:
+             raise AttributeError(f"Encountered explicit None for '{requirement}' requirement of {self}")
+            return value
+        elif self._config is not None:
+            value = getattr(self._config, 'default' + requirement.capitalize())
+            if value is None:
+                raise AttributeError(f"Encountered None for default '{requirement}' requirement in config: {self._config}")
+            return value
+        else:
+            raise AttributeError(f"Default value for '{requirement}' requirement of {self} cannot be determined")
+    
+    @property
+    def requirements(self):
+        """
+        Dict containing all non-None, non-defaulted requirements.
+        """
+        return dict(self._requirementOverrides)
+    
+    @property
+    def disk(self):
+        """
+        The maximum number of bytes of disk required.
+        """
+        return self._fetchRequirement('disk')
+    @disk.setter
+    def disk(self, val):
+         self._requirementOverrides['disk'] = self._parseResource('disk', val)
+
+    @property
+    def memory(self):
+        """
+        The maximum number of bytes of memory required.
+        """
+        return self._fetchRequirement('memory')
+    @memory.setter
+    def memory(self, val):
+         self._requirementOverrides['memory'] = self._parseResource('memory', val)
+
+    @property
+    def cores(self):
+        """
+        The number of CPU cores required.
+        """
+        return self._fetchRequirement('cores')
+    @cores.setter
+    def cores(self, val):
+         self._requirementOverrides['cores'] = self._parseResource('cores', val)
+
+    @property
+    def preemptable(self):
+        """
+        Whether a preemptable node is permitted, or a nonpreemptable one is required.
+        """
+        return self._fetchRequirement('preemptable')
+    @preemptable.setter
+    def preemptable(self, val):
+         self._requirementOverrides['preemptable'] = self._parseResource('preemptable', val)
+
+class JobDescription(Requirer):
     """
     Stores all the information that the Toil Leader ever needs to know about a
     Job: requirements information, dependency information, commands to issue,
@@ -134,10 +314,9 @@ class JobDescription:
         # Fill in default values
         if requirements is None:
             requirements = {}
-        
-        # Save requirements, parsing and validating anything that needs parsing or validating.
-        # Don't save Nones.
-        self._requirementOverrides = {k: self._parseResource(k, v) for (k, v) in requirements.items() if v is not None}
+            
+        # Set requirements
+        super().__init__(requirements)
         
         # Save names, making sure they are strings and not e.g. bytes.
         def makeString(x):
@@ -209,14 +388,7 @@ class JobDescription:
         # A jobStoreFileID of the log file for a job. This will be None unless the job failed and
         # the logging has been captured to be reported on the leader.
         self.logJobStoreFileID = None 
-        
-        # Now set properties that don't really describe the job but hook us up
-        # to contextual state so our properties and methods can use it.
     
-        # We can have a toil.common.Config assigned to fill in default values for
-        # requirements not explicitly specified.
-        self._config = None
-        
     def serviceHostIDsInBatches(self):
         """
         Get an iterator over all batches of service host job IDs that can be
@@ -450,15 +622,6 @@ class JobDescription:
         """
         pass
     
-    def assignConfig(self, config):
-        """
-        Assign the given config object to be used to provide default values for
-        requirements.
-        
-        :param toil.common.Config config: Config object to query
-        """
-        self._config = config
-        
     def setupJobAfterFailure(self, exitReason=None):
         """
         Reduce the remainingRetryCount if greater than zero and set the memory
@@ -504,127 +667,6 @@ class JobDescription:
         Assumes logJobStoreFileID is set.
         """
         return jobStore.readFileStream(self.logJobStoreFileID)
-        
-    @staticmethod
-    def _parseResource(name, value):
-        """
-        Parse a Toil job's resource requirement value and apply resource-specific type checks. If the
-        value is a string, a binary or metric unit prefix in it will be evaluated and the
-        corresponding integral value will be returned.
-
-        :param str name: The name of the resource
-        :param None|str|float|int value: The resource value
-        :rtype: int|float|None
-
-        >>> JobDescription._parseResource('cores', None)
-        >>> JobDescription._parseResource('cores', 1), JobDescription._parseResource('disk', 1), \
-        JobDescription._parseResource('memory', 1)
-        (1, 1, 1)
-        >>> JobDescription._parseResource('cores', '1G'), JobDescription._parseResource('disk', '1G'), \
-        JobDescription._parseResource('memory', '1G')
-        (1073741824, 1073741824, 1073741824)
-        >>> JobDescription._parseResource('cores', 1.1)
-        1.1
-        >>> JobDescription._parseResource('disk', 1.1) # doctest: +IGNORE_EXCEPTION_DETAIL
-        Traceback (most recent call last):
-        ...
-        TypeError: The 'disk' requirement does not accept values that are of <type 'float'>
-        >>> JobDescription._parseResource('memory', object()) # doctest: +IGNORE_EXCEPTION_DETAIL
-        Traceback (most recent call last):
-        ...
-        TypeError: The 'memory' requirement does not accept values that are of ...
-        """
-        
-        if value is None:
-            # Anything can be None.
-            return value
-        
-        if name in ('memory', 'disk', 'cores'):
-            # These should be numbers that accept things like "5G".
-            if isinstance(value, (str, bytes)):
-                value = human2bytes(value)
-            if isinstance(value, int):
-                return value
-            elif isinstance(value, float) and name == 'cores':
-                # But only cores can be fractional.
-                return value
-            else:
-                raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
-        elif name == 'preemptable':
-            if isinstance(value, str):
-                if value.tolower() == 'true':
-                    return True
-                elif value.tolower() == 'false':
-                    return False
-                else:
-                    raise ValueError(f"The '{name}' requirement must be 'true' or 'false' but is {value}")
-            elif isinstance(value, bool):
-                return value
-            else:
-                raise TypeError(f"The '{name}' requirement does not accept values that are of type {type(value)}")
-        else:
-            # Anything else we just pass along without opinons
-            return value
-        
-    def _fetchRequirement(self, requirement):
-        """
-        Get the value of the specified requirement ('blah') by looking it up in
-        our requirement storage and querying 'defaultBlah' on the config if it
-        isn't set. If the config would be queried but isn't associated, raises
-        AttributeError.
-        """
-        if requirement in self._requirementOverrides:
-            value = self._requirementOverrides[requirement]
-            if value is None:
-             raise AttributeError(f"Encountered explicit None for '{requirement}' requirement of {self}")
-            return value
-        elif self._config is not None:
-            value = getattr(self._config, 'default' + requirement.capitalize())
-            if value is None:
-                raise AttributeError(f"Encountered None for default '{requirement}' requirement in config: {self._config}")
-            return value
-        else:
-            raise AttributeError(f"Default value for '{requirement}' requirement of {self} cannot be determined")
-        
-    @property
-    def disk(self):
-        """
-        The maximum number of bytes of disk the job will require to run.
-        """
-        return self._fetchRequirement('disk')
-    @disk.setter
-    def disk(self, val):
-         self._requirementOverrides['disk'] = self._parseResource('disk', val)
-
-    @property
-    def memory(self):
-        """
-        The maximum number of bytes of memory the job will require to run.
-        """
-        return self._fetchRequirement('memory')
-    @memory.setter
-    def memory(self, val):
-         self._requirementOverrides['memory'] = self._parseResource('memory', val)
-
-    @property
-    def cores(self):
-        """
-        The number of CPU cores required.
-        """
-        return self._fetchRequirement('cores')
-    @cores.setter
-    def cores(self, val):
-         self._requirementOverrides['cores'] = self._parseResource('cores', val)
-
-    @property
-    def preemptable(self):
-        """
-        Whether the job can be run on a preemptable node.
-        """
-        return self._fetchRequirement('preemptable')
-    @preemptable.setter
-    def preemptable(self, val):
-         self._requirementOverrides['preemptable'] = self._parseResource('preemptable', val)
     
     @property
     def remainingRetryCount(self):
@@ -890,6 +932,9 @@ class Job:
         Expose the JobDescription that describes this job.
         """
         return self._description
+        
+    # Instead of being a Requirer ourselves, we pass anything about
+    # requirements through to the JobDescription.
         
     @property
     def disk(self):
@@ -1551,7 +1596,7 @@ class Job:
                 else:
                     return toil.restart()
 
-    class Service(with_metaclass(ABCMeta, object)):
+    class Service(with_metaclass(ABCMeta, Requirer)):
         """
         Abstract class used to define the interface to a service.
         
@@ -1565,9 +1610,9 @@ class Job:
             :func:`toil.job.Job.__init__`.
             """
             
-            # Save the requirements to pass on to the hosting job.
-            self.requirements = {'memory': memory, 'cores': cores, 'disk': disk,
-                                 'preemptable': preemptable}
+            # Save the requirements in ourselves so they are visible on `self` to user code.
+            super().__init__({'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable})
+            
             # And the unit name
             self.unitName = unitName
             
@@ -1643,13 +1688,14 @@ class Job:
         return userModule.load()
 
     @classmethod
-    def _unpickle(cls, userModule, fileHandle):
+    def _unpickle(cls, userModule, fileHandle, requireInstanceOf=None):
         """
         Unpickles an object graph from the given file handle while loading symbols \
         referencing the __main__ module from the given userModule instead.
 
         :param userModule:
         :param fileHandle: An open, binary-mode file handle.
+        :param requireInstanceOf: If set, require result to be an instance of this class.
         :returns:
         """
 
@@ -1673,7 +1719,8 @@ class Job:
         unpickler = FilteredUnpickler(fileHandle)
 
         runnable = unpickler.load()
-        assert isinstance(runnable, Job)
+        if requireInstanceOf is not None:
+            assert isinstance(runnable, requireInstanceOf), "Did not find a {} when expected".format(requireInstanceOf)
         
         return runnable
 
@@ -1954,14 +2001,17 @@ class Job:
             self._fulfillPromises(returnValues, jobStore)
             
         for job in ordering:
+            logger.info("Processing job %s", job)
             for serviceBatch in reversed(list(job.description.serviceHostIDsInBatches())):
                 # For each batch of service host jobs in reverse order they start
                 for serviceID in serviceBatch:
+                    logger.info("Processing service %s", serviceID)
                     if serviceID in self._registry:
                         # It's a new service
                         
                         # Find the actual job
                         serviceJob = self._registry[serviceID]
+                        logger.info("Saving service %s", serviceJob)
                         # Pickle the service body, which triggers all the promise stuff
                         serviceJob.saveBody(jobStore)
             if job != self or saveSelf:
@@ -2043,7 +2093,7 @@ class Job:
 
             # Open and unpickle
             with open(filename, 'rb') as fileHandle:
-                job = cls._unpickle(userModule, fileHandle)
+                job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
                 # Fill in the current description
                 job._description = jobDescription
                 # Once the description is set we can assign the config, in case it wasn't set.
@@ -2477,12 +2527,29 @@ class ServiceHostJob(Job):
         
     def addService(self, service, parentService=None):
         raise RuntimeError("Service host jobs cannot have children, follow-ons, or services")
-
+    
+    def saveBody(self, jobStore):
+        """
+        Serialize the service itself before saving the host job's body.
+        """
+        # Save unpickled service
+        service = self.service
+        # Serialize service
+        self.pickledService = pickle.dumps(self.service, protocol=pickle.HIGHEST_PROTOCOL)
+        # Clear real service until we have the module to load it back
+        self.service = None
+        # Save body as normal
+        super().saveBody(jobStore)
+        # Restore unpickled service
+        self.service = service
+        self.pickledService = None
+    
     def run(self, fileStore):
         # Unpickle the service
         logger.debug('Loading service module %s.', self.serviceModule)
         userModule = self._loadUserModule(self.serviceModule)
-        service = self._unpickle(userModule, BytesIO(self.pickledService))
+        service = self._unpickle(userModule, BytesIO(self.pickledService), requireInstanceOf=Job.Service)
+        self.pickledService = None
         # Make sure it has the config
         service.assignConfig(fileStore.jobStore.config)
         #Start the service
@@ -2497,19 +2564,19 @@ class ServiceHostJob(Job):
 
             #Now flag that the service is running jobs can connect to it
             logger.debug("Removing the start jobStoreID to indicate that establishment of the service")
-            assert self.jobGraph.startJobStoreID != None
-            if fileStore.jobStore.fileExists(self.jobGraph.startJobStoreID):
-                fileStore.jobStore.deleteFile(self.jobGraph.startJobStoreID)
-            assert not fileStore.jobStore.fileExists(self.jobGraph.startJobStoreID)
+            assert self.description.startJobStoreID != None
+            if fileStore.jobStore.fileExists(self.description.startJobStoreID):
+                fileStore.jobStore.deleteFile(self.description.startJobStoreID)
+            assert not fileStore.jobStore.fileExists(self.description.startJobStoreID)
 
             #Now block until we are told to stop, which is indicated by the removal
             #of a file
-            assert self.jobGraph.terminateJobStoreID != None
+            assert self.description.terminateJobStoreID != None
             while True:
                 # Check for the terminate signal
-                if not fileStore.jobStore.fileExists(self.jobGraph.terminateJobStoreID):
+                if not fileStore.jobStore.fileExists(self.description.terminateJobStoreID):
                     logger.debug("Detected that the terminate jobStoreID has been removed so exiting")
-                    if not fileStore.jobStore.fileExists(self.jobGraph.errorJobStoreID):
+                    if not fileStore.jobStore.fileExists(self.description.errorJobStoreID):
                         raise RuntimeError("Detected the error jobStoreID has been removed so exiting with an error")
                     break
 
@@ -2523,9 +2590,6 @@ class ServiceHostJob(Job):
                     raise
 
                 time.sleep(fileStore.jobStore.config.servicePollingInterval) #Avoid excessive polling
-
-            # Remove link to the jobGraph
-            self.jobGraph = None
 
             logger.debug("Service is done")
         finally:
