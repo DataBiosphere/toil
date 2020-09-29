@@ -558,6 +558,26 @@ class Leader(object):
             jobDesc.filterServiceHosts(lambda ignored: False)
             if jobDesc.jobStoreID not in self.toilState.updatedJobs:
                 self.toilState.updatedJobs[jobDesc.jobStoreID] = (jobDesc, 0)
+                
+    def _processJobsWithFailedServices(self):
+        """Get jobs whose services have failed to start"""
+        while True:
+            jobDesc = self.serviceManager.getJobDescriptionWhoseServicesFailedToStart(0)
+            if jobDesc is None: # Stop trying to get jobs when function returns None
+                break
+            logger.debug('Job: %s has failed to establish its services.', jobDesc.jobStoreID)
+            
+            # JobDescriptions coming from the ServiceManager may not have a
+            # reference to the current config.
+            jobDesc.assignConfig(self.config)
+            
+            # Make sure services still want to run
+            assert next(jobDesc.serviceHostIDsInBatches(), None) is not None
+            
+            if jobDesc.jobStoreID not in self.toilState.updatedJobs:
+                # Treat it as updated and also failed, because we should try
+                # to make the services again, or fail completely.
+                self.toilState.updatedJobs[jobDesc.jobStoreID] = (jobDesc, 1)
     
     def _gatherUpdatedJobs(self, updatedJobTuple):
         """Gather any new, updated JobDescriptions from the batch system"""
@@ -616,6 +636,7 @@ class Leader(object):
             # deal with service-related jobs
             self._startServiceJobs()
             self._processJobsWithRunningServices()
+            self._processJobsWithFailedServices()
 
             # check in with the batch system
             updatedJobTuple = self.batchSystem.getUpdatedBatchJob(maxWait=2)
@@ -1085,32 +1106,36 @@ class Leader(object):
         if self.toilMetrics:
             self.toilMetrics.logFailedJob(jobDesc)
 
-        if jobDesc.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob: # Is
-            # a service job
+        if jobDesc.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob: 
+            # Is a service job
             logger.debug("Service job is being processed as a totally failed job: %s", jobDesc)
 
             assert isinstance(jobDesc, ServiceJobDescription) 
 
-            predecesssor = self.toilState.serviceJobStoreIDToPredecessorJob[jobDesc.jobStoreID]
+            # No longer is here to have a predecessor
+            predecesssor = self.toilState.serviceJobStoreIDToPredecessorJob.pop(jobDesc.jobStoreID)
 
-            # This removes the service job as a service of the predecessor
-            # and potentially makes the predecessor active
-            self._updatePredecessorStatus(jobDesc.jobStoreID)
-
-            # Remove the start flag, if it still exists. This indicates
-            # to the service manager that the job has "started", this prevents
-            # the service manager from deadlocking while waiting
-            self.jobStore.deleteFile(jobDesc.startJobStoreID)
-
-            # Signal to any other services in the group that they should
+            # Signal to all services (including this one) in the group that they should
             # terminate. We do this to prevent other services in the set
-            # of services from deadlocking waiting for this service to start properly
-            if predecesssor.jobStoreID in self.toilState.servicesIssued:
-                self.serviceManager.killServices(self.toilState.servicesIssued[predecesssor.jobStoreID], error=True)
-                logger.debug("Job: %s is instructing all the services of its parent job to quit", jobDesc)
+            # of services from deadlocking waiting for this service to start
+            # properly, and to remember that this service failed with an error
+            # and possibly never started.
+            assert predecesssor.jobStoreID in self.toilState.servicesIssued
+            self.serviceManager.killServices(self.toilState.servicesIssued[predecesssor.jobStoreID], error=True)
+            logger.debug("Job: %s is instructing all services of its parent job to quit", jobDesc)
+                
+            # Leave the service job as a service of ist predecessor, because it
+            # didn't work.
 
-            self.toilState.hasFailedSuccessors.add(predecesssor.jobStoreID) # This ensures that the
-            # job will not attempt to run any of it's successors on the stack
+            # This ensures that the job will not attempt to run any of it's
+            # successors on the stack
+            self.toilState.hasFailedSuccessors.add(predecesssor.jobStoreID) 
+            
+            # Remove the start flag, if it still exists. This indicates
+            # to the service manager that the job has "started", and prevents
+            # the service manager from deadlocking while waiting for it to
+            # start forever
+            self.jobStore.deleteFile(jobDesc.startJobStoreID)
         else:
             # Is a non-service job
             assert jobDesc.jobStoreID not in self.toilState.servicesIssued
@@ -1179,8 +1204,8 @@ class Leader(object):
                 self.toilState.servicesIssued.pop(predecessorJob.jobStoreID) # The job has no running services
                 
                 if predecessorJob.jobStoreID not in self.toilState.updatedJobs:
-                    # Now we know
-                    # the job is done we can add it to the list of updated job files
+                    # Now we know the job is done we can add it to the list of
+                    # updated job files
                     self.toilState.updatedJobs[predecessorJob.jobStoreID] = (predecessorJob, 0) 
         elif jobStoreID not in self.toilState.successorJobStoreIDToPredecessorJobs:
             #We have reach the root job

@@ -110,7 +110,11 @@ def nextChainable(predecessor, jobStore, config):
         logger.debug("Preemptability is different for the next job, returning to the leader")
         return None
     if successor.predecessorNumber > 1:
-        logger.debug("The next job has multiple predecessors, we must return to the leader.")
+        logger.debug("The next job has multiple predecessors; we must return to the leader.")
+        return None
+
+    if len(successor.services) > 0:
+        logger.debug("The next job requires services that will not yet be started; we must return to the leader.")
         return None
 
     if isinstance(successor, CheckpointJobDescription):
