@@ -468,7 +468,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             
             return jobID
     
-    def _ourJobObjectList(self, onlySucceeded=False, limit=None):
+    def _ourJobObject(self, onlySucceeded=False, limit=None):
         """
         Yield Kubernetes V1Job objects that we are responsible for that the
         cluster knows about.
@@ -503,12 +503,12 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             if onlySucceeded: 
                 results =  self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs).items
+                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs)
             else:
                 results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                                label_selector="toil_run={}".format(self.runID), **kwargs).items
+                                                label_selector="toil_run={}".format(self.runID), **kwargs)
             yield results
-            
+
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
 
@@ -517,7 +517,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 break
        
     
-    def _ourPodObjectList(self):
+    def _ourPodObject(self):
         """
         Yield Kubernetes V1Pod objects that we are responsible for that the
         cluster knows about.                                        
@@ -534,8 +534,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if token is not None:
                 kwargs['_continue'] = token
 
-            yield self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs).items
+            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs)
             
+            yield results
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
 
@@ -696,7 +697,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # Try watching for something to happen and use that.
 
             if self.enableWatching:
-                for j in self._ourJobObjectList():
+                for j in self._ourJobObject():
                     for event in self._try_kubernetes_stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
                         # For each event from the stream until it times out or just disconnects
                         pod = event['object']
@@ -770,13 +771,13 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
 
-        for j in self._ourJobObjectList(onlySucceeded=True, limit=1):
+        for j in self._ourJobObject(onlySucceeded=True, limit=1):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
 
         if jobObject is None:
-            for j in self._ourJobObjectList():
+            for j in self._ourJobObject():
                 # If there aren't any succeeded jobs, scan all jobs
                 # See how many times each failed
                 failCount = getattr(j.status, 'failed', 0)
@@ -791,7 +792,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         if jobObject is None:
             # If no jobs are failed, look for jobs with pods that are stuck for various reasons.
-            for j in self._ourJobObjectList():
+            for j in self._ourJobObject():
                 pod = self._getPodForJob(j)
 
                 if pod is None:
@@ -989,7 +990,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 logger.error("Exception when calling BatchV1Api->delete_collection_namespaced_job: %s" % e)
         
             # aggregate all pods and check if any pod has failed to cleanup or is orphaned. 
-            ourPods = self._OurPodObjectList()
+            ourPods = self._ourPodObject()
 
             for pod in ourPods:
                 try:
@@ -1016,7 +1017,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         Get the issued batch job IDs that are not for local jobs.
         """
         jobIDs = []
-        got_list = self._ourJobObjectList()
+        got_list = self._ourJobObject()
         for job in got_list:
             # Get the ID for each job
             jobIDs.append(self._getIDForOurJob(job))
@@ -1029,7 +1030,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
     def getRunningBatchJobIDs(self):
         # We need a dict from jobID (integer) to seconds it has been running
         secondsPerJob = dict()
-        for job in self._ourJobObjectList():
+        for job in self._ourJobObject():
             # Grab the pod for each job
             pod = self._getPodForJob(job)
 
