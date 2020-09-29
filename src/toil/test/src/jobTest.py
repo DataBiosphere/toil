@@ -386,7 +386,6 @@ class JobTest(ToilTest):
                 logger.debug("The expected exception was thrown: %s", repr(ex))
 
     @slow
-    @pytest.mark.timeout(30)
     def testEvaluatingRandomDAG(self):
         """
         Randomly generate test input then check that the job graph can be 
