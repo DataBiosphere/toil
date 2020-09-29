@@ -182,7 +182,7 @@ class JobServiceTest(ToilTest):
                 break
             except FailedJobsException as e:
                 i = e.numberOfFailedJobs
-                if totalTrys > 3: #p(fail after this many restarts) = 0.5**32
+                if totalTrys > 50: #p(fail after this many restarts) = 0.5**32
                     self.fail() #Exceeded a reasonable number of restarts
                 totalTrys += 1
                 options.restart = True
