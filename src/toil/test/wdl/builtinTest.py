@@ -68,6 +68,10 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         path = self._write_temp_file('read_int', content=str(num))
         self.assertEqual(num, read_int(path))
 
+        num = 10.0
+        path = self._write_temp_file('read_int', content=str(num))
+        self.assertRaises(ValueError, read_int, path)
+
         num = 10.5
         path = self._write_temp_file('read_int', content=str(num))
         self.assertRaises(ValueError, read_int, path)
@@ -78,7 +82,11 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         path = self._write_temp_file('read_string', content=some_str)
         self.assertEqual(some_str, read_string(path))
 
-        # with new line characters
+        # with preceding newlines. Cromwell strips from the front and the end.
+        path = self._write_temp_file('read_string', content='\n\n\n' + some_str)
+        self.assertEqual(some_str, read_string(path))
+
+        # with trailing newlines
         path = self._write_temp_file('read_string', content=some_str + '\n\n')
         self.assertEqual(some_str, read_string(path))
 
