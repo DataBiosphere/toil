@@ -92,11 +92,15 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import parse_memory
                     from toil.wdl.wdl_functions import parse_cores
                     from toil.wdl.wdl_functions import parse_disk
-                    from toil.wdl.wdl_functions import read_string
-                    from toil.wdl.wdl_functions import read_int
-                    from toil.wdl.wdl_functions import read_float
+                    from toil.wdl.wdl_functions import read_lines
                     from toil.wdl.wdl_functions import read_tsv
                     from toil.wdl.wdl_functions import read_csv
+                    from toil.wdl.wdl_functions import read_json
+                    from toil.wdl.wdl_functions import read_map
+                    from toil.wdl.wdl_functions import read_int
+                    from toil.wdl.wdl_functions import read_string
+                    from toil.wdl.wdl_functions import read_float
+                    from toil.wdl.wdl_functions import read_boolean
                     from toil.wdl.wdl_functions import write_lines
                     from toil.wdl.wdl_functions import write_tsv
                     from toil.wdl.wdl_functions import write_json

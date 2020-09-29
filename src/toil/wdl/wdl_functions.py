@@ -496,24 +496,6 @@ def select_first(values):
     raise ValueError('No defined variables found for select_first array: {}'.format(str(values)))
 
 
-def read_string(inputstring):
-    if isinstance(inputstring, tuple):
-        inputstring = inputstring[0]
-    return str(inputstring)
-
-
-def read_float(inputstring):
-    if isinstance(inputstring, tuple):
-        inputstring = inputstring[0]
-    return float(inputstring)
-
-
-def read_int(inputstring):
-    if isinstance(inputstring, tuple):
-        inputstring = inputstring[0]
-    return int(inputstring)
-
-
 def combine_dicts(dict1, dict2):
     from six import iteritems
     combineddict= {}
@@ -558,8 +540,35 @@ def heredoc_wdl(template, dictionary={}, indent=''):
     return template.replace('\n', '\n' + indent) + '\n'
 
 
-def read_tsv(f, delimiter="\t"):
-    '''
+def floor(i: Union[int, float]) -> int:
+    """
+    Converts a Float value into an Int by rounding down to the next lower integer.
+    """
+    return math.floor(i)
+
+
+def ceil(i: Union[int, float]) -> int:
+    """
+    Converts a Float value into an Int by rounding up to the next higher integer.
+    """
+    return math.ceil(i)
+
+
+def read_lines(path: str) -> List[str]:
+    """
+    Given a file-like object (`String`, `File`) as a parameter, this will read each
+    line as a string and return an `Array[String]` representation of the lines in
+    the file.
+
+    WDL syntax: Array[String] read_lines(String|File)
+    """
+    # file should already be imported locally via `process_and_read_file`
+    with open(path, "r") as f:
+        return f.read().rstrip('\n').split('\n')
+
+
+def read_tsv(path: str, delimiter: str = '\t') -> List[List[str]]:
+    """
     Take a tsv filepath and return an array; e.g. [[],[],[]].
 
     For example, a file containing:
@@ -570,19 +579,18 @@ def read_tsv(f, delimiter="\t"):
 
     would return the array: [['1','2','3'], ['4','5','6'], ['7','8','9']]
 
-    :param tsv_filepath:
-    :return: tsv_array
-    '''
+    WDL syntax: Array[Array[String]] read_tsv(String|File)
+    """
     tsv_array = []
-    with open(f, "r") as f:
+    with open(path, 'r') as f:
         data_file = csv.reader(f, delimiter=delimiter)
         for line in data_file:
             tsv_array.append(line)
-    return (tsv_array)
+    return tsv_array
 
 
-def read_csv(f):
-    '''
+def read_csv(path: str) -> List[List[str]]:
+    """
     Take a csv filepath and return an array; e.g. [[],[],[]].
 
     For example, a file containing:
@@ -592,19 +600,98 @@ def read_csv(f):
     7,8,9
 
     would return the array: [['1','2','3'], ['4','5','6'], ['7','8','9']]
-
-    :param csv_filepath:
-    :return: csv_array
-    '''
-    return read_tsv(f, delimiter=",")
+    """
+    return read_tsv(path, delimiter=",")
 
 
-def floor(i):
-    return math.floor(i)
+def read_json(path: str) -> Any:
+    """
+    The `read_json()` function takes one parameter, which is a file-like object
+     (`String`, `File`) and returns a data type which matches the data
+     structure in the JSON file. See
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#mixed-read_jsonstringfile
+
+    WDL syntax: mixed read_json(String|File)
+    """
+    with open(path, "r") as f:
+        return json.load(f)
 
 
-def ceil(i):
-    return math.ceil(i)
+def read_map(path: str) -> Dict[str, str]:
+    """
+    Given a file-like object (`String`, `File`) as a parameter, this will read each
+    line from a file and expect the line to have the format `col1\tcol2`. In other
+    words, the file-like object must be a two-column TSV file.
+
+    WDL syntax: Map[String, String] read_map(String|File)
+    """
+    d = dict()
+    with open(path, "r") as f:
+        for line in f:
+            line = line.rstrip()
+            if not line:
+                # remove extra lines
+                continue
+            key, value = line.split('\t', 1)
+            d[key] = value.strip()
+    return d
+
+
+def read_int(path: Union[str, tuple]) -> int:
+    """
+    The `read_int()` function takes a file path which is expected to contain 1
+    line with 1 integer on it. This function returns that integer.
+
+    WDL syntax: Int read_int(String|File)
+    """
+    if isinstance(path, tuple):
+        path = path[0]
+
+    with open(path, 'r') as f:
+        return int(f.read().strip())
+
+
+def read_string(path: Union[str, tuple]) -> str:
+    """
+    The `read_string()` function takes a file path which is expected to contain 1
+    line with 1 string on it. This function returns that string.
+
+    WDL syntax: String read_string(String|File)
+    """
+    if isinstance(path, tuple):
+        path = path[0]
+
+    with open(path, 'r') as f:
+        return str(f.read().strip())
+
+
+def read_float(path: Union[str, tuple]) -> float:
+    """
+    The `read_float()` function takes a file path which is expected to contain 1
+    line with 1 floating point number on it. This function returns that float.
+
+    WDL syntax: Float read_float(String|File)
+    """
+    if isinstance(path, tuple):
+        path = path[0]
+
+    with open(path, 'r') as f:
+        return float(f.read().strip())
+
+
+def read_boolean(path: Union[str, tuple]) -> bool:
+    """
+    The `read_boolean()` function takes a file path which is expected to contain 1
+    line with 1 Boolean value (either "true" or "false" on it). This function
+    returns that Boolean value.
+
+    WDL syntax: Boolean read_boolean(String|File)
+    """
+    if isinstance(path, tuple):
+        path = path[0]
+
+    with open(path, 'r') as f:
+        return f.read().strip().lower() == 'true'
 
 
 def _get_temp_file_path(function_name: str, temp_dir: Optional[str] = None) -> str:
