@@ -5,6 +5,10 @@ import shutil
 import uuid
 from toil.wdl.wdl_functions import ceil
 from toil.wdl.wdl_functions import floor
+from toil.wdl.wdl_functions import read_lines
+from toil.wdl.wdl_functions import read_tsv
+from toil.wdl.wdl_functions import read_json
+from toil.wdl.wdl_functions import read_map
 from toil.wdl.wdl_functions import read_int
 from toil.wdl.wdl_functions import read_string
 from toil.wdl.wdl_functions import read_float
@@ -61,6 +65,53 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         a Float value into an Int by rounding down to the next lower integer"""
         assert floor(1.999) == 1
         assert floor(-1.5) == -2
+
+    def testFn_ReadLines(self):
+        """Test the wdl built-in functional equivalent of 'read_lines()'."""
+        # trailing newlines are stripped; spaces are kept
+        lines = 'line 1\nline 2\t\t\n \n\n'
+        path = self._write_temp_file('read_lines', lines)
+        self.assertEqual(['line 1', 'line 2\t\t', ' '], read_lines(path))
+
+        # preceding newlines are kept
+        lines = '\n\n\nline 1\nline 2\t\t\n '
+        path = self._write_temp_file('read_lines', lines)
+        self.assertEqual(['', '', '', 'line 1', 'line 2\t\t', ' '], read_lines(path))
+
+    def testFn_ReadTsv(self):
+        """Test the wdl built-in functional equivalent of 'read_tsv()'."""
+        tsv = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9']]
+        tsv_str = '1\t2\t3\n4\t5\t6\n7\t8\t9'
+
+        path = self._write_temp_file('read_tsv', tsv_str)
+        self.assertEqual(tsv, read_tsv(path))
+
+    def testFn_ReadJson(self):
+        """Test the wdl built-in functional equivalent of 'read_json()'."""
+        json_obj = {'str': 'some string', 'num': 3.14, 'bool': True, 'null': None, 'arr': ['test']}
+        json_arr = ['1', '2']
+        json_num = 3.14
+
+        import json
+        path = self._write_temp_file('read_json', json.dumps(json_obj))
+        self.assertEqual(json_obj, read_json(path))
+
+        path = self._write_temp_file('read_json', json.dumps(json_arr))
+        self.assertEqual(json_arr, read_json(path))
+
+        path = self._write_temp_file('read_json', json.dumps(json_num))
+        self.assertEqual(json_num, read_json(path))
+
+    def testFn_ReadMap(self):
+        """Test the wdl built-in functional equivalent of 'read_map()'."""
+        map_str = 'key1\tvalue1\nkey2\tvalue2'
+        path = self._write_temp_file('read_map', map_str)
+        self.assertEqual({'key1': 'value1', 'key2': 'value2'}, read_map(path))
+
+        # extra lines and spaces are stripped, except spaces in keys are kept.
+        map_str = '\n\n\nkey1   \tvalue1\nkey2\tvalue2   \n   \n                \t  \n'
+        path = self._write_temp_file('read_map', map_str)
+        self.assertEqual({'key1   ': 'value1', 'key2': 'value2'}, read_map(path))
 
     def testFn_ReadInt(self):
         """Test the wdl built-in functional equivalent of 'read_int()'."""
@@ -198,6 +249,20 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
     def test_read(self):
         """ Test the set of WDL read functions."""
+        # NOTE: these tests depends on stdout() and the write_*() functions.
+
+        self.check_function('read_lines', cases=['as_output'],
+                            expected_result='line 1\n\t\tline 2 with tabs\n line 3\n\nline 5')
+
+        self.check_function('read_tsv', cases=['as_output'],
+                            expected_result='1\t2\t3\n4\t5\t6\n7\t8\t9')
+
+        self.check_function('read_json', cases=['as_output'],
+                            expected_result='{"key1":"value1","key2":"value2"}')
+
+        self.check_function('read_map', cases=['as_output'],
+                            expected_result='key1\tvalue1\nkey2\tvalue2')
+
         # primitives
         self.check_function('read_int', cases=['as_command'], expected_result='11')
         self.check_function('read_string', cases=['as_command'], expected_result='A Whale of a Tale.')
