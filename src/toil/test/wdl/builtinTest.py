@@ -1,3 +1,4 @@
+import json
 import unittest
 import os
 import subprocess
@@ -92,7 +93,6 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         json_arr = ['1', '2']
         json_num = 3.14
 
-        import json
         path = self._write_temp_file('read_json', json.dumps(json_obj))
         self.assertEqual(json_obj, read_json(path))
 
