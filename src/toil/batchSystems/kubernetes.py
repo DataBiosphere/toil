@@ -503,11 +503,11 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             if onlySucceeded: 
                 results =  self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs).items
+                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs)
             else:
                 results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                                label_selector="toil_run={}".format(self.runID), **kwargs).items
-            yield results
+                                                label_selector="toil_run={}".format(self.runID), **kwargs)
+            yield results.items
 
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
@@ -534,9 +534,9 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if token is not None:
                 kwargs['_continue'] = token
 
-            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs).items
+            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs)
             
-            yield results
+            yield results.items
             # Remember the continuation token, if any
             token = getattr(results.metadata, 'continue', None)
 
