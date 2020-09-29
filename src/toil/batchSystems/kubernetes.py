@@ -468,7 +468,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             
             return jobID
     
-    def _ourJobObject(self, onlySucceeded=False, limit=None):
+    def _ourJobObject(self, onlySucceeded=False):
         """
         Yield Kubernetes V1Job objects that we are responsible for that the
         cluster knows about.
@@ -503,10 +503,10 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
             if onlySucceeded: 
                 results =  self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs)
+                                                label_selector="toil_run={}".format(self.runID), field_selector="status.successful==1", **kwargs).items
             else:
                 results = self._try_kubernetes(self._api('batch').list_namespaced_job, self.namespace, 
-                                                label_selector="toil_run={}".format(self.runID), **kwargs)
+                                                label_selector="toil_run={}".format(self.runID), **kwargs).items
             yield results
 
             # Remember the continuation token, if any
@@ -534,7 +534,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             if token is not None:
                 kwargs['_continue'] = token
 
-            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs)
+            results = self._try_kubernetes(self._api('core').list_namespaced_pod, self.namespace, label_selector="toil_run={}".format(self.runID), **kwargs).items
             
             yield results
             # Remember the continuation token, if any
@@ -771,7 +771,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Put 'done', 'failed', or 'stuck' here
         chosenFor = ''
 
-        for j in self._ourJobObject(onlySucceeded=True, limit=1):
+        for j in self._ourJobObject(onlySucceeded=True):
             # Look for succeeded jobs because that's the only filter Kubernetes has
             jobObject = j
             chosenFor = 'done'
