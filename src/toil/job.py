@@ -197,7 +197,14 @@ class Requirer(ConfigClient):
                 elif value.tolower() == 'false':
                     return False
                 else:
-                    raise ValueError(f"The '{name}' requirement must be 'true' or 'false' but is {value}")
+                    raise ValueError(f"The '{name}' requirement, as a string, must be 'true' or 'false' but is {value}")
+            elif isinstance(value, int):
+                if value == 1:
+                    return True
+                if value == 0:
+                    return False
+                else:
+                    raise ValueError(f"The '{name}' requirement, asn an int, must be 1 or 0 but is {value}")
             elif isinstance(value, bool):
                 return value
             else:
@@ -337,8 +344,7 @@ class JobDescription(Requirer):
         # Gets replaced with/rewritten into the real, executable command when
         # the leader passes the description off to the batch system to be
         # executed.
-        self.command = None
-        
+        self.command = command
         
         # Set scheduling properties that the leader read to think about scheduling.
         
