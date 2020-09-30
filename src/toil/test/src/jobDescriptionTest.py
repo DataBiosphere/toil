@@ -74,12 +74,12 @@ class JobDescriptionTest(ToilTest):
         ###TODO test other functionality
         
         
-     @travis_test
-     def testJobDescriptionSequencing(self):
+    @travis_test
+    def testJobDescriptionSequencing(self):
         j = JobDescription(command='command')
         
         j.addChild('child')
-        j.addCollowOn('followOn')
+        j.addFollowOn('followOn')
         
         # With a command, nothing should be ready to run
         self.assertEqual(list(j.nextSuccessors()), [])
