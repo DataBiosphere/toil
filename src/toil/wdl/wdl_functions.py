@@ -15,6 +15,7 @@ import fnmatch
 import json
 import os
 import logging
+import re
 import textwrap
 import csv
 import math
@@ -228,15 +229,24 @@ def process_infile(f, fileStore):
         raise RuntimeError('Error processing file: '.format(str(f)))
 
 
-def sub(a, b, c):
-    if isinstance(a, tuple):
-        a = a[1]
-    if isinstance(a, tuple):
-        b = b[1]
-    if isinstance(a, tuple):
-        c = c[1]
-    import re
-    return re.sub(str(a), str(b), str(c))
+def sub(input_str: str, pattern: str, replace: str) -> str:
+    """
+    Given 3 String parameters `input`, `pattern`, `replace`, this function will
+    replace any occurrence matching `pattern` in `input` by `replace`.
+    `pattern` is expected to be a regular expression. Details of regex evaluation
+    will depend on the execution engine running the WDL.
+
+    WDL syntax: String sub(String, String, String)
+    """
+
+    if isinstance(input_str, tuple):
+        input_str = input_str[1]
+    if isinstance(pattern, tuple):
+        pattern = pattern[1]
+    if isinstance(replace, tuple):
+        replace = replace[1]
+
+    return re.sub(pattern=str(pattern), repl=str(replace), string=str(input_str))
 
 
 def defined(i):

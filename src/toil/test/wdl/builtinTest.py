@@ -4,6 +4,7 @@ import os
 import subprocess
 import shutil
 import uuid
+from toil.wdl.wdl_functions import sub
 from toil.wdl.wdl_functions import ceil
 from toil.wdl.wdl_functions import floor
 from toil.wdl.wdl_functions import read_lines
@@ -54,6 +55,14 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         with open(path, 'w') as f:
             f.write(content + '\n')
         return path
+
+    def testFn_Sub(self):
+        """Test the wdl built-in functional equivalent of 'sub()'."""
+        # example from the WDL spec.
+        chocolike = "I like chocolate when it's late"
+        self.assertEqual("I love chocolate when it's late", sub(chocolike, 'like', 'love'))
+        self.assertEqual("I like chocoearly when it's early", sub(chocolike, 'late', 'early'))
+        self.assertEqual("I like chocolate when it's early", sub(chocolike, 'late$', 'early'))
 
     def testFn_Ceil(self):
         """Test the wdl built-in functional equivalent of 'ceil()', which converts
@@ -233,6 +242,11 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
                     result = f.read().strip()
                 self.assertEqual(result, expected_result)
                 shutil.rmtree(output_dir)
+
+    def test_sub(self):
+        # this workflow swaps the extension of a TSV file to CSV, with String and File inputs.
+        self.check_function('sub', cases=['as_input'], expected_result='src/toil/test/wdl/test.csv')
+        self.check_function('sub', cases=['as_input_with_file'], expected_result='test.csv')
 
     def test_ceil(self):
         self.check_function('ceil', cases=['as_input', 'as_command'], expected_result='12')
