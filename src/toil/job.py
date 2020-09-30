@@ -932,7 +932,7 @@ class Job:
         # Except for predecessor relationships which are stored here, just
         # while the user is creating the job graphs, to check for duplicate
         # relationships and to let EncapsulatedJob magically add itself as a
-        # child.
+        # child. Note that this stores actual Job objects, to call addChild on.
         self._directPredecessors = set()
         
         # Note that self.__module__ is not necessarily this module, i.e. job.py. It is the module
@@ -1702,9 +1702,9 @@ class Job:
         Adds a predecessor job to the set of predecessor jobs. Raises a \
         RuntimeError if the job is already a predecessor.
         """
-        if predecessorJob.jobStoreID in self._directPredecessors:
+        if predecessorJob in self._directPredecessors:
             raise RuntimeError("The given job is already a predecessor of this job")
-        self._directPredecessors.add(predecessorJob.jobStoreID)
+        self._directPredecessors.add(predecessorJob)
         
         # Record the need for the predecessor to finish
         self._description.addPredecessor()
@@ -1844,9 +1844,9 @@ class Job:
             #Do not add the job to the ordering until all its predecessors have been
             #added to the ordering
             outstandingPredecessor = False
-            for predID in job._directPredecessors:
-                if predID not in visited:
-                    logger.debug("Has outstanding predecessor that will account for it: %s", predID)
+            for predJob in job._directPredecessors:
+                if predJob.jobStoreID not in visited:
+                    logger.debug("Has outstanding predecessor that will account for it: %s", predJob.jobStoreID)
                     outstandingPredecessor = True
                     break
             if outstandingPredecessor:
@@ -1914,8 +1914,6 @@ class Job:
         :param dict(FakeID, str) renames: Rename operations to apply.
         """
         
-        # Rename direct predecessors
-        self._directPredecessors = {renames.get(old, old) for old in self._directPredecessors}
         # Do renames in the description
         self._description.renameReferences(renames)
         
@@ -2477,9 +2475,8 @@ class EncapsulatedJob(Job):
             super().__init__(**job.description.requirements, unitName=unitName)
             # Ensure that the encapsulated job has the same direct predecessors as the job
             # being encapsulated.
-            if job._directPredecessors:
-                for job_ in job._directPredecessors:
-                    job_.addChild(self)
+            for predJob in job._directPredecessors:
+                predJob.addChild(self)
             self.encapsulatedJob = job
             Job.addChild(self, job)
             # Use small resource requirements for dummy Job instance.
