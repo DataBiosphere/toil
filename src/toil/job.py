@@ -2045,7 +2045,7 @@ class Job:
             self._fulfillPromises(returnValues, jobStore)
             
         for job in ordering:
-            logger.info("Processing job %s", job)
+            logger.info("Processing job %s", job.description)
             for serviceBatch in reversed(list(job.description.serviceHostIDsInBatches())):
                 # For each batch of service host jobs in reverse order they start
                 for serviceID in serviceBatch:
@@ -2055,7 +2055,7 @@ class Job:
                         
                         # Find the actual job
                         serviceJob = self._registry[serviceID]
-                        logger.info("Saving service %s", serviceJob)
+                        logger.info("Saving service %s", serviceJob.description)
                         # Pickle the service body, which triggers all the promise stuff
                         serviceJob.saveBody(jobStore)
             if job != self or saveSelf:
@@ -2449,8 +2449,8 @@ class EncapsulatedJob(Job):
 
         #  Job A and subgraph, Job B
         A, B = A(), B()
-        A' = A.encapsulate()
-        A'.addChild(B)
+        Aprime = A.encapsulate()
+        Aprime.addChild(B)
         #  B will run after A and all its successors have completed, A and its subgraph of
         # successors in effect appear to be just one job.
 
@@ -2469,41 +2469,76 @@ class EncapsulatedJob(Job):
         :param toil.job.Job job: the job to encapsulate.
         :param str unitName: human-readable name to identify this job instance.
         """
-        # Giving the root of the subgraph the same resources as the first job in the subgraph.
-        super().__init__(**job.description.requirements, unitName=unitName)
-        # Ensure that the encapsulated job has the same direct predecessors as the job
-        # being encapsulated.
-        if job._directPredecessors:
-            for job_ in job._directPredecessors:
-                job_.addChild(self)
-        self.encapsulatedJob = job
-        Job.addChild(self, job)
-        # Use small resource requirements for dummy Job instance.
-        # But not too small, or the job won't have enough resources to safely start up Toil.
-        self.encapsulatedFollowOn = Job(disk='100M', memory='512M', cores=0.1, unitName=None if unitName is None else unitName + '-followOn')
-        Job.addFollowOn(self, self.encapsulatedFollowOn)
+        
+        if job is not None:
+            # Initial construction, when encapsulating a job
+            
+            # Giving the root of the subgraph the same resources as the first job in the subgraph.
+            super().__init__(**job.description.requirements, unitName=unitName)
+            # Ensure that the encapsulated job has the same direct predecessors as the job
+            # being encapsulated.
+            if job._directPredecessors:
+                for job_ in job._directPredecessors:
+                    job_.addChild(self)
+            self.encapsulatedJob = job
+            Job.addChild(self, job)
+            # Use small resource requirements for dummy Job instance.
+            # But not too small, or the job won't have enough resources to safely start up Toil.
+            self.encapsulatedFollowOn = Job(disk='100M', memory='512M', cores=0.1, unitName=None if unitName is None else unitName + '-followOn')
+            Job.addFollowOn(self, self.encapsulatedFollowOn)
+        else:
+            # Unpickling on the worker, to be run as a no-op.
+            # No need to try and hook things up, but nobody can add children or
+            # follow-ons to us now either.
+            super().__init__()
+            self.encapsulatedJob = None
+            self.encapsulatedFollowOn = None
 
     def addChild(self, childJob):
+        assert self.encapsulatedFollowOn is not None, \
+            "Children cannot be added to EncapsulatedJob while it is running"
         return Job.addChild(self.encapsulatedFollowOn, childJob)
 
     def addService(self, service, parentService=None):
+        assert self.encapsulatedFollowOn is not None, \
+            "Services cannot be added to EncapsulatedJob while it is running"
         return Job.addService(self.encapsulatedFollowOn, service, parentService=parentService)
 
     def addFollowOn(self, followOnJob):
+        assert self.encapsulatedFollowOn is not None, \
+            "Follow-ons cannot be added to EncapsulatedJob while it is running"
         return Job.addFollowOn(self.encapsulatedFollowOn, followOnJob)
 
     def rv(self, *path):
+        assert self.encapsulatedJob is not None
         return self.encapsulatedJob.rv(*path)
 
     def prepareForPromiseRegistration(self, jobStore):
+        # This one will be called after execution when re-serializing the
+        # (unchanged) graph of jobs rooted here.
         super().prepareForPromiseRegistration(jobStore)
-        self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
+        if self.encapsulatedJob is not None:
+            # Running where the job was created.
+            self.encapsulatedJob.prepareForPromiseRegistration(jobStore)
         
     def _disablePromiseRegistration(self):
+        assert self.encapsulatedJob is not None
         super()._disablePromiseRegistration()
         self.encapsulatedJob._disablePromiseRegistration()
-
+    
+    def __reduce__(self):
+        """
+        Called during pickling to define the pickled representation of the job.
+        
+        We don't want to pickle our internal references to the job we
+        encapsulate, so we elide them here. When actually run, we're just a
+        no-op job that can maybe chain.
+        """
+        
+        return self.__class__, (None,)
+    
     def getUserScript(self):
+        assert self.encapsulatedJob is not None
         return self.encapsulatedJob.getUserScript()
 
 class ServiceHostJob(Job):
