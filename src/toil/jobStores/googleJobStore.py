@@ -181,7 +181,7 @@ class GoogleJobStore(AbstractJobStore):
         jobStoreID = self._newJobID()
         log.debug("Assigning ID to job %s for '%s'",
                   jobStoreID, '<no command>' if jobDescription.command is None else jobDescription.command)
-        return jobStoreID
+        jobDescription.jobStoreID = jobStoreID
 
     def create(self, jobDescription):
         # TODO: we don't implement batching, but we probably should.

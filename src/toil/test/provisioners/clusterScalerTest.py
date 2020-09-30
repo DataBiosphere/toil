@@ -33,7 +33,7 @@ from mock import MagicMock
 from six.moves.queue import Empty, Queue
 from six import iteritems
 
-from toil.job import JobNode, Job
+from toil.job import Job, JobDescription
 from toil.lib.humanize import human2bytes as h2b
 from toil.test import ToilTest, slow, travis_test
 from toil.batchSystems.abstractBatchSystem import (AbstractScalableBatchSystem,
@@ -506,14 +506,12 @@ class ScalerThreadTest(ToilTest):
                     # Add 1000 random jobs
                     for _ in range(1000):
                         x = mock.getNodeShape(nodeType=jobShape)
-                        iJ = JobNode(jobStoreID=1,
-                                     requirements=dict(
-                                         memory=random.choice(list(range(1, x.memory))),
-                                         cores=random.choice(list(range(1, x.cores))),
-                                         disk=random.choice(list(range(1, x.disk))),
-                                         preemptable=preemptable),
-                                     command=None,
-                                     jobName='testClusterScaling', unitName='')
+                        iJ = JobDescription(requirements=dict(
+                                                memory=random.choice(list(range(1, x.memory))),
+                                                cores=random.choice(list(range(1, x.cores))),
+                                                disk=random.choice(list(range(1, x.disk))),
+                                                preemptable=preemptable),
+                                            jobName='testClusterScaling', unitName='')
                         clusterScaler.addCompletedJob(iJ, random.choice(list(range(1, x.wallTime))))
 
             startTime = time.time()
@@ -613,14 +611,12 @@ class ScalerThreadTest(ToilTest):
 
             # Add medium completed jobs
             for i in range(1000):
-                iJ = JobNode(jobStoreID=1,
-                             requirements=dict(
-                                 memory=random.choice(range(smallNode.memory, mediumNode.memory)),
-                                 cores=mediumNode.cores,
-                                 disk=largeNode.cores,
-                                 preemptable=False),
-                             command=None,
-                             jobName='testClusterScaling', unitName='')
+                iJ = JobDescription(requirements=dict(
+                                        memory=random.choice(range(smallNode.memory, mediumNode.memory)),
+                                        cores=mediumNode.cores,
+                                        disk=largeNode.cores,
+                                        preemptable=False),
+                                    jobName='testClusterScaling', unitName='')
                 clusterScaler.addCompletedJob(iJ, random.choice(range(1, 10)))
 
             while mock.getNumberOfJobsIssued() > 0 or mock.getNumberOfNodes() > 0:

@@ -700,13 +700,11 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def assignID(self, jobDescription):
         """
-        Get a new jobStoreID to be used by the described job.
+        Get a new jobStoreID to be used by the described job, and assigns it to the JobDescription.
         
         Files associated with the assigned ID will be accepted even if the JobDescription has never been created or updated.
         
         :param toil.job.JobDescription jobDescription: The JobDescription to give an ID to
-        :return: An ID that can be used by the JobDescription
-        :rtype: str
         """
         raise NotImplementedError()
 

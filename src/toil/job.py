@@ -1863,7 +1863,7 @@ class Job:
             fake = self.jobStoreID
             
             # Replace it with a real ID
-            self.description.jobStoreID = jobStore.assignID(self.description)
+            jobStore.assignID(self.description)
             
             # Make sure the JobDescription can do its JobStore-related setup.
             self.description.onRegistration(jobStore)

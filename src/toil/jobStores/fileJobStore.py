@@ -141,7 +141,7 @@ class FileJobStore(AbstractJobStore):
         absJobDir = tempfile.mkdtemp(prefix=self.JOB_DIR_PREFIX,
                                      dir=self._getArbitraryJobsDirForName(usefulFilename))
                                      
-        return self._getJobIdFromDir(absJobDir)
+        jobDescription.jobStoreID = self._getJobIdFromDir(absJobDir)
         
     def create(self, jobDescription):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:

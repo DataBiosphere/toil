@@ -36,7 +36,7 @@ class JobDescriptionTest(ToilTest):
         self.assertFalse(os.path.exists(self.jobStorePath))
         super().tearDown()
     @travis_test
-    def testJob(self):       
+    def testJobDescription(self):       
         """
         Tests the public interface of a JobDescription.
         """ 
@@ -72,3 +72,28 @@ class JobDescriptionTest(ToilTest):
         self.assertNotEqual(j, j2)
         
         ###TODO test other functionality
+        
+        
+     @travis_test
+     def testJobDescriptionSequencing(self):
+        j = JobDescription(command='command')
+        
+        j.addChild('child')
+        j.addCollowOn('followOn')
+        
+        # With a command, nothing should be ready to run
+        self.assertEqual(list(j.nextSuccessors()), [])
+        
+        # With command cleared, child should be ready to run
+        j.command = None
+        self.assertEqual(list(j.nextSuccessors()), ['child'])
+        
+        # Without the child, the follow-on should be ready to run
+        j.filterSuccessors(lambda jID: jID != 'child')
+        self.assertEqual(list(j.nextSuccessors()), ['followOn'])
+        
+        # Without the follow-on, we should return None, to be distinct from an
+        # empty list. Nothing left to do!
+        j.filterSuccessors(lambda jID: jID != 'followOn')
+        self.assertEqual(j.nextSuccessors(), None)
+        
