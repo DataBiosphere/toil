@@ -431,10 +431,10 @@ class Leader(object):
             # are done
             logger.debug("Job %s with ID: %s with failed successors still has successor jobs running",
                          predecessor, predecessor.jobStoreID)
-        elif isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint is not None and predecessor.remainingRetryCount > 1:
+        elif isinstance(predecessor, CheckpointJobDescription) and predecessor.checkpoint is not None and predecessor.remainingTryCount > 1:
             # If the job is a checkpoint and has remaining retries then reissue it.
             # The logic behind using > 1 rather than > 0 here: Since this job has
-            # been tried once (without decreasing its retry count as the job
+            # been tried once (without decreasing its try count as the job
             # itself was successful), and its subtree failed, it shouldn't be retried
             # unless it has more than 1 try.
             logger.warning('Job: %s is being restarted as a checkpoint after the total '
@@ -463,14 +463,16 @@ class Leader(object):
             # Similarly, if the job previously failed we rerun it, even if it doesn't have a
             # command to run, to eliminate any parts of the stack now completed.
             isServiceJob = readyJob.jobStoreID in self.toilState.serviceJobStoreIDToPredecessorJob
-
-            # If the job has run out of retries or is a service job whose error flag has
+            
+            # We want to run the job, and expend one of its "tries" (possibly
+            # the initial one)
+            
+            # If the job has run out of tries or is a service job whose error flag has
             # been indicated, fail the job.
-            if (readyJob.remainingRetryCount == 0
-                or isServiceJob and not self.jobStore.fileExists(readyJob.errorJobStoreID)):
+            if (readyJob.remainingTryCount == 0 or
+                (isServiceJob and not self.jobStore.fileExists(readyJob.errorJobStoreID))):
                 self.processTotallyFailedJob(readyJob)
-                logger.warning("Job %s with ID %s is completely failed",
-                            readyJob, readyJob.jobStoreID)
+                logger.warning("Job %s is completely failed", readyJob)
             else:
                 # Otherwise try the job again
                 self.issueJob(readyJob)
@@ -510,7 +512,7 @@ class Leader(object):
             #list of jobs to process, or (better) to create an asynchronous
             #process that deletes jobs and then feeds them back into the set
             #of jobs to be processed
-            if readyJob.remainingRetryCount > 0:
+            if readyJob.remainingTryCount > 0:
                 self.issueJob(readyJob)
                 logger.debug("Job: %s is empty, we are scheduling to clean it up", readyJob.jobStoreID)
             else:
@@ -1015,7 +1017,7 @@ class Leader(object):
             if resultStatus != 0:
                 # If the batch system returned a non-zero exit code then the worker
                 # is assumed not to have captured the failure of the job, so we
-                # reduce the retry count here.
+                # reduce the try count here.
                 if replacementJob.logJobStoreFileID is None:
                     logger.warning("No log file is present, despite job failing: %s", replacementJob)
 
@@ -1069,7 +1071,7 @@ class Leader(object):
             
             # Return True if it will rerun (still has retries) and false if it
             # is completely failed.
-            return replacementJob.remainingRetryCount > 0
+            return replacementJob.remainingTryCount > 0
         else:  #The job is done
             self.processRemovedJob(issuedJob, resultStatus)
             # Being done, it won't run again.

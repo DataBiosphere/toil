@@ -653,8 +653,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
             if servicesSizeFn() != startServicesSize:
                 changed[0] = True
 
-            # Reset the retry count of the JobDescription so it will use the default.
-            changed[0] |= jobDescription.clearRemainingRetryCount()
+            # Reset the try count of the JobDescription so it will use the default.
+            changed[0] |= jobDescription.clearRemainingTryCount()
 
             # This cleans the old log file which may
             # have been left if the job is being retried after a failure.

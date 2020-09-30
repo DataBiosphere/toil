@@ -348,11 +348,12 @@ class JobDescription(Requirer):
         
         # Set scheduling properties that the leader read to think about scheduling.
         
-        # The number of times the job should be retried if it fails.
-        # This number is reduced by retries until it is zero and then no
-        # further retries are made. If None, taken as the default value for
-        # this workflow execution.
-        self._remainingRetryCount = None
+        # The number of times the job should be attempted. Includes the initial
+        # try, plus the nu,ber of times to retry if the job fails. This number
+        # is reduced each time the job is run, until it is zero, and then no
+        # further attempts to run the job are made. If None, taken as the
+        # default value for this workflow execution.
+        self._remainingTryCount = None
         
         # Holds FileStore FileIDs of the files that this job has deleted. Used
         # to journal deletions of files and recover from a worker crash between
@@ -630,7 +631,7 @@ class JobDescription(Requirer):
     
     def setupJobAfterFailure(self, exitReason=None):
         """
-        Reduce the remainingRetryCount if greater than zero and set the memory
+        Reduce the remainingTryCount if greater than zero and set the memory
         to be at least as big as the default memory (in case of exhaustion of memory,
         which is common).
         
@@ -646,12 +647,12 @@ class JobDescription(Requirer):
         assert self._config is not None
         
         if self._config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
-            logger.info("*Not* reducing retry count (%s) of job %s with ID %s",
-                        self.remainingRetryCount, self, self.jobStoreID)
+            logger.info("*Not* reducing try count (%s) of job %s with ID %s",
+                        self.remainingTryCount, self, self.jobStoreID)
         else:
-            self.remainingRetryCount = max(0, self.remainingRetryCount - 1)
-            logger.warning("Due to failure we are reducing the remaining retry count of job %s with ID %s to %s",
-                           self, self.jobStoreID, self.remainingRetryCount)
+            self.remainingTryCount = max(0, self.remainingTryCount - 1)
+            logger.warning("Due to failure we are reducing the remaining try count of job %s with ID %s to %s",
+                           self, self.jobStoreID, self.remainingTryCount)
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
@@ -675,32 +676,34 @@ class JobDescription(Requirer):
         return jobStore.readFileStream(self.logJobStoreFileID)
     
     @property
-    def remainingRetryCount(self):
+    def remainingTryCount(self):
         """
-        The retry count set on the JobDescription, or the default from the
-        config if none is set.
+        The try count set on the JobDescription, or the default based on the
+        retry count from the config if none is set.
         """
-        if self._remainingRetryCount is not None:
-            return self._remainingRetryCount
+        if self._remainingTryCount is not None:
+            return self._remainingTryCount
         elif self._config is not None:
-            return self._config.retryCount
+            # Our try count should be the number of retries in the config, plus
+            # 1 for the initial try
+            return self._config.retryCount + 1
         else:
-            raise AttributeError(f"Retry count for {self} cannot be determined")
-    @remainingRetryCount.setter
-    def remainingRetryCount(self, val):
-        self._remainingRetryCount = val
+            raise AttributeError(f"Try count for {self} cannot be determined")
+    @remainingTryCount.setter
+    def remainingTryCount(self, val):
+        self._remainingTryCount = val
         
-    def clearRemainingRetryCount(self):
+    def clearRemainingTryCount(self):
         """
-        Clear remainingRetryCount and set it back to its default value.
+        Clear remainingTryCount and set it back to its default value.
         
         :returns: True if a modification to the JobDescription was made, and
                   False otherwise.
         :rtype: bool
         """
-        if self._remainingRetryCount is not None:
+        if self._remainingTryCount is not None:
             # We had a value stored
-            self._remainingRetryCount = None
+            self._remainingTryCount = None
             return True
         else:
             # No change needed
@@ -798,7 +801,7 @@ class CheckpointJobDescription(JobDescription):
         Restart a checkpoint after the total failure of jobs in its subtree.
 
         Writes the changes to the jobStore immediately. All the
-        checkpoint's successors will be deleted, but its retry count
+        checkpoint's successors will be deleted, but its try count
         will *not* be decreased.
 
         Returns a list with the IDs of any successors deleted.

@@ -344,9 +344,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             # checkpoint here, removing its previous subtree.
             if next(jobDesc.successorsAndServiceHosts(), None) is not None:
                 logger.debug("Checkpoint has failed; restoring")
-                # Reduce the retry count
-                assert jobDesc.remainingRetryCount >= 0
-                jobDesc.remainingRetryCount = max(0, jobDesc.remainingRetryCount - 1)
+                # Reduce the try count
+                assert jobDesc.remainingTryCount >= 0
+                jobDesc.remainingTryCount = max(0, jobDesc.remainingTryCount - 1)
                 jobDesc.restartCheckpoint(jobStore)
             # Otherwise, the job and successors are done, and we can cleanup stuff we couldn't clean
             # because of the job being a checkpoint
