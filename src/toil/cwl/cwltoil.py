@@ -404,7 +404,7 @@ class DefaultWithSource:
         """
         if self.source:
             result = self.source.resolve()
-            if result:
+            if result is not None:
                 return result
         return self.default
 
@@ -591,13 +591,19 @@ class ToilFsAccess(cwltool.stdfsaccess.StdFsAccess):
 
         Overwrites cwltool.stdfsaccess.StdFsAccess._abs() to account for toil specific schema.
         """
-        
+
         # Used to fetch a path to determine if a file exists in the inherited cwltool.stdfsaccess.StdFsAccess,
         # (among other things) so this should not error on missing files.
         # See: https://github.com/common-workflow-language/cwltool/blob/beab66d649dd3ee82a013322a5e830875e8556ba/cwltool/stdfsaccess.py#L43
         if path.startswith("toilfs:"):
-            return self.file_store.readGlobalFile(FileID.unpack(path[7:]))
-        return super(ToilFsAccess, self)._abs(path)
+            logger.debug('Need to download file to get a local absolute path.')
+            destination = self.file_store.readGlobalFile(FileID.unpack(path[7:]))
+            logger.debug('Downloaded %s to %s', path, destination)
+            assert os.path.exists(destination)
+            return destination
+        else:
+            result = super(ToilFsAccess, self)._abs(path)
+            return result
 
 
 def toil_get_file(file_store: AbstractFileStore, index: dict, existing: dict, file_store_id: str) -> str:
@@ -666,14 +672,14 @@ def prepareDirectoryForUpload(directory_metadata: dict,
         else:
             raise cwltool.errors.WorkflowException(
                 "Directory is missing: %s" % directory_metadata["location"])
-                
+
     # The metadata for a directory is all we need to keep around for it. It
     # doesn't have a real location. But each directory needs a unique location
     # or cwltool won't ship the metadata along. cwltool takes "_:" as a signal
     # to make directories instead of copying from somewhere. So we give every
     # directory a unique _: location and cwltool's machinery Just Works.
     directory_metadata["location"] = "_:" + directory_metadata["location"]
-    
+
     logger.debug("Sending directory at %s", directory_metadata["location"])
 
 def uploadFile(uploadfunc: Any,
@@ -685,7 +691,7 @@ def uploadFile(uploadfunc: Any,
     Update a file object so that the location is a reference to the toil file
     store, writing it to the file store if necessary.
     """
-    
+
     if file_metadata["location"].startswith("toilfs:") or file_metadata["location"].startswith("_:"):
         return
     if file_metadata["location"] in fileindex:
@@ -701,7 +707,7 @@ def uploadFile(uploadfunc: Any,
                 "File is missing: %s" % file_metadata["location"])
     file_metadata["location"] = write_file(
         uploadfunc, fileindex, existing, file_metadata["location"])
-        
+
     logger.debug("Sending file at: %s", file_metadata["location"])
 
 
@@ -749,23 +755,26 @@ def toilStageFiles(file_store: AbstractFileStore,
     pm = ToilPathMapper(jobfiles, "", outdir, separateDirs=False, stage_listing=True)
     for _, p in pm.items():
         if p.staged:
-            if destBucket:
+            if destBucket and p.type in ['File', 'CreateFile']:
                 # Directories don't need to be created if we're exporting to a bucket
-                if p.type == "File":
-                    # Remove the staging directory from the filepath and
-                    # from the destination URL
-                    unstageTargetPath = p.target[len(outdir):]
-                    destUrl = '/'.join(s.strip('/') for s in [destBucket, unstageTargetPath])
+                baseName = p.target[len(outdir):]
+                local_file_path = p.resolved[len('file://'):]
 
-                    file_store.exportFile(FileID.unpack(p.resolved[7:]), destUrl)
+                if p.type == "CreateFile":  # TODO: CreateFile for buckets is not under testing
+                    local_file_path = os.path.join(file_store.getLocalTempDir(), baseName)
+                    with open(local_file_path, "wb") as n:
+                        n.write(p.resolved.encode("utf-8"))
+
+                destUrl = '/'.join(s.strip('/') for s in [destBucket, baseName])
+                file_store.exportFile(FileID.unpack(local_file_path), destUrl)
             else:
-                if not os.path.exists(os.path.dirname(p.target)):
-                    os.makedirs(os.path.dirname(p.target), 0o0755)
-                if p.type == "File" and not os.path.exists(p.target):
-                    file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
-                elif p.type == "Directory" and not os.path.exists(p.target):
+                if not os.path.exists(p.target) and p.type == "Directory":
                     os.makedirs(p.target, 0o0755)
-                elif p.type == "CreateFile":
+                if not os.path.exists(p.target) and p.type == "File":
+                    os.makedirs(os.path.dirname(p.target), 0o0755, exist_ok=True)
+                    file_store.exportFile(FileID.unpack(p.resolved[7:]), "file://" + p.target)
+                if not os.path.exists(p.target) and p.type == "CreateFile":
+                    os.makedirs(os.path.dirname(p.target), 0o0755, exist_ok=True)
                     with open(p.target, "wb") as n:
                         n.write(p.resolved.encode("utf-8"))
 
@@ -918,14 +927,12 @@ class CWLJob(Job):
         return required_env_vars
 
     def run(self, file_store: AbstractFileStore) -> Any:
-        
         # Adjust cwltool's logging to conform to Toil's settings.
         # We need to make sure this happens in every worker process before we
         # do CWL things.
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
-        
-        
+
         cwljob = resolve_dict_w_promises(self.cwljob)
 
         if self.conditional.is_false(cwljob):
@@ -978,6 +985,8 @@ class CWLJob(Job):
         process_uuid = uuid.uuid4()
         started_at = datetime.datetime.now()
 
+        logger.debug('Running CWL job: %s', cwljob)
+
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
             job_order_object=cwljob,
@@ -990,7 +999,7 @@ class CWLJob(Job):
         adjustDirObjs(output, functools.partial(
             get_listing, cwltool.stdfsaccess.StdFsAccess(outdir),
             recursive=True))
-            
+
         adjustDirObjs(output, prepareDirectoryForUpload)
 
         # write the outputs into the jobstore

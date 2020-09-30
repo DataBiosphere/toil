@@ -1,0 +1,3 @@
+{
+  "readTsvWorkflow.in_file": "src/toil/test/wdl/test.tsv"
+}

@@ -11,14 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import, print_function
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
 from contextlib import contextmanager
 import errno
 import hashlib
@@ -37,17 +29,12 @@ from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree, atomic_copy, atomic_copyobj
-from toil.lib.retry import retry
+from toil.lib.retry import retry, ErrorCondition
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
-
-if sys.version_info[0] < 3:
-    # Define a usable FileNotFoundError as will be raised by os.remove on a
-    # nonexistent file.
-    FileNotFoundError = OSError
 
 
 # Use longer timeout to avoid hitting 'database is locked' errors.
@@ -260,6 +247,12 @@ class CachingFileStore(AbstractFileStore):
 
     
     @staticmethod
+    @retry(infinite_retries=True,
+           errors=[
+                         ErrorCondition(
+                             error=sqlite3.OperationalError,
+                             error_message_must_include='is locked')
+                     ])
     def _staticWrite(con, cur, operations):
         """
         Write to the caching database, using the given connection.
@@ -279,40 +272,36 @@ class CachingFileStore(AbstractFileStore):
         :return: Number of rows modified by the last operation
         :rtype: int
         """
-
-        for attempt in retry(timeout=float('inf'), predicate=lambda e: isinstance(e, sqlite3.OperationalError) and 'is locked' in str(e)):
-            # Try forever with backoff
-            with attempt:
-                try:
-                    for item in operations:
-                        if not isinstance(item, tuple):
-                            # Must be a single SQL string. Wrap it.
-                            item = (item,)
-                        # Parse out the command and the variables to substitute
-                        command = item[0]
-                        if len(item) < 2:
-                            args = ()
-                        else:
-                            args = item[1]
-                        # Do it
-                        cur.execute(command, args)
-                except Exception as e:
-                    logging.error('Error talking to caching database: %s', str(e))
-
-                    # Try to make sure we don't somehow leave anything part-done if a
-                    # middle operation somehow fails. 
-                    try:
-                        con.rollback()
-                    except:
-                        # But don't stop if we can't roll back.
-                        pass
-
-                    # Raise and maybe retry
-                    raise e
+        try:
+            for item in operations:
+                if not isinstance(item, tuple):
+                    # Must be a single SQL string. Wrap it.
+                    item = (item,)
+                # Parse out the command and the variables to substitute
+                command = item[0]
+                if len(item) < 2:
+                    args = ()
                 else:
-                    # The transaction worked!
-                    # Now commit the transaction.
-                    con.commit()
+                    args = item[1]
+                # Do it
+                cur.execute(command, args)
+        except Exception as e:
+            logging.error('Error talking to caching database: %s', str(e))
+
+            # Try to make sure we don't somehow leave anything part-done if a
+            # middle operation somehow fails.
+            try:
+                con.rollback()
+            except:
+                # But don't stop if we can't roll back.
+                pass
+
+            # Raise and maybe retry
+            raise e
+        else:
+            # The transaction worked!
+            # Now commit the transaction.
+            con.commit()
 
         return cur.rowcount
 
@@ -646,7 +635,10 @@ class CachingFileStore(AbstractFileStore):
         deadOwners = []
         for owner in owners:
             if not process_name_exists(self.workDir, owner):
+                logger.debug('Owner %s is dead', owner)
                 deadOwners.append(owner)
+            else:
+                logger.debug('Owner %s is alive', owner)
 
         for owner in deadOwners:
             # Try and adopt all the files that any dead owner had
@@ -672,7 +664,7 @@ class CachingFileStore(AbstractFileStore):
                 ('UPDATE files SET owner = NULL, state = ? WHERE owner = ? AND (state = ? OR state = ?)',
                 ('cached', owner, 'uploadable', 'uploading'))])
 
-            logger.debug('Tried to adopt file operations from dead worker %d', owner)
+            logger.debug('Tried to adopt file operations from dead worker %s to ourselves as %s', owner, me)
 
     @classmethod
     def _executePendingDeletions(cls, workDir, con, cur):
@@ -701,9 +693,12 @@ class CachingFileStore(AbstractFileStore):
             filePath = row[1]
             try:
                 os.unlink(filePath)
+                logger.debug('Successfully deleted: %s', filePath)
             except OSError:
                 # Probably already deleted
-                continue
+                logger.debug('File already gone: %s', filePath)
+                # Still need to mark it as deleted
+                pass
 
             # Whether we deleted the file or just found out that it is gone, we
             # need to take credit for deleting it so that we remove it from the
@@ -1039,8 +1034,9 @@ class CachingFileStore(AbstractFileStore):
         creatorID = self.jobDesc.jobStoreID
 
         # Create an empty file to get an ID.
+        # Make sure to pass along the file basename.
         # TODO: this empty file could leak if we die now...
-        fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup)
+        fileID = self.jobStore.getEmptyFileStoreID(creatorID, cleanup, os.path.basename(localFileName))
 
         # Work out who we are
         me = get_process_name(self.workDir)
@@ -1053,8 +1049,8 @@ class CachingFileStore(AbstractFileStore):
         self._write([('INSERT INTO files VALUES (?, ?, ?, ?, ?)', (fileID, cachePath, fileSize, 'uploadable', me)),
             ('INSERT INTO refs VALUES (?, ?, ?, ?)', (absLocalFileName, fileID, creatorID, 'immutable'))])
 
-        if absLocalFileName.startswith(self.localTempDir):
-            # We should link into the cache, because the upload is coming from our local temp dir
+        if absLocalFileName.startswith(self.localTempDir) and not os.path.islink(absLocalFileName):
+            # We should link into the cache, because the upload is coming from our local temp dir (and not via a symlink in there)
             try:
                 # Try and hardlink the file into the cache.
                 # This can only fail if the system doesn't have hardlinks, or the
@@ -1064,15 +1060,19 @@ class CachingFileStore(AbstractFileStore):
 
                 linkedToCache = True
 
-                logger.debug('Linked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
+                logger.debug('Hardlinked file %s into cache at %s; deferring write to job store', localFileName, cachePath)
+                assert not os.path.islink(cachePath), "Symlink %s has invaded cache!" % cachePath
 
                 # Don't do the upload now. Let it be deferred until later (when the job is committing).
             except OSError:
                 # We couldn't make the link for some reason
                 linkedToCache = False
         else:
-            # The tests insist that if you are uploading a file from outside
-            # the local temp dir, it should not be linked into the cache.
+            # If you are uploading a file that physically exists outside the
+            # local temp dir, it should not be linked into the cache. On
+            # systems that support it, we could end up with a
+            # hardlink-to-symlink in the cache if we break this rule, allowing
+            # files to vanish from our cache.
             linkedToCache = False
 
 
@@ -1088,14 +1088,14 @@ class CachingFileStore(AbstractFileStore):
                 ('DELETE FROM files WHERE id = ?', (fileID,))])
 
             # Save the file to the job store right now
-            logger.debug('Actually executing upload for file %s', fileID)
+            logger.debug('Actually executing upload immediately for file %s', fileID)
             self.jobStore.updateFile(fileID, absLocalFileName)
 
         # Ship out the completed FileID object with its real size.
         return FileID.forPath(fileID, absLocalFileName)
 
     def readGlobalFile(self, fileStoreID, userPath=None, cache=True, mutable=False, symlink=False):
-        
+
         if str(fileStoreID) in self.filesToDelete:
             # File has already been deleted
             raise FileNotFoundError('Attempted to read deleted file: {}'.format(fileStoreID))
@@ -1445,7 +1445,7 @@ class CachingFileStore(AbstractFileStore):
     def _createLinkFromCache(self, cachedPath, localFilePath, symlink=True):
         """
         Create a hardlink or symlink from the given path in the cache to the
-        given user-provided path. Destination must not exist.
+        given user-provided path. Destination must not exist. Source must exist.
 
         Only creates a symlink if a hardlink cannot be created and symlink is
         true.
@@ -1458,6 +1458,8 @@ class CachingFileStore(AbstractFileStore):
         :return: True if the file is successfully linked. False if the file cannot be linked.
         :rtype: bool
         """
+
+        assert os.path.exists(cachedPath), "Cannot create link to missing cache file %s" % cachedPath
 
         try:
             # Try and make the hard link.
@@ -1499,7 +1501,7 @@ class CachingFileStore(AbstractFileStore):
             # Try and create a downloading entry if no entry exists.
             # Make sure to create a reference at the same time if it succeeds, to bill it against our job's space.
             # Don't create the mutable reference yet because we might not necessarily be able to clear that space.
-            logger.debug('Trying to make file record and reference for id %s', fileStoreID)
+            logger.debug('Trying to make file downloading file record and reference for id %s', fileStoreID)
             self._write([('INSERT OR IGNORE INTO files VALUES (?, ?, ?, ?, ?)',
                 (fileStoreID, cachedPath, self.getGlobalFileSize(fileStoreID), 'downloading', me)),
                 ('INSERT INTO refs SELECT ?, id, ?, ? FROM files WHERE id = ? AND state = ? AND owner = ?',
@@ -1541,7 +1543,7 @@ class CachingFileStore(AbstractFileStore):
                     return localFilePath
 
             else:
-                logger.debug('Someone else is already responsible for file %s', fileStoreID)
+                logger.debug('We already have an entry in the cache database for file %s', fileStoreID)
 
                 # A record already existed for this file.
                 # Try and create an immutable reference to an entry that
@@ -1584,6 +1586,9 @@ class CachingFileStore(AbstractFileStore):
                     # finish. If they die, we will notice.
                     self._removeDeadJobs(self.workDir, self.con)
                     self._stealWorkFromTheDead()
+                    # We may have acquired ownership of partially-downloaded
+                    # files, now in deleting state, that we need to delete
+                    # before we can download them.
                     self._executePendingDeletions(self.workDir, self.con, self.cur)
 
                     # Wait for other people's downloads to progress.
@@ -1601,7 +1606,7 @@ class CachingFileStore(AbstractFileStore):
     def deleteLocalFile(self, fileStoreID):
         # What job are we operating as?
         jobID = self.jobID
-
+        
         # What paths did we delete
         deleted = []
         # What's the first path, if any, that was missing? If we encounter a
@@ -1626,9 +1631,15 @@ class CachingFileStore(AbstractFileStore):
                     break
                 deleted.append(path)
 
+        if len(deleted) == 0 and not missingFile:
+            # We have to tell the user if they tried to delete 0 local copies.
+            # But if we found a missing local copy, go on to report that instead.
+            raise OSError(errno.ENOENT, "Attempting to delete local copies of a file with none: {}".format(fileStoreID))
+
         for path in deleted:
             # Drop the references
             self._write([('DELETE FROM refs WHERE file_id = ? AND job_id = ? AND path = ?', (fileStoreID, jobID, path))])
+            logger.debug('Deleted local file %s for global file %s', path, fileStoreID)
 
         # Now space has been revoked from the cache because that job needs its space back.
         # That might result in stuff having to be evicted.
@@ -1642,8 +1653,15 @@ class CachingFileStore(AbstractFileStore):
             raise IllegalDeletionCacheError(missingFile)
 
     def deleteGlobalFile(self, fileStoreID):
-        # Delete local copies for this job
-        self.deleteLocalFile(fileStoreID)
+        try:
+            # Delete local copies of the file
+            self.deleteLocalFile(fileStoreID)
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                # Turns out there weren't any
+                pass
+            else:
+                raise
 
         # Work out who we are
         me = get_process_name(self.workDir)
@@ -1683,12 +1701,17 @@ class CachingFileStore(AbstractFileStore):
 
     def waitForCommit(self):
         # We need to block on the upload thread.
+
         # We may be called even if startCommit is not called. In that
         # case, a new instance of this class should have been created by the
         # worker and ought to pick up all our work by PID via the database, and
         # this instance doesn't actually have to commit.
 
-        if self.commitThread is not None:
+        # If running in the destructor, we may already *be* in the commit
+        # thread. It can do some destructor work after it finishes its real
+        # work.
+
+        if self.commitThread is not None and self.commitThread is not threading.current_thread():
             self.commitThread.join()
 
         return True

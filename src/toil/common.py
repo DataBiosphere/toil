@@ -11,15 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import str
-from builtins import range
-from builtins import object
 import logging
 import os
 import re
@@ -29,7 +20,6 @@ import time
 import uuid
 import requests
 from argparse import ArgumentParser
-from six import iteritems
 
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
@@ -121,7 +111,7 @@ class Config(object):
         self.rescueJobsFrequency = 3600
 
         # Misc
-        self.disableCaching = True
+        self.disableCaching = False
         self.disableChaining = False
         self.disableJobStoreChecksumVerification = False
         self.maxLogFileSize = 64000
@@ -578,10 +568,9 @@ def _addOptions(addGroupFn, config):
     #
     addOptionFn = addGroupFn("Toil Miscellaneous Options", "Miscellaneous Options")
     addOptionFn('--disableCaching', dest='disableCaching',
-                type='bool', nargs='?', const=True, default=True,
+                type='bool', nargs='?', const=True, default=False,
                 help='Disables caching in the file store. This flag must be set to use '
-                     'a batch system that does not support caching such as Grid Engine, Parasol, '
-                     'LSF, or Slurm')
+                     'a batch system that does not support cleanup, such as Parasol.')
     addOptionFn('--disableChaining', dest='disableChaining', action='store_true', default=False,
                 help="Disables chaining of jobs (chaining uses one job's resource allocation "
                 "for its successor job if possible).")
@@ -656,6 +645,14 @@ def _addOptions(addGroupFn, config):
                       "'badWorkerFailInterval' seconds after the worker starts, default=%s" % config.badWorkerFailInterval))
 
 
+def parseBool(val):
+    if val.lower() in ['true', 't', 'yes', 'y', 'on', '1']:
+        return True
+    elif val.lower() in ['false', 'f', 'no', 'n', 'off', '0']:
+        return False
+    else:
+        raise RuntimeError("Could not interpret \"%s\" as a boolean value" % val)
+
 def addOptions(parser, config=Config()):
     """
     Adds toil options to a parser object, either optparse or argparse.
@@ -667,7 +664,7 @@ def addOptions(parser, config=Config()):
         def addGroup(headingString, bodyString):
             return parser.add_argument_group(headingString, bodyString).add_argument
 
-        parser.register("type", "bool", lambda v: v.lower() == "true")  # Custom type for arg=True/False.
+        parser.register("type", "bool", parseBool)  # Custom type for arg=True/False.
         _addOptions(addGroup, config)
     else:
         raise RuntimeError("Unanticipated class passed to addOptions(), %s. Expecting "
@@ -758,6 +755,7 @@ class Toil(object):
         """
         self._jobCache = dict()
         self._inContextManager = False
+        self._inRestart = False
 
     def __enter__(self):
         """
@@ -793,9 +791,13 @@ class Toil(object):
             if (exc_type is not None and self.config.clean == "onError" or
                             exc_type is None and self.config.clean == "onSuccess" or
                         self.config.clean == "always"):
-                try:
-                    self._jobStore.destroy()
-                    logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
+    
+                try:           
+                    if self.config.restart and not self._inRestart:
+                        pass
+                    else:      
+                        self._jobStore.destroy()
+                        logger.info("Successfully deleted the job store: %s" % str(self._jobStore))
                 except:
                     logger.info("Failed to delete the job store: %s" % str(self._jobStore))
                     raise
@@ -805,6 +807,7 @@ class Toil(object):
             else:
                 logger.exception('The following error was raised during clean up:')
         self._inContextManager = False
+        self._inRestart = False
         return False  # let exceptions through
 
     def start(self, rootJob):
@@ -853,6 +856,7 @@ class Toil(object):
 
         :return: The root job's return value
         """
+        self._inRestart = True
         self._assertContextManagerUsed()
         self.writePIDFile()
         if not self.config.restart:
@@ -962,8 +966,9 @@ class Toil(object):
             raise RuntimeError('Unrecognised batch system: %s' % config.batchSystem)
 
         if not config.disableCaching and not batchSystemClass.supportsWorkerCleanup():
-            raise RuntimeError('%s currently does not support shared caching.  Set the '
-                               '--disableCaching flag if you want to '
+            raise RuntimeError('%s currently does not support shared caching, because it '
+                               'does not support cleaning up a worker after the last job '
+                               'finishes. Set the --disableCaching flag if you want to '
                                'use this batch system.' % config.batchSystem)
         logger.debug('Using the %s' %
                     re.sub("([a-z])([A-Z])", r'\g<1> \g<2>', batchSystemClass.__name__).lower())
@@ -1040,7 +1045,7 @@ class Toil(object):
         Sets the environment variables required by the job store and those passed on command line.
         """
         for envDict in (self._jobStore.getEnv(), self.config.environment):
-            for k, v in iteritems(envDict):
+            for k, v in envDict.items():
                 self._batchSystem.setEnv(k, v)
 
     def _serialiseEnv(self):
@@ -1230,7 +1235,7 @@ class ToilMetrics:
                                                           "-v", "/proc:/host/proc",
                                                           "-v", "/sys:/host/sys",
                                                           "-v", "/:/rootfs",
-                                                          "prom/node-exporter:0.12.0",
+                                                          "quay.io/prometheus/node-exporter:0.15.2",
                                                           "-collector.procfs", "/host/proc",
                                                           "-collector.sysfs", "/host/sys",
                                                           "-collector.filesystem.ignored-mount-points",
@@ -1280,22 +1285,19 @@ class ToilMetrics:
             logger.warning("Could not start prometheus/grafana dashboard.")
             return
 
-        # Add prometheus data source
-        def requestPredicate(e):
-            if isinstance(e, requests.exceptions.ConnectionError):
-                return True
-            return False
-
         try:
-            for attempt in retry(delays=(0, 1, 1, 4, 16), predicate=requestPredicate):
-                with attempt:
-                    requests.post('http://localhost:3000/api/datasources', auth=('admin', 'admin'),
-                                  data='{"name":"DS_PROMETHEUS","type":"prometheus", \
-                                  "url":"http://localhost:9090", "access":"direct"}',
-                                  headers={'content-type': 'application/json', "access": "direct"})
+            self.add_prometheus_data_source()
         except requests.exceptions.ConnectionError:
-            logger.debug(
-                "Could not add data source to Grafana dashboard - no metrics will be displayed.")
+            logger.debug("Could not add data source to Grafana dashboard - no metrics will be displayed.")
+
+    @retry(errors=[requests.exceptions.ConnectionError])
+    def add_prometheus_data_source(self):
+        requests.post(
+            'http://localhost:3000/api/datasources',
+            auth=('admin', 'admin'),
+            data='{"name":"DS_PROMETHEUS","type":"prometheus", "url":"http://localhost:9090", "access":"direct"}',
+            headers={'content-type': 'application/json', "access": "direct"}
+        )
 
     def log(self, message):
         if self.mtailProc:

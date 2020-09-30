@@ -11,14 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
 from functools import wraps
-
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
 from contextlib import contextmanager
 import uuid
 import logging
@@ -26,7 +19,7 @@ import time
 import os
 from toil import pickle
 from toil.lib.misc import AtomicFileCreate
-from toil.lib.retry import retry
+from toil.lib.retry import old_retry
 from toil.lib.compatibility import compat_bytes
 from google.cloud import storage, exceptions
 from google.api_core.exceptions import GoogleAPICallError, InternalServerError, ServiceUnavailable
@@ -37,8 +30,7 @@ from six.moves import StringIO
 
 from toil.jobStores.abstractJobStore import (AbstractJobStore, NoSuchJobException,
                                              NoSuchFileException, NoSuchJobStoreException,
-                                             JobStoreExistsException,
-                                             ConcurrentFileModificationException)
+                                             JobStoreExistsException)
 from toil.jobStores.utils import WritablePipe, ReadablePipe
 from toil.job import JobDescription
 log = logging.getLogger(__name__)
@@ -77,9 +69,9 @@ def googleRetry(f):
     """
     @wraps(f)
     def wrapper(*args, **kwargs):
-        for attempt in retry(delays=truncExpBackoff(),
-                             timeout=300,
-                             predicate=googleRetryPredicate):
+        for attempt in old_retry(delays=truncExpBackoff(),
+                                 timeout=300,
+                                 predicate=googleRetryPredicate):
             with attempt:
                 return f(*args, **kwargs)
     return wrapper
@@ -249,12 +241,12 @@ class GoogleJobStore(AbstractJobStore):
         return fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
         with self._uploadStream(fileID, update=False) as writable:
             yield writable, fileID
 
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         fileID = self._newID(isFile=True, jobStoreID=jobStoreID if cleanup else None)
         self._writeFile(fileID, StringIO(""))
         return fileID

@@ -400,7 +400,7 @@ class AWSJobStore(AbstractJobStore):
                         else:
                             self.filesBucket.delete_key(key_name=compat_bytes(item.name))
 
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
         with info.uploadStream() as _:
             # Empty
@@ -544,7 +544,7 @@ class AWSJobStore(AbstractJobStore):
         return info.fileID
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
         info = self.FileInfo.create(jobStoreID if cleanup else None)
         with info.uploadStream() as writable:
             yield writable, info.fileID

@@ -117,9 +117,9 @@ the logging module:
 
   --batchSystem BATCHSYSTEM
                         The type of batch system to run the job(s) with,
-                        currently can be one of LSF, Mesos, Slurm, Torque,
-                        HTCondor, singleMachine, parasol, gridEngine'.
-                        (default: singleMachine)
+                        currently can be one of lsf, Mesos, slurm, torque,
+                        htcondor, single_machine, parasol, grid_engine', kubernetes.
+                        (default: single_machine)
   --parasolCommand PARASOLCOMMAND
                         The name or path of the parasol program. Will be
                         looked up on PATH unless it starts with a
@@ -262,7 +262,7 @@ the logging module:
 
   --disableCaching      Disables caching in the file store. This flag must be
                         set to use a batch system that does not support
-                        caching such as Grid Engine, Parasol, LSF, or Slurm.
+                        cleanup, such as Parasol.
   --disableChaining     Disables chaining of jobs (chaining uses one job's
                         resource allocation for its successor job if
                         possible).

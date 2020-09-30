@@ -86,6 +86,7 @@ py37_wdl:
     - apt update && DEBIAN_FRONTEND=noninteractive apt install -y tzdata && apt install -y jq python3.7 python3.7-dev
     - virtualenv -p python3.7 venv && . venv/bin/activate && make prepare && make develop extras=[all]
     - python -m pytest --duration=0 -s -r s src/toil/test/wdl/toilwdlTest.py
+    - python -m pytest --duration=0 -s -r s src/toil/test/wdl/builtinTest.py
 
 py37_jobstore_and_provisioning:
   stage: main_tests

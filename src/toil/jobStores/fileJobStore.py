@@ -365,7 +365,7 @@ class FileJobStore(AbstractJobStore):
     def _supportsUrl(cls, url, export=False):
         return url.scheme.lower() == 'file'
 
-    def _makeStringFilenameSafe(self, arbitraryString):
+    def _makeStringFilenameSafe(self, arbitraryString, maxLength=240):
         """
         Given an arbitrary string, produce a filename-safe though not
         necessarily unique string based on it.
@@ -374,6 +374,9 @@ class FileJobStore(AbstractJobStore):
         other nonempty filename-safe string.
 
         :param str arbitraryString: An arbitrary string
+        :param int maxLength: Maximum length of the result, to keep it plus
+                              any prefix or suffix under the filesystem's
+                              path component length limit
 
         :return: A filename-safe string
         """
@@ -388,8 +391,8 @@ class FileJobStore(AbstractJobStore):
         if len(parts) == 0:
             parts.append("UNPRINTABLE")
 
-        # Glue it all together
-        return '_'.join(parts)
+        # Glue it all together, and truncate to length
+        return '_'.join(parts)[:maxLength]
 
     def writeFile(self, localFilePath, jobStoreID=None, cleanup=False):
         absPath = self._getUniqueFilePath(localFilePath, jobStoreID, cleanup)
@@ -398,8 +401,10 @@ class FileJobStore(AbstractJobStore):
         return relPath
 
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False):
-        absPath = self._getUniqueFilePath('stream', jobStoreID, cleanup)
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
+        if not basename:
+            basename = 'stream'
+        absPath = self._getUniqueFilePath(basename, jobStoreID, cleanup)
         relPath = self._getFileIdFromPath(absPath)
         with open(absPath, 'wb') as f:
             # Don't yield while holding an open file descriptor to the temp
@@ -407,8 +412,8 @@ class FileJobStore(AbstractJobStore):
             # to clean ourselves up, somehow, for certain workloads.
             yield f, relPath
 
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
-        with self.writeFileStream(jobStoreID, cleanup) as (fileHandle, jobStoreFileID):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
+        with self.writeFileStream(jobStoreID, cleanup, basename) as (fileHandle, jobStoreFileID):
             return jobStoreFileID
 
     def updateFile(self, jobStoreFileID, localFilePath):

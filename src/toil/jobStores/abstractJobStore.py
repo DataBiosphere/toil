@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,28 +11,23 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-from builtins import map
-from builtins import object
-from builtins import super
 import shutil
-
 import re
+import pickle
+import logging
 from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager, closing
 from datetime import timedelta
 from uuid import uuid4
+from requests.exceptions import HTTPError
+from http.client import BadStatusLine
 
 # Python 3 compatibility imports
 from six import itervalues
 from six.moves.urllib.request import urlopen
 import six.moves.urllib.parse as urlparse
 
-from toil.lib.retry import retry_http
+from toil.lib.retry import retry, ErrorCondition
 
 from toil.common import safeUnpickleFromStream
 from toil.fileStores import FileID
@@ -42,12 +37,6 @@ from toil.lib.misc import WriteWatchingStream
 from toil.lib.objects import abstractclassmethod
 from future.utils import with_metaclass
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -826,6 +815,9 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         not appear in the jobStore until the write has successfully completed.
 
         :param str localFilePath: the path to the local file that will be uploaded to the job store.
+               The last path component (basename of the file) will remain
+               associated with the file in the file store, if supported, so
+               that the file can be searched for by name or name glob. 
 
         :param str jobStoreID: the id of a job, or None. If specified, the may be associated
                with that job in a job-store-specific way. This may influence the returned ID.
@@ -849,7 +841,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
 
     @abstractmethod
     @contextmanager
-    def writeFileStream(self, jobStoreID=None, cleanup=False):
+    def writeFileStream(self, jobStoreID=None, cleanup=False, basename=None):
         """
         Similar to writeFile, but returns a context manager yielding a tuple of
         1) a file handle which can be written to and 2) the ID of the resulting
@@ -864,6 +856,10 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
+               
+        :param str basename: If supported by the implementation, use the given
+               file basename so that when searching the job store with a query
+               matching that basename, the file will be detected.
 
         :raise ConcurrentFileModificationException: if the file was modified concurrently during
                an invocation of this method
@@ -879,7 +875,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         raise NotImplementedError()
 
     @abstractmethod
-    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False):
+    def getEmptyFileStoreID(self, jobStoreID=None, cleanup=False, basename=None):
         """
         Creates an empty file in the job store and returns its ID.
         Call to fileExists(getEmptyFileStoreID(jobStoreID)) will return True.
@@ -890,6 +886,10 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :param bool cleanup: Whether to attempt to delete the file when the job
                whose jobStoreID was given as jobStoreID is deleted with
                jobStore.delete(job). If jobStoreID was not given, does nothing.
+               
+        :param str basename: If supported by the implementation, use the given
+               file basename so that when searching the job store with a query
+               matching that basename, the file will be detected.
 
         :return: a jobStoreFileID that references the newly created file and can be used to reference the
                  file in the future.
@@ -1097,34 +1097,42 @@ class JobStoreSupport(with_metaclass(ABCMeta, AbstractJobStore)):
         return url.scheme.lower() in ('http', 'https', 'ftp') and not export
 
     @classmethod
+    @retry(errors=[BadStatusLine] + [
+                         ErrorCondition(
+                             error=HTTPError,
+                             error_codes=[408, 500, 503]
+                         )
+                     ])
     def getSize(cls, url):
         if url.scheme.lower() == 'ftp':
             return None
-        for attempt in retry_http():
-            with attempt:
-                with closing(urlopen(url.geturl())) as readable:
-                    # just read the header for content length
-                    size = readable.info().get('content-length')
-                    return int(size) if size is not None else None
+        with closing(urlopen(url.geturl())) as readable:
+            # just read the header for content length
+            size = readable.info().get('content-length')
+            return int(size) if size is not None else None
 
     @classmethod
+    @retry(errors=[BadStatusLine] + [
+                         ErrorCondition(
+                             error=HTTPError,
+                             error_codes=[408, 500, 503]
+                         )
+                     ])
     def _readFromUrl(cls, url, writable):
-        for attempt in retry_http():
-            # We can only retry on errors that happen as responses to the request.
-            # If we start getting file data, and the connection drops, we fail.
-            # So we don't have to worry about writing the start of the file twice.
-            with attempt:
-                with closing(urlopen(url.geturl())) as readable:
-                    # Make something to count the bytes we get
-                    # We need to put the actual count in a container so our
-                    # nested function can modify it without creating its own
-                    # local with the same name.
-                    size = [0]
-                    def count(l):
-                        size[0] += l
-                    counter = WriteWatchingStream(writable)
-                    counter.onWrite(count)
-                    
-                    # Do the download
-                    shutil.copyfileobj(readable, counter)
-                    return size[0]
+        # We can only retry on errors that happen as responses to the request.
+        # If we start getting file data, and the connection drops, we fail.
+        # So we don't have to worry about writing the start of the file twice.
+        with closing(urlopen(url.geturl())) as readable:
+            # Make something to count the bytes we get
+            # We need to put the actual count in a container so our
+            # nested function can modify it without creating its own
+            # local with the same name.
+            size = [0]
+            def count(l):
+                size[0] += l
+            counter = WriteWatchingStream(writable)
+            counter.onWrite(count)
+
+            # Do the download
+            shutil.copyfileobj(readable, counter)
+            return size[0]

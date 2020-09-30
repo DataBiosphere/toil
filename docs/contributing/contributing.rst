@@ -245,7 +245,17 @@ run on a local machine.
 To spin up a local cluster, start by using the following Docker run command to launch
 a Toil leader container::
 
-    docker run --entrypoint=mesos-master --net=host -d --name=leader --volume=/home/jobStoreParentDir:/jobStoreParentDir quay.io/ucsc_cgl/toil:3.6.0 --registry=in_memory --ip=127.0.0.1 --port=5050 --allocation_interval=500ms
+    docker run \
+        --entrypoint=mesos-master \
+        --net=host \
+        -d \
+        --name=leader \
+        --volume=/home/jobStoreParentDir:/jobStoreParentDir \
+        quay.io/ucsc_cgl/toil:3.6.0 \
+        --registry=in_memory \
+        --ip=127.0.0.1 \
+        --port=5050 \
+        --allocation_interval=500ms
 
 A couple notes on this command: the ``-d`` flag tells Docker to run in daemon mode so
 the container will run in the background. To verify that the container is running you
@@ -258,7 +268,18 @@ where the job store will be written. Due to complications with running Docker on
 recommend only mounting directories within your home directory. The next command will
 launch the Toil worker container with similar parameters::
 
-    docker run --entrypoint=mesos-slave --net=host -d --name=worker --volume=/home/jobStoreParentDir:/jobStoreParentDir quay.io/ucsc_cgl/toil:3.6.0 --work_dir=/var/lib/mesos --master=127.0.0.1:5050 --ip=127.0.0.1 —-attributes=preemptable:False --resources=cpus:2
+    docker run \
+        --entrypoint=mesos-slave \
+        --net=host \
+        -d \
+        --name=worker \
+        --volume=/home/jobStoreParentDir:/jobStoreParentDir \
+        quay.io/ucsc_cgl/toil:3.6.0 \
+        --work_dir=/var/lib/mesos \
+        --master=127.0.0.1:5050 \
+        --ip=127.0.0.1 \
+        —-attributes=preemptable:False \
+        --resources=cpus:2
 
 Note here that we are specifying 2 CPUs and a non-preemptable worker. We can
 easily change either or both of these in a logical way. To change the number
@@ -375,3 +396,112 @@ Pull Requests
 
   .. _Co-authored-by: https://github.blog/2018-01-29-commit-together-with-co-authors/
   .. _Issue #2816: https://github.com/DataBiosphere/toil/issues/2816
+  .. _toil.lib.retry: https://github.com/DataBiosphere/toil/blob/master/src/toil/lib/retry.py
+
+Adding Retries to a Function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+See `toil.lib.retry`_ .
+
+retry() can be used to decorate any function based on the list of errors one wishes to retry on.
+
+This list of errors can contain normal Exception objects, and/or RetryCondition objects wrapping Exceptions to
+include additional conditions.
+
+For example, retrying on a one Exception (HTTPError)::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[HTTPError])
+    def update_my_wallpaper():
+        return get('https://www.deviantart.com/')
+
+Or::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[HTTPError, ValueError])
+    def update_my_wallpaper():
+        return get('https://www.deviantart.com/')
+
+The examples above will retry for the default interval on any errors specified the "errors=" arg list.
+
+To retry on specifically 500/502/503/504 errors, you could specify an ErrorCondition object instead, for example::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        ErrorCondition(
+                   error=HTTPError,
+                   error_codes=[500, 502, 503, 504]
+               )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on specifically errors containing the phrase "NotFound"::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        ErrorCondition(
+            error=HTTPError,
+            error_message_must_include="NotFound"
+        )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on all HTTPError errors EXCEPT an HTTPError containing the phrase "NotFound"::
+
+    from requests import get
+    from requests.exceptions import HTTPError
+
+    @retry(errors=[
+        HTTPError,
+        ErrorCondition(
+                   error=HTTPError,
+                   error_message_must_include="NotFound",
+                   retry_on_this_condition=False
+               )])
+    def update_my_wallpaper():
+        return requests.get('https://www.deviantart.com/')
+
+To retry on boto3's specific status errors, an example of the implementation is::
+
+    import boto3
+    from botocore.exceptions import ClientError
+
+    @retry(errors=[
+        ErrorCondition(
+                   error=ClientError,
+                   boto_error_codes=["BucketNotFound"]
+               )])
+    def boto_bucket(bucket_name):
+        boto_session = boto3.session.Session()
+        s3_resource = boto_session.resource('s3')
+        return s3_resource.Bucket(bucket_name)
+
+Any combination of these will also work, provided the codes are matched to the correct exceptions.  A ValueError will
+not return a 404, for example.
+
+The retry function as a decorator should make retrying functions easier and clearer.  It also encourages
+smaller independent functions, as opposed to lumping many different things that may need to be retried on
+different conditions in the same function.
+
+The ErrorCondition object tries to take some of the heavy lifting of writing specific retry conditions
+and boil it down to an API that covers all common use-cases without the user having to write
+any new bespoke functions.
+
+Use-cases covered currently:
+
+1. Retrying on a normal error, like a KeyError.
+2. Retrying on HTTP error codes (use ErrorCondition).
+3. Retrying on boto's specific status errors, like "BucketNotFound" (use ErrorCondition).
+4. Retrying when an error message contains a certain phrase (use ErrorCondition).
+5. Explicitly NOT retrying on a condition (use ErrorCondition).
+
+If new functionality is needed, it's currently best practice in Toil to add
+functionality to the ErrorCondition itself rather than making a new custom retry method.

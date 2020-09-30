@@ -23,9 +23,11 @@ standard_library.install_aliases()
 from builtins import str
 from builtins import object
 from builtins import super
+import base64
 import logging
 import time
 import os
+import pickle
 import sys
 import glob
 
@@ -645,6 +647,11 @@ class Leader(object):
                 # If nothing is happening, see if any jobs have wandered off
                 self._processLostJobs()
 
+                if self.deadlockThrottler.throttle(wait=False):
+                    # Nothing happened this round and it's been long
+                    # enough since we last checked. Check for deadlocks.
+                    self.checkForDeadlocks()
+
             # Check on the associated threads and exit if a failure is detected
             self.statsAndLogging.check()
             self.serviceManager.check()
@@ -652,11 +659,6 @@ class Leader(object):
             if self.clusterScaler is not None:
                 self.clusterScaler.check()
             
-            if len(self.toilState.updatedJobs) == 0 and self.deadlockThrottler.throttle(wait=False):
-                # Nothing happened this round and it's been long
-                # enough since we last checked. Check for deadlocks.
-                self.checkForDeadlocks()
-                
             if self.statusThrottler.throttle(wait=False):
                 # Time to tell the user how things are going
                 self._reportWorkflowStatus()
@@ -744,10 +746,19 @@ class Leader(object):
 
     def issueJob(self, jobNode):
         """Add a job to the queue of jobs."""
-        jobNode.command = ' '.join((resolveEntryPoint('_toil_worker'),
-                                    jobNode.jobName,
-                                    self.jobStoreLocator,
-                                    jobNode.jobStoreID))
+        
+        workerCommand = [resolveEntryPoint('_toil_worker'),
+                         jobNode.jobName,
+                         self.jobStoreLocator,
+                         jobNode.jobStoreID]
+                       
+        for context in self.batchSystem.getWorkerContexts():
+            # For each context manager hook the batch system wants to run in
+            # the worker, serialize and send it.
+            workerCommand.append('--context')
+            workerCommand.append(base64.b64encode(pickle.dumps(context)).decode('utf-8'))
+        
+        jobNode.command = ' '.join(workerCommand)
         # jobBatchSystemID is an int that is an incremented counter for each job
         jobBatchSystemID = self.batchSystem.issueBatchJob(jobNode)
         self.jobBatchSystemIDToIssuedJob[jobBatchSystemID] = jobNode

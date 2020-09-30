@@ -136,5 +136,11 @@ There are several environment variables that affect the way Toil runs.
 |                                  | ``pip install awscli && eval $(aws ecr get-login   |
 |                                  | --no-include-email --region us-east-1)``.          |
 +----------------------------------+----------------------------------------------------+
+| TOIL_CUSTOM_INIT_COMMAND         | Any custom bash command to run prior to starting   |
+|                                  | the Toil appliance. Can be used for any custom     |
+|                                  | initialization in the worker and/or primary nodes  |
+|                                  | such as private docker authentication for the Toil |
+|                                  | appliance itself (i.e. from TOIL_APPLIANCE_SELF).  |
++----------------------------------+----------------------------------------------------+
 
 .. _standard temporary directory: https://docs.python.org/3/library/tempfile.html#tempfile.gettempdir

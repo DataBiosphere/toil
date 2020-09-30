@@ -17,6 +17,7 @@ from __future__ import absolute_import
 import errno
 import logging
 import os
+import re
 import requests
 import socket
 import sys
@@ -220,15 +221,41 @@ def customDockerInitCmd():
     Returns the custom command (if any) provided through the ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``
     environment variable to run prior to running the workers and/or the primary node's services.
     This can be useful for doing any custom initialization on instances (e.g. authenticating to
-    private docker registries). An empty string is returned if the environment variable is not
-    set.
+    private docker registries). Any single quotes are escaped and the command cannot contain a
+    set of blacklisted chars (newline or tab). An empty string is returned if the environment
+    variable is not set.
 
     :rtype: str
     """
     command = lookupEnvVar(name='user-defined custom docker init command',
                            envName='TOIL_CUSTOM_DOCKER_INIT_COMMAND',
                            defaultValue='')
+    _check_custom_bash_cmd(command)
     return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
+def customInitCmd():
+    """
+    Returns the custom command (if any) provided through the ``TOIL_CUSTOM_INIT_COMMAND``
+    environment variable to run prior to running Toil appliance itself in workers and/or the
+    primary node (i.e. this is run one stage before ``TOIL_CUSTOM_DOCKER_INIT_COMMAND``).
+    This can be useful for doing any custom initialization on instances (e.g. authenticating to
+    private docker registries). Any single quotes are escaped and the command cannot contain a
+    set of blacklisted chars (newline or tab). An empty string is returned if the environment
+    variable is not set.
+
+    :rtype: str
+    """
+    command = lookupEnvVar(name='user-defined custom init command',
+                           envName='TOIL_CUSTOM_INIT_COMMAND',
+                           defaultValue='')
+    _check_custom_bash_cmd(command)
+    return command.replace("'", "'\\''")  # Ensure any single quotes are escaped.
+
+
+def _check_custom_bash_cmd(cmd_str):
+    """Ensures that the bash command doesn't contain blacklisted characters."""
+    assert not re.search(r'[\n\r\t]', cmd_str), f'"{cmd_str}" contains invalid characters (newline and/or tab).'
 
 
 def lookupEnvVar(name, envName, defaultValue):
@@ -536,6 +563,7 @@ try:
 
             self._obtain_credentials_from_cache_or_boto3()
 
+        @retry()
         def _obtain_credentials_from_boto3(self):
             """
             We know the current cached credentials are not good, and that we
@@ -543,21 +571,17 @@ try:
             (_access_key, _secret_key, _security_token,
             _credential_expiry_time) from Boto 3.
             """
-
             # We get a Credentials object
             # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
             # or a RefreshableCredentials, or None on failure.
-            creds = None
-            for attempt in retry(timeout=10, predicate=lambda _: True):
-                with attempt:
-                    creds = self._boto3_resolver.load_credentials()
+            creds = self._boto3_resolver.load_credentials()
 
-                    if creds is None:
-                        try:
-                            resolvers = str(self._boto3_resolver.providers)
-                        except:
-                            resolvers = "(Resolvers unavailable)"
-                        raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
+            if creds is None:
+                try:
+                    resolvers = str(self._boto3_resolver.providers)
+                except:
+                    resolvers = "(Resolvers unavailable)"
+                raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
 
             # Make sure the credentials actually has some credentials if it is lazy
             creds.get_frozen_credentials()

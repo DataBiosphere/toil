@@ -699,7 +699,7 @@ class AbstractJobStoreTest(object):
             def testImportSharedFile(self, otherCls):
                 """
                 :param AbstractJobStoreTest.Test self: the current test case
-
+                
                 :param AbstractJobStoreTest.Test otherCls: the test case class for the job store
                        to import from or export to
                 """

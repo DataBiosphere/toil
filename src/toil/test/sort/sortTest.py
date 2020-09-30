@@ -175,7 +175,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     @needs_aws_ec2
     def testAwsSingle(self):
-        self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='singleMachine')
+        self._toilSort(jobStoreLocator=self._awsJobStore(), batchSystem='single_machine')
 
     @needs_aws_ec2
     @needs_mesos
@@ -196,7 +196,7 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
 
     @needs_google
     def testGoogleSingle(self):
-        self._toilSort(jobStoreLocator=self._googleJobStore(), batchSystem="singleMachine")
+        self._toilSort(jobStoreLocator=self._googleJobStore(), batchSystem="single_machine")
 
     @needs_google
     @needs_mesos
@@ -208,18 +208,18 @@ class SortTest(ToilTest, MesosTestSupport, ParasolTestSupport):
             self._stopMesos()
 
     def testFileSingle(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine')
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine')
 
     def testFileSingleNonCaching(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine',
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
                        disableCaching=True)
 
     def testFileSingleCheckpoints(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine',
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
                        retryCount=2, downCheckpoints=True)
 
     def testFileSingle10000(self):
-        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='singleMachine',
+        self._toilSort(jobStoreLocator=self._getTestJobStorePath(), batchSystem='single_machine',
                        lines=10000, N=10000)
 
     @needs_gridengine

@@ -26,7 +26,7 @@ import os
 import time
 from collections import defaultdict
 
-from toil.lib.retry import retry
+from toil.lib.retry import old_retry
 from toil.lib.threading import ExceptionalThread
 from toil.lib.throttle import throttle
 from itertools import islice
@@ -590,7 +590,7 @@ class ClusterScaler(object):
                 the `numNodes` argument. It represents the closest possible approximation of the
                 actual cluster size at the time this method returns.
         """
-        for attempt in retry(predicate=self.provisioner.retryPredicate):
+        for attempt in old_retry(predicate=self.provisioner.retryPredicate):
             with attempt:
                 workerInstances = self.getNodes(preemptable=preemptable)
                 logger.debug("Cluster contains %i instances" % len(workerInstances))
