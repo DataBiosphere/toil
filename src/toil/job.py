@@ -59,6 +59,29 @@ from future.utils import with_metaclass
 
 logger = logging.getLogger( __name__ )
 
+class JobPromiseConstraintError(RuntimeError):
+    """
+    Represents a problem where a job is being asked to promise its return
+    value, but it has not yet been hit in the topological order of the job
+    graph.
+    """
+    def __init__(self, promisingJob, recipientJob=None):
+        """
+        :param toil.job.Job promisingJob: The job being asked for its return value.
+        :param toil.job.Job recipientJob: The job receiving the return value, if any.
+        """
+        
+        self.promisingJob = promisingJob
+        self.recipientJob = recipientJob
+        
+        if recipientJob is None:
+            # Come up with a vaguer error message
+            super().__init__(f"Job {promisingJob.description} cannot promise its return value to a job that is not its successor")
+        else:
+            # Write a full error message
+            super().__init__(f"Job {promisingJob.description} cannot promise its return value to non-successor {recipientJob.description}")
+            
+
 class FakeID:
     """
     Placeholder for a job ID used by a JobDescription that has not yet been
@@ -1263,15 +1286,17 @@ class Job:
         else:
             return JobFunctionWrappingJob(fn, *args, **kwargs)
 
-    def encapsulate(self):
+    def encapsulate(self, name=None):
         """
         Encapsulates the job, see :class:`toil.job.EncapsulatedJob`.
         Convenience function for constructor of :class:`toil.job.EncapsulatedJob`.
 
+        :param str name: Human-readable name for the encapsulated job.
+
         :return: an encapsulated version of this job.
         :rtype: toil.job.EncapsulatedJob
         """
-        return EncapsulatedJob(self)
+        return EncapsulatedJob(self, unitName=name)
 
     ####################################################
     #The following function is used for passing return values between
@@ -1305,8 +1330,9 @@ class Job:
 
     def registerPromise(self, path):
         if self._promiseJobStore is None:
-            raise RuntimeError('Trying to pass a promise from a promising job that is not a ' +
-                               'predecessor of the job receiving the promise')
+            # We haven't had a job store set to put our return value into, so
+            # we must not have been hit yet in job topological order.
+            raise JobPromiseConstraintError(self) 
         # TODO: can we guarantee self.jobStoreID is populated and so pass that here?
         with self._promiseJobStore.writeFileStream() as (fileHandle, jobStoreFileID):
             promise = UnfulfilledPromiseSentinel(str(self.description), False)
@@ -1912,27 +1938,36 @@ class Job:
         
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
-  
-        # Drop out the description, which the job store will manage separately
-        description = self._description
-        self._description = None
         
-        # Fix up the registry and direct predecessors for when the job is
-        # loaded to be run: the registry should contain just the job itself and
-        # there should be no predecessors available when the job actually runs.
+        # Remember fields we will overwrite
+        description = self._description
         registry = self._registry
-        self._registry = {description.jobStoreID: self}
         directPredecessors = self._directPredecessors
-        self._directPredecessors = set()
-  
-        # Save the body of the job
-        with jobStore.writeFileStream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
-            pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
+        
+        try:
+            try:
+                # Drop out the description, which the job store will manage separately
+                self._description = None
+                # Fix up the registry and direct predecessors for when the job is
+                # loaded to be run: the registry should contain just the job itself and
+                # there should be no predecessors available when the job actually runs.
+                self._registry = {description.jobStoreID: self}
+                self._directPredecessors = set()
             
-        # Restore important fields
-        self._directPredecessors = directPredecessors 
-        self._registry = registry
-        self._description = description
+                # Save the body of the job
+                with jobStore.writeFileStream(description.jobStoreID, cleanup=True) as (fileHandle, fileStoreID):
+                    pickle.dump(self, fileHandle, pickle.HIGHEST_PROTOCOL)
+            finally:
+                # Restore important fields (before handling errors)
+                self._directPredecessors = directPredecessors 
+                self._registry = registry
+                self._description = description
+        except JobPromiseConstraintError as e:
+            # The user is passing promises without regard to predecessor constraints.
+            if e.recipientJob is None:
+                # Add ourselves as the recipient job that wanted the promise.
+                e = JobPromiseConstraintError(e.promisingJob, self)
+            raise e
             
         # Find the user script.
         # Note that getUserScript() may have been overridden. This is intended. If we used
@@ -2429,12 +2464,13 @@ class EncapsulatedJob(Job):
     is the return value of the root job, e.g. A().encapsulate().rv() and A().rv() will resolve to
     the same value after A or A.encapsulate() has been run.
     """
-    def __init__(self, job):
+    def __init__(self, job, unitName=None):
         """
         :param toil.job.Job job: the job to encapsulate.
+        :param str unitName: human-readable name to identify this job instance.
         """
         # Giving the root of the subgraph the same resources as the first job in the subgraph.
-        super().__init__(**job._requirements)
+        super().__init__(**job.description.requirements, unitName=unitName)
         # Ensure that the encapsulated job has the same direct predecessors as the job
         # being encapsulated.
         if job._directPredecessors:
@@ -2444,7 +2480,7 @@ class EncapsulatedJob(Job):
         Job.addChild(self, job)
         # Use small resource requirements for dummy Job instance.
         # But not too small, or the job won't have enough resources to safely start up Toil.
-        self.encapsulatedFollowOn = Job(disk='100M', memory='512M', cores=0.1)
+        self.encapsulatedFollowOn = Job(disk='100M', memory='512M', cores=0.1, unitName=None if unitName is None else unitName + '-followOn')
         Job.addFollowOn(self, self.encapsulatedFollowOn)
 
     def addChild(self, childJob):
