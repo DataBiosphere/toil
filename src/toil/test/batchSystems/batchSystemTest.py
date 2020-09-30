@@ -537,12 +537,12 @@ class MaxCoresSingleMachineBatchSystemTest(ToilTest):
                         try:
                             jobIds = set()
                             for i in range(0, int(jobs)):
-                                jobIds.add(bs.issueBatchJob(JobNode(command=self.scriptCommand(),
-                                                                    requirements=dict(
-                                                                        cores=float( coresPerJob),
-                                                                        memory=1, disk=1,
-                                                                        preemptable=preemptable),
-                                                                    jobName=str(i), unitName='', jobStoreID=str(i))))
+                                jobIds.add(bs.issueBatchJob(JobDescription(command=self.scriptCommand(),
+                                                                           requirements=dict(
+                                                                               cores=float(coresPerJob),
+                                                                               memory=1, disk=1,
+                                                                               preemptable=preemptable),
+                                                                           jobName=str(i), unitName='')))
                             self.assertEqual(len(jobIds), jobs)
                             while jobIds:
                                 job = bs.getUpdatedBatchJob(maxWait=10)
@@ -643,18 +643,16 @@ class ParasolBatchSystemTest(hidden.AbstractBatchSystemTest, ParasolTestSupport)
         self._stopParasol()
 
     def testBatchResourceLimits(self):
-        jobDesc1 = JobNode(command="sleep 1000",
-                           requirements=dict(memory=1 << 30, cores=1,
-                                             disk=1000, preemptable=preemptable),
-                           jobName='testResourceLimits', unitName=None,
-                           jobStoreID='1')
+        jobDesc1 = JobDescription(command="sleep 1000",
+                                  requirements=dict(memory=1 << 30, cores=1,
+                                                    disk=1000, preemptable=preemptable),
+                                  jobName='testResourceLimits')
         job1 = self.batchSystem.issueBatchJob(jobDesc1)
         self.assertIsNotNone(job1)
-        jobDesc2 = JobNode(command="sleep 1000",
-                           requirements=dict(memory=2 << 30, cores=1,
-                                             disk=1000, preemptable=preemptable),
-                           jobName='testResourceLimits', unitName=None,
-                           jobStoreID='2')
+        jobDesc2 = JobDescription(command="sleep 1000",
+                                  requirements=dict(memory=2 << 30, cores=1,
+                                                    disk=1000, preemptable=preemptable),
+                                  jobName='testResourceLimits')
         job2 = self.batchSystem.issueBatchJob(jobDesc2)
         self.assertIsNotNone(job2)
         batches = self._getBatchList()
