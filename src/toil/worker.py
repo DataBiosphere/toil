@@ -437,9 +437,10 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             # Make sure nothing has gone wrong and we can really chain
             assert jobDesc.memory >= successor.memory
             assert jobDesc.cores >= successor.cores
-            
-            #Add successor to those to be deleted when the replaced job finishes
-            fileStore.jobsToDelete.add(successor.jobStoreID)
+           
+            # Save the successor's original ID, so we can clean it (and its
+            # body) up after we finish executing it.
+            successorID = successor.jobStoreID
 
             # add the successor to the list of jobs run
             listOfJobs.append(str(successor))
@@ -456,6 +457,11 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             # TODO: can we have a commit operation without an entire FileStore???
             fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
                                                           caching=not config.disableCaching)
+                                                          
+            # In the new filestore's update (i.e. when we finish the chained-to
+            # job), delete the chained-to job and clean up its associated files
+            # (like job body).
+            fileStore.jobsToDelete.add(successorID)
 
             # Update blockFn to wait for that commit operation.
             blockFn = fileStore.waitForCommit
