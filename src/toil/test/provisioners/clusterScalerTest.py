@@ -752,9 +752,10 @@ class MockBatchSystemAndProvisioner(AbstractScalableBatchSystem, AbstractProvisi
         """
         self.totalJobs += 1
         jobID = uuid.uuid4()
-        self.jobBatchSystemIDToIssuedJob[jobID] = Job(memory=jobShape.memory,
-                                                      cores=jobShape.cores, disk=jobShape.disk,
-                                                      preemptable=preemptable)
+        self.jobBatchSystemIDToIssuedJob[jobID] = JobDescription(requirements={"memory": jobShape.memory,
+                                                                               "cores": jobShape.cores,
+                                                                               "disk": jobShape.disk,
+                                                                               "preemptable": preemptable})
         self.jobQueue.put(jobID)
 
     # JobBatcher functionality
