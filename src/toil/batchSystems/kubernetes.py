@@ -694,6 +694,25 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             # We got something on the first try, or we only get one try
             return result
 
+
+        # Otherwise we need to maybe wait.
+        # if self.enableWatching:
+        #     for event in self._try_kubernetes_stream(self._api('batch').list_namespaced_job, self.namespace, 
+        #                                                 label_selector="toil_run={}".format(self.runID),
+        #                                                 timeout_seconds=maxWait):
+        #         jobObject = event['object']
+        #         # assuming job is 
+        #         jobObjectListConditions =jobObject.status.conditions[-1]
+        #         # check 
+        #         # check job if job is still running ; continue to watch other jobs
+        #         if jobObjectListConditions.type != 'Complete' or jobObjectListConditions.type != 'Failed':
+        #             continue
+        #         else:
+        #             if jobObjectListConditions.type == 'Complete':
+
+                
+                
+
         # Otherwise we need to maybe wait.
         if self.enableWatching:
             # Try watching for something to happen and use that.
