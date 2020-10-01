@@ -45,7 +45,7 @@ class WorkerTests(ToilTest):
             jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable}, unitName=name)
             
             # Assign an ID
-            jobDesc.jobStoreID = self.jobStore.assignID(jobDesc)
+            self.jobStore.assignID(jobDesc)
            
             # Save and return the JobDescription
             return self.jobStore.create(jobDesc)
