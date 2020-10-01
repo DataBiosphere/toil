@@ -21,12 +21,6 @@ Within non-priveleged Kubernetes containers, additional Docker containers
 cannot yet be launched. That functionality will need to wait for user-mode
 Docker
 """
-
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-from builtins import str
-
 import base64
 import datetime
 import getpass
@@ -44,46 +38,36 @@ import uuid
 import urllib3
 
 from kubernetes.client.rest import ApiException
-from six.moves.queue import Empty, Queue
 
-from toil import applianceSelf, customDockerInitCmd
-from toil.batchSystems.abstractBatchSystem import (AbstractBatchSystem,
-                                                   BatchSystemCleanupSupport,
+from toil import applianceSelf
+from toil.batchSystems.abstractBatchSystem import (BatchSystemCleanupSupport,
                                                    EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
 from toil.lib.bioio import configureRootLogger
 from toil.lib.bioio import setLogLevel
 from toil.lib.humanize import human2bytes
-from toil.lib.threading import LastProcessStandingArena
 from toil.resource import Resource
 
-from toil.lib.retry import retry
+from toil.lib.retry import retry, ErrorCondition
 
 logger = logging.getLogger(__name__)
-     
-def retryable_kubernetes_errors(e):
+retryable_kubernetes_errors = [urllib3.exceptions.MaxRetryError,
+                               urllib3.exceptions.ProtocolError,
+                               ApiException]
+
+
+def is_retryable_kubernetes_error(e):
     """
-    A function that determins whether or not Toil should retry or stop given 
-    exceptions thrown by Kubernetes. 
+    A function that determines whether or not Toil should retry or stop given
+    exceptions thrown by Kubernetes.
     """
-    if isinstance(e, urllib3.exceptions.MaxRetryError) or \
-       isinstance(e, urllib3.exceptions.ProtocolError) or \
-        isinstance(e, ApiException):
-        return True
+    for error in retryable_kubernetes_errors:
+        if isinstance(e, error):
+            return True
     return False
-    
-def retryable_kubernetes_errors_expecting_gone(e):
-    """
-    A function that determins whether or not Toil should retry or stop given 
-    exceptions thrown by Kubernetes, when Toil is expecting a 404 indicating
-    that a resource is gone, as it should be.
-    
-    Retries on errors other than 404.
-    """
-    
-    return retryable_kubernetes_errors(e) and not (isinstance(e, ApiException) and e.status == 404)
-    
+
+
 def slow_down(seconds):
     """
     Toil jobs that have completed are not allowed to have taken 0 seconds, but
@@ -100,16 +84,13 @@ def slow_down(seconds):
 
     return max(seconds, sys.float_info.epsilon)
 
-def utc_now():
-    """
-    Return a datetime in the UTC timezone corresponding to right now.
-    """
 
+def utc_now():
+    """Return a datetime in the UTC timezone corresponding to right now."""
     return datetime.datetime.utcnow().replace(tzinfo=pytz.UTC)
 
 
 class KubernetesBatchSystem(BatchSystemCleanupSupport):
-
     @classmethod
     def supportsAutoDeployment(cls):
         return True
@@ -183,6 +164,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         # Set this to True to enable the experimental wait-for-job-update code
         # TODO: Make this an environment variable?
         self.enableWatching = os.environ.get("KUBE_WATCH_ENABLED", False)
+
+        self.runID = 'toil-{}'.format(self.uniqueID)
 
         self.runID = 'toil-{}'.format(self.uniqueID)
 
@@ -261,7 +244,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 return self._apis[kind]
             except KeyError: 
                 raise RuntimeError("Unknown Kubernetes API type: {}".format(kind))
-    
+
+    @retry(errors=retryable_kubernetes_errors)
     def _try_kubernetes(self, method, *args, **kwargs):
         """
         Kubernetes API can end abruptly and fail when it could dynamically backoff and retry.
@@ -272,21 +256,21 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
         
         This function gives Kubernetes more time to try an executable api.  
         """
+        return method(*args, **kwargs)
 
-        for attempt in retry(predicate=retryable_kubernetes_errors):
-            with attempt:
-                return method(*args, **kwargs)
-                
+    @retry(errors=retryable_kubernetes_errors + [
+               ErrorCondition(
+                   error=ApiException,
+                   error_codes=[404],
+                   retry_on_this_condition=False
+               )])
     def _try_kubernetes_expecting_gone(self, method, *args, **kwargs):
         """
         Same as _try_kubernetes, but raises 404 errors as soon as they are
         encountered (because we are waiting for them) instead of retrying on
         them.
         """
-        
-        for attempt in retry(predicate=retryable_kubernetes_errors_expecting_gone):
-            with attempt:
-                return method(*args, **kwargs)
+        return method(*args, **kwargs)
                 
     def _try_kubernetes_stream(self, method, *args, **kwargs):
         """
@@ -324,7 +308,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 raise
             else:
                 # It was from the Kubernetes watch generator we manage.
-                if retryable_kubernetes_errors(e):
+                if is_retryable_kubernetes_error(e):
                     # This is just cloud weather.
                     # TODO: We will also get an APIError if we just can't code good against Kubernetes. So make sure to warn.
                     logger.warning("Received error from Kubernetes watch stream: %s", e)
@@ -749,6 +733,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                             return result
                         else:
                             continue
+
         else:
             # Try polling instead
             while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:

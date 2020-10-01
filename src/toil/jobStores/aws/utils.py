@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2016 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,14 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-from __future__ import division
-from builtins import str
-from builtins import next
-from builtins import range
 from past.utils import old_div
-from builtins import object
 import base64
 import bz2
 import os
@@ -33,7 +26,7 @@ from six import iteritems
 
 from toil.lib.exceptions import panic
 from toil.lib.compatibility import compat_oldstr, compat_bytes, USING_PYTHON2
-from toil.lib.retry import retry
+from toil.lib.retry import old_retry
 from boto.exception import (SDBResponseError,
                             BotoServerError,
                             S3ResponseError,
@@ -375,7 +368,7 @@ def retryable_sdb_errors(e):
 
 
 def retry_sdb(delays=default_delays, timeout=default_timeout, predicate=retryable_sdb_errors):
-    return retry(delays=delays, timeout=timeout, predicate=predicate)
+    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
 def retryable_s3_errors(e):
@@ -390,7 +383,7 @@ def retryable_s3_errors(e):
 
 
 def retry_s3(delays=default_delays, timeout=default_timeout, predicate=retryable_s3_errors):
-    return retry(delays=delays, timeout=timeout, predicate=predicate)
+    return old_retry(delays=delays, timeout=timeout, predicate=predicate)
 
 
 def region_to_bucket_location(region):

@@ -11,14 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import, print_function
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import map
-from builtins import str
 from contextlib import contextmanager
 import errno
 import hashlib
@@ -37,17 +29,12 @@ from toil.common import cacheDirName, getDirSizeRecursively, getFileSystemSize
 from toil.lib.bioio import makePublicDir
 from toil.lib.humanize import bytes2human
 from toil.lib.misc import robust_rmtree, atomic_copy, atomic_copyobj
-from toil.lib.retry import retry
+from toil.lib.retry import retry, ErrorCondition
 from toil.lib.threading import get_process_name, process_name_exists
 from toil.fileStores.abstractFileStore import AbstractFileStore
 from toil.fileStores import FileID
 
 logger = logging.getLogger(__name__)
-
-if sys.version_info[0] < 3:
-    # Define a usable FileNotFoundError as will be raised by os.remove on a
-    # nonexistent file.
-    FileNotFoundError = OSError
 
 
 # Use longer timeout to avoid hitting 'database is locked' errors.
@@ -260,6 +247,12 @@ class CachingFileStore(AbstractFileStore):
 
     
     @staticmethod
+    @retry(infinite_retries=True,
+           errors=[
+                         ErrorCondition(
+                             error=sqlite3.OperationalError,
+                             error_message_must_include='is locked')
+                     ])
     def _staticWrite(con, cur, operations):
         """
         Write to the caching database, using the given connection.
@@ -279,40 +272,36 @@ class CachingFileStore(AbstractFileStore):
         :return: Number of rows modified by the last operation
         :rtype: int
         """
-
-        for attempt in retry(timeout=float('inf'), predicate=lambda e: isinstance(e, sqlite3.OperationalError) and 'is locked' in str(e)):
-            # Try forever with backoff
-            with attempt:
-                try:
-                    for item in operations:
-                        if not isinstance(item, tuple):
-                            # Must be a single SQL string. Wrap it.
-                            item = (item,)
-                        # Parse out the command and the variables to substitute
-                        command = item[0]
-                        if len(item) < 2:
-                            args = ()
-                        else:
-                            args = item[1]
-                        # Do it
-                        cur.execute(command, args)
-                except Exception as e:
-                    logging.error('Error talking to caching database: %s', str(e))
-
-                    # Try to make sure we don't somehow leave anything part-done if a
-                    # middle operation somehow fails. 
-                    try:
-                        con.rollback()
-                    except:
-                        # But don't stop if we can't roll back.
-                        pass
-
-                    # Raise and maybe retry
-                    raise e
+        try:
+            for item in operations:
+                if not isinstance(item, tuple):
+                    # Must be a single SQL string. Wrap it.
+                    item = (item,)
+                # Parse out the command and the variables to substitute
+                command = item[0]
+                if len(item) < 2:
+                    args = ()
                 else:
-                    # The transaction worked!
-                    # Now commit the transaction.
-                    con.commit()
+                    args = item[1]
+                # Do it
+                cur.execute(command, args)
+        except Exception as e:
+            logging.error('Error talking to caching database: %s', str(e))
+
+            # Try to make sure we don't somehow leave anything part-done if a
+            # middle operation somehow fails.
+            try:
+                con.rollback()
+            except:
+                # But don't stop if we can't roll back.
+                pass
+
+            # Raise and maybe retry
+            raise e
+        else:
+            # The transaction worked!
+            # Now commit the transaction.
+            con.commit()
 
         return cur.rowcount
 

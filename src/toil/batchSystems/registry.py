@@ -51,36 +51,27 @@ def _kubernetesBatchSystemFactory():
 
 _DEFAULT_REGISTRY = {
     'parasol'        : _parasolBatchSystemFactory,
-    'singleMachine'  : _singleMachineBatchSystemFactory,
     'single_machine' : _singleMachineBatchSystemFactory,
-    'gridEngine'     : _gridengineBatchSystemFactory,
-    'gridengine'     : _gridengineBatchSystemFactory,
+    'grid_engine'     : _gridengineBatchSystemFactory,
     'lsf'            : _lsfBatchSystemFactory,
-    'LSF'            : _lsfBatchSystemFactory,
     'mesos'          : _mesosBatchSystemFactory,
-    'Mesos'          : _mesosBatchSystemFactory,
     'slurm'          : _slurmBatchSystemFactory,
-    'Slurm'          : _slurmBatchSystemFactory,
     'torque'         : _torqueBatchSystemFactory,
-    'Torque'         : _torqueBatchSystemFactory,
     'htcondor'       : _htcondorBatchSystemFactory,
-    'HTCondor'       : _htcondorBatchSystemFactory,
     'kubernetes'     : _kubernetesBatchSystemFactory,
-    'Kubernetes'     : _kubernetesBatchSystemFactory,
-    'k8s'            : _kubernetesBatchSystemFactory
     }
 
 _UNIQUE_NAME = {
     'parasol',
-    'singleMachine',
-    'gridEngine',
-    'LSF',
-    'Mesos',
-    'Slurm',
-    'Torque',
-    'HTCondor',
-    'Kubernetes'
-        }
+    'single_machine',
+    'grid_engine',
+    'lsf',
+    'mesos',
+    'slurm',
+    'torque',
+    'htcondor',
+    'kubernetes'
+    }
 
 _batchSystemRegistry = _DEFAULT_REGISTRY.copy()
 _batchSystemNames = set(_UNIQUE_NAME)
@@ -93,7 +84,7 @@ def batchSystemFactoryFor(batchSystem):
     return _batchSystemRegistry[batchSystem ]
 
 def defaultBatchSystem():
-    return 'singleMachine'
+    return 'single_machine'
 
 def uniqueNames():
     return list(_batchSystemNames)

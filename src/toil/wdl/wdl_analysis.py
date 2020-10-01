@@ -1,4 +1,4 @@
-# Copyright (C) 2018 UCSC Computational Genomics Lab
+# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,11 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
-from past.builtins import basestring
-
 import json
 import os
 import logging
@@ -122,7 +117,7 @@ class AnalyzeWDL:
         with open(JSON_file) as data_file:
             data = json.load(data_file)
         for d in data:
-            if isinstance(data[d], basestring):
+            if isinstance(data[d], str):
                 self.json_dict[d] = '"' + data[d] + '"'
             else:
                 self.json_dict[d] = data[d]
@@ -903,7 +898,10 @@ class AnalyzeWDL:
                 if name.source_string == 'length':
                     es = es + 'len('
                 elif name.source_string == 'stdout':
-                    return es + 'stdout'
+                    # let the stdout() function reference the generated stdout file path.
+                    return es + '_toil_wdl_internal__stdout_file'
+                elif name.source_string == 'stderr':
+                    return es + '_toil_wdl_internal__stderr_file'
                 else:
                     es = es + name.source_string + '('
             else:
@@ -923,6 +921,8 @@ class AnalyzeWDL:
             return es + es_params + ', tempDir)'
         elif name.source_string == 'size':
             return es + es_params + ', fileStore=fileStore)'
+        elif name.source_string in ('write_lines', 'write_tsv', 'write_json', 'write_map'):
+            return es + es_params + ', temp_dir=tempDir, file_store=fileStore)'
         else:
             return es + es_params + ')'
 

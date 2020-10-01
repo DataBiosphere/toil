@@ -11,15 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
-from __future__ import absolute_import
-
-from future import standard_library
-
-standard_library.install_aliases()
-from builtins import str
-from builtins import range
-from builtins import object
 import logging
 import os
 import re
@@ -29,7 +20,6 @@ import time
 import uuid
 import requests
 from argparse import ArgumentParser
-from six import iteritems
 
 from toil.lib.humanize import bytes2human
 from toil.lib.retry import retry
@@ -1055,7 +1045,7 @@ class Toil(object):
         Sets the environment variables required by the job store and those passed on command line.
         """
         for envDict in (self._jobStore.getEnv(), self.config.environment):
-            for k, v in iteritems(envDict):
+            for k, v in envDict.items():
                 self._batchSystem.setEnv(k, v)
 
     def _serialiseEnv(self):
@@ -1295,22 +1285,19 @@ class ToilMetrics:
             logger.warning("Could not start prometheus/grafana dashboard.")
             return
 
-        # Add prometheus data source
-        def requestPredicate(e):
-            if isinstance(e, requests.exceptions.ConnectionError):
-                return True
-            return False
-
         try:
-            for attempt in retry(delays=(0, 1, 1, 4, 16), predicate=requestPredicate):
-                with attempt:
-                    requests.post('http://localhost:3000/api/datasources', auth=('admin', 'admin'),
-                                  data='{"name":"DS_PROMETHEUS","type":"prometheus", \
-                                  "url":"http://localhost:9090", "access":"direct"}',
-                                  headers={'content-type': 'application/json', "access": "direct"})
+            self.add_prometheus_data_source()
         except requests.exceptions.ConnectionError:
-            logger.debug(
-                "Could not add data source to Grafana dashboard - no metrics will be displayed.")
+            logger.debug("Could not add data source to Grafana dashboard - no metrics will be displayed.")
+
+    @retry(errors=[requests.exceptions.ConnectionError])
+    def add_prometheus_data_source(self):
+        requests.post(
+            'http://localhost:3000/api/datasources',
+            auth=('admin', 'admin'),
+            data='{"name":"DS_PROMETHEUS","type":"prometheus", "url":"http://localhost:9090", "access":"direct"}',
+            headers={'content-type': 'application/json', "access": "direct"}
+        )
 
     def log(self, message):
         if self.mtailProc:

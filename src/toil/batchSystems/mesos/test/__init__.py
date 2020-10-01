@@ -1,15 +1,8 @@
-from __future__ import absolute_import
-from future import standard_library
-standard_library.install_aliases()
-
-from builtins import next
-from builtins import object
 from abc import ABCMeta, abstractmethod
 import logging
 import shutil
 import threading
 import subprocess
-import multiprocessing
 from past.builtins import basestring
 from six.moves.urllib.request import urlopen
 from contextlib import closing
@@ -17,8 +10,6 @@ import time
 
 from toil.lib.retry import retry
 from shutil import which
-from toil.lib.threading import ExceptionalThread
-from toil import which  # replace with shutil.which() directly; python3 only
 from toil.lib.threading import ExceptionalThread, cpu_count
 from future.utils import with_metaclass
 
@@ -29,6 +20,11 @@ class MesosTestSupport(object):
     """
     A mixin for test cases that need a running Mesos master and agent on the local host
     """
+    @retry(intervals=[1, 1, 2, 4, 8, 16, 32, 64, 128],
+           log_message=(log.info, 'Checking if Mesos is ready...'))
+    def wait_for_master(self):
+        with closing(urlopen('http://127.0.0.1:5050/version')) as content:
+            content.read()
 
     def _startMesos(self, numCores=None):
         if numCores is None:
@@ -38,14 +34,9 @@ class MesosTestSupport(object):
         self.master.start()
         self.agent = self.MesosAgentThread(numCores)
         self.agent.start()
-        
-        # Wait for the master to come up.
+
         # Bad Things will happen if the master is not yet ready when Toil tries to use it.
-        for attempt in retry(predicate=lambda e: True):
-            with attempt:
-                log.info('Checking if Mesos is ready...')
-                with closing(urlopen('http://127.0.0.1:5050/version')) as content:
-                    content.read()
+        self.wait_for_master()
         
         log.info('Mesos is ready! Running test.')
 
