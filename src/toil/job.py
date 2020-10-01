@@ -382,7 +382,11 @@ class JobDescription(Requirer):
         # to journal deletions of files and recover from a worker crash between
         # committing a JobDescription update and actually executing the
         # requested deletions.
-        self.filesToDelete = [] 
+        self.filesToDelete = []
+        
+        # Holds JobStore Job IDs of the jobs that have been chained into this
+        # job, and which should be deleted when this job finally is deleted.
+        self.jobsToDelete = []
         
         # The number of direct predecessors of the job. Needs to be stored at
         # the JobDescription to support dynamically-created jobs with multiple
@@ -565,12 +569,22 @@ class JobDescription(Requirer):
         
         When updated in the JobStore, we will save over the other JobDescription.
         
-        Useful for chaining jobs: the cahined job can replace the parent job.
+        Useful for chaining jobs: the chained-to job can replace the parent job.
+        
+        Merges cleanup state from the job being replaced into this one.
         
         :param toil.job.JobDescription other: Job description to replace.
         """
+        
+        # TODO: also be able to take on the successors of the other job, under
+        # ours on the stack, somehow.
     
         self.jobStoreID = other.jobStoreID
+        
+        # Save files and jobs to delete from the job we replaced, so we can
+        # roll up a whole chain of jobs and delete them when they're all done.
+        self.filesToDelete += other.filesToDelete
+        self.jobsToDelete += other.jobsToDelete
         
     def addChild(self, childID):
         """

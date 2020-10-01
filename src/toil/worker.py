@@ -445,28 +445,29 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
             # add the successor to the list of jobs run
             listOfJobs.append(str(successor))
 
-            # Now we need to become that successor.
+            # Now we need to become that successor, under the original ID.
             successor.replace(jobDesc)
             jobDesc = successor
+            
+            # Problem: successor's job body is a file that will be cleaned up
+            # when we delete the successor job by ID. We can't just move it. So
+            # we need to roll up the deletion of the successor job by ID with
+            # the deletion of the job ID we're currently working on.
+            jobDesc.jobsToDelete.append(successorID)
 
             # Clone the now-current JobDescription (which used to be the successor).
             # TODO: Why??? Can we not?
             jobDesc = copy.deepcopy(jobDesc)
             
-            # Build a fileStore to update the job.
+            # Build a fileStore to update the job and commit the replacement.
             # TODO: can we have a commit operation without an entire FileStore???
             fileStore = AbstractFileStore.createFileStore(jobStore, jobDesc, localWorkerTempDir, blockFn,
                                                           caching=not config.disableCaching)
                                                           
-            # In the new filestore's update (i.e. when we finish the chained-to
-            # job), delete the chained-to job and clean up its associated files
-            # (like job body).
-            fileStore.jobsToDelete.add(successorID)
-
             # Update blockFn to wait for that commit operation.
             blockFn = fileStore.waitForCommit
 
-            # This will update the job once the previous job is done
+            # This will update the job once the previous job is done updating
             fileStore.startCommit(jobState=True)            
             
             # Clone the current job description again, so that further updates
@@ -594,7 +595,9 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
     
     #This must happen after the log file is done with, else there is no place to put the log
     if (not jobAttemptFailed) and jobDesc.command == None and next(jobDesc.successorsAndServiceHosts(), None) is None:
-        # We can now safely get rid of the JobDescription
+        # We can now safely get rid of the JobDescription, and all jobs it chained up
+        for otherID in jobDesc.jobsToDelete:
+            jobStore.delete(otherID)
         jobStore.delete(jobDesc.jobStoreID)
         
     if jobAttemptFailed:
