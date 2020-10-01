@@ -32,7 +32,7 @@ from toil.lib.bioio import getBasicOptionParser
 from toil.lib.bioio import parseBasicOptions
 from toil.common import Toil, jobStoreLocatorHelp, Config
 from toil.jobStores.abstractJobStore import NoSuchJobStoreException, NoSuchFileException
-from toil.job import JobException
+from toil.job import JobException, ServiceJobDescription
 from toil.statsAndLogging import StatsAndLogging
 from toil.version import version
 
@@ -142,8 +142,7 @@ class ToilStatus():
             if job.services:
                 hasServices.append(job)
                 properties.add("HAS_SERVICES")
-            if job.startJobStoreID or job.terminateJobStoreID or job.errorJobStoreID:
-                # These attributes are only set in service jobs
+            if isinstance(job, ServiceJobDescription):
                 services.append(job)
                 properties.add("IS_SERVICE")
 
@@ -277,13 +276,13 @@ class ToilStatus():
         jobsToReport.append(rootJob)
         # Traverse jobs in stack
         for jobs in rootJob.stack:
-            for successorJobStoreID in [x.jobStoreID for x in jobs]:
+            for successorJobStoreID in jobs:
                 if successorJobStoreID not in foundJobStoreIDs and self.jobStore.exists(successorJobStoreID):
                     self.traverseJobGraph(self.jobStore.load(successorJobStoreID), jobsToReport, foundJobStoreIDs)
 
         # Traverse service jobs
         for jobs in rootJob.services:
-            for serviceJobStoreID in [x.jobStoreID for x in jobs]:
+            for serviceJobStoreID in jobs:
                 if self.jobStore.exists(serviceJobStoreID):
                     if serviceJobStoreID in foundJobStoreIDs:
                         raise RuntimeError('Service job was unexpectedly found while traversing ')
