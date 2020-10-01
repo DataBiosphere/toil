@@ -12,6 +12,6 @@ task get_sub {
   }
 
   output {
-    File out = 'output.txt'
+    File the_output = 'output.txt'
   }
 }

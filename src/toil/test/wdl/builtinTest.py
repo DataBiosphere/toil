@@ -246,6 +246,9 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
     def test_sub(self):
         # this workflow swaps the extension of a TSV file to CSV, with String and File inputs.
         self.check_function('sub', cases=['as_input'], expected_result='src/toil/test/wdl/test.csv')
+
+        # NOTE: the result differs from Cromwell since we copy the file to the file store without
+        # preserving the path. Cromwell would return 'src/toil/test/wdl/test.csv' instead.
         self.check_function('sub', cases=['as_input_with_file'], expected_result='test.csv')
 
     def test_ceil(self):
