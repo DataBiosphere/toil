@@ -1,4 +1,4 @@
-# Copyright (C) 2015-2018 Regents of the University of California
+# Copyright (C) 2015-2020 Regents of the University of California
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
 import logging
 import signal
 import time
@@ -286,6 +285,41 @@ class DockerTest(ToilTest):
     def testNonCachingDockerChainErrorDetection(self):
         self.testDockerPipeChainErrorDetection(disableCaching=False)
 
+    def testDockerLogs(self, stream=False, demux=False):
+        """Test for the different log outputs when deatch=False."""
+
+        working_dir = os.path.join(self.tempDir, 'working')
+        script_file = os.path.join(working_dir, 'script.sh')
+        os.makedirs(working_dir, exist_ok=True)
+
+        options = Job.Runner.getDefaultOptions(os.path.join(self.tempDir, 'jobstore'))
+        options.logLevel = self.dockerTestLogLevel
+        options.workDir = working_dir
+        options.clean = 'always'
+        A = Job.wrapJobFn(_testDockerLogsFn,
+                          working_dir=working_dir,
+                          script_file=script_file,
+                          stream=stream,
+                          demux=demux)
+
+        try:
+            rv = Job.Runner.startToil(A, options)
+            assert rv == True
+        finally:
+            try:
+                os.remove(script_file)
+            except:
+                pass
+
+    def testDockerLogs_Stream(self):
+        self.testDockerLogs(stream=True, demux=False)
+
+    def testDockerLogs_Demux(self):
+        self.testDockerLogs(stream=False, demux=True)
+
+    def testDockerLogs_Demux_Stream(self):
+        self.testDockerLogs(stream=True, demux=True)
+
 
 def _testDockerCleanFn(job,
                        working_dir,
@@ -338,7 +372,7 @@ def _testDockerPipeChainFn(job):
 
 def _testDockerPipeChainErrorFn(job):
     """Return True if the command exit 1 | wc -l raises a ContainerError."""
-    parameters = [ ['exit', '1'], ['wc', '-l'] ]
+    parameters = [['exit', '1'], ['wc', '-l']]
     try:
         apiDockerCall(job,
                       image='quay.io/ucsc_cgl/spooky_test',
@@ -346,3 +380,72 @@ def _testDockerPipeChainErrorFn(job):
     except ContainerError:
         return True
     return False
+
+
+def _testDockerLogsFn(job,
+                      working_dir,
+                      script_file,
+                      stream=False,
+                      demux=False):
+    """Return True if the test succeeds. Otherwise Exception is raised."""
+
+    # we write a script file because the redirection operator, '>&2', is wrapped
+    # in quotes when passed as parameters.
+    import textwrap
+    bash_script = textwrap.dedent('''
+    #!/bin/bash
+    echo hello stdout ;
+    echo hello stderr >&2 ;
+    echo hello stdout ;
+    echo hello stderr >&2 ;
+    echo hello stdout ;
+    echo hello stdout ;
+    ''')
+
+    with open(script_file, 'w') as file:
+        file.write(bash_script)
+
+    out = apiDockerCall(job,
+                        image='ubuntu:latest',
+                        working_dir=working_dir,
+                        parameters=[script_file],
+                        volumes={working_dir: {'bind': working_dir, 'mode': 'rw'}},
+                        entrypoint="/bin/bash",
+                        stdout=True,
+                        stderr=True,
+                        stream=stream,
+                        demux=demux)
+
+    # we check the output length because order is not guaranteed.
+    if stream:
+        if demux:
+            # a generator with tuples of (stdout, stderr)
+            assert hasattr(out, '__iter__')
+            for _ in range(6):
+                stdout, stderr = next(out)
+                if stdout:
+                    # len('hello stdout\n') == 13
+                    assert len(stdout) == 13
+                elif stderr:
+                    assert len(stderr) == 13
+                else:
+                    assert False
+        else:
+            # a generator with bytes
+            assert hasattr(out, '__iter__')
+            for _ in range(6):
+                assert len(next(out)) == 13
+    else:
+        if demux:
+            # a tuple of (stdout, stderr)
+            stdout, stderr = out
+            # len('hello stdout\n' * 4) == 52
+            assert len(stdout) == 52
+            # len('hello stderr\n' * 2) == 26
+            assert len(stderr) == 26
+        else:
+            # a bytes object
+            # len('hello stdout\n' * 4 + 'hello stderr\n' * 2) == 78
+            assert len(out) == 78
+
+    return True

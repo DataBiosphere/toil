@@ -563,6 +563,7 @@ try:
 
             self._obtain_credentials_from_cache_or_boto3()
 
+        @retry()
         def _obtain_credentials_from_boto3(self):
             """
             We know the current cached credentials are not good, and that we
@@ -570,21 +571,17 @@ try:
             (_access_key, _secret_key, _security_token,
             _credential_expiry_time) from Boto 3.
             """
-
             # We get a Credentials object
             # <https://github.com/boto/botocore/blob/8d3ea0e61473fba43774eb3c74e1b22995ee7370/botocore/credentials.py#L227>
             # or a RefreshableCredentials, or None on failure.
-            creds = None
-            for attempt in retry(timeout=10, predicate=lambda _: True):
-                with attempt:
-                    creds = self._boto3_resolver.load_credentials()
+            creds = self._boto3_resolver.load_credentials()
 
-                    if creds is None:
-                        try:
-                            resolvers = str(self._boto3_resolver.providers)
-                        except:
-                            resolvers = "(Resolvers unavailable)"
-                        raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
+            if creds is None:
+                try:
+                    resolvers = str(self._boto3_resolver.providers)
+                except:
+                    resolvers = "(Resolvers unavailable)"
+                raise RuntimeError("Could not obtain AWS credentials from Boto3. Resolvers tried: " + resolvers)
 
             # Make sure the credentials actually has some credentials if it is lazy
             creds.get_frozen_credentials()

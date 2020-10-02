@@ -1,4 +1,4 @@
-# Copyright (C) 2018 UCSC Computational Genomics Lab
+# Copyright (C) 2018-2020 UCSC Computational Genomics Lab
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,10 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-from __future__ import absolute_import
-from __future__ import print_function
-from __future__ import division
-
 import argparse
 import os
 import logging

@@ -20,9 +20,6 @@ from toil.wdl.wdl_functions import combine_dicts
 from toil.wdl.wdl_functions import parse_memory
 from toil.wdl.wdl_functions import parse_cores
 from toil.wdl.wdl_functions import parse_disk
-from toil.wdl.wdl_functions import read_string
-from toil.wdl.wdl_functions import read_int
-from toil.wdl.wdl_functions import read_float
 from toil.wdl.wdl_functions import defined
 from toil.wdl.wdl_functions import read_tsv
 from toil.wdl.wdl_functions import read_csv

@@ -218,7 +218,7 @@ class SingleMachinePromisedRequirementsTest(hidden.AbstractPromisedRequirementsT
     """
 
     def getBatchSystemName(self):
-        return "singleMachine"
+        return "single_machine"
 
     def tearDown(self):
         pass
