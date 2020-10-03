@@ -9,7 +9,6 @@ from toil.wdl.wdl_analysis import AnalyzeWDL
 from toil.wdl.wdl_synthesis import SynthesizeWDL
 from toil.wdl.wdl_functions import generate_docker_bashscript_file
 from toil.wdl.wdl_functions import select_first
-from toil.wdl.wdl_functions import sub
 from toil.wdl.wdl_functions import size
 from toil.wdl.wdl_functions import glob
 from toil.wdl.wdl_functions import process_and_read_file
