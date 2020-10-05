@@ -251,6 +251,13 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
         # preserving the path. Cromwell would return 'src/toil/test/wdl/test.csv' instead.
         self.check_function('sub', cases=['as_input_with_file'], expected_result='test.csv')
 
+    def test_size(self):
+        self.check_function('size', cases=['as_command'], expected_result='19.0')
+
+        # the output file contains 22 bytes in bytes, K, and Ki separated with spaces.
+        # NOTE: Cromwell returns '22.0 0.021484375 0.021484375' where the binary version is returned for K.
+        self.check_function('size', cases=['as_output'], expected_result='22.0 0.022 0.021484375')
+
     def test_ceil(self):
         self.check_function('ceil', cases=['as_input', 'as_command'], expected_result='12')
 
