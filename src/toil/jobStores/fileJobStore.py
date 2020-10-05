@@ -223,7 +223,8 @@ class FileJobStore(AbstractJobStore):
         if os.path.isfile(jobFile + ".new"):
             logger.warning("There was a .new file for the job: %s", jobStoreID)
             os.remove(jobFile + ".new")
-            job.setupJobAfterFailure(self.config)
+            job.assignConfig(self.config)
+            job.setupJobAfterFailure()
         return job
 
     def update(self, job):

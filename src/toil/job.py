@@ -48,7 +48,7 @@ from six import iteritems, string_types
 from toil.lib.expando import Expando
 from toil.lib.humanize import human2bytes
 
-from toil.common import Toil, addOptions, safeUnpickleFromStream
+from toil.common import Toil, addOptions, safeUnpickleFromStream, Config
 from toil.deferred import DeferredFunction
 from toil.fileStores import FileID
 from toil.lib.bioio import (setLoggingFromOptions,
@@ -681,6 +681,9 @@ class JobDescription(Requirer):
         # Avoid potential circular imports
         from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
         
+        # Old version of this function used to take a config. Make sure that isn't happening.
+        assert not isinstance(exitReason, Config), "Passing a Config as an exit reason"
+        # Make sure we have an assigned config.
         assert self._config is not None
         
         if self._config.enableUnlimitedPreemptableRetries and exitReason == BatchJobExitReason.LOST:
