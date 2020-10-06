@@ -41,6 +41,7 @@ from kubernetes.client.rest import ApiException
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (BatchSystemCleanupSupport,
+                                                   BatchJobExitReason,
                                                    EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
@@ -687,8 +688,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 jobObjectListConditions =jobObject.status.conditions
                 totalPods = jobObject.status.active + jobObject.status.finished + jobObject.status.failed
                 # Exit Reason defaults to 'Successfully Finsihed` unless said otherwise 
-                ExitReason = 1
-                ExitCode = 0
+                exitReason = BatchJobExitReason.FINISHED
+                exitCode = 0
 
                 # Check if there are any active pods
                 if jobObject.status.acitve > 0:
@@ -705,16 +706,16 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
                     # Log out reason of failure and pod exit code 
                     if jobObject.status.failed > 0:
-                        ExitReason = 2
+                        exitReason = BatchJobExitReason.FAILED
                         pod = self._getPodForJob(jobObject)
                         logger.debug("Failed job %s", str(jobObject))
                         logger.warning("Failed Job Message: %s", termination.message)
-                        ExitCode = pod.status.container_statuses[0].state.terminated.exit_code
+                        exitCode = pod.status.container_statuses[0].state.terminated.exit_code
                     
                     runtime = slow_down((termination.completion_time - termination.start_time).total_seconds())
-                    result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=ExitCode, wallTime=runtime, exitReason=ExitReason)
+                    result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=exitReason)
 
-                    if (ExiReason == 2) or (jobObject.status.finished == totalPods):
+                    if (ExiReason == BatchJobExitReason.FAILED) or (jobObject.status.finished == totalPods):
                         # Cleanup if job is all finished or there was a pod that failed
                         self._try_kubernetes(self._api('batch').delete_namespaced_job, 
                                             jobObject.metadata.name,
@@ -726,7 +727,8 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                 else:
                     # Job is not running/updating ; no active, successful, or failed pods yet
                     logger.debug("Job %s -> %s" % (jobObject.metadata.name, jobObjectListConditions[0].reason))
-                    return UpdatedBatchJobInfo(jobID=jobID, exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=3)
+                    # Pod could be pending; don't say it's lost.
+                    continue
         else:
             # Try polling instead
             while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:
