@@ -2006,8 +2006,8 @@ class Job:
         
     def _saveJobGraph(self, jobStore, saveSelf=False, returnValues=None):
         """
-        Save job data and JobDescriptions to the given job store for this job
-        and all descending jobs, including services.
+        Save job data and new JobDescriptions to the given job store for this
+        job and all descending jobs, including services.
         
         Used to save the initial job graph containing the root job of the workflow.
         
@@ -2092,9 +2092,9 @@ class Job:
                 for serviceBatch in job.description.serviceHostIDsInBatches():
                     for serviceID in serviceBatch:
                         if serviceID in self._registry:
-                            jobStore.update(self._registry[serviceID].description)
+                            jobStore.create(self._registry[serviceID].description)
                 if job != self or saveSelf:
-                    jobStore.update(job.description)
+                    jobStore.create(job.description)
         
     def saveAsRootJob(self, jobStore):
         """
