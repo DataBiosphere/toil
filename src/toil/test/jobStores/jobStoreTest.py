@@ -1292,8 +1292,9 @@ class AWSJobStoreTest(AbstractJobStoreTest.Test):
         jobstore.create(overlargeJob)
         self.assertTrue(jobstore.exists(overlargeJob.jobStoreID))
         overlargeJobDownloaded = jobstore.load(overlargeJob.jobStoreID)
-        jobsInJobStore = [job for job in jobstore.jobs()]
-        self.assertEqual(jobsInJobStore, [overlargeJob])
+        # Because jobs lack equality comparison, we stringify for comparison.
+        jobsInJobStore = [str(job) for job in jobstore.jobs()]
+        self.assertEqual(jobsInJobStore, [str(overlargeJob)])
         jobstore.delete(overlargeJob.jobStoreID)
 
     def _prepareTestFile(self, bucket, size=None):
