@@ -561,9 +561,12 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
                 # earlier checkpoint, so it and all its successors are
                 # already gone.
                 continue
-            logger.debug("Restarting checkpointed job %s" % jobDescription)
-            deletedThisRound = jobDescription.restartCheckpoint(self)
-            jobsDeletedByCheckpoints |= set(deletedThisRound)
+            if jobDescription.checkpoint is not None:
+                # The checkpoint actually started and needs to be restarted
+                logger.debug("Restarting checkpointed job %s" % jobDescription)
+                deletedThisRound = jobDescription.restartCheckpoint(self)
+                jobsDeletedByCheckpoints |= set(deletedThisRound)
+                updateJobDescription(jobDescription)
         for jobID in jobsDeletedByCheckpoints:
             del jobDescriptionsReachableFromRoot[jobID]
 
