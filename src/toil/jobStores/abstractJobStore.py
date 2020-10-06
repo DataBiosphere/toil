@@ -700,6 +700,16 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         """
         raise NotImplementedError()
 
+    @contextmanager
+    def batch(self):
+        """
+        If supporeted by the batch system, calls to create() with this context
+        manager active will be performed in a batch after the context manager
+        is released.
+        :rtype: None
+        """
+        yield
+
     @abstractmethod
     def create(self, jobDescription):
         """
@@ -709,7 +719,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
         :rtype: toil.job.JobDescription
         """
         raise NotImplementedError()
-
+        
     @abstractmethod
     def exists(self, jobStoreID):
         """

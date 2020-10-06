@@ -295,7 +295,7 @@ class AWSJobStore(AbstractJobStore):
                    range(0, len(self._batchedUpdates), self.jobsPerBatchInsert)]
 
         for batch in batches:
-            items = {jobDescription.jobStoreID: self._awsJobToItem(jobDescription) for jobDescription in batch}
+            items = {compat_bytes(jobDescription.jobStoreID): self._awsJobToItem(jobDescription) for jobDescription in batch}
             for attempt in retry_sdb():
                 with attempt:
                     assert self.jobsDomain.batch_put_attributes(items)
@@ -311,10 +311,7 @@ class AWSJobStore(AbstractJobStore):
         if hasattr(self, "_batchedUpdates") and self._batchedUpdates is not None:
             self._batchedUpdates.append(jobDescription)
         else:
-            item = self._awsJobToItem(jobDescription)
-            for attempt in retry_sdb():
-                with attempt:
-                    assert self.jobsDomain.put_attributes(jobDescription.jobStoreID, item)
+            self.update(jobDescription)
         return jobDescription
 
     def exists(self, jobStoreID):
@@ -349,12 +346,12 @@ class AWSJobStore(AbstractJobStore):
         log.debug("Loaded job %s", jobStoreID)
         return job
 
-    def update(self, job):
-        log.debug("Updating job %s", job.jobStoreID)
-        item = self._awsJobToItem(job)
+    def update(self, jobDescription):
+        log.debug("Updating job %s", jobDescription.jobStoreID)
+        item = self._awsJobToItem(jobDescription)
         for attempt in retry_sdb():
             with attempt:
-                assert self.jobsDomain.put_attributes(compat_bytes(job.jobStoreID), item)
+                assert self.jobsDomain.put_attributes(compat_bytes(jobDescription.jobStoreID), item)
 
     itemsPerBatchDelete = 25
 

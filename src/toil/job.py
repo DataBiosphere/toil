@@ -2085,14 +2085,16 @@ class Job:
                 # Now pickle the job itself
                 job.saveBody(jobStore)
             
-        # Now that the job data is on disk, commit the JobDescriptions in reverse execution order
-        for job in ordering:
-            for serviceBatch in job.description.serviceHostIDsInBatches():
-                for serviceID in serviceBatch:
-                    if serviceID in self._registry:
-                        jobStore.update(self._registry[serviceID].description)
-            if job != self or saveSelf:
-                jobStore.update(job.description)
+        # Now that the job data is on disk, commit the JobDescriptions in
+        # reverse execution order, in a batch if supported.
+        with jobStore.batch():
+            for job in ordering:
+                for serviceBatch in job.description.serviceHostIDsInBatches():
+                    for serviceID in serviceBatch:
+                        if serviceID in self._registry:
+                            jobStore.update(self._registry[serviceID].description)
+                if job != self or saveSelf:
+                    jobStore.update(job.description)
         
     def saveAsRootJob(self, jobStore):
         """
