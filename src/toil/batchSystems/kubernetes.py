@@ -167,8 +167,6 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         self.runID = 'toil-{}'.format(self.uniqueID)
 
-        self.runID = 'toil-{}'.format(self.uniqueID)
-
         self.jobIds = set()
     
    
@@ -683,27 +681,23 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             for event in self._try_kubernetes_stream(self._api('batch').list_namespaced_job, self.namespace, 
                                                         label_selector="toil_run={}".format(self.runID),
                                                         timeout_seconds=maxWait):
-                # Grab the metadata data, ID and the list of conditions of the current job
+                # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
                 jobObject = event['object']
                 jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
                 jobObjectListConditions =jobObject.status.conditions
+                totalPods = jobObject.status.active + jobObject.status.finished + jobObject.status.failed
                 # Exit Reason defaults to 'Successfully Finsihed` unless said otherwise 
                 ExitReason = 1
                 ExitCode = 0
 
-                # Check if jobs exists by seeing if condition logs are pressent
-                if jobObjectListConditions is None or len(jobObjectListConditions):
-                    logger.debug("No job container statuses for job %s" % (jobObject.metadata.name))
-                    return UpdatedBatchJobInfo(jobID=jobID, exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=3)
-                
                 # Check if there are any active pods
                 if jobObject.status.acitve > 0:
                     logger.info("%s has %d pods running" % jobObject.metadata.name, jobObject.status.active)
                     continue
-                else:
+                elif jobObject.status.failed > 0 or jobObject.status.finished > 0:
                     # No more active pods in the current job ; must be finished
-                    logger.info("%s RESULTS -> Succeeded:%d Failed:%d" % jobObject.metadata.name, jobObject.status.succeeded, jobObject.status.failed)
-
+                    logger.info("%s RESULTS -> Succeeded: %d Failed:%d Active:%d" % jobObject.metadata.name, 
+                                                                jobObject.status.succeeded, jobObject.status.failed, jobObject.status.active)
                     # Get termination information of job
                     termination = jobObjectListConditions[0]
                     # Log out succeess/failure given a reason
@@ -720,14 +714,19 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
                     runtime = slow_down((termination.completion_time - termination.start_time).total_seconds())
                     result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=ExitCode, wallTime=runtime, exitReason=ExitReason)
 
-                    # Cleanup job/pods after it is finished
-                    self._try_kubernetes(self._api('batch').delete_namespaced_job, 
-                                        jobObject.metadata.name,
-                                        self.namespace,
-                                        propagation_policy='Foreground')
-                    
-                    self._waitForJobDeath(jobOjbect.metadata.name)
-                    return result
+                    if (ExiReason == 2) or (jobObject.status.finished == totalPods):
+                        # Cleanup if job is all finished or there was a pod that failed
+                        self._try_kubernetes(self._api('batch').delete_namespaced_job, 
+                                            jobObject.metadata.name,
+                                            self.namespace,
+                                            propagation_policy='Foreground')
+                        self._waitForJobDeath(jobOjbect.metadata.name)
+                        return result
+                    continue
+                else:
+                    # Job is not running/updating ; no active, successful, or failed pods yet
+                    logger.debug("Job %s -> %s" % (jobObject.metadata.name, jobObjectListConditions[0].reason))
+                    return UpdatedBatchJobInfo(jobID=jobID, exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=3)
         else:
             # Try polling instead
             while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:
