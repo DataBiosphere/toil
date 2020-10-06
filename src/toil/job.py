@@ -330,12 +330,12 @@ class JobDescription(Requirer):
             queried (see :meth:`toil.job.JobDescription.assignConfig`). If
             unspecified and no Config object is assigned, an AttributeError
             will be raised at query time.
-        :param str|None unitName: Name of this instance of this kind of job. May
+        :param str unitName: Name of this instance of this kind of job. May
             appear with jobName in logging.
-        :param str|None displayName: A human-readable name to identify this
+        :param str displayName: A human-readable name to identify this
             particular job instance. Ought to be the job class's name
             if no real user-defined name is available.
-        :param str|None jobName: Name of the kind of job this is. May be used in job
+        :param str jobName: Name of the kind of job this is. May be used in job
             store IDs and logging. Also used to let the cluster scaler learn a
             model for how long the job will take. Ought to be the job class's
             name if no real user-defined name is available.
@@ -758,8 +758,6 @@ class JobDescription(Requirer):
         printedName = "'" + self.jobName + "'"
         if self.unitName:
             printedName += ' ' + self.unitName
-        elif self.unitName == '':
-            printedName += ' ' + '(unnamed)'
         
         if self.jobStoreID is not None:
             printedName += ' ' + str(self.jobStoreID)
@@ -890,7 +888,7 @@ class Job:
     Class represents a unit of work in toil.
     """
     def __init__(self, memory=None, cores=None, disk=None, preemptable=None,
-                       unitName=None, checkpoint=False, displayName=None,
+                       unitName='', checkpoint=False, displayName='',
                        descriptionClass=None):
         """
         This method must be called by any overriding constructor.
@@ -919,7 +917,7 @@ class Job:
         
         # Fill in our various names
         jobName = self.__class__.__name__
-        displayName = displayName if displayName is not None else jobName
+        displayName = displayName if displayName else jobName
         
         
         # Build a requirements dict for the description
@@ -967,6 +965,16 @@ class Job:
         self._defer = None
         self._tempDir = None
         
+    def __str__(self):
+        """
+        Produce a useful logging string to identify this Job and distinguish it
+        from its JobDescription.
+        """
+        if self.description is None:
+            return repr(self)
+        else:
+            return 'Job(' + str(self.description) + ')'
+
     @property
     def jobStoreID(self):
         """

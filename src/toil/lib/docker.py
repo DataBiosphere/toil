@@ -6,6 +6,7 @@ import base64
 import requests
 import logging
 import os
+import re
 import struct
 from shlex import quote
 from docker.utils.socket import consume_socket_output, demux_adaptor
@@ -382,10 +383,13 @@ def containerIsRunning(container_name, timeout=365 * 24 * 60 * 60):
 
 
 def getContainerName(job):
-    """Create a random string including the job name, and return it."""
-    return '--'.join([str(job),
-                      base64.b64encode(os.urandom(9), b'-_').decode('utf-8')]) \
-        .replace("'", '').replace('"', '').replace('_', '')
+    """
+    Create a random string including the job name, and return it. Name will
+    match [a-zA-Z0-9][a-zA-Z0-9_.-]
+    """
+    parts = ['toil', str(job.description), base64.b64encode(os.urandom(9), b'-_').decode('utf-8')]
+    name = re.sub('[^a-zA-Z0-9_.-]', '', '--'.join(parts))
+    return name
 
 
 def _multiplexed_response_stream_helper(response):
