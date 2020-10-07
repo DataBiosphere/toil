@@ -1602,6 +1602,8 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     # we use workdir as default default jobStore:
     options = parser.parse_args([workdir] + args)
 
+    logger.info(f"options: {options}")
+
     # if tmpdir_prefix is not the default value, set workDir if unset, and move
     # workdir and the job store under it
     if options.tmpdir_prefix != 'tmp':
@@ -1622,6 +1624,11 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
         raise NoSuchJobStoreException(
             'Please specify a jobstore with the --jobStore option when '
             'specifying a provisioner.')
+    
+    if options.singularity:
+        logger.info("TESTING")
+        logger.info(os.listdir())
+        
 
     use_container = not options.no_container
 
