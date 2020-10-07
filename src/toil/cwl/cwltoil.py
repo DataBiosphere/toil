@@ -1456,6 +1456,7 @@ def determine_load_listing(tool: ToilCommandLineTool):
 def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     """Main method for toil-cwl-runner."""
     # Remove cwltool logger's stream handler so it uses Toil's
+    logger.warning("IN MAIN")
     cwllogger.removeHandler(defaultStreamHandler)
     config = Config()
     config.disableChaining = True
@@ -1602,7 +1603,7 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
     # we use workdir as default default jobStore:
     options = parser.parse_args([workdir] + args)
 
-    logger.info(f"options: {options}")
+    logger.warning(f"options: {options}")
 
     # if tmpdir_prefix is not the default value, set workDir if unset, and move
     # workdir and the job store under it
