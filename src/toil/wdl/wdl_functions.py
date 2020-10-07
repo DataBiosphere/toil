@@ -486,7 +486,7 @@ def is_number(s):
         return False
 
 
-def size(f: Union[tuple, List[tuple]] = None,
+def size(f: Optional[Union[tuple, List[tuple]]] = None,
          unit: Optional[str] = 'B',
          fileStore: Optional[AbstractFileStore] = None) -> float:
     """
@@ -494,25 +494,31 @@ def size(f: Union[tuple, List[tuple]] = None,
     or in the unit specified by the second argument.
 
     Supported units are KiloByte ("K", "KB"), MegaByte ("M", "MB"), GigaByte
-    ("G", "GB"), TeraByte ("T", "TB") as well as their binary version "Ki" ("KiB"),
-    "Mi" ("MiB"), "Gi" ("GiB"), "Ti" ("TiB"). Default unit is Bytes ("B").
+    ("G", "GB"), TeraByte ("T", "TB") (powers of 10) as well as their binary version
+    (https://en.wikipedia.org/wiki/Binary_prefix) "Ki" ("KiB"), "Mi" ("MiB"),
+    "Gi" ("GiB"), "Ti" ("TiB"). Default unit is Bytes ("B") (powers of 2).
 
     WDL syntax: Float size(File, [String])
     Varieties:  Float size(File?, [String])
                 Float size(Array[File], [String])
                 Float size(Array[File?], [String])
     """
-    if not f:
+
+    if f is None:
         return 0
+
+    assert isinstance(f, (str, tuple, list)), f'size() excepts a "File" or "File?" argument!  Not: {type(f)}'
+
+    # validate the input. fileStore is only required if the input is not processed.
+    f = process_infile(f, fileStore)
 
     divisor = return_bytes(unit)
 
     if isinstance(f, list):
-        total_size = sum(file[0].size for file in f if isinstance(file, tuple))
+        total_size = sum(file[0].size for file in f)
         return total_size / divisor
 
-    # fileStore is only required if the input file is not processed.
-    fileID = process_infile(f, fileStore)[0]
+    fileID = f[0]
     return fileID.size / divisor
 
 
