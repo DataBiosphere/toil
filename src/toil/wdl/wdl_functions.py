@@ -494,9 +494,9 @@ def size(f: Optional[Union[tuple, List[tuple]]] = None,
     or in the unit specified by the second argument.
 
     Supported units are KiloByte ("K", "KB"), MegaByte ("M", "MB"), GigaByte
-    ("G", "GB"), TeraByte ("T", "TB") (powers of 10) as well as their binary version
+    ("G", "GB"), TeraByte ("T", "TB") (powers of 1000) as well as their binary version
     (https://en.wikipedia.org/wiki/Binary_prefix) "Ki" ("KiB"), "Mi" ("MiB"),
-    "Gi" ("GiB"), "Ti" ("TiB"). Default unit is Bytes ("B") (powers of 2).
+    "Gi" ("GiB"), "Ti" ("TiB") (powers of 1024). Default unit is Bytes ("B").
 
     WDL syntax: Float size(File, [String])
     Varieties:  Float size(File?, [String])
