@@ -130,19 +130,25 @@ import http.client
 import urllib.error
 import urllib3.exceptions
 import sqlite3
-import kubernetes.client.rest
-import botocore.exceptions
+try:
+    import kubernetes.client.rest
+    import botocore.exceptions
+except ModuleNotFoundError:
+    kubernetes = None
+    botocore = None
 from contextlib import contextmanager
 from typing import List, Optional, Tuple, Callable, Any, Union
 
 log = logging.getLogger(__name__)
 
-SUPPORTED_HTTP_ERRORS = {http.client.HTTPException,
+SUPPORTED_HTTP_ERRORS = [http.client.HTTPException,
                          urllib.error.HTTPError,
                          urllib3.exceptions.HTTPError,
-                         requests.exceptions.HTTPError,
-                         kubernetes.client.rest.ApiException,
-                         botocore.exceptions.ClientError}
+                         requests.exceptions.HTTPError]
+if kubernetes:
+    SUPPORTED_HTTP_ERRORS.append(kubernetes.client.rest.ApiException)
+if botocore:
+    SUPPORTED_HTTP_ERRORS.append(botocore.exceptions.ClientError)
 
 
 class ErrorCondition:
