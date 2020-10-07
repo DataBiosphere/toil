@@ -1184,7 +1184,12 @@ class Job:
         
         # Record the relationship to the hosting job, with its parent if any.
         self._description.addServiceHostJob(hostingJob.jobStoreID, parentService.hostID if parentService is not None else None)
-        
+
+        # For compatibility with old Cactus versions that tinker around with
+        # our internals, we need to make the hosting job available as
+        # self._services[-1]. TODO: Remove this when Cactus has updated.
+        self._services = [hostingJob]
+
         # Return the promise for the service's startup result
         return hostingJob.rv()
         
@@ -1961,7 +1966,12 @@ class Job:
         
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()
-        
+
+        # Clear out old Cactus compatibility fields that don't need to be
+        # preserved and shouldn't be serialized.
+        if hasattr(self, '_services'):
+            delattr(self, '_services')
+
         # Remember fields we will overwrite
         description = self._description
         registry = self._registry
