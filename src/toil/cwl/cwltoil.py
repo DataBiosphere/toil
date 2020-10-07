@@ -1626,9 +1626,10 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             'Please specify a jobstore with the --jobStore option when '
             'specifying a provisioner.')
     
+    logger.warning(f"options.singularity: {options.singularity}")
     if options.singularity:
-        logger.info("TESTING")
-        logger.info(os.listdir())
+        logger.warning("TESTING")
+        logger.warning(os.listdir())
         
 
     use_container = not options.no_container
