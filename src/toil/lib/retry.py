@@ -130,25 +130,28 @@ import http.client
 import urllib.error
 import urllib3.exceptions
 import sqlite3
-try:
-    import kubernetes.client.rest
-    import botocore.exceptions
-except ModuleNotFoundError:
-    kubernetes = None
-    botocore = None
+
 from contextlib import contextmanager
 from typing import List, Optional, Tuple, Callable, Any, Union
-
-log = logging.getLogger(__name__)
 
 SUPPORTED_HTTP_ERRORS = [http.client.HTTPException,
                          urllib.error.HTTPError,
                          urllib3.exceptions.HTTPError,
                          requests.exceptions.HTTPError]
-if kubernetes:
+
+try:
+    import kubernetes.client.rest
     SUPPORTED_HTTP_ERRORS.append(kubernetes.client.rest.ApiException)
-if botocore:
+except ModuleNotFoundError:
+    kubernetes = None
+
+try:
+    import botocore.exceptions
     SUPPORTED_HTTP_ERRORS.append(botocore.exceptions.ClientError)
+except ModuleNotFoundError:
+    botocore = None
+
+log = logging.getLogger(__name__)
 
 
 class ErrorCondition:
@@ -262,27 +265,40 @@ def retry(intervals: Optional[List] = None,
 
 
 def return_status_code(e):
+    if kubernetes:
+        if isinstance(e, kubernetes.client.rest.ApiException):
+            return e.status
+
+    if botocore:
+        if isinstance(e, botocore.exceptions.ClientError):
+            return e.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
+
     if isinstance(e, requests.exceptions.HTTPError):
         return e.response.status_code
     elif isinstance(e, http.client.HTTPException) or \
-            isinstance(e, urllib3.exceptions.HTTPError) or \
-            isinstance(e, kubernetes.client.rest.ApiException):
+            isinstance(e, urllib3.exceptions.HTTPError):
         return e.status
     elif isinstance(e, urllib.error.HTTPError):
         return e.code
-    elif isinstance(e, botocore.exceptions.ClientError):
-        return e.response.get('ResponseMetadata', {}).get('HTTPStatusCode')
     else:
         raise ValueError(f'Unsupported error type; cannot grok status code: {e}.')
 
 
 def meets_error_message_condition(e: Exception, error_message: Optional[str]):
     if error_message:
+        if kubernetes:
+            if isinstance(e, kubernetes.client.rest.ApiException) or isinstance(sqlite3.OperationalError):
+                return error_message in str(e)
+
+        if botocore:
+            if isinstance(e, botocore.exceptions.ClientError):
+                return error_message in e.msg
+
         if isinstance(e, http.client.HTTPException) or isinstance(e, urllib3.exceptions.HTTPError):
             return error_message in e.reason
-        elif isinstance(e, kubernetes.client.rest.ApiException) or isinstance(sqlite3.OperationalError):
+        elif isinstance(sqlite3.OperationalError):
             return error_message in str(e)
-        elif isinstance(e, urllib.error.HTTPError) or isinstance(e, botocore.exceptions.ClientError):
+        elif isinstance(e, urllib.error.HTTPError):
             return error_message in e.msg
         elif isinstance(e, requests.exceptions.HTTPError):
             return error_message in e.raw
