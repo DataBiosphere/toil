@@ -2184,13 +2184,22 @@ class Job:
             if os.path.exists(directory):
                 os.rmdir(directory)
 
-    def _run(self, fileStore):
+    def _run(self, fileStore=None, **kwargs):
         """
         Function which worker calls to ultimately invoke
-        a jobs Job.run method, and then handle created
+        a job's Job.run method, and then handle created
         children/followOn jobs.
-        
-        May be overridden by specialized TOil-internal jobs.
+
+        May be (but currently is not) overridden by specialized Toil-internal jobs.
+
+        Should not be overridden by non-Toil code!
+
+        Despite this, it has been overridden by non-Toil code, so we keep it
+        around and use a hardened kwargs-based interface to try and tolerate
+        bad behavior by workflows (e.g. Cactus).
+
+        When everyone has upgraded to a sufficiently new Cactus, we can remove
+        this!
         """
         return self.run(fileStore)
 
@@ -2239,7 +2248,7 @@ class Job:
                 )
             )
 
-    def _runner(self, jobStore, fileStore, defer):
+    def _runner(self, jobStore=None, fileStore=None, defer=None, **kwargs):
         """
         This method actually runs the job, and serialises the next jobs.
         
@@ -2247,13 +2256,20 @@ class Job:
         successor relationships to new successors, but it doesn't actually
         commit those updates to the current job into the JobStore.
 
-        :param class jobGraph: Instance of a jobGraph object
+        We take all arguments as keyword arguments, and accept and ignore
+        additional keyword arguments, for compatibility with workflows (*cough*
+        Cactus *cough*) which are reaching in and overriding _runner (which
+        they aren't supposed to do). If everything is passed as name=value it
+        won't break as soon as we add or remove a parameter.
+
         :param class jobStore: Instance of the job store
-        :param toil.fileStores.abstractFileStore.AbstractFileStore fileStore: Instance of a cached
-               or uncached filestore
+        :param toil.fileStores.abstractFileStore.AbstractFileStore fileStore: Instance
+               of a cached or uncached filestore
         :param defer: Function yielded by open() context
                manager of :class:`toil.DeferredFunctionManager`, which is called to
                register deferred functions.
+        :param kwargs: Catch-all to accept superfluous arguments passed by old
+               versions of Cactus. Cactus shouldn't override this method, but it does.
         :return:
         """
         
@@ -2261,8 +2277,10 @@ class Job:
         self._defer = defer
         # Make fileStore available as an attribute during run() ...
         self._fileStore = fileStore
-        # ... but also pass it to run() as an argument for backwards compatibility.
-        returnValues = self._run(fileStore)
+        # ... but also pass it to _run() as an argument for backwards
+        # compatibility with workflows that tinker around with our internals,
+        # and send a fake jobGraph in case they still think jobGraph exists.
+        returnValues = self._run(jobGraph=None, fileStore=fileStore)
         
         # Clean up state changes made for run()
         self._defer = None

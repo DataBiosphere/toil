@@ -393,8 +393,14 @@ def workerScript(jobStore, config, jobName, jobStoreID, redirectOutputToLogFile=
                             
                             # Run the job, save new successors, and set up
                             # locally (but don't commit) successor
-                            # relationships and job completion
-                            job._runner(jobStore=jobStore, fileStore=fileStore, defer=defer)
+                            # relationships and job completion.
+                            # Pass everything as name=value because Cactus
+                            # likes to override _runner when it shouldn't and
+                            # it needs some hope of finding the arguments it
+                            # wants across multiple Toil versions. We also
+                            # still pass a jobGraph argument to placate old
+                            # versions of Cactus.
+                            job._runner(jobGraph=None, jobStore=jobStore, fileStore=fileStore, defer=defer)
 
                 # Accumulate messages from this job & any subsequent chained jobs
                 statsDict.workers.logsToMaster += fileStore.loggingMessages
