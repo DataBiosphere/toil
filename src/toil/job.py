@@ -2184,7 +2184,7 @@ class Job:
             if os.path.exists(directory):
                 os.rmdir(directory)
 
-    def _run(self, fileStore=None, **kwargs):
+    def _run(self, jobGraph=None, fileStore=None, **kwargs):
         """
         Function which worker calls to ultimately invoke
         a job's Job.run method, and then handle created
@@ -2200,6 +2200,11 @@ class Job:
 
         When everyone has upgraded to a sufficiently new Cactus, we can remove
         this!
+        
+        :param NoneType jobGraph: Ignored. Here for compatibility with old
+               Cactus versions that pass two positional arguments.
+        :param toil.fileStores.abstractFileStore.AbstractFileStore fileStore: the
+               FileStore to use to access files when running the job. Required.
         """
         return self.run(fileStore)
 
