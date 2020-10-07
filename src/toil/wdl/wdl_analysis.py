@@ -881,10 +881,7 @@ class AnalyzeWDL:
 
         Some of these are special
         and need minor adjustments, for example length(), which is equivalent to
-        python's len() function.  Or sub, which is equivalent to re.sub(), but
-        needs a rearrangement of input variables.
-
-        Known to be supported: sub, size, read_tsv, length, select_first.
+        python's len() function.
 
         :param name:
         :param params:
@@ -911,11 +908,7 @@ class AnalyzeWDL:
         elif isinstance(name, wdl_parser.AstList):
             raise NotImplementedError
 
-        # use python's re.sub() for sub()
-        if name.source_string == 'sub':
-            es_params = self.parse_declaration_expressn_fncall_SUBparams(params)
-        else:
-            es_params = self.parse_declaration_expressn_fncall_normalparams(params)
+        es_params = self.parse_declaration_expressn_fncall_normalparams(params)
 
         if name.source_string == 'glob':
             return es + es_params + ', tempDir)'
@@ -940,32 +933,6 @@ class AnalyzeWDL:
             if es_param.endswith(', '):
                 es_param = es_param[:-2]
             return es_param
-
-    def parse_declaration_expressn_fncall_SUBparams(self, params):
-        """
-        Needs rearrangement:
-
-        0 1 2
-        WDL native params: sub(input, pattern, replace)
-
-        1 2 0
-        Python's re.sub() params: sub(pattern, replace, input)
-
-        :param params:
-        :param es:
-        :return:
-        """
-        # arguments passed to the function
-        if isinstance(params, wdl_parser.Terminal):
-            raise NotImplementedError
-        elif isinstance(params, wdl_parser.Ast):
-            raise NotImplementedError
-        elif isinstance(params, wdl_parser.AstList):
-            assert len(params) == 3, ('sub() function requires exactly 3 arguments.')
-            es_params0 = self.parse_declaration_expressn(params[0], es='')
-            es_params1 = self.parse_declaration_expressn(params[1], es='')
-            es_params2 = self.parse_declaration_expressn(params[2], es='')
-            return es_params1 + ', ' + es_params2 + ', ' + es_params0
 
     def parse_workflow_declaration(self, wf_declaration_subAST):
         '''
