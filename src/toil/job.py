@@ -1822,6 +1822,18 @@ class Promise(object):
         self.job = job
         self.path = path
 
+    def __getitem__(self, path_tuple):
+        """
+        Given a Promise for a certain path, get a Promise for that path
+        extended with the additional path elements from path_tuple.
+
+        For example, if you have a job `j` that returns a tuple of three
+        elements, and you have a promise p = j.rv() for the whole tuple, you
+        can do p2 = p[1] to get a new promise p2 for element 1 of the tuple.
+        """
+
+        return Promise(self.job, tuple(path + path_tuple))
+
     def __reduce__(self):
         """
         Called during pickling when a promise (an instance of this class) is about to be be
