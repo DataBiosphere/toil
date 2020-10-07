@@ -41,6 +41,7 @@ from kubernetes.client.rest import ApiException
 
 from toil import applianceSelf
 from toil.batchSystems.abstractBatchSystem import (BatchSystemCleanupSupport,
+                                                   BatchJobExitReason,
                                                    EXIT_STATUS_UNAVAILABLE_VALUE,
                                                    UpdatedBatchJobInfo)
 from toil.common import Toil
@@ -71,10 +72,10 @@ def is_retryable_kubernetes_error(e):
 def slow_down(seconds):
     """
     Toil jobs that have completed are not allowed to have taken 0 seconds, but
-    Kubernetes timestamps things to the second. It is possible in Kubernetes for
+    Kubernetes timestamps round things to the nearest second. It is possible in Kubernetes for
     a pod to have identical start and end timestamps.
 
-    This function takes a possibly 0 job length in seconds an enforces a minimum length to satisfy Toil.
+    This function takes a possibly 0 job length in seconds and enforces a minimum length to satisfy Toil.
 
     :param float seconds: Kubernetes timestamp difference
 
@@ -163,7 +164,7 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
 
         # Set this to True to enable the experimental wait-for-job-update code
         # TODO: Make this an environment variable?
-        self.enableWatching = False
+        self.enableWatching = os.environ.get("KUBE_WATCH_ENABLED", False)
 
         self.runID = 'toil-{}'.format(self.uniqueID)
 
@@ -677,44 +678,57 @@ class KubernetesBatchSystem(BatchSystemCleanupSupport):
             return result
 
         # Otherwise we need to maybe wait.
-
         if self.enableWatching:
-            # Try watching for something to happen and use that.
+            for event in self._try_kubernetes_stream(self._api('batch').list_namespaced_job, self.namespace, 
+                                                        label_selector="toil_run={}".format(self.runID),
+                                                        timeout_seconds=maxWait):
+                # Grab the metadata data, ID, the list of conditions of the current job, and the total pods
+                jobObject = event['object']
+                jobID = int(jobObject.metadata.name[len(self.jobPrefix):])
+                jobObjectListConditions =jobObject.status.conditions
+                totalPods = jobObject.status.active + jobObject.status.finished + jobObject.status.failed
+                # Exit Reason defaults to 'Successfully Finsihed` unless said otherwise 
+                exitReason = BatchJobExitReason.FINISHED
+                exitCode = 0
 
-            if self.enableWatching:
-                for j in self._ourJobObject():
-                    for event in self._try_kubernetes_stream(self._api('core').list_namespaced_pod, self.namespace, timeout_seconds=maxWait):
-                        # For each event from the stream until it times out or just disconnects
-                        pod = event['object']
-                        if pod.metadata.name.startswith(self.jobPrefix):
-                            if pod.status.phase == 'Failed' or pod.status.phase == 'Succeeded':
-                                containerStatuses =  pod.status.container_statuses
-                                logger.debug("FINISHED")
-                                if containerStatuses is None or len(containerStatuses) == 0: 
-                                    logger.debug("No job container statuses for job %s" % (pod.metadata.owner_references[0].name))
-                                    return UpdatedBatchJobInfo(jobID=int(pod.metadata.owner_references[0].name[len(self.jobPrefix):]), exitStatus=EXIT_STATUS_UNAVAILABLE_VALUE, wallTime=0, exitReason=None)
+                # Check if there are any active pods
+                if jobObject.status.acitve > 0:
+                    logger.info("%s has %d pods running" % jobObject.metadata.name, jobObject.status.active)
+                    continue
+                elif jobObject.status.failed > 0 or jobObject.status.finished > 0:
+                    # No more active pods in the current job ; must be finished
+                    logger.info("%s RESULTS -> Succeeded: %d Failed:%d Active:%d" % jobObject.metadata.name, 
+                                                                jobObject.status.succeeded, jobObject.status.failed, jobObject.status.active)
+                    # Get termination information of job
+                    termination = jobObjectListConditions[0]
+                    # Log out succeess/failure given a reason
+                    logger.info("%s REASON: %s", termination.type, termination.reason)
 
-                                # Get termination onformation from the pod
-                                termination = pod.status.container_statuses[0].state.terminated
-                                logger.info("REASON: %s Exit Code: %s", termination.reason, termination.exit_code)
-                                
-                                if termination.exit_code != 0:
-                                    # The pod failed. Dump information about it.
-                                    logger.debug('Failed pod information: %s', str(pod))
-                                    logger.warning('Log from failed pod: %s', self._getLogForPod(pod))
-                                jobID = int(pod.metadata.owner_references[0].name[len(self.jobPrefix):])
-                                terminated = pod.status.container_statuses[0].state.terminated
-                                runtime = slow_down((terminated.finished_at - terminated.started_at).total_seconds())
-                                result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=terminated.exit_code, wallTime=runtime, exitReason=None)
-                                self._try_kubernetes(self._api('batch').delete_namespaced_job, 
-                                            pod.metadata.owner_references[0].name,
+                    # Log out reason of failure and pod exit code 
+                    if jobObject.status.failed > 0:
+                        exitReason = BatchJobExitReason.FAILED
+                        pod = self._getPodForJob(jobObject)
+                        logger.debug("Failed job %s", str(jobObject))
+                        logger.warning("Failed Job Message: %s", termination.message)
+                        exitCode = pod.status.container_statuses[0].state.terminated.exit_code
+                    
+                    runtime = slow_down((termination.completion_time - termination.start_time).total_seconds())
+                    result = UpdatedBatchJobInfo(jobID=jobID, exitStatus=exitCode, wallTime=runtime, exitReason=exitReason)
+
+                    if (ExiReason == BatchJobExitReason.FAILED) or (jobObject.status.finished == totalPods):
+                        # Cleanup if job is all finished or there was a pod that failed
+                        self._try_kubernetes(self._api('batch').delete_namespaced_job, 
+                                            jobObject.metadata.name,
                                             self.namespace,
                                             propagation_policy='Foreground')
-
-                                self._waitForJobDeath(pod.metadata.owner_references[0].name)
-                                return result
-                            else:
-                                continue
+                        self._waitForJobDeath(jobOjbect.metadata.name)
+                        return result
+                    continue
+                else:
+                    # Job is not running/updating ; no active, successful, or failed pods yet
+                    logger.debug("Job %s -> %s" % (jobObject.metadata.name, jobObjectListConditions[0].reason))
+                    # Pod could be pending; don't say it's lost.
+                    continue
         else:
             # Try polling instead
             while result is None and (datetime.datetime.now() - entry).total_seconds() < maxWait:
