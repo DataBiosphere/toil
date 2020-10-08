@@ -110,7 +110,10 @@ print(heredoc('''
     
     RUN mkdir /root/.ssh && \
         chmod 700 /root/.ssh
-
+    
+    RUN wget https://github.com/jonathanxu18/toil-test-files/raw/master/singularity.conf && \
+        mv singularity.conf /usr/local/etc/singularity
+        
     ADD waitForKey.sh /usr/bin/waitForKey.sh
 
     ADD customDockerInit.sh /usr/bin/customDockerInit.sh
