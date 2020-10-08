@@ -40,7 +40,8 @@ from typing import (Text,
                     Iterator,
                     TextIO,
                     Set,
-                    Tuple)
+                    Tuple,
+                    cast)
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -77,6 +78,7 @@ from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
 from cwltool.utils import aslist, convert_pathsep_to_unix, get_listing, normalizeFilesDirs, CWLObjectType
 from cwltool.mutation import MutationManager
+from cwltool.builder import content_limit_respected_read
 
 from toil.job import Job, Promise
 from toil.common import Config, Toil, addOptions
@@ -90,26 +92,6 @@ CWL_INTERNAL_JOBS = ("CWLJobWrapper",
                      "CWLScatter",
                      "CWLGather",
                      "ResolveIndirect")
-
-import copy
-import datetime
-import functools
-import logging
-import tempfile
-import threading
-from typing import (
-    Dict,
-    Generator,
-    List,
-    MutableMapping,
-    MutableSequence,
-    Optional,
-    Sized,
-    Tuple,
-    cast,
-)
-from cwltool.utils import CWLOutputType, ParametersType
-from cwltool.builder import content_limit_respected_read
 
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
@@ -406,7 +388,8 @@ class StepValueFrom:
         :param inputs:
         :return: object
         """
-        return cwltool.expression.do_eval(self.expr, inputs, self.req, None, None, {}, context=self.context)
+        return cwltool.expression.do_eval(
+            self.expr, inputs, self.req, None, None, {}, context=self.context)
 
 
 class DefaultWithSource:
@@ -904,7 +887,6 @@ class CWLJob(Job):
             unitName=unitName,
             displayName=displayName)
 
-        # cwljob = resolve_dict_w_promises(cwljob)
         self.cwljob = cwljob
         try:
             self.jobName = str(self.cwltool.tool['id'])
@@ -968,8 +950,6 @@ class CWLJob(Job):
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
-        print(self.step_inputs)
-        # cwljob = {'my_number': 42}
         fill_in_defaults(
             self.step_inputs,
             cwljob,
@@ -1007,7 +987,7 @@ class CWLJob(Job):
         runtime_context.outdir = outdir
         runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
-        # runtime_context.make_fs_access = functools.partial(ToilFsAccess, file_store=file_store)
+        runtime_context.make_fs_access = functools.partial(ToilFsAccess, file_store=file_store)
         runtime_context.preserve_environment = required_env_vars
 
         runtime_context.toil_get_file = functools.partial(
