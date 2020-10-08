@@ -91,6 +91,26 @@ CWL_INTERNAL_JOBS = ("CWLJobWrapper",
                      "CWLGather",
                      "ResolveIndirect")
 
+# import copy
+# import datetime
+# import functools
+# import logging
+# import tempfile
+# import threading
+# from typing import (
+#     Dict,
+#     Generator,
+#     List,
+#     MutableMapping,
+#     MutableSequence,
+#     Optional,
+#     Sized,
+#     Tuple,
+#     cast,
+# )
+# from cwltool.utils import CWLOutputType, ParametersType
+# from cwltool.builder import content_limit_respected_read
+
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
 # the final dict is derived by evaluating each
@@ -348,7 +368,7 @@ class StepValueFrom:
     A workflow step input which has a valueFrom expression attached to it, which
     is evaluated to produce the actual input object for the step.
     """
-    def __init__(self, expr: str, source: Any, req: List[Dict[str, Any]]):
+    def __init__(self, expr: str, source: Any, req: List[Dict[str, Any]], runtime_context: cwltool.context.RuntimeContext):
         """
         Instantiate an object to carry as much information as we have access to right now
         about this valueFrom expression
@@ -361,6 +381,15 @@ class StepValueFrom:
         self.source = source
         self.context = None
         self.req = req
+        # self.runtime_context = runtime_context
+
+    # def evalPrep(self, step_inputs: Dict):
+    #     for k, v in step_inputs.items():
+    #         val = cast(CWLObjectType, v)
+    #         if val.get("contents") is None:
+    #             logger.critical(self.runtime_context.make_fs_access)
+    #             with self.runtime_context.make_fs_access('').open(fn=cast(str, val["location"]), mode="rb") as f:
+    #                 val["contents"] = content_limit_respected_read(f)
 
     def resolve(self) -> Any:
         """
@@ -378,8 +407,9 @@ class StepValueFrom:
         :param inputs:
         :return: object
         """
+        # self.evalPrep(inputs)
         return cwltool.expression.do_eval(
-            self.expr, inputs, self.req, None, None, {}, context=self.context)
+            self.expr, inputs, self.req, None, None, {}, context=self.context, js_console=True)
 
 
 class DefaultWithSource:
@@ -875,6 +905,7 @@ class CWLJob(Job):
             unitName=unitName,
             displayName=displayName)
 
+        # cwljob = resolve_dict_w_promises(cwljob)
         self.cwljob = cwljob
         try:
             self.jobName = str(self.cwltool.tool['id'])
@@ -938,6 +969,8 @@ class CWLJob(Job):
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
 
+        print(self.step_inputs)
+        # cwljob = {'my_number': 42}
         fill_in_defaults(
             self.step_inputs,
             cwljob,
@@ -975,8 +1008,7 @@ class CWLJob(Job):
         runtime_context.outdir = outdir
         runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
-        runtime_context.make_fs_access = functools.partial(
-            ToilFsAccess, file_store=file_store)
+        runtime_context.make_fs_access = functools.partial(ToilFsAccess, file_store=file_store)
         runtime_context.preserve_environment = required_env_vars
 
         runtime_context.toil_get_file = functools.partial(
@@ -1256,6 +1288,7 @@ class CWLWorkflow(Job):
         self.conditional = conditional or Conditional()
 
     def run(self, file_store: AbstractFileStore):
+        self.runtime_context.make_fs_access = functools.partial(ToilFsAccess, file_store=file_store)
         cwljob = resolve_dict_w_promises(self.cwljob)
 
         if self.conditional.is_false(cwljob):
@@ -1311,7 +1344,7 @@ class CWLWorkflow(Job):
                             if "valueFrom" in inp and "scatter" not in step.tool:
                                 jobobj[key] = StepValueFrom(  # type: ignore
                                     inp["valueFrom"], jobobj.get(key, JustAValue(None)),
-                                    self.cwlwf.requirements)
+                                    self.cwlwf.requirements, self.runtime_context)
 
                         conditional = Conditional(
                             expression=step.tool.get("when"),
