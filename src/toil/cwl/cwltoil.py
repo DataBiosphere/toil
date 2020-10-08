@@ -447,8 +447,8 @@ def resolve_dict_w_promises(dict_w_promises: dict, file_store=None) -> dict:
     result = {}
     for k, v in dict_w_promises.items():
         if isinstance(v, StepValueFrom):
-            if file_store:
-                v.eval_prep(first_pass_results, file_store)
+            # if file_store:
+            #     v.eval_prep(first_pass_results, file_store)
             result[k] = v.do_eval(inputs=first_pass_results)
         else:
             result[k] = first_pass_results[k]
@@ -725,7 +725,7 @@ def uploadFile(uploadfunc: Any,
 
 def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
     """Wrap writeGlobalFile to accept file:// URIs"""
-    fileuri = fileuri if ':/' in fileuri else f'file://{fileuri}'
+    # fileuri = fileuri if ':/' in fileuri else f'file://{fileuri}'
     return file_store.writeGlobalFile(
         schema_salad.ref_resolver.uri_file_path(fileuri))
 
