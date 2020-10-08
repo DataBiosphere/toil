@@ -725,6 +725,7 @@ def uploadFile(uploadfunc: Any,
 
 def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
     """Wrap writeGlobalFile to accept file:// URIs"""
+    fileuri = fileuri if ':/' in fileuri else f'file://{fileuri}'
     return file_store.writeGlobalFile(
         schema_salad.ref_resolver.uri_file_path(fileuri))
 
