@@ -447,8 +447,8 @@ def resolve_dict_w_promises(dict_w_promises: dict, file_store=None) -> dict:
     result = {}
     for k, v in dict_w_promises.items():
         if isinstance(v, StepValueFrom):
-            # if file_store:
-            #     v.eval_prep(first_pass_results, file_store)
+            if file_store:
+                v.eval_prep(first_pass_results, file_store)
             result[k] = v.do_eval(inputs=first_pass_results)
         else:
             result[k] = first_pass_results[k]
