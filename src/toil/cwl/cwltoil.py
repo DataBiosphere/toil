@@ -91,25 +91,25 @@ CWL_INTERNAL_JOBS = ("CWLJobWrapper",
                      "CWLGather",
                      "ResolveIndirect")
 
-# import copy
-# import datetime
-# import functools
-# import logging
-# import tempfile
-# import threading
-# from typing import (
-#     Dict,
-#     Generator,
-#     List,
-#     MutableMapping,
-#     MutableSequence,
-#     Optional,
-#     Sized,
-#     Tuple,
-#     cast,
-# )
-# from cwltool.utils import CWLOutputType, ParametersType
-# from cwltool.builder import content_limit_respected_read
+import copy
+import datetime
+import functools
+import logging
+import tempfile
+import threading
+from typing import (
+    Dict,
+    Generator,
+    List,
+    MutableMapping,
+    MutableSequence,
+    Optional,
+    Sized,
+    Tuple,
+    cast,
+)
+from cwltool.utils import CWLOutputType, ParametersType
+from cwltool.builder import content_limit_respected_read
 
 # The job object passed into CWLJob and CWLWorkflow
 # is a dict mapping to tuple of (key, dict)
@@ -368,7 +368,7 @@ class StepValueFrom:
     A workflow step input which has a valueFrom expression attached to it, which
     is evaluated to produce the actual input object for the step.
     """
-    def __init__(self, expr: str, source: Any, req: List[Dict[str, Any]], runtime_context: cwltool.context.RuntimeContext):
+    def __init__(self, expr: str, source: Any, req: List[Dict[str, Any]]):
         """
         Instantiate an object to carry as much information as we have access to right now
         about this valueFrom expression
@@ -381,15 +381,14 @@ class StepValueFrom:
         self.source = source
         self.context = None
         self.req = req
-        # self.runtime_context = runtime_context
 
-    # def evalPrep(self, step_inputs: Dict):
-    #     for k, v in step_inputs.items():
-    #         val = cast(CWLObjectType, v)
-    #         if val.get("contents") is None:
-    #             logger.critical(self.runtime_context.make_fs_access)
-    #             with self.runtime_context.make_fs_access('').open(fn=cast(str, val["location"]), mode="rb") as f:
-    #                 val["contents"] = content_limit_respected_read(f)
+    def eval_prep(self, step_inputs, file_store):
+        for k, v in step_inputs.items():
+            val = cast(CWLObjectType, v)
+            if val.get("contents") is None:
+                fs_access = functools.partial(ToilFsAccess, file_store=file_store)
+                with fs_access('').open(cast(str, val["location"]), "rb") as f:
+                    val["contents"] = content_limit_respected_read(f)
 
     def resolve(self) -> Any:
         """
@@ -407,9 +406,7 @@ class StepValueFrom:
         :param inputs:
         :return: object
         """
-        # self.evalPrep(inputs)
-        return cwltool.expression.do_eval(
-            self.expr, inputs, self.req, None, None, {}, context=self.context, js_console=True)
+        return cwltool.expression.do_eval(self.expr, inputs, self.req, None, None, {}, context=self.context)
 
 
 class DefaultWithSource:
@@ -451,7 +448,7 @@ class JustAValue:
         return self.val
 
 
-def resolve_dict_w_promises(dict_w_promises: dict) -> dict:
+def resolve_dict_w_promises(dict_w_promises: dict, file_store=None) -> dict:
     """
     Resolve the contents of an unresolved dictionary (containing promises) and
     evaluate expressions to produce the dictionary of actual values.
@@ -467,6 +464,8 @@ def resolve_dict_w_promises(dict_w_promises: dict) -> dict:
     result = {}
     for k, v in dict_w_promises.items():
         if isinstance(v, StepValueFrom):
+            if file_store:
+                v.eval_prep(first_pass_results, file_store)
             result[k] = v.do_eval(inputs=first_pass_results)
         else:
             result[k] = first_pass_results[k]
@@ -834,7 +833,7 @@ class CWLJobWrapper(Job):
         self.conditional = conditional
 
     def run(self, file_store: AbstractFileStore) -> Any:
-        cwljob = resolve_dict_w_promises(self.cwljob)
+        cwljob = resolve_dict_w_promises(self.cwljob, file_store)
         fill_in_defaults(
             self.cwltool.tool['inputs'],
             cwljob,
@@ -964,7 +963,7 @@ class CWLJob(Job):
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
 
-        cwljob = resolve_dict_w_promises(self.cwljob)
+        cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
@@ -1008,7 +1007,7 @@ class CWLJob(Job):
         runtime_context.outdir = outdir
         runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
-        runtime_context.make_fs_access = functools.partial(ToilFsAccess, file_store=file_store)
+        # runtime_context.make_fs_access = functools.partial(ToilFsAccess, file_store=file_store)
         runtime_context.preserve_environment = required_env_vars
 
         runtime_context.toil_get_file = functools.partial(
@@ -1140,7 +1139,7 @@ class CWLScatter(Job):
         return outputs
 
     def run(self, file_store: AbstractFileStore) -> list:
-        cwljob = resolve_dict_w_promises(self.cwljob)
+        cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if isinstance(self.step.tool["scatter"], string_types):
             scatter = [self.step.tool["scatter"]]
@@ -1288,8 +1287,7 @@ class CWLWorkflow(Job):
         self.conditional = conditional or Conditional()
 
     def run(self, file_store: AbstractFileStore):
-        self.runtime_context.make_fs_access = functools.partial(ToilFsAccess, file_store=file_store)
-        cwljob = resolve_dict_w_promises(self.cwljob)
+        cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
@@ -1344,7 +1342,7 @@ class CWLWorkflow(Job):
                             if "valueFrom" in inp and "scatter" not in step.tool:
                                 jobobj[key] = StepValueFrom(  # type: ignore
                                     inp["valueFrom"], jobobj.get(key, JustAValue(None)),
-                                    self.cwlwf.requirements, self.runtime_context)
+                                    self.cwlwf.requirements)
 
                         conditional = Conditional(
                             expression=step.tool.get("when"),
