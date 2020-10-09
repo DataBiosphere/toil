@@ -40,7 +40,8 @@ from typing import (Text,
                     Iterator,
                     TextIO,
                     Set,
-                    Tuple)
+                    Tuple,
+                    cast)
 
 # Python 3 compatibility imports
 from six import iteritems, string_types
@@ -77,6 +78,7 @@ from cwltool.software_requirements import (
     DependenciesConfiguration, get_container_from_software_requirements)
 from cwltool.utils import aslist, convert_pathsep_to_unix, get_listing, normalizeFilesDirs, CWLObjectType
 from cwltool.mutation import MutationManager
+from cwltool.builder import content_limit_respected_read
 
 from toil.job import Job, Promise
 from toil.common import Config, Toil, addOptions
@@ -362,6 +364,23 @@ class StepValueFrom:
         self.context = None
         self.req = req
 
+    def eval_prep(self, step_inputs: dict, file_store: AbstractFileStore):
+        """
+        If loadContents is specified, this will resolve the contents of any file in
+        a set of inputs associated with the StepValueFrom object's self.source.
+
+        :param step_inputs: Workflow step inputs.
+        :param file_store: A toil file store, needed to resolve toil fs:// paths.
+        """
+        for k, v in step_inputs.items():
+            val = cast(CWLObjectType, v)
+            source_input = getattr(self.source, 'input', {})
+            if isinstance(val, dict) and isinstance(source_input, dict):
+                if val.get("contents") is None and source_input.get('loadContents') is True:
+                    fs_access = functools.partial(ToilFsAccess, file_store=file_store)
+                    with fs_access('').open(cast(str, val["location"]), "rb") as f:
+                        val["contents"] = content_limit_respected_read(f)
+
     def resolve(self) -> Any:
         """
         The valueFrom expression's context is the value for this input. Resolve the promise.
@@ -421,7 +440,7 @@ class JustAValue:
         return self.val
 
 
-def resolve_dict_w_promises(dict_w_promises: dict) -> dict:
+def resolve_dict_w_promises(dict_w_promises: dict, file_store: AbstractFileStore = None) -> dict:
     """
     Resolve the contents of an unresolved dictionary (containing promises) and
     evaluate expressions to produce the dictionary of actual values.
@@ -437,6 +456,8 @@ def resolve_dict_w_promises(dict_w_promises: dict) -> dict:
     result = {}
     for k, v in dict_w_promises.items():
         if isinstance(v, StepValueFrom):
+            if file_store:
+                v.eval_prep(first_pass_results, file_store)
             result[k] = v.do_eval(inputs=first_pass_results)
         else:
             result[k] = first_pass_results[k]
@@ -713,6 +734,7 @@ def uploadFile(uploadfunc: Any,
 
 def writeGlobalFileWrapper(file_store: AbstractFileStore, fileuri: str) -> str:
     """Wrap writeGlobalFile to accept file:// URIs"""
+    fileuri = fileuri if ':/' in fileuri else f'file://{fileuri}'
     return file_store.writeGlobalFile(
         schema_salad.ref_resolver.uri_file_path(fileuri))
 
@@ -804,7 +826,7 @@ class CWLJobWrapper(Job):
         self.conditional = conditional
 
     def run(self, file_store: AbstractFileStore) -> Any:
-        cwljob = resolve_dict_w_promises(self.cwljob)
+        cwljob = resolve_dict_w_promises(self.cwljob, file_store)
         fill_in_defaults(
             self.cwltool.tool['inputs'],
             cwljob,
@@ -933,7 +955,7 @@ class CWLJob(Job):
         cwllogger.removeHandler(defaultStreamHandler)
         cwllogger.setLevel(logger.getEffectiveLevel())
 
-        cwljob = resolve_dict_w_promises(self.cwljob)
+        cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
@@ -975,8 +997,7 @@ class CWLJob(Job):
         runtime_context.outdir = outdir
         runtime_context.tmp_outdir_prefix = tmp_outdir_prefix
         runtime_context.tmpdir_prefix = file_store.getLocalTempDir()
-        runtime_context.make_fs_access = functools.partial(
-            ToilFsAccess, file_store=file_store)
+        runtime_context.make_fs_access = functools.partial(ToilFsAccess, file_store=file_store)
         runtime_context.preserve_environment = required_env_vars
 
         runtime_context.toil_get_file = functools.partial(
@@ -1108,7 +1129,7 @@ class CWLScatter(Job):
         return outputs
 
     def run(self, file_store: AbstractFileStore) -> list:
-        cwljob = resolve_dict_w_promises(self.cwljob)
+        cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if isinstance(self.step.tool["scatter"], string_types):
             scatter = [self.step.tool["scatter"]]
@@ -1256,7 +1277,7 @@ class CWLWorkflow(Job):
         self.conditional = conditional or Conditional()
 
     def run(self, file_store: AbstractFileStore):
-        cwljob = resolve_dict_w_promises(self.cwljob)
+        cwljob = resolve_dict_w_promises(self.cwljob, file_store)
 
         if self.conditional.is_false(cwljob):
             return self.conditional.skipped_outputs()
