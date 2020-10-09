@@ -364,7 +364,14 @@ class StepValueFrom:
         self.context = None
         self.req = req
 
-    def eval_prep(self, step_inputs, file_store):
+    def eval_prep(self, step_inputs: dict, file_store: AbstractFileStore):
+        """
+        If loadContents is specified, this will resolve the contents of any file in
+        a set of inputs associated with the StepValueFrom object's self.source.
+
+        :param step_inputs: Workflow step inputs.
+        :param file_store: A toil file store, needed to resolve toil fs:// paths.
+        """
         for k, v in step_inputs.items():
             val = cast(CWLObjectType, v)
             source_input = getattr(self.source, 'input', {})
@@ -433,7 +440,7 @@ class JustAValue:
         return self.val
 
 
-def resolve_dict_w_promises(dict_w_promises: dict, file_store=None) -> dict:
+def resolve_dict_w_promises(dict_w_promises: dict, file_store: AbstractFileStore = None) -> dict:
     """
     Resolve the contents of an unresolved dictionary (containing promises) and
     evaluate expressions to produce the dictionary of actual values.
