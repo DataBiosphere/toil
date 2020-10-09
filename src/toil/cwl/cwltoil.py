@@ -367,7 +367,8 @@ class StepValueFrom:
     def eval_prep(self, step_inputs, file_store):
         for k, v in step_inputs.items():
             val = cast(CWLObjectType, v)
-            if isinstance(val, dict) and isinstance(self.source.input, dict):
+            source_input = getattr(self.source, 'input', {})
+            if isinstance(val, dict) and isinstance(source_input, dict):
                 if val.get("contents") is None and self.source.input.get('loadContents') is True:
                     fs_access = functools.partial(ToilFsAccess, file_store=file_store)
                     with fs_access('').open(cast(str, val["location"]), "rb") as f:
