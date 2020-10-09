@@ -38,6 +38,11 @@ There are several environment variables that affect the way Toil runs.
 |                                  | Kubernetes jobs. If not set, Toil will use the     |
 |                                  | current user name.                                 |
 +----------------------------------+----------------------------------------------------+
+| KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
+|                                  | to utilize kubernnetes watch stream feature        |
+|                                  | intead of polling for running jobs. Default        | 
+|                                  | value is set to False.                             |
++----------------------------------+----------------------------------------------------+
 | TOIL_APPLIANCE_SELF              | The fully qualified reference for the Toil         |
 |                                  | Appliance you wish to use, in the form             |
 |                                  | ``REPO/IMAGE:TAG``.                                |
