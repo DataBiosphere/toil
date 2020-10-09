@@ -369,7 +369,7 @@ class StepValueFrom:
             val = cast(CWLObjectType, v)
             source_input = getattr(self.source, 'input', {})
             if isinstance(val, dict) and isinstance(source_input, dict):
-                if val.get("contents") is None and self.source.input.get('loadContents') is True:
+                if val.get("contents") is None and source_input.get('loadContents') is True:
                     fs_access = functools.partial(ToilFsAccess, file_store=file_store)
                     with fs_access('').open(cast(str, val["location"]), "rb") as f:
                         val["contents"] = content_limit_respected_read(f)
