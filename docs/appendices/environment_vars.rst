@@ -39,7 +39,7 @@ There are several environment variables that affect the way Toil runs.
 |                                  | current user name.                                 |
 +----------------------------------+----------------------------------------------------+
 | KUBE_WATCH_ENABLED               | A boolean variable that allows for users           |
-|                                  | to utilize kubernnetes watch stream feature        |
+|                                  | to utilize kubernetes watch stream feature         |
 |                                  | intead of polling for running jobs. Default        | 
 |                                  | value is set to False.                             |
 +----------------------------------+----------------------------------------------------+
