@@ -913,7 +913,7 @@ class AnalyzeWDL:
         if name.source_string == 'glob':
             return es + es_params + ', tempDir)'
         elif name.source_string == 'size':
-            return es + es_params + ', fileStore=fileStore)'
+            return es + (es_params + ', ' if es_params else '') + 'fileStore=fileStore)'
         elif name.source_string in ('write_lines', 'write_tsv', 'write_json', 'write_map'):
             return es + es_params + ', temp_dir=tempDir, file_store=fileStore)'
         else:

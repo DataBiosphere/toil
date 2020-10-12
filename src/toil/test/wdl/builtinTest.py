@@ -251,6 +251,16 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
         # preserving the path. Cromwell would return 'src/toil/test/wdl/test.csv' instead.
         self.check_function('sub', cases=['as_input_with_file'], expected_result='test.csv')
 
+    def test_size(self):
+        self.check_function('size', cases=['as_command'], expected_result='19.0')
+
+        # this workflow outputs the size of a 22-byte file in 'B', 'K', and 'Ki' separated with spaces.
+
+        # NOTE: Cromwell treats the decimal and binary units (e.g.: 'K' and 'Ki') the same, which differs from
+        # the spec (https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#float-sizefile-string).
+        # The correct output should be '22.0 0.022 0.021484375' not '22.0 0.021484375 0.021484375'
+        self.check_function('size', cases=['as_output'], expected_result='22.0 0.022 0.021484375')
+
     def test_ceil(self):
         self.check_function('ceil', cases=['as_input', 'as_command'], expected_result='12')
 

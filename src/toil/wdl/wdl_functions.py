@@ -486,16 +486,39 @@ def is_number(s):
         return False
 
 
-def size(f, unit='B', fileStore=None):
+def size(f: Optional[Union[tuple, List[tuple]]] = None,
+         unit: Optional[str] = 'B',
+         fileStore: Optional[AbstractFileStore] = None) -> float:
     """
-    Returns the size of a file in bytes.
+    Given a `File` and a `String` (optional), returns the size of the file in Bytes
+    or in the unit specified by the second argument.
 
-    :param f: Filename
-    :param unit: Return the byte size in these units (gigabytes, etc.).
-    :return:
+    Supported units are KiloByte ("K", "KB"), MegaByte ("M", "MB"), GigaByte
+    ("G", "GB"), TeraByte ("T", "TB") (powers of 1000) as well as their binary version
+    (https://en.wikipedia.org/wiki/Binary_prefix) "Ki" ("KiB"), "Mi" ("MiB"),
+    "Gi" ("GiB"), "Ti" ("TiB") (powers of 1024). Default unit is Bytes ("B").
+
+    WDL syntax: Float size(File, [String])
+    Varieties:  Float size(File?, [String])
+                Float size(Array[File], [String])
+                Float size(Array[File?], [String])
     """
+
+    if f is None:
+        return 0
+
+    assert isinstance(f, (str, tuple, list)), f'size() excepts a "File" or "File?" argument!  Not: {type(f)}'
+
+    # validate the input. fileStore is only required if the input is not processed.
+    f = process_infile(f, fileStore)
+
     divisor = return_bytes(unit)
-    fileID = process_infile(f, fileStore)[0]
+
+    if isinstance(f, list):
+        total_size = sum(file[0].size for file in f)
+        return total_size / divisor
+
+    fileID = f[0]
     return fileID.size / divisor
 
 
