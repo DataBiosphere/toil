@@ -837,3 +837,15 @@ def write_map(in_map: Dict[str, str],
         file_store.writeGlobalFile(path, cleanup=True)
 
     return path
+
+
+def transpose(in_array: List[List[Any]]) -> List[List[Any]]:
+    """
+    Given a two dimensional array argument, the transpose function transposes the
+    two dimensional array according to the standard matrix transpose rules.
+
+    WDL syntax: Array[Array[X]] transpose(Array[Array[X]])
+    """
+    assert isinstance(in_array, list), f'transpose() requires "{in_array}" to be a list!  Not: {type(in_array)}'
+
+    return [list(i) for i in zip(*in_array)]

@@ -19,6 +19,7 @@ from toil.wdl.wdl_functions import write_lines
 from toil.wdl.wdl_functions import write_tsv
 from toil.wdl.wdl_functions import write_json
 from toil.wdl.wdl_functions import write_map
+from toil.wdl.wdl_functions import transpose
 
 from toil.version import exactPython
 from toil.test import ToilTest
@@ -216,6 +217,15 @@ class WdlStandardLibraryFunctionsTest(ToilTest):
         path = write_map({'key1': 'value1', 'key2': 'value2'}, temp_dir=self.output_dir)
         self._check_output(path, 'key1\tvalue1\nkey2\tvalue2')
 
+    def testFn_Transpose(self):
+        """Test the wdl built-in functional equivalent of 'transpose()'."""
+        self.assertEqual([[0, 3], [1, 4], [2, 5]], transpose([[0, 1, 2], [3, 4, 5]]))
+        self.assertEqual([[0, 1, 2], [3, 4, 5]], transpose([[0, 3], [1, 4], [2, 5]]))
+
+        self.assertEqual([], transpose([]))
+        self.assertEqual([], transpose([[]]))  # same as Cromwell
+        self.assertEqual([[0]], transpose([[0]]))
+
 
 class WdlStandardLibraryWorkflowsTest(ToilTest):
     """
@@ -309,6 +319,10 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
         self.check_function('write_map', cases=['as_command'],
                             expected_result='key1\tvalue1\nkey2\tvalue2')
+
+    def test_transpose(self):
+        # this workflow writes a transposed 2-dimensional array as a TSV file.
+        self.check_function('transpose', cases=['as_input'], expected_result='0\t3\n1\t4\n2\t5')
 
 
 if __name__ == "__main__":
