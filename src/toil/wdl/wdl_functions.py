@@ -848,4 +848,9 @@ def transpose(in_array: List[List[Any]]) -> List[List[Any]]:
     """
     assert isinstance(in_array, list), f'transpose() requires "{in_array}" to be a list!  Not: {type(in_array)}'
 
+    for arr in in_array:
+        assert isinstance(arr, list), f'transpose() requires all collections to be a list!  Not: {type(arr)}'
+        # zip() can handle this but Cromwell can not.
+        assert len(arr) == len(in_array[0]), 'transpose() requires all collections have the same size!'
+
     return [list(i) for i in zip(*in_array)]
