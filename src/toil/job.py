@@ -121,7 +121,7 @@ class ConfigClient:
     Base class for objects that need to talk to the current Toil configuration
     to pick up their default values.
     
-    Provides an _config to be used internally by derived calsses, and an
+    Provides an _config to be used internally by derived classes, and an
     :meth:`toil.job.ConfigClient.assignConfig` to be used to associate a
     configuration whan an object is loaded.
     """
@@ -765,7 +765,7 @@ class JobDescription(Requirer):
         return printedName
         
     # Not usable as a key (not hashable) and doesn't have any value-equality.
-    # There really should only ever be one true version of a JobSescription at
+    # There really should only ever be one true version of a JobDescription at
     # a time, keyed by jobStoreID.
 
     def __repr__(self):
