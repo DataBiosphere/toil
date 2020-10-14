@@ -1061,7 +1061,7 @@ class Job:
         
         :param toil.common.Config config: Config object to query
         """
-        self._description.assignConfig(config)
+        self.description.assignConfig(config)
 
 
     def run(self, fileStore):
@@ -2141,6 +2141,10 @@ class Job:
         # Store the name of the first job in a file in case of restart. Up to this point the
         # root job is not recoverable. FIXME: "root job" or "first job", which one is it?
         jobStore.setRootJob(self.jobStoreID)
+        
+        # Assign the config from the JobStore as if we were loaded.
+        # TODO: Find a better way to make this the JobStore's responsibility
+        self.description.assignConfig(jobStore.config)
         
         return self.description
         

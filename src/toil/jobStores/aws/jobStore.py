@@ -270,6 +270,8 @@ class AWSJobStore(AbstractJobStore):
             binary, _ = SDBHelper.attributesToBinary(item)
             assert binary is not None
         job = pickle.loads(binary)
+        if job is not None:
+            job.assignConfig(self.config)
         return job
 
     def _awsJobToItem(self, job):
@@ -343,7 +345,6 @@ class AWSJobStore(AbstractJobStore):
         job = self._awsJobFromItem(item)
         if job is None:
             raise NoSuchJobException(jobStoreID)
-        job.assignConfig(self.config)
         log.debug("Loaded job %s", jobStoreID)
         return job
 
