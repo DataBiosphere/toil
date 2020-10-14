@@ -331,42 +331,36 @@ class JobDescription(Requirer):
     their specific parameters.
     """
     
-    def __init__(self, requirements=None, unitName='', displayName='', jobName='', command=None):
+    def __init__(self, requirements, jobName, unitName='', displayName='', command=None):
         """
         Create a new JobDescription.
         
-        :param dict|None requirements: Dict from string to number, string, or bool
+        :param dict requirements: Dict from string to number, string, or bool
             describing the resource requirments of the job. 'cores', 'memory',
             'disk', and 'preemptable' fields, if set, are parsed and broken out
             into properties. If unset, the relevant property will be
             unspecified, and will be pulled from the assigned Config object if
-            queried (see :meth:`toil.job.JobDescription.assignConfig`). If
-            unspecified and no Config object is assigned, an AttributeError
-            will be raised at query time.
+            queried (see :meth:`toil.job.JobDescription.assignConfig`).
+        :param str jobName: Name of the kind of job this is. May be used in job
+            store IDs and logging. Also used to let the cluster scaler learn a
+            model for how long the job will take. Ought to be the job class's
+            name if no real user-defined name is available.
         :param str unitName: Name of this instance of this kind of job. May
             appear with jobName in logging.
         :param str displayName: A human-readable name to identify this
             particular job instance. Ought to be the job class's name
             if no real user-defined name is available.
-        :param str jobName: Name of the kind of job this is. May be used in job
-            store IDs and logging. Also used to let the cluster scaler learn a
-            model for how long the job will take. Ought to be the job class's
-            name if no real user-defined name is available.
         """
         
-        # Fill in default values
-        if requirements is None:
-            requirements = {}
-            
         # Set requirements
         super().__init__(requirements)
         
         # Save names, making sure they are strings and not e.g. bytes.
         def makeString(x):
             return x if not isinstance(x, bytes) else x.decode('utf-8', errors='replace')
+        self.jobName = makeString(jobName)
         self.unitName = makeString(unitName)
         self.displayName = makeString(displayName)
-        self.jobName = makeString(jobName)
     
         # Set properties that are not fully filled in on creation.
         
@@ -944,8 +938,9 @@ class Job:
                 # Use the normal default
                 descriptionClass = JobDescription
         # Create the JobDescription that owns all the scheduling information.
-        # Make it with a fake ID until we can be assigned a real one by the JobStore.
-        self._description = descriptionClass(requirements=requirements, unitName=unitName, displayName=displayName, jobName=jobName)
+        # Make it with a temporary ID until we can be assigned a real one by
+        # the JobStore.
+        self._description = descriptionClass(requirements, jobName, unitName=unitName, displayName=displayName)
         
         # Private class variables needed to actually execute a job, in the worker.
         # Also needed for setting up job graph structures before saving to the JobStore.
