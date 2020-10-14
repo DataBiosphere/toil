@@ -82,7 +82,7 @@ class JobPromiseConstraintError(RuntimeError):
             super().__init__(f"Job {promisingJob.description} cannot promise its return value to non-successor {recipientJob.description}")
             
 
-class FakeID:
+class TemporaryID:
     """
     Placeholder for a job ID used by a JobDescription that has not yet been
     registered with any JobStore.
@@ -105,16 +105,16 @@ class FakeID:
         return self.__repr__()
         
     def __repr__(self):
-        return f'FakeID({self._value})'
+        return f'TemporaryID({self._value})'
         
     def __hash__(self):
         return hash(self._value)
         
     def __eq__(self, other):
-        return isinstance(other, FakeID) and self._value == other._value
+        return isinstance(other, TemporaryID) and self._value == other._value
         
     def __ne__(self, other):
-        return not isinstance(other, FakeID) or self._value != other._value
+        return not isinstance(other, TemporaryID) or self._value != other._value
 
 class ConfigClient:
     """
@@ -358,7 +358,7 @@ class JobDescription(Requirer):
         # Set properties that are not fully filled in on creation.
         
         # ID of this job description in the JobStore.
-        self.jobStoreID = FakeID()
+        self.jobStoreID = TemporaryID()
         
         # Mostly fake, not-really-executable command string that encodes how to
         # find the Job body data that this JobDescription describes, and the
@@ -642,7 +642,7 @@ class JobDescription(Requirer):
         
         IDs not present in the renames dict are left as-is.
         
-        :param dict(FakeID, str) renames: Rename operations to apply.
+        :param dict(TemporaryID, str) renames: Rename operations to apply.
         """
         
         self.childIDs = {renames.get(old, old) for old in self.childIDs}
@@ -937,7 +937,7 @@ class Job:
         # Private class variables needed to actually execute a job, in the worker.
         # Also needed for setting up job graph structures before saving to the JobStore.
         
-        # This dict holds a mapping from FakeIDs to the job objects they represent.
+        # This dict holds a mapping from TemporaryIDs to the job objects they represent.
         # Will be shared among all jobs in a disconnected piece of the job
         # graph that hasn't been registered with a JobStore yet.
         # Make sure to initially register ourselves.
@@ -1070,7 +1070,7 @@ class Job:
         
         Ought to be called on the bigger registry first.
         
-        Merges FakeID registries if needed.
+        Merges TemporaryID registries if needed.
         """
        
         if len(self._registry) < len(other._registry):
@@ -1915,7 +1915,7 @@ class Job:
         # TODO: This doesn't really have much to do with the registry. Rename
         # the registry.
         
-        if isinstance(self.jobStoreID, FakeID):
+        if isinstance(self.jobStoreID, TemporaryID):
             # We need to get an ID.
        
             # Save our fake ID
@@ -1941,7 +1941,7 @@ class Job:
         
         IDs not present in the renames dict are left as-is.
         
-        :param dict(FakeID, str) renames: Rename operations to apply.
+        :param dict(TemporaryID, str) renames: Rename operations to apply.
         """
         
         # Do renames in the description
@@ -1962,7 +1962,7 @@ class Job:
         
         # We can't save the job in the right place for cleanup unless the
         # description has a real ID.
-        assert not isinstance(self.jobStoreID, FakeID), "Tried to save job {} without ID assigned!".format(self)
+        assert not isinstance(self.jobStoreID, TemporaryID), "Tried to save job {} without ID assigned!".format(self)
         
         # Note that we can't accept any more requests for our return value
         self._disablePromiseRegistration()

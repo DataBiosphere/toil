@@ -41,7 +41,7 @@ from toil.jobStores.abstractJobStore import (AbstractJobStore,
                                              NoSuchFileException,
                                              JobStoreExistsException,
                                              NoSuchJobStoreException)
-from toil.job import JobDescription, FakeID
+from toil.job import JobDescription, TemporaryID
 
 logger = logging.getLogger( __name__ )
 
@@ -229,7 +229,7 @@ class FileJobStore(AbstractJobStore):
 
     def update(self, job):
         assert job.jobStoreID is not None, f"Tried to update job {job} without an ID"
-        assert not isinstance(job.jobStoreID, FakeID), f"Tried to update job {job} without an assigned ID"
+        assert not isinstance(job.jobStoreID, TemporaryID), f"Tried to update job {job} without an assigned ID"
     
         # The job is serialised to a file suffixed by ".new"
         # The file is then moved to its correct path.

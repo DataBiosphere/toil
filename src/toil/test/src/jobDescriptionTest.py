@@ -16,7 +16,7 @@ from __future__ import absolute_import
 import os
 from argparse import ArgumentParser
 from toil.common import Toil
-from toil.job import Job, JobDescription, FakeID
+from toil.job import Job, JobDescription, TemporaryID
 from toil.test import ToilTest, travis_test
 
 class JobDescriptionTest(ToilTest):
@@ -56,7 +56,7 @@ class JobDescriptionTest(ToilTest):
         self.assertEqual(j.disk, disk)
         self.assertEqual(j.cores, int(cores))
         self.assertEqual(j.preemptable, bool(preemptable))
-        self.assertEqual(type(j.jobStoreID), FakeID)
+        self.assertEqual(type(j.jobStoreID), TemporaryID)
         self.assertEqual(list(j.successorsAndServiceHosts()), [])
         self.assertEqual(list(j.allSuccessors()), [])
         self.assertEqual(list(j.serviceHostIDsInBatches()), [])

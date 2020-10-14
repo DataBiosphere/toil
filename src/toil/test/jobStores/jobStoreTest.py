@@ -50,7 +50,7 @@ from toil.lib.exceptions import panic
 
 from toil.common import Config, Toil
 from toil.fileStores import FileID
-from toil.job import Job, JobDescription, FakeID
+from toil.job import Job, JobDescription, TemporaryID
 from toil.jobStores.abstractJobStore import (NoSuchJobException,
                                              NoSuchFileException)
 from toil.jobStores.fileJobStore import FileJobStore
@@ -169,9 +169,9 @@ class AbstractJobStoreTest(object):
             job = JobDescription(command='parent1',
                                  requirements=self.parentJobReqs,
                                  jobName='test1', unitName='onParent')
-            self.assertTrue(isinstance(job.jobStoreID, FakeID))
+            self.assertTrue(isinstance(job.jobStoreID, TemporaryID))
             jobstore.assignID(job)
-            self.assertFalse(isinstance(job.jobStoreID, FakeID))
+            self.assertFalse(isinstance(job.jobStoreID, TemporaryID))
             created = jobstore.create(job)
 
             self.assertEqual(created, job)
