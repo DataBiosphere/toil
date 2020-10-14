@@ -1097,7 +1097,18 @@ class Job:
         
         :param toil.job.Job other: A job possibly from the other connected component
         """
-       
+      
+        # Maintain the invariant that a whole connected component has a config
+        # assigned if any job in it does.
+        if self.description._config is None and other.description._config is not None:
+            # The other component has a config assigned but this component doesn't.
+            for job in self._registry.values():
+                job.assignConfig(other.description._config)
+        elif other.description._config is None and self.description._config is not None:
+            # We have a config assigned but the other component doesn't.
+            for job in other._registry.values():
+                job.assignConfig(self.description._config)
+      
         if len(self._registry) < len(other._registry):
             # Merge into the other component instead
             other._jobGraphsJoined(self)
