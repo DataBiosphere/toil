@@ -159,6 +159,16 @@ class Requirer:
             raise RuntimeError(f"Config assigned multiple times to {self}")
         self._config = config
         
+    def __getstate__(self):
+        """
+        Return the dict to use as the instance's __dict__ when pickling.
+        """
+        
+        # We want to exclude the config from pickling.
+        state = self.__dict__.copy()
+        state['_config'] = None
+        return state
+        
     @staticmethod
     def _parseResource(name, value):
         """
