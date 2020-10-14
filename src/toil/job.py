@@ -169,7 +169,32 @@ class Requirer:
         state = self.__dict__.copy()
         state['_config'] = None
         return state
+   
+    def __copy__(self):
+        """
+        Return a semantically-shallow copy of the object, for :meth:`copy.copy`.
+        """
         
+        # See https://stackoverflow.com/a/40484215 for how to do an override
+        # that uses the base implementation
+        
+        # Hide this override
+        implementation = self.__copy__
+        self.__copy__ = None
+        
+        # Do the copy which omits the config via __getstate__ override
+        clone = copy.copy(self)
+        
+        # Put back the override on us and the copy
+        self.__copy__ = implementation
+        clone.__copy__ = implementation
+        
+        if self._config is not None:
+            # Share a config reference
+            clone.assignConfig(self._config)
+            
+        return clone
+    
     def __deepcopy__(self, memo):
         """
         Return a semantically-deep copy of the object, for :meth:`copy.deepcopy`.
