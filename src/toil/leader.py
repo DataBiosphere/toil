@@ -130,10 +130,6 @@ class Leader(object):
         self.toilState = ToilState(jobStore, rootJob, jobCache=jobCache)
         logger.debug("Found %s jobs to start and %i jobs with successors to run",
                      len(self.toilState.updatedJobs), len(self.toilState.successorCounts))
-        for desc in self.toilState.allJobDescriptions():
-            # Hook up the config to fill in default requirement values
-            # TODO: Make the state know whan it gets things and do this itself?
-            desc.assignConfig(self.config)
 
         # Batch system
         self.batchSystem = batchSystem
@@ -339,7 +335,6 @@ class Leader(object):
         if successor.jobStoreID not in self.toilState.jobsToBeScheduledWithMultiplePredecessors:
             # TODO: We're loading from the job store in an ad-hoc way!
             loaded = self.jobStore.load(successor.jobStoreID)
-            loaded.assignConfig(self.config)
             self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID] = loaded
         # TODO: we're clobbering a JobDescription we're passing around by value.
         successor = self.toilState.jobsToBeScheduledWithMultiplePredecessors[successor.jobStoreID]
@@ -403,7 +398,6 @@ class Leader(object):
         for successorID in predecessor.stack[-1]:
             try:
                 successor = self.jobStore.load(successorID)
-                successor.assignConfig(self.config)
             except NoSuchJobException:
                 # Job already done and gone
                 logger.warning("Job %s is a successor of %s but is already done and gone.", successorID, predecessor.jobStoreID)
@@ -486,7 +480,6 @@ class Leader(object):
                 for serviceID in serviceJobList:
                     assert serviceID not in self.toilState.serviceJobStoreIDToPredecessorJob
                     serviceHost = self.jobStore.load(serviceID)
-                    serviceHost.assignConfig(self.config)
                     self.toilState.serviceJobStoreIDToPredecessorJob[serviceID] = readyJob
                     self.toilState.servicesIssued[readyJob.jobStoreID][serviceID] = serviceHost
 
@@ -539,10 +532,6 @@ class Leader(object):
             if serviceJob is None:
                 break
                 
-            # JobDescriptions coming from the ServiceManager may not have a
-            # reference to the current config.
-            serviceJob.assignConfig(self.config)
-                
             logger.debug('Launching service job: %s', serviceJob)
             self.issueServiceJob(serviceJob)
 
@@ -553,10 +542,6 @@ class Leader(object):
             if jobDesc is None: # Stop trying to get jobs when function returns None
                 break
             logger.debug('Job: %s has established its services.', jobDesc.jobStoreID)
-            
-            # JobDescriptions coming from the ServiceManager may not have a
-            # reference to the current config.
-            jobDesc.assignConfig(self.config)
             
             # Drop all service relationships
             jobDesc.filterServiceHosts(lambda ignored: False)
@@ -570,10 +555,6 @@ class Leader(object):
             if jobDesc is None: # Stop trying to get jobs when function returns None
                 break
             logger.debug('Job: %s has failed to establish its services.', jobDesc.jobStoreID)
-            
-            # JobDescriptions coming from the ServiceManager may not have a
-            # reference to the current config.
-            jobDesc.assignConfig(self.config)
             
             # Make sure services still want to run
             assert next(jobDesc.serviceHostIDsInBatches(), None) is not None
@@ -990,7 +971,6 @@ class Leader(object):
             try:
                 # Reload the job as modified by the worker
                 replacementJob = self.jobStore.load(jobStoreID)
-                replacementJob.assignConfig(self.config)
             except NoSuchJobException:
                 # Avoid importing AWSJobStore as the corresponding extra might be missing
                 if self.jobStore.__class__.__name__ == 'AWSJobStore':
@@ -1102,7 +1082,6 @@ class Leader(object):
                         # (job may not exist if already completed)
                         if jobStore.exists(successorID):
                             loaded = jobStore.load(successorID)
-                            loaded.assignConfig(self.config)
                             successorRecursion(loaded)
 
         successorRecursion(jobDesc)  # Recurse from passed job

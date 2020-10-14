@@ -768,7 +768,12 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @abstractmethod
     def load(self, jobStoreID):
         """
-        Loads the description of the job referenced by the given ID and returns it.
+        Loads the description of the job referenced by the given ID, assigns it
+        the job store's config, and returns it.
+        
+        May declare the job to have failed (see
+        :meth:`toil.job.JobDescription.setupJobAfterFailure`) if there is
+        evidence of a failed update attempt. 
 
         :param str jobStoreID: the ID of the job to load
 

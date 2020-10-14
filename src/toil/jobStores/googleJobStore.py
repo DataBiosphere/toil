@@ -199,7 +199,9 @@ class GoogleJobStore(AbstractJobStore):
             jobString = self._readContents(jobStoreID)
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
-        return pickle.loads(jobString) 
+        job = pickle.loads(jobString) 
+        job.assignConfig(self.config)
+        return job
 
     def update(self, job):
         self._writeString(job.jobStoreID, pickle.dumps(job, protocol=pickle.HIGHEST_PROTOCOL), update=True)

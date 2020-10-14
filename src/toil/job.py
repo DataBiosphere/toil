@@ -2190,9 +2190,6 @@ class Job:
                 job = cls._unpickle(userModule, fileHandle, requireInstanceOf=Job)
                 # Fill in the current description
                 job._description = jobDescription
-                # Once the description is set we can assign the config, in case it wasn't set.
-                # TODO: may be redundant?
-                job.assignConfig(jobStore.config)
                 
                 # Set up the registry again, so children and follow-ons can be added on the worker
                 job._registry = {job.jobStoreID: job}
@@ -2702,7 +2699,7 @@ class ServiceHostJob(Job):
         userModule = self._loadUserModule(self.serviceModule)
         service = self._unpickle(userModule, BytesIO(self.pickledService), requireInstanceOf=Job.Service)
         self.pickledService = None
-        # Make sure it has the config
+        # Make sure it has the config, since it wasn't load()-ed via the JobStore
         service.assignConfig(fileStore.jobStore.config)
         #Start the service
         startCredentials = service.start(self)

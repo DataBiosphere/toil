@@ -96,8 +96,6 @@ def nextChainable(predecessor, jobStore, config):
     
     # Load the successor JobDescription
     successor = jobStore.load(successorID)
-    # AMke sure it has access to the config to default its resources
-    successor.assignConfig(config)
 
     #We check the requirements of the successor to see if we can run it
     #within the current worker

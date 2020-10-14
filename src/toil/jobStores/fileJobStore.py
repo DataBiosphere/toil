@@ -218,12 +218,15 @@ class FileJobStore(AbstractJobStore):
         jobFile = self._getJobFileName(jobStoreID)
         with open(jobFile, 'rb') as fileHandle:
             job = pickle.load(fileHandle)
+        
+        # Pass along the current config, which is the JobStore's responsibility.
+        job.assignConfig(self.config)
+            
         # The following cleans up any issues resulting from the failure of the
         # job during writing by the batch system.
         if os.path.isfile(jobFile + ".new"):
             logger.warning("There was a .new file for the job: %s", jobStoreID)
             os.remove(jobFile + ".new")
-            job.assignConfig(self.config)
             job.setupJobAfterFailure()
         return job
 

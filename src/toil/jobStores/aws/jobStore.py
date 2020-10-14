@@ -343,6 +343,7 @@ class AWSJobStore(AbstractJobStore):
         job = self._awsJobFromItem(item)
         if job is None:
             raise NoSuchJobException(jobStoreID)
+        job.assignConfig(self.config)
         log.debug("Loaded job %s", jobStoreID)
         return job
 
