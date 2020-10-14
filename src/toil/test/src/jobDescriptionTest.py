@@ -76,7 +76,7 @@ class JobDescriptionTest(ToilTest):
         
     @travis_test
     def testJobDescriptionSequencing(self):
-        j = JobDescription(command='command')
+        j = JobDescription(command='command', requirements={},  jobName='unimportant')
         
         j.addChild('child')
         j.addFollowOn('followOn')
