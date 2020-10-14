@@ -42,7 +42,7 @@ class WorkerTests(ToilTest):
             self.jobNumber += 1
             
             descClass = CheckpointJobDescription if checkpoint else JobDescription
-            jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable}, unitName=name)
+            jobDesc = descClass(requirements={'memory': memory, 'cores': cores, 'disk': disk, 'preemptable': preemptable}, jobName=name)
             
             # Assign an ID
             self.jobStore.assignID(jobDesc)
