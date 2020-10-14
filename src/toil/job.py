@@ -176,8 +176,8 @@ class Requirer(ConfigClient):
         corresponding integral value will be returned.
 
         :param str name: The name of the resource
-        :param None|str|float|int value: The resource value
-        :rtype: int|float|None
+        :param str|int|float|bool|None value: The resource value
+        :rtype: int|float|bool|None
 
         >>> Requirer._parseResource('cores', None)
         >>> Requirer._parseResource('cores', 1), Requirer._parseResource('disk', 1), \
@@ -242,6 +242,9 @@ class Requirer(ConfigClient):
         our requirement storage and querying 'defaultBlah' on the config if it
         isn't set. If the config would be queried but isn't associated, raises
         AttributeError.
+        
+        :param str requirement: The name of the resource
+        :rtype: int|float|bool|None
         """
         if requirement in self._requirementOverrides:
             value = self._requirementOverrides[requirement]
@@ -260,6 +263,8 @@ class Requirer(ConfigClient):
     def requirements(self):
         """
         Dict containing all non-None, non-defaulted requirements.
+        
+        :rtype: dict
         """
         return dict(self._requirementOverrides)
     
@@ -267,6 +272,8 @@ class Requirer(ConfigClient):
     def disk(self):
         """
         The maximum number of bytes of disk required.
+        
+        :rtype: int
         """
         return self._fetchRequirement('disk')
     @disk.setter
@@ -277,6 +284,8 @@ class Requirer(ConfigClient):
     def memory(self):
         """
         The maximum number of bytes of memory required.
+        
+        :rtype: int
         """
         return self._fetchRequirement('memory')
     @memory.setter
@@ -287,6 +296,8 @@ class Requirer(ConfigClient):
     def cores(self):
         """
         The number of CPU cores required.
+        
+        :rtype: int|float
         """
         return self._fetchRequirement('cores')
     @cores.setter
@@ -297,6 +308,8 @@ class Requirer(ConfigClient):
     def preemptable(self):
         """
         Whether a preemptable node is permitted, or a nonpreemptable one is required.
+        
+        :rtype: bool
         """
         return self._fetchRequirement('preemptable')
     @preemptable.setter
@@ -906,9 +919,9 @@ class Job:
         :param descriptionClass: Override for the JobDescription class used to describe the job.
         
         :type memory: int or string convertible by toil.lib.humanize.human2bytes to an int
-        :type cores: int or string convertible by toil.lib.humanize.human2bytes to an int
+        :type cores: float, int, or string convertible by toil.lib.humanize.human2bytes to an int
         :type disk: int or string convertible by toil.lib.humanize.human2bytes to an int
-        :type preemptable: bool
+        :type preemptable: bool, int in {0, 1}, or string in {'false', 'true'} in any case
         :type unitName: str
         :type checkpoint: bool
         :type displayName: str
@@ -979,6 +992,8 @@ class Job:
     def jobStoreID(self):
         """
         Get the ID of this Job.
+        
+        :rtype: str|toil.job.TemporaryID
         """
         # This is managed by the JobDescription.
         return self._description.jobStoreID
@@ -987,6 +1002,8 @@ class Job:
     def description(self):
         """
         Expose the JobDescription that describes this job.
+        
+        :rtype: toil.job.JobDescription
         """
         return self._description
         
@@ -997,6 +1014,8 @@ class Job:
     def disk(self):
         """
         The maximum number of bytes of disk the job will require to run.
+        
+        :rtype: int
         """
         return self.description.disk
     @disk.setter
@@ -1007,6 +1026,8 @@ class Job:
     def memory(self):
         """
         The maximum number of bytes of memory the job will require to run.
+        
+        :rtype: int
         """
         return self.description.memory
     @memory.setter
@@ -1017,6 +1038,8 @@ class Job:
     def cores(self):
         """
         The number of CPU cores required.
+        
+       :rtype: int|float 
         """
         return self.description.cores
     @cores.setter
@@ -1027,6 +1050,8 @@ class Job:
     def preemptable(self):
         """
         Whether the job can be run on a preemptable node.
+        
+        :rtype: bool
         """
         return self.description.preemptable
     @preemptable.setter
@@ -1037,6 +1062,8 @@ class Job:
     def checkpoint(self):
         """
         Determine if the job is a checkpoint job or not.
+        
+        :rtype: bool
         """
         
         return isinstance(self._description, CheckpointJobDescription)
@@ -1071,6 +1098,8 @@ class Job:
         Ought to be called on the bigger registry first.
         
         Merges TemporaryID registries if needed.
+        
+        :param toil.job.Job other: A job possibly from the other connected component
         """
        
         if len(self._registry) < len(other._registry):
