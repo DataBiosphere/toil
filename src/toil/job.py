@@ -116,35 +116,10 @@ class TemporaryID:
     def __ne__(self, other):
         return not isinstance(other, TemporaryID) or self._value != other._value
 
-class ConfigClient:
+class Requirer:
     """
-    Base class for objects that need to talk to the current Toil configuration
-    to pick up their default values.
-    
-    Provides an _config to be used internally by derived classes, and an
-    :meth:`toil.job.ConfigClient.assignConfig` to be used to associate a
-    configuration whan an object is loaded.
-    """
-    
-    def __init__(self):
-        """
-        Make a new ConfigClient with no associated configuration.
-        """
-        # We can have a toil.common.Config assigned to fill in default values
-        # for e.g. job requirements not explicitly specified.
-        self._config = None
-        
-    def assignConfig(self, config):
-        """
-        Assign the given config object to be used to provide default values.
-        
-        :param toil.common.Config config: Config object to query
-        """
-        self._config = config
-        
-class Requirer(ConfigClient):
-    """
-    Base class implementing the storage and presentation of requirements for cores, memory, disk, and preemptability as properties.
+    Base class implementing the storage and presentation of requirements for
+    cores, memory, disk, and preemptability as properties.
     """
     
     def __init__(self, requirements):
@@ -156,17 +131,33 @@ class Requirer(ConfigClient):
             'disk', and 'preemptable' fields, if set, are parsed and broken out
             into properties. If unset, the relevant property will be
             unspecified, and will be pulled from the assigned Config object if
-            queried (see :meth:`toil.job.ConfigClient.assignConfig`). If
+            queried (see :meth:`toil.job.Requirer.assignConfig`). If
             unspecified and no Config object is assigned, an AttributeError
             will be raised at query time.
         """
         
         super().__init__()
         
+        # We can have a toil.common.Config assigned to fill in default values
+        # for e.g. job requirements not explicitly specified.
+        self._config = None
+        
         # Save requirements, parsing and validating anything that needs parsing or validating.
         # Don't save Nones.
         self._requirementOverrides = {k: self._parseResource(k, v) for (k, v) in requirements.items() if v is not None}
         
+    def assignConfig(self, config):
+        """
+        Assign the given config object to be used to provide default values.
+        
+        Must be called exactly once on a loaded JobDescription before any
+        requirements are queried.
+        
+        :param toil.common.Config config: Config object to query
+        """
+        if self._config is not None:
+            raise RuntimeError(f"Config assigned multiple times to {self}")
+        self._config = config
         
     @staticmethod
     def _parseResource(name, value):
@@ -340,7 +331,7 @@ class JobDescription(Requirer):
             'disk', and 'preemptable' fields, if set, are parsed and broken out
             into properties. If unset, the relevant property will be
             unspecified, and will be pulled from the assigned Config object if
-            queried (see :meth:`toil.job.JobDescription.assignConfig`).
+            queried (see :meth:`toil.job.Requirer.assignConfig`).
         :param str jobName: Name of the kind of job this is. May be used in job
             store IDs and logging. Also used to let the cluster scaler learn a
             model for how long the job will take. Ought to be the job class's
@@ -679,7 +670,7 @@ class JobDescription(Requirer):
         to be at least as big as the default memory (in case of exhaustion of memory,
         which is common).
         
-        Requires a configuration to have been assigned (see :meth:`toil.job.JobDescription.assignConfig`).
+        Requires a configuration to have been assigned (see :meth:`toil.job.Requirer.assignConfig`).
         
         :param toil.batchSystems.abstractBatchSystem.BatchJobExitReason exitReason: The configuration for the current workflow run.
         
