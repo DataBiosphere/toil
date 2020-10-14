@@ -20,6 +20,7 @@ from builtins import zip
 from builtins import map
 from builtins import str
 import collections
+import copy
 import enum
 import importlib
 import inspect
@@ -168,6 +169,31 @@ class Requirer:
         state = self.__dict__.copy()
         state['_config'] = None
         return state
+        
+    def __deepcopy__(self, memo):
+        """
+        Return a semantically-deep copy of the object, for :meth:`copy.deepcopy`.
+        """
+        
+        # See https://stackoverflow.com/a/40484215 for how to do an override
+        # that uses the base implementation
+        
+        # Hide this override
+        implementation = self.__deepcopy__
+        self.__deepcopy__ = None
+        
+        # Do the deepcopy which omits the config via __getstate__ override
+        clone = copy.deepcopy(self, memo)
+        
+        # Put back the override on us and the copy
+        self.__deepcopy__ = implementation
+        clone.__deepcopy__ = implementation
+        
+        if self._config is not None:
+            # Share a config reference
+            clone.assignConfig(self._config)
+            
+        return clone
         
     @staticmethod
     def _parseResource(name, value):
