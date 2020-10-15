@@ -54,7 +54,7 @@ class BatchJobExitReason(enum.Enum):
     LOST = 3  # Preemptable failure (job's executing host went away).
     KILLED = 4  # Job killed before finishing.
     ERROR = 5  # Internal error.
-
+    MEMLIMIT = 6 # Job hit batch system imposed memory limit
 
 # Value to use as exitStatus in UpdatedBatchJobInfo.exitStatus when status is not available.
 EXIT_STATUS_UNAVAILABLE_VALUE = 255

@@ -511,6 +511,8 @@ class Leader(object):
             updatedJobTuple.jobID, updatedJobTuple.exitStatus, updatedJobTuple.exitReason,
             updatedJobTuple.wallTime)
         # easy, track different state
+        if exitStatus == 1117:
+            exitReason = BatchJobExitReason.MEMLIMIT
         try:
             updatedJob = self.jobBatchSystemIDToIssuedJob[jobID]
         except KeyError:

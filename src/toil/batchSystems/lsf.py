@@ -156,6 +156,8 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                                 exit_info += "\nexit reason: {}".format(exit_reason)
                             logger.error(
                                 "bjobs detected job failed with: {}\nfor job: {}".format(exit_info, job))
+                            if "TERM_MEMLIMIT" in exit_reason:
+                                return 1117 #random exit code for TERM_MEMLIMIT specific failures, would not be present on other systems
                             return exit_code
                         if process_status == 'RUN':
                             logger.debug(

@@ -148,6 +148,10 @@ class JobGraph(JobNode):
         # Set the default memory to be at least as large as the default, in
         # case this was a malloc failure (we do this because of the combined
         # batch system)
+        if exitReason == BatchJobExitReason.MEMLIMIT and config.doubleMem:
+            self._memory = self.memory * 2
+            logger.warning("We have doubled the memory of the failed job %s to %s bytes due to doubleMem flag",
+                           str(self), str(self.memory))
         if self.memory < config.defaultMemory:
             self._memory = config.defaultMemory
             logger.warning("We have increased the default memory of the failed job %s to %s bytes",
