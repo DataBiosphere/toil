@@ -190,14 +190,14 @@ class SynthesizeWDL:
                     # check the json file for the expression's value
                     # this is a higher priority and overrides anything written in the .wdl
                     json_expressn = self.json_var(wf=wfname, var=var)
-                    if json_expressn:
+                    if json_expressn is not None:
                         var_expressn['value'] = json_expressn
 
                     # empty string
                     if not var_expressn['value'] and (var_expressn['type'] in ['String', 'File']):
                         main_section += '        {} = ""\n'.format(var)
                     # None
-                    elif not var_expressn['value'] and not (var_expressn['type'] in ['String', 'File']):
+                    elif var_expressn['value'] is None and not (var_expressn['type'] in ['String', 'File']):
                         main_section += '        {} = None\n'.format(var)
                     # import filepath into jobstore
                     elif var_expressn['value'] and (var_expressn['type'] == 'File'):
@@ -654,9 +654,9 @@ class SynthesizeWDL:
 
                 # json declarations have priority and can overwrite
                 # whatever is in the wdl file
-                if json_expressn:
+                if json_expressn is not None:
                     var_expressn = json_expressn
-                if not var_expressn:
+                if var_expressn is None:
                     var_expressn = var
 
                 fn_section += '        self.id_{} = {}\n'.format(var, var_expressn)
