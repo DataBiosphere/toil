@@ -109,6 +109,7 @@ class SynthesizeWDL:
                     from toil.wdl.wdl_functions import basename
                     from toil.wdl.wdl_functions import floor
                     from toil.wdl.wdl_functions import ceil
+                    from toil.wdl.wdl_functions import wdl_range
                     from toil.wdl.wdl_functions import transpose
                     import fnmatch
                     import textwrap

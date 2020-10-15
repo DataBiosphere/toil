@@ -759,7 +759,7 @@ def write_lines(in_lines: List[str],
 
     with open(path, 'w') as file:
         for line in in_lines:
-            file.write(line + '\n')
+            file.write(f'{line}\n')
 
     if file_store:
         file_store.writeGlobalFile(path, cleanup=True)
@@ -837,6 +837,19 @@ def write_map(in_map: Dict[str, str],
         file_store.writeGlobalFile(path, cleanup=True)
 
     return path
+
+
+def wdl_range(num: int) -> List[int]:
+    """
+    Given an integer argument, the range function creates an array of integers of
+    length equal to the given argument.
+
+    WDL syntax: Array[Int] range(Int)
+    """
+    assert isinstance(num, int) and num >= 0, \
+        f'range() requires an integer greater than or equal to 0 (but got {num})'
+
+    return list(range(num))
 
 
 def transpose(in_array: List[List[Any]]) -> List[List[Any]]:

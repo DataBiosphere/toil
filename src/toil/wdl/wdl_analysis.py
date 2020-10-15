@@ -899,6 +899,9 @@ class AnalyzeWDL:
                     return es + '_toil_wdl_internal__stdout_file'
                 elif name.source_string == 'stderr':
                     return es + '_toil_wdl_internal__stderr_file'
+                elif name.source_string in ('range', 'zip'):
+                    # replace python built-in functions
+                    es += f'wdl_{name.source_string}('
                 else:
                     es = es + name.source_string + '('
             else:

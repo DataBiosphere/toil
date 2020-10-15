@@ -321,6 +321,9 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
         self.check_function('write_map', cases=['as_command'],
                             expected_result='key1\tvalue1\nkey2\tvalue2')
 
+    def test_range(self):
+        self.check_function('range', cases=['as_input'], expected_result='0\n1\n2\n3\n4\n5\n6\n7')
+
     def test_transpose(self):
         # this workflow writes a transposed 2-dimensional array as a TSV file.
         self.check_function('transpose', cases=['as_input'], expected_result='0\t3\n1\t4\n2\t5')
