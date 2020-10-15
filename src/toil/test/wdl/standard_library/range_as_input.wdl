@@ -1,4 +1,5 @@
 workflow rangeWorkflow {
+  # this workflow depends on write_lines()
   Int num
   call copy_output {input: in_array=range(num)}
 }

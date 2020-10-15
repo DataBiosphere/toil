@@ -27,6 +27,7 @@ from toil.test import ToilTest
 
 class WdlStandardLibraryFunctionsTest(ToilTest):
     """ A set of test cases for toil's wdl functions."""
+
     def setUp(self):
         """Runs anew before each test to create farm fresh temp dirs."""
         self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
@@ -236,6 +237,7 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
     All tests should include a simple wdl and json file for toil to run that checks the output.
     """
+
     @classmethod
     def setUpClass(cls):
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
@@ -287,7 +289,7 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
     def test_read(self):
         """ Test the set of WDL read functions."""
-        # NOTE: these tests depends on stdout() and the write_*() functions.
+        # NOTE: these tests depend on stdout() and the write_*() functions.
 
         self.check_function('read_lines', cases=['as_output'],
                             expected_result='line 1\n\t\tline 2 with tabs\n line 3\n\nline 5')
@@ -322,9 +324,12 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
                             expected_result='key1\tvalue1\nkey2\tvalue2')
 
     def test_range(self):
+        # NOTE: this test depends on write_lines().
         self.check_function('range', cases=['as_input'], expected_result='0\n1\n2\n3\n4\n5\n6\n7')
 
     def test_transpose(self):
+        # NOTE: this test depends on write_tsv().
+
         # this workflow writes a transposed 2-dimensional array as a TSV file.
         self.check_function('transpose', cases=['as_input'], expected_result='0\t3\n1\t4\n2\t5')
 
