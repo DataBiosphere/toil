@@ -152,7 +152,7 @@ class JobGraph(JobNode):
             self._memory = self.memory * 2
             logger.warning("We have doubled the memory of the failed job %s to %s bytes due to doubleMem flag",
                            str(self), str(self.memory))
-        if self.memory < config.defaultMemory:
+        if self.memory < config.defaultMemory and not config.doubleMem:
             self._memory = config.defaultMemory
             logger.warning("We have increased the default memory of the failed job %s to %s bytes",
                            self, self.memory)

@@ -28,7 +28,7 @@ from future.utils import with_metaclass
 from toil.lib.misc import CalledProcessErrorStderr
 from toil.lib.objects import abstractclassmethod
 
-from toil.batchSystems.abstractBatchSystem import BatchSystemCleanupSupport, UpdatedBatchJobInfo
+from toil.batchSystems.abstractBatchSystem import BatchSystemCleanupSupport, UpdatedBatchJobInfo, BatchJobExitReason
 
 logger = logging.getLogger(__name__)
 
@@ -192,9 +192,13 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             for jobID in list(self.runningJobs):
                 batchJobID = self.getBatchSystemID(jobID)
                 status = self.boss.with_retries(self.getJobExitCode, batchJobID)
-                if status is not None:
+                if status is not None and isinstance(status, int):
                     activity = True
                     self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=status, exitReason=None, wallTime=None))
+                    self.forgetJob(jobID)
+                elif status is not None and isinstance(status, BatchJobExitReason):
+                    activity = True
+                    self.updatedJobsQueue.put(UpdatedBatchJobInfo(jobID=jobID, exitStatus=1, exitReason=status, wallTime=None))
                     self.forgetJob(jobID)
             self._checkOnJobsCache = activity
             self._checkOnJobsTimestamp = datetime.now()

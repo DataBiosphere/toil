@@ -35,6 +35,7 @@ from dateutil.tz import tzlocal
 from datetime import datetime
 
 from toil.batchSystems import MemoryString
+from toil.batchSystems.abstractBatchSystem import BatchJobExitReason
 from toil.batchSystems.abstractGridEngineBatchSystem import \
         AbstractGridEngineBatchSystem
 from toil.batchSystems.lsfHelper import (parse_memory_resource,
@@ -157,7 +158,7 @@ class LSFBatchSystem(AbstractGridEngineBatchSystem):
                             logger.error(
                                 "bjobs detected job failed with: {}\nfor job: {}".format(exit_info, job))
                             if "TERM_MEMLIMIT" in exit_reason:
-                                return 1117 #random exit code for TERM_MEMLIMIT specific failures, would not be present on other systems
+                                return BatchJobExitReason.MEMLIMIT
                             return exit_code
                         if process_status == 'RUN':
                             logger.debug(

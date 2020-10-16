@@ -511,15 +511,13 @@ class Leader(object):
             updatedJobTuple.jobID, updatedJobTuple.exitStatus, updatedJobTuple.exitReason,
             updatedJobTuple.wallTime)
         # easy, track different state
-        if exitStatus == 1117:
-            exitReason = BatchJobExitReason.MEMLIMIT
         try:
             updatedJob = self.jobBatchSystemIDToIssuedJob[jobID]
         except KeyError:
             logger.warning("A result seems to already have been processed "
                         "for job %s", jobID)
         else:
-            if exitStatus == 0:
+            if exitStatus == 0 and exitReason == None:
                 cur_logger = (logger.debug if str(updatedJob.jobName).startswith(CWL_INTERNAL_JOBS)
                               else logger.info)
                 cur_logger('Job ended: %s', updatedJob)
