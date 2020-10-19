@@ -34,6 +34,12 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 wdllogger = logging.getLogger(__name__)
 
 
+class WDLRuntimeError(Exception):
+    """ WDL-related run-time error."""
+    def __init__(self, message):
+        super(WDLRuntimeError, self).__init__(message)
+
+
 def glob(glob_pattern, directoryname):
     '''
     Walks through a directory and its subdirectories looking for files matching
@@ -846,8 +852,8 @@ def wdl_range(num: int) -> List[int]:
 
     WDL syntax: Array[Int] range(Int)
     """
-    assert isinstance(num, int) and num >= 0, \
-        f'range() requires an integer greater than or equal to 0 (but got {num})'
+    if not (isinstance(num, int) and num >= 0):
+        raise WDLRuntimeError(f'range() requires an integer greater than or equal to 0 (but got {num})')
 
     return list(range(num))
 

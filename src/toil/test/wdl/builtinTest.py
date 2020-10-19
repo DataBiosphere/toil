@@ -242,9 +242,9 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
     def setUpClass(cls):
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
-    def check_function(self, function_name, cases, expected_result):
+    def check_function(self, function_name, cases, expected_result, json_file_name=None):
         wdl_files = [os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}_{case}.wdl') for case in cases]
-        json_file = os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}.json')
+        json_file = os.path.abspath(f'src/toil/test/wdl/standard_library/{json_file_name or function_name}.json')
         for wdl_file in wdl_files:
             with self.subTest(f'Testing: {wdl_file} {json_file}'):
                 output_dir = f'/tmp/toil-wdl-test-{uuid.uuid4()}'
@@ -326,6 +326,7 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
     def test_range(self):
         # NOTE: this test depends on write_lines().
         self.check_function('range', cases=['as_input'], expected_result='0\n1\n2\n3\n4\n5\n6\n7')
+        self.check_function('range', cases=['as_input'], json_file_name='range_0', expected_result='')
 
     def test_transpose(self):
         # NOTE: this test depends on write_tsv().
