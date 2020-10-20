@@ -461,6 +461,17 @@ def resolve_dict_w_promises(dict_w_promises: dict, file_store: AbstractFileStore
             result[k] = v.do_eval(inputs=first_pass_results)
         else:
             result[k] = first_pass_results[k]
+
+    # '_:' prefixed file paths are a signal to cwltool to create folders in place
+    # rather than copying them, so we make them here
+    for entry in result:
+        if isinstance(result[entry], dict):
+            location = result[entry].get('location')
+            if location:
+                if location.startswith('_:file://'):
+                    os.makedirs(location[len('_:file://'):], exist_ok=True)
+                    result[entry]['location'] = location[len('_:'):]
+
     return result
 
 
