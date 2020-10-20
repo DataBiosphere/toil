@@ -470,7 +470,7 @@ def resolve_dict_w_promises(dict_w_promises: dict, file_store: AbstractFileStore
             if location:
                 if location.startswith('_:file://'):
                     os.makedirs(location[len('_:file://'):], exist_ok=True)
-                    result[entry]['location'] = location[len('_:'):]
+                    result[entry]['location'] = location[len('_:file://'):]
 
     return result
 
