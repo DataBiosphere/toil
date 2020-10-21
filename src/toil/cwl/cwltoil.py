@@ -1644,6 +1644,9 @@ def main(args: Union[List[str]] = None, stdout: TextIO = sys.stdout) -> int:
             'Please specify a jobstore with the --jobStore option when '
             'specifying a provisioner.')
 
+    if options.batchSystem == 'kubernetes':
+        options.singularity = True
+
     use_container = not options.no_container
 
     if options.logLevel:
