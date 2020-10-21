@@ -1,4 +1,5 @@
 workflow transposeWorkflow {
+  # this workflow depends on write_tsv()
   Array[Array[Int]] in_array
 
   call copy_output {input: in_array=transpose(in_array)}

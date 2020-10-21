@@ -34,6 +34,12 @@ from toil.fileStores.abstractFileStore import AbstractFileStore
 wdllogger = logging.getLogger(__name__)
 
 
+class WDLRuntimeError(Exception):
+    """ WDL-related run-time error."""
+    def __init__(self, message):
+        super(WDLRuntimeError, self).__init__(message)
+
+
 def glob(glob_pattern, directoryname):
     '''
     Walks through a directory and its subdirectories looking for files matching
@@ -759,7 +765,7 @@ def write_lines(in_lines: List[str],
 
     with open(path, 'w') as file:
         for line in in_lines:
-            file.write(line + '\n')
+            file.write(f'{line}\n')
 
     if file_store:
         file_store.writeGlobalFile(path, cleanup=True)
@@ -837,6 +843,19 @@ def write_map(in_map: Dict[str, str],
         file_store.writeGlobalFile(path, cleanup=True)
 
     return path
+
+
+def wdl_range(num: int) -> List[int]:
+    """
+    Given an integer argument, the range function creates an array of integers of
+    length equal to the given argument.
+
+    WDL syntax: Array[Int] range(Int)
+    """
+    if not (isinstance(num, int) and num >= 0):
+        raise WDLRuntimeError(f'range() requires an integer greater than or equal to 0 (but got {num})')
+
+    return list(range(num))
 
 
 def transpose(in_array: List[List[Any]]) -> List[List[Any]]:
