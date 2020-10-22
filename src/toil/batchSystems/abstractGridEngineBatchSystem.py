@@ -104,7 +104,7 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
 
             Implementation-specific; called by AbstractGridEngineWorker.run()
 
-            :param string newJob: Toil job ID
+            :param: string newJob: Toil job ID
             """
             activity = False
             # Load new job id if present:
@@ -277,17 +277,21 @@ class AbstractGridEngineBatchSystem(BatchSystemCleanupSupport):
             Kill specific job with the Toil job ID. Implementation-specific; called
             by AbstractGridEngineWorker.killJobs()
 
-            :param string jobID: Toil job ID
+            :param: string jobID: Toil job ID
             """
             raise NotImplementedError()
 
         @abstractmethod
         def getJobExitCode(self, batchJobID):
             """
-            Returns job exit code. Implementation-specific; called by
-            AbstractGridEngineWorker.checkOnJobs()
+            Returns job exit code or an instance of abstractBatchSystem.BatchJobExitReason
+            if something else happened other than the job exiting.
+            Implementation-specific; called by AbstractGridEngineWorker.checkOnJobs()
 
-            :param string batchjobID: batch system job ID
+            :param: string batchjobID: batch system job ID
+
+            :rtype: int|toil.batchSystems.abstractBatchSystem.BatchJobExitReason: exit code int
+                    or BatchJobExitReason if something else happened other than job exiting.
             """
             raise NotImplementedError()
 
