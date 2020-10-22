@@ -470,7 +470,7 @@ def resolve_dict_w_promises(dict_w_promises: dict, file_store: AbstractFileStore
             if location:
                 if location.startswith('_:file://'):
                     os.makedirs(location[len('_:file://'):], exist_ok=True)
-                    result[entry]['location'] = location[len('_:'):]
+                    result[entry]['location'] = location[len('_:file://'):]
 
     return result
 
@@ -1018,6 +1018,15 @@ class CWLJob(Job):
         started_at = datetime.datetime.now()
 
         logger.debug('Running CWL job: %s', cwljob)
+
+        for job_input in cwljob:
+            if isinstance(cwljob[job_input], dict):
+                if cwljob[job_input].get('class') == 'Directory' and 'listing' in cwljob[job_input]:
+                    if not cwljob[job_input]['listing']:
+                        del cwljob[job_input]['listing']
+                        adjustDirObjs(cwljob, functools.partial(
+                            get_listing, cwltool.stdfsaccess.StdFsAccess(outdir),
+                            recursive=True))
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
