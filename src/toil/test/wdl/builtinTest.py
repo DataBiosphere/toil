@@ -4,6 +4,8 @@ import os
 import subprocess
 import shutil
 import uuid
+from typing import Optional, List
+
 from toil.wdl.wdl_functions import sub
 from toil.wdl.wdl_functions import ceil
 from toil.wdl.wdl_functions import floor
@@ -27,6 +29,7 @@ from toil.test import ToilTest
 
 class WdlStandardLibraryFunctionsTest(ToilTest):
     """ A set of test cases for toil's wdl functions."""
+
     def setUp(self):
         """Runs anew before each test to create farm fresh temp dirs."""
         self.output_dir = os.path.join('/tmp/', 'toil-wdl-test-' + str(uuid.uuid4()))
@@ -236,22 +239,54 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
     All tests should include a simple wdl and json file for toil to run that checks the output.
     """
+
     @classmethod
     def setUpClass(cls):
         cls.program = os.path.abspath("src/toil/wdl/toilwdl.py")
 
-    def check_function(self, function_name, cases, expected_result):
-        wdl_files = [os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}_{case}.wdl') for case in cases]
-        json_file = os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}.json')
+    def check_function(self,
+                       function_name: str,
+                       cases: List[str],
+                       json_file_name: Optional[str] = None,
+                       expected_result: Optional[str] = None,
+                       expected_exception: Optional[str] = None):
+        """
+        Run the given WDL workflow and check its output. The WDL workflow
+        should store its output inside a 'output.txt' file that can be
+        compared to `expected_result`.
+
+        If `expected_exception` is set, this test passes only when both the
+        workflow fails and that the given `expected_exception` string is
+        present in standard error.
+        """
+        wdl_files = [os.path.abspath(f'src/toil/test/wdl/standard_library/{function_name}_{case}.wdl')
+                     for case in cases]
+        json_file = os.path.abspath(f'src/toil/test/wdl/standard_library/{json_file_name or function_name}.json')
         for wdl_file in wdl_files:
             with self.subTest(f'Testing: {wdl_file} {json_file}'):
                 output_dir = f'/tmp/toil-wdl-test-{uuid.uuid4()}'
                 os.makedirs(output_dir)
-                subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', output_dir])
-                output = os.path.join(output_dir, 'output.txt')
-                with open(output, 'r') as f:
-                    result = f.read().strip()
-                self.assertEqual(result, expected_result)
+
+                if expected_exception is not None:
+                    with self.assertRaises(subprocess.CalledProcessError) as context:
+                        # use check_output() here so that the output is read before return.
+                        subprocess.check_output([exactPython, self.program, wdl_file, json_file, '-o', output_dir],
+                                                stderr=subprocess.PIPE)
+
+                    stderr = context.exception.stderr
+                    self.assertIsInstance(stderr, bytes)
+                    self.assertIn(expected_exception, stderr.decode('utf-8'))
+
+                elif expected_result is not None:
+                    subprocess.check_call([exactPython, self.program, wdl_file, json_file, '-o', output_dir])
+                    output = os.path.join(output_dir, 'output.txt')
+                    with open(output, 'r') as f:
+                        result = f.read().strip()
+                    self.assertEqual(result, expected_result)
+
+                else:
+                    self.fail("Invalid test. Either `expected_result` or `expected_exception` must be set.")
+
                 shutil.rmtree(output_dir)
 
     def test_sub(self):
@@ -287,7 +322,7 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
 
     def test_read(self):
         """ Test the set of WDL read functions."""
-        # NOTE: these tests depends on stdout() and the write_*() functions.
+        # NOTE: these tests depend on stdout() and the write_*() functions.
 
         self.check_function('read_lines', cases=['as_output'],
                             expected_result='line 1\n\t\tline 2 with tabs\n line 3\n\nline 5')
@@ -321,7 +356,22 @@ class WdlStandardLibraryWorkflowsTest(ToilTest):
         self.check_function('write_map', cases=['as_command'],
                             expected_result='key1\tvalue1\nkey2\tvalue2')
 
+    def test_range(self):
+        # NOTE: this test depends on write_lines().
+        self.check_function('range', cases=['as_input'],
+                            expected_result='0\n1\n2\n3\n4\n5\n6\n7')
+
+        self.check_function('range', cases=['as_input'],
+                            json_file_name='range_0',
+                            expected_result='')
+
+        self.check_function('range', cases=['as_input'],
+                            json_file_name='range_invalid',
+                            expected_exception='WDLRuntimeError')
+
     def test_transpose(self):
+        # NOTE: this test depends on write_tsv().
+
         # this workflow writes a transposed 2-dimensional array as a TSV file.
         self.check_function('transpose', cases=['as_input'], expected_result='0\t3\n1\t4\n2\t5')
 
