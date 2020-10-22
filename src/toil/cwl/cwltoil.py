@@ -464,13 +464,17 @@ def resolve_dict_w_promises(dict_w_promises: dict, file_store: AbstractFileStore
 
     # '_:' prefixed file paths are a signal to cwltool to create folders in place
     # rather than copying them, so we make them here
+    # TODO: More closely mimic cwltool's mechanism for doing this
+    #  - Before and/or after job resolves?
+    #  - Populate with metadata bound objects when CWL does?
     for entry in result:
         if isinstance(result[entry], dict):
             location = result[entry].get('location')
             if location:
                 if location.startswith('_:file://'):
-                    os.makedirs(location[len('_:file://'):], exist_ok=True)
-                    result[entry]['location'] = location[len('_:file://'):]
+                    local_dir_path = location[len('_:file://'):]
+                    os.makedirs(local_dir_path, exist_ok=True)
+                    result[entry]['location'] = local_dir_path
 
     return result
 
@@ -851,6 +855,39 @@ class CWLJobWrapper(Job):
         return realjob.rv()
 
 
+def get_new_listings(fs_access: "StdFsAccess",
+                     rec: CWLObjectType,
+                     recursive: bool = True) -> None:
+    """
+    Only update a listing if the directory has either no
+    listing or seems to have been updated with more items.
+    """
+    if rec.get("class") != "Directory":
+        finddirs = []  # type: List[CWLObjectType]
+        visit_class(rec, ("Directory",), finddirs.append)
+        for f in finddirs:
+            get_new_listings(fs_access, f, recursive=recursive)
+        return
+    listing = []  # type: List[CWLOutputAtomType]
+    loc = cast(str, rec["location"])
+    for ld in fs_access.listdir(loc):
+        parse = urllib.parse.urlparse(ld)
+        bn = os.path.basename(urllib.request.url2pathname(parse.path))
+        if fs_access.isdir(ld):
+            ent = {
+                "class": "Directory",
+                "location": ld,
+                "basename": bn,
+            }  # type: MutableMapping[str, Any]
+            if recursive:
+                get_new_listings(fs_access, ent, recursive)
+            listing.append(ent)
+        else:
+            listing.append({"class": "File", "location": ld, "basename": bn})
+    if 'listing' not in rec or len(rec.get('listing', [])) < len(listing):
+        rec["listing"] = listing
+
+
 class CWLJob(Job):
     """Execute a CWL tool using cwltool.executors.SingleJobExecutor"""
     def __init__(self,
@@ -1019,14 +1056,11 @@ class CWLJob(Job):
 
         logger.debug('Running CWL job: %s', cwljob)
 
-        for job_input in cwljob:
-            if isinstance(cwljob[job_input], dict):
-                if cwljob[job_input].get('class') == 'Directory' and 'listing' in cwljob[job_input]:
-                    if not cwljob[job_input]['listing']:
-                        del cwljob[job_input]['listing']
-                        adjustDirObjs(cwljob, functools.partial(
-                            get_listing, cwltool.stdfsaccess.StdFsAccess(outdir),
-                            recursive=True))
+        # Check previously generated directories for new files added.
+        # TODO: Should probably be tested more robustly with fuzzing
+        adjustDirObjs(cwljob, functools.partial(
+            get_new_listings, cwltool.stdfsaccess.StdFsAccess(outdir),
+            recursive=True))
 
         output, status = cwltool.executors.SingleJobExecutor().execute(
             process=self.cwltool,
