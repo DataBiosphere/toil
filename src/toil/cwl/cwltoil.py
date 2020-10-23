@@ -855,9 +855,7 @@ class CWLJobWrapper(Job):
         return realjob.rv()
 
 
-def get_new_listings(fs_access: "StdFsAccess",
-                     rec: CWLObjectType,
-                     recursive: bool = True) -> None:
+def get_new_listings(fs_access, rec, recursive: bool = True) -> None:
     """
     Only update a listing if the directory has either no
     listing or seems to have been updated with more items.
