@@ -117,8 +117,8 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     in JobDescriptions and not full, executable Jobs.
     
     To actually get ahold of a :class:`toil.job.Job`, use
-    :meth:`toil.job.Job.loadJob` with a JobStore and the information from the
-    relevant JobDescription.
+    :meth:`toil.job.Job.loadJob` with a JobStore and the relevant
+    JobDescription.
     """
 
     def __init__(self):
