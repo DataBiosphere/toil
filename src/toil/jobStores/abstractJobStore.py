@@ -703,7 +703,7 @@ class AbstractJobStore(with_metaclass(ABCMeta, object)):
     @contextmanager
     def batch(self):
         """
-        If supporeted by the batch system, calls to create() with this context
+        If supported by the batch system, calls to create() with this context
         manager active will be performed in a batch after the context manager
         is released.
         :rtype: None
