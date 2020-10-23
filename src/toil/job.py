@@ -26,8 +26,9 @@ import importlib
 import inspect
 import itertools
 import logging
-import sys
 import os
+import shutil
+import sys
 import time
 import dill
 import tempfile
@@ -2278,9 +2279,7 @@ class Job:
             if os.path.exists(filename):
                 os.unlink(filename)
             # Clean up the directory we put it in
-            # TODO: we assume nobody else put anything in the directory
-            if os.path.exists(directory):
-                os.rmdir(directory)
+            shutil.rmtree(directory)
 
     def _run(self, jobGraph=None, fileStore=None, **kwargs):
         """
