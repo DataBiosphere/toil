@@ -200,6 +200,10 @@ class GoogleJobStore(AbstractJobStore):
         except NoSuchFileException:
             raise NoSuchJobException(jobStoreID)
         job = pickle.loads(jobString) 
+        # It is our responsibility to make sure that the JobDescription is
+        # connected to the current config on this machine, for filling in
+        # defaults. The leader and worker should never see config-less
+        # JobDescriptions.
         job.assignConfig(self.config)
         return job
 
