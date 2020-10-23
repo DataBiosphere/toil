@@ -1957,14 +1957,11 @@ class Job:
             job = todo[-1]
             todo.pop()
             
-            logger.debug("Consider job %s", job.jobStoreID)
-            
             #Do not add the job to the ordering until all its predecessors have been
             #added to the ordering
             outstandingPredecessor = False
             for predJob in job._directPredecessors:
                 if predJob.jobStoreID not in visited:
-                    logger.debug("Has outstanding predecessor that will account for it: %s", predJob.jobStoreID)
                     outstandingPredecessor = True
                     break
             if outstandingPredecessor:
@@ -1974,16 +1971,11 @@ class Job:
                 visited.add(job.jobStoreID)
                 ordering.append(job)
                 
-                logger.debug("Visit job %s", job.jobStoreID)
-                
                 for otherID in itertools.chain(job.description.followOnIDs, job.description.childIDs):
                     if otherID in self._registry:
                         # Stack up descendants so we process children and then follow-ons.
                         # So stack up follow-ons deeper
                         todo.append(self._registry[otherID])
-                        logger.debug("Queue successor %s", otherID)
-                    else:
-                        logger.debug("Unregistered successor %s", otherID)
 
         return ordering
         
