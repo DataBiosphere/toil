@@ -2116,13 +2116,13 @@ class Job:
             and services and to populate the return value.
         :param returnValues: The collection of values returned when executing
             the job (or starting the service the job is hosting). If saveSelf
-            is not set, will be used to fulfil the job's return value promises.
+            is not set, will be used to fulfill the job's return value promises.
         """
         
         # Prohibit cycles and multiple roots
         self.checkJobGraphForDeadlocks()
         
-        # Make sure everybody in the registry is registrered with the job store
+        # Make sure everybody in the registry is registered with the job store
         # and has an ID. Also rewrite ID references.
         allJobs = list(self._registry.values())
         # We use one big dict from fake ID to corresponding real ID to rewrite references.
