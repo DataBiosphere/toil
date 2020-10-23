@@ -251,7 +251,7 @@ class ServiceManager( object ):
                     
                 pendingServiceCount = len(servicesThatAreStarting)
                 if pendingServiceCount > 0 and logLimiter.throttle(False):
-                    logger.info('%d services are starting...', pendingServiceCount)
+                    logger.debug('%d services are starting...', pendingServiceCount)
 
                 for serviceJobDesc in list(servicesThatAreStarting):
                     if not jobStore.fileExists(serviceJobDesc.startJobStoreID):
