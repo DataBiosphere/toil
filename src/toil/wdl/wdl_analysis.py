@@ -21,6 +21,43 @@ import toil.wdl.wdl_parser as wdl_parser
 wdllogger = logging.getLogger(__name__)
 
 
+class WDLType(str):
+    """ A string representation of a WDL type."""
+
+    # TODO: figure out placement for these classes.
+    # extend str for now to maintain consistency
+    pass
+
+
+class WDLArrayType(WDLType):
+    def __new__(cls, element: str):
+        return super(WDLArrayType, cls).__new__(cls, f'Array[{element}]')
+
+    def __init__(self, element: str):
+        super(WDLArrayType, self).__init__()
+        self.element = element
+
+
+class WDLPairType(WDLType):
+    def __new__(cls, left: str, right: str):
+        return super(WDLPairType, cls).__new__(cls, f'Pair[{left}, {right}]')
+
+    def __init__(self, left: str, right: str):
+        super(WDLPairType, self).__init__()
+        self.left = left
+        self.right = right
+
+
+class WDLMapType(WDLType):
+    def __new__(cls, key: str, value: str):
+        return super(WDLMapType, cls).__new__(cls, f'Map[{key}, {value}]')
+
+    def __init__(self, key: str, value: str):
+        super(WDLMapType, self).__init__()
+        self.key = key
+        self.value = value
+
+
 class AnalyzeWDL:
     '''
     Analyzes a wdl file, and associated json and/or extraneous files and restructures them
@@ -623,6 +660,14 @@ class AnalyzeWDL:
         :param typeAST:
         :return:
         """
+        # TODO: figure out how to modify this without breaking everything
+        # TODO: update docstring
+        # if Boolean, Float, Int, File, or String:
+        #   return as normal
+        #
+        # if Array, Pair, or Map:
+        #   return custom WDLType object
+
         if isinstance(typeAST, wdl_parser.Terminal):
             return typeAST.source_string
         elif isinstance(typeAST, wdl_parser.Ast):
@@ -960,6 +1005,9 @@ class AnalyzeWDL:
         var_map['name'] = var_name
         var_map['type'] = var_type
         var_map['value'] = var_expressn
+
+        # print(var_map)
+        print(var_type)
 
         return var_name, var_map
 

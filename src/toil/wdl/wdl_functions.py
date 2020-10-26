@@ -30,14 +30,46 @@ from typing import (Optional,
                     Any)
 
 from toil.fileStores.abstractFileStore import AbstractFileStore
+from toil.wdl.wdl_analysis import WDLArrayType, WDLPairType, WDLMapType
 
 wdllogger = logging.getLogger(__name__)
 
 
 class WDLRuntimeError(Exception):
     """ WDL-related run-time error."""
+
     def __init__(self, message):
         super(WDLRuntimeError, self).__init__(message)
+
+
+class WDLPair:
+    """
+    Represent a WDL Pair literal defined at
+    https://github.com/openwdl/wdl/blob/main/versions/development/SPEC.md#pair-literals
+    """
+
+    # TODO: figure out placement for these classes.
+
+    def __init__(self, left: Any, right: Any):
+        self.left = left
+        self.right = right
+
+    def to_dict(self):
+        return {'left': self.left, 'right': self.right}
+
+    def __repr__(self):
+        return str(self.to_dict())
+
+
+class WDLJSONEncoder(json.JSONEncoder):
+    """
+    Extended JSONEncoder to support WDL-specific JSON encoding.
+    """
+
+    def default(self, obj):
+        if isinstance(obj, WDLPair):
+            return obj.to_dict()
+        return json.JSONEncoder.default(self, obj)
 
 
 def glob(glob_pattern, directoryname):
@@ -233,6 +265,61 @@ def process_infile(f, fileStore):
         return process_single_infile(f, fileStore)
     else:
         raise RuntimeError('Error processing file: '.format(str(f)))
+
+
+def parse_value_from_type(in_data: Any,
+                          var_type: str,
+                          from_json: Optional[bool] = False,
+                          file_store: Optional[AbstractFileStore] = None):
+    """
+    Calls at runtime. This function parses and validates input (from JSON or WDL)
+    from its type. File import is also handled.
+    """
+
+    def validate(val: bool, msg: str):
+        if not val:
+            raise WDLRuntimeError(f'Invalid input: {msg}')
+
+    if not in_data:  # optional type?
+        return in_data
+
+    if var_type == 'File':
+        return process_single_infile(in_data, file_store)
+
+    elif isinstance(var_type, WDLArrayType):
+        validate(isinstance(in_data, list), f'Expected list, but got {type(in_data)}')
+
+        # recursively parse the elements of the array
+        return [parse_value_from_type(i, var_type.element, from_json, file_store) for i in in_data]
+
+    elif isinstance(var_type, WDLPairType):
+        if from_json:
+            # this should be a dictionary w/ format: {"left": left, "right": right}
+            validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
+            validate('left' in in_data and 'right' in in_data, f'Pair needs \'left\' and \'right\' keys')
+
+            left = in_data.get('left')
+            right = in_data.get('right')
+        else:
+            # tuple
+            validate(isinstance(in_data, tuple) and len(in_data) == 2, 'Only support Pair len == 2')
+            left, right = in_data
+
+        return WDLPair(
+            parse_value_from_type(left, var_type.left, from_json, file_store),
+            parse_value_from_type(right, var_type.right, from_json, file_store))
+
+    elif isinstance(var_type, WDLMapType):
+        validate(isinstance(in_data, dict), f'Expected dict, but got {type(in_data)}')
+
+        # recursively parse the elements of the dict
+        return {parse_value_from_type(k, var_type.key, from_json, file_store):
+                parse_value_from_type(v, var_type.value, from_json, file_store)
+                for k, v in in_data.items()}
+
+    else:
+        # everything else is fine as is.
+        return in_data
 
 
 def sub(input_str: str, pattern: str, replace: str) -> str:
@@ -814,7 +901,7 @@ def write_json(in_json: Any,
     path = _get_temp_file_path('write_json', temp_dir)
 
     with open(path, 'w') as file:
-        file.write(json.dumps(in_json, indent=indent, separators=separators))
+        file.write(json.dumps(in_json, indent=indent, separators=separators, cls=WDLJSONEncoder))
 
     if file_store:
         file_store.writeGlobalFile(path, cleanup=True)

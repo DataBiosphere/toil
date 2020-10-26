@@ -201,6 +201,7 @@ class SynthesizeWDL:
                     elif var_expressn['value'] is None and not (var_expressn['type'] in ['String', 'File']):
                         main_section += '        {} = None\n'.format(var)
                     # import filepath into jobstore
+                    # [!!] TODO: this only works for File, Array[File], etc. But not Pair[File, File], etc.
                     elif var_expressn['value'] and (var_expressn['type'] == 'File'):
                         main_section += '        {} = process_infile({}, fileStore)\n'.format(var, var_expressn['value'])
                     # normal declaration
@@ -682,6 +683,7 @@ class SynthesizeWDL:
                 var = i[0]
                 var_type = i[1]
                 docker_bool = str(self.needsdocker(job))
+                # [!!] TODO: this only works for File, Array[File], etc. But not Pair[File, File], etc.
                 if var_type == 'File':
                     fn_section += '        {} = process_and_read_file(abspath_file(self.id_{}, _toil_wdl_internal__current_working_dir), tempDir, fileStore, docker={})\n'.format(var, var, docker_bool)
                 else:
@@ -783,6 +785,7 @@ class SynthesizeWDL:
         if 'raw_commandline' in self.tasks_dictionary[job]:
             for cmd in self.tasks_dictionary[job]['raw_commandline']:
                 if not cmd.startswith("r'''"):
+                    # [!!] TODO: ?
                     cmd = 'str({i} if not isinstance({i}, tuple) else process_and_read_file({i}, tempDir, fileStore)).strip("{nl}")'.format(i=cmd, nl=r"\n")
                 fn_section = fn_section + heredoc_wdl('''
                         try:
