@@ -866,7 +866,7 @@ def get_new_listings(fs_access, rec, recursive: bool = True) -> None:
         for f in finddirs:
             get_new_listings(fs_access, f, recursive=recursive)
         return
-    listing = []  # type: List[CWLOutputAtomType]
+    listing = []
     loc = cast(str, rec["location"])
     for ld in fs_access.listdir(loc):
         parse = urllib.parse.urlparse(ld)
