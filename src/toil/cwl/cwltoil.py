@@ -861,7 +861,7 @@ def get_new_listings(fs_access, rec, recursive: bool = True) -> None:
     listing or seems to have been updated with more items.
     """
     if rec.get("class") != "Directory":
-        finddirs = []  # type: List[CWLObjectType]
+        finddirs = []
         visit_class(rec, ("Directory",), finddirs.append)
         for f in finddirs:
             get_new_listings(fs_access, f, recursive=recursive)
@@ -876,7 +876,7 @@ def get_new_listings(fs_access, rec, recursive: bool = True) -> None:
                 "class": "Directory",
                 "location": ld,
                 "basename": bn,
-            }  # type: MutableMapping[str, Any]
+            }
             if recursive:
                 get_new_listings(fs_access, ent, recursive)
             listing.append(ent)
