@@ -359,7 +359,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
 
     def _declineAllOffers(self, driver, offers):
         for offer in offers:
-            log.debug("Declining offer %s.", offer.id.value)
             driver.declineOffer(offer.id)
 
     def _parseOffer(self, offer):
@@ -417,7 +416,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         jobTypes = self.jobQueues.sortedTypes
 
         if not jobTypes:
-            log.debug('There are no queued tasks. Declining Mesos offers.')
             # Without jobs, we can get stuck with no jobs and no new offers until we decline it.
             self._declineAllOffers(driver, offers)
             return
@@ -426,8 +424,6 @@ class MesosBatchSystem(BatchSystemLocalSupport,
         # Right now, gives priority to largest jobs
         for offer in offers:
             if offer.hostname in self.ignoredNodes:
-                log.debug("Declining offer %s because node %s is designated for termination" %
-                        (offer.id.value, offer.hostname))
                 driver.declineOffer(offer.id)
                 continue
             runnableTasks = []
