@@ -109,10 +109,10 @@ class AccessReportingWrapper:
                 # For each access record
                 if len(item) == 2:
                     # If it has a name, dump wit the name
-                    logger.warning('Downloaded \'%s\' to path \'%s\'', *item)
+                    logger.warning('Downloaded file \'%s\' to path \'%s\'', *item)
                 else:
                     # Otherwise dump without the name
-                    logger.warning('Read \'%s\'', *item)
+                    logger.warning('Streamed file \'%s\'', *item)
         
     
 

@@ -159,6 +159,8 @@ class hidden(object):
                 stream.write('Cats'.encode('utf-8'))
             localPath = os.path.join(job.fileStore.getLocalTempDir(), 'cats.txt')
             job.fileStore.readGlobalFile(fileID, localPath)
+            with job.fileStore.readGlobalFileStream(fileID) as stream2:
+                pass
             raise RuntimeError("I do not like this file")
             
 
